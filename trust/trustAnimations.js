@@ -3,11 +3,17 @@ import { buildDecagram, crackShard, shatterShard } from "./trustDecagram.js";
 let sfx;
 let unlockAudio;
 let playSfx;
+let getSetting;
 
 function initTrustAnimations(deps) {
     sfx = deps.sfx;
     unlockAudio = deps.unlockAudio;
     playSfx = deps.playSfx;
+    getSetting = deps.getSetting;
+}
+
+function trustCeremoniesEnabled() {
+    return !getSetting || !!getSetting("trustCeremonies");
 }
 
 function waitForSfx(audio) {
@@ -33,6 +39,7 @@ export {
 };
 
 function playTrustRankUp(previous, current) {
+    if (!trustCeremoniesEnabled()) return;
     unlockAudio();
     const overlay = document.getElementById("trust-rankup-overlay");
     const svg = document.getElementById("trust-decagram");
@@ -62,6 +69,7 @@ function playTrustRankUp(previous, current) {
 }
 
 function playTrustRankDown(previous, current) {
+    if (!trustCeremoniesEnabled()) return;
     unlockAudio();
 
     const overlay = document.getElementById("trust-rankup-overlay");
@@ -98,6 +106,7 @@ function playTrustRankDown(previous, current) {
 }
 
 function playDistrustRankDown(previous, current) {
+    if (!trustCeremoniesEnabled()) return;
     unlockAudio();
 
     const overlay = document.getElementById("trust-rankup-overlay");
@@ -140,6 +149,7 @@ function playDistrustRankDown(previous, current) {
 }
 
 function playDistrustRankUp(previous, current) {
+    if (!trustCeremoniesEnabled()) return;
     unlockAudio();
 
     const overlay = document.getElementById("trust-rankup-overlay");
@@ -187,6 +197,7 @@ function playDistrustRankUp(previous, current) {
 }
 
 function playDistrustToTrustRecovery() {
+    if (!trustCeremoniesEnabled()) return;
     unlockAudio();
 
     const overlay = document.getElementById("trust-rankup-overlay");
@@ -282,6 +293,7 @@ function playDistrustToTrustRecovery() {
 }
 
 export async function playTrustToDistrustTransition() {
+    if (!trustCeremoniesEnabled()) return;
     unlockAudio();
 
     const overlay = document.getElementById("trust-rankup-overlay");
@@ -365,6 +377,7 @@ function spawnDistrustShard(svg) {
 }
 
 function playTrustMaxed() {
+    if (!trustCeremoniesEnabled()) return;
     unlockAudio();
 
     const overlay = document.getElementById("trust-rankup-overlay");
