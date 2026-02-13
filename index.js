@@ -666,6 +666,146 @@ function applyFullscreenMode() {
     $("#dangan_monopad_panel").toggleClass("fullscreen", isFullscreen);
 }
 
+
+const giftCatalog = [
+    { id: "g_rose_whip", name: "Rose Whip", rarity: "R", description: "A decorative whip popular in stage magic circles." },
+    { id: "g_crystal_skull", name: "Crystal Skull", rarity: "SR", description: "A tiny crystal skull with unsettling detail work." },
+    { id: "g_monokuma_pin", name: "Monokuma Pin", rarity: "N", description: "A cheaply made pin with suspiciously sharp edges." },
+    { id: "g_neo_cologne", name: "Neo World Cologne", rarity: "N", description: "A futuristic scent that smells like ozone and citrus." },
+    { id: "g_arcade_token", name: "Arcade Token", rarity: "N", description: "A commemorative coin from a long-closed arcade." },
+    { id: "g_black_ribbon", name: "Black Ribbon", rarity: "R", description: "A high-quality ribbon often used for formal uniforms." }
+];
+
+let itemsViewMode = "gifts";
+let selectedGiftId = null;
+
+function loadInventoryState() {
+    const ext = extension_settings[extensionName];
+    ext.inventory ||= {};
+    ext.inventory.monocoins ??= 0;
+    ext.inventory.gifts ||= {};
+    ext.inventory.skills ||= {};
+}
+
+function getGiftById(id) {
+    return giftCatalog.find(g => g.id === id) || null;
+}
+
+function getOwnedGifts() {
+    const gifts = extension_settings[extensionName].inventory?.gifts || {};
+
+    return giftCatalog
+        .map(g => ({ ...g, quantity: Number(gifts[g.id] || 0) }))
+        .filter(g => g.quantity > 0)
+        .sort((a, b) => b.quantity - a.quantity || a.name.localeCompare(b.name));
+}
+
+function renderGiftDetails(gift) {
+    const $detail = $("#items-detail-panel");
+    if (!$detail.length) return;
+
+    if (!gift) {
+        $detail.html('<div class="items-detail-placeholder">SELECT A GIFT TO VIEW DETAILS</div>');
+        return;
+    }
+
+    $detail.html(`
+        <div class="items-detail-rarity">RARITY: ${gift.rarity}</div>
+        <div class="items-detail-title">${gift.name.toUpperCase()}</div>
+        <div class="items-detail-divider"></div>
+        <div class="items-detail-description">${gift.description}</div>
+        <div class="items-detail-qty">OWNED: x${gift.quantity}</div>
+        <button class="items-detail-action" disabled>GIFT ACTIONS (COMING SOON)</button>
+    `);
+}
+
+function renderGiftInventory() {
+    const $list = $("#items-gift-list");
+    if (!$list.length) return;
+
+    const gifts = getOwnedGifts();
+    $list.empty();
+
+    if (!gifts.length) {
+        $list.append('<div class="items-empty">NO GIFTS ACQUIRED YET</div>');
+        renderGiftDetails(null);
+        return;
+    }
+
+    if (!selectedGiftId || !gifts.some(g => g.id === selectedGiftId)) {
+        selectedGiftId = gifts[0].id;
+    }
+
+    gifts.forEach(gift => {
+        const isActive = gift.id === selectedGiftId;
+        const $item = $(`
+            <button class="items-gift-row ${isActive ? "active" : ""}" data-gift-id="${gift.id}">
+                <span class="items-gift-name">${gift.name.toUpperCase()}</span>
+                <span class="items-gift-meta">${gift.rarity} · x${gift.quantity}</span>
+            </button>
+        `);
+
+        $item.on("click", () => {
+            selectedGiftId = gift.id;
+            renderGiftInventory();
+        });
+
+        $list.append($item);
+    });
+
+    renderGiftDetails(gifts.find(g => g.id === selectedGiftId) || gifts[0]);
+}
+
+function renderSkillsItemsPanel() {
+    const $panel = $(`.monopad-panel-content[data-panel="skills"]`);
+    if (!$panel.length) return;
+
+    const monocoins = Number(extension_settings[extensionName].inventory?.monocoins || 0);
+    $("#items-monocoin-value").text(monocoins.toLocaleString());
+
+    $panel.find(".items-mode-button").each((_, el) => {
+        const on = el.dataset.itemsView === itemsViewMode;
+        el.classList.toggle("active", on);
+        el.setAttribute("aria-selected", String(on));
+    });
+
+    $panel.find("[data-items-view-panel]").each((_, el) => {
+        const show = el.dataset.itemsViewPanel === itemsViewMode;
+        el.classList.toggle("hidden", !show);
+    });
+
+    if (itemsViewMode === "gifts") {
+        renderGiftInventory();
+    } else {
+        $("#items-detail-panel").html('<div class="items-detail-placeholder">SKILL DETAIL VIEW RESERVED FOR FUTURE IMPLEMENTATION</div>');
+    }
+}
+
+function setItemsViewMode(mode) {
+    itemsViewMode = mode === "skills" ? "skills" : "gifts";
+    renderSkillsItemsPanel();
+}
+
+window.danganInventory = {
+    addGift(giftId, amount = 1) {
+        loadInventoryState();
+        const gift = getGiftById(giftId);
+        if (!gift) return false;
+
+        const qty = Number(extension_settings[extensionName].inventory.gifts[giftId] || 0);
+        extension_settings[extensionName].inventory.gifts[giftId] = Math.max(0, qty + Number(amount || 0));
+        saveSettingsDebounced();
+        renderSkillsItemsPanel();
+        return true;
+    },
+    setMonocoins(value = 0) {
+        loadInventoryState();
+        extension_settings[extensionName].inventory.monocoins = Math.max(0, Number(value || 0));
+        saveSettingsDebounced();
+        renderSkillsItemsPanel();
+    }
+};
+
 function renderSocialPanel() {
     const $panel = $(`.monopad-panel-content[data-panel="social"]`);
     if (!$panel.length) return;
@@ -924,6 +1064,10 @@ if (tab === "truth" && window.renderTruthBullets) {
     if (tab === "social") {
         renderSocialPanel();
     }
+
+    if (tab === "skills") {
+        renderSkillsItemsPanel();
+    }
 });
 
 /*$(document).on("chatLoaded", () => {
@@ -1019,9 +1163,11 @@ $(".monopad-icon").on("mouseenter", function () {
         });
 
 loadSettings();
+loadInventoryState();
 applyFullscreenMode();
 applySettingsTabUI();
 loadCharacters();
+renderSkillsItemsPanel();
 
 // =========================
 // TRUST DEBUG CONTROLS

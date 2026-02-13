@@ -49,10 +49,47 @@
                 <p>World / location overview.</p>
             </div>
 
-            <!-- SKILLS -->
-            <div class="monopad-panel-content" data-panel="skills">
-                <h2>Skills & Items</h2>
-                <p>Abilities, perks, inventory.</p>
+            <!-- SKILLS & ITEMS -->
+            <div class="monopad-panel-content items-panel" data-panel="skills">
+                <div class="items-shell">
+                    <div class="items-header-row">
+                        <div>
+                            <div class="items-title">SKILLS & ITEMS</div>
+                            <div class="items-subtitle">STUDENT HANDBOOK / INVENTORY MANAGEMENT</div>
+                        </div>
+
+                        <div class="items-coin-box" title="Monocoins (for future gift rolls)">
+                            <span class="items-coin-label">MONOCOINS</span>
+                            <span class="items-coin-value" id="items-monocoin-value">0</span>
+                        </div>
+                    </div>
+
+                    <div class="items-mode-strip" role="tablist" aria-label="Skills and items modes">
+                        <button class="items-mode-button active" data-items-view="gifts" aria-selected="true">GIFTS</button>
+                        <button class="items-mode-button" data-items-view="skills" aria-selected="false">SKILLS</button>
+                    </div>
+
+                    <div class="items-main-grid">
+                        <div class="items-list-panel" data-items-view-panel="gifts">
+                            <div class="items-list-header">GIFT INVENTORY</div>
+                            <div class="items-list-subheader">Roll system coming later — inventory ready now.</div>
+                            <div class="items-list" id="items-gift-list"></div>
+                        </div>
+
+                        <div class="items-list-panel hidden" data-items-view-panel="skills">
+                            <div class="items-list-header">SKILLS</div>
+                            <div class="items-list-subheader">Reserved for future unlock/equip systems.</div>
+                            <div class="items-placeholder">
+                                <div class="items-placeholder-title">NO SKILL SYSTEM YET</div>
+                                <div class="items-placeholder-text">This pane is intentionally scaffolded so skills can share this tab later.</div>
+                            </div>
+                        </div>
+
+                        <div class="items-detail-panel" id="items-detail-panel">
+                            <div class="items-detail-placeholder">SELECT A GIFT TO VIEW DETAILS</div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- SOCIAL -->
