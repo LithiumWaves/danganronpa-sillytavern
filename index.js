@@ -705,17 +705,17 @@ function renderGiftDetails(gift) {
     if (!$detail.length) return;
 
     if (!gift) {
-        $detail.html('<div class="items-detail-placeholder">SELECT A GIFT TO VIEW SPECIFICATIONS</div>');
+        $detail.html('<div class="items-detail-placeholder">SELECT A GIFT TO VIEW DETAILS</div>');
         return;
     }
 
     $detail.html(`
-        <div class="items-detail-rarity">RARITY / ${gift.rarity}</div>
+        <div class="items-detail-rarity">RARITY: ${gift.rarity}</div>
         <div class="items-detail-title">${gift.name.toUpperCase()}</div>
         <div class="items-detail-divider"></div>
         <div class="items-detail-description">${gift.description}</div>
-        <div class="items-detail-qty">OWNED STOCK <span>x${gift.quantity}</span></div>
-        <button class="items-detail-action" disabled>USE / PRESENT / DISCARD (LOCKED)</button>
+        <div class="items-detail-qty">OWNED: x${gift.quantity}</div>
+        <button class="items-detail-action" disabled>GIFT ACTIONS (COMING SOON)</button>
     `);
 }
 
@@ -736,13 +736,12 @@ function renderGiftInventory() {
         selectedGiftId = gifts[0].id;
     }
 
-    gifts.forEach((gift, idx) => {
+    gifts.forEach(gift => {
         const isActive = gift.id === selectedGiftId;
         const $item = $(`
             <button class="items-gift-row ${isActive ? "active" : ""}" data-gift-id="${gift.id}">
-                <span class="items-gift-index">${String(idx + 1).padStart(2, "0")}</span>
                 <span class="items-gift-name">${gift.name.toUpperCase()}</span>
-                <span class="items-gift-meta"><span class="items-rarity-tag">${gift.rarity}</span><span class="items-qty-tag">x${gift.quantity}</span></span>
+                <span class="items-gift-meta">${gift.rarity} · x${gift.quantity}</span>
             </button>
         `);
 
@@ -778,7 +777,7 @@ function renderSkillsItemsPanel() {
     if (itemsViewMode === "gifts") {
         renderGiftInventory();
     } else {
-        $("#items-detail-panel").html('<div class="items-detail-placeholder">SKILL SPECIFICATIONS PANEL RESERVED FOR FUTURE IMPLEMENTATION</div>');
+        $("#items-detail-panel").html('<div class="items-detail-placeholder">SKILL DETAIL VIEW RESERVED FOR FUTURE IMPLEMENTATION</div>');
     }
 }
 
@@ -1136,11 +1135,6 @@ $(".monopad-icon").on("mouseenter", function () {
             }
         });
 
-
-        $(".items-mode-button").on("click", function () {
-            const mode = this.dataset.itemsView;
-            setItemsViewMode(mode);
-        });
 
         $(".settings-toggle").on("click", function () {
             const key = this.dataset.setting;
