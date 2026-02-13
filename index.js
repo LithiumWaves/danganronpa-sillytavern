@@ -12,7 +12,13 @@ const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
 
 const defaultSettings = {
     enabled: false,
-    fullscreen: false
+    fullscreen: false,
+    monopadSounds: true,
+    trustCeremonies: true,
+    truthBulletAnimations: true,
+    crtEffects: true,
+    crtIntensity: 35,
+    bootAnimations: true
 };
 
 window.refreshActiveCharacterUI = function () {
@@ -174,6 +180,7 @@ return char.social.notes;
 let sfx = {};
 function playSfx(sound) {
     if (!sound) return;
+    if (!extension_settings[extensionName]?.monopadSounds) return;
     sound.currentTime = 0;
     sound.volume = 0.5;
     sound.play().catch(() => {});
@@ -554,7 +561,10 @@ function registerCharacterFromMessage(msgEl) {
 
 function loadSettings() {
     extension_settings[extensionName] ||= {};
-    Object.assign(defaultSettings, extension_settings[extensionName]);
+    extension_settings[extensionName] = {
+        ...defaultSettings,
+        ...extension_settings[extensionName]
+    };
 
     $("#dangan_enable_checkbox").prop(
         "checked",
@@ -564,6 +574,49 @@ function loadSettings() {
         "checked",
         extension_settings[extensionName].fullscreen
     );
+}
+
+function getMonopadSetting(key) {
+    return extension_settings[extensionName]?.[key];
+}
+
+function setMonopadSetting(key, value) {
+    extension_settings[extensionName][key] = value;
+    saveSettingsDebounced();
+}
+
+function applyCrtSettings() {
+    const panel = document.getElementById("dangan_monopad_panel");
+    if (!panel) return;
+
+    const enabled = !!getMonopadSetting("crtEffects");
+    const intensityRaw = Number(getMonopadSetting("crtIntensity"));
+    const intensity = Number.isFinite(intensityRaw) ? Math.max(0, Math.min(100, intensityRaw)) : 35;
+
+    panel.classList.toggle("crt-disabled", !enabled);
+    panel.style.setProperty("--dangan-crt-opacity", (intensity / 100).toFixed(2));
+
+    $("#dangan_crt_value").text(`${intensity}%`);
+}
+
+function applySettingsTabUI() {
+    const tab = extension_settings[extensionName];
+
+    $(".settings-toggle").each((_, el) => {
+        const key = el.dataset.setting;
+        if (!key) return;
+
+        const isOn = !!tab[key];
+        el.classList.toggle("on", isOn);
+        el.setAttribute("aria-pressed", String(isOn));
+    });
+
+    const slider = document.getElementById("dangan_crt_slider");
+    if (slider) {
+        slider.value = String(Number(tab.crtIntensity) || 35);
+    }
+
+    applyCrtSettings();
 }
 
 function saveCharacters() {
@@ -612,6 +665,146 @@ function applyFullscreenMode() {
     const isFullscreen = extension_settings[extensionName].fullscreen;
     $("#dangan_monopad_panel").toggleClass("fullscreen", isFullscreen);
 }
+
+
+const giftCatalog = [
+    { id: "g_rose_whip", name: "Rose Whip", rarity: "R", description: "A decorative whip popular in stage magic circles." },
+    { id: "g_crystal_skull", name: "Crystal Skull", rarity: "SR", description: "A tiny crystal skull with unsettling detail work." },
+    { id: "g_monokuma_pin", name: "Monokuma Pin", rarity: "N", description: "A cheaply made pin with suspiciously sharp edges." },
+    { id: "g_neo_cologne", name: "Neo World Cologne", rarity: "N", description: "A futuristic scent that smells like ozone and citrus." },
+    { id: "g_arcade_token", name: "Arcade Token", rarity: "N", description: "A commemorative coin from a long-closed arcade." },
+    { id: "g_black_ribbon", name: "Black Ribbon", rarity: "R", description: "A high-quality ribbon often used for formal uniforms." }
+];
+
+let itemsViewMode = "gifts";
+let selectedGiftId = null;
+
+function loadInventoryState() {
+    const ext = extension_settings[extensionName];
+    ext.inventory ||= {};
+    ext.inventory.monocoins ??= 0;
+    ext.inventory.gifts ||= {};
+    ext.inventory.skills ||= {};
+}
+
+function getGiftById(id) {
+    return giftCatalog.find(g => g.id === id) || null;
+}
+
+function getOwnedGifts() {
+    const gifts = extension_settings[extensionName].inventory?.gifts || {};
+
+    return giftCatalog
+        .map(g => ({ ...g, quantity: Number(gifts[g.id] || 0) }))
+        .filter(g => g.quantity > 0)
+        .sort((a, b) => b.quantity - a.quantity || a.name.localeCompare(b.name));
+}
+
+function renderGiftDetails(gift) {
+    const $detail = $("#items-detail-panel");
+    if (!$detail.length) return;
+
+    if (!gift) {
+        $detail.html('<div class="items-detail-placeholder">SELECT A GIFT TO VIEW SPECIFICATIONS</div>');
+        return;
+    }
+
+    $detail.html(`
+        <div class="items-detail-rarity">RARITY / ${gift.rarity}</div>
+        <div class="items-detail-title">${gift.name.toUpperCase()}</div>
+        <div class="items-detail-divider"></div>
+        <div class="items-detail-description">${gift.description}</div>
+        <div class="items-detail-qty">OWNED STOCK <span>x${gift.quantity}</span></div>
+        <button class="items-detail-action" disabled>USE / PRESENT / DISCARD (LOCKED)</button>
+    `);
+}
+
+function renderGiftInventory() {
+    const $list = $("#items-gift-list");
+    if (!$list.length) return;
+
+    const gifts = getOwnedGifts();
+    $list.empty();
+
+    if (!gifts.length) {
+        $list.append('<div class="items-empty">NO GIFTS ACQUIRED YET</div>');
+        renderGiftDetails(null);
+        return;
+    }
+
+    if (!selectedGiftId || !gifts.some(g => g.id === selectedGiftId)) {
+        selectedGiftId = gifts[0].id;
+    }
+
+    gifts.forEach(gift => {
+        const isActive = gift.id === selectedGiftId;
+        const $item = $(`
+            <button class="items-gift-row ${isActive ? "active" : ""}" data-gift-id="${gift.id}">
+                <span class="items-gift-name">${gift.name.toUpperCase()}</span>
+                <span class="items-gift-meta"><span class="items-rarity-tag">${gift.rarity}</span><span class="items-qty-tag">x${gift.quantity}</span></span>
+            </button>
+        `);
+
+        $item.on("click", () => {
+            selectedGiftId = gift.id;
+            renderGiftInventory();
+        });
+
+        $list.append($item);
+    });
+
+    renderGiftDetails(gifts.find(g => g.id === selectedGiftId) || gifts[0]);
+}
+
+function renderSkillsItemsPanel() {
+    const $panel = $(`.monopad-panel-content[data-panel="skills"]`);
+    if (!$panel.length) return;
+
+    const monocoins = Number(extension_settings[extensionName].inventory?.monocoins || 0);
+    $("#items-monocoin-value").text(monocoins.toLocaleString());
+
+    $panel.find(".items-mode-button").each((_, el) => {
+        const on = el.dataset.itemsView === itemsViewMode;
+        el.classList.toggle("active", on);
+        el.setAttribute("aria-selected", String(on));
+    });
+
+    $panel.find("[data-items-view-panel]").each((_, el) => {
+        const show = el.dataset.itemsViewPanel === itemsViewMode;
+        el.classList.toggle("hidden", !show);
+    });
+
+    if (itemsViewMode === "gifts") {
+        renderGiftInventory();
+    } else {
+        $("#items-detail-panel").html('<div class="items-detail-placeholder">SKILL SPECIFICATIONS PANEL RESERVED FOR FUTURE IMPLEMENTATION</div>');
+    }
+}
+
+function setItemsViewMode(mode) {
+    itemsViewMode = mode === "skills" ? "skills" : "gifts";
+    renderSkillsItemsPanel();
+}
+
+window.danganInventory = {
+    addGift(giftId, amount = 1) {
+        loadInventoryState();
+        const gift = getGiftById(giftId);
+        if (!gift) return false;
+
+        const qty = Number(extension_settings[extensionName].inventory.gifts[giftId] || 0);
+        extension_settings[extensionName].inventory.gifts[giftId] = Math.max(0, qty + Number(amount || 0));
+        saveSettingsDebounced();
+        renderSkillsItemsPanel();
+        return true;
+    },
+    setMonocoins(value = 0) {
+        loadInventoryState();
+        extension_settings[extensionName].inventory.monocoins = Math.max(0, Number(value || 0));
+        saveSettingsDebounced();
+        renderSkillsItemsPanel();
+    }
+};
 
 function renderSocialPanel() {
     const $panel = $(`.monopad-panel-content[data-panel="social"]`);
@@ -813,7 +1006,8 @@ jQuery(async () => {
         initTrustAnimations({
     sfx,
     unlockAudio,
-    playSfx
+    playSfx,
+    getSetting: getMonopadSetting
 });
 
 
@@ -837,12 +1031,19 @@ jQuery(async () => {
         }
 
         $("#dangan_monopad_close").on("click", () => {
-            $panel.removeClass("open booting").addClass("shutting-down");
-            playSfx(sfx.close);
+            $panel.removeClass("open booting");
 
-            setTimeout(() => {
-                $panel.removeClass("shutting-down fullscreen").addClass("closed");
-            }, 350);
+            if (getMonopadSetting("bootAnimations")) {
+                $panel.addClass("shutting-down");
+                playSfx(sfx.close);
+
+                setTimeout(() => {
+                    $panel.removeClass("shutting-down fullscreen").addClass("closed");
+                }, 350);
+            } else {
+                playSfx(sfx.close);
+                $panel.removeClass("fullscreen").addClass("closed");
+            }
         });
 
 $(".monopad-icon").on("click", function () {
@@ -862,6 +1063,10 @@ if (tab === "truth" && window.renderTruthBullets) {
 
     if (tab === "social") {
         renderSocialPanel();
+    }
+
+    if (tab === "skills") {
+        renderSkillsItemsPanel();
     }
 });
 
@@ -895,13 +1100,22 @@ $(".monopad-icon").on("mouseenter", function () {
             $panel.removeClass("open closed booting");
 
             if (!isOpen) {
-                $panel.addClass("open booting");
-                setTimeout(() => $panel.removeClass("booting"), 450);
+                if (getMonopadSetting("bootAnimations")) {
+                    $panel.addClass("open booting");
+                    setTimeout(() => $panel.removeClass("booting"), 450);
+                } else {
+                    $panel.addClass("open");
+                }
                 playSfx(sfx.open);
             } else {
-                $panel.addClass("shutting-down");
-                playSfx(sfx.close);
-                setTimeout(() => $panel.removeClass("shutting-down").addClass("closed"), 350);
+                if (getMonopadSetting("bootAnimations")) {
+                    $panel.addClass("shutting-down");
+                    playSfx(sfx.close);
+                    setTimeout(() => $panel.removeClass("shutting-down").addClass("closed"), 350);
+                } else {
+                    playSfx(sfx.close);
+                    $panel.addClass("closed");
+                }
             }
 
             applyFullscreenMode();
@@ -921,6 +1135,27 @@ $(".monopad-icon").on("mouseenter", function () {
             }
         });
 
+
+        $(".items-mode-button").on("click", function () {
+            const mode = this.dataset.itemsView;
+            setItemsViewMode(mode);
+        });
+
+        $(".settings-toggle").on("click", function () {
+            const key = this.dataset.setting;
+            if (!key) return;
+
+            const next = !getMonopadSetting(key);
+            setMonopadSetting(key, next);
+            applySettingsTabUI();
+        });
+
+        $("#dangan_crt_slider").on("input", e => {
+            const value = Number(e.target.value);
+            setMonopadSetting("crtIntensity", Number.isFinite(value) ? value : 35);
+            applyCrtSettings();
+        });
+
         $("#dangan_enable_checkbox").on("input", e => {
             extension_settings[extensionName].enabled = e.target.checked;
             saveSettingsDebounced();
@@ -933,8 +1168,11 @@ $(".monopad-icon").on("mouseenter", function () {
         });
 
 loadSettings();
+loadInventoryState();
 applyFullscreenMode();
+applySettingsTabUI();
 loadCharacters();
+renderSkillsItemsPanel();
 
 // =========================
 // TRUST DEBUG CONTROLS
@@ -989,7 +1227,8 @@ initTruthBullets({
     playSfx,
     extension_settings,
     saveSettingsDebounced,
-    extensionName
+    extensionName,
+    getSetting: getMonopadSetting
 });
 
     } catch (error) {
