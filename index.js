@@ -1136,11 +1136,6 @@ $(".monopad-icon").on("mouseenter", function () {
         });
 
 
-        $(".items-mode-button").on("click", function () {
-            const mode = this.dataset.itemsView;
-            setItemsViewMode(mode);
-        });
-
         $(".settings-toggle").on("click", function () {
             const key = this.dataset.setting;
             if (!key) return;
