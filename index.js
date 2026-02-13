@@ -12,7 +12,13 @@ const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
 
 const defaultSettings = {
     enabled: false,
-    fullscreen: false
+    fullscreen: false,
+    monopadSounds: true,
+    trustCeremonies: true,
+    truthBulletAnimations: true,
+    crtEffects: true,
+    crtIntensity: 35,
+    bootAnimations: true
 };
 
 window.refreshActiveCharacterUI = function () {
@@ -174,6 +180,7 @@ return char.social.notes;
 let sfx = {};
 function playSfx(sound) {
     if (!sound) return;
+    if (!extension_settings[extensionName]?.monopadSounds) return;
     sound.currentTime = 0;
     sound.volume = 0.5;
     sound.play().catch(() => {});
@@ -554,7 +561,10 @@ function registerCharacterFromMessage(msgEl) {
 
 function loadSettings() {
     extension_settings[extensionName] ||= {};
-    Object.assign(defaultSettings, extension_settings[extensionName]);
+    extension_settings[extensionName] = {
+        ...defaultSettings,
+        ...extension_settings[extensionName]
+    };
 
     $("#dangan_enable_checkbox").prop(
         "checked",
@@ -564,6 +574,49 @@ function loadSettings() {
         "checked",
         extension_settings[extensionName].fullscreen
     );
+}
+
+function getMonopadSetting(key) {
+    return extension_settings[extensionName]?.[key];
+}
+
+function setMonopadSetting(key, value) {
+    extension_settings[extensionName][key] = value;
+    saveSettingsDebounced();
+}
+
+function applyCrtSettings() {
+    const panel = document.getElementById("dangan_monopad_panel");
+    if (!panel) return;
+
+    const enabled = !!getMonopadSetting("crtEffects");
+    const intensityRaw = Number(getMonopadSetting("crtIntensity"));
+    const intensity = Number.isFinite(intensityRaw) ? Math.max(0, Math.min(100, intensityRaw)) : 35;
+
+    panel.classList.toggle("crt-disabled", !enabled);
+    panel.style.setProperty("--dangan-crt-opacity", (intensity / 100).toFixed(2));
+
+    $("#dangan_crt_value").text(`${intensity}%`);
+}
+
+function applySettingsTabUI() {
+    const tab = extension_settings[extensionName];
+
+    $(".settings-toggle").each((_, el) => {
+        const key = el.dataset.setting;
+        if (!key) return;
+
+        const isOn = !!tab[key];
+        el.classList.toggle("on", isOn);
+        el.setAttribute("aria-pressed", String(isOn));
+    });
+
+    const slider = document.getElementById("dangan_crt_slider");
+    if (slider) {
+        slider.value = String(Number(tab.crtIntensity) || 35);
+    }
+
+    applyCrtSettings();
 }
 
 function saveCharacters() {
@@ -813,7 +866,8 @@ jQuery(async () => {
         initTrustAnimations({
     sfx,
     unlockAudio,
-    playSfx
+    playSfx,
+    getSetting: getMonopadSetting
 });
 
 
@@ -837,12 +891,19 @@ jQuery(async () => {
         }
 
         $("#dangan_monopad_close").on("click", () => {
-            $panel.removeClass("open booting").addClass("shutting-down");
-            playSfx(sfx.close);
+            $panel.removeClass("open booting");
 
-            setTimeout(() => {
-                $panel.removeClass("shutting-down fullscreen").addClass("closed");
-            }, 350);
+            if (getMonopadSetting("bootAnimations")) {
+                $panel.addClass("shutting-down");
+                playSfx(sfx.close);
+
+                setTimeout(() => {
+                    $panel.removeClass("shutting-down fullscreen").addClass("closed");
+                }, 350);
+            } else {
+                playSfx(sfx.close);
+                $panel.removeClass("fullscreen").addClass("closed");
+            }
         });
 
 $(".monopad-icon").on("click", function () {
@@ -895,13 +956,22 @@ $(".monopad-icon").on("mouseenter", function () {
             $panel.removeClass("open closed booting");
 
             if (!isOpen) {
-                $panel.addClass("open booting");
-                setTimeout(() => $panel.removeClass("booting"), 450);
+                if (getMonopadSetting("bootAnimations")) {
+                    $panel.addClass("open booting");
+                    setTimeout(() => $panel.removeClass("booting"), 450);
+                } else {
+                    $panel.addClass("open");
+                }
                 playSfx(sfx.open);
             } else {
-                $panel.addClass("shutting-down");
-                playSfx(sfx.close);
-                setTimeout(() => $panel.removeClass("shutting-down").addClass("closed"), 350);
+                if (getMonopadSetting("bootAnimations")) {
+                    $panel.addClass("shutting-down");
+                    playSfx(sfx.close);
+                    setTimeout(() => $panel.removeClass("shutting-down").addClass("closed"), 350);
+                } else {
+                    playSfx(sfx.close);
+                    $panel.addClass("closed");
+                }
             }
 
             applyFullscreenMode();
@@ -921,6 +991,22 @@ $(".monopad-icon").on("mouseenter", function () {
             }
         });
 
+
+        $(".settings-toggle").on("click", function () {
+            const key = this.dataset.setting;
+            if (!key) return;
+
+            const next = !getMonopadSetting(key);
+            setMonopadSetting(key, next);
+            applySettingsTabUI();
+        });
+
+        $("#dangan_crt_slider").on("input", e => {
+            const value = Number(e.target.value);
+            setMonopadSetting("crtIntensity", Number.isFinite(value) ? value : 35);
+            applyCrtSettings();
+        });
+
         $("#dangan_enable_checkbox").on("input", e => {
             extension_settings[extensionName].enabled = e.target.checked;
             saveSettingsDebounced();
@@ -934,6 +1020,7 @@ $(".monopad-icon").on("mouseenter", function () {
 
 loadSettings();
 applyFullscreenMode();
+applySettingsTabUI();
 loadCharacters();
 
 // =========================
@@ -989,7 +1076,8 @@ initTruthBullets({
     playSfx,
     extension_settings,
     saveSettingsDebounced,
-    extensionName
+    extensionName,
+    getSetting: getMonopadSetting
 });
 
     } catch (error) {
