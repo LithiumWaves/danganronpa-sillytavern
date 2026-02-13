@@ -55,7 +55,7 @@
                     <div class="items-header-row">
                         <div>
                             <div class="items-title">SKILLS & ITEMS</div>
-                            <div class="items-subtitle">ACADEMY STOREHOUSE / ITEM MANAGEMENT CONSOLE</div>
+                            <div class="items-subtitle">STUDENT HANDBOOK / INVENTORY MANAGEMENT</div>
                         </div>
 
                         <div class="items-coin-box" title="Monocoins (for future gift rolls)">
@@ -71,8 +71,8 @@
 
                     <div class="items-main-grid">
                         <div class="items-list-panel" data-items-view-panel="gifts">
-                            <div class="items-list-header">GIFT STORAGE</div>
-                            <div class="items-list-subheader">Monomono roll hooks come later. Inventory surface is active now.</div>
+                            <div class="items-list-header">GIFT INVENTORY</div>
+                            <div class="items-list-subheader">Roll system coming later — inventory ready now.</div>
                             <div class="items-list" id="items-gift-list"></div>
                         </div>
 
@@ -80,13 +80,13 @@
                             <div class="items-list-header">SKILLS</div>
                             <div class="items-list-subheader">Reserved for future unlock/equip systems.</div>
                             <div class="items-placeholder">
-                                <div class="items-placeholder-title">SKILL BOARD OFFLINE</div>
-                                <div class="items-placeholder-text">Reserved partition for future unlock trees, passives, and active skill loadouts.</div>
+                                <div class="items-placeholder-title">NO SKILL SYSTEM YET</div>
+                                <div class="items-placeholder-text">This pane is intentionally scaffolded so skills can share this tab later.</div>
                             </div>
                         </div>
 
                         <div class="items-detail-panel" id="items-detail-panel">
-                            <div class="items-detail-placeholder">SELECT A GIFT TO VIEW SPECIFICATIONS</div>
+                            <div class="items-detail-placeholder">SELECT A GIFT TO VIEW DETAILS</div>
                         </div>
                     </div>
                 </div>
@@ -137,62 +137,65 @@
                 </div>
             </div>
 
-            <!-- SETTINGS -->
-            <div class="monopad-panel-content settings-panel" data-panel="settings">
-                <div class="settings-shell">
-                    <div class="settings-header-row">
-                        <div>
-                            <div class="settings-header">SYSTEM SETTINGS</div>
-                            <div class="settings-subheader">META / MONOPAD CONTROL SURFACE</div>
-                        </div>
-                        <div class="settings-status">SYNC: ONLINE</div>
-                    </div>
+<!-- SETTINGS -->
+<div class="monopad-panel-content settings-panel" data-panel="settings">
+    <div class="settings-shell">
+        <div class="settings-header-row">
+            <div>
+                <div class="settings-header">SYSTEM SETTINGS</div>
+                <div class="settings-subheader">META / MONOPAD CONTROL SURFACE</div>
+            </div>
+            <div class="settings-status">SYNC: ONLINE</div>
+        </div>
 
-                    <div class="settings-grid">
-                        <section class="settings-section">
-                            <div class="settings-section-title">AUDIO</div>
+        <div class="settings-grid">
 
-                            <div class="settings-item">
-                                <span class="settings-label">MONOPAD SOUNDS</span>
-                                <button class="settings-toggle on" data-setting="monopadSounds" aria-label="Toggle Monopad sounds"></button>
-                            </div>
+            <!-- AUDIO -->
+            <section class="settings-section">
+                <div class="settings-section-title">AUDIO</div>
 
-                            <div class="settings-item">
-                                <span class="settings-label">TRUST CEREMONIES</span>
-                                <button class="settings-toggle on" data-setting="trustCeremonies" aria-label="Toggle trust ceremonies"></button>
-                            </div>
+                <div class="settings-item">
+                    <span class="settings-label">MONOPAD SOUNDS</span>
+                    <button class="settings-toggle on" data-setting="monopadSounds"></button>
+                </div>
 
-                            <div class="settings-item">
-                                <span class="settings-label">TRUTH BULLETS</span>
-                                <button class="settings-toggle on" data-setting="truthBulletAnimations" aria-label="Toggle truth bullet animations"></button>
-                            </div>
-                        </section>
+                <div class="settings-item">
+                    <span class="settings-label">TRUST CEREMONIES</span>
+                    <button class="settings-toggle on" data-setting="trustCeremonies"></button>
+                </div>
 
-                        <section class="settings-section">
-                            <div class="settings-section-title">DISPLAY</div>
+                <div class="settings-item">
+                    <span class="settings-label">TRUTH BULLETS</span>
+                    <button class="settings-toggle on" data-setting="truthBulletAnimations"></button>
+                </div>
+            </section>
 
-                            <div class="settings-item">
-                                <span class="settings-label">CRT EFFECTS</span>
-                                <button class="settings-toggle on" data-setting="crtEffects" aria-label="Toggle CRT effects"></button>
-                            </div>
+            <!-- DISPLAY -->
+            <section class="settings-section">
+                <div class="settings-section-title">DISPLAY</div>
 
-                            <div class="settings-item settings-item-slider">
-                                <span class="settings-label">CRT INTENSITY</span>
-                                <div class="settings-slider-wrap">
-                                    <input type="range" id="dangan_crt_slider" min="0" max="100" value="35" aria-label="CRT intensity">
-                                    <span id="dangan_crt_value">35%</span>
-                                </div>
-                            </div>
+                <div class="settings-item">
+                    <span class="settings-label">CRT EFFECTS</span>
+                    <button class="settings-toggle on" data-setting="crtEffects"></button>
+                </div>
 
-                            <div class="settings-item">
-                                <span class="settings-label">BOOT ANIMATIONS</span>
-                                <button class="settings-toggle on" data-setting="bootAnimations" aria-label="Toggle boot animations"></button>
-                            </div>
-                        </section>
+                <div class="settings-item settings-item-slider">
+                    <span class="settings-label">CRT INTENSITY</span>
+                    <div class="settings-slider-wrap">
+                        <input type="range" id="dangan_crt_slider" min="0" max="100" value="35">
+                        <span id="dangan_crt_value">35%</span>
                     </div>
                 </div>
-            </div>
 
+                <div class="settings-item">
+                    <span class="settings-label">BOOT ANIMATIONS</span>
+                    <button class="settings-toggle on" data-setting="bootAnimations"></button>
+                </div>
+            </section>
+
+        </div>
+    </div>
+</div>
         </div>
 
         <!-- Bottom Icon Strip -->
