@@ -294,7 +294,7 @@
         );
 
     mix-blend-mode: overlay;
-    opacity: 0.35;
+    opacity: var(--dangan-crt-opacity, 0.35);
 
     animation: crt-noise 0.6s steps(2) infinite;
 }
@@ -1174,4 +1174,41 @@
 
 .settings-panel .settings-item:hover {
     background: rgba(255,255,255,0.03);
+}
+
+
+#dangan_monopad_panel.crt-disabled .monopad-crt-overlay {
+    display: none;
+}
+
+.settings-toggle {
+    border: 0;
+    outline: none;
+}
+
+.settings-toggle:focus-visible {
+    box-shadow: 0 0 0 2px rgba(111, 179, 255, 0.8);
+}
+
+.settings-item-slider {
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.settings-slider-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 150px;
+}
+
+#dangan_crt_slider {
+    width: 120px;
+}
+
+#dangan_crt_value {
+    font-size: 11px;
+    opacity: 0.8;
+    min-width: 36px;
+    text-align: right;
 }
