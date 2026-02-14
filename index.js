@@ -4,7 +4,7 @@ import { initTruthBullets, handleTruthBullet } from "./truth/truthBullets.js";
 import { buildDecagram, crackShard, shatterShard } from "./trust/trustDecagram.js";
 import { initTrustAnimations, playTrustRankUp, playTrustRankDown, playTrustMaxed, playTrustToDistrustTransition, playDistrustRankDown, playDistrustRankUp, playDistrustToTrustRecovery } from "./trust/trustAnimations.js";
 import { increaseTrust, decreaseTrust } from "./trust/trustAPI.js";
-
+import { createItemsPanelController } from "./items/itemsPanel.js";
 
 
 const extensionName = "danganronpa-extension";
@@ -667,205 +667,6 @@ function applyFullscreenMode() {
 }
 
 
-const itemCatalog = [
-    { id: "g_rose_whip", name: "Rose Whip", category: "gift", rarity: "R", description: "A decorative whip popular in stage magic circles.", effect: "Boosts confidence-driven dialogue routes.", character: "Maki" },
-    { id: "g_crystal_skull", name: "Crystal Skull", category: "gift", rarity: "SR", description: "A tiny crystal skull with unsettling detail work.", effect: "Increases reaction checks in tense scenes.", character: "Kokichi" },
-    { id: "g_monokuma_pin", name: "Monokuma Pin", category: "gift", rarity: "N", description: "A cheaply made pin with suspiciously sharp edges.", effect: "Minor passive boost to social probing.", character: "Monokuma" },
-    { id: "s_micro_focus", name: "Micro Focus", category: "skill", rarity: "R", description: "A mental discipline routine used before investigations.", effect: "Insight +1 during evidence review.", character: "Shuichi" },
-    { id: "s_false_lead", name: "False Lead", category: "skill", rarity: "SR", description: "A deceptive social rhythm that redirects suspicion.", effect: "Reaction +1 during argument exchanges.", character: "Kokichi" },
-    { id: "k_student_profile", name: "Student Profile Chip", category: "key", rarity: "KEY", description: "A protected archive containing restricted student metadata.", effect: "Unlocks dossier-only dialogue branches.", character: "Archive" }
-];
-
-let activeItemsFilter = "all";
-let activeItemsSort = "recent";
-let selectedItemId = null;
-
-function loadInventoryState() {
-    const ext = extension_settings[extensionName];
-    ext.inventory ||= {};
-    ext.inventory.monocoins ??= 0;
-    ext.inventory.gifts ||= {};
-    ext.inventory.skills ||= {};
-    ext.inventory.keyItems ||= {};
-
-    if (!Object.keys(ext.inventory.gifts).length && !Object.keys(ext.inventory.skills).length && !Object.keys(ext.inventory.keyItems).length) {
-        ext.inventory.gifts.g_rose_whip = 1;
-        ext.inventory.gifts.g_monokuma_pin = 2;
-        ext.inventory.skills.s_micro_focus = 1;
-        ext.inventory.keyItems.k_student_profile = 1;
-    }
-}
-
-function getInventoryBucket(category) {
-    if (category === "gift") return "gifts";
-    if (category === "skill") return "skills";
-    return "keyItems";
-}
-
-function getItemById(id) {
-    return itemCatalog.find(i => i.id === id) || null;
-}
-
-function categoryOrder(category) {
-    if (category === "gift") return 0;
-    if (category === "skill") return 1;
-    return 2;
-}
-
-function rarityScore(rarity) {
-    return { KEY: 4, SR: 3, R: 2, N: 1 }[rarity] || 0;
-}
-
-function getOwnedItems() {
-    const inv = extension_settings[extensionName].inventory || {};
-
-    const items = itemCatalog
-        .map((item, idx) => {
-            const bucket = getInventoryBucket(item.category);
-            const quantity = Number(inv[bucket]?.[item.id] || 0);
-            return { ...item, quantity, catalogIndex: idx };
-        })
-        .filter(item => item.quantity > 0);
-
-    if (activeItemsFilter !== "all") {
-        return sortOwnedItems(items.filter(item => item.category === activeItemsFilter));
-    }
-
-    return sortOwnedItems(items);
-}
-
-function sortOwnedItems(items) {
-    if (activeItemsSort === "rarity") {
-        return [...items].sort((a, b) => rarityScore(b.rarity) - rarityScore(a.rarity) || a.name.localeCompare(b.name));
-    }
-
-    if (activeItemsSort === "category") {
-        return [...items].sort((a, b) => categoryOrder(a.category) - categoryOrder(b.category) || a.name.localeCompare(b.name));
-    }
-
-    return [...items].sort((a, b) => b.catalogIndex - a.catalogIndex);
-}
-
-function formatCategoryLabel(category) {
-    if (category === "gift") return "GIFT";
-    if (category === "skill") return "SKILL";
-    return "KEY ITEM";
-}
-
-function renderItemDetails(item) {
-    const $detail = $("#items-detail-panel");
-    if (!$detail.length) return;
-
-    if (!item) {
-        $detail.html(`
-            <div class="items-panel-title">SELECTED ITEM</div>
-            <div class="items-detail-placeholder">SELECT AN ITEM SLOT TO LOAD TERMINAL READOUT</div>
-        `);
-        return;
-    }
-
-    $detail.html(`
-        <div class="items-panel-title">SELECTED ITEM</div>
-        <div class="items-detail-icon">◉</div>
-        <div class="items-detail-name">${item.name.toUpperCase()}</div>
-        <div class="items-detail-category">CATEGORY: ${formatCategoryLabel(item.category)} · RARITY: ${item.rarity}</div>
-
-        <div class="items-detail-section-label">DESCRIPTION</div>
-        <div class="items-detail-description">${item.description}</div>
-
-        <div class="items-detail-section-label">EFFECT</div>
-        <div class="items-detail-effect">${item.effect}</div>
-
-        <div class="items-detail-section-label">ASSOCIATED CHARACTER</div>
-        <div class="items-detail-character">[ ${item.character} ]</div>
-
-        <div class="items-detail-actions">
-            <button class="items-detail-action" disabled>USE</button>
-            <button class="items-detail-action" disabled>INSPECT</button>
-        </div>
-    `);
-}
-
-function renderInventoryGrid() {
-    const $grid = $("#items-gift-list");
-    if (!$grid.length) return;
-
-    const items = getOwnedItems();
-    $grid.empty();
-
-    if (!items.length) {
-        $grid.append('<div class="items-empty">NO ITEMS IN THIS FILTER</div>');
-        renderItemDetails(null);
-        return;
-    }
-
-    if (!selectedItemId || !items.some(i => i.id === selectedItemId)) {
-        selectedItemId = items[0].id;
-    }
-
-    items.forEach(item => {
-        const active = item.id === selectedItemId ? "active" : "";
-        const $slot = $(`
-            <button class="items-slot ${active}" data-item-id="${item.id}" data-item-category="${item.category}" title="${item.name}">
-                <span class="items-slot-icon">■</span>
-                <span class="items-slot-name">${item.name.toUpperCase()}</span>
-                <span class="items-slot-qty">x${item.quantity}</span>
-            </button>
-        `);
-
-        $slot.on("mouseenter", () => renderItemDetails(item));
-        $slot.on("click", () => {
-            selectedItemId = item.id;
-            renderInventoryGrid();
-        });
-
-        $grid.append($slot);
-    });
-
-    renderItemDetails(items.find(i => i.id === selectedItemId) || items[0]);
-}
-
-function renderSkillsItemsPanel() {
-    const $panel = $(`.monopad-panel-content[data-panel="skills"]`);
-    if (!$panel.length) return;
-
-    const monocoins = Number(extension_settings[extensionName].inventory?.monocoins || 0);
-    $("#items-monocoin-value").text(monocoins.toLocaleString());
-
-    $panel.find(".items-filter-button").each((_, el) => {
-        const isActive = el.dataset.filter === activeItemsFilter;
-        el.classList.toggle("active", isActive);
-        el.setAttribute("aria-selected", String(isActive));
-    });
-
-    $panel.find('input[name="items-sort"]').each((_, el) => {
-        el.checked = el.value === activeItemsSort;
-    });
-
-    renderInventoryGrid();
-}
-
-window.danganInventory = {
-    addGift(itemId, amount = 1) {
-        loadInventoryState();
-        const item = getItemById(itemId);
-        if (!item) return false;
-
-        const bucket = getInventoryBucket(item.category);
-        const qty = Number(extension_settings[extensionName].inventory[bucket][itemId] || 0);
-        extension_settings[extensionName].inventory[bucket][itemId] = Math.max(0, qty + Number(amount || 0));
-        saveSettingsDebounced();
-        renderSkillsItemsPanel();
-        return true;
-    },
-    setMonocoins(value = 0) {
-        loadInventoryState();
-        extension_settings[extensionName].inventory.monocoins = Math.max(0, Number(value || 0));
-        saveSettingsDebounced();
-        renderSkillsItemsPanel();
-    }
-};
-
 function renderSocialPanel() {
     const $panel = $(`.monopad-panel-content[data-panel="social"]`);
     if (!$panel.length) return;
@@ -1070,9 +871,24 @@ jQuery(async () => {
     getSetting: getMonopadSetting
 });
 
+        const itemsPanel = createItemsPanelController({
+            extensionName,
+            extension_settings,
+            saveSettingsDebounced,
+            playSfx,
+            getSfx: () => sfx,
+        });
+        itemsPanel.bindWindowApi();
 
         let lastHoverTime = 0;
         const HOVER_COOLDOWN = 80;
+
+        function playHoverWithCooldown() {
+            const now = Date.now();
+            if (now - lastHoverTime < HOVER_COOLDOWN) return;
+            lastHoverTime = now;
+            playSfx(sfx.hover);
+        }
 
         let monopadSpamCount = 0;
         let monopadSpamTimer = null;
@@ -1126,7 +942,7 @@ if (tab === "truth" && window.renderTruthBullets) {
     }
 
     if (tab === "skills") {
-        renderSkillsItemsPanel();
+        itemsPanel.renderSkillsItemsPanel();
     }
 });
 
@@ -1150,10 +966,7 @@ if (tab === "truth" && window.renderTruthBullets) {
 //});
 
 $(".monopad-icon").on("mouseenter", function () {
-    const now = Date.now();
-    if (now - lastHoverTime < HOVER_COOLDOWN) return;
-    lastHoverTime = now;
-    playSfx(sfx.hover);
+    playHoverWithCooldown();
 });
         function togglePanel() {
             const isOpen = $panel.hasClass("open");
@@ -1197,13 +1010,19 @@ $(".monopad-icon").on("mouseenter", function () {
 
 
         $(".items-filter-button").on("click", function () {
-            activeItemsFilter = this.dataset.filter || "all";
-            renderSkillsItemsPanel();
+            playSfx(sfx.click);
+            itemsPanel.setFilter(this.dataset.filter || "all");
+            itemsPanel.renderSkillsItemsPanel();
         });
 
         $('input[name="items-sort"]').on("change", function () {
-            activeItemsSort = this.value || "recent";
-            renderSkillsItemsPanel();
+            playSfx(sfx.click);
+            itemsPanel.setSort(this.value || "recent");
+            itemsPanel.renderSkillsItemsPanel();
+        });
+
+        $(document).on("mouseenter", ".items-filter-button, .items-slot, .items-sort-group label, .items-detail-action", function () {
+            playHoverWithCooldown();
         });
 
         $(".settings-toggle").on("click", function () {
@@ -1233,11 +1052,11 @@ $(".monopad-icon").on("mouseenter", function () {
         });
 
 loadSettings();
-loadInventoryState();
+itemsPanel.loadInventoryState();
 applyFullscreenMode();
 applySettingsTabUI();
 loadCharacters();
-renderSkillsItemsPanel();
+itemsPanel.renderSkillsItemsPanel();
 
 // =========================
 // TRUST DEBUG CONTROLS
