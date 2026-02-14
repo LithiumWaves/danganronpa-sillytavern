@@ -961,7 +961,7 @@
     position: fixed;
     bottom: 18px;
     right: 18px;
-    z-index: 9000;
+    z-index: 10050;
 
     display: flex;
     flex-direction: column;
@@ -1846,7 +1846,7 @@
     #trust-debug-controls {
         left: 50%;
         right: auto;
-        bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+        bottom: calc(86px + env(safe-area-inset-bottom, 0px));
         top: auto;
         width: min(430px, calc(100vw - 16px));
         transform: translateX(-50%);
@@ -1855,7 +1855,7 @@
         gap: 6px;
         justify-content: center;
         opacity: 1;
-        z-index: 9000;
+        z-index: 10050;
         padding: 6px;
         border-radius: 8px;
         background: rgba(8, 5, 11, 0.82);
