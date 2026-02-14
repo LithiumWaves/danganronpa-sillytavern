@@ -1,10 +1,19 @@
 const itemCatalog = [
-    { id: "g_rose_whip", name: "Rose Whip", category: "gift", rarity: "R", description: "A decorative whip popular in stage magic circles.", effect: "Boosts confidence-driven dialogue routes.", character: "Maki" },
-    { id: "g_crystal_skull", name: "Crystal Skull", category: "gift", rarity: "SR", description: "A tiny crystal skull with unsettling detail work.", effect: "Increases reaction checks in tense scenes.", character: "Kokichi" },
-    { id: "g_monokuma_pin", name: "Monokuma Pin", category: "gift", rarity: "N", description: "A cheaply made pin with suspiciously sharp edges.", effect: "Minor passive boost to social probing.", character: "Monokuma" },
-    { id: "g_hope_shard", name: "Hope Shard", category: "gift", rarity: "R", description: "A polished crystal fragment sold near Hope's Peak.", effect: "Raises social resilience in difficult exchanges.", character: "Kaede" },
-    { id: "g_robot_gear", name: "Clockwork Gear", category: "gift", rarity: "N", description: "A small precision gear from an unknown machine.", effect: "Slightly improves logic-chain consistency.", character: "K1-B0" },
-    { id: "g_silver_dice", name: "Silver Dice", category: "gift", rarity: "SR", description: "Weighted-looking dice that somehow land perfectly fair.", effect: "Improves luck checks during event triggers.", character: "Nagito" }
+    { id: "g_crimson_veil_lipstick", name: "Crimson Veil Lipstick", category: "gift", rarity: "N", description: "A deep red lipstick with dramatic stage-paint staying power.", effect: "Adds flair to charm-focused dialogue checks." },
+    { id: "g_polaroid_spirit_camera", name: "Polaroid Spirit Camera", category: "gift", rarity: "R", description: "An instant camera that develops grainy photos with suspiciously perfect framing.", effect: "Improves memory-based deductions in social scenes." },
+    { id: "g_midnight_orchid_perfume", name: "Midnight Orchid Perfume", category: "gift", rarity: "R", description: "A perfume blending floral sweetness with a cold metallic finish.", effect: "Raises first-impression success in introductions." },
+    { id: "g_patchwork_rabbit_doll", name: "Patchwork Rabbit Doll", category: "gift", rarity: "N", description: "A hand-stitched rabbit plush with uneven button eyes and careful repairs.", effect: "Slightly calms stress in tense interactions." },
+    { id: "g_rose_thorn_choker", name: "Rose Thorn Choker", category: "gift", rarity: "R", description: "A faux-thorned velvet choker inspired by academy fashion circles.", effect: "Boosts confidence during confrontation exchanges." },
+    { id: "g_crystal_skull", name: "Crystal Skull", category: "gift", rarity: "SR", description: "A tiny crystal skull with unsettling detail work.", effect: "Increases reaction checks in tense scenes." },
+    { id: "g_monokuma_pin", name: "Monokuma Pin", category: "gift", rarity: "N", description: "A cheaply made pin with suspiciously sharp edges.", effect: "Minor passive boost to social probing." },
+    { id: "g_hope_shard", name: "Hope Shard", category: "gift", rarity: "R", description: "A polished crystal fragment sold near Hope's Peak.", effect: "Raises social resilience in difficult exchanges." },
+    { id: "g_robot_gear", name: "Clockwork Gear", category: "gift", rarity: "N", description: "A small precision gear from an unknown machine.", effect: "Slightly improves logic-chain consistency." },
+    { id: "g_silver_dice", name: "Silver Dice", category: "gift", rarity: "SR", description: "Weighted-looking dice that somehow land perfectly fair.", effect: "Improves luck checks during event triggers." },
+    { id: "g_ocean_glass_bracelet", name: "Ocean Glass Bracelet", category: "gift", rarity: "N", description: "A bracelet of sea-glass beads that chime softly when moved.", effect: "Adds a small bonus to empathy checks." },
+    { id: "g_noir_fountain_pen", name: "Noir Fountain Pen", category: "gift", rarity: "R", description: "A black-lacquer fountain pen with a nib tuned for fast note taking.", effect: "Improves planning and report-focused actions." },
+    { id: "g_constellation_music_box", name: "Constellation Music Box", category: "gift", rarity: "SR", description: "A clockwork music box that projects tiny star patterns when opened.", effect: "Strengthens morale during prolonged investigations." },
+    { id: "g_tea_ceremony_set", name: "Pocket Tea Ceremony Set", category: "gift", rarity: "R", description: "A travel-sized matcha kit packed in a lacquered case.", effect: "Stabilizes composure after failed checks." },
+    { id: "g_lucky_cat_keychain", name: "Lucky Cat Keychain", category: "gift", rarity: "N", description: "A tiny beckoning cat charm worn smooth from constant handling.", effect: "Slightly lowers the chance of critical social missteps." }
 ];
 
 export function createItemsPanelController({ extensionName, extension_settings, saveSettingsDebounced, playSfx, getSfx }) {
@@ -269,8 +278,6 @@ export function createItemsPanelController({ extensionName, extension_settings, 
             <div class="items-detail-section-label">EFFECT</div>
             <div class="items-detail-effect">${item.effect}</div>
 
-            <div class="items-detail-section-label">ASSOCIATED CHARACTER</div>
-            <div class="items-detail-character">[ ${item.character} ]</div>
 
             <div class="items-detail-actions">
                 <button class="items-detail-action" disabled>USE</button>
