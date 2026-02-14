@@ -1,7 +1,10 @@
 const itemCatalog = [
     { id: "g_rose_whip", name: "Rose Whip", category: "gift", rarity: "R", description: "A decorative whip popular in stage magic circles.", effect: "Boosts confidence-driven dialogue routes.", character: "Maki" },
     { id: "g_crystal_skull", name: "Crystal Skull", category: "gift", rarity: "SR", description: "A tiny crystal skull with unsettling detail work.", effect: "Increases reaction checks in tense scenes.", character: "Kokichi" },
-    { id: "g_monokuma_pin", name: "Monokuma Pin", category: "gift", rarity: "N", description: "A cheaply made pin with suspiciously sharp edges.", effect: "Minor passive boost to social probing.", character: "Monokuma" }
+    { id: "g_monokuma_pin", name: "Monokuma Pin", category: "gift", rarity: "N", description: "A cheaply made pin with suspiciously sharp edges.", effect: "Minor passive boost to social probing.", character: "Monokuma" },
+    { id: "g_hope_shard", name: "Hope Shard", category: "gift", rarity: "R", description: "A polished crystal fragment sold near Hope's Peak.", effect: "Raises social resilience in difficult exchanges.", character: "Kaede" },
+    { id: "g_robot_gear", name: "Clockwork Gear", category: "gift", rarity: "N", description: "A small precision gear from an unknown machine.", effect: "Slightly improves logic-chain consistency.", character: "K1-B0" },
+    { id: "g_silver_dice", name: "Silver Dice", category: "gift", rarity: "SR", description: "Weighted-looking dice that somehow land perfectly fair.", effect: "Improves luck checks during event triggers.", character: "Nagito" }
 ];
 
 export function createItemsPanelController({ extensionName, extension_settings, saveSettingsDebounced, playSfx, getSfx }) {
@@ -105,6 +108,117 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         return true;
     }
 
+    function getGiftPool() {
+        return itemCatalog.filter(item => item.category === "gift");
+    }
+
+    function weightedPick(candidates) {
+        const total = candidates.reduce((acc, item) => acc + item.weight, 0);
+        if (total <= 0) return candidates[0]?.item || null;
+
+        let roll = Math.random() * total;
+        for (const candidate of candidates) {
+            roll -= candidate.weight;
+            if (roll <= 0) return candidate.item;
+        }
+
+        return candidates[candidates.length - 1]?.item || null;
+    }
+
+    function runMonoMonoMachine(coinInput = 1) {
+        loadInventoryState();
+
+        const rolls = Math.max(1, Number(coinInput || 1));
+        const inventory = extension_settings[extensionName].inventory;
+        const availableCoins = Number(inventory.monocoins || 0);
+        if (availableCoins < rolls) {
+            return { ok: false, reason: "NOT ENOUGH MONOCOINS." };
+        }
+
+        const gifts = getGiftPool();
+        if (!gifts.length) {
+            return { ok: false, reason: "NO GIFTS REGISTERED IN CATALOG." };
+        }
+
+        const rarityWeight = { N: 1, R: 0.75, SR: 0.5, KEY: 0.2 };
+        const duplicatePenalty = Math.max(0.18, 0.92 - (rolls - 1) * 0.05);
+        const batchCounts = {};
+        const results = [];
+        let duplicateCount = 0;
+
+        for (let i = 0; i < rolls; i++) {
+            const weighted = gifts.map(item => {
+                const owned = Number(inventory.gifts[item.id] || 0);
+                const alreadyRolled = Number(batchCounts[item.id] || 0);
+                const isDupeCandidate = owned > 0 || alreadyRolled > 0;
+                const base = rarityWeight[item.rarity] || 0.6;
+                const dupeFactor = isDupeCandidate ? duplicatePenalty : 1;
+                return { item, weight: base * dupeFactor };
+            });
+
+            const won = weightedPick(weighted);
+            if (!won) continue;
+
+            const preOwned = Number(inventory.gifts[won.id] || 0) > 0;
+            const repeatedInBatch = Number(batchCounts[won.id] || 0) > 0;
+            if (preOwned || repeatedInBatch) duplicateCount++;
+
+            batchCounts[won.id] = Number(batchCounts[won.id] || 0) + 1;
+            inventory.gifts[won.id] = Number(inventory.gifts[won.id] || 0) + 1;
+            results.push(won);
+        }
+
+        inventory.monocoins = Math.max(0, availableCoins - rolls);
+        if (results.length) {
+            selectedItemId = results[results.length - 1].id;
+        }
+
+        saveSettingsDebounced();
+        return {
+            ok: true,
+            rolls,
+            duplicateCount,
+            results,
+        };
+    }
+
+    function ensureMonoMonoDebugUI() {
+        const $panel = $(`.monopad-panel-content[data-panel="skills"]`);
+        const $filterPanel = $panel.find(".items-filter-panel");
+        if (!$filterPanel.length || $filterPanel.find(".items-machine-debug").length) return;
+
+        $filterPanel.append(`
+            <div class="items-machine-debug">
+                <div class="items-machine-title">MONOMONO MACHINE (DEBUG)</div>
+                <div class="items-machine-controls">
+                    <input id="items-machine-roll-count" class="items-machine-input" type="number" min="1" step="1" value="1" />
+                    <button id="items-machine-roll" class="items-machine-roll">ROLL</button>
+                </div>
+                <div id="items-machine-result" class="items-machine-result">ENTER COINS AND ROLL FOR GIFTS.</div>
+            </div>
+        `);
+
+        $filterPanel.find("#items-machine-roll").on("click", () => {
+            playSfx(getSfx().click);
+
+            const raw = Number($filterPanel.find("#items-machine-roll-count").val() || 1);
+            const coinInput = Math.max(1, Math.floor(raw));
+            const run = runMonoMonoMachine(coinInput);
+
+            if (!run.ok) {
+                $filterPanel.find("#items-machine-result").text(run.reason);
+                return;
+            }
+
+            const uniqueWon = [...new Set(run.results.map(item => item.name.toUpperCase()))].join(", ");
+            $filterPanel
+                .find("#items-machine-result")
+                .text(`ROLLED ${run.rolls}X · DUPES ${run.duplicateCount} · NEW/FOUND: ${uniqueWon || "NONE"}`);
+
+            renderSkillsItemsPanel();
+        });
+    }
+
     function renderItemDetails(item) {
         const $detail = $("#items-detail-panel");
         if (!$detail.length) return;
@@ -196,6 +310,7 @@ export function createItemsPanelController({ extensionName, extension_settings, 
 
         const monocoins = Number(extension_settings[extensionName].inventory?.monocoins || 0);
         $("#items-monocoin-value").text(monocoins.toLocaleString());
+        ensureMonoMonoDebugUI();
 
         $panel.find(".items-filter-button").each((_, el) => {
             const isActive = el.dataset.filter === activeItemsFilter;
