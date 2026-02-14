@@ -654,6 +654,19 @@ function loadCharacters() {
 }
 
 
+function promoteDebugUiToBody() {
+    const controls = document.getElementById("trust-debug-controls");
+    const modal = document.getElementById("truth-debug-modal");
+
+    if (controls && controls.parentElement !== document.body) {
+        document.body.appendChild(controls);
+    }
+
+    if (modal && modal.parentElement !== document.body) {
+        document.body.appendChild(modal);
+    }
+}
+
 jQuery(async () => {
     console.log(`[${extensionName}] Loading...`);
 
@@ -663,6 +676,7 @@ jQuery(async () => {
 
         const monopadHtml = await $.get(`${extensionFolderPath}/monopad.html`);
         $("body").append(monopadHtml);
+        promoteDebugUiToBody();
 
         setTimeout(() => {
             //registerCharactersFromContext();
@@ -901,19 +915,6 @@ function getActiveSocialCharacter() {
 const $truthDebugModal = $("#truth-debug-modal");
 const $truthDebugName = $("#truth-debug-name");
 const $truthDebugDescription = $("#truth-debug-description");
-const $trustDebugControls = $("#trust-debug-controls");
-
-function promoteDebugUiToBody() {
-    if ($trustDebugControls.length && $trustDebugControls.parent()[0] !== document.body) {
-        $trustDebugControls.appendTo(document.body);
-    }
-
-    if ($truthDebugModal.length && $truthDebugModal.parent()[0] !== document.body) {
-        $truthDebugModal.appendTo(document.body);
-    }
-}
-
-promoteDebugUiToBody();
 
 function closeTruthDebugModal() {
     $truthDebugModal.addClass("hidden").attr("aria-hidden", "true");
