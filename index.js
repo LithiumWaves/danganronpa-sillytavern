@@ -13,7 +13,6 @@ const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
 
 const defaultSettings = {
     enabled: false,
-    fullscreen: false,
     monopadSounds: true,
     trustCeremonies: true,
     truthBulletAnimations: true,
@@ -572,10 +571,6 @@ function loadSettings() {
         "checked",
         extension_settings[extensionName].enabled
     );
-    $("#dangan_fullscreen_checkbox").prop(
-        "checked",
-        extension_settings[extensionName].fullscreen
-    );
 }
 
 function getMonopadSetting(key) {
@@ -663,11 +658,6 @@ function loadCharacters() {
     });
 }
 
-function applyFullscreenMode() {
-    const isFullscreen = extension_settings[extensionName].fullscreen;
-    $("#dangan_monopad_panel").toggleClass("fullscreen", isFullscreen);
-}
-
 
 jQuery(async () => {
     console.log(`[${extensionName}] Loading...`);
@@ -686,6 +676,7 @@ jQuery(async () => {
 
         const $button = $("#dangan_monopad_button");
         const $panel = $("#dangan_monopad_panel");
+        $panel.addClass("fullscreen");
         
     sfx = {
         open: document.getElementById("monopad_sfx_open"),
@@ -766,11 +757,11 @@ jQuery(async () => {
                 playSfx(sfx.close);
 
                 setTimeout(() => {
-                    $panel.removeClass("shutting-down fullscreen").addClass("closed");
+                    $panel.removeClass("shutting-down").addClass("closed");
                 }, 350);
             } else {
                 playSfx(sfx.close);
-                $panel.removeClass("fullscreen").addClass("closed");
+                $panel.addClass("closed");
             }
         });
 
@@ -843,7 +834,6 @@ $(".monopad-icon").on("mouseenter", function () {
                 }
             }
 
-            applyFullscreenMode();
         }
 
         $button.on("click", () => {
@@ -897,15 +887,8 @@ $(".monopad-icon").on("mouseenter", function () {
             saveSettingsDebounced();
         });
 
-        $("#dangan_fullscreen_checkbox").on("input", e => {
-            extension_settings[extensionName].fullscreen = e.target.checked;
-            saveSettingsDebounced();
-            applyFullscreenMode();
-        });
-
 loadSettings();
 itemsPanel.loadInventoryState();
-applyFullscreenMode();
 applySettingsTabUI();
 loadCharacters();
 itemsPanel.renderSkillsItemsPanel();
