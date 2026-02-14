@@ -1740,7 +1740,14 @@
 }
 
 @media (max-width: 700px) {
+    .items-panel {
+        overflow-y: auto;
+    }
+
     .items-shell {
+        height: auto;
+        min-height: 100%;
+        grid-template-rows: auto auto auto;
         gap: 8px;
         padding: 8px;
     }
@@ -1760,7 +1767,12 @@
     }
 
     .items-upper-grid {
+        min-height: auto;
         gap: 8px;
+    }
+
+    .items-grid-panel {
+        min-height: auto;
     }
 
     .items-filter-group {
