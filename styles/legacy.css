@@ -956,6 +956,7 @@
     opacity: 1;
 }
 
+
 #trust-debug-controls {
     position: fixed;
     bottom: 18px;
@@ -981,6 +982,86 @@
 
 #trust-debug-controls button:hover {
     background: #222;
+}
+
+.truth-debug-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 100001;
+    background: rgba(8, 2, 8, 0.72);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+
+.truth-debug-card {
+    width: min(420px, 96vw);
+    border: 1px solid rgba(255, 190, 210, 0.4);
+    border-radius: 10px;
+    background: rgba(24, 9, 17, 0.96);
+    box-shadow: 0 14px 50px rgba(0, 0, 0, 0.45);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.truth-debug-title {
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    color: #ffe8f0;
+    border-bottom: 1px dashed rgba(255, 198, 216, 0.28);
+    padding-bottom: 6px;
+}
+
+.truth-debug-label {
+    font-size: 10px;
+    color: rgba(255, 214, 228, 0.9);
+}
+
+.truth-debug-input,
+.truth-debug-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid rgba(255, 184, 203, 0.35);
+    border-radius: 6px;
+    background: rgba(17, 7, 12, 0.85);
+    color: #ffeef4;
+    padding: 7px 8px;
+    font-size: 12px;
+}
+
+.truth-debug-textarea {
+    resize: vertical;
+}
+
+.truth-debug-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.truth-debug-btn {
+    border: 1px solid rgba(255, 173, 196, 0.5);
+    border-radius: 6px;
+    background: linear-gradient(180deg, rgba(157, 42, 76, 0.86), rgba(92, 23, 42, 0.84));
+    color: #fff4f8;
+    padding: 7px 10px;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+}
+
+.truth-debug-btn.ghost {
+    background: rgba(36, 16, 25, 0.8);
+    border-color: rgba(255, 210, 225, 0.33);
+}
+
+.truth-debug-btn:hover,
+.truth-debug-btn:focus-visible {
+    filter: brightness(1.08);
+    outline: none;
 }
 
 #trust-rankup-overlay.max {
@@ -1762,6 +1843,31 @@
 }
 
 @media (max-width: 700px) {
+    #trust-debug-controls {
+        right: 8px;
+        left: 8px;
+        bottom: 8px;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 6px;
+        justify-content: center;
+        opacity: 0.92;
+        z-index: 100002;
+    }
+
+    #trust-debug-controls button {
+        flex: 1 1 110px;
+        min-height: 34px;
+        font-size: 11px;
+        padding: 6px 8px;
+    }
+
+    .truth-debug-card {
+        width: min(96vw, 430px);
+        max-height: calc(100vh - 22px);
+        overflow-y: auto;
+    }
+
     .monopad-panel-content[data-panel="truth"],
     .monopad-panel-content[data-panel="social"] {
         overflow-y: auto;

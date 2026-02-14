@@ -898,6 +898,49 @@ function getActiveSocialCharacter() {
     return null;
 }
 
+const $truthDebugModal = $("#truth-debug-modal");
+const $truthDebugName = $("#truth-debug-name");
+const $truthDebugDescription = $("#truth-debug-description");
+
+function closeTruthDebugModal() {
+    $truthDebugModal.addClass("hidden").attr("aria-hidden", "true");
+}
+
+$("#truth-debug-open").on("click", () => {
+    playSfx(sfx.click);
+    $truthDebugModal.removeClass("hidden").attr("aria-hidden", "false");
+    $truthDebugName.trigger("focus");
+});
+
+$("#truth-debug-cancel").on("click", () => {
+    playSfx(sfx.click);
+    closeTruthDebugModal();
+});
+
+$truthDebugModal.on("click", e => {
+    if (e.target === $truthDebugModal[0]) {
+        closeTruthDebugModal();
+    }
+});
+
+$("#truth-debug-acquire").on("click", () => {
+    playSfx(sfx.click);
+
+    const title = String($truthDebugName.val() || "").trim();
+    const description = String($truthDebugDescription.val() || "").trim();
+
+    if (!title) {
+        $truthDebugName.trigger("focus");
+        return;
+    }
+
+    handleTruthBullet(title, description);
+
+    $truthDebugName.val("");
+    $truthDebugDescription.val("");
+    closeTruthDebugModal();
+});
+
 $("#trust-debug-up").on("click", () => {
     const char = getActiveSocialCharacter();
     if (!char) {
