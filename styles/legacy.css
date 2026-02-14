@@ -1439,6 +1439,16 @@
     cursor: pointer;
 }
 
+
+.items-filter-button:hover,
+.items-filter-button:focus-visible {
+    transform: translateY(-1px);
+    border-color: rgba(255, 220, 231, 0.82);
+    background: linear-gradient(180deg, rgba(130, 40, 66, 0.82), rgba(72, 21, 38, 0.84));
+    box-shadow: 0 0 12px rgba(255, 108, 154, 0.24);
+    outline: none;
+}
+
 .items-filter-button.active {
     background: linear-gradient(180deg, rgba(169, 46, 79, 0.85), rgba(92, 20, 40, 0.85));
     color: #fff;
@@ -1563,6 +1573,12 @@
 
 .items-detail-action.discard:hover {
     filter: brightness(1.08);
+}
+
+.items-detail-action.discard:focus-visible {
+    filter: brightness(1.08);
+    outline: 1px solid rgba(255, 220, 231, 0.9);
+    outline-offset: 1px;
 }
 
 .items-grid-panel {
