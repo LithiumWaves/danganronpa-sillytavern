@@ -12,7 +12,6 @@ const extensionName = "danganronpa-extension";
 const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
 
 const defaultSettings = {
-    enabled: false,
     monopadSounds: true,
     trustCeremonies: true,
     truthBulletAnimations: true,
@@ -567,10 +566,6 @@ function loadSettings() {
         ...extension_settings[extensionName]
     };
 
-    $("#dangan_enable_checkbox").prop(
-        "checked",
-        extension_settings[extensionName].enabled
-    );
 }
 
 function getMonopadSetting(key) {
@@ -880,11 +875,6 @@ $(".monopad-icon").on("mouseenter", function () {
             const value = Number(e.target.value);
             setMonopadSetting("crtIntensity", Number.isFinite(value) ? value : 35);
             applyCrtSettings();
-        });
-
-        $("#dangan_enable_checkbox").on("input", e => {
-            extension_settings[extensionName].enabled = e.target.checked;
-            saveSettingsDebounced();
         });
 
 loadSettings();

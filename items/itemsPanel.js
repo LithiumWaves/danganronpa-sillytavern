@@ -48,7 +48,18 @@ const itemCatalog = [
     { id: "g_tactical_flashlight", name: "Tactical Flashlight Mk-II", category: "gift", rarity: "R", description: "A compact flashlight with wide-beam and pin-beam modes.", effect: "Improves discovery chance in dark areas." },
     { id: "g_portable_drone_camera", name: "Pocket Drone Camera", category: "gift", rarity: "SR", description: "A folding mini-drone with stabilized aerial capture.", effect: "Greatly improves environmental scouting." },
     { id: "g_mystery_key_bundle", name: "Mystery Key Bundle", category: "gift", rarity: "R", description: "A ring of unlabeled keys from unknown academy locks.", effect: "Boosts improv options in locked-room scenarios." },
-    { id: "g_sakura_stationery_box", name: "Sakura Stationery Box", category: "gift", rarity: "N", description: "A pastel stationery set with sticky notes and matching envelopes.", effect: "Minor bonus to organized communication." }
+    { id: "g_sakura_stationery_box", name: "Sakura Stationery Box", category: "gift", rarity: "N", description: "A pastel stationery set with sticky notes and matching envelopes.", effect: "Minor bonus to organized communication." },
+
+    { id: "g_echo_line_baton", name: "Echo-Line Baton", category: "gift", rarity: "SR", description: "A tactile conductor baton etched with raised tempo guides for blind rehearsal.", effect: "Sharpens rhythm cues in high-pressure sequences." },
+    { id: "g_street_sprint_gloves", name: "Street Sprint Gloves", category: "gift", rarity: "N", description: "Reinforced fingerless gloves built for scrappy parkour and quick climbs.", effect: "Small boost to physical confidence checks." },
+    { id: "g_savage_sticker_pack", name: "Savage Sticker Pack", category: "gift", rarity: "N", description: "A notorious sticker set full of snarky one-liners and mockery faces.", effect: "Improves intimidation in teasing exchanges." },
+    { id: "g_stage_smoke_compact", name: "Stage Smoke Compact", category: "gift", rarity: "R", description: "A pocket theater prop that emits harmless smoke for dramatic entrances.", effect: "Raises flair during performance-heavy dialogue." },
+    { id: "g_solderstar_tool_roll", name: "SolderStar Tool Roll", category: "gift", rarity: "R", description: "A neatly organized toolkit with precision drivers and mini solder wand.", effect: "Improves tech troubleshooting outcomes." },
+    { id: "g_pattern_break_notebook", name: "Pattern-Break Notebook", category: "gift", rarity: "R", description: "A ruled notebook designed for anomaly logging and prediction trees.", effect: "Boosts analytical consistency in investigations." },
+    { id: "g_golden_stride_whistle", name: "Golden Stride Whistle", category: "gift", rarity: "R", description: "A coach whistle paired with upbeat drills for team motivation.", effect: "Improves morale and group coordination." },
+    { id: "g_midnight_patch_jacket", name: "Midnight Patch Jacket", category: "gift", rarity: "SR", description: "An alt-fashion jacket covered in removable culture-scene patches.", effect: "Raises style and identity resonance in social scenes." },
+    { id: "g_critter_quest_set", name: "Critter Quest Set", category: "gift", rarity: "R", description: "A hybrid bundle of pet-care planner, RPG dice, and foldable board map.", effect: "Improves nurture and strategy balance checks." },
+    { id: "g_iris_truth_lens", name: "Iris Truth Lens", category: "gift", rarity: "SR", description: "A specialist diagnostic lens tuned for micro eye-movement observation.", effect: "Greatly improves intention-reading in direct eye contact." },
 ];
 
 export function createItemsPanelController({ extensionName, extension_settings, saveSettingsDebounced, playSfx, getSfx }) {
