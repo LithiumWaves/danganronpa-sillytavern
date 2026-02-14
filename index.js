@@ -12,7 +12,13 @@ const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
 
 const defaultSettings = {
     enabled: false,
-    fullscreen: false
+    fullscreen: false,
+    monopadSounds: true,
+    trustCeremonies: true,
+    truthBulletAnimations: true,
+    crtEffects: true,
+    crtIntensity: 35,
+    bootAnimations: true
 };
 
 window.refreshActiveCharacterUI = function () {
@@ -174,6 +180,7 @@ return char.social.notes;
 let sfx = {};
 function playSfx(sound) {
     if (!sound) return;
+    if (!extension_settings[extensionName]?.monopadSounds) return;
     sound.currentTime = 0;
     sound.volume = 0.5;
     sound.play().catch(() => {});
@@ -554,7 +561,10 @@ function registerCharacterFromMessage(msgEl) {
 
 function loadSettings() {
     extension_settings[extensionName] ||= {};
-    Object.assign(defaultSettings, extension_settings[extensionName]);
+    extension_settings[extensionName] = {
+        ...defaultSettings,
+        ...extension_settings[extensionName]
+    };
 
     $("#dangan_enable_checkbox").prop(
         "checked",
@@ -564,6 +574,49 @@ function loadSettings() {
         "checked",
         extension_settings[extensionName].fullscreen
     );
+}
+
+function getMonopadSetting(key) {
+    return extension_settings[extensionName]?.[key];
+}
+
+function setMonopadSetting(key, value) {
+    extension_settings[extensionName][key] = value;
+    saveSettingsDebounced();
+}
+
+function applyCrtSettings() {
+    const panel = document.getElementById("dangan_monopad_panel");
+    if (!panel) return;
+
+    const enabled = !!getMonopadSetting("crtEffects");
+    const intensityRaw = Number(getMonopadSetting("crtIntensity"));
+    const intensity = Number.isFinite(intensityRaw) ? Math.max(0, Math.min(100, intensityRaw)) : 35;
+
+    panel.classList.toggle("crt-disabled", !enabled);
+    panel.style.setProperty("--dangan-crt-opacity", (intensity / 100).toFixed(2));
+
+    $("#dangan_crt_value").text(`${intensity}%`);
+}
+
+function applySettingsTabUI() {
+    const tab = extension_settings[extensionName];
+
+    $(".settings-toggle").each((_, el) => {
+        const key = el.dataset.setting;
+        if (!key) return;
+
+        const isOn = !!tab[key];
+        el.classList.toggle("on", isOn);
+        el.setAttribute("aria-pressed", String(isOn));
+    });
+
+    const slider = document.getElementById("dangan_crt_slider");
+    if (slider) {
+        slider.value = String(Number(tab.crtIntensity) || 35);
+    }
+
+    applyCrtSettings();
 }
 
 function saveCharacters() {
@@ -612,6 +665,206 @@ function applyFullscreenMode() {
     const isFullscreen = extension_settings[extensionName].fullscreen;
     $("#dangan_monopad_panel").toggleClass("fullscreen", isFullscreen);
 }
+
+
+const itemCatalog = [
+    { id: "g_rose_whip", name: "Rose Whip", category: "gift", rarity: "R", description: "A decorative whip popular in stage magic circles.", effect: "Boosts confidence-driven dialogue routes.", character: "Maki" },
+    { id: "g_crystal_skull", name: "Crystal Skull", category: "gift", rarity: "SR", description: "A tiny crystal skull with unsettling detail work.", effect: "Increases reaction checks in tense scenes.", character: "Kokichi" },
+    { id: "g_monokuma_pin", name: "Monokuma Pin", category: "gift", rarity: "N", description: "A cheaply made pin with suspiciously sharp edges.", effect: "Minor passive boost to social probing.", character: "Monokuma" },
+    { id: "s_micro_focus", name: "Micro Focus", category: "skill", rarity: "R", description: "A mental discipline routine used before investigations.", effect: "Insight +1 during evidence review.", character: "Shuichi" },
+    { id: "s_false_lead", name: "False Lead", category: "skill", rarity: "SR", description: "A deceptive social rhythm that redirects suspicion.", effect: "Reaction +1 during argument exchanges.", character: "Kokichi" },
+    { id: "k_student_profile", name: "Student Profile Chip", category: "key", rarity: "KEY", description: "A protected archive containing restricted student metadata.", effect: "Unlocks dossier-only dialogue branches.", character: "Archive" }
+];
+
+let activeItemsFilter = "all";
+let activeItemsSort = "recent";
+let selectedItemId = null;
+
+function loadInventoryState() {
+    const ext = extension_settings[extensionName];
+    ext.inventory ||= {};
+    ext.inventory.monocoins ??= 0;
+    ext.inventory.gifts ||= {};
+    ext.inventory.skills ||= {};
+    ext.inventory.keyItems ||= {};
+
+    if (!Object.keys(ext.inventory.gifts).length && !Object.keys(ext.inventory.skills).length && !Object.keys(ext.inventory.keyItems).length) {
+        ext.inventory.gifts.g_rose_whip = 1;
+        ext.inventory.gifts.g_monokuma_pin = 2;
+        ext.inventory.skills.s_micro_focus = 1;
+        ext.inventory.keyItems.k_student_profile = 1;
+    }
+}
+
+function getInventoryBucket(category) {
+    if (category === "gift") return "gifts";
+    if (category === "skill") return "skills";
+    return "keyItems";
+}
+
+function getItemById(id) {
+    return itemCatalog.find(i => i.id === id) || null;
+}
+
+function categoryOrder(category) {
+    if (category === "gift") return 0;
+    if (category === "skill") return 1;
+    return 2;
+}
+
+function rarityScore(rarity) {
+    return { KEY: 4, SR: 3, R: 2, N: 1 }[rarity] || 0;
+}
+
+function getOwnedItems() {
+    const inv = extension_settings[extensionName].inventory || {};
+
+    const items = itemCatalog
+        .map((item, idx) => {
+            const bucket = getInventoryBucket(item.category);
+            const quantity = Number(inv[bucket]?.[item.id] || 0);
+            return { ...item, quantity, catalogIndex: idx };
+        })
+        .filter(item => item.quantity > 0);
+
+    if (activeItemsFilter !== "all") {
+        return sortOwnedItems(items.filter(item => item.category === activeItemsFilter));
+    }
+
+    return sortOwnedItems(items);
+}
+
+function sortOwnedItems(items) {
+    if (activeItemsSort === "rarity") {
+        return [...items].sort((a, b) => rarityScore(b.rarity) - rarityScore(a.rarity) || a.name.localeCompare(b.name));
+    }
+
+    if (activeItemsSort === "category") {
+        return [...items].sort((a, b) => categoryOrder(a.category) - categoryOrder(b.category) || a.name.localeCompare(b.name));
+    }
+
+    return [...items].sort((a, b) => b.catalogIndex - a.catalogIndex);
+}
+
+function formatCategoryLabel(category) {
+    if (category === "gift") return "GIFT";
+    if (category === "skill") return "SKILL";
+    return "KEY ITEM";
+}
+
+function renderItemDetails(item) {
+    const $detail = $("#items-detail-panel");
+    if (!$detail.length) return;
+
+    if (!item) {
+        $detail.html(`
+            <div class="items-panel-title">SELECTED ITEM</div>
+            <div class="items-detail-placeholder">SELECT AN ITEM SLOT TO LOAD TERMINAL READOUT</div>
+        `);
+        return;
+    }
+
+    $detail.html(`
+        <div class="items-panel-title">SELECTED ITEM</div>
+        <div class="items-detail-icon">◉</div>
+        <div class="items-detail-name">${item.name.toUpperCase()}</div>
+        <div class="items-detail-category">CATEGORY: ${formatCategoryLabel(item.category)} · RARITY: ${item.rarity}</div>
+
+        <div class="items-detail-section-label">DESCRIPTION</div>
+        <div class="items-detail-description">${item.description}</div>
+
+        <div class="items-detail-section-label">EFFECT</div>
+        <div class="items-detail-effect">${item.effect}</div>
+
+        <div class="items-detail-section-label">ASSOCIATED CHARACTER</div>
+        <div class="items-detail-character">[ ${item.character} ]</div>
+
+        <div class="items-detail-actions">
+            <button class="items-detail-action" disabled>USE</button>
+            <button class="items-detail-action" disabled>INSPECT</button>
+        </div>
+    `);
+}
+
+function renderInventoryGrid() {
+    const $grid = $("#items-gift-list");
+    if (!$grid.length) return;
+
+    const items = getOwnedItems();
+    $grid.empty();
+
+    if (!items.length) {
+        $grid.append('<div class="items-empty">NO ITEMS IN THIS FILTER</div>');
+        renderItemDetails(null);
+        return;
+    }
+
+    if (!selectedItemId || !items.some(i => i.id === selectedItemId)) {
+        selectedItemId = items[0].id;
+    }
+
+    items.forEach(item => {
+        const active = item.id === selectedItemId ? "active" : "";
+        const $slot = $(`
+            <button class="items-slot ${active}" data-item-id="${item.id}" data-item-category="${item.category}" title="${item.name}">
+                <span class="items-slot-icon">■</span>
+                <span class="items-slot-name">${item.name.toUpperCase()}</span>
+                <span class="items-slot-qty">x${item.quantity}</span>
+            </button>
+        `);
+
+        $slot.on("mouseenter", () => renderItemDetails(item));
+        $slot.on("click", () => {
+            selectedItemId = item.id;
+            renderInventoryGrid();
+        });
+
+        $grid.append($slot);
+    });
+
+    renderItemDetails(items.find(i => i.id === selectedItemId) || items[0]);
+}
+
+function renderSkillsItemsPanel() {
+    const $panel = $(`.monopad-panel-content[data-panel="skills"]`);
+    if (!$panel.length) return;
+
+    const monocoins = Number(extension_settings[extensionName].inventory?.monocoins || 0);
+    $("#items-monocoin-value").text(monocoins.toLocaleString());
+
+    $panel.find(".items-filter-button").each((_, el) => {
+        const isActive = el.dataset.filter === activeItemsFilter;
+        el.classList.toggle("active", isActive);
+        el.setAttribute("aria-selected", String(isActive));
+    });
+
+    $panel.find('input[name="items-sort"]').each((_, el) => {
+        el.checked = el.value === activeItemsSort;
+    });
+
+    renderInventoryGrid();
+}
+
+window.danganInventory = {
+    addGift(itemId, amount = 1) {
+        loadInventoryState();
+        const item = getItemById(itemId);
+        if (!item) return false;
+
+        const bucket = getInventoryBucket(item.category);
+        const qty = Number(extension_settings[extensionName].inventory[bucket][itemId] || 0);
+        extension_settings[extensionName].inventory[bucket][itemId] = Math.max(0, qty + Number(amount || 0));
+        saveSettingsDebounced();
+        renderSkillsItemsPanel();
+        return true;
+    },
+    setMonocoins(value = 0) {
+        loadInventoryState();
+        extension_settings[extensionName].inventory.monocoins = Math.max(0, Number(value || 0));
+        saveSettingsDebounced();
+        renderSkillsItemsPanel();
+    }
+};
 
 function renderSocialPanel() {
     const $panel = $(`.monopad-panel-content[data-panel="social"]`);
@@ -813,7 +1066,8 @@ jQuery(async () => {
         initTrustAnimations({
     sfx,
     unlockAudio,
-    playSfx
+    playSfx,
+    getSetting: getMonopadSetting
 });
 
 
@@ -837,12 +1091,19 @@ jQuery(async () => {
         }
 
         $("#dangan_monopad_close").on("click", () => {
-            $panel.removeClass("open booting").addClass("shutting-down");
-            playSfx(sfx.close);
+            $panel.removeClass("open booting");
 
-            setTimeout(() => {
-                $panel.removeClass("shutting-down fullscreen").addClass("closed");
-            }, 350);
+            if (getMonopadSetting("bootAnimations")) {
+                $panel.addClass("shutting-down");
+                playSfx(sfx.close);
+
+                setTimeout(() => {
+                    $panel.removeClass("shutting-down fullscreen").addClass("closed");
+                }, 350);
+            } else {
+                playSfx(sfx.close);
+                $panel.removeClass("fullscreen").addClass("closed");
+            }
         });
 
 $(".monopad-icon").on("click", function () {
@@ -862,6 +1123,10 @@ if (tab === "truth" && window.renderTruthBullets) {
 
     if (tab === "social") {
         renderSocialPanel();
+    }
+
+    if (tab === "skills") {
+        renderSkillsItemsPanel();
     }
 });
 
@@ -895,13 +1160,22 @@ $(".monopad-icon").on("mouseenter", function () {
             $panel.removeClass("open closed booting");
 
             if (!isOpen) {
-                $panel.addClass("open booting");
-                setTimeout(() => $panel.removeClass("booting"), 450);
+                if (getMonopadSetting("bootAnimations")) {
+                    $panel.addClass("open booting");
+                    setTimeout(() => $panel.removeClass("booting"), 450);
+                } else {
+                    $panel.addClass("open");
+                }
                 playSfx(sfx.open);
             } else {
-                $panel.addClass("shutting-down");
-                playSfx(sfx.close);
-                setTimeout(() => $panel.removeClass("shutting-down").addClass("closed"), 350);
+                if (getMonopadSetting("bootAnimations")) {
+                    $panel.addClass("shutting-down");
+                    playSfx(sfx.close);
+                    setTimeout(() => $panel.removeClass("shutting-down").addClass("closed"), 350);
+                } else {
+                    playSfx(sfx.close);
+                    $panel.addClass("closed");
+                }
             }
 
             applyFullscreenMode();
@@ -921,6 +1195,32 @@ $(".monopad-icon").on("mouseenter", function () {
             }
         });
 
+
+        $(".items-filter-button").on("click", function () {
+            activeItemsFilter = this.dataset.filter || "all";
+            renderSkillsItemsPanel();
+        });
+
+        $('input[name="items-sort"]').on("change", function () {
+            activeItemsSort = this.value || "recent";
+            renderSkillsItemsPanel();
+        });
+
+        $(".settings-toggle").on("click", function () {
+            const key = this.dataset.setting;
+            if (!key) return;
+
+            const next = !getMonopadSetting(key);
+            setMonopadSetting(key, next);
+            applySettingsTabUI();
+        });
+
+        $("#dangan_crt_slider").on("input", e => {
+            const value = Number(e.target.value);
+            setMonopadSetting("crtIntensity", Number.isFinite(value) ? value : 35);
+            applyCrtSettings();
+        });
+
         $("#dangan_enable_checkbox").on("input", e => {
             extension_settings[extensionName].enabled = e.target.checked;
             saveSettingsDebounced();
@@ -933,8 +1233,11 @@ $(".monopad-icon").on("mouseenter", function () {
         });
 
 loadSettings();
+loadInventoryState();
 applyFullscreenMode();
+applySettingsTabUI();
 loadCharacters();
+renderSkillsItemsPanel();
 
 // =========================
 // TRUST DEBUG CONTROLS
@@ -989,7 +1292,8 @@ initTruthBullets({
     playSfx,
     extension_settings,
     saveSettingsDebounced,
-    extensionName
+    extensionName,
+    getSetting: getMonopadSetting
 });
 
     } catch (error) {
