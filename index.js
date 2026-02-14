@@ -688,12 +688,6 @@ function loadInventoryState() {
     ext.inventory.skills ||= {};
     ext.inventory.keyItems ||= {};
 
-    if (!Object.keys(ext.inventory.gifts).length && !Object.keys(ext.inventory.skills).length && !Object.keys(ext.inventory.keyItems).length) {
-        ext.inventory.gifts.g_rose_whip = 1;
-        ext.inventory.gifts.g_monokuma_pin = 2;
-        ext.inventory.skills.s_micro_focus = 1;
-        ext.inventory.keyItems.k_student_profile = 1;
-    }
 }
 
 function getInventoryBucket(category) {
@@ -764,6 +758,8 @@ function renderItemDetails(item) {
         return;
     }
 
+    const showDiscardGift = item.category === "gift";
+
     $detail.html(`
         <div class="items-panel-title">SELECTED ITEM</div>
         <div class="items-detail-icon">◉</div>
@@ -782,8 +778,44 @@ function renderItemDetails(item) {
         <div class="items-detail-actions">
             <button class="items-detail-action" disabled>USE</button>
             <button class="items-detail-action" disabled>INSPECT</button>
+            ${showDiscardGift ? '<button class="items-detail-action discard" data-action="discard-gift">DISCARD GIFT</button>' : ""}
         </div>
     `);
+
+    if (showDiscardGift) {
+        $detail.find('[data-action="discard-gift"]').on("click", () => {
+            playSfx(sfx.click);
+            discardInventoryItem(item.id, 1);
+            renderSkillsItemsPanel();
+        });
+    }
+}
+
+function discardInventoryItem(itemId, amount = 1) {
+    loadInventoryState();
+
+    const item = getItemById(itemId);
+    if (!item) return false;
+
+    if (item.category !== "gift") return false;
+
+    const bucket = getInventoryBucket(item.category);
+    const bucketState = extension_settings[extensionName].inventory[bucket] || {};
+    const qty = Number(bucketState[itemId] || 0);
+    const nextQty = Math.max(0, qty - Math.max(1, Number(amount || 1)));
+
+    if (nextQty <= 0) {
+        delete bucketState[itemId];
+    } else {
+        bucketState[itemId] = nextQty;
+    }
+
+    if (selectedItemId === itemId && !bucketState[itemId]) {
+        selectedItemId = null;
+    }
+
+    saveSettingsDebounced();
+    return true;
 }
 
 function renderInventoryGrid() {
@@ -815,6 +847,7 @@ function renderInventoryGrid() {
 
         $slot.on("mouseenter", () => renderItemDetails(item));
         $slot.on("click", () => {
+            playSfx(sfx.click);
             selectedItemId = item.id;
             renderInventoryGrid();
         });
@@ -1074,6 +1107,13 @@ jQuery(async () => {
         let lastHoverTime = 0;
         const HOVER_COOLDOWN = 80;
 
+        function playHoverWithCooldown() {
+            const now = Date.now();
+            if (now - lastHoverTime < HOVER_COOLDOWN) return;
+            lastHoverTime = now;
+            playSfx(sfx.hover);
+        }
+
         let monopadSpamCount = 0;
         let monopadSpamTimer = null;
         let monokumaCooldown = false;
@@ -1150,10 +1190,7 @@ if (tab === "truth" && window.renderTruthBullets) {
 //});
 
 $(".monopad-icon").on("mouseenter", function () {
-    const now = Date.now();
-    if (now - lastHoverTime < HOVER_COOLDOWN) return;
-    lastHoverTime = now;
-    playSfx(sfx.hover);
+    playHoverWithCooldown();
 });
         function togglePanel() {
             const isOpen = $panel.hasClass("open");
@@ -1197,13 +1234,19 @@ $(".monopad-icon").on("mouseenter", function () {
 
 
         $(".items-filter-button").on("click", function () {
+            playSfx(sfx.click);
             activeItemsFilter = this.dataset.filter || "all";
             renderSkillsItemsPanel();
         });
 
         $('input[name="items-sort"]').on("change", function () {
+            playSfx(sfx.click);
             activeItemsSort = this.value || "recent";
             renderSkillsItemsPanel();
+        });
+
+        $(document).on("mouseenter", ".items-filter-button, .items-slot, .items-sort-group label, .items-detail-action", function () {
+            playHoverWithCooldown();
         });
 
         $(".settings-toggle").on("click", function () {
