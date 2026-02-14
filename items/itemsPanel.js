@@ -191,12 +191,36 @@ export function createItemsPanelController({ extensionName, extension_settings, 
             <div class="items-machine-debug">
                 <div class="items-machine-title">MONOMONO MACHINE (DEBUG)</div>
                 <div class="items-machine-controls">
+                    <input id="items-machine-coin-add" class="items-machine-input" type="number" min="1" step="1" value="10" />
+                    <button id="items-machine-add-coins" class="items-machine-roll alt">ADD MONOCOINS</button>
+                </div>
+                <div class="items-machine-controls">
                     <input id="items-machine-roll-count" class="items-machine-input" type="number" min="1" step="1" value="1" />
                     <button id="items-machine-roll" class="items-machine-roll">ROLL</button>
                 </div>
                 <div id="items-machine-result" class="items-machine-result">ENTER COINS AND ROLL FOR GIFTS.</div>
             </div>
         `);
+
+        $filterPanel.find("#items-machine-add-coins").on("click", () => {
+            playSfx(getSfx().click);
+
+            const raw = Number($filterPanel.find("#items-machine-coin-add").val() || 0);
+            const amount = Math.max(0, Math.floor(raw));
+
+            if (amount <= 0) {
+                $filterPanel.find("#items-machine-result").text("INPUT A POSITIVE MONOCOIN AMOUNT.");
+                return;
+            }
+
+            const inventory = extension_settings[extensionName].inventory;
+            const current = Number(inventory.monocoins || 0);
+            inventory.monocoins = Math.max(0, current + amount);
+            saveSettingsDebounced();
+
+            $filterPanel.find("#items-machine-result").text(`ADDED ${amount} MONOCOINS · TOTAL ${inventory.monocoins}`);
+            renderSkillsItemsPanel();
+        });
 
         $filterPanel.find("#items-machine-roll").on("click", () => {
             playSfx(getSfx().click);
