@@ -901,6 +901,19 @@ function getActiveSocialCharacter() {
 const $truthDebugModal = $("#truth-debug-modal");
 const $truthDebugName = $("#truth-debug-name");
 const $truthDebugDescription = $("#truth-debug-description");
+const $trustDebugControls = $("#trust-debug-controls");
+
+function promoteDebugUiToBody() {
+    if ($trustDebugControls.length && $trustDebugControls.parent()[0] !== document.body) {
+        $trustDebugControls.appendTo(document.body);
+    }
+
+    if ($truthDebugModal.length && $truthDebugModal.parent()[0] !== document.body) {
+        $truthDebugModal.appendTo(document.body);
+    }
+}
+
+promoteDebugUiToBody();
 
 function closeTruthDebugModal() {
     $truthDebugModal.addClass("hidden").attr("aria-hidden", "true");
