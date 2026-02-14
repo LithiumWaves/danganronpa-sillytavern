@@ -961,7 +961,7 @@
     position: fixed;
     bottom: 18px;
     right: 18px;
-    z-index: 99999;
+    z-index: 9000;
 
     display: flex;
     flex-direction: column;
@@ -987,7 +987,7 @@
 .truth-debug-modal {
     position: fixed;
     inset: 0;
-    z-index: 100001;
+    z-index: 100010;
     background: rgba(8, 2, 8, 0.72);
     display: flex;
     align-items: center;
@@ -1853,7 +1853,7 @@
         gap: 6px;
         justify-content: center;
         opacity: 1;
-        z-index: 100002;
+        z-index: 9000;
         padding: 6px;
         border-radius: 8px;
         background: rgba(8, 5, 11, 0.82);
@@ -1872,8 +1872,91 @@
 
     .truth-debug-card {
         width: min(96vw, 430px);
-        max-height: calc(100vh - 22px);
+        max-height: calc(100vh - env(safe-area-inset-top, 0px) - 24px);
         overflow-y: auto;
+    }
+
+    .truth-debug-modal {
+        align-items: flex-start;
+        padding-top: calc(10px + env(safe-area-inset-top, 0px));
+        padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+        overflow-y: auto;
+    }
+
+    #truth-obtained-overlay {
+        padding: 10px;
+        box-sizing: border-box;
+    }
+
+    .truth-obtained-label {
+        font-size: 16px;
+        margin-bottom: 6px;
+    }
+
+    .truth-obtained-title {
+        font-size: 22px;
+        line-height: 1.2;
+        word-break: break-word;
+    }
+
+    #truth-bullet-fly {
+        height: 72px;
+    }
+
+    #truth-obtained-overlay.show #truth-bullet-fly {
+        animation: bullet-slide-mobile 1.5s ease-in-out forwards;
+    }
+
+    @keyframes bullet-slide-mobile {
+        0% {
+            left: -40%;
+            opacity: 0;
+        }
+
+        15% {
+            opacity: 1;
+        }
+
+        35% {
+            left: 28%;
+        }
+
+        65% {
+            left: 28%;
+        }
+
+        100% {
+            left: 108%;
+            opacity: 0;
+        }
+    }
+
+    #trust-rankup-overlay {
+        padding: 12px;
+        box-sizing: border-box;
+    }
+
+    .trust-rankup-core {
+        max-width: 92vw;
+    }
+
+    #trust-decagram {
+        width: min(200px, 62vw);
+        height: min(200px, 62vw);
+    }
+
+    .trust-banner {
+        margin-top: 12px;
+        font-size: 15px;
+        letter-spacing: 1px;
+        line-height: 1.25;
+        word-break: break-word;
+    }
+
+    #monokuma-trust-down {
+        width: 120px;
+        left: 8px;
+        bottom: 8px;
     }
 
     .monopad-panel-content[data-panel="truth"],
