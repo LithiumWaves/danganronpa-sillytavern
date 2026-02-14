@@ -959,8 +959,8 @@
 
 #trust-debug-controls {
     position: fixed;
-    bottom: 18px;
-    right: 18px;
+    bottom: 14px;
+    right: 14px;
     z-index: 10050;
 
     display: flex;
@@ -1844,27 +1844,27 @@
 
 @media (max-width: 700px) {
     #trust-debug-controls {
-        left: 50%;
-        right: auto;
-        bottom: calc(86px + env(safe-area-inset-bottom, 0px));
+        right: 8px;
+        left: auto;
+        bottom: calc(8px + env(safe-area-inset-bottom, 0px));
         top: auto;
-        width: min(430px, calc(100vw - 16px));
-        transform: translateX(-50%);
-        flex-direction: row;
-        flex-wrap: wrap;
+        width: auto;
+        transform: none;
+        flex-direction: column;
+        flex-wrap: nowrap;
         gap: 6px;
-        justify-content: center;
+        justify-content: flex-start;
         opacity: 1;
         z-index: 10050;
-        padding: 6px;
-        border-radius: 8px;
-        background: rgba(8, 5, 11, 0.82);
-        border: 1px solid rgba(255, 176, 202, 0.35);
-        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45);
+        padding: 0;
+        border-radius: 0;
+        background: transparent;
+        border: 0;
+        box-shadow: none;
     }
 
     #trust-debug-controls button {
-        flex: 1 1 110px;
+        flex: 0 0 auto;
         min-height: 34px;
         font-size: 11px;
         padding: 6px 8px;
