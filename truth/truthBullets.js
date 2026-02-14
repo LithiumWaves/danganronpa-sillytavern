@@ -10,6 +10,7 @@ let decreaseTrust;
 let startV3CObserver;
 let playSfx;
 let extensionName;
+let getSetting;
 let deps = {};
 
 export function initTruthBullets(providedDeps) {
@@ -26,7 +27,8 @@ export function initTruthBullets(providedDeps) {
         decreaseTrust,
         startV3CObserver,
         playSfx,
-        extensionName
+        extensionName,
+        getSetting
     } = deps);
 
     // Loads saved bullets
@@ -174,6 +176,8 @@ function renderTruthBullets() {
 }
 
 function queueTruthBulletAnimation(title) {
+    if (getSetting && !getSetting("truthBulletAnimations")) return;
+
     truthBulletQueue.push(title);
     runTruthBulletQueue();
 }
