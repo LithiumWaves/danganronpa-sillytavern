@@ -688,12 +688,6 @@ function loadInventoryState() {
     ext.inventory.skills ||= {};
     ext.inventory.keyItems ||= {};
 
-    if (!Object.keys(ext.inventory.gifts).length && !Object.keys(ext.inventory.skills).length && !Object.keys(ext.inventory.keyItems).length) {
-        ext.inventory.gifts.g_rose_whip = 1;
-        ext.inventory.gifts.g_monokuma_pin = 2;
-        ext.inventory.skills.s_micro_focus = 1;
-        ext.inventory.keyItems.k_student_profile = 1;
-    }
 }
 
 function getInventoryBucket(category) {
