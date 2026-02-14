@@ -7,7 +7,7 @@
 
 <div id="monopad-truth-list"></div>
 
-<div id="dangan_monopad_panel" class="monopad-panel closed">
+<div id="dangan_monopad_panel" class="monopad-panel closed fullscreen">
     <div class="monopad-fullscreen-root">
 
         <div class="monopad-crt-overlay"></div>
@@ -309,6 +309,23 @@
 
 <!-- TEMP TRUST DEBUG CONTROLS -->
 <div id="trust-debug-controls">
+    <button id="truth-debug-open">🧠 DEBUG TB</button>
     <button id="trust-debug-up">▲ TRUST</button>
     <button id="trust-debug-down">▼ TRUST</button>
+</div>
+
+<div id="truth-debug-modal" class="truth-debug-modal hidden" aria-hidden="true">
+    <div class="truth-debug-card" role="dialog" aria-modal="true" aria-label="Custom truth bullet debug">
+        <div class="truth-debug-title">FORCE ACQUIRE TRUTH BULLET</div>
+        <label class="truth-debug-label" for="truth-debug-name">NAME</label>
+        <input id="truth-debug-name" class="truth-debug-input" type="text" maxlength="80" placeholder="Truth Bullet Name" />
+
+        <label class="truth-debug-label" for="truth-debug-description">DESCRIPTION</label>
+        <textarea id="truth-debug-description" class="truth-debug-textarea" rows="4" maxlength="500" placeholder="Optional description"></textarea>
+
+        <div class="truth-debug-actions">
+            <button id="truth-debug-cancel" class="truth-debug-btn ghost">CANCEL</button>
+            <button id="truth-debug-acquire" class="truth-debug-btn">ACQUIRE</button>
+        </div>
+    </div>
 </div>
