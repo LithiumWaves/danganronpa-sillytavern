@@ -1844,10 +1844,12 @@
 
 @media (max-width: 700px) {
     #trust-debug-controls {
-        right: 8px;
-        left: 8px;
-        top: calc(52px + env(safe-area-inset-top, 0px));
-        bottom: auto;
+        left: 50%;
+        right: auto;
+        bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+        top: auto;
+        width: min(430px, calc(100vw - 16px));
+        transform: translateX(-50%);
         flex-direction: row;
         flex-wrap: wrap;
         gap: 6px;
@@ -1872,12 +1874,12 @@
 
     .truth-debug-card {
         width: min(96vw, 430px);
-        max-height: calc(100vh - env(safe-area-inset-top, 0px) - 24px);
+        max-height: calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 24px);
         overflow-y: auto;
     }
 
     .truth-debug-modal {
-        align-items: flex-start;
+        align-items: center;
         padding-top: calc(10px + env(safe-area-inset-top, 0px));
         padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
         overflow-y: auto;
@@ -1886,6 +1888,8 @@
     #truth-obtained-overlay {
         padding: 10px;
         box-sizing: border-box;
+        align-items: center;
+        justify-content: center;
     }
 
     .truth-obtained-label {
@@ -1934,6 +1938,8 @@
     #trust-rankup-overlay {
         padding: 12px;
         box-sizing: border-box;
+        align-items: center;
+        justify-content: center;
     }
 
     .trust-rankup-core {
