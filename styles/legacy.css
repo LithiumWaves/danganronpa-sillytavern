@@ -1846,13 +1846,19 @@
     #trust-debug-controls {
         right: 8px;
         left: 8px;
-        bottom: 8px;
+        top: calc(52px + env(safe-area-inset-top, 0px));
+        bottom: auto;
         flex-direction: row;
         flex-wrap: wrap;
         gap: 6px;
         justify-content: center;
-        opacity: 0.92;
+        opacity: 1;
         z-index: 100002;
+        padding: 6px;
+        border-radius: 8px;
+        background: rgba(8, 5, 11, 0.82);
+        border: 1px solid rgba(255, 176, 202, 0.35);
+        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45);
     }
 
     #trust-debug-controls button {
@@ -1860,6 +1866,8 @@
         min-height: 34px;
         font-size: 11px;
         padding: 6px 8px;
+        background: rgba(24, 14, 21, 0.95);
+        border-color: rgba(255, 196, 215, 0.4);
     }
 
     .truth-debug-card {
