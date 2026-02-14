@@ -5,6 +5,7 @@ import { buildDecagram, crackShard, shatterShard } from "./trust/trustDecagram.j
 import { initTrustAnimations, playTrustRankUp, playTrustRankDown, playTrustMaxed, playTrustToDistrustTransition, playDistrustRankDown, playDistrustRankUp, playDistrustToTrustRecovery } from "./trust/trustAnimations.js";
 import { increaseTrust, decreaseTrust } from "./trust/trustAPI.js";
 import { createItemsPanelController } from "./items/itemsPanel.js";
+import { createSocialPanelController } from "./social/socialPanel.js";
 
 
 const extensionName = "danganronpa-extension";
@@ -22,18 +23,19 @@ const defaultSettings = {
 };
 
 window.refreshActiveCharacterUI = function () {
-    if (!activeSocialCharacterId) return;
+    if (!activeSocialCharacterId || !socialPanelController) return;
 
     for (const char of characters.values()) {
         if (char.id === activeSocialCharacterId) {
-            openCharacterReport(char);
-            renderSocialPanel();
+            socialPanelController.openCharacterReport(char);
+            socialPanelController?.renderSocialPanel();
             return;
         }
     }
 };
 
 let activeSocialCharacterId = null;
+let socialPanelController = null;
 
 const truthBullets = [];
 
@@ -556,7 +558,7 @@ function registerCharacterFromMessage(msgEl) {
     saveCharacters();
 
     console.log("[Dangan][Social] Registered character:", chName);
-    renderSocialPanel();
+    socialPanelController?.renderSocialPanel();
 }
 
 function loadSettings() {
@@ -667,169 +669,6 @@ function applyFullscreenMode() {
 }
 
 
-function renderSocialPanel() {
-    const $panel = $(`.monopad-panel-content[data-panel="social"]`);
-    if (!$panel.length) return;
-
-    const $listItems = $panel.find(".social-list-items");
-    $listItems.empty();
-
-    if (!characters.size) {
-        $listItems.append(`<div class="social-empty">NO STUDENTS FOUND</div>`);
-        return;
-    }
-
-for (const [key, char] of characters.entries()) {
-    const $item = $(`
-        <div class="social-list-item">
-            <span class="social-name">${char.name.toUpperCase()}</span>
-            <span class="social-delete" title="Remove">✕</span>
-        </div>
-    `);
-
-// LEFT CLICK → OPEN REPORT + TRIPLE CLICK → TRUST UP
-let clickCount = 0;
-let clickTimer = null;
-
-$item.find(".social-name").on("click", () => {
-    clickCount++;
-
-    if (clickCount === 1) {
-        // Normal single click behavior
-        openCharacterReport(char);
-
-        clickTimer = setTimeout(() => {
-            clickCount = 0;
-        }, 450); // timing window for triple click
-    }
-
-    if (clickCount === 3) {
-        clearTimeout(clickTimer);
-        clickCount = 0;
-
-        increaseTrust(char);
-    }
-});
-
-// RIGHT CLICK → TRUST DOWN
-$item.find(".social-name").on("contextmenu", e => {
-    e.preventDefault();
-    decreaseTrust(char);
-});
-
-    // Delete button
-    $item.find(".social-delete").on("click", e => {
-        e.stopPropagation();
-        removeCharacter(key);
-    });
-
-    $listItems.append($item);
-}
-
-}
-
-function removeCharacter(key) {
-    if (!characters.has(key)) return;
-
-    const name = characters.get(key)?.name;
-    characters.delete(key);
-    saveCharacters();
-
-    console.log(`[Dangan][Social] Removed character: ${name}`);
-    renderSocialPanel();
-}
-
-function openCharacterReport(char) {
-    activeSocialCharacterId = char.id;
-    const $report = $(".social-report");
-    if (!$report.length) return;
-
-        const svg = document.getElementById("trust-decagram");
-    if (svg) {
-        // 🔥 HARD RESET visual state
-        delete svg.dataset.mode;
-        delete svg.dataset.gold;
-
-        if (char.trustLevel < 0) {
-            svg.dataset.mode = "distrust";
-        }
-
-        if (char.trustLevel === 10) {
-            svg.dataset.gold = "true";
-        }
-    }
-
-    $report.find(".report-name").text(char.name || "—");
-const liveUltimate =
-    lookupUltimateFromLorebook(char.name) || char.ultimate || "unknown";
-
-char.ultimate = liveUltimate;
-saveCharacters();
-
-$report.find(".report-ultimate").text(
-    char.ultimate
-        ? `ULTIMATE: ${char.ultimate.toUpperCase()}`
-        : "ULTIMATE: —"
-);
-// Trust bar
-const trust = char.trustLevel ?? 1;
-const $segments = $report.find(".trust-segment");
-
-$segments.removeClass("filled distrust");
-
-if (trust > 0) {
-    // TRUST: fill from left
-    $segments.each((i, el) => {
-        if (i < trust) el.classList.add("filled");
-    });
-
-    $report.find(".trust-value").text(`${trust} / 10`);
-    $report.find(".trust-label")
-        .text("TRUST LEVEL")
-        .removeClass("distrust");
-
-} else {
-    // DISTRUST: fill from right
-    const abs = Math.abs(trust);
-
-    $segments.each((i, el) => {
-        if (i >= 10 - abs) el.classList.add("distrust");
-    });
-
-    $report.find(".trust-value").text(`${abs} / 10`);
-    $report.find(".trust-label")
-        .text("DISTRUST LEVEL")
-        .addClass("distrust");
-}
-
-    $report.find(".trust-value").text(`${trust} / 10`);
-
-$report.find(".notes-content").text("ANALYZING...");
-
-const openedId = char.id;
-
-generateCharacterNotes(char).then(() => {
-    // 🛑 Only update if this character is still selected
-    if (activeSocialCharacterId !== openedId) return;
-
-    const profile = char.social?.profile;
-
-    if (!profile) {
-        console.warn("[Dangan][Social] Profile missing after generation");
-        return;
-    }
-
-    $("#stat-height").text(profile.height || "—");
-    $("#stat-measurements").text(profile.measurements || "—");
-    $("#stat-personality").text(profile.personality || "—");
-    $("#stat-likes").text(profile.likes || "—");
-    $("#stat-dislikes").text(profile.dislikes || "—");
-
-    $report.find(".notes-content").text("ANALYSIS COMPLETE");
-});
-
-}
-
 jQuery(async () => {
     console.log(`[${extensionName}] Loading...`);
 
@@ -841,9 +680,9 @@ jQuery(async () => {
         $("body").append(monopadHtml);
 
         setTimeout(() => {
-    //registerCharactersFromContext();
-    renderSocialPanel();
-}, 300);
+            //registerCharactersFromContext();
+            socialPanelController?.renderSocialPanel();
+        }, 300);
 
         const $button = $("#dangan_monopad_button");
         const $panel = $("#dangan_monopad_panel");
@@ -879,6 +718,19 @@ jQuery(async () => {
             getSfx: () => sfx,
         });
         itemsPanel.bindWindowApi();
+
+        socialPanelController = createSocialPanelController({
+            characters,
+            saveCharacters,
+            increaseTrust,
+            decreaseTrust,
+            lookupUltimateFromLorebook,
+            generateCharacterNotes,
+            getActiveSocialCharacterId: () => activeSocialCharacterId,
+            setActiveSocialCharacterId: value => {
+                activeSocialCharacterId = value;
+            },
+        });
 
         let lastHoverTime = 0;
         const HOVER_COOLDOWN = 80;
@@ -938,7 +790,7 @@ if (tab === "truth" && window.renderTruthBullets) {
 }
 
     if (tab === "social") {
-        renderSocialPanel();
+        socialPanelController?.renderSocialPanel();
     }
 
     if (tab === "skills") {
@@ -951,7 +803,7 @@ if (tab === "truth" && window.renderTruthBullets) {
 
     //waitForRealChat(() => {
         //registerCharactersFromContext();
-        renderSocialPanel();
+        socialPanelController?.renderSocialPanel();
     });
 });
 */
@@ -961,7 +813,7 @@ if (tab === "truth" && window.renderTruthBullets) {
 
    // waitForRealChat(() => {
        // registerCharactersFromContext();
-       // renderSocialPanel();
+       // socialPanelController.renderSocialPanel();
     //});
 //});
 
@@ -1019,10 +871,6 @@ $(".monopad-icon").on("mouseenter", function () {
             playSfx(sfx.click);
             itemsPanel.setSort(this.value || "recent");
             itemsPanel.renderSkillsItemsPanel();
-        });
-
-        $(document).on("mouseenter", ".items-filter-button, .items-slot, .items-sort-group label, .items-detail-action", function () {
-            playHoverWithCooldown();
         });
 
         $(document).on("mouseenter", ".items-filter-button, .items-slot, .items-sort-group label, .items-detail-action", function () {
@@ -1098,7 +946,7 @@ $("#trust-debug-down").on("click", () => {
 // 🔴 FORCE REGISTER FROM EXISTING CHAT
 //waitForRealChat(() => {
     //registerCharactersFromContext();
-    //renderSocialPanel();
+    //socialPanelController.renderSocialPanel();
 //});
 
 debugSTGlobals();
