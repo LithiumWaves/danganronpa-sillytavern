@@ -667,17 +667,18 @@ function applyFullscreenMode() {
 }
 
 
-const giftCatalog = [
-    { id: "g_rose_whip", name: "Rose Whip", rarity: "R", description: "A decorative whip popular in stage magic circles." },
-    { id: "g_crystal_skull", name: "Crystal Skull", rarity: "SR", description: "A tiny crystal skull with unsettling detail work." },
-    { id: "g_monokuma_pin", name: "Monokuma Pin", rarity: "N", description: "A cheaply made pin with suspiciously sharp edges." },
-    { id: "g_neo_cologne", name: "Neo World Cologne", rarity: "N", description: "A futuristic scent that smells like ozone and citrus." },
-    { id: "g_arcade_token", name: "Arcade Token", rarity: "N", description: "A commemorative coin from a long-closed arcade." },
-    { id: "g_black_ribbon", name: "Black Ribbon", rarity: "R", description: "A high-quality ribbon often used for formal uniforms." }
+const itemCatalog = [
+    { id: "g_rose_whip", name: "Rose Whip", category: "gift", rarity: "R", description: "A decorative whip popular in stage magic circles.", effect: "Boosts confidence-driven dialogue routes.", character: "Maki" },
+    { id: "g_crystal_skull", name: "Crystal Skull", category: "gift", rarity: "SR", description: "A tiny crystal skull with unsettling detail work.", effect: "Increases reaction checks in tense scenes.", character: "Kokichi" },
+    { id: "g_monokuma_pin", name: "Monokuma Pin", category: "gift", rarity: "N", description: "A cheaply made pin with suspiciously sharp edges.", effect: "Minor passive boost to social probing.", character: "Monokuma" },
+    { id: "s_micro_focus", name: "Micro Focus", category: "skill", rarity: "R", description: "A mental discipline routine used before investigations.", effect: "Insight +1 during evidence review.", character: "Shuichi" },
+    { id: "s_false_lead", name: "False Lead", category: "skill", rarity: "SR", description: "A deceptive social rhythm that redirects suspicion.", effect: "Reaction +1 during argument exchanges.", character: "Kokichi" },
+    { id: "k_student_profile", name: "Student Profile Chip", category: "key", rarity: "KEY", description: "A protected archive containing restricted student metadata.", effect: "Unlocks dossier-only dialogue branches.", character: "Archive" }
 ];
 
-let itemsViewMode = "gifts";
-let selectedGiftId = null;
+let activeItemsFilter = "all";
+let activeItemsSort = "recent";
+let selectedItemId = null;
 
 function loadInventoryState() {
     const ext = extension_settings[extensionName];
@@ -685,75 +686,143 @@ function loadInventoryState() {
     ext.inventory.monocoins ??= 0;
     ext.inventory.gifts ||= {};
     ext.inventory.skills ||= {};
+    ext.inventory.keyItems ||= {};
+
+    if (!Object.keys(ext.inventory.gifts).length && !Object.keys(ext.inventory.skills).length && !Object.keys(ext.inventory.keyItems).length) {
+        ext.inventory.gifts.g_rose_whip = 1;
+        ext.inventory.gifts.g_monokuma_pin = 2;
+        ext.inventory.skills.s_micro_focus = 1;
+        ext.inventory.keyItems.k_student_profile = 1;
+    }
 }
 
-function getGiftById(id) {
-    return giftCatalog.find(g => g.id === id) || null;
+function getInventoryBucket(category) {
+    if (category === "gift") return "gifts";
+    if (category === "skill") return "skills";
+    return "keyItems";
 }
 
-function getOwnedGifts() {
-    const gifts = extension_settings[extensionName].inventory?.gifts || {};
-
-    return giftCatalog
-        .map(g => ({ ...g, quantity: Number(gifts[g.id] || 0) }))
-        .filter(g => g.quantity > 0)
-        .sort((a, b) => b.quantity - a.quantity || a.name.localeCompare(b.name));
+function getItemById(id) {
+    return itemCatalog.find(i => i.id === id) || null;
 }
 
-function renderGiftDetails(gift) {
+function categoryOrder(category) {
+    if (category === "gift") return 0;
+    if (category === "skill") return 1;
+    return 2;
+}
+
+function rarityScore(rarity) {
+    return { KEY: 4, SR: 3, R: 2, N: 1 }[rarity] || 0;
+}
+
+function getOwnedItems() {
+    const inv = extension_settings[extensionName].inventory || {};
+
+    const items = itemCatalog
+        .map((item, idx) => {
+            const bucket = getInventoryBucket(item.category);
+            const quantity = Number(inv[bucket]?.[item.id] || 0);
+            return { ...item, quantity, catalogIndex: idx };
+        })
+        .filter(item => item.quantity > 0);
+
+    if (activeItemsFilter !== "all") {
+        return sortOwnedItems(items.filter(item => item.category === activeItemsFilter));
+    }
+
+    return sortOwnedItems(items);
+}
+
+function sortOwnedItems(items) {
+    if (activeItemsSort === "rarity") {
+        return [...items].sort((a, b) => rarityScore(b.rarity) - rarityScore(a.rarity) || a.name.localeCompare(b.name));
+    }
+
+    if (activeItemsSort === "category") {
+        return [...items].sort((a, b) => categoryOrder(a.category) - categoryOrder(b.category) || a.name.localeCompare(b.name));
+    }
+
+    return [...items].sort((a, b) => b.catalogIndex - a.catalogIndex);
+}
+
+function formatCategoryLabel(category) {
+    if (category === "gift") return "GIFT";
+    if (category === "skill") return "SKILL";
+    return "KEY ITEM";
+}
+
+function renderItemDetails(item) {
     const $detail = $("#items-detail-panel");
     if (!$detail.length) return;
 
-    if (!gift) {
-        $detail.html('<div class="items-detail-placeholder">SELECT A GIFT TO VIEW DETAILS</div>');
+    if (!item) {
+        $detail.html(`
+            <div class="items-panel-title">SELECTED ITEM</div>
+            <div class="items-detail-placeholder">SELECT AN ITEM SLOT TO LOAD TERMINAL READOUT</div>
+        `);
         return;
     }
 
     $detail.html(`
-        <div class="items-detail-rarity">RARITY: ${gift.rarity}</div>
-        <div class="items-detail-title">${gift.name.toUpperCase()}</div>
-        <div class="items-detail-divider"></div>
-        <div class="items-detail-description">${gift.description}</div>
-        <div class="items-detail-qty">OWNED: x${gift.quantity}</div>
-        <button class="items-detail-action" disabled>GIFT ACTIONS (COMING SOON)</button>
+        <div class="items-panel-title">SELECTED ITEM</div>
+        <div class="items-detail-icon">◉</div>
+        <div class="items-detail-name">${item.name.toUpperCase()}</div>
+        <div class="items-detail-category">CATEGORY: ${formatCategoryLabel(item.category)} · RARITY: ${item.rarity}</div>
+
+        <div class="items-detail-section-label">DESCRIPTION</div>
+        <div class="items-detail-description">${item.description}</div>
+
+        <div class="items-detail-section-label">EFFECT</div>
+        <div class="items-detail-effect">${item.effect}</div>
+
+        <div class="items-detail-section-label">ASSOCIATED CHARACTER</div>
+        <div class="items-detail-character">[ ${item.character} ]</div>
+
+        <div class="items-detail-actions">
+            <button class="items-detail-action" disabled>USE</button>
+            <button class="items-detail-action" disabled>INSPECT</button>
+        </div>
     `);
 }
 
-function renderGiftInventory() {
-    const $list = $("#items-gift-list");
-    if (!$list.length) return;
+function renderInventoryGrid() {
+    const $grid = $("#items-gift-list");
+    if (!$grid.length) return;
 
-    const gifts = getOwnedGifts();
-    $list.empty();
+    const items = getOwnedItems();
+    $grid.empty();
 
-    if (!gifts.length) {
-        $list.append('<div class="items-empty">NO GIFTS ACQUIRED YET</div>');
-        renderGiftDetails(null);
+    if (!items.length) {
+        $grid.append('<div class="items-empty">NO ITEMS IN THIS FILTER</div>');
+        renderItemDetails(null);
         return;
     }
 
-    if (!selectedGiftId || !gifts.some(g => g.id === selectedGiftId)) {
-        selectedGiftId = gifts[0].id;
+    if (!selectedItemId || !items.some(i => i.id === selectedItemId)) {
+        selectedItemId = items[0].id;
     }
 
-    gifts.forEach(gift => {
-        const isActive = gift.id === selectedGiftId;
-        const $item = $(`
-            <button class="items-gift-row ${isActive ? "active" : ""}" data-gift-id="${gift.id}">
-                <span class="items-gift-name">${gift.name.toUpperCase()}</span>
-                <span class="items-gift-meta">${gift.rarity} · x${gift.quantity}</span>
+    items.forEach(item => {
+        const active = item.id === selectedItemId ? "active" : "";
+        const $slot = $(`
+            <button class="items-slot ${active}" data-item-id="${item.id}" data-item-category="${item.category}" title="${item.name}">
+                <span class="items-slot-icon">■</span>
+                <span class="items-slot-name">${item.name.toUpperCase()}</span>
+                <span class="items-slot-qty">x${item.quantity}</span>
             </button>
         `);
 
-        $item.on("click", () => {
-            selectedGiftId = gift.id;
-            renderGiftInventory();
+        $slot.on("mouseenter", () => renderItemDetails(item));
+        $slot.on("click", () => {
+            selectedItemId = item.id;
+            renderInventoryGrid();
         });
 
-        $list.append($item);
+        $grid.append($slot);
     });
 
-    renderGiftDetails(gifts.find(g => g.id === selectedGiftId) || gifts[0]);
+    renderItemDetails(items.find(i => i.id === selectedItemId) || items[0]);
 }
 
 function renderSkillsItemsPanel() {
@@ -763,37 +832,28 @@ function renderSkillsItemsPanel() {
     const monocoins = Number(extension_settings[extensionName].inventory?.monocoins || 0);
     $("#items-monocoin-value").text(monocoins.toLocaleString());
 
-    $panel.find(".items-mode-button").each((_, el) => {
-        const on = el.dataset.itemsView === itemsViewMode;
-        el.classList.toggle("active", on);
-        el.setAttribute("aria-selected", String(on));
+    $panel.find(".items-filter-button").each((_, el) => {
+        const isActive = el.dataset.filter === activeItemsFilter;
+        el.classList.toggle("active", isActive);
+        el.setAttribute("aria-selected", String(isActive));
     });
 
-    $panel.find("[data-items-view-panel]").each((_, el) => {
-        const show = el.dataset.itemsViewPanel === itemsViewMode;
-        el.classList.toggle("hidden", !show);
+    $panel.find('input[name="items-sort"]').each((_, el) => {
+        el.checked = el.value === activeItemsSort;
     });
 
-    if (itemsViewMode === "gifts") {
-        renderGiftInventory();
-    } else {
-        $("#items-detail-panel").html('<div class="items-detail-placeholder">SKILL DETAIL VIEW RESERVED FOR FUTURE IMPLEMENTATION</div>');
-    }
-}
-
-function setItemsViewMode(mode) {
-    itemsViewMode = mode === "skills" ? "skills" : "gifts";
-    renderSkillsItemsPanel();
+    renderInventoryGrid();
 }
 
 window.danganInventory = {
-    addGift(giftId, amount = 1) {
+    addGift(itemId, amount = 1) {
         loadInventoryState();
-        const gift = getGiftById(giftId);
-        if (!gift) return false;
+        const item = getItemById(itemId);
+        if (!item) return false;
 
-        const qty = Number(extension_settings[extensionName].inventory.gifts[giftId] || 0);
-        extension_settings[extensionName].inventory.gifts[giftId] = Math.max(0, qty + Number(amount || 0));
+        const bucket = getInventoryBucket(item.category);
+        const qty = Number(extension_settings[extensionName].inventory[bucket][itemId] || 0);
+        extension_settings[extensionName].inventory[bucket][itemId] = Math.max(0, qty + Number(amount || 0));
         saveSettingsDebounced();
         renderSkillsItemsPanel();
         return true;
@@ -1135,6 +1195,16 @@ $(".monopad-icon").on("mouseenter", function () {
             }
         });
 
+
+        $(".items-filter-button").on("click", function () {
+            activeItemsFilter = this.dataset.filter || "all";
+            renderSkillsItemsPanel();
+        });
+
+        $('input[name="items-sort"]').on("change", function () {
+            activeItemsSort = this.value || "recent";
+            renderSkillsItemsPanel();
+        });
 
         $(".settings-toggle").on("click", function () {
             const key = this.dataset.setting;
