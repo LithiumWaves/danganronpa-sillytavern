@@ -670,10 +670,7 @@ function applyFullscreenMode() {
 const itemCatalog = [
     { id: "g_rose_whip", name: "Rose Whip", category: "gift", rarity: "R", description: "A decorative whip popular in stage magic circles.", effect: "Boosts confidence-driven dialogue routes.", character: "Maki" },
     { id: "g_crystal_skull", name: "Crystal Skull", category: "gift", rarity: "SR", description: "A tiny crystal skull with unsettling detail work.", effect: "Increases reaction checks in tense scenes.", character: "Kokichi" },
-    { id: "g_monokuma_pin", name: "Monokuma Pin", category: "gift", rarity: "N", description: "A cheaply made pin with suspiciously sharp edges.", effect: "Minor passive boost to social probing.", character: "Monokuma" },
-    { id: "s_micro_focus", name: "Micro Focus", category: "skill", rarity: "R", description: "A mental discipline routine used before investigations.", effect: "Insight +1 during evidence review.", character: "Shuichi" },
-    { id: "s_false_lead", name: "False Lead", category: "skill", rarity: "SR", description: "A deceptive social rhythm that redirects suspicion.", effect: "Reaction +1 during argument exchanges.", character: "Kokichi" },
-    { id: "k_student_profile", name: "Student Profile Chip", category: "key", rarity: "KEY", description: "A protected archive containing restricted student metadata.", effect: "Unlocks dossier-only dialogue branches.", character: "Archive" }
+    { id: "g_monokuma_pin", name: "Monokuma Pin", category: "gift", rarity: "N", description: "A cheaply made pin with suspiciously sharp edges.", effect: "Minor passive boost to social probing.", character: "Monokuma" }
 ];
 
 let activeItemsFilter = "all";
@@ -688,6 +685,9 @@ function loadInventoryState() {
     ext.inventory.skills ||= {};
     ext.inventory.keyItems ||= {};
 
+    delete ext.inventory.skills.s_micro_focus;
+    delete ext.inventory.skills.s_false_lead;
+    delete ext.inventory.keyItems.k_student_profile;
 }
 
 function getInventoryBucket(category) {
