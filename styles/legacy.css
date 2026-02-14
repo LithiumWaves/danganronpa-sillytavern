@@ -1717,6 +1717,42 @@
 }
 
 @media (max-width: 1100px) {
+    .truth-container {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(180px, 36vh) 1fr;
+        gap: 10px;
+        height: auto;
+        min-height: 100%;
+    }
+
+    .truth-list {
+        border-right: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+        min-height: 0;
+    }
+
+    .truth-details {
+        padding: 12px;
+    }
+
+    .social-container {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(180px, 34vh) 1fr;
+        height: auto;
+        min-height: 100%;
+    }
+
+    .social-list {
+        border-right: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+        min-height: 0;
+    }
+
+    .social-report {
+        padding: 12px;
+        gap: 12px;
+    }
+
     .items-upper-grid {
         grid-template-columns: 1fr;
     }
@@ -1740,6 +1776,82 @@
 }
 
 @media (max-width: 700px) {
+    .monopad-panel-content[data-panel="truth"],
+    .monopad-panel-content[data-panel="social"] {
+        overflow-y: auto;
+    }
+
+    .truth-container {
+        grid-template-rows: minmax(160px, 34vh) auto;
+        gap: 8px;
+    }
+
+    .truth-list-header {
+        padding: 8px 10px;
+        font-size: 12px;
+    }
+
+    .truth-list-items {
+        padding: 6px;
+    }
+
+    .truth-item {
+        padding: 8px 10px;
+        font-size: 12px;
+    }
+
+    .truth-title {
+        font-size: 16px;
+    }
+
+    .truth-description,
+    .truth-meta {
+        font-size: 11px;
+    }
+
+    .truth-remove-button {
+        width: 100%;
+    }
+
+    .social-container {
+        grid-template-rows: minmax(160px, 32vh) auto;
+    }
+
+    .social-list-header {
+        padding: 8px 10px;
+        font-size: 12px;
+    }
+
+    .social-list-items {
+        padding: 4px 0;
+    }
+
+    .social-list-item {
+        padding: 6px 10px;
+    }
+
+    .social-report {
+        padding: 10px;
+        gap: 10px;
+    }
+
+    .report-name {
+        font-size: 17px;
+    }
+
+    .report-ultimate,
+    .trust-label,
+    .trust-value,
+    .notes-label,
+    .notes-content {
+        font-size: 11px;
+    }
+
+    .character-stats {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+
     .items-panel {
         overflow-y: auto;
     }
