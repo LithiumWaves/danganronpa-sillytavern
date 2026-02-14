@@ -4,6 +4,11 @@ const itemCatalog = [
     { id: "g_midnight_orchid_perfume", name: "Midnight Orchid Perfume", category: "gift", rarity: "R", description: "A perfume blending floral sweetness with a cold metallic finish.", effect: "Raises first-impression success in introductions." },
     { id: "g_patchwork_rabbit_doll", name: "Patchwork Rabbit Doll", category: "gift", rarity: "N", description: "A hand-stitched rabbit plush with uneven button eyes and careful repairs.", effect: "Slightly calms stress in tense interactions." },
     { id: "g_rose_thorn_choker", name: "Rose Thorn Choker", category: "gift", rarity: "R", description: "A faux-thorned velvet choker inspired by academy fashion circles.", effect: "Boosts confidence during confrontation exchanges." },
+    { id: "g_vintage_compact_mirror", name: "Vintage Compact Mirror", category: "gift", rarity: "N", description: "A gold-trimmed mirror that snaps shut with a sharp click.", effect: "Improves composure before critical conversations." },
+    { id: "g_velvet_nail_set", name: "Velvet Nail Lacquer Set", category: "gift", rarity: "N", description: "A set of moody polish colors in tiny glass bottles.", effect: "Adds style-based rapport in casual scenes." },
+    { id: "g_thunderbolt_hairdryer", name: "Thunderbolt Hair Dryer", category: "gift", rarity: "R", description: "A salon-grade dryer with enough airflow to rattle documents.", effect: "Raises prep speed before social events." },
+    { id: "g_portable_makeup_case", name: "Portable Makeup Case", category: "gift", rarity: "R", description: "A layered cosmetics case with hidden side compartments.", effect: "Improves disguise and presentation checks." },
+    { id: "g_blossom_perfume_atomizer", name: "Blossom Perfume Atomizer", category: "gift", rarity: "N", description: "A refillable perfume atomizer etched with tiny sakura petals.", effect: "Slightly boosts approachability in first meetings." },
     { id: "g_crystal_skull", name: "Crystal Skull", category: "gift", rarity: "SR", description: "A tiny crystal skull with unsettling detail work.", effect: "Increases reaction checks in tense scenes." },
     { id: "g_monokuma_pin", name: "Monokuma Pin", category: "gift", rarity: "N", description: "A cheaply made pin with suspiciously sharp edges.", effect: "Minor passive boost to social probing." },
     { id: "g_hope_shard", name: "Hope Shard", category: "gift", rarity: "R", description: "A polished crystal fragment sold near Hope's Peak.", effect: "Raises social resilience in difficult exchanges." },
@@ -13,7 +18,37 @@ const itemCatalog = [
     { id: "g_noir_fountain_pen", name: "Noir Fountain Pen", category: "gift", rarity: "R", description: "A black-lacquer fountain pen with a nib tuned for fast note taking.", effect: "Improves planning and report-focused actions." },
     { id: "g_constellation_music_box", name: "Constellation Music Box", category: "gift", rarity: "SR", description: "A clockwork music box that projects tiny star patterns when opened.", effect: "Strengthens morale during prolonged investigations." },
     { id: "g_tea_ceremony_set", name: "Pocket Tea Ceremony Set", category: "gift", rarity: "R", description: "A travel-sized matcha kit packed in a lacquered case.", effect: "Stabilizes composure after failed checks." },
-    { id: "g_lucky_cat_keychain", name: "Lucky Cat Keychain", category: "gift", rarity: "N", description: "A tiny beckoning cat charm worn smooth from constant handling.", effect: "Slightly lowers the chance of critical social missteps." }
+    { id: "g_lucky_cat_keychain", name: "Lucky Cat Keychain", category: "gift", rarity: "N", description: "A tiny beckoning cat charm worn smooth from constant handling.", effect: "Slightly lowers the chance of critical social missteps." },
+    { id: "g_analog_field_recorder", name: "Analog Field Recorder", category: "gift", rarity: "R", description: "A cassette recorder with chunky buttons and excellent mic sensitivity.", effect: "Improves clue retention from spoken testimony." },
+    { id: "g_stargazer_binoculars", name: "Stargazer Binoculars", category: "gift", rarity: "R", description: "Compact binoculars with surprisingly clear low-light focus.", effect: "Boosts surveillance and distance observation." },
+    { id: "g_silver_filament_camera", name: "Silver Filament Camera", category: "gift", rarity: "SR", description: "A premium film camera prized by academy photography clubs.", effect: "Greatly improves visual evidence captures." },
+    { id: "g_lavender_wardrobe_sachet", name: "Lavender Wardrobe Sachet", category: "gift", rarity: "N", description: "A scented sachet meant to keep uniforms fresh between classes.", effect: "Minor boost to daily social comfort." },
+    { id: "g_electric_toothbrush_neo", name: "Electric Toothbrush NEO", category: "gift", rarity: "N", description: "A compact sonic toothbrush with three aggressive cleaning modes.", effect: "Slight morale boost during morning prep." },
+    { id: "g_academy_scarf_set", name: "Academy Scarf Set", category: "gift", rarity: "R", description: "A matching scarf set in muted school colors for group outings.", effect: "Improves squad cohesion during team events." },
+    { id: "g_porcelain_kokeshi", name: "Porcelain Kokeshi Doll", category: "gift", rarity: "R", description: "A delicate hand-painted doll wrapped in a tiny ceremonial kimono.", effect: "Raises calm and focus during downtime." },
+    { id: "g_mechanical_bear_plush", name: "Mechanical Bear Plush", category: "gift", rarity: "SR", description: "A wind-up plush that giggles in a way nobody trusts.", effect: "Increases resolve during unsettling encounters." },
+    { id: "g_archival_sketchbook", name: "Archival Sketchbook", category: "gift", rarity: "N", description: "A thick-bound sketchbook with numbered pages for clean indexing.", effect: "Improves pattern tracking during investigations." },
+    { id: "g_inkwash_calligraphy_kit", name: "Inkwash Calligraphy Kit", category: "gift", rarity: "R", description: "A compact calligraphy set with brush, stone, and travel ink pot.", effect: "Boosts precision in careful communication." },
+    { id: "g_aurora_gel_pen_pack", name: "Aurora Gel Pen Pack", category: "gift", rarity: "N", description: "A rainbow set of smooth-flow pens that never seem to dry out.", effect: "Small bonus to note-taking consistency." },
+    { id: "g_class_trial_rulebook", name: "Class Trial Rulebook", category: "gift", rarity: "SR", description: "A heavily annotated trial manual full of sticky tabs and warnings.", effect: "Improves argument sequencing under pressure." },
+    { id: "g_fine_tea_sampler", name: "Fine Tea Sampler", category: "gift", rarity: "N", description: "An assortment of fragrant tea sachets with tasting notes.", effect: "Slightly reduces stress accumulation." },
+    { id: "g_artisanal_chocolate_box", name: "Artisanal Chocolate Box", category: "gift", rarity: "R", description: "A gift box of dark chocolates molded into tiny puzzle pieces.", effect: "Boosts rapport in gift-giving scenes." },
+    { id: "g_retro_game_handheld", name: "Retro Game Handheld", category: "gift", rarity: "R", description: "A pocket console loaded with notoriously hard mini-games.", effect: "Raises persistence after repeated failures." },
+    { id: "g_novelty_yo_yo_pro", name: "Novelty Yo-Yo Pro", category: "gift", rarity: "N", description: "A weighted yo-yo marketed to students with restless hands.", effect: "Minor concentration bonus in waiting phases." },
+    { id: "g_portable_chess_set", name: "Portable Chess Set", category: "gift", rarity: "R", description: "A magnetic travel chess board with polished metal pieces.", effect: "Improves strategic foresight during debates." },
+    { id: "g_gold_cufflinks_vortex", name: "Vortex Gold Cufflinks", category: "gift", rarity: "SR", description: "Luxurious cufflinks engraved with a hypnotic spiral motif.", effect: "Raises authority in formal confrontations." },
+    { id: "g_starfall_umbrella", name: "Starfall Umbrella", category: "gift", rarity: "N", description: "A foldable umbrella patterned with neon constellations.", effect: "Small comfort boost during gloomy events." },
+    { id: "g_mountain_hiking_boots", name: "Trailmaster Hiking Boots", category: "gift", rarity: "R", description: "Durable boots with reinforced soles for rough terrain.", effect: "Improves stamina in exploration segments." },
+    { id: "g_vinyl_record_sampler", name: "Vinyl Record Sampler", category: "gift", rarity: "R", description: "A curated record set spanning jazz, city pop, and synthwave.", effect: "Raises morale recovery after high-tension scenes." },
+    { id: "g_origami_crane_box", name: "Origami Crane Box", category: "gift", rarity: "N", description: "A lacquered box filled with tiny hand-folded paper cranes.", effect: "Small bonus to patience and composure." },
+    { id: "g_glass_rose_paperweight", name: "Glass Rose Paperweight", category: "gift", rarity: "N", description: "A rose sealed inside clear glass that catches every light source.", effect: "Improves focus during desk analysis." },
+    { id: "g_cosmic_snow_globe", name: "Cosmic Snow Globe", category: "gift", rarity: "SR", description: "A snow globe filled with glittering stars and a miniature school dome.", effect: "Boosts determination in critical moments." },
+    { id: "g_platinum_wristwatch", name: "Platinum Wristwatch", category: "gift", rarity: "SR", description: "A precision watch with a silent sweep second hand.", effect: "Improves timing windows in rapid exchanges." },
+    { id: "g_scented_candle_set", name: "Nocturne Candle Set", category: "gift", rarity: "N", description: "A trio of candles: cedar, rain, and vanilla smoke.", effect: "Slightly lowers anxiety during night sequences." },
+    { id: "g_tactical_flashlight", name: "Tactical Flashlight Mk-II", category: "gift", rarity: "R", description: "A compact flashlight with wide-beam and pin-beam modes.", effect: "Improves discovery chance in dark areas." },
+    { id: "g_portable_drone_camera", name: "Pocket Drone Camera", category: "gift", rarity: "SR", description: "A folding mini-drone with stabilized aerial capture.", effect: "Greatly improves environmental scouting." },
+    { id: "g_mystery_key_bundle", name: "Mystery Key Bundle", category: "gift", rarity: "R", description: "A ring of unlabeled keys from unknown academy locks.", effect: "Boosts improv options in locked-room scenarios." },
+    { id: "g_sakura_stationery_box", name: "Sakura Stationery Box", category: "gift", rarity: "N", description: "A pastel stationery set with sticky notes and matching envelopes.", effect: "Minor bonus to organized communication." }
 ];
 
 export function createItemsPanelController({ extensionName, extension_settings, saveSettingsDebounced, playSfx, getSfx }) {
@@ -115,6 +150,34 @@ export function createItemsPanelController({ extensionName, extension_settings, 
 
         saveSettingsDebounced();
         return true;
+    }
+
+    function discardGiftsByRarity(rarity) {
+        loadInventoryState();
+
+        const inventory = extension_settings[extensionName].inventory;
+        const giftEntries = Object.entries(inventory.gifts || {});
+        let removedTotal = 0;
+
+        for (const [itemId, qtyRaw] of giftEntries) {
+            const item = getItemById(itemId);
+            if (!item || item.category !== "gift") continue;
+            if (item.rarity !== rarity) continue;
+
+            const qty = Number(qtyRaw || 0);
+            removedTotal += Math.max(0, qty);
+            delete inventory.gifts[itemId];
+        }
+
+        if (removedTotal > 0 && selectedItemId) {
+            const selected = getItemById(selectedItemId);
+            if (selected?.rarity === rarity) {
+                selectedItemId = null;
+            }
+            saveSettingsDebounced();
+        }
+
+        return removedTotal;
     }
 
     function getGiftPool() {
@@ -275,14 +338,14 @@ export function createItemsPanelController({ extensionName, extension_settings, 
             <div class="items-detail-section-label">DESCRIPTION</div>
             <div class="items-detail-description">${item.description}</div>
 
-            <div class="items-detail-section-label">EFFECT</div>
-            <div class="items-detail-effect">${item.effect}</div>
-
+            <!-- <div class="items-detail-section-label">EFFECT</div>
+            <div class="items-detail-effect">${item.effect}</div> -->
 
             <div class="items-detail-actions">
                 <button class="items-detail-action" disabled>USE</button>
                 <button class="items-detail-action" disabled>INSPECT</button>
                 ${showDiscardGift ? '<button class="items-detail-action discard" data-action="discard-gift">DISCARD GIFT</button>' : ""}
+                ${showDiscardGift ? `<button class="items-detail-action discard" data-action="discard-rarity">MASS DISCARD ${item.rarity}</button>` : ""}
             </div>
         `);
 
@@ -290,6 +353,18 @@ export function createItemsPanelController({ extensionName, extension_settings, 
             $detail.find('[data-action="discard-gift"]').on("click", () => {
                 playSfx(getSfx().click);
                 discardInventoryItem(item.id, 1);
+                renderSkillsItemsPanel();
+            });
+
+            $detail.find('[data-action="discard-rarity"]').on("click", () => {
+                playSfx(getSfx().click);
+                const removed = discardGiftsByRarity(item.rarity);
+                const $result = $("#items-machine-result");
+                if ($result.length) {
+                    $result.text(removed > 0
+                        ? `MASS DISCARDED ${removed} ${item.rarity}-RARITY GIFTS.`
+                        : `NO ${item.rarity}-RARITY GIFTS TO DISCARD.`);
+                }
                 renderSkillsItemsPanel();
             });
         }
