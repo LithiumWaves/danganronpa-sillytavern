@@ -1025,6 +1025,10 @@ $(".monopad-icon").on("mouseenter", function () {
             playHoverWithCooldown();
         });
 
+        $(document).on("mouseenter", ".items-filter-button, .items-slot, .items-sort-group label, .items-detail-action", function () {
+            playHoverWithCooldown();
+        });
+
         $(".settings-toggle").on("click", function () {
             const key = this.dataset.setting;
             if (!key) return;
