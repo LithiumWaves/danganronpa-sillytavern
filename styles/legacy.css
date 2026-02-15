@@ -1547,6 +1547,117 @@
     accent-color: #ff7ea5;
 }
 
+.items-skill-shop-row {
+    margin: 12px;
+    margin-top: 0;
+    border: 1px dashed rgba(255, 191, 208, 0.3);
+    border-radius: 6px;
+    padding: 8px;
+    background: rgba(50, 16, 27, 0.58);
+}
+
+.items-shop-button {
+    width: 100%;
+    border: 1px solid rgba(255, 204, 218, 0.45);
+    background: linear-gradient(180deg, rgba(131, 38, 63, 0.78), rgba(72, 21, 38, 0.82));
+    color: #fff0f5;
+    border-radius: 5px;
+    padding: 7px 8px;
+    font-size: 11px;
+    letter-spacing: 0.09em;
+    cursor: pointer;
+}
+
+.items-shop-button:hover,
+.items-shop-button:focus-visible {
+    transform: translateY(-1px);
+    border-color: rgba(255, 230, 237, 0.85);
+    box-shadow: 0 0 12px rgba(255, 114, 160, 0.24);
+    outline: none;
+}
+
+.items-shop-hint {
+    margin-top: 6px;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    color: rgba(255, 214, 225, 0.72);
+    line-height: 1.35;
+}
+
+.items-shop-placeholder-title {
+    margin: 16px 14px 8px;
+    font-size: 14px;
+    letter-spacing: 0.08em;
+    color: #fff2f6;
+}
+
+.items-shop-placeholder-copy {
+    margin: 0 14px 16px;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: rgba(255, 219, 229, 0.82);
+    line-height: 1.5;
+}
+
+
+.items-shop-list {
+    margin: 0 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.items-shop-entry {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    border: 1px solid rgba(255, 195, 212, 0.26);
+    border-radius: 6px;
+    padding: 8px;
+    background: rgba(58, 19, 32, 0.62);
+}
+
+.items-shop-entry-name {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: #ffeaf0;
+}
+
+.items-shop-entry-effect {
+    margin-top: 4px;
+    font-size: 9px;
+    letter-spacing: 0.05em;
+    color: rgba(255, 210, 223, 0.76);
+}
+
+.items-shop-entry-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+}
+
+.items-shop-entry-cost {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    color: #fff3f7;
+    letter-spacing: 0.07em;
+}
+
+
+.items-shop-entry-buy {
+    border: 1px solid rgba(255, 205, 220, 0.42);
+    border-radius: 4px;
+    padding: 4px 8px;
+    background: rgba(88, 31, 49, 0.76);
+    color: rgba(255, 228, 237, 0.84);
+    font-size: 9px;
+    letter-spacing: 0.07em;
+    cursor: not-allowed;
+}
+
 .items-coin-box {
     margin: 12px;
     margin-top: auto;

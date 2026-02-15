@@ -67,6 +67,14 @@ export function createItemsPanelController({ extensionName, extension_settings, 
     let activeItemsSort = "recent";
     let selectedItemId = null;
 
+    const placeholderSkillShopCatalog = [
+        { id: "shop_skill_lie_detector_earring", name: "Lie Detector Earring", cost: 1, teaserEffect: "Highlights suspicious dialogue beats." },
+        { id: "shop_skill_dramatic_pause_plus", name: "Dramatic Pause+", cost: 1, teaserEffect: "Adds impact before major rebuttals." },
+        { id: "shop_skill_monokuma_warranty", name: "Monokuma Warranty", cost: 1, teaserEffect: "Survive one terrible bargain (maybe)." },
+        { id: "shop_skill_protagonist_hair_flip", name: "Protagonist Hair Flip", cost: 1, teaserEffect: "Temporarily boosts confidence in tense scenes." },
+    ];
+
+
     function loadInventoryState() {
         const ext = extension_settings[extensionName];
         ext.inventory ||= {};
@@ -428,9 +436,17 @@ export function createItemsPanelController({ extensionName, extension_settings, 
 
         const monocoins = Number(extension_settings[extensionName].inventory?.monocoins || 0);
         const trustFragments = Number(extension_settings[extensionName].inventory?.trustFragments || 0);
+        const showSkillShop = activeItemsFilter === "skill";
+
         $("#items-monocoin-value").text(monocoins.toLocaleString());
         $("#items-trust-fragment-value").text(trustFragments.toLocaleString());
         ensureMonoMonoDebugUI();
+        bindSkillShopButton();
+
+        const $skillShopRow = $panel.find("#items-skill-shop-row");
+        if ($skillShopRow.length) {
+            $skillShopRow.prop("hidden", !showSkillShop);
+        }
 
         $panel.find(".items-filter-button").each((_, el) => {
             const isActive = el.dataset.filter === activeItemsFilter;
@@ -451,6 +467,52 @@ export function createItemsPanelController({ extensionName, extension_settings, 
 
     function setSort(sort = "recent") {
         activeItemsSort = sort;
+    }
+
+
+    function getSkillShopListings() {
+        return placeholderSkillShopCatalog.map(skill => ({
+            ...skill,
+            available: false,
+            futureEffectHook: skill.teaserEffect,
+        }));
+    }
+
+    function renderSkillShopDetails() {
+        const $detail = $("#items-detail-panel");
+        if (!$detail.length) return;
+
+        const skillRows = getSkillShopListings()
+            .map(skill => `
+                <div class="items-shop-entry" data-shop-skill-id="${skill.id}">
+                    <div class="items-shop-entry-main">
+                        <div class="items-shop-entry-name">${skill.name.toUpperCase()}</div>
+                        <div class="items-shop-entry-effect">EFFECT: ${skill.futureEffectHook.toUpperCase()}</div>
+                    </div>
+                    <div class="items-shop-entry-meta">
+                        <div class="items-shop-entry-cost">◈ x${skill.cost} TRUST FRAGMENT</div>
+                        <button class="items-shop-entry-buy" type="button" disabled>SOON</button>
+                    </div>
+                </div>
+            `)
+            .join("");
+
+        $detail.html(`
+            <div class="items-panel-title">SKILL SHOP</div>
+            <div class="items-shop-placeholder-title">TRUST FRAGMENT EXCHANGE</div>
+            <div class="items-shop-placeholder-copy">SELECTED SKILLS ARE PLACEHOLDERS FOR NOW. EACH ONE COSTS 1 TRUST FRAGMENT AND WILL RECEIVE LIVE EFFECTS LATER.</div>
+            <div class="items-shop-list">${skillRows}</div>
+        `);
+    }
+
+    function bindSkillShopButton() {
+        const $button = $("#items-skill-shop-button");
+        if (!$button.length) return;
+
+        $button.off("click").on("click", () => {
+            playSfx(getSfx().click);
+            renderSkillShopDetails();
+        });
     }
 
     function bindWindowApi() {
