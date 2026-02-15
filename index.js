@@ -212,7 +212,9 @@ verdict: <GOOD|NEUTRAL|BAD>
 Rules:
 - No roleplay continuation.
 - Do not mention this instruction.
+- Avoid em-dashes.
 - Keep reaction concise and emotionally clear.
+- Include really short dialogue only when appropriate (1 to 4 words, in quotes).
 - Judge fit between gift and character profile.
 
 CHARACTER:
@@ -229,12 +231,16 @@ intended_effect: ${gift.effect || "unknown"}
 `.trim();
 
     try {
-        const result = await generateIsolated(prompt);
+        const result = await generateIsolated(prompt, { allowDialogue: true });
         const reactionMatch = result.match(/^reaction:\s*(.+)$/im);
         const verdictMatch = result.match(/^verdict:\s*(.+)$/im);
 
+        const reaction = (reactionMatch?.[1] || `${characterName} studies the gift with a hard-to-read expression.`)
+            .replace(/[—–]/g, ",")
+            .trim();
+
         return {
-            reaction: (reactionMatch?.[1] || `${characterName} studies the gift with a hard-to-read expression.`).trim(),
+            reaction,
             verdict: normalizeGiftVerdict(verdictMatch?.[1] || "NEUTRAL"),
         };
     } catch (err) {
@@ -316,7 +322,7 @@ async function tryResolvePendingGiftForMessage(msgEl, rawText) {
     pendingGiftResolutionInFlight = false;
 }
 
-async function generateIsolated(prompt) {
+async function generateIsolated(prompt, { allowDialogue = false } = {}) {
     if (!window.SillyTavern?.getContext) {
         throw new Error("SillyTavern context unavailable");
     }
@@ -329,7 +335,7 @@ async function generateIsolated(prompt) {
     const fullPrompt = `
 You are an analysis engine.
 You do NOT roleplay.
-You do NOT write dialogue.
+${allowDialogue ? "You may include extremely short quoted dialogue only when explicitly requested." : "You do NOT write dialogue."}
 You ONLY output structured analytical reports.
 
 ${prompt}
