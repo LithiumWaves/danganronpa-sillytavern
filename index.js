@@ -242,6 +242,7 @@ Rules:
 - Avoid em-dashes.
 - Keep reaction concise and emotionally clear.
 - Include really short dialogue only when appropriate (1 to 4 words, in quotes).
+- Do not use markdown formatting or asterisks.
 - Judge fit between gift and character profile.
 
 CHARACTER:
@@ -264,6 +265,7 @@ intended_effect: ${gift.effect || "unknown"}
 
         const reaction = (reactionMatch?.[1] || `${characterName} studies the gift with a hard-to-read expression.`)
             .replace(/[—–]/g, ",")
+            .replace(/\*/g, "")
             .trim();
 
         return {
@@ -366,7 +368,6 @@ async function tryResolvePendingGiftForMessage(msgEl, rawText) {
     processedGiftMessageSignatures.add(signature);
 
     const gift = pendingGiftDelivery;
-    pendingGiftDelivery = null;
 
     const characterSource = getCharacterSourceText(characterName);
     const reactionData = await generateGiftReactionExcerpt({
@@ -374,6 +375,8 @@ async function tryResolvePendingGiftForMessage(msgEl, rawText) {
         characterName,
         characterSource,
     });
+
+    pendingGiftDelivery = null;
 
     const judgement = {
         verdict: reactionData.verdict,
