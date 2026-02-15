@@ -685,7 +685,8 @@ function ensureDebugControlsStyleTag() {
 }
 @media (max-width: 700px) {
     #trust-debug-controls {
-        bottom: calc(74px + env(safe-area-inset-bottom, 0px)) !important;
+        top: calc(74px + env(safe-area-inset-top, 0px)) !important;
+        bottom: auto !important;
         flex-direction: row !important;
     }
 }
@@ -741,11 +742,12 @@ function applyDebugControlsInlineLayout(controls) {
     controls.style.setProperty("opacity", "1", "important");
     controls.style.setProperty("right", "10px", "important");
     controls.style.setProperty("left", "auto", "important");
-    controls.style.setProperty("top", "auto", "important");
-    controls.style.setProperty("bottom", isMobile ? "calc(env(safe-area-inset-bottom, 0px) + 74px)" : "14px", "important");
+    controls.style.setProperty("top", isMobile ? "calc(env(safe-area-inset-top, 0px) + 74px)" : "auto", "important");
+    controls.style.setProperty("bottom", isMobile ? "auto" : "14px", "important");
     controls.style.setProperty("flex-direction", isMobile ? "row" : "column", "important");
     controls.style.setProperty("gap", isMobile ? "8px" : "6px", "important");
     controls.style.setProperty("align-items", "stretch", "important");
+    controls.style.setProperty("visibility", "visible", "important");
 
     controls.querySelectorAll("button").forEach(button => {
         button.style.setProperty("display", "inline-flex", "important");
@@ -763,6 +765,33 @@ function applyDebugControlsInlineLayout(controls) {
         button.style.setProperty("letter-spacing", "0.06em", "important");
         button.style.setProperty("visibility", "visible", "important");
     });
+}
+
+function applyTruthDebugModalInlineLayout(modal) {
+    if (!modal) return;
+
+    const isMobile = window.matchMedia?.("(max-width: 700px)")?.matches;
+    const topInset = "env(safe-area-inset-top, 0px)";
+    const bottomInset = "env(safe-area-inset-bottom, 0px)";
+
+    modal.style.setProperty("position", "fixed", "important");
+    modal.style.setProperty("inset", "0", "important");
+    modal.style.setProperty("z-index", "2147483646", "important");
+    modal.style.setProperty("display", "flex", "important");
+    modal.style.setProperty("align-items", isMobile ? "flex-start" : "center", "important");
+    modal.style.setProperty("justify-content", "center", "important");
+    modal.style.setProperty("padding-top", isMobile ? `calc(${topInset} + 12px)` : "16px", "important");
+    modal.style.setProperty("padding-bottom", isMobile ? `calc(${bottomInset} + 12px)` : "16px", "important");
+    modal.style.setProperty("padding-left", "12px", "important");
+    modal.style.setProperty("padding-right", "12px", "important");
+
+    const card = modal.querySelector('.truth-debug-card');
+    if (!card) return;
+
+    card.style.setProperty("max-height", isMobile ? `calc(100vh - ${topInset} - ${bottomInset} - 24px)` : "min(86vh, 640px)", "important");
+    card.style.setProperty("overflow-y", "auto", "important");
+    card.style.setProperty("margin-top", isMobile ? "0" : "0", "important");
+    card.style.setProperty("width", isMobile ? "min(96vw, 430px)" : "min(420px, 96vw)", "important");
 }
 
 function ensureGlobalDebugUi() {
@@ -813,6 +842,7 @@ function ensureGlobalDebugUi() {
     }
 
     applyDebugControlsInlineLayout(controls);
+    applyTruthDebugModalInlineLayout(modal);
 }
 
 // =========================
