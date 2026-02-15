@@ -222,6 +222,11 @@
                     <span class="settings-label">TRUTH BULLETS</span>
                     <button class="settings-toggle on" data-setting="truthBulletAnimations"></button>
                 </div>
+
+                <div class="settings-item">
+                    <span class="settings-label">MONOMONO BGM</span>
+                    <button class="settings-toggle on" data-setting="monochineTrackEnabled"></button>
+                </div>
             </section>
 
             <!-- DISPLAY -->
@@ -316,48 +321,66 @@
 
 <!-- Monopad UI Sounds -->
 <audio id="monopad_sfx_open" preload="auto">
-    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx_open.mp3" type="audio/mpeg">
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/ui/sfx_open.mp3" type="audio/mpeg">
 </audio>
 
 <audio id="monopad_sfx_close" preload="auto">
-    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx_close.mp3" type="audio/mpeg">
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/ui/sfx_close.mp3" type="audio/mpeg">
 </audio>
 
 <audio id="monopad_sfx_click" preload="auto">
-    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx_click.mp3" type="audio/mpeg">
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/ui/sfx_click.mp3" type="audio/mpeg">
 </audio>
 
 <audio id="monopad_sfx_hover" preload="auto">
-    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx_hover.mp3" type="audio/mpeg">
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/ui/sfx_hover.mp3" type="audio/mpeg">
+</audio>
+
+
+<audio id="monopad_sfx_monocoin_insert" preload="auto">
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/monomono/monocoin_insert.mp3" type="audio/mpeg">
+</audio>
+
+<audio id="monopad_sfx_monochine_jingle" preload="auto">
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/monomono/monochine_jingle.mp3" type="audio/mpeg">
+</audio>
+
+<audio id="monopad_sfx_monochine_turn" preload="auto">
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/monomono/monochine_turn.mp3" type="audio/mpeg">
+</audio>
+
+
+<audio id="monopad_sfx_monochine_track" preload="auto" loop>
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/monomono/monochine_track.mp3" type="audio/mpeg">
 </audio>
 
 <audio id="bullet_sfx_get" preload="auto">
-    <source src="scripts/extensions/third-party/danganronpa-extension/assets/bullet_sfx_get.mp3" type="audio/mpeg">
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/truth/bullet_sfx_get.mp3" type="audio/mpeg">
 </audio>
 
 <audio id="bullet_sfx_get_alt" preload="auto">
-    <source src="scripts/extensions/third-party/danganronpa-extension/assets/bullet_sfx_get_alt.mp3" type="audio/mpeg">
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/truth/bullet_sfx_get_alt.mp3" type="audio/mpeg">
 </audio>
 
 <!-- Social Link Sounds -->
 <audio id="trust_sfx_up" preload="auto">
-    <source src="scripts/extensions/third-party/danganronpa-extension/assets/trust_sfx_up.mp3" type="audio/mpeg">
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/trust/trust_sfx_up.mp3" type="audio/mpeg">
 </audio>
 
 <audio id="trust_sfx_max" preload="auto">
-    <source src="scripts/extensions/third-party/danganronpa-extension/assets/trust_sfx_max.mp3" type="audio/mpeg">
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/trust/trust_sfx_max.mp3" type="audio/mpeg">
 </audio>
 
 <audio id="trust_sfx_down" preload="auto">
-    <source src="scripts/extensions/third-party/danganronpa-extension/assets/trust_sfx_down.mp3" type="audio/mpeg">
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/trust/trust_sfx_down.mp3" type="audio/mpeg">
 </audio>
 
 <audio id="trust_sfx_shatter" preload="auto">
-    <source src="scripts/extensions/third-party/danganronpa-extension/assets/trust_sfx_shatter.mp3" type="audio/mpeg">
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/trust/trust_sfx_shatter.mp3" type="audio/mpeg">
 </audio>
 
 <audio id="distrust_sfx_recover" preload="auto">
-    <source src="scripts/extensions/third-party/danganronpa-extension/assets/distrust_sfx_recover.mp3" type="audio/mpeg">
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/trust/distrust_sfx_recover.mp3" type="audio/mpeg">
 </audio>
 
 
@@ -369,7 +392,7 @@
 >
 
 <audio id="sfx_monokuma_sad" preload="auto">
-    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx_monokuma_sad.mp3" type="audio/mpeg">
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/monokuma/sfx_monokuma_sad.mp3" type="audio/mpeg">
 </audio>
 
 
@@ -381,7 +404,7 @@
 >
 
 <audio id="monopad_sfx_monokuma" preload="auto">
-    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx_monokuma_annoyed.mp3" type="audio/mpeg">
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/monokuma/sfx_monokuma_annoyed.mp3" type="audio/mpeg">
 </audio>
 
 <div id="truth-obtained-overlay">

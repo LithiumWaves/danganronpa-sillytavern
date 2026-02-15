@@ -5,6 +5,7 @@ export const defaultSettings = {
     monopadSounds: true,
     trustCeremonies: true,
     truthBulletAnimations: true,
+    monochineTrackEnabled: true,
     crtEffects: true,
     crtIntensity: 35,
     bootAnimations: true,

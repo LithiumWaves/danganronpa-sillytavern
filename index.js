@@ -1279,6 +1279,10 @@ jQuery(async () => {
         close: document.getElementById("monopad_sfx_close"),
         click: document.getElementById("monopad_sfx_click"),
         hover: document.getElementById("monopad_sfx_hover"),
+        monocoin_insert: document.getElementById("monopad_sfx_monocoin_insert"),
+        monochine_jingle: document.getElementById("monopad_sfx_monochine_jingle"),
+        monochine_turn: document.getElementById("monopad_sfx_monochine_turn"),
+        monochine_track: document.getElementById("monopad_sfx_monochine_track"),
         monokuma: document.getElementById("monopad_sfx_monokuma"),
         monokumasad: document.getElementById("sfx_monokuma_sad"),
         bullet_get: document.getElementById("bullet_sfx_get"),
@@ -1332,6 +1336,10 @@ jQuery(async () => {
 
         mapPanelController = createMapPanelController({
             extensionFolderPath,
+            getItemsPanelController: () => itemsPanelController,
+            playSfx,
+            getSfx: () => sfx,
+            getSetting: getMonopadSetting,
         });
         mapPanelController.renderMapPanel();
 
@@ -1500,6 +1508,7 @@ $(".monopad-icon").on("mouseenter", function () {
             const next = !getMonopadSetting(key);
             setMonopadSetting(key, next);
             applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
         });
 
         $("#dangan_crt_slider").on("input", e => {
@@ -1511,6 +1520,7 @@ $(".monopad-icon").on("mouseenter", function () {
         $("#dangan_generation_provider").on("change", function () {
             setMonopadSetting("generationProvider", this.value || defaultSettings.generationProvider);
             applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
         });
 
         $("#dangan_openrouter_model").on("change blur", function () {
@@ -1523,18 +1533,21 @@ $(".monopad-icon").on("mouseenter", function () {
             setRuntimeOpenRouterApiKey(this.value);
             persistOpenRouterApiKeyIfAllowed();
             applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
         });
 
         $("#dangan_openrouter_remember_key").on("change", function () {
             setMonopadSetting("openrouterRememberApiKey", this.checked);
             persistOpenRouterApiKeyIfAllowed();
             applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
         });
 
         $("#dangan_openrouter_key_clear").on("click", function () {
             setRuntimeOpenRouterApiKey("");
             persistOpenRouterApiKeyIfAllowed();
             applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
         });
 
         $("#dangan_openrouter_test_connection").on("click", async function () {
