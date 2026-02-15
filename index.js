@@ -767,6 +767,33 @@ function applyDebugControlsInlineLayout(controls) {
     });
 }
 
+function applyTruthDebugModalInlineLayout(modal) {
+    if (!modal) return;
+
+    const isMobile = window.matchMedia?.("(max-width: 700px)")?.matches;
+    const topInset = "env(safe-area-inset-top, 0px)";
+    const bottomInset = "env(safe-area-inset-bottom, 0px)";
+
+    modal.style.setProperty("position", "fixed", "important");
+    modal.style.setProperty("inset", "0", "important");
+    modal.style.setProperty("z-index", "2147483646", "important");
+    modal.style.setProperty("display", "flex", "important");
+    modal.style.setProperty("align-items", isMobile ? "flex-start" : "center", "important");
+    modal.style.setProperty("justify-content", "center", "important");
+    modal.style.setProperty("padding-top", isMobile ? `calc(${topInset} + 12px)` : "16px", "important");
+    modal.style.setProperty("padding-bottom", isMobile ? `calc(${bottomInset} + 12px)` : "16px", "important");
+    modal.style.setProperty("padding-left", "12px", "important");
+    modal.style.setProperty("padding-right", "12px", "important");
+
+    const card = modal.querySelector('.truth-debug-card');
+    if (!card) return;
+
+    card.style.setProperty("max-height", isMobile ? `calc(100vh - ${topInset} - ${bottomInset} - 24px)` : "min(86vh, 640px)", "important");
+    card.style.setProperty("overflow-y", "auto", "important");
+    card.style.setProperty("margin-top", isMobile ? "0" : "0", "important");
+    card.style.setProperty("width", isMobile ? "min(96vw, 430px)" : "min(420px, 96vw)", "important");
+}
+
 function ensureGlobalDebugUi() {
     const legacyHud = document.getElementById("dangan-debug-hud-host");
     if (legacyHud) legacyHud.remove();
@@ -815,6 +842,7 @@ function ensureGlobalDebugUi() {
     }
 
     applyDebugControlsInlineLayout(controls);
+    applyTruthDebugModalInlineLayout(modal);
 }
 
 // =========================
