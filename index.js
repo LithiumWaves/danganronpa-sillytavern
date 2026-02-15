@@ -97,6 +97,25 @@ function awardMonocoins(amount = 0, reason = "") {
     }
 }
 
+
+function awardTrustFragments(amount = 0, reason = "") {
+    const reward = Math.max(0, Number(amount || 0));
+    if (!reward) return;
+
+    const ext = extension_settings[extensionName];
+    ext.inventory ||= {};
+
+    const current = Number(ext.inventory.trustFragments || 0);
+    ext.inventory.trustFragments = Math.max(0, current + reward);
+
+    saveSettingsDebounced();
+    itemsPanelController?.renderSkillsItemsPanel();
+
+    if (reason) {
+        console.log(`[${extensionName}] Awarded ${reward} Trust Fragments (${reason}).`);
+    }
+}
+
 function increaseTrustWithRewards(char) {
     if (!char) return;
 
@@ -107,6 +126,7 @@ function increaseTrustWithRewards(char) {
     if (current <= previous) return;
 
     awardMonocoins(MONOCOIN_REWARDS.socialRankUp, "social rank-up");
+    awardTrustFragments(1, "social rank-up");
 
     if (previous < 10 && current === 10) {
         awardMonocoins(MONOCOIN_REWARDS.trustMaxed, "trust maxed");

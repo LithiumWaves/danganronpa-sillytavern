@@ -71,6 +71,7 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         const ext = extension_settings[extensionName];
         ext.inventory ||= {};
         ext.inventory.monocoins ??= 0;
+        ext.inventory.trustFragments ??= 0;
         ext.inventory.gifts ||= {};
         ext.inventory.skills ||= {};
         ext.inventory.keyItems ||= {};
@@ -426,7 +427,9 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         if (!$panel.length) return;
 
         const monocoins = Number(extension_settings[extensionName].inventory?.monocoins || 0);
+        const trustFragments = Number(extension_settings[extensionName].inventory?.trustFragments || 0);
         $("#items-monocoin-value").text(monocoins.toLocaleString());
+        $("#items-trust-fragment-value").text(trustFragments.toLocaleString());
         ensureMonoMonoDebugUI();
 
         $panel.find(".items-filter-button").each((_, el) => {
@@ -467,6 +470,12 @@ export function createItemsPanelController({ extensionName, extension_settings, 
             setMonocoins(value = 0) {
                 loadInventoryState();
                 extension_settings[extensionName].inventory.monocoins = Math.max(0, Number(value || 0));
+                saveSettingsDebounced();
+                renderSkillsItemsPanel();
+            },
+            setTrustFragments(value = 0) {
+                loadInventoryState();
+                extension_settings[extensionName].inventory.trustFragments = Math.max(0, Number(value || 0));
                 saveSettingsDebounced();
                 renderSkillsItemsPanel();
             }

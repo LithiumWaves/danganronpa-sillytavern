@@ -1569,6 +1569,10 @@
     color: #fff2f6;
 }
 
+.items-fragment-box {
+    margin-top: 8px;
+}
+
 .items-machine-debug {
     margin: 0 12px 12px;
     border: 1px dashed rgba(255, 182, 201, 0.32);
