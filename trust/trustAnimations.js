@@ -5,6 +5,11 @@ let unlockAudio;
 let playSfx;
 let getSetting;
 
+const SOCIAL_ANIMATION_SPEED = {
+    overlayOut: 300,
+    step: 220
+};
+
 function initTrustAnimations(deps) {
     sfx = deps.sfx;
     unlockAudio = deps.unlockAudio;
@@ -49,18 +54,56 @@ function ensureCenteredSocialOverlay(overlay) {
     core.style.setProperty("max-width", isMobile ? "94vw" : "min(460px, 96vw)", "important");
 }
 
-function waitForSfx(audio) {
-    return new Promise(resolve => {
-        //  If it's not an audio element, don't wait
-        if (!(audio instanceof HTMLAudioElement)) {
-            resolve();
-            return;
-        }
+function setupSocialCeremony({ distrust = false } = {}) {
+    if (!trustCeremoniesEnabled()) return null;
+    unlockAudio();
 
-        audio.onended = () => resolve();
+    const overlay = document.getElementById("trust-rankup-overlay");
+    const svg = document.getElementById("trust-decagram");
+    const banner = overlay?.querySelector(".trust-banner");
+
+    if (!overlay || !svg || !banner) return null;
+
+    ensureCenteredSocialOverlay(overlay);
+
+    overlay.classList.remove("social-add", "social-remove", "social-surge");
+    overlay.classList.toggle("distrust", distrust);
+    overlay.classList.add("show");
+
+    banner.classList.remove("show");
+
+    if (distrust) {
+        svg.dataset.mode = "distrust";
+    } else {
+        delete svg.dataset.mode;
+    }
+
+    return { overlay, svg, banner };
+}
+
+function playShardPulse(svg, index, variant) {
+    const shard = svg.querySelector(`path[data-index="${index}"]`);
+    if (!shard) return;
+
+    shard.classList.remove("social-shard-add", "social-shard-remove");
+    void shard.offsetWidth;
+    shard.classList.add(variant === "add" ? "social-shard-add" : "social-shard-remove");
+}
+
+function runSocialTimeline(steps) {
+    let elapsed = 0;
+    steps.forEach(({ at = 0, action }) => {
+        const delay = Math.max(0, at + elapsed);
+        setTimeout(action, delay);
     });
 }
 
+function autoDismiss(overlay, banner, delay) {
+    setTimeout(() => {
+        overlay.classList.remove("show", "distrust", "social-add", "social-remove", "social-surge");
+        banner.classList.remove("show");
+    }, delay);
+}
 
 export {
     initTrustAnimations,
@@ -73,255 +116,178 @@ export {
 };
 
 function playTrustRankUp(previous, current) {
-    if (!trustCeremoniesEnabled()) return;
-    unlockAudio();
-    const overlay = document.getElementById("trust-rankup-overlay");
-    const svg = document.getElementById("trust-decagram");
-    const banner = document.getElementById("trust-rankup-banner");
+    const scene = setupSocialCeremony();
+    if (!scene) return;
 
-    if (!overlay || !svg || !banner) return;
-    ensureCenteredSocialOverlay(overlay);
-
-    overlay.classList.add("show");
-    banner.classList.remove("show");
-
+    const { overlay, svg, banner } = scene;
+    overlay.classList.add("social-add");
     banner.textContent = "TRUST INCREASED!";
 
     buildDecagram(svg, previous);
-
-    // SFX here
     playSfx(sfx.trust_up);
 
-    setTimeout(() => {
-        buildDecagram(svg, current);
-        banner.classList.add("show");
-    }, 600);
+    runSocialTimeline([
+        {
+            at: SOCIAL_ANIMATION_SPEED.step,
+            action: () => {
+                buildDecagram(svg, current);
+                playShardPulse(svg, current - 1, "add");
+            }
+        },
+        {
+            at: SOCIAL_ANIMATION_SPEED.step + 180,
+            action: () => banner.classList.add("show")
+        }
+    ]);
 
-    setTimeout(() => {
-        overlay.classList.remove("show");
-        banner.classList.remove("show");
-    }, 2000);
+    autoDismiss(overlay, banner, 1700);
 }
 
 function playTrustRankDown(previous, current) {
-    if (!trustCeremoniesEnabled()) return;
-    unlockAudio();
+    const scene = setupSocialCeremony();
+    if (!scene) return;
 
-    const overlay = document.getElementById("trust-rankup-overlay");
-    const svg = document.getElementById("trust-decagram");
-    const banner = overlay?.querySelector(".trust-banner");
-
-    if (!overlay || !svg || !banner) return;
-    ensureCenteredSocialOverlay(overlay);
-
-    overlay.classList.add("show");
-    banner.classList.remove("show");
+    const { overlay, svg, banner } = scene;
+    overlay.classList.add("social-remove");
     banner.textContent = "TRUST DECREASED...";
 
-    // Draw full previous state
     buildDecagram(svg, previous);
-
     playSfx(sfx.trust_down || sfx.monokumasad);
 
-    // :boom: Shatter the last filled shard
-    setTimeout(() => {
-        shatterShard(svg, previous - 1);
-    }, 120);
+    runSocialTimeline([
+        {
+            at: 140,
+            action: () => {
+                const target = Math.max(0, previous - 1);
+                playShardPulse(svg, target, "remove");
+                shatterShard(svg, target);
+            }
+        },
+        {
+            at: 360,
+            action: () => {
+                buildDecagram(svg, current);
+                banner.classList.add("show");
+            }
+        }
+    ]);
 
-    // Redraw reduced state
-    setTimeout(() => {
-        buildDecagram(svg, current);
-        banner.classList.add("show");
-    }, 300);
-
-    // Exit fast
-    setTimeout(() => {
-        overlay.classList.remove("show");
-        banner.classList.remove("show");
-    }, 900);
+    autoDismiss(overlay, banner, 1300);
 }
 
 function playDistrustRankDown(previous, current) {
-    if (!trustCeremoniesEnabled()) return;
-    unlockAudio();
+    const scene = setupSocialCeremony({ distrust: true });
+    if (!scene) return;
 
-    const overlay = document.getElementById("trust-rankup-overlay");
-    const svg = document.getElementById("trust-decagram");
-    const banner = overlay?.querySelector(".trust-banner");
-
-    if (!overlay || !svg || !banner) return;
-    ensureCenteredSocialOverlay(overlay);
-
-    svg.dataset.mode = "distrust";
-
-    overlay.classList.add("show", "distrust");
-    banner.classList.remove("show");
-
+    const { overlay, svg, banner } = scene;
+    overlay.classList.add("social-add");
     banner.textContent = "DISTRUST INCREASED…";
 
-    // Draw previous state (less red)
     buildDecagram(svg, previous);
-
     playSfx(sfx.trust_down || sfx.monokumasad);
 
-    // 💥 Shatter one shard OUTWARD (right → left logic)
-    const shatteredIndex = 10 - Math.abs(current);
+    const newAbs = Math.abs(current);
+    const targetIndex = 10 - newAbs;
 
-    setTimeout(() => {
-        shatterShard(svg, shatteredIndex);
-    }, 120);
+    runSocialTimeline([
+        {
+            at: 140,
+            action: () => {
+                buildDecagram(svg, current);
+                playShardPulse(svg, targetIndex, "add");
+            }
+        },
+        {
+            at: 340,
+            action: () => banner.classList.add("show")
+        }
+    ]);
 
-    // Draw new darker state
-    setTimeout(() => {
-        buildDecagram(svg, current);
-        banner.classList.add("show");
-    }, 300);
-
-    // Exit quickly
-    setTimeout(() => {
-        overlay.classList.remove("show", "distrust");
-        banner.classList.remove("show");
-        delete svg.dataset.mode;
-    }, 900);
+    autoDismiss(overlay, banner, 1300);
 }
 
 function playDistrustRankUp(previous, current) {
-    if (!trustCeremoniesEnabled()) return;
-    unlockAudio();
+    const scene = setupSocialCeremony({ distrust: true });
+    if (!scene) return;
 
-    const overlay = document.getElementById("trust-rankup-overlay");
-    const svg = document.getElementById("trust-decagram");
-    const banner = overlay?.querySelector(".trust-banner");
-
-    if (!overlay || !svg || !banner) return;
-    ensureCenteredSocialOverlay(overlay);
-
-    svg.dataset.mode = "distrust";
-
-    overlay.classList.add("show", "distrust");
-    banner.classList.remove("show");
-
+    const { overlay, svg, banner } = scene;
+    overlay.classList.add("social-remove");
     banner.textContent = "DISTRUST WEAKENING…";
 
-    // Draw heavier distrust first
     buildDecagram(svg, previous);
 
-    // 🔇 Softer recovery SFX
     if (sfx.distrust_recover) {
-        sfx.trust_up.volume = 0.35;
+        sfx.distrust_recover.volume = 0.35;
         playSfx(sfx.distrust_recover);
     }
 
-    // Which shard reforms? (right → left logic)
-    const reformedIndex = 10 - Math.abs(previous);
+    const targetIndex = 10 - Math.abs(previous);
 
-    // 🩸 Crack before reform
-    setTimeout(() => {
-        crackShard(svg, reformedIndex);
-    }, 120);
+    runSocialTimeline([
+        {
+            at: 120,
+            action: () => {
+                crackShard(svg, targetIndex);
+                playShardPulse(svg, targetIndex, "remove");
+            }
+        },
+        {
+            at: 350,
+            action: () => {
+                buildDecagram(svg, current);
+                banner.classList.add("show");
+            }
+        }
+    ]);
 
-    // 🧬 Rebuild with less red
-    setTimeout(() => {
-        buildDecagram(svg, current);
-        banner.classList.add("show");
-    }, 320);
-
-    // Exit
-    setTimeout(() => {
-        overlay.classList.remove("show", "distrust");
-        banner.classList.remove("show");
-        delete svg.dataset.mode;
-    }, 1000);
+    autoDismiss(overlay, banner, 1400);
 }
 
 function playDistrustToTrustRecovery() {
-    if (!trustCeremoniesEnabled()) return;
-    unlockAudio();
+    const scene = setupSocialCeremony({ distrust: true });
+    if (!scene) return;
 
-    const overlay = document.getElementById("trust-rankup-overlay");
-    const svg = document.getElementById("trust-decagram");
-    const banner = overlay?.querySelector(".trust-banner");
-
-    if (!overlay || !svg || !banner) return;
-    ensureCenteredSocialOverlay(overlay);
-
-    // Start fully in distrust
-    svg.dataset.mode = "distrust";
+    const { overlay, svg, banner } = scene;
+    overlay.classList.add("social-surge");
     delete svg.dataset.gold;
 
-    overlay.classList.add("show");
-    banner.classList.remove("show");
     banner.textContent = "";
-
-    // 1️⃣ Draw Distrust Rank -1 (single red shard)
     buildDecagram(svg, -1);
 
-    // 🔇 Low, hopeful sound (reuse trust_up softly)
     if (sfx.trust_up) {
         sfx.trust_up.volume = 0.4;
         playSfx(sfx.trust_up);
     }
 
-    const shards = [...svg.querySelectorAll("path")];
-    const lastRed = shards.find(p =>
-        p.getAttribute("fill")?.includes("trustRedGradient")
-    );
-
-    // 2️⃣ Last red shard fades away
-    setTimeout(() => {
-        if (lastRed) {
-            lastRed.style.transition = "opacity 0.6s ease";
-            lastRed.style.opacity = "0";
-        }
-    }, 400);
-
-    // 3️⃣ Crimson decagram pulse
-    setTimeout(() => {
-        svg.classList.add("purify-pulse");
-    }, 900);
-
-    // 4️⃣ White purification wave
-    setTimeout(() => {
-        const wave = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        wave.setAttribute("cx", "100");
-        wave.setAttribute("cy", "100");
-        wave.setAttribute("r", "0");
-        wave.setAttribute("fill", "none");
-        wave.setAttribute("stroke", "white");
-        wave.setAttribute("stroke-width", "3");
-        wave.setAttribute("opacity", "0.9");
-
-        svg.appendChild(wave);
-
-        wave.animate(
-            [
-                { r: 0, opacity: 0.9 },
-                { r: 140, opacity: 0 }
-            ],
-            {
-                duration: 900,
-                easing: "ease-out",
-                fill: "forwards"
+    runSocialTimeline([
+        {
+            at: 380,
+            action: () => playShardPulse(svg, 9, "remove")
+        },
+        {
+            at: 900,
+            action: () => svg.classList.add("purify-pulse")
+        },
+        {
+            at: 1450,
+            action: () => {
+                svg.classList.remove("purify-pulse");
+                delete svg.dataset.mode;
+                buildDecagram(svg, 1);
+                playShardPulse(svg, 0, "add");
             }
-        );
-    }, 1300);
+        },
+        {
+            at: 1680,
+            action: () => {
+                banner.textContent = "TRUST REGAINED!";
+                banner.classList.add("show");
+            }
+        }
+    ]);
 
-    // 5️⃣ Purify back to Trust Rank 1
-    setTimeout(() => {
-        svg.classList.remove("purify-pulse");
-        delete svg.dataset.mode;
-        buildDecagram(svg, 1);
-    }, 1900);
-
-    // 6️⃣ Banner reveal
-    setTimeout(() => {
-        banner.textContent = "TRUST REGAINED!";
-        banner.classList.add("show");
-    }, 2100);
-
-    // 🛑 Linger until click
     const dismissOverlay = () => {
-        overlay.classList.remove("show");
+        overlay.classList.remove("show", "distrust", "social-surge");
         banner.classList.remove("show");
         document.removeEventListener("click", dismissOverlay);
     };
@@ -332,63 +298,46 @@ function playDistrustToTrustRecovery() {
 }
 
 export async function playTrustToDistrustTransition() {
-    if (!trustCeremoniesEnabled()) return;
-    unlockAudio();
+    const scene = setupSocialCeremony({ distrust: true });
+    if (!scene) return;
 
-    const overlay = document.getElementById("trust-rankup-overlay");
-    const svg = document.getElementById("trust-decagram");
-    const banner = overlay?.querySelector(".trust-banner");
-
-    if (!overlay || !svg || !banner) return;
-    ensureCenteredSocialOverlay(overlay);
-
-    overlay.classList.add("show", "distrust");
-    banner.classList.remove("show");
+    const { overlay, svg, banner } = scene;
+    overlay.classList.add("social-remove");
     banner.textContent = "DISTRUST INCREASED...";
 
-    // 1️⃣ Draw Trust Rank 1
     buildDecagram(svg, 1);
 
-    // 🔊 Play sound (DO NOT await)
     if (sfx.trust_shatter) {
         playSfx(sfx.trust_shatter);
     }
 
-    const shards = [...svg.querySelectorAll("path")];
-    const lastShard = shards.find(p => p.dataset.index === "0");
+    runSocialTimeline([
+        {
+            at: 260,
+            action: () => playShardPulse(svg, 0, "remove")
+        },
+        {
+            at: 640,
+            action: () => svg.classList.add("spin-up")
+        },
+        {
+            at: 1050,
+            action: () => [...svg.querySelectorAll("path")].forEach((_, i) => shatterShard(svg, i))
+        },
+        {
+            at: 1520,
+            action: () => {
+                svg.classList.remove("spin-up");
+                svg.dataset.mode = "distrust";
+                buildDecagram(svg, -1);
+                playShardPulse(svg, 9, "add");
+                banner.classList.add("show");
+            }
+        }
+    ]);
 
-    // 2️⃣ Last shard falls
-    setTimeout(() => {
-        lastShard?.classList.add("trust-fall");
-    }, 300);
-
-    // 3️⃣ Spin-up
-    setTimeout(() => {
-        svg.classList.add("spin-up");
-    }, 900);
-
-    // 4️⃣ Full shatter
-    setTimeout(() => {
-        shards.forEach((_, i) => shatterShard(svg, i));
-    }, 1400);
-
-    // 5️⃣ Rebuild as distrust
-    setTimeout(() => {
-        svg.classList.remove("spin-up");
-        svg.innerHTML = "";
-        svg.dataset.mode = "distrust";
-        buildDecagram(svg, 0);
-    }, 1900);
-
-    // 6️⃣ Red shard appears + banner
-    setTimeout(() => {
-        spawnDistrustShard(svg);
-        banner.classList.add("show");
-    }, 2300);
-
-    // 🛑 Click to dismiss
     const dismissOverlay = () => {
-        overlay.classList.remove("show", "distrust");
+        overlay.classList.remove("show", "distrust", "social-remove");
         banner.classList.remove("show");
 
         if (sfx.trust_shatter) {
@@ -400,112 +349,70 @@ export async function playTrustToDistrustTransition() {
     overlay.addEventListener("click", dismissOverlay, { once: true });
 }
 
-function spawnDistrustShard(svg) {
-    const shard = svg.querySelector(`path[data-index="9"]`);
-    if (!shard) return;
-
-    shard.style.transform = "scale(0)";
-    shard.style.opacity = "0";
-
-    shard.setAttribute("fill", "url(#trustRedGradient)");
-
-    requestAnimationFrame(() => {
-        shard.classList.add("distrust-crystal");
-        shard.style.transform = "scale(1)";
-        shard.style.opacity = "1";
-    });
-}
-
 function playTrustMaxed() {
-    if (!trustCeremoniesEnabled()) return;
-    unlockAudio();
+    const scene = setupSocialCeremony();
+    if (!scene) return;
 
-    const overlay = document.getElementById("trust-rankup-overlay");
-    const svg = document.getElementById("trust-decagram");
-    const banner = overlay?.querySelector(".trust-banner");
-
-    if (!overlay || !svg || !banner) return;
-    ensureCenteredSocialOverlay(overlay);
-
+    const { overlay, svg, banner } = scene;
+    overlay.classList.add("social-surge", "max");
     svg.dataset.gold = "false";
 
-    overlay.classList.add("show");
-    banner.classList.remove("show");
     banner.textContent = "";
-
-    // Draw 9 filled shards
     buildDecagram(svg, 9);
 
-    // 🎵 Play max trust song
     playSfx(sfx.trust_max);
 
-    // Pause for drama
-    setTimeout(() => {
-        const shards = svg.querySelectorAll("path");
-        const finalShard = shards[9];
-
-        if (finalShard) {
-            finalShard.classList.add("final-shard");
-            finalShard.setAttribute("fill", "url(#trustBlueGradient)");
-        }
-    }, 1200);
-
-    // Turn everything gold
-    setTimeout(() => {
-        // Switch to gold (still hidden by )
-svg.dataset.gold = "true";
-buildDecagram(svg, 10);
-
-const reveal = svg.querySelector("#goldRevealCircle");
-
-if (reveal) {
-    reveal.setAttribute("r", "0");
-
-    reveal.animate(
-        [
-            { r: 0 },
-            { r: 120 }
-        ],
+    runSocialTimeline([
         {
-            duration: 1400,
-            easing: "ease-out",
-            fill: "forwards"
+            at: 900,
+            action: () => {
+                buildDecagram(svg, 10);
+                playShardPulse(svg, 9, "add");
+            }
+        },
+        {
+            at: 1700,
+            action: () => {
+                svg.dataset.gold = "true";
+                buildDecagram(svg, 10);
+                const reveal = svg.querySelector("#goldRevealCircle");
+                reveal?.animate([{ r: 0 }, { r: 120 }], {
+                    duration: 1200,
+                    easing: "cubic-bezier(0.2, 0.9, 0.2, 1)",
+                    fill: "forwards"
+                });
+            }
+        },
+        {
+            at: 1950,
+            action: () => {
+                banner.textContent = "TRUST MAXED!";
+                banner.classList.add("show");
+            }
         }
-    );
-}
-    }, 2400);
+    ]);
 
-    // Banner reveal
+    const dismissOverlay = () => {
+        overlay.classList.remove("show", "social-surge", "max");
+        banner.classList.remove("show");
+
+        if (sfx.trust_max) {
+            const audio = sfx.trust_max;
+            const fade = setInterval(() => {
+                audio.volume = Math.max(0, audio.volume - 0.05);
+                if (audio.volume <= 0) {
+                    clearInterval(fade);
+                    audio.pause();
+                    audio.currentTime = 0;
+                    audio.volume = 0.5;
+                }
+            }, 30);
+        }
+
+        document.removeEventListener("click", dismissOverlay);
+    };
+
     setTimeout(() => {
-        banner.textContent = "TRUST MAXED!";
-        banner.classList.add("show");
-    }, 2600);
-
-// 🛑 Linger until user clicks (Rank 10 only)
-const dismissOverlay = () => {
-    overlay.classList.remove("show");
-    banner.classList.remove("show");
-
-    // 🔇 Stop max trust music immediately
-    if (sfx.trust_max) {
-    const audio = sfx.trust_max;
-    const fade = setInterval(() => {
-        audio.volume = Math.max(0, audio.volume - 0.05);
-        if (audio.volume <= 0) {
-            clearInterval(fade);
-            audio.pause();
-            audio.currentTime = 0;
-            audio.volume = 0.5; // reset default
-        }
-    }, 30);
-}
-
-    document.removeEventListener("click", dismissOverlay);
-};
-
-// Delay listener slightly so the same click that caused rank up doesn't dismiss it
-setTimeout(() => {
-    document.addEventListener("click", dismissOverlay, { once: true });
-}, 300);
-
+        document.addEventListener("click", dismissOverlay, { once: true });
+    }, 300);
 }

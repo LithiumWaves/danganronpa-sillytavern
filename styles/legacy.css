@@ -1014,6 +1014,69 @@
         0 0 14px rgba(150, 0, 0, 0.4);
 }
 
+
+#trust-rankup-overlay .trust-rankup-core {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 22px 24px;
+    border-radius: 18px;
+    background: radial-gradient(circle at 50% 15%, rgba(24, 48, 82, 0.22), rgba(5, 10, 18, 0.6));
+    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+}
+
+#trust-rankup-overlay.social-add .trust-rankup-core {
+    box-shadow: 0 18px 62px rgba(45, 106, 189, 0.28);
+}
+
+#trust-rankup-overlay.social-remove .trust-rankup-core {
+    box-shadow: 0 18px 62px rgba(166, 40, 40, 0.28);
+}
+
+#trust-rankup-overlay.social-surge .trust-rankup-core {
+    box-shadow: 0 20px 70px rgba(246, 184, 67, 0.3);
+}
+
+.decagram-shard {
+    transform-box: fill-box;
+    transform-origin: center;
+}
+
+.social-shard-add {
+    animation: socialShardAdd 0.52s cubic-bezier(0.2, 0.92, 0.2, 1);
+}
+
+.social-shard-remove {
+    animation: socialShardRemove 0.45s cubic-bezier(0.2, 0.8, 0.24, 1);
+}
+
+@keyframes socialShardAdd {
+    0% {
+        transform: scale(0.45);
+        filter: brightness(1.45) drop-shadow(0 0 12px rgba(120, 190, 255, 0.7));
+    }
+    70% {
+        transform: scale(1.08);
+    }
+    100% {
+        transform: scale(1);
+        filter: brightness(1);
+    }
+}
+
+@keyframes socialShardRemove {
+    0% {
+        transform: scale(1);
+        filter: brightness(1.25);
+    }
+    100% {
+        transform: scale(0.5) rotate(-10deg);
+        opacity: 0.12;
+        filter: brightness(0.9);
+    }
+}
+
 .decagram-shard.shatter {
     animation: distrust-shatter 0.45s ease-out forwards;
     filter: drop-shadow(0 0 6px rgba(255, 40, 40, 0.8));
