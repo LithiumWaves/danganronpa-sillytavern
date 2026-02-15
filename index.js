@@ -36,6 +36,7 @@ window.refreshActiveCharacterUI = function () {
 let activeSocialCharacterId = null;
 let socialPanelController = null;
 let itemsPanelController = null;
+let hasSelectedMonopadTab = false;
 
 const MONOCOIN_REWARDS = {
     truthBullet: 5,
@@ -1173,13 +1174,9 @@ jQuery(async () => {
             welcomeUserEl.textContent = getActivePersonaName();
         }
 
-        if (!getMonopadSetting("welcomeSeen")) {
-            $(".monopad-icon").removeClass("active");
-            $(".monopad-panel-content").removeClass("active");
-            $(`.monopad-panel-content[data-panel="welcome"]`).addClass("active");
-        } else {
-            setActiveMonopadTab("truth");
-        }
+        $(".monopad-icon").removeClass("active");
+        $(".monopad-panel-content").removeClass("active");
+        $(`.monopad-panel-content[data-panel="welcome"]`).addClass("active");
         
     sfx = {
         open: document.getElementById("monopad_sfx_open"),
@@ -1274,9 +1271,7 @@ $(".monopad-icon").on("click", function () {
     const tab = $(this).data("tab");
     setActiveMonopadTab(tab);
 
-    if (!getMonopadSetting("welcomeSeen")) {
-        setMonopadSetting("welcomeSeen", true);
-    }
+    hasSelectedMonopadTab = true;
 
 if (tab === "truth" && window.renderTruthBullets) {
     window.renderTruthBullets();
@@ -1323,7 +1318,7 @@ $(".monopad-icon").on("mouseenter", function () {
                     welcomeUserEl.textContent = getActivePersonaName();
                 }
 
-                if (!getMonopadSetting("welcomeSeen")) {
+                if (!hasSelectedMonopadTab) {
                     $(".monopad-icon").removeClass("active");
                     $(".monopad-panel-content").removeClass("active");
                     $(`.monopad-panel-content[data-panel="welcome"]`).addClass("active");
