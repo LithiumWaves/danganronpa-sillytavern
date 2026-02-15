@@ -755,6 +755,9 @@ function applyDebugControlsInlineLayout(controls) {
 }
 
 function ensureGlobalDebugUi() {
+    const legacyHud = document.getElementById("dangan-debug-hud-host");
+    if (legacyHud) legacyHud.remove();
+
     let controls = document.getElementById("trust-debug-controls");
 
     if (!controls) {
@@ -801,10 +804,87 @@ function ensureGlobalDebugUi() {
     applyDebugControlsInlineLayout(controls);
 }
 
+// =========================
+// TRUST DEBUG CONTROLS
+// =========================
+
+function closeTruthDebugModal() {
+    $("#truth-debug-modal").addClass("hidden").attr("aria-hidden", "true");
+}
+
+function playDebugClickSfx() {
+    if (sfx?.click) playSfx(sfx.click);
+}
+
+function bindDebugControlEvents() {
+    $(document).off("click.debugControls");
+    $(document).off("click.debugModal");
+
+    $(document).on("click.debugControls", "#truth-debug-open", () => {
+        playDebugClickSfx();
+        ensureGlobalDebugUi();
+        $("#truth-debug-modal").removeClass("hidden").attr("aria-hidden", "false");
+        $("#truth-debug-name").trigger("focus");
+    });
+
+    $(document).on("click.debugControls", "#truth-debug-cancel", () => {
+        playDebugClickSfx();
+        closeTruthDebugModal();
+    });
+
+    $(document).on("click.debugModal", "#truth-debug-modal", e => {
+        if (e.target.id === "truth-debug-modal") {
+            closeTruthDebugModal();
+        }
+    });
+
+    $(document).on("click.debugControls", "#truth-debug-acquire", () => {
+        playDebugClickSfx();
+
+        const title = String($("#truth-debug-name").val() || "").trim();
+        const description = String($("#truth-debug-description").val() || "").trim();
+
+        if (!title) {
+            $("#truth-debug-name").trigger("focus");
+            return;
+        }
+
+        handleTruthBullet(title, description);
+        $("#truth-debug-name").val("");
+        $("#truth-debug-description").val("");
+        closeTruthDebugModal();
+    });
+
+    $(document).on("click.debugControls", "#trust-debug-up", () => {
+        playDebugClickSfx();
+
+        const char = getActiveSocialCharacter();
+        if (!char) {
+            console.warn("[Dangan][Debug] No social character selected. Click a character name first.");
+            return;
+        }
+
+        increaseTrust(char);
+    });
+
+    $(document).on("click.debugControls", "#trust-debug-down", () => {
+        playDebugClickSfx();
+
+        const char = getActiveSocialCharacter();
+        if (!char) {
+            console.warn("[Dangan][Debug] No social character selected. Click a character name first.");
+            return;
+        }
+
+        decreaseTrust(char);
+    });
+}
+
 jQuery(async () => {
     console.log(`[${extensionName}] Loading...`);
 
     bootstrapDebugUi();
+    bindDebugControlEvents();
 
     try {
         const settingsHtml = await $.get(`${extensionFolderPath}/example.html`);
@@ -1042,70 +1122,6 @@ applySettingsTabUI();
 loadCharacters();
 itemsPanel.renderSkillsItemsPanel();
 
-// =========================
-// TRUST DEBUG CONTROLS
-// =========================
-
-function closeTruthDebugModal() {
-    $("#truth-debug-modal").addClass("hidden").attr("aria-hidden", "true");
-}
-
-$(document).off("click.debugControls");
-$(document).off("click.debugModal");
-
-$(document).on("click.debugControls", "#truth-debug-open", () => {
-    playSfx(sfx.click);
-    $("#truth-debug-modal").removeClass("hidden").attr("aria-hidden", "false");
-    $("#truth-debug-name").trigger("focus");
-});
-
-$(document).on("click.debugControls", "#truth-debug-cancel", () => {
-    playSfx(sfx.click);
-    closeTruthDebugModal();
-});
-
-$(document).on("click.debugModal", "#truth-debug-modal", e => {
-    if (e.target.id === "truth-debug-modal") {
-        closeTruthDebugModal();
-    }
-});
-
-$(document).on("click.debugControls", "#truth-debug-acquire", () => {
-    playSfx(sfx.click);
-
-    const title = String($("#truth-debug-name").val() || "").trim();
-    const description = String($("#truth-debug-description").val() || "").trim();
-
-    if (!title) {
-        $("#truth-debug-name").trigger("focus");
-        return;
-    }
-
-    handleTruthBullet(title, description);
-    $("#truth-debug-name").val("");
-    $("#truth-debug-description").val("");
-    closeTruthDebugModal();
-});
-
-$(document).on("click.debugControls", "#trust-debug-up", () => {
-    const char = getActiveSocialCharacter();
-    if (!char) {
-        console.warn("[Dangan][Debug] No social character selected. Click a character name first.");
-        return;
-    }
-
-    increaseTrust(char);
-});
-
-$(document).on("click.debugControls", "#trust-debug-down", () => {
-    const char = getActiveSocialCharacter();
-    if (!char) {
-        console.warn("[Dangan][Debug] No social character selected. Click a character name first.");
-        return;
-    }
-
-    decreaseTrust(char);
-});
 
 // 🔴 FORCE REGISTER FROM EXISTING CHAT
 //waitForRealChat(() => {
