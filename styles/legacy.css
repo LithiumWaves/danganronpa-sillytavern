@@ -1486,6 +1486,39 @@
     min-width: 170px;
 }
 
+.settings-item-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.settings-select,
+.settings-input {
+    width: 100%;
+    border: 1px solid rgba(126, 173, 255, 0.35);
+    border-radius: 6px;
+    background: rgba(5, 13, 23, 0.88);
+    color: #d7e2f4;
+    padding: 7px 9px;
+    font: inherit;
+    letter-spacing: 0.04em;
+}
+
+.settings-input::placeholder {
+    color: rgba(214, 228, 255, 0.45);
+}
+
+.settings-select:focus,
+.settings-input:focus {
+    outline: 1px solid rgba(84, 223, 255, 0.9);
+    box-shadow: 0 0 0 2px rgba(84, 223, 255, 0.2);
+}
+
+.settings-openrouter-only.is-hidden {
+    display: none;
+}
+
 #dangan_crt_slider {
     width: 130px;
     accent-color: #54dfff;
