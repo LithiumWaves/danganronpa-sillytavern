@@ -1599,6 +1599,65 @@
     line-height: 1.5;
 }
 
+
+.items-shop-list {
+    margin: 0 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.items-shop-entry {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    border: 1px solid rgba(255, 195, 212, 0.26);
+    border-radius: 6px;
+    padding: 8px;
+    background: rgba(58, 19, 32, 0.62);
+}
+
+.items-shop-entry-name {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: #ffeaf0;
+}
+
+.items-shop-entry-effect {
+    margin-top: 4px;
+    font-size: 9px;
+    letter-spacing: 0.05em;
+    color: rgba(255, 210, 223, 0.76);
+}
+
+.items-shop-entry-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+}
+
+.items-shop-entry-cost {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    color: #fff3f7;
+    letter-spacing: 0.07em;
+}
+
+
+.items-shop-entry-buy {
+    border: 1px solid rgba(255, 205, 220, 0.42);
+    border-radius: 4px;
+    padding: 4px 8px;
+    background: rgba(88, 31, 49, 0.76);
+    color: rgba(255, 228, 237, 0.84);
+    font-size: 9px;
+    letter-spacing: 0.07em;
+    cursor: not-allowed;
+}
+
 .items-coin-box {
     margin: 12px;
     margin-top: auto;
