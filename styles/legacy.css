@@ -2707,11 +2707,152 @@
     background: rgba(7, 18, 37, 0.62);
     overflow: hidden;
     min-height: 0;
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
+
+.map-machine-pin {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 198, 78, 0.9);
+    background: radial-gradient(circle at 35% 30%, rgba(255, 238, 176, 0.95), rgba(206, 126, 8, 0.92));
+    color: #3b2000;
+    font-weight: 800;
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 0 16px rgba(255, 189, 59, 0.42);
+    z-index: 2;
+}
+
+.map-machine-pin:hover,
+.map-machine-pin:focus-visible {
+    transform: translate(-50%, -52%);
+    filter: brightness(1.08);
+    box-shadow: 0 0 20px rgba(255, 211, 95, 0.56);
+    outline: none;
+}
+
+
+.map-machine-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(2, 8, 20, 0.82);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 6;
+}
+
+.map-machine-overlay.open {
+    display: flex;
+}
+
+.map-machine-window {
+    position: relative;
+    width: min(760px, 92%);
+    min-height: 320px;
+    border: 1px solid rgba(153, 210, 255, 0.42);
+    border-radius: 12px;
+    background: linear-gradient(160deg, rgba(5, 18, 43, 0.96), rgba(11, 32, 68, 0.93));
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    padding: 16px 18px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    column-gap: 16px;
+}
+
+.map-machine-close {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    border: 1px solid rgba(166, 213, 255, 0.5);
+    border-radius: 4px;
+    background: rgba(12, 33, 66, 0.9);
+    color: #e7f5ff;
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+}
+
+.map-machine-coins-row {
+    grid-column: 1;
+    grid-row: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.map-machine-coin-icon {
+    width: 22px;
+    height: 22px;
+    object-fit: contain;
+}
+
+.map-machine-coins,
+.map-machine-load,
+.map-machine-dupe,
+.map-machine-result {
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    color: rgba(228, 243, 255, 0.92);
+}
+
+.map-machine-image {
+    grid-column: 1;
+    grid-row: 2;
+    width: min(100%, 520px);
+    max-height: 260px;
+    object-fit: contain;
+    justify-self: center;
+    align-self: center;
+}
+
+.map-machine-controls {
+    grid-column: 2;
+    grid-row: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: center;
+    justify-content: center;
+}
+
+.map-machine-button {
+    width: 42px;
+    height: 42px;
+    border: 1px solid rgba(169, 219, 255, 0.6);
+    border-radius: 6px;
+    background: rgba(11, 36, 71, 0.9);
+    color: #f0f9ff;
+    font-size: 17px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.map-machine-info {
+    grid-column: 1;
+    grid-row: 3;
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.map-machine-result {
+    grid-column: 1 / -1;
+    margin-top: 8px;
+    color: rgba(255, 231, 171, 0.95);
+}
 .map-image {
     width: 100%;
     height: 100%;
