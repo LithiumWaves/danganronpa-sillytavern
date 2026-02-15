@@ -5,26 +5,12 @@ import { buildDecagram, crackShard, shatterShard } from "./trust/trustDecagram.j
 import { initTrustAnimations, playTrustRankUp, playTrustRankDown, playTrustMaxed, playTrustToDistrustTransition, playDistrustRankDown, playDistrustRankUp, playDistrustToTrustRecovery } from "./trust/trustAnimations.js";
 import { increaseTrust, decreaseTrust } from "./trust/trustAPI.js";
 import { createItemsPanelController } from "./items/itemsPanel.js";
+import { createRewardSystem } from "./items/rewardSystem.js";
 import { createSocialPanelController } from "./social/socialPanel.js";
+import { extractUltimateFromNotes, isIgnoredCharacter, lookupUltimateFromLorebook, normalizeList, normalizeName } from "./social/characterUtils.js";
 import { createMapPanelController } from "./map/mapPanel.js";
-
-
-const extensionName = "danganronpa-extension";
-const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
-
-const defaultSettings = {
-    monopadSounds: true,
-    trustCeremonies: true,
-    truthBulletAnimations: true,
-    crtEffects: true,
-    crtIntensity: 35,
-    bootAnimations: true,
-    welcomeSeen: false,
-    generationProvider: "main",
-    openrouterModel: "google/gemini-2.5-flash",
-    openrouterRememberApiKey: false,
-    openrouterApiKey: ""
-};
+import { MONOCOIN_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
+import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 
 window.refreshActiveCharacterUI = function () {
     if (!activeSocialCharacterId || !socialPanelController) return;
@@ -44,102 +30,33 @@ let itemsPanelController = null;
 let mapPanelController = null;
 let hasSelectedMonopadTab = false;
 
-const MONOCOIN_REWARDS = {
-    truthBullet: 5,
-    socialRankUp: 10,
-    trustMaxed: 50,
-};
+const openRouterSettings = createOpenRouterSettingsManager({
+    extensionName,
+    extension_settings,
+    saveSettingsDebounced,
+    defaultSettings,
+});
 
-let monocoinToastTimeout = null;
-let runtimeOpenRouterApiKey = "";
+const {
+    loadSettings,
+    getMonopadSetting,
+    setMonopadSetting,
+    getRuntimeOpenRouterApiKey,
+    setRuntimeOpenRouterApiKey,
+    persistOpenRouterApiKeyIfAllowed,
+    isOpenRouterGenerationEnabled,
+    generateWithOpenRouter,
+    testOpenRouterConnection,
+} = openRouterSettings;
 
-function ensureMonocoinToast() {
-    let toast = document.getElementById("monocoin-toast");
-    if (toast) return toast;
-
-    toast = document.createElement("div");
-    toast.id = "monocoin-toast";
-    toast.innerHTML = `
-        <img class="monocoin-toast-icon" src="${extensionFolderPath}/assets/monocoin.png" alt="Monocoin" />
-        <div class="monocoin-toast-text">+0 MONOCOINS</div>
-    `;
-
-    document.body.appendChild(toast);
-    return toast;
-}
-
-function showMonocoinToast(amount) {
-    if (!amount) return;
-
-    const toast = ensureMonocoinToast();
-    const text = toast.querySelector(".monocoin-toast-text");
-    if (text) {
-        text.textContent = `+${amount} MONOCOINS`;
-    }
-
-    toast.classList.remove("show");
-    void toast.offsetWidth;
-    toast.classList.add("show");
-
-    clearTimeout(monocoinToastTimeout);
-    monocoinToastTimeout = setTimeout(() => {
-        toast.classList.remove("show");
-    }, 1400);
-}
+let rewards = null;
 
 function awardMonocoins(amount = 0, reason = "") {
-    const reward = Math.max(0, Number(amount || 0));
-    if (!reward) return;
-
-    const ext = extension_settings[extensionName];
-    ext.inventory ||= {};
-
-    const current = Number(ext.inventory.monocoins || 0);
-    ext.inventory.monocoins = Math.max(0, current + reward);
-
-    saveSettingsDebounced();
-    itemsPanelController?.renderSkillsItemsPanel();
-    showMonocoinToast(reward);
-
-    if (reason) {
-        console.log(`[${extensionName}] Awarded ${reward} Monocoins (${reason}).`);
-    }
-}
-
-
-function awardTrustFragments(amount = 0, reason = "") {
-    const reward = Math.max(0, Number(amount || 0));
-    if (!reward) return;
-
-    const ext = extension_settings[extensionName];
-    ext.inventory ||= {};
-
-    const current = Number(ext.inventory.trustFragments || 0);
-    ext.inventory.trustFragments = Math.max(0, current + reward);
-
-    saveSettingsDebounced();
-    itemsPanelController?.renderSkillsItemsPanel();
-
-    if (reason) {
-        console.log(`[${extensionName}] Awarded ${reward} Trust Fragments (${reason}).`);
-    }
+    rewards?.awardMonocoins(amount, reason);
 }
 
 function increaseTrustWithRewards(char) {
-    if (!char) return;
-
-    const previous = Number(char.trustLevel ?? 1);
-    increaseTrust(char);
-
-    const current = Number(char.trustLevel ?? previous);
-    if (current <= previous) return;
-
-    awardMonocoins(MONOCOIN_REWARDS.socialRankUp, "social rank-up");
-    awardTrustFragments(1, "social rank-up");
-
-    if (previous < 10 && current === 10) {
-        awardMonocoins(MONOCOIN_REWARDS.trustMaxed, "trust maxed");
-    }
+    rewards?.increaseTrustWithRewards(char);
 }
 
 const truthBullets = [];
@@ -154,9 +71,6 @@ let truthBulletAnimating = false;
 const processedTruthSignatures = new Set();
 const processedSocialSignatures = new Set();
 
-const SOCIAL_REGEX = /V3C\|\s*SOCIAL:\s*([^\n\r]+)/g;
-const SOCIAL_UP_REGEX = /V3C\|\s*SOCIAL_UP:\s*([^\n\r]+)/g;
-const SOCIAL_DOWN_REGEX = /V3C\|\s*SOCIAL_DOWN:\s*([^\n\r]+)/g;
 
 /* =========================
    SOCIAL / CHARACTER DATA
@@ -682,27 +596,6 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
     console.log(`[${extensionName}] [Dangan] V3C marker observer active (swipe-safe)`);
 }
 
-function normalizeList(text, max = 5) {
-    if (!text || text === "unknown") return text;
-
-    const items = text
-        .split(",")
-        .map(i => i.trim())
-        .filter(Boolean);
-
-    return [...new Set(items)].slice(0, max).join(", ");
-}
-
-function extractUltimateFromNotes(notes) {
-    if (!notes) return null;
-
-    const match = notes.match(/^ultimate:\s*(.+)$/im);
-    if (!match) return null;
-
-    const value = match[1].trim();
-    return value !== "unknown" ? value : null;
-}
-
 function waitForRealChat(callback) {
     const maxTries = 50;
     let tries = 0;
@@ -753,71 +646,6 @@ function getCharacterSourceText(charName) {
     });
 
     return sources.join("\n\n") || "NO SOURCE DATA AVAILABLE.";
-}
-
-function collectCharactersFromChat() {
-    const profiles = [];
-
-    for (const char of characters.values()) {
-        if (!char?.name) continue;
-
-        profiles.push({
-            id: char.id,
-            name: char.name,
-            ultimate: char.ultimate,
-            trustLevel: char.trustLevel,
-            source: char.source,
-        });
-    }
-
-    return profiles;
-}
-
-function normalizeName(name) {
-    return name
-        .toLowerCase()
-        .replace(/\s+/g, " ")
-        .trim();
-}
-
-function isIgnoredCharacter(name) {
-    if (!name) return true;
-
-    const n = normalizeName(name);
-
-    return (
-        n === "assistant" ||
-        n === "system" ||
-        n === "narrator" ||
-        n === "usami" ||
-        n.includes("api") ||
-        n.includes("helper") ||
-        n.includes("assistant") ||
-        n.includes("mono") ||
-        n.includes("tool")
-    );
-}
-
-function lookupUltimateFromLorebook(characterName) {
-    const entries = window.world_info?.entries;
-    if (!Array.isArray(entries)) return null;
-
-    const normalized = normalizeName(characterName);
-
-    for (const entry of entries) {
-        if (!entry?.content) continue;
-
-        const text = entry.content.toLowerCase();
-
-        if (text.includes(normalized)) {
-            const match = entry.content.match(/ultimate\s*[:\-]\s*(.+)/i);
-            if (match) {
-                return match[1].trim();
-            }
-        }
-    }
-
-    return null;
 }
 
 function debugSTGlobals() {
@@ -920,133 +748,6 @@ function registerCharacterFromMessage(msgEl) {
     socialPanelController?.renderSocialPanel();
 }
 
-function loadSettings() {
-    extension_settings[extensionName] ||= {};
-    extension_settings[extensionName] = {
-        ...defaultSettings,
-        ...extension_settings[extensionName]
-    };
-
-    extension_settings[extensionName].giftJudgements ||= {};
-
-    const storedLegacyKey = String(extension_settings[extensionName].openrouterApiKey || "").trim();
-    const shouldRemember = !!extension_settings[extensionName].openrouterRememberApiKey;
-    setRuntimeOpenRouterApiKey(storedLegacyKey);
-
-    if (!shouldRemember && storedLegacyKey) {
-        delete extension_settings[extensionName].openrouterApiKey;
-        saveSettingsDebounced();
-    }
-}
-
-function getMonopadSetting(key) {
-    return extension_settings[extensionName]?.[key];
-}
-
-function setMonopadSetting(key, value) {
-    extension_settings[extensionName][key] = value;
-    saveSettingsDebounced();
-}
-
-function getOpenRouterApiKey() {
-    if (runtimeOpenRouterApiKey) return runtimeOpenRouterApiKey;
-
-    if (!getMonopadSetting("openrouterRememberApiKey")) {
-        return "";
-    }
-
-    const key = getMonopadSetting("openrouterApiKey");
-    return typeof key === "string" ? key.trim() : "";
-}
-
-function setRuntimeOpenRouterApiKey(value) {
-    runtimeOpenRouterApiKey = String(value || "").trim();
-}
-
-function persistOpenRouterApiKeyIfAllowed() {
-    const shouldRemember = !!getMonopadSetting("openrouterRememberApiKey");
-    if (shouldRemember) {
-        setMonopadSetting("openrouterApiKey", runtimeOpenRouterApiKey);
-        return;
-    }
-
-    if (extension_settings[extensionName].openrouterApiKey) {
-        delete extension_settings[extensionName].openrouterApiKey;
-        saveSettingsDebounced();
-    }
-}
-
-function isOpenRouterGenerationEnabled() {
-    return getMonopadSetting("generationProvider") === "openrouter";
-}
-
-async function generateWithOpenRouter(prompt, { maxTokens = 300, temperature = 0.25, topP = 0.9, stop = ["USER:", "ASSISTANT:", "###"] } = {}) {
-    const apiKey = getOpenRouterApiKey();
-    if (!apiKey) {
-        throw new Error("OpenRouter is selected but no API key is configured in Monopad settings.");
-    }
-
-    const model = String(getMonopadSetting("openrouterModel") || defaultSettings.openrouterModel).trim() || defaultSettings.openrouterModel;
-
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-            "HTTP-Referer": window.location?.origin || "https://sillytavern.app",
-            "X-Title": "Danganronpa Monopad"
-        },
-        body: JSON.stringify({
-            model,
-            messages: [{ role: "user", content: prompt }],
-            max_tokens: maxTokens,
-            temperature,
-            top_p: topP,
-            stop
-        })
-    });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`OpenRouter request failed (${response.status}): ${errorText.slice(0, 240)}`);
-    }
-
-    const data = await response.json();
-    return String(data?.choices?.[0]?.message?.content || "").trim();
-}
-
-async function testOpenRouterConnection() {
-    const apiKey = getOpenRouterApiKey();
-    if (!apiKey) {
-        throw new Error("Missing OpenRouter API key.");
-    }
-
-    const model = String(getMonopadSetting("openrouterModel") || defaultSettings.openrouterModel).trim() || defaultSettings.openrouterModel;
-
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-            "HTTP-Referer": window.location?.origin || "https://sillytavern.app",
-            "X-Title": "Danganronpa Monopad"
-        },
-        body: JSON.stringify({
-            model,
-            messages: [{ role: "user", content: "Reply with exactly: PONG" }],
-            max_tokens: 8,
-            temperature: 0
-        })
-    });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Connection test failed (${response.status}): ${errorText.slice(0, 180)}`);
-    }
-
-    return "Connection succeeded";
-}
-
 function getActivePersonaName() {
     const fallback = "STUDENT";
 
@@ -1122,7 +823,7 @@ function applySettingsTabUI() {
 
     const keyInput = document.getElementById("dangan_openrouter_key");
     if (keyInput) {
-        keyInput.value = runtimeOpenRouterApiKey || "";
+        keyInput.value = getRuntimeOpenRouterApiKey() || "";
     }
 
     const rememberKeyCheckbox = document.getElementById("dangan_openrouter_remember_key");
@@ -1605,6 +1306,16 @@ jQuery(async () => {
             onGiftUseRequest: queueGiftForNextReply,
         });
         itemsPanelController.bindWindowApi();
+
+        rewards = createRewardSystem({
+            extensionName,
+            extensionFolderPath,
+            extension_settings,
+            saveSettingsDebounced,
+            monocoinRewards: MONOCOIN_REWARDS,
+            getItemsPanelController: () => itemsPanelController,
+            increaseTrust,
+        });
 
         socialPanelController = createSocialPanelController({
             characters,
