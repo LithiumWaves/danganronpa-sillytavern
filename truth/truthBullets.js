@@ -74,8 +74,6 @@ function ensureCenteredTruthOverlay(overlay) {
     if (inner) {
         inner.style.setProperty("position", "relative", "important");
         inner.style.setProperty("width", isMobile ? "min(94vw, 560px)" : "min(80vw, 700px)", "important");
-        inner.style.setProperty("max-height", isMobile ? `calc(100dvh - ${topInset} - ${bottomInset} - 20px)` : "min(86dvh, 720px)", "important");
-        inner.style.setProperty("overflow-y", "auto", "important");
         inner.style.setProperty("margin", "0 auto", "important");
     }
 
