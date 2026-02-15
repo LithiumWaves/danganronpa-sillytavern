@@ -66,6 +66,8 @@ export function createItemsPanelController({ extensionName, extension_settings, 
     let activeItemsFilter = "all";
     let activeItemsSort = "recent";
     let selectedItemId = null;
+    let monoMachineDupReduction = 0;
+    let monoMachineOpen = false;
 
     const placeholderSkillShopCatalog = [
         { id: "shop_skill_lie_detector_earring", name: "Lie Detector Earring", cost: 1, teaserEffect: "Highlights suspicious dialogue beats." },
@@ -240,13 +242,20 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         return candidates[candidates.length - 1]?.item || null;
     }
 
-    function runMonoMonoMachine(coinInput = 1) {
+    function computeMonoMachineDupeChance() {
+        const inventory = extension_settings[extensionName].inventory || {};
+        const giftPoolSize = Math.max(1, getGiftPool().length);
+        const ownedUnique = Object.values(inventory.gifts || {}).filter(qty => Number(qty || 0) > 0).length;
+        const baseChance = Math.min(90, 24 + Math.round((ownedUnique / giftPoolSize) * 56));
+        return Math.max(3, baseChance - monoMachineDupReduction);
+    }
+
+    function runMonoMonoMachine() {
         loadInventoryState();
 
-        const rolls = Math.max(1, Number(coinInput || 1));
         const inventory = extension_settings[extensionName].inventory;
         const availableCoins = Number(inventory.monocoins || 0);
-        if (availableCoins < rolls) {
+        if (availableCoins < 1) {
             return { ok: false, reason: "NOT ENOUGH MONOCOINS." };
         }
 
@@ -256,44 +265,29 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         }
 
         const rarityWeight = { N: 1, R: 0.75, SR: 0.5, KEY: 0.2 };
-        const duplicatePenalty = Math.max(0.18, 0.92 - (rolls - 1) * 0.05);
-        const batchCounts = {};
-        const results = [];
-        let duplicateCount = 0;
+        const dupeChance = computeMonoMachineDupeChance() / 100;
+        const dupeCandidates = gifts.filter(item => Number(inventory.gifts[item.id] || 0) > 0);
+        const freshCandidates = gifts.filter(item => Number(inventory.gifts[item.id] || 0) <= 0);
+        const wantsDupe = dupeCandidates.length > 0 && Math.random() < dupeChance;
+        const pool = (wantsDupe || !freshCandidates.length) ? dupeCandidates : freshCandidates;
+        const weighted = (pool.length ? pool : gifts).map(item => ({ item, weight: rarityWeight[item.rarity] || 0.6 }));
 
-        for (let i = 0; i < rolls; i++) {
-            const weighted = gifts.map(item => {
-                const owned = Number(inventory.gifts[item.id] || 0);
-                const alreadyRolled = Number(batchCounts[item.id] || 0);
-                const isDupeCandidate = owned > 0 || alreadyRolled > 0;
-                const base = rarityWeight[item.rarity] || 0.6;
-                const dupeFactor = isDupeCandidate ? duplicatePenalty : 1;
-                return { item, weight: base * dupeFactor };
-            });
-
-            const won = weightedPick(weighted);
-            if (!won) continue;
-
-            const preOwned = Number(inventory.gifts[won.id] || 0) > 0;
-            const repeatedInBatch = Number(batchCounts[won.id] || 0) > 0;
-            if (preOwned || repeatedInBatch) duplicateCount++;
-
-            batchCounts[won.id] = Number(batchCounts[won.id] || 0) + 1;
-            inventory.gifts[won.id] = Number(inventory.gifts[won.id] || 0) + 1;
-            results.push(won);
+        const won = weightedPick(weighted);
+        if (!won) {
+            return { ok: false, reason: "MONOMONO MACHINE JAMMED." };
         }
 
-        inventory.monocoins = Math.max(0, availableCoins - rolls);
-        if (results.length) {
-            selectedItemId = results[results.length - 1].id;
-        }
+        const preOwned = Number(inventory.gifts[won.id] || 0) > 0;
+        inventory.gifts[won.id] = Number(inventory.gifts[won.id] || 0) + 1;
+        inventory.monocoins = Math.max(0, availableCoins - 1);
+        selectedItemId = won.id;
 
         saveSettingsDebounced();
         return {
             ok: true,
-            rolls,
-            duplicateCount,
-            results,
+            duplicate: preOwned,
+            dupeChancePercent: Math.round(dupeChance * 100),
+            result: won,
         };
     }
 
@@ -409,6 +403,7 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         $("#items-monocoin-value").text(monocoins.toLocaleString());
         $("#items-trust-fragment-value").text(trustFragments.toLocaleString());
         bindSkillShopButton();
+        bindMonoMonoMachine();
 
         const $skillShopRow = $panel.find("#items-skill-shop-row");
         if ($skillShopRow.length) {
@@ -426,6 +421,10 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         });
 
         renderInventoryGrid();
+
+        if (monoMachineOpen) {
+            updateMonoMachineUi();
+        }
     }
 
     function setFilter(filter = "all") {
@@ -512,16 +511,94 @@ export function createItemsPanelController({ extensionName, extension_settings, 
     }
 
 
-    function rollMonoMonoMachine(coinInput = 1) {
-        const rolls = Math.max(1, Math.floor(Number(coinInput || 1)));
-        const run = runMonoMonoMachine(rolls);
+    function rollMonoMonoMachine() {
+        const run = runMonoMonoMachine();
         if (!run.ok) return run;
 
-        const uniqueWon = [...new Set(run.results.map(item => item.name.toUpperCase()))].join(', ');
         return {
             ...run,
-            message: `ROLLED ${run.rolls}X · DUPES ${run.duplicateCount} · NEW/FOUND: ${uniqueWon || 'NONE'}`
+            message: `${run.duplicate ? "DUPE" : "NEW"} · ${run.result.name.toUpperCase()}`
         };
+    }
+
+    function addMonoMachineCoin() {
+        loadInventoryState();
+
+        const inventory = extension_settings[extensionName].inventory;
+        const availableCoins = Number(inventory.monocoins || 0);
+        if (availableCoins < 1) {
+            return { ok: false, reason: "NOT ENOUGH MONOCOINS." };
+        }
+
+        inventory.monocoins = Math.max(0, availableCoins - 1);
+        monoMachineDupReduction = Math.min(70, monoMachineDupReduction + 6);
+        saveSettingsDebounced();
+
+        return {
+            ok: true,
+            reduction: monoMachineDupReduction,
+            dupeChancePercent: computeMonoMachineDupeChance(),
+        };
+    }
+
+    function updateMonoMachineUi() {
+        loadInventoryState();
+        const monocoins = Number(extension_settings[extensionName].inventory?.monocoins || 0);
+        const chance = computeMonoMachineDupeChance();
+
+        $("#items-machine-coins").text(`x ${monocoins.toLocaleString()}`);
+        $("#items-machine-dupe").text(`DUPE CHANCE: ${chance}%`);
+        $("#items-machine-roll").prop("disabled", monocoins < 1);
+        $("#items-machine-add").prop("disabled", monocoins < 1 || monoMachineDupReduction >= 70);
+    }
+
+    function openMonoMonoMachine() {
+        monoMachineOpen = true;
+        $("#items-machine-overlay").prop("hidden", false);
+        $("#items-machine-result").text("ROLL FOR A GIFT OR SPEND A COIN TO LOWER DUPE CHANCE.");
+        updateMonoMachineUi();
+    }
+
+    function closeMonoMonoMachine() {
+        monoMachineOpen = false;
+        $("#items-machine-overlay").prop("hidden", true);
+        monoMachineDupReduction = 0;
+    }
+
+    function bindMonoMonoMachine() {
+        $("#items-machine-launch").off("click").on("click", () => {
+            playSfx(getSfx().click);
+            openMonoMonoMachine();
+        });
+
+        $("#items-machine-close").off("click").on("click", () => {
+            playSfx(getSfx().click);
+            closeMonoMonoMachine();
+        });
+
+        $("#items-machine-roll").off("click").on("click", () => {
+            playSfx(getSfx().click);
+            const run = rollMonoMonoMachine();
+            const $result = $("#items-machine-result");
+            if (!run.ok) {
+                $result.text(run.reason || "ROLL FAILED.");
+            } else {
+                $result.text(`${run.message} · DUPE CHANCE ${run.dupeChancePercent}%`);
+            }
+            renderSkillsItemsPanel();
+        });
+
+        $("#items-machine-add").off("click").on("click", () => {
+            playSfx(getSfx().click);
+            const add = addMonoMachineCoin();
+            const $result = $("#items-machine-result");
+            if (!add.ok) {
+                $result.text(add.reason || "UNABLE TO ADD COIN.");
+            } else {
+                $result.text(`DUPE CHANCE REDUCED TO ${add.dupeChancePercent}%`);
+            }
+            renderSkillsItemsPanel();
+        });
     }
 
     return {
