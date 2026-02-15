@@ -428,9 +428,17 @@ export function createItemsPanelController({ extensionName, extension_settings, 
 
         const monocoins = Number(extension_settings[extensionName].inventory?.monocoins || 0);
         const trustFragments = Number(extension_settings[extensionName].inventory?.trustFragments || 0);
+        const showSkillShop = activeItemsFilter === "skill";
+
         $("#items-monocoin-value").text(monocoins.toLocaleString());
         $("#items-trust-fragment-value").text(trustFragments.toLocaleString());
         ensureMonoMonoDebugUI();
+        bindSkillShopButton();
+
+        const $skillShopRow = $panel.find("#items-skill-shop-row");
+        if ($skillShopRow.length) {
+            $skillShopRow.prop("hidden", !showSkillShop);
+        }
 
         $panel.find(".items-filter-button").each((_, el) => {
             const isActive = el.dataset.filter === activeItemsFilter;
@@ -451,6 +459,24 @@ export function createItemsPanelController({ extensionName, extension_settings, 
 
     function setSort(sort = "recent") {
         activeItemsSort = sort;
+    }
+
+
+    function bindSkillShopButton() {
+        const $button = $("#items-skill-shop-button");
+        if (!$button.length) return;
+
+        $button.off("click").on("click", () => {
+            playSfx(getSfx().click);
+            const $detail = $("#items-detail-panel");
+            if (!$detail.length) return;
+
+            $detail.html(`
+                <div class="items-panel-title">SKILL SHOP</div>
+                <div class="items-shop-placeholder-title">GENERIC SKILL MARKET (SOON)</div>
+                <div class="items-shop-placeholder-copy">SPEND TRUST FRAGMENTS HERE TO BUY GENERIC SKILLS. INVENTORY COMING IN A FUTURE UPDATE.</div>
+            `);
+        });
     }
 
     function bindWindowApi() {
