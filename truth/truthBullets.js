@@ -51,6 +51,7 @@ export function initTruthBullets(providedDeps) {
 const truthBullets = [];
 const truthBulletQueue = [];
 let truthBulletAnimating = false;
+let forcedTruthBulletSfxVariant = null;
 
 function ensureCenteredTruthOverlay(overlay) {
     if (!overlay) return;
@@ -270,6 +271,19 @@ function runTruthBulletQueue() {
 function playTruthBulletSfx() {
     if (!sfx.bullet_get) return;
 
+    const forced = forcedTruthBulletSfxVariant;
+    forcedTruthBulletSfxVariant = null;
+
+    if (forced === "udg" && sfx.bullet_get_alt) {
+        deps.playSfx(sfx.bullet_get_alt);
+        return;
+    }
+
+    if (forced === "thh") {
+        deps.playSfx(sfx.bullet_get);
+        return;
+    }
+
     const useAlt = Math.random() < 0.3; // 30% chance
     const sound = useAlt && sfx.bullet_get_alt
         ? sfx.bullet_get_alt
@@ -280,4 +294,10 @@ function playTruthBulletSfx() {
 
 export function handleTruthBullet(title, description) {
     addTruthBullet(title, description);
+}
+
+
+export function setNextTruthBulletSfxVariant(variant = "") {
+    const key = String(variant || "").trim().toLowerCase();
+    forcedTruthBulletSfxVariant = key === "udg" ? "udg" : "thh";
 }

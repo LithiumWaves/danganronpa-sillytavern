@@ -1,6 +1,6 @@
 import { extension_settings } from "../../../extensions.js";
 import { saveSettingsDebounced } from "../../../../script.js";
-import { initTruthBullets, handleTruthBullet } from "./truth/truthBullets.js";
+import { initTruthBullets, handleTruthBullet, setNextTruthBulletSfxVariant } from "./truth/truthBullets.js";
 import { buildDecagram, crackShard, shatterShard } from "./trust/trustDecagram.js";
 import { initTrustAnimations, playTrustRankUp, playTrustRankDown, playTrustMaxed, playTrustToDistrustTransition, playDistrustRankDown, playDistrustRankUp, playDistrustToTrustRecovery } from "./trust/trustAnimations.js";
 import { increaseTrust, decreaseTrust } from "./trust/trustAPI.js";
@@ -1111,6 +1111,17 @@ function ensureGlobalDebugUi() {
                 <label class="truth-debug-label" for="truth-debug-description">DESCRIPTION</label>
                 <textarea id="truth-debug-description" class="truth-debug-textarea" rows="4" maxlength="500" placeholder="Optional description"></textarea>
 
+                <div class="truth-debug-choice-group" role="radiogroup" aria-label="Truth bullet SFX">
+                    <label class="truth-debug-choice">
+                        <input type="radio" name="truth-debug-sfx" value="thh" checked />
+                        <span>THH</span>
+                    </label>
+                    <label class="truth-debug-choice">
+                        <input type="radio" name="truth-debug-sfx" value="udg" />
+                        <span>UDG</span>
+                    </label>
+                </div>
+
                 <div class="truth-debug-actions">
                     <button id="truth-debug-cancel" class="truth-debug-btn ghost" type="button">CANCEL</button>
                     <button id="truth-debug-acquire" class="truth-debug-btn" type="button">ACQUIRE</button>
@@ -1202,6 +1213,9 @@ function bindDebugControlEvents() {
             return;
         }
 
+        const selectedSfx = String($("input[name='truth-debug-sfx']:checked").val() || "thh").trim().toLowerCase();
+        setNextTruthBulletSfxVariant(selectedSfx === "udg" ? "udg" : "thh");
+
         handleTruthBullet(title, description);
         $("#truth-debug-name").val("");
         $("#truth-debug-description").val("");
@@ -1279,6 +1293,10 @@ jQuery(async () => {
         close: document.getElementById("monopad_sfx_close"),
         click: document.getElementById("monopad_sfx_click"),
         hover: document.getElementById("monopad_sfx_hover"),
+        monocoin_insert: document.getElementById("monopad_sfx_monocoin_insert"),
+        monochine_jingle: document.getElementById("monopad_sfx_monochine_jingle"),
+        monochine_turn: document.getElementById("monopad_sfx_monochine_turn"),
+        monochine_track: document.getElementById("monopad_sfx_monochine_track"),
         monokuma: document.getElementById("monopad_sfx_monokuma"),
         monokumasad: document.getElementById("sfx_monokuma_sad"),
         bullet_get: document.getElementById("bullet_sfx_get"),
@@ -1332,6 +1350,10 @@ jQuery(async () => {
 
         mapPanelController = createMapPanelController({
             extensionFolderPath,
+            getItemsPanelController: () => itemsPanelController,
+            playSfx,
+            getSfx: () => sfx,
+            getSetting: getMonopadSetting,
         });
         mapPanelController.renderMapPanel();
 
@@ -1500,6 +1522,7 @@ $(".monopad-icon").on("mouseenter", function () {
             const next = !getMonopadSetting(key);
             setMonopadSetting(key, next);
             applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
         });
 
         $("#dangan_crt_slider").on("input", e => {
@@ -1511,6 +1534,7 @@ $(".monopad-icon").on("mouseenter", function () {
         $("#dangan_generation_provider").on("change", function () {
             setMonopadSetting("generationProvider", this.value || defaultSettings.generationProvider);
             applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
         });
 
         $("#dangan_openrouter_model").on("change blur", function () {
@@ -1523,18 +1547,21 @@ $(".monopad-icon").on("mouseenter", function () {
             setRuntimeOpenRouterApiKey(this.value);
             persistOpenRouterApiKeyIfAllowed();
             applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
         });
 
         $("#dangan_openrouter_remember_key").on("change", function () {
             setMonopadSetting("openrouterRememberApiKey", this.checked);
             persistOpenRouterApiKeyIfAllowed();
             applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
         });
 
         $("#dangan_openrouter_key_clear").on("click", function () {
             setRuntimeOpenRouterApiKey("");
             persistOpenRouterApiKeyIfAllowed();
             applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
         });
 
         $("#dangan_openrouter_test_connection").on("click", async function () {
