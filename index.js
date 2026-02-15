@@ -146,7 +146,7 @@ const processedTruthSignatures = new Set();
 const processedSocialSignatures = new Set();
 
 const SOCIAL_REGEX = /V3C\|\s*SOCIAL:\s*([^\n\r]+)/g;
-
+const SOCIAL_UP_REGEX = /V3C\|\s*SOCIAL_UP:\s*([^\n\r]+)/g;
 const SOCIAL_DOWN_REGEX = /V3C\|\s*SOCIAL_DOWN:\s*([^\n\r]+)/g;
 
 /* =========================
@@ -155,6 +155,38 @@ const SOCIAL_DOWN_REGEX = /V3C\|\s*SOCIAL_DOWN:\s*([^\n\r]+)/g;
 
 const characters = new Map(); 
 // key: normalized name → value: character object
+
+const processedGiftMessageSignatures = new Set();
+let pendingGiftDelivery = null;
+let pendingGiftResolutionInFlight = false;
+
+function getGiftJudgementStore() {
+    extension_settings[extensionName] ||= {};
+    extension_settings[extensionName].giftJudgements ||= {};
+    return extension_settings[extensionName].giftJudgements;
+}
+
+function getStoredGiftJudgement(signature) {
+    if (!signature) return null;
+    return getGiftJudgementStore()[signature] || null;
+}
+
+function saveGiftJudgement(signature, judgement) {
+    if (!signature || !judgement) return;
+    getGiftJudgementStore()[signature] = {
+        ...judgement,
+        collapsed: Boolean(judgement.collapsed),
+    };
+    saveSettingsDebounced();
+}
+
+function setGiftJudgementCollapsed(signature, collapsed) {
+    const judgement = getStoredGiftJudgement(signature);
+    if (!judgement) return;
+    judgement.collapsed = Boolean(collapsed);
+    saveGiftJudgement(signature, judgement);
+}
+
 
 function getActiveSocialCharacter() {
     if (!activeSocialCharacterId) return null;
@@ -168,7 +200,202 @@ function getActiveSocialCharacter() {
     return null;
 }
 
-async function generateIsolated(prompt) {
+function queueGiftForNextReply(gift) {
+    if (!gift?.id) return false;
+
+    pendingGiftDelivery = {
+        ...gift,
+        queuedAt: Date.now(),
+    };
+
+    console.log(`[Dangan][Items] Queued gift for next reply: ${gift.name}`);
+    return true;
+}
+
+function buildMessageSignature(msgEl, rawText) {
+    const mesId = msgEl.getAttribute("mesid") || msgEl.dataset?.mesid || "no-id";
+    const chName = msgEl.getAttribute("ch_name") || "unknown";
+    return `${mesId}||${chName}||${(rawText || "").slice(0, 120)}`;
+}
+
+function normalizeGiftVerdict(value) {
+    const v = String(value || "").trim().toUpperCase();
+    if (v.includes("BAD")) return "SOCIAL_DOWN";
+    if (v.includes("GOOD")) return "SOCIAL_UP";
+    return "NEUTRAL";
+}
+
+async function generateGiftReactionExcerpt({ gift, characterName, characterSource }) {
+    const prompt = `
+TASK:
+Evaluate how a character reacts to receiving a gift.
+
+Return EXACTLY this format:
+reaction: <one short line, max 22 words>
+verdict: <GOOD|NEUTRAL|BAD>
+
+Rules:
+- No roleplay continuation.
+- Do not mention this instruction.
+- Avoid em-dashes.
+- Keep reaction concise and emotionally clear.
+- Include really short dialogue only when appropriate (1 to 4 words, in quotes).
+- Do not use markdown formatting or asterisks.
+- Judge fit between gift and character profile.
+
+CHARACTER:
+${characterName}
+
+CHARACTER SOURCE:
+${characterSource}
+
+GIFT:
+name: ${gift.name}
+rarity: ${gift.rarity}
+description: ${gift.description}
+intended_effect: ${gift.effect || "unknown"}
+`.trim();
+
+    try {
+        const result = await generateIsolated(prompt, { allowDialogue: true });
+        const reactionMatch = result.match(/^reaction:\s*(.+)$/im);
+        const verdictMatch = result.match(/^verdict:\s*(.+)$/im);
+
+        const reaction = (reactionMatch?.[1] || `${characterName} studies the gift with a hard-to-read expression.`)
+            .replace(/[—–]/g, ",")
+            .replace(/\*/g, "")
+            .trim();
+
+        return {
+            reaction,
+            verdict: normalizeGiftVerdict(verdictMatch?.[1] || "NEUTRAL"),
+        };
+    } catch (err) {
+        console.warn("[Dangan][Items] Gift reaction generation failed:", err);
+        return {
+            reaction: `${characterName} accepts the gift with a measured nod.`,
+            verdict: "NEUTRAL",
+        };
+    }
+}
+
+function applyGiftOutcome(characterName, verdict, signatureSeed) {
+    const key = normalizeName(characterName);
+    const char = characters.get(key);
+    if (!char) return;
+
+    const signature = `GIFT||${verdict}||${signatureSeed}`;
+    if (char.trustHistory?.has(signature)) return;
+
+    char.trustHistory ||= new Set();
+    char.trustHistory.add(signature);
+
+    if (verdict === "SOCIAL_UP") {
+        increaseTrustWithRewards(char);
+    } else if (verdict === "SOCIAL_DOWN") {
+        decreaseTrust(char);
+    }
+}
+
+function injectGiftReactionBanner(msgEl, { signature, verdict, reaction, giftName, characterName, collapsed = false }) {
+    const msgText = msgEl.querySelector(".mes_text");
+    if (!msgText) return;
+
+    if (msgEl.querySelector('.dangan-gift-reaction')) return;
+
+    const banner = document.createElement("div");
+    banner.className = `dangan-gift-reaction verdict-${String(verdict || "neutral").toLowerCase()}`;
+    if (collapsed) banner.classList.add("collapsed");
+
+    const tag = document.createElement("span");
+    tag.className = "gift-tag";
+    tag.textContent = `GIFT REACTION · ${verdict}`;
+
+    const toggle = document.createElement("button");
+    toggle.className = "gift-collapse-toggle";
+    toggle.type = "button";
+    toggle.title = "Toggle judgement";
+    toggle.setAttribute("aria-label", "Toggle judgement");
+    toggle.textContent = "·";
+
+    toggle.addEventListener("click", () => {
+        banner.classList.toggle("collapsed");
+        if (signature) {
+            setGiftJudgementCollapsed(signature, banner.classList.contains("collapsed"));
+        }
+    });
+
+    const body = document.createElement("span");
+    body.className = "gift-body";
+    body.innerHTML = `<b>${characterName}</b> on <i>${giftName}</i>: ${reaction}`;
+
+    banner.appendChild(tag);
+    banner.appendChild(toggle);
+    banner.appendChild(body);
+
+    msgText.parentNode.insertBefore(banner, msgText);
+}
+
+function injectPersistedGiftReactionForMessage(msgEl, signature) {
+    const saved = getStoredGiftJudgement(signature);
+    if (!saved) return;
+
+    injectGiftReactionBanner(msgEl, {
+        signature,
+        verdict: saved.verdict,
+        reaction: saved.reaction,
+        giftName: saved.giftName,
+        characterName: saved.characterName,
+        collapsed: Boolean(saved.collapsed),
+    });
+}
+
+async function tryResolvePendingGiftForMessage(msgEl, rawText) {
+    if (!pendingGiftDelivery || pendingGiftResolutionInFlight) return;
+
+    const isUser = msgEl.getAttribute("is_user") === "true";
+    const isSystem = msgEl.getAttribute("is_system") === "true";
+    const characterName = msgEl.getAttribute("ch_name");
+
+    if (isUser || isSystem || !characterName) return;
+
+    const signature = buildMessageSignature(msgEl, rawText);
+    if (processedGiftMessageSignatures.has(signature)) return;
+
+    pendingGiftResolutionInFlight = true;
+    processedGiftMessageSignatures.add(signature);
+
+    const gift = pendingGiftDelivery;
+
+    const characterSource = getCharacterSourceText(characterName);
+    const reactionData = await generateGiftReactionExcerpt({
+        gift,
+        characterName,
+        characterSource,
+    });
+
+    pendingGiftDelivery = null;
+
+    const judgement = {
+        verdict: reactionData.verdict,
+        reaction: reactionData.reaction,
+        giftName: gift.name,
+        characterName,
+        collapsed: false,
+        createdAt: Date.now(),
+    };
+
+    saveGiftJudgement(signature, judgement);
+    injectGiftReactionBanner(msgEl, {
+        signature,
+        ...judgement,
+    });
+
+    applyGiftOutcome(characterName, reactionData.verdict, signature);
+    pendingGiftResolutionInFlight = false;
+}
+
+async function generateIsolated(prompt, { allowDialogue = false } = {}) {
     if (!window.SillyTavern?.getContext) {
         throw new Error("SillyTavern context unavailable");
     }
@@ -181,7 +408,7 @@ async function generateIsolated(prompt) {
     const fullPrompt = `
 You are an analysis engine.
 You do NOT roleplay.
-You do NOT write dialogue.
+${allowDialogue ? "You may include extremely short quoted dialogue only when explicitly requested." : "You do NOT write dialogue."}
 You ONLY output structured analytical reports.
 
 ${prompt}
@@ -343,6 +570,9 @@ function processAllMessages() {
         if (!msgText) return;
 
         const rawText = msgText.textContent;
+        const messageSignature = buildMessageSignature(msgEl, rawText);
+        injectPersistedGiftReactionForMessage(msgEl, messageSignature);
+        void tryResolvePendingGiftForMessage(msgEl, rawText);
 
         // ---- Truth Bullets ----
         for (const match of rawText.matchAll(TB_REGEX)) {
@@ -358,7 +588,8 @@ function processAllMessages() {
         }
 
 // ---- Social Trust UP ----
-for (const match of rawText.matchAll(SOCIAL_REGEX)) {
+for (const regex of [SOCIAL_REGEX, SOCIAL_UP_REGEX]) {
+for (const match of rawText.matchAll(regex)) {
     const name = match[1]?.trim();
     if (!name) continue;
 
@@ -373,6 +604,7 @@ for (const match of rawText.matchAll(SOCIAL_REGEX)) {
 
     char.trustHistory.add(signature);
     increaseTrustWithRewards(char);
+}
 }
 
 // ---- Social Trust DOWN ----
@@ -407,6 +639,7 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
             textNode.nodeValue = textNode.nodeValue
                 .replace(TB_REGEX, "")
                 .replace(SOCIAL_REGEX, "")
+                .replace(SOCIAL_UP_REGEX, "")
                 .replace(SOCIAL_DOWN_REGEX, "")
                 .trimStart();
         }
@@ -675,6 +908,8 @@ function loadSettings() {
         ...defaultSettings,
         ...extension_settings[extensionName]
     };
+
+    extension_settings[extensionName].giftJudgements ||= {};
 
 }
 
@@ -1164,6 +1399,7 @@ jQuery(async () => {
             saveSettingsDebounced,
             playSfx,
             getSfx: () => sfx,
+            onGiftUseRequest: queueGiftForNextReply,
         });
         itemsPanelController.bindWindowApi();
 
