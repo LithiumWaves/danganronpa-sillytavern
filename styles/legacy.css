@@ -2126,3 +2126,48 @@
         padding: 5px;
     }
 }
+
+#monocoin-toast {
+    position: fixed;
+    right: 18px;
+    bottom: max(18px, env(safe-area-inset-bottom, 0px));
+    z-index: 2147483600;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border: 1px solid rgba(255, 205, 70, 0.55);
+    border-radius: 999px;
+    background: rgba(10, 12, 18, 0.78);
+    color: #ffe08a;
+    font-family: "Orbitron", sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+    transition: opacity 0.2s ease, transform 0.28s ease;
+    backdrop-filter: blur(4px);
+}
+
+#monocoin-toast.show {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+.monocoin-toast-icon {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+    animation: monocoin-spin 0.7s ease;
+}
+
+#monocoin-toast.show .monocoin-toast-icon {
+    animation: monocoin-spin 0.7s ease;
+}
+
+@keyframes monocoin-spin {
+    0% { transform: rotate(0deg) scale(0.9); }
+    55% { transform: rotate(250deg) scale(1.08); }
+    100% { transform: rotate(360deg) scale(1); }
+}
