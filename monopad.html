@@ -27,6 +27,21 @@
         <!-- Main Content -->
         <div class="monopad-main">
 
+            <!-- WELCOME / FIRST OPEN -->
+            <div class="monopad-panel-content monopad-welcome-screen" data-panel="welcome">
+                <div class="monopad-welcome-grid"></div>
+                <img
+                    class="monopad-welcome-crest"
+                    src="scripts/extensions/third-party/danganronpa-extension/assets/hopes-peak-crest.png"
+                    alt="Hope's Peak Academy crest"
+                />
+                <div class="monopad-welcome-content">
+                    <div class="monopad-welcome-kicker">HOPE'S PEAK ACADEMY</div>
+                    <div class="monopad-welcome-message">WELCOME, <span id="monopad_welcome_user">STUDENT</span></div>
+                    <div class="monopad-welcome-sub">SELECT A MONOPAD MODULE TO CONTINUE</div>
+                </div>
+            </div>
+
             <!-- TRUTH -->
             <div class="monopad-panel-content" data-panel="truth">
                 <div class="truth-container">
@@ -215,7 +230,7 @@
         <!-- Bottom Icon Strip -->
         <div class="monopad-bottom">
             <div class="monopad-icon-strip">
-                <button class="monopad-icon active" data-tab="truth">🧠</button>
+                <button class="monopad-icon" data-tab="truth">🧠</button>
                 <button class="monopad-icon" data-tab="map">🌐</button>
                 <button class="monopad-icon" data-tab="skills">🎁</button>
                 <button class="monopad-icon" data-tab="social">👥</button>
