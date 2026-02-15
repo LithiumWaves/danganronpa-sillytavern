@@ -775,23 +775,30 @@ function applyTruthDebugModalInlineLayout(modal) {
     const bottomInset = "env(safe-area-inset-bottom, 0px)";
 
     modal.style.setProperty("position", "fixed", "important");
-    modal.style.setProperty("inset", "0", "important");
+    modal.style.setProperty("top", "0", "important");
+    modal.style.setProperty("left", "0", "important");
+    modal.style.setProperty("width", "100vw", "important");
+    modal.style.setProperty("height", "100dvh", "important");
     modal.style.setProperty("z-index", "2147483646", "important");
     modal.style.setProperty("display", "flex", "important");
-    modal.style.setProperty("align-items", isMobile ? "flex-start" : "center", "important");
+    modal.style.setProperty("align-items", "center", "important");
     modal.style.setProperty("justify-content", "center", "important");
-    modal.style.setProperty("padding-top", isMobile ? `calc(${topInset} + 12px)` : "16px", "important");
-    modal.style.setProperty("padding-bottom", isMobile ? `calc(${bottomInset} + 12px)` : "16px", "important");
-    modal.style.setProperty("padding-left", "12px", "important");
-    modal.style.setProperty("padding-right", "12px", "important");
+    modal.style.setProperty("box-sizing", "border-box", "important");
+    modal.style.setProperty("overflow-y", "auto", "important");
+    modal.style.setProperty("padding-top", isMobile ? `max(12px, calc(${topInset} + 8px))` : "16px", "important");
+    modal.style.setProperty("padding-bottom", isMobile ? `max(12px, calc(${bottomInset} + 8px))` : "16px", "important");
+    modal.style.setProperty("padding-left", isMobile ? "10px" : "12px", "important");
+    modal.style.setProperty("padding-right", isMobile ? "10px" : "12px", "important");
 
     const card = modal.querySelector('.truth-debug-card');
     if (!card) return;
 
-    card.style.setProperty("max-height", isMobile ? `calc(100vh - ${topInset} - ${bottomInset} - 24px)` : "min(86vh, 640px)", "important");
-    card.style.setProperty("overflow-y", "auto", "important");
-    card.style.setProperty("margin-top", isMobile ? "0" : "0", "important");
     card.style.setProperty("width", isMobile ? "min(96vw, 430px)" : "min(420px, 96vw)", "important");
+    card.style.setProperty("max-width", "96vw", "important");
+    card.style.setProperty("max-height", isMobile ? `calc(100dvh - ${topInset} - ${bottomInset} - 20px)` : "min(86dvh, 640px)", "important");
+    card.style.setProperty("overflow-y", "auto", "important");
+    card.style.setProperty("margin", "0 auto", "important");
+    card.style.setProperty("box-sizing", "border-box", "important");
 }
 
 function ensureGlobalDebugUi() {
@@ -849,8 +856,31 @@ function ensureGlobalDebugUi() {
 // TRUST DEBUG CONTROLS
 // =========================
 
+
+function setTruthDebugModalState(isOpen) {
+    const controls = document.getElementById("trust-debug-controls");
+    const modal = document.getElementById("truth-debug-modal");
+
+    if (controls) {
+        controls.style.setProperty("visibility", isOpen ? "hidden" : "visible", "important");
+        controls.style.setProperty("pointer-events", isOpen ? "none" : "auto", "important");
+    }
+
+    if (!modal) return;
+
+    if (isOpen) {
+        modal.classList.remove("hidden");
+        modal.setAttribute("aria-hidden", "false");
+        applyTruthDebugModalInlineLayout(modal);
+        return;
+    }
+
+    modal.classList.add("hidden");
+    modal.setAttribute("aria-hidden", "true");
+}
+
 function closeTruthDebugModal() {
-    $("#truth-debug-modal").addClass("hidden").attr("aria-hidden", "true");
+    setTruthDebugModalState(false);
 }
 
 function playDebugClickSfx() {
@@ -864,7 +894,7 @@ function bindDebugControlEvents() {
     $(document).on("click.debugControls", "#truth-debug-open", () => {
         playDebugClickSfx();
         ensureGlobalDebugUi();
-        $("#truth-debug-modal").removeClass("hidden").attr("aria-hidden", "false");
+        setTruthDebugModalState(true);
         $("#truth-debug-name").trigger("focus");
     });
 
