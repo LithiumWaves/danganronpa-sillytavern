@@ -503,6 +503,7 @@
 }
 
 .truth-obtained-inner {
+    position: relative;
     text-align: center;
     font-family: "New Rodin Pro", sans-serif;
     color: #fff;
@@ -537,7 +538,7 @@
     position: absolute;
     top: 50%;
     left: -30%;
-    transform: translateY(-50%);
+    transform: translate(-50%, -50%);
     height: 120px;
     opacity: 0;
     pointer-events: none;
@@ -561,12 +562,12 @@
 
     /* Arrive behind title */
     35% {
-        left: 35%;
+        left: 50%;
     }
 
     /* Pause behind title */
     65% {
-        left: 35%;
+        left: 50%;
     }
 
     /* Exit right */
@@ -1924,11 +1925,11 @@
         }
 
         35% {
-            left: 28%;
+            left: 50%;
         }
 
         65% {
-            left: 28%;
+            left: 50%;
         }
 
         100% {

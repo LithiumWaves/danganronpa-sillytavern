@@ -44,6 +44,46 @@ const truthBullets = [];
 const truthBulletQueue = [];
 let truthBulletAnimating = false;
 
+function ensureCenteredTruthOverlay(overlay) {
+    if (!overlay) return;
+
+    if (overlay.parentElement !== document.body) {
+        document.body.appendChild(overlay);
+    }
+
+    const isMobile = window.matchMedia?.("(max-width: 700px)")?.matches;
+    const topInset = "env(safe-area-inset-top, 0px)";
+    const bottomInset = "env(safe-area-inset-bottom, 0px)";
+
+    overlay.style.setProperty("position", "fixed", "important");
+    overlay.style.setProperty("top", "0", "important");
+    overlay.style.setProperty("left", "0", "important");
+    overlay.style.setProperty("width", "100vw", "important");
+    overlay.style.setProperty("height", "100dvh", "important");
+    overlay.style.setProperty("display", "flex", "important");
+    overlay.style.setProperty("align-items", "center", "important");
+    overlay.style.setProperty("justify-content", "center", "important");
+    overlay.style.setProperty("padding-top", isMobile ? `max(10px, calc(${topInset} + 8px))` : "16px", "important");
+    overlay.style.setProperty("padding-bottom", isMobile ? `max(10px, calc(${bottomInset} + 8px))` : "16px", "important");
+    overlay.style.setProperty("padding-left", isMobile ? "10px" : "16px", "important");
+    overlay.style.setProperty("padding-right", isMobile ? "10px" : "16px", "important");
+    overlay.style.setProperty("box-sizing", "border-box", "important");
+    overlay.style.setProperty("z-index", "2147483601", "important");
+
+    const inner = overlay.querySelector(".truth-obtained-inner");
+    if (inner) {
+        inner.style.setProperty("position", "relative", "important");
+        inner.style.setProperty("width", isMobile ? "min(94vw, 560px)" : "min(80vw, 700px)", "important");
+        inner.style.setProperty("max-height", isMobile ? `calc(100dvh - ${topInset} - ${bottomInset} - 20px)` : "min(86dvh, 720px)", "important");
+        inner.style.setProperty("overflow-y", "auto", "important");
+        inner.style.setProperty("margin", "0 auto", "important");
+    }
+
+    const bullet = overlay.querySelector("#truth-bullet-fly");
+    if (bullet) {
+        bullet.style.setProperty("transform", "translate(-50%, -50%)", "important");
+    }
+}
 
 const processedTruthSignatures = new Set();
 
@@ -182,6 +222,7 @@ function queueTruthBulletAnimation(title) {
     runTruthBulletQueue();
 }
 
+
 function runTruthBulletQueue() {
     if (truthBulletAnimating) return;
     if (!truthBulletQueue.length) return;
@@ -198,7 +239,9 @@ function runTruthBulletQueue() {
         return;
     }
 
+    ensureCenteredTruthOverlay($overlay[0]);
     $title.text(title.toUpperCase());
+
 
     $overlay.removeClass("show");
     void $overlay[0].offsetWidth;
