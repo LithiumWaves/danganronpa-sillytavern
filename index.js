@@ -58,6 +58,18 @@ const SOCIAL_DOWN_REGEX = /V3C\|\s*SOCIAL_DOWN:\s*([^\n\r]+)/g;
 const characters = new Map(); 
 // key: normalized name → value: character object
 
+function getActiveSocialCharacter() {
+    if (!activeSocialCharacterId) return null;
+
+    for (const char of characters.values()) {
+        if (char.id === activeSocialCharacterId) {
+            return char;
+        }
+    }
+
+    return null;
+}
+
 async function generateIsolated(prompt) {
     if (!window.SillyTavern?.getContext) {
         throw new Error("SillyTavern context unavailable");
@@ -654,20 +666,254 @@ function loadCharacters() {
 }
 
 
+let debugUiObserver = null;
+
+function ensureDebugControlsStyleTag() {
+    if (document.getElementById("trust-debug-controls-inline-style")) return;
+
+    const style = document.createElement("style");
+    style.id = "trust-debug-controls-inline-style";
+    style.textContent = `
+#trust-debug-controls {
+    position: fixed !important;
+    right: 10px !important;
+    left: auto !important;
+    top: auto !important;
+    z-index: 2147483000 !important;
+    display: flex !important;
+    pointer-events: auto !important;
+}
+@media (max-width: 700px) {
+    #trust-debug-controls {
+        bottom: calc(74px + env(safe-area-inset-bottom, 0px)) !important;
+        flex-direction: row !important;
+    }
+}
+`;
+
+    document.head?.appendChild(style);
+}
+
+function startDebugUiObserver() {
+    if (debugUiObserver) return;
+
+    debugUiObserver = new MutationObserver(() => {
+        const controls = document.getElementById("trust-debug-controls");
+        const modal = document.getElementById("truth-debug-modal");
+
+        const hudHost = document.getElementById("dangan-debug-hud-host");
+
+        if (!controls || controls.parentElement !== document.body || !modal || modal.parentElement !== document.body || !hudHost || hudHost.parentElement !== document.body) {
+            ensureGlobalDebugUi();
+            ensureFloatingDebugHud();
+        }
+    });
+
+    debugUiObserver.observe(document.body, {
+        childList: true,
+        subtree: true,
+    });
+}
+
+function bootstrapDebugUi() {
+    if (!document.body) return;
+
+    ensureDebugControlsStyleTag();
+    ensureGlobalDebugUi();
+    ensureFloatingDebugHud();
+    startDebugUiObserver();
+
+    window.addEventListener("resize", ensureGlobalDebugUi);
+    window.addEventListener("orientationchange", ensureGlobalDebugUi);
+}
+
+function ensureFloatingDebugHud() {
+    if (!document.body) return;
+
+    let host = document.getElementById("dangan-debug-hud-host");
+    if (!host) {
+        host = document.createElement("div");
+        host.id = "dangan-debug-hud-host";
+        document.body.appendChild(host);
+    }
+
+    Object.assign(host.style, {
+        position: "fixed",
+        right: "10px",
+        bottom: "14px",
+        zIndex: "2147483646",
+        pointerEvents: "auto",
+    });
+
+    const shadow = host.shadowRoot || host.attachShadow({ mode: "open" });
+
+    if (!shadow.getElementById("debug-hud-wrap")) {
+        shadow.innerHTML = `
+            <style>
+                #debug-hud-wrap { display:flex; flex-direction:column; gap:6px; }
+                button {
+                    background:#111; color:#fff; border:1px solid #444; padding:6px 10px;
+                    font-size:12px; letter-spacing:1px; cursor:pointer; border-radius:6px;
+                }
+                button:hover { background:#222; }
+                #modal { position:fixed; inset:0; background:rgba(8,2,8,.72); display:none; align-items:center; justify-content:center; padding:16px; z-index:2147483647; }
+                #modal.show { display:flex; }
+                #card { width:min(420px, 96vw); border:1px solid rgba(255,190,210,.4); border-radius:10px; background:rgba(24,9,17,.96); padding:12px; display:flex; flex-direction:column; gap:8px; }
+                #title { font-size:12px; letter-spacing:.1em; color:#ffe8f0; border-bottom:1px dashed rgba(255,198,216,.28); padding-bottom:6px; }
+                label { font-size:10px; color:rgba(255,214,228,.9); }
+                input, textarea { width:100%; box-sizing:border-box; border:1px solid rgba(255,184,203,.35); border-radius:6px; background:rgba(17,7,12,.85); color:#ffeef4; padding:7px 8px; font-size:12px; }
+                textarea { resize:vertical; }
+                #actions { display:flex; justify-content:flex-end; gap:8px; }
+                .ghost { background:rgba(36,16,25,.8); border-color:rgba(255,210,225,.33); }
+                @media (max-width: 700px) {
+                    :host { bottom: calc(74px + env(safe-area-inset-bottom, 0px)) !important; }
+                    #debug-hud-wrap { flex-direction:row; gap:8px; }
+                    button { min-height:38px; min-width:88px; font-size:11px; }
+                }
+            </style>
+            <div id="debug-hud-wrap">
+                <button id="tb-open" type="button">🧠 DEBUG TB</button>
+                <button id="trust-up" type="button">▲ TRUST</button>
+                <button id="trust-down" type="button">▼ TRUST</button>
+            </div>
+            <div id="modal" aria-hidden="true">
+                <div id="card" role="dialog" aria-modal="true" aria-label="Custom truth bullet debug">
+                    <div id="title">FORCE ACQUIRE TRUTH BULLET</div>
+                    <label for="tb-name">NAME</label>
+                    <input id="tb-name" type="text" maxlength="80" placeholder="Truth Bullet Name" />
+                    <label for="tb-description">DESCRIPTION</label>
+                    <textarea id="tb-description" rows="4" maxlength="500" placeholder="Optional description"></textarea>
+                    <div id="actions">
+                        <button id="tb-cancel" class="ghost" type="button">CANCEL</button>
+                        <button id="tb-acquire" type="button">ACQUIRE</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    if (host.dataset.bound === "1") return;
+    host.dataset.bound = "1";
+
+    const modal = shadow.getElementById("modal");
+    const openBtn = shadow.getElementById("tb-open");
+    const cancelBtn = shadow.getElementById("tb-cancel");
+    const acquireBtn = shadow.getElementById("tb-acquire");
+    const upBtn = shadow.getElementById("trust-up");
+    const downBtn = shadow.getElementById("trust-down");
+    const nameInput = shadow.getElementById("tb-name");
+    const descInput = shadow.getElementById("tb-description");
+
+    const closeModal = () => {
+        modal.classList.remove("show");
+        modal.setAttribute("aria-hidden", "true");
+    };
+
+    openBtn?.addEventListener("click", () => {
+        playSfx(sfx.click);
+        modal.classList.add("show");
+        modal.setAttribute("aria-hidden", "false");
+        nameInput?.focus();
+    });
+
+    cancelBtn?.addEventListener("click", () => {
+        playSfx(sfx.click);
+        closeModal();
+    });
+
+    modal?.addEventListener("click", e => {
+        if (e.target === modal) closeModal();
+    });
+
+    acquireBtn?.addEventListener("click", () => {
+        playSfx(sfx.click);
+
+        const title = String(nameInput?.value || "").trim();
+        const description = String(descInput?.value || "").trim();
+
+        if (!title) {
+            nameInput?.focus();
+            return;
+        }
+
+        handleTruthBullet(title, description);
+        nameInput.value = "";
+        descInput.value = "";
+        closeModal();
+    });
+
+    upBtn?.addEventListener("click", () => {
+        const char = getActiveSocialCharacter();
+        if (!char) {
+            console.warn("[Dangan][Debug] No social character selected. Click a character name first.");
+            return;
+        }
+
+        increaseTrust(char);
+    });
+
+    downBtn?.addEventListener("click", () => {
+        const char = getActiveSocialCharacter();
+        if (!char) {
+            console.warn("[Dangan][Debug] No social character selected. Click a character name first.");
+            return;
+        }
+
+        decreaseTrust(char);
+    });
+}
+
+function applyDebugControlsInlineLayout(controls) {
+    if (!controls) return;
+
+    const isMobile = window.matchMedia?.("(max-width: 700px)")?.matches;
+
+    Object.assign(controls.style, {
+        position: "fixed",
+        zIndex: "2147483000",
+        display: "flex",
+        pointerEvents: "auto",
+        opacity: "0.96",
+        right: "10px",
+        left: "auto",
+        top: "auto",
+        bottom: isMobile
+            ? "calc(env(safe-area-inset-bottom, 0px) + 74px)"
+            : "14px",
+        flexDirection: isMobile ? "row" : "column",
+        gap: isMobile ? "8px" : "6px",
+        alignItems: "stretch",
+    });
+
+    controls.querySelectorAll("button").forEach(button => {
+        Object.assign(button.style, {
+            minHeight: isMobile ? "38px" : "auto",
+            minWidth: isMobile ? "88px" : "auto",
+            fontSize: isMobile ? "11px" : "12px",
+        });
+    });
+}
+
 function ensureGlobalDebugUi() {
-    if (!document.getElementById("trust-debug-controls")) {
-        const controls = document.createElement("div");
+    let controls = document.getElementById("trust-debug-controls");
+
+    if (!controls) {
+        controls = document.createElement("div");
         controls.id = "trust-debug-controls";
         controls.innerHTML = `
             <button id="truth-debug-open" type="button">🧠 DEBUG TB</button>
             <button id="trust-debug-up" type="button">▲ TRUST</button>
             <button id="trust-debug-down" type="button">▼ TRUST</button>
         `;
+    }
+
+    if (controls.parentElement !== document.body) {
         document.body.appendChild(controls);
     }
 
-    if (!document.getElementById("truth-debug-modal")) {
-        const modal = document.createElement("div");
+    let modal = document.getElementById("truth-debug-modal");
+    if (!modal) {
+        modal = document.createElement("div");
         modal.id = "truth-debug-modal";
         modal.className = "truth-debug-modal hidden";
         modal.setAttribute("aria-hidden", "true");
@@ -686,12 +932,19 @@ function ensureGlobalDebugUi() {
                 </div>
             </div>
         `;
+    }
+
+    if (modal.parentElement !== document.body) {
         document.body.appendChild(modal);
     }
+
+    applyDebugControlsInlineLayout(controls);
 }
 
 jQuery(async () => {
     console.log(`[${extensionName}] Loading...`);
+
+    bootstrapDebugUi();
 
     try {
         const settingsHtml = await $.get(`${extensionFolderPath}/example.html`);
@@ -700,6 +953,15 @@ jQuery(async () => {
         const monopadHtml = await $.get(`${extensionFolderPath}/monopad.html`);
         $("body").append(monopadHtml);
         ensureGlobalDebugUi();
+
+        // SillyTavern may re-mount portions of the DOM after extension load.
+        // Re-assert the debug UI a few times to keep controls on the main screen.
+        let debugUiRetries = 0;
+        const debugUiRetryTimer = setInterval(() => {
+            ensureGlobalDebugUi();
+            debugUiRetries += 1;
+            if (debugUiRetries >= 12) clearInterval(debugUiRetryTimer);
+        }, 500);
 
         setTimeout(() => {
             //registerCharactersFromContext();
@@ -924,18 +1186,6 @@ itemsPanel.renderSkillsItemsPanel();
 // TRUST DEBUG CONTROLS
 // =========================
 
-function getActiveSocialCharacter() {
-    if (!activeSocialCharacterId) return null;
-
-    for (const char of characters.values()) {
-        if (char.id === activeSocialCharacterId) {
-            return char;
-        }
-    }
-
-    return null;
-}
-
 function closeTruthDebugModal() {
     $("#truth-debug-modal").addClass("hidden").attr("aria-hidden", "true");
 }
@@ -1022,6 +1272,7 @@ initTruthBullets({
 });
 
     } catch (error) {
+        bootstrapDebugUi();
         console.error(`[${extensionName}] ❌ Load failed:`, error);
     }
 });
