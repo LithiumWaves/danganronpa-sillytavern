@@ -22,6 +22,7 @@ const defaultSettings = {
     welcomeSeen: false,
     generationProvider: "main",
     openrouterModel: "google/gemini-2.5-flash",
+    openrouterRememberApiKey: false,
     openrouterApiKey: ""
 };
 
@@ -50,6 +51,7 @@ const MONOCOIN_REWARDS = {
 };
 
 let monocoinToastTimeout = null;
+let runtimeOpenRouterApiKey = "";
 
 function ensureMonocoinToast() {
     let toast = document.getElementById("monocoin-toast");
@@ -927,6 +929,14 @@ function loadSettings() {
 
     extension_settings[extensionName].giftJudgements ||= {};
 
+    const storedLegacyKey = String(extension_settings[extensionName].openrouterApiKey || "").trim();
+    const shouldRemember = !!extension_settings[extensionName].openrouterRememberApiKey;
+    setRuntimeOpenRouterApiKey(storedLegacyKey);
+
+    if (!shouldRemember && storedLegacyKey) {
+        delete extension_settings[extensionName].openrouterApiKey;
+        saveSettingsDebounced();
+    }
 }
 
 function getMonopadSetting(key) {
@@ -939,8 +949,31 @@ function setMonopadSetting(key, value) {
 }
 
 function getOpenRouterApiKey() {
+    if (runtimeOpenRouterApiKey) return runtimeOpenRouterApiKey;
+
+    if (!getMonopadSetting("openrouterRememberApiKey")) {
+        return "";
+    }
+
     const key = getMonopadSetting("openrouterApiKey");
     return typeof key === "string" ? key.trim() : "";
+}
+
+function setRuntimeOpenRouterApiKey(value) {
+    runtimeOpenRouterApiKey = String(value || "").trim();
+}
+
+function persistOpenRouterApiKeyIfAllowed() {
+    const shouldRemember = !!getMonopadSetting("openrouterRememberApiKey");
+    if (shouldRemember) {
+        setMonopadSetting("openrouterApiKey", runtimeOpenRouterApiKey);
+        return;
+    }
+
+    if (extension_settings[extensionName].openrouterApiKey) {
+        delete extension_settings[extensionName].openrouterApiKey;
+        saveSettingsDebounced();
+    }
 }
 
 function isOpenRouterGenerationEnabled() {
@@ -1057,7 +1090,19 @@ function applySettingsTabUI() {
 
     const keyInput = document.getElementById("dangan_openrouter_key");
     if (keyInput) {
-        keyInput.value = tab.openrouterApiKey || "";
+        keyInput.value = runtimeOpenRouterApiKey || "";
+    }
+
+    const rememberKeyCheckbox = document.getElementById("dangan_openrouter_remember_key");
+    if (rememberKeyCheckbox) {
+        rememberKeyCheckbox.checked = !!tab.openrouterRememberApiKey;
+    }
+
+    const keyStatusEl = document.getElementById("dangan_openrouter_key_status");
+    if (keyStatusEl) {
+        keyStatusEl.textContent = tab.openrouterRememberApiKey
+            ? "Key persistence: saved in extension settings"
+            : "Key persistence: session only";
     }
 
     const showOpenRouterControls = (providerSelect?.value || tab.generationProvider) === "openrouter";
@@ -1727,7 +1772,21 @@ $(".monopad-icon").on("mouseenter", function () {
         });
 
         $("#dangan_openrouter_key").on("change blur", function () {
-            setMonopadSetting("openrouterApiKey", String(this.value || "").trim());
+            setRuntimeOpenRouterApiKey(this.value);
+            persistOpenRouterApiKeyIfAllowed();
+            applySettingsTabUI();
+        });
+
+        $("#dangan_openrouter_remember_key").on("change", function () {
+            setMonopadSetting("openrouterRememberApiKey", this.checked);
+            persistOpenRouterApiKeyIfAllowed();
+            applySettingsTabUI();
+        });
+
+        $("#dangan_openrouter_key_clear").on("click", function () {
+            setRuntimeOpenRouterApiKey("");
+            persistOpenRouterApiKeyIfAllowed();
+            applySettingsTabUI();
         });
 
 loadSettings();
