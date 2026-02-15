@@ -654,6 +654,37 @@ function loadCharacters() {
 }
 
 
+function applyDebugControlsInlineLayout(controls) {
+    if (!controls) return;
+
+    const isMobile = window.matchMedia?.("(max-width: 700px)")?.matches;
+
+    Object.assign(controls.style, {
+        position: "fixed",
+        zIndex: "2147483000",
+        display: "flex",
+        pointerEvents: "auto",
+        opacity: "0.96",
+        right: "10px",
+        left: "auto",
+        top: "auto",
+        bottom: isMobile
+            ? "calc(env(safe-area-inset-bottom, 0px) + 74px)"
+            : "14px",
+        flexDirection: isMobile ? "row" : "column",
+        gap: isMobile ? "8px" : "6px",
+        alignItems: "stretch",
+    });
+
+    controls.querySelectorAll("button").forEach(button => {
+        Object.assign(button.style, {
+            minHeight: isMobile ? "38px" : "auto",
+            minWidth: isMobile ? "88px" : "auto",
+            fontSize: isMobile ? "11px" : "12px",
+        });
+    });
+}
+
 function ensureGlobalDebugUi() {
     let controls = document.getElementById("trust-debug-controls");
 
@@ -697,6 +728,8 @@ function ensureGlobalDebugUi() {
     if (modal.parentElement !== document.body) {
         document.body.appendChild(modal);
     }
+
+    applyDebugControlsInlineLayout(controls);
 }
 
 jQuery(async () => {
@@ -718,6 +751,9 @@ jQuery(async () => {
             debugUiRetries += 1;
             if (debugUiRetries >= 12) clearInterval(debugUiRetryTimer);
         }, 500);
+
+        window.addEventListener("resize", ensureGlobalDebugUi);
+        window.addEventListener("orientationchange", ensureGlobalDebugUi);
 
         setTimeout(() => {
             //registerCharactersFromContext();

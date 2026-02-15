@@ -1845,18 +1845,18 @@
 
 @media (max-width: 700px) {
     #trust-debug-controls {
-        right: 8px;
+        right: 10px;
         left: auto;
-        bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+        bottom: calc(74px + env(safe-area-inset-bottom, 0px));
         top: auto;
         width: auto;
         transform: none;
-        flex-direction: column;
+        flex-direction: row;
         flex-wrap: nowrap;
-        gap: 6px;
-        justify-content: flex-start;
+        gap: 8px;
+        justify-content: flex-end;
         opacity: 1;
-        z-index: 10050;
+        z-index: 2147483000;
         padding: 0;
         border-radius: 0;
         background: transparent;
@@ -1866,9 +1866,10 @@
 
     #trust-debug-controls button {
         flex: 0 0 auto;
-        min-height: 34px;
+        min-height: 38px;
+        min-width: 88px;
         font-size: 11px;
-        padding: 6px 8px;
+        padding: 7px 10px;
         background: rgba(24, 14, 21, 0.95);
         border-color: rgba(255, 196, 215, 0.4);
     }
