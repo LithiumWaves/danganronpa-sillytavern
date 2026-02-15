@@ -5,6 +5,11 @@ const FLOOR_ONE_MACHINE_PIN = {
     height: 272,
 };
 
+const MACHINE_ROLL_DURATION_MS = 2000;
+const MACHINE_JINGLE_FRAME = 50;
+const MACHINE_GIF_TOTAL_FRAMES = 100;
+const MACHINE_JINGLE_DELAY_MS = Math.round((MACHINE_JINGLE_FRAME / MACHINE_GIF_TOTAL_FRAMES) * MACHINE_ROLL_DURATION_MS);
+
 const MAP_AREAS = {
     hopes_peak: {
         label: "HOPE'S PEAK",
@@ -37,6 +42,8 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         floor: "floor_1",
         machineCoinsLoaded: 1,
         machineRolling: false,
+        machineRollTimeout: null,
+        machineJingleTimeout: null,
     };
 
     const selectors = {
@@ -132,7 +139,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             }
 
             state.machineCoinsLoaded += 1;
-            playSfx?.(getSfx?.().click);
+            playSfx?.(getSfx?.().monocoin_insert || getSfx?.().click);
             updateMachineOverlay($panel, `LOAD INCREASED TO ${state.machineCoinsLoaded}.`);
         });
 
@@ -141,8 +148,6 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
 
             const items = getItemsController();
             if (!items?.spinMonoMonoMachine) return;
-
-            playSfx?.(getSfx?.().click);
 
             const run = items.spinMonoMonoMachine(state.machineCoinsLoaded);
             if (!run.ok) {
@@ -154,15 +159,31 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             $panel.find(selectors.machineRoll).prop("disabled", true);
             $panel.find(selectors.machineAdd).prop("disabled", true);
 
+            if (state.machineRollTimeout) {
+                clearTimeout(state.machineRollTimeout);
+                state.machineRollTimeout = null;
+            }
+            if (state.machineJingleTimeout) {
+                clearTimeout(state.machineJingleTimeout);
+                state.machineJingleTimeout = null;
+            }
+
             const $img = $panel.find(selectors.machineImage);
             if ($img.length) {
                 $img.attr("src", `${extensionFolderPath}/assets/monochine_roll.gif`);
-                setTimeout(() => {
+
+                state.machineJingleTimeout = setTimeout(() => {
+                    playSfx?.(getSfx?.().monochine_jingle || getSfx?.().click);
+                }, MACHINE_JINGLE_DELAY_MS);
+
+                state.machineRollTimeout = setTimeout(() => {
                     $img.attr("src", `${extensionFolderPath}/assets/monochine_idle.png`);
                     state.machineRolling = false;
                     $panel.find(selectors.machineRoll).prop("disabled", false);
                     $panel.find(selectors.machineAdd).prop("disabled", false);
-                }, 2000);
+                    state.machineRollTimeout = null;
+                    state.machineJingleTimeout = null;
+                }, MACHINE_ROLL_DURATION_MS);
             }
 
             const resultLine = `${run.duplicate ? "DUPE" : "NEW"}: ${run.result.name.toUpperCase()} (COST ${run.cost})`;
@@ -172,6 +193,19 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
     }
 
     function closeMachineOverlay($panel) {
+        if (state.machineRollTimeout) {
+            clearTimeout(state.machineRollTimeout);
+            state.machineRollTimeout = null;
+        }
+        if (state.machineJingleTimeout) {
+            clearTimeout(state.machineJingleTimeout);
+            state.machineJingleTimeout = null;
+        }
+
+        state.machineRolling = false;
+        $panel.find(selectors.machineImage).attr("src", `${extensionFolderPath}/assets/monochine_idle.png`);
+        $panel.find(selectors.machineRoll).prop("disabled", false);
+        $panel.find(selectors.machineAdd).prop("disabled", false);
         $panel.find(selectors.machineOverlay).removeClass("open").attr("aria-hidden", "true");
     }
 
