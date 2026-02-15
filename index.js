@@ -162,6 +162,33 @@ const processedGiftMessageSignatures = new Set();
 let pendingGiftDelivery = null;
 let pendingGiftResolutionInFlight = false;
 
+function getGiftJudgementStore() {
+    extension_settings[extensionName] ||= {};
+    extension_settings[extensionName].giftJudgements ||= {};
+    return extension_settings[extensionName].giftJudgements;
+}
+
+function getStoredGiftJudgement(signature) {
+    if (!signature) return null;
+    return getGiftJudgementStore()[signature] || null;
+}
+
+function saveGiftJudgement(signature, judgement) {
+    if (!signature || !judgement) return;
+    getGiftJudgementStore()[signature] = {
+        ...judgement,
+        collapsed: Boolean(judgement.collapsed),
+    };
+    saveSettingsDebounced();
+}
+
+function setGiftJudgementCollapsed(signature, collapsed) {
+    const judgement = getStoredGiftJudgement(signature);
+    if (!judgement) return;
+    judgement.collapsed = Boolean(collapsed);
+    saveGiftJudgement(signature, judgement);
+}
+
 
 function getActiveSocialCharacter() {
     if (!activeSocialCharacterId) return null;
@@ -270,20 +297,57 @@ function applyGiftOutcome(characterName, verdict, signatureSeed) {
     }
 }
 
-function injectGiftReactionBanner(msgEl, { verdict, reaction, giftName, characterName }) {
+function injectGiftReactionBanner(msgEl, { signature, verdict, reaction, giftName, characterName, collapsed = false }) {
     const msgText = msgEl.querySelector(".mes_text");
     if (!msgText) return;
 
     if (msgEl.querySelector('.dangan-gift-reaction')) return;
 
     const banner = document.createElement("div");
-    banner.className = `dangan-gift-reaction verdict-${verdict.toLowerCase()}`;
-    banner.innerHTML = `
-        <span class="gift-tag">GIFT REACTION · ${verdict}</span>
-        <span class="gift-body"><b>${characterName}</b> on <i>${giftName}</i>: ${reaction}</span>
-    `;
+    banner.className = `dangan-gift-reaction verdict-${String(verdict || "neutral").toLowerCase()}`;
+    if (collapsed) banner.classList.add("collapsed");
+
+    const tag = document.createElement("span");
+    tag.className = "gift-tag";
+    tag.textContent = `GIFT REACTION · ${verdict}`;
+
+    const toggle = document.createElement("button");
+    toggle.className = "gift-collapse-toggle";
+    toggle.type = "button";
+    toggle.title = "Toggle judgement";
+    toggle.setAttribute("aria-label", "Toggle judgement");
+    toggle.textContent = "·";
+
+    toggle.addEventListener("click", () => {
+        banner.classList.toggle("collapsed");
+        if (signature) {
+            setGiftJudgementCollapsed(signature, banner.classList.contains("collapsed"));
+        }
+    });
+
+    const body = document.createElement("span");
+    body.className = "gift-body";
+    body.innerHTML = `<b>${characterName}</b> on <i>${giftName}</i>: ${reaction}`;
+
+    banner.appendChild(tag);
+    banner.appendChild(toggle);
+    banner.appendChild(body);
 
     msgText.parentNode.insertBefore(banner, msgText);
+}
+
+function injectPersistedGiftReactionForMessage(msgEl, signature) {
+    const saved = getStoredGiftJudgement(signature);
+    if (!saved) return;
+
+    injectGiftReactionBanner(msgEl, {
+        signature,
+        verdict: saved.verdict,
+        reaction: saved.reaction,
+        giftName: saved.giftName,
+        characterName: saved.characterName,
+        collapsed: Boolean(saved.collapsed),
+    });
 }
 
 async function tryResolvePendingGiftForMessage(msgEl, rawText) {
@@ -311,11 +375,19 @@ async function tryResolvePendingGiftForMessage(msgEl, rawText) {
         characterSource,
     });
 
-    injectGiftReactionBanner(msgEl, {
+    const judgement = {
         verdict: reactionData.verdict,
         reaction: reactionData.reaction,
         giftName: gift.name,
         characterName,
+        collapsed: false,
+        createdAt: Date.now(),
+    };
+
+    saveGiftJudgement(signature, judgement);
+    injectGiftReactionBanner(msgEl, {
+        signature,
+        ...judgement,
     });
 
     applyGiftOutcome(characterName, reactionData.verdict, signature);
@@ -497,6 +569,8 @@ function processAllMessages() {
         if (!msgText) return;
 
         const rawText = msgText.textContent;
+        const messageSignature = buildMessageSignature(msgEl, rawText);
+        injectPersistedGiftReactionForMessage(msgEl, messageSignature);
         void tryResolvePendingGiftForMessage(msgEl, rawText);
 
         // ---- Truth Bullets ----
@@ -833,6 +907,8 @@ function loadSettings() {
         ...defaultSettings,
         ...extension_settings[extensionName]
     };
+
+    extension_settings[extensionName].giftJudgements ||= {};
 
 }
 
