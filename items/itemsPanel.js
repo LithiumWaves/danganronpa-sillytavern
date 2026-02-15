@@ -360,12 +360,16 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         });
     }
 
-    function getMonoMonoDupeChance(coinInput = 1) {
+    function getMonoMonoDupeChance(coinInput = 1, rollCountInput = 1) {
         loadInventoryState();
 
         const inventory = extension_settings[extensionName].inventory;
         const cost = Math.max(1, Math.floor(Number(coinInput || 1)));
+        const rollCount = Math.max(1, Math.floor(Number(rollCountInput || 1)));
         const availableCoins = Number(inventory.monocoins || 0);
+        const totalCost = cost * rollCount;
+        const affordableRolls = Math.floor(availableCoins / cost);
+        const affordableLoadMax = Math.floor(availableCoins / rollCount);
         const weighted = buildWeightedGiftPool(inventory, getDuplicatePenalty(cost));
         const totalWeight = weighted.reduce((acc, entry) => acc + entry.weight, 0);
 
@@ -375,8 +379,12 @@ export function createItemsPanelController({ extensionName, extension_settings, 
                 reason: "NO GIFTS REGISTERED IN CATALOG.",
                 availableCoins,
                 cost,
+                rollCount,
+                totalCost,
                 chancePercent: 0,
-                affordable: availableCoins >= cost,
+                affordable: availableCoins >= totalCost,
+                affordableRolls,
+                affordableLoadMax,
             };
         }
 
@@ -388,50 +396,71 @@ export function createItemsPanelController({ extensionName, extension_settings, 
             ok: true,
             availableCoins,
             cost,
-            affordable: availableCoins >= cost,
+            rollCount,
+            totalCost,
+            affordable: availableCoins >= totalCost,
+            affordableRolls,
+            affordableLoadMax,
             chancePercent: Math.max(0, Math.min(100, (dupeWeight / totalWeight) * 100)),
         };
     }
 
-    function spinMonoMonoMachine(coinInput = 1) {
+    function spinMonoMonoMachine(coinInput = 1, rollCountInput = 1) {
         loadInventoryState();
 
         const inventory = extension_settings[extensionName].inventory;
         const cost = Math.max(1, Math.floor(Number(coinInput || 1)));
+        const rollCount = Math.max(1, Math.floor(Number(rollCountInput || 1)));
+        const totalCost = cost * rollCount;
         const availableCoins = Number(inventory.monocoins || 0);
 
-        if (availableCoins < cost) {
+        if (availableCoins < totalCost) {
             return { ok: false, reason: "NOT ENOUGH MONOCOINS." };
         }
 
-        const weighted = buildWeightedGiftPool(inventory, getDuplicatePenalty(cost));
-        if (!weighted.length) {
-            return { ok: false, reason: "NO GIFTS REGISTERED IN CATALOG." };
+        const results = [];
+        let duplicateCount = 0;
+        let lastWon = null;
+
+        for (let i = 0; i < rollCount; i++) {
+            const weighted = buildWeightedGiftPool(inventory, getDuplicatePenalty(cost));
+            if (!weighted.length) {
+                return { ok: false, reason: "NO GIFTS REGISTERED IN CATALOG." };
+            }
+
+            const won = weightedPick(weighted);
+            if (!won) {
+                return { ok: false, reason: "MACHINE JAMMED. TRY AGAIN." };
+            }
+
+            const preOwned = Number(inventory.gifts[won.id] || 0) > 0;
+            if (preOwned) duplicateCount += 1;
+            inventory.gifts[won.id] = Number(inventory.gifts[won.id] || 0) + 1;
+            results.push({ item: won, duplicate: preOwned });
+            lastWon = won;
         }
 
-        const won = weightedPick(weighted);
-        if (!won) {
-            return { ok: false, reason: "MACHINE JAMMED. TRY AGAIN." };
-        }
-
-        const preOwned = Number(inventory.gifts[won.id] || 0) > 0;
-        inventory.gifts[won.id] = Number(inventory.gifts[won.id] || 0) + 1;
-        inventory.monocoins = Math.max(0, availableCoins - cost);
-        selectedItemId = won.id;
+        inventory.monocoins = Math.max(0, availableCoins - totalCost);
+        selectedItemId = lastWon?.id || null;
 
         saveSettingsDebounced();
         renderSkillsItemsPanel();
 
         return {
             ok: true,
-            cost,
-            duplicate: preOwned,
-            result: won,
+            cost: totalCost,
+            costPerRoll: cost,
+            rollCount,
+            duplicate: !!results[0]?.duplicate,
+            duplicateCount,
+            result: results[0]?.item || null,
+            resultLast: lastWon,
+            results,
         };
     }
 
-    function runMonoMonoMachine(coinInput = 1) {
-        return spinMonoMonoMachine(coinInput);
+    function runMonoMonoMachine(coinInput = 1, rollCount = 1) {
+        return spinMonoMonoMachine(coinInput, rollCount);
     }
 
     function renderItemDetails(item) {
@@ -649,10 +678,18 @@ export function createItemsPanelController({ extensionName, extension_settings, 
     }
 
 
-    function rollMonoMonoMachine(coinInput = 1) {
+    function rollMonoMonoMachine(coinInput = 1, rollCount = 1) {
         const cost = Math.max(1, Math.floor(Number(coinInput || 1)));
-        const run = spinMonoMonoMachine(cost);
+        const rolls = Math.max(1, Math.floor(Number(rollCount || 1)));
+        const run = spinMonoMonoMachine(cost, rolls);
         if (!run.ok) return run;
+
+        if (rolls > 1) {
+            return {
+                ...run,
+                message: `SPENT ${run.cost} COINS · ${run.duplicateCount} DUPE${run.duplicateCount === 1 ? '' : 'S'} · ${run.rollCount} ROLLS COMPLETE`
+            };
+        }
 
         return {
             ...run,

@@ -42,6 +42,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         area: "hopes_peak",
         floor: "floor_1",
         machineCoinsLoaded: 1,
+        machineRollCount: 1,
         machineRolling: false,
         machineRollTimeout: null,
         machineJingleTimeout: null,
@@ -62,9 +63,11 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         machineDisplayCoins: ".map-machine-coins",
         machineDisplayLoad: ".map-machine-load",
         machineDisplayDupe: ".map-machine-dupe",
+        machineDisplayRolls: ".map-machine-rolls",
         machineBanner: ".map-machine-banner",
         machineImage: ".map-machine-image",
         machineAdd: ".map-machine-button.add",
+        machineAddRoll: ".map-machine-button.add-roll",
         machineRoll: ".map-machine-button.roll",
         machineClose: ".map-machine-close",
     };
@@ -134,12 +137,14 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                     <img class="map-machine-image" src="${extensionFolderPath}/assets/monochine_idle.png" alt="MonoMono Machine" />
 
                     <div class="map-machine-controls">
-                        <button type="button" class="map-machine-button add" title="Add one coin">+</button>
+                        <button type="button" class="map-machine-button add" title="Add one coin to dupe protection load">+C</button>
+                        <button type="button" class="map-machine-button add-roll" title="Add one extra roll">+R</button>
                         <button type="button" class="map-machine-button roll" title="Roll">▶</button>
                     </div>
 
                     <div class="map-machine-info">
                         <div class="map-machine-load">LOAD: 1 COIN</div>
+                        <div class="map-machine-rolls">ROLLS: 1</div>
                         <div class="map-machine-dupe">DUPE CHANCE: 0%</div>
                     </div>
 
@@ -162,18 +167,38 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             const items = getItemsController();
             if (!items?.getMonoMonoDupeChance) return;
 
-            const chance = items.getMonoMonoDupeChance(state.machineCoinsLoaded);
+            const chance = items.getMonoMonoDupeChance(state.machineCoinsLoaded, state.machineRollCount);
             if (!chance.ok) {
                 updateMachineOverlay($panel);
                 return;
             }
 
-            if (state.machineCoinsLoaded >= chance.availableCoins) {
+            if (state.machineCoinsLoaded >= chance.affordableLoadMax) {
                 updateMachineOverlay($panel);
                 return;
             }
 
             state.machineCoinsLoaded += 1;
+            playSfx?.(getSfx?.().monocoin_insert || getSfx?.().click);
+            updateMachineOverlay($panel);
+        });
+
+        $panel.find(selectors.machineAddRoll).off("click").on("click", () => {
+            const items = getItemsController();
+            if (!items?.getMonoMonoDupeChance) return;
+
+            const chance = items.getMonoMonoDupeChance(state.machineCoinsLoaded, state.machineRollCount);
+            if (!chance.ok) {
+                updateMachineOverlay($panel);
+                return;
+            }
+
+            if (state.machineRollCount >= chance.affordableRolls) {
+                updateMachineOverlay($panel);
+                return;
+            }
+
+            state.machineRollCount += 1;
             playSfx?.(getSfx?.().monocoin_insert || getSfx?.().click);
             updateMachineOverlay($panel);
         });
@@ -186,7 +211,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             const items = getItemsController();
             if (!items?.spinMonoMonoMachine) return;
 
-            const run = items.spinMonoMonoMachine(state.machineCoinsLoaded);
+            const run = items.spinMonoMonoMachine(state.machineCoinsLoaded, state.machineRollCount);
             if (!run.ok) {
                 updateMachineOverlay($panel);
                 return;
@@ -195,6 +220,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             state.machineRolling = true;
             $panel.find(selectors.machineRoll).prop("disabled", true);
             $panel.find(selectors.machineAdd).prop("disabled", true);
+            $panel.find(selectors.machineAddRoll).prop("disabled", true);
 
             if (state.machineRollTimeout) {
                 clearTimeout(state.machineRollTimeout);
@@ -209,7 +235,9 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             if ($img.length) {
                 $img.attr("src", `${extensionFolderPath}/assets/monochine_roll.gif`);
 
-                const obtainedMessage = `You've obtained a ${run.result.name}!`;
+                const obtainedMessage = run.rollCount > 1
+                    ? `You've obtained ${run.rollCount} gifts! ${run.duplicateCount} duplicate${run.duplicateCount === 1 ? "" : "s"}.`
+                    : `You've obtained a ${run.result.name}!`;
                 state.machineJingleTimeout = setTimeout(() => {
                     playSfx?.(getSfx?.().monochine_jingle || getSfx?.().click);
                     if (state.machineBannerDelayTimeout) {
@@ -227,12 +255,14 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                     state.machineRolling = false;
                     $panel.find(selectors.machineRoll).prop("disabled", false);
                     $panel.find(selectors.machineAdd).prop("disabled", false);
+                    $panel.find(selectors.machineAddRoll).prop("disabled", false);
                     state.machineRollTimeout = null;
                     state.machineJingleTimeout = null;
                 }, MACHINE_ROLL_DURATION_MS);
             }
 
             state.machineCoinsLoaded = 1;
+            state.machineRollCount = 1;
             updateMachineOverlay($panel);
         });
     }
@@ -275,6 +305,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         $panel.find(selectors.machineImage).attr("src", `${extensionFolderPath}/assets/monochine_idle.png`);
         $panel.find(selectors.machineRoll).prop("disabled", false);
         $panel.find(selectors.machineAdd).prop("disabled", false);
+        $panel.find(selectors.machineAddRoll).prop("disabled", false);
         $panel.find(selectors.machineBanner).removeClass("show").text("");
         $panel.find(selectors.machineOverlay).removeClass("open").attr("aria-hidden", "true");
         syncMachineTrack($panel);
@@ -284,23 +315,26 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         const items = getItemsController();
         if (!items?.getMonoMonoDupeChance) return;
 
-        const chance = items.getMonoMonoDupeChance(state.machineCoinsLoaded);
+        const chance = items.getMonoMonoDupeChance(state.machineCoinsLoaded, state.machineRollCount);
         const safeCoins = Math.max(0, Number(chance.availableCoins || 0));
         const chancePercent = Math.round(Number(chance.chancePercent || 0));
 
         $panel.find(selectors.machineDisplayCoins).text(`x ${safeCoins}`);
-        $panel.find(selectors.machineDisplayLoad).text(`LOAD: ${state.machineCoinsLoaded} COIN${state.machineCoinsLoaded === 1 ? "" : "S"}`);
-        $panel.find(selectors.machineDisplayDupe).text(`DUPE CHANCE: ${chancePercent}%`);
+        $panel.find(selectors.machineDisplayLoad).text(`LOAD: ${state.machineCoinsLoaded} COIN${state.machineCoinsLoaded === 1 ? "" : "S"} / ROLL`);
+        $panel.find(selectors.machineDisplayRolls).text(`ROLLS: ${state.machineRollCount}`);
+        $panel.find(selectors.machineDisplayDupe).text(`DUPE CHANCE: ${chancePercent}% PER ROLL`);
 
     }
 
     function openMachineOverlay($panel) {
         ensureMachineOverlay($panel);
         state.machineCoinsLoaded = 1;
+        state.machineRollCount = 1;
         updateMachineOverlay($panel);
         state.machineRolling = false;
         $panel.find(selectors.machineRoll).prop("disabled", false);
         $panel.find(selectors.machineAdd).prop("disabled", false);
+        $panel.find(selectors.machineAddRoll).prop("disabled", false);
         $panel.find(selectors.machineImage).attr("src", `${extensionFolderPath}/assets/monochine_idle.png`);
         $panel.find(selectors.machineOverlay).addClass("open").attr("aria-hidden", "false");
         syncMachineTrack($panel);
