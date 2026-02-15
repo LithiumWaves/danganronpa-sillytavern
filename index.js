@@ -1332,6 +1332,9 @@ jQuery(async () => {
 
         mapPanelController = createMapPanelController({
             extensionFolderPath,
+            getItemsPanelController: () => itemsPanelController,
+            playSfx,
+            getSfx: () => sfx,
         });
         mapPanelController.renderMapPanel();
 
