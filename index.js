@@ -1281,6 +1281,7 @@ jQuery(async () => {
         hover: document.getElementById("monopad_sfx_hover"),
         monocoin_insert: document.getElementById("monopad_sfx_monocoin_insert"),
         monochine_jingle: document.getElementById("monopad_sfx_monochine_jingle"),
+        monochine_turn: document.getElementById("monopad_sfx_monochine_turn"),
         monochine_track: document.getElementById("monopad_sfx_monochine_track"),
         monokuma: document.getElementById("monopad_sfx_monokuma"),
         monokumasad: document.getElementById("sfx_monokuma_sad"),

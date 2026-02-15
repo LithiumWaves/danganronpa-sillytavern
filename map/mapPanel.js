@@ -181,6 +181,8 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         $panel.find(selectors.machineRoll).off("click").on("click", () => {
             if (state.machineRolling) return;
 
+            playSfx?.(getSfx?.().monochine_turn || getSfx?.().click);
+
             const items = getItemsController();
             if (!items?.spinMonoMonoMachine) return;
 
