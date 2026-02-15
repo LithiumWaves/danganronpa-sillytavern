@@ -16,6 +16,39 @@ function trustCeremoniesEnabled() {
     return !getSetting || !!getSetting("trustCeremonies");
 }
 
+function ensureCenteredSocialOverlay(overlay) {
+    if (!overlay) return;
+
+    if (overlay.parentElement !== document.body) {
+        document.body.appendChild(overlay);
+    }
+
+    const isMobile = window.matchMedia?.("(max-width: 700px)")?.matches;
+    const topInset = "env(safe-area-inset-top, 0px)";
+    const bottomInset = "env(safe-area-inset-bottom, 0px)";
+
+    overlay.style.setProperty("position", "fixed", "important");
+    overlay.style.setProperty("top", "0", "important");
+    overlay.style.setProperty("left", "0", "important");
+    overlay.style.setProperty("width", "100vw", "important");
+    overlay.style.setProperty("height", "100dvh", "important");
+    overlay.style.setProperty("display", "flex", "important");
+    overlay.style.setProperty("align-items", "center", "important");
+    overlay.style.setProperty("justify-content", "center", "important");
+    overlay.style.setProperty("padding-top", isMobile ? `max(10px, calc(${topInset} + 8px))` : "16px", "important");
+    overlay.style.setProperty("padding-bottom", isMobile ? `max(10px, calc(${bottomInset} + 8px))` : "16px", "important");
+    overlay.style.setProperty("padding-left", isMobile ? "10px" : "16px", "important");
+    overlay.style.setProperty("padding-right", isMobile ? "10px" : "16px", "important");
+    overlay.style.setProperty("box-sizing", "border-box", "important");
+    overlay.style.setProperty("z-index", "2147483600", "important");
+
+    const core = overlay.querySelector(".trust-rankup-core");
+    if (!core) return;
+
+    core.style.setProperty("margin", "0 auto", "important");
+    core.style.setProperty("max-width", isMobile ? "94vw" : "min(460px, 96vw)", "important");
+}
+
 function waitForSfx(audio) {
     return new Promise(resolve => {
         //  If it's not an audio element, don't wait
@@ -27,6 +60,7 @@ function waitForSfx(audio) {
         audio.onended = () => resolve();
     });
 }
+
 
 export {
     initTrustAnimations,
@@ -45,7 +79,8 @@ function playTrustRankUp(previous, current) {
     const svg = document.getElementById("trust-decagram");
     const banner = document.getElementById("trust-rankup-banner");
 
-    if (!overlay || !svg) return;
+    if (!overlay || !svg || !banner) return;
+    ensureCenteredSocialOverlay(overlay);
 
     overlay.classList.add("show");
     banner.classList.remove("show");
@@ -74,9 +109,10 @@ function playTrustRankDown(previous, current) {
 
     const overlay = document.getElementById("trust-rankup-overlay");
     const svg = document.getElementById("trust-decagram");
-    const banner = overlay.querySelector(".trust-banner");
+    const banner = overlay?.querySelector(".trust-banner");
 
-    if (!overlay || !svg) return;
+    if (!overlay || !svg || !banner) return;
+    ensureCenteredSocialOverlay(overlay);
 
     overlay.classList.add("show");
     banner.classList.remove("show");
@@ -111,9 +147,10 @@ function playDistrustRankDown(previous, current) {
 
     const overlay = document.getElementById("trust-rankup-overlay");
     const svg = document.getElementById("trust-decagram");
-    const banner = overlay.querySelector(".trust-banner");
+    const banner = overlay?.querySelector(".trust-banner");
 
     if (!overlay || !svg || !banner) return;
+    ensureCenteredSocialOverlay(overlay);
 
     svg.dataset.mode = "distrust";
 
@@ -154,9 +191,10 @@ function playDistrustRankUp(previous, current) {
 
     const overlay = document.getElementById("trust-rankup-overlay");
     const svg = document.getElementById("trust-decagram");
-    const banner = overlay.querySelector(".trust-banner");
+    const banner = overlay?.querySelector(".trust-banner");
 
     if (!overlay || !svg || !banner) return;
+    ensureCenteredSocialOverlay(overlay);
 
     svg.dataset.mode = "distrust";
 
@@ -202,9 +240,10 @@ function playDistrustToTrustRecovery() {
 
     const overlay = document.getElementById("trust-rankup-overlay");
     const svg = document.getElementById("trust-decagram");
-    const banner = overlay.querySelector(".trust-banner");
+    const banner = overlay?.querySelector(".trust-banner");
 
     if (!overlay || !svg || !banner) return;
+    ensureCenteredSocialOverlay(overlay);
 
     // Start fully in distrust
     svg.dataset.mode = "distrust";
@@ -298,9 +337,10 @@ export async function playTrustToDistrustTransition() {
 
     const overlay = document.getElementById("trust-rankup-overlay");
     const svg = document.getElementById("trust-decagram");
-    const banner = overlay.querySelector(".trust-banner");
+    const banner = overlay?.querySelector(".trust-banner");
 
     if (!overlay || !svg || !banner) return;
+    ensureCenteredSocialOverlay(overlay);
 
     overlay.classList.add("show", "distrust");
     banner.classList.remove("show");
@@ -382,9 +422,10 @@ function playTrustMaxed() {
 
     const overlay = document.getElementById("trust-rankup-overlay");
     const svg = document.getElementById("trust-decagram");
-    const banner = overlay.querySelector(".trust-banner");
+    const banner = overlay?.querySelector(".trust-banner");
 
-    if (!overlay || !svg) return;
+    if (!overlay || !svg || !banner) return;
+    ensureCenteredSocialOverlay(overlay);
 
     svg.dataset.gold = "false";
 
