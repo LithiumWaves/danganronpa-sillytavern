@@ -654,15 +654,38 @@ function loadCharacters() {
 }
 
 
-function promoteDebugUiToBody() {
-    const controls = document.getElementById("trust-debug-controls");
-    const modal = document.getElementById("truth-debug-modal");
-
-    if (controls && controls.parentElement !== document.body) {
+function ensureGlobalDebugUi() {
+    if (!document.getElementById("trust-debug-controls")) {
+        const controls = document.createElement("div");
+        controls.id = "trust-debug-controls";
+        controls.innerHTML = `
+            <button id="truth-debug-open" type="button">🧠 DEBUG TB</button>
+            <button id="trust-debug-up" type="button">▲ TRUST</button>
+            <button id="trust-debug-down" type="button">▼ TRUST</button>
+        `;
         document.body.appendChild(controls);
     }
 
-    if (modal && modal.parentElement !== document.body) {
+    if (!document.getElementById("truth-debug-modal")) {
+        const modal = document.createElement("div");
+        modal.id = "truth-debug-modal";
+        modal.className = "truth-debug-modal hidden";
+        modal.setAttribute("aria-hidden", "true");
+        modal.innerHTML = `
+            <div class="truth-debug-card" role="dialog" aria-modal="true" aria-label="Custom truth bullet debug">
+                <div class="truth-debug-title">FORCE ACQUIRE TRUTH BULLET</div>
+                <label class="truth-debug-label" for="truth-debug-name">NAME</label>
+                <input id="truth-debug-name" class="truth-debug-input" type="text" maxlength="80" placeholder="Truth Bullet Name" />
+
+                <label class="truth-debug-label" for="truth-debug-description">DESCRIPTION</label>
+                <textarea id="truth-debug-description" class="truth-debug-textarea" rows="4" maxlength="500" placeholder="Optional description"></textarea>
+
+                <div class="truth-debug-actions">
+                    <button id="truth-debug-cancel" class="truth-debug-btn ghost" type="button">CANCEL</button>
+                    <button id="truth-debug-acquire" class="truth-debug-btn" type="button">ACQUIRE</button>
+                </div>
+            </div>
+        `;
         document.body.appendChild(modal);
     }
 }
@@ -676,7 +699,7 @@ jQuery(async () => {
 
         const monopadHtml = await $.get(`${extensionFolderPath}/monopad.html`);
         $("body").append(monopadHtml);
-        promoteDebugUiToBody();
+        ensureGlobalDebugUi();
 
         setTimeout(() => {
             //registerCharactersFromContext();
@@ -909,67 +932,68 @@ function getActiveSocialCharacter() {
             return char;
         }
     }
+
     return null;
 }
 
-const $truthDebugModal = $("#truth-debug-modal");
-const $truthDebugName = $("#truth-debug-name");
-const $truthDebugDescription = $("#truth-debug-description");
-
 function closeTruthDebugModal() {
-    $truthDebugModal.addClass("hidden").attr("aria-hidden", "true");
+    $("#truth-debug-modal").addClass("hidden").attr("aria-hidden", "true");
 }
 
-$("#truth-debug-open").on("click", () => {
+$(document).off("click.debugControls");
+$(document).off("click.debugModal");
+
+$(document).on("click.debugControls", "#truth-debug-open", () => {
     playSfx(sfx.click);
-    $truthDebugModal.removeClass("hidden").attr("aria-hidden", "false");
-    $truthDebugName.trigger("focus");
+    $("#truth-debug-modal").removeClass("hidden").attr("aria-hidden", "false");
+    $("#truth-debug-name").trigger("focus");
 });
 
-$("#truth-debug-cancel").on("click", () => {
+$(document).on("click.debugControls", "#truth-debug-cancel", () => {
     playSfx(sfx.click);
     closeTruthDebugModal();
 });
 
-$truthDebugModal.on("click", e => {
-    if (e.target === $truthDebugModal[0]) {
+$(document).on("click.debugModal", "#truth-debug-modal", e => {
+    if (e.target.id === "truth-debug-modal") {
         closeTruthDebugModal();
     }
 });
 
-$("#truth-debug-acquire").on("click", () => {
+$(document).on("click.debugControls", "#truth-debug-acquire", () => {
     playSfx(sfx.click);
 
-    const title = String($truthDebugName.val() || "").trim();
-    const description = String($truthDebugDescription.val() || "").trim();
+    const title = String($("#truth-debug-name").val() || "").trim();
+    const description = String($("#truth-debug-description").val() || "").trim();
 
     if (!title) {
-        $truthDebugName.trigger("focus");
+        $("#truth-debug-name").trigger("focus");
         return;
     }
 
     handleTruthBullet(title, description);
-
-    $truthDebugName.val("");
-    $truthDebugDescription.val("");
+    $("#truth-debug-name").val("");
+    $("#truth-debug-description").val("");
     closeTruthDebugModal();
 });
 
-$("#trust-debug-up").on("click", () => {
+$(document).on("click.debugControls", "#trust-debug-up", () => {
     const char = getActiveSocialCharacter();
     if (!char) {
-        console.warn("[Dangan][Debug] No active character");
+        console.warn("[Dangan][Debug] No social character selected. Click a character name first.");
         return;
     }
+
     increaseTrust(char);
 });
 
-$("#trust-debug-down").on("click", () => {
+$(document).on("click.debugControls", "#trust-debug-down", () => {
     const char = getActiveSocialCharacter();
     if (!char) {
-        console.warn("[Dangan][Debug] No active character");
+        console.warn("[Dangan][Debug] No social character selected. Click a character name first.");
         return;
     }
+
     decreaseTrust(char);
 });
 
