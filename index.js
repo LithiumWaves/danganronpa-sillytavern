@@ -6,6 +6,7 @@ import { initTrustAnimations, playTrustRankUp, playTrustRankDown, playTrustMaxed
 import { increaseTrust, decreaseTrust } from "./trust/trustAPI.js";
 import { createItemsPanelController } from "./items/itemsPanel.js";
 import { createSocialPanelController } from "./social/socialPanel.js";
+import { createMapPanelController } from "./map/mapPanel.js";
 
 
 const extensionName = "danganronpa-extension";
@@ -36,6 +37,7 @@ window.refreshActiveCharacterUI = function () {
 let activeSocialCharacterId = null;
 let socialPanelController = null;
 let itemsPanelController = null;
+let mapPanelController = null;
 let hasSelectedMonopadTab = false;
 
 const MONOCOIN_REWARDS = {
@@ -1459,6 +1461,11 @@ jQuery(async () => {
             },
         });
 
+        mapPanelController = createMapPanelController({
+            extensionFolderPath,
+        });
+        mapPanelController.renderMapPanel();
+
         let lastHoverTime = 0;
         const HOVER_COOLDOWN = 80;
 
@@ -1519,6 +1526,10 @@ if (tab === "truth" && window.renderTruthBullets) {
 
     if (tab === "skills") {
         itemsPanelController.renderSkillsItemsPanel();
+    }
+
+    if (tab === "map") {
+        mapPanelController?.renderMapPanel();
     }
 });
 
