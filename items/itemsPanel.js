@@ -240,61 +240,96 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         return candidates[candidates.length - 1]?.item || null;
     }
 
-    function runMonoMonoMachine(coinInput = 1) {
+    function getDuplicatePenalty(coinInput = 1) {
+        const coins = Math.max(1, Math.floor(Number(coinInput || 1)));
+        return Math.max(0.18, 0.92 - (coins - 1) * 0.05);
+    }
+
+    function buildWeightedGiftPool(inventory, duplicatePenalty = 0.92) {
+        const gifts = getGiftPool();
+        const rarityWeight = { N: 1, R: 0.75, SR: 0.5, KEY: 0.2 };
+
+        return gifts.map(item => {
+            const owned = Number(inventory.gifts[item.id] || 0);
+            const isDupeCandidate = owned > 0;
+            const base = rarityWeight[item.rarity] || 0.6;
+            const dupeFactor = isDupeCandidate ? duplicatePenalty : 1;
+            return { item, weight: base * dupeFactor, isDupeCandidate };
+        });
+    }
+
+    function getMonoMonoDupeChance(coinInput = 1) {
         loadInventoryState();
 
-        const rolls = Math.max(1, Number(coinInput || 1));
         const inventory = extension_settings[extensionName].inventory;
+        const cost = Math.max(1, Math.floor(Number(coinInput || 1)));
         const availableCoins = Number(inventory.monocoins || 0);
-        if (availableCoins < rolls) {
+        const weighted = buildWeightedGiftPool(inventory, getDuplicatePenalty(cost));
+        const totalWeight = weighted.reduce((acc, entry) => acc + entry.weight, 0);
+
+        if (totalWeight <= 0) {
+            return {
+                ok: false,
+                reason: "NO GIFTS REGISTERED IN CATALOG.",
+                availableCoins,
+                cost,
+                chancePercent: 0,
+                affordable: availableCoins >= cost,
+            };
+        }
+
+        const dupeWeight = weighted
+            .filter(entry => entry.isDupeCandidate)
+            .reduce((acc, entry) => acc + entry.weight, 0);
+
+        return {
+            ok: true,
+            availableCoins,
+            cost,
+            affordable: availableCoins >= cost,
+            chancePercent: Math.max(0, Math.min(100, (dupeWeight / totalWeight) * 100)),
+        };
+    }
+
+    function spinMonoMonoMachine(coinInput = 1) {
+        loadInventoryState();
+
+        const inventory = extension_settings[extensionName].inventory;
+        const cost = Math.max(1, Math.floor(Number(coinInput || 1)));
+        const availableCoins = Number(inventory.monocoins || 0);
+
+        if (availableCoins < cost) {
             return { ok: false, reason: "NOT ENOUGH MONOCOINS." };
         }
 
-        const gifts = getGiftPool();
-        if (!gifts.length) {
+        const weighted = buildWeightedGiftPool(inventory, getDuplicatePenalty(cost));
+        if (!weighted.length) {
             return { ok: false, reason: "NO GIFTS REGISTERED IN CATALOG." };
         }
 
-        const rarityWeight = { N: 1, R: 0.75, SR: 0.5, KEY: 0.2 };
-        const duplicatePenalty = Math.max(0.18, 0.92 - (rolls - 1) * 0.05);
-        const batchCounts = {};
-        const results = [];
-        let duplicateCount = 0;
-
-        for (let i = 0; i < rolls; i++) {
-            const weighted = gifts.map(item => {
-                const owned = Number(inventory.gifts[item.id] || 0);
-                const alreadyRolled = Number(batchCounts[item.id] || 0);
-                const isDupeCandidate = owned > 0 || alreadyRolled > 0;
-                const base = rarityWeight[item.rarity] || 0.6;
-                const dupeFactor = isDupeCandidate ? duplicatePenalty : 1;
-                return { item, weight: base * dupeFactor };
-            });
-
-            const won = weightedPick(weighted);
-            if (!won) continue;
-
-            const preOwned = Number(inventory.gifts[won.id] || 0) > 0;
-            const repeatedInBatch = Number(batchCounts[won.id] || 0) > 0;
-            if (preOwned || repeatedInBatch) duplicateCount++;
-
-            batchCounts[won.id] = Number(batchCounts[won.id] || 0) + 1;
-            inventory.gifts[won.id] = Number(inventory.gifts[won.id] || 0) + 1;
-            results.push(won);
+        const won = weightedPick(weighted);
+        if (!won) {
+            return { ok: false, reason: "MACHINE JAMMED. TRY AGAIN." };
         }
 
-        inventory.monocoins = Math.max(0, availableCoins - rolls);
-        if (results.length) {
-            selectedItemId = results[results.length - 1].id;
-        }
+        const preOwned = Number(inventory.gifts[won.id] || 0) > 0;
+        inventory.gifts[won.id] = Number(inventory.gifts[won.id] || 0) + 1;
+        inventory.monocoins = Math.max(0, availableCoins - cost);
+        selectedItemId = won.id;
 
         saveSettingsDebounced();
+        renderSkillsItemsPanel();
+
         return {
             ok: true,
-            rolls,
-            duplicateCount,
-            results,
+            cost,
+            duplicate: preOwned,
+            result: won,
         };
+    }
+
+    function runMonoMonoMachine(coinInput = 1) {
+        return spinMonoMonoMachine(coinInput);
     }
 
     function renderItemDetails(item) {
@@ -513,14 +548,13 @@ export function createItemsPanelController({ extensionName, extension_settings, 
 
 
     function rollMonoMonoMachine(coinInput = 1) {
-        const rolls = Math.max(1, Math.floor(Number(coinInput || 1)));
-        const run = runMonoMonoMachine(rolls);
+        const cost = Math.max(1, Math.floor(Number(coinInput || 1)));
+        const run = spinMonoMonoMachine(cost);
         if (!run.ok) return run;
 
-        const uniqueWon = [...new Set(run.results.map(item => item.name.toUpperCase()))].join(', ');
         return {
             ...run,
-            message: `ROLLED ${run.rolls}X · DUPES ${run.duplicateCount} · NEW/FOUND: ${uniqueWon || 'NONE'}`
+            message: `SPENT ${run.cost} COIN${run.cost === 1 ? '' : 'S'} · ${run.duplicate ? 'DUPE' : 'NEW'}: ${run.result.name.toUpperCase()}`
         };
     }
 
@@ -531,5 +565,7 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         setFilter,
         setSort,
         rollMonoMonoMachine,
+        getMonoMonoDupeChance,
+        spinMonoMonoMachine,
     };
 }
