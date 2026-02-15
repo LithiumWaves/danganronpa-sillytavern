@@ -1492,7 +1492,7 @@ $(".monopad-icon").on("mouseenter", function () {
             itemsPanelController.renderSkillsItemsPanel();
         });
 
-        $(document).on("mouseenter", ".items-filter-button, .items-slot, .items-sort-group label, .items-detail-action, .items-machine-launch, .items-machine-roll, .items-machine-close", function () {
+        $(document).on("mouseenter", ".items-filter-button, .items-slot, .items-sort-group label, .items-detail-action", function () {
             playHoverWithCooldown();
         });
 

@@ -1644,7 +1644,6 @@
 }
 
 .items-shell {
-    position: relative;
     height: 100%;
     display: grid;
     grid-template-rows: auto 1fr auto;
@@ -1899,116 +1898,6 @@
     margin-top: 8px;
 }
 
-
-.items-machine-launch {
-    margin: 0 12px 12px;
-    border: 1px solid rgba(255, 173, 196, 0.5);
-    border-radius: 6px;
-    background: linear-gradient(180deg, rgba(157, 42, 76, 0.86), rgba(92, 23, 42, 0.84));
-    color: #fff4f8;
-    padding: 8px 10px;
-    font-size: 10px;
-    letter-spacing: 0.08em;
-    cursor: pointer;
-}
-
-.items-machine-launch:hover,
-.items-machine-launch:focus-visible {
-    filter: brightness(1.08);
-    transform: translateY(-1px);
-    outline: none;
-}
-
-.items-machine-overlay {
-    position: absolute;
-    inset: 0;
-    z-index: 20;
-    background: rgba(16, 6, 11, 0.92);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-}
-
-.items-machine-window {
-    position: relative;
-    width: min(780px, 100%);
-    min-height: 300px;
-    border: 1px solid rgba(255, 192, 209, 0.45);
-    border-radius: 10px;
-    background: linear-gradient(180deg, rgba(71, 22, 38, 0.95), rgba(28, 10, 16, 0.96));
-    padding: 26px;
-}
-
-.items-machine-close {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    border: 1px solid rgba(255, 182, 201, 0.35);
-    background: rgba(52, 17, 28, 0.58);
-    color: #ffeaf0;
-    border-radius: 4px;
-    width: 28px;
-    height: 28px;
-    cursor: pointer;
-}
-
-.items-machine-coins {
-    position: absolute;
-    top: 14px;
-    left: 14px;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    color: #fff2f6;
-    font-size: 18px;
-    font-weight: 700;
-}
-
-.items-machine-coins::before {
-    content: '';
-    width: 22px;
-    height: 22px;
-    display: inline-block;
-    background-image: url('../assets/monocoin.png');
-    background-size: contain;
-    background-repeat: no-repeat;
-}
-
-.items-machine-core {
-    margin: 30px auto 18px;
-    width: min(340px, 70%);
-    aspect-ratio: 1 / 1;
-    border-radius: 50%;
-    border: 2px solid rgba(255, 192, 209, 0.45);
-    background: radial-gradient(circle at 45% 35%, rgba(255, 214, 228, 0.55), rgba(130, 33, 62, 0.76) 55%, rgba(50, 13, 24, 0.95));
-    display: grid;
-    place-items: center;
-    box-shadow: 0 0 30px rgba(255, 111, 161, 0.2);
-}
-
-.items-machine-core-title {
-    font-size: 12px;
-    letter-spacing: 0.09em;
-    color: rgba(255, 231, 239, 0.95);
-}
-
-.items-machine-actions {
-    position: absolute;
-    top: 78px;
-    right: 28px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    width: 120px;
-}
-
-.items-machine-dupe {
-    font-size: 11px;
-    letter-spacing: 0.08em;
-    color: rgba(255, 229, 236, 0.9);
-    text-align: center;
-}
 .items-machine-debug {
     margin: 0 12px 12px;
     border: 1px dashed rgba(255, 182, 201, 0.32);
