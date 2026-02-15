@@ -2811,7 +2811,7 @@
     grid-column: 1;
     grid-row: 2;
     width: min(100%, 520px);
-    max-height: 260px;
+    height: 260px;
     object-fit: contain;
     justify-self: center;
     align-self: center;
@@ -2837,6 +2837,11 @@
     font-size: 17px;
     font-weight: 700;
     cursor: pointer;
+}
+
+.map-machine-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
 }
 
 .map-machine-info {

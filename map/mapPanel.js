@@ -36,6 +36,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         area: "hopes_peak",
         floor: "floor_1",
         machineCoinsLoaded: 1,
+        machineRolling: false,
     };
 
     const selectors = {
@@ -136,6 +137,8 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         });
 
         $panel.find(selectors.machineRoll).off("click").on("click", () => {
+            if (state.machineRolling) return;
+
             const items = getItemsController();
             if (!items?.spinMonoMonoMachine) return;
 
@@ -147,12 +150,19 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                 return;
             }
 
+            state.machineRolling = true;
+            $panel.find(selectors.machineRoll).prop("disabled", true);
+            $panel.find(selectors.machineAdd).prop("disabled", true);
+
             const $img = $panel.find(selectors.machineImage);
             if ($img.length) {
                 $img.attr("src", `${extensionFolderPath}/assets/monochine_roll.gif`);
                 setTimeout(() => {
                     $img.attr("src", `${extensionFolderPath}/assets/monochine_idle.png`);
-                }, 1400);
+                    state.machineRolling = false;
+                    $panel.find(selectors.machineRoll).prop("disabled", false);
+                    $panel.find(selectors.machineAdd).prop("disabled", false);
+                }, 3200);
             }
 
             const resultLine = `${run.duplicate ? "DUPE" : "NEW"}: ${run.result.name.toUpperCase()} (COST ${run.cost})`;
@@ -186,6 +196,9 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         ensureMachineOverlay($panel);
         state.machineCoinsLoaded = 1;
         updateMachineOverlay($panel, "SELECT COINS, THEN ROLL.");
+        state.machineRolling = false;
+        $panel.find(selectors.machineRoll).prop("disabled", false);
+        $panel.find(selectors.machineAdd).prop("disabled", false);
         $panel.find(selectors.machineImage).attr("src", `${extensionFolderPath}/assets/monochine_idle.png`);
         $panel.find(selectors.machineOverlay).addClass("open").attr("aria-hidden", "false");
     }
