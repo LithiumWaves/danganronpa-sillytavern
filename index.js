@@ -654,20 +654,57 @@ function loadCharacters() {
 }
 
 
+function applyDebugControlsInlineLayout(controls) {
+    if (!controls) return;
+
+    const isMobile = window.matchMedia?.("(max-width: 700px)")?.matches;
+
+    Object.assign(controls.style, {
+        position: "fixed",
+        zIndex: "2147483000",
+        display: "flex",
+        pointerEvents: "auto",
+        opacity: "0.96",
+        right: "10px",
+        left: "auto",
+        top: "auto",
+        bottom: isMobile
+            ? "calc(env(safe-area-inset-bottom, 0px) + 74px)"
+            : "14px",
+        flexDirection: isMobile ? "row" : "column",
+        gap: isMobile ? "8px" : "6px",
+        alignItems: "stretch",
+    });
+
+    controls.querySelectorAll("button").forEach(button => {
+        Object.assign(button.style, {
+            minHeight: isMobile ? "38px" : "auto",
+            minWidth: isMobile ? "88px" : "auto",
+            fontSize: isMobile ? "11px" : "12px",
+        });
+    });
+}
+
 function ensureGlobalDebugUi() {
-    if (!document.getElementById("trust-debug-controls")) {
-        const controls = document.createElement("div");
+    let controls = document.getElementById("trust-debug-controls");
+
+    if (!controls) {
+        controls = document.createElement("div");
         controls.id = "trust-debug-controls";
         controls.innerHTML = `
             <button id="truth-debug-open" type="button">🧠 DEBUG TB</button>
             <button id="trust-debug-up" type="button">▲ TRUST</button>
             <button id="trust-debug-down" type="button">▼ TRUST</button>
         `;
+    }
+
+    if (controls.parentElement !== document.body) {
         document.body.appendChild(controls);
     }
 
-    if (!document.getElementById("truth-debug-modal")) {
-        const modal = document.createElement("div");
+    let modal = document.getElementById("truth-debug-modal");
+    if (!modal) {
+        modal = document.createElement("div");
         modal.id = "truth-debug-modal";
         modal.className = "truth-debug-modal hidden";
         modal.setAttribute("aria-hidden", "true");
@@ -686,8 +723,13 @@ function ensureGlobalDebugUi() {
                 </div>
             </div>
         `;
+    }
+
+    if (modal.parentElement !== document.body) {
         document.body.appendChild(modal);
     }
+
+    applyDebugControlsInlineLayout(controls);
 }
 
 jQuery(async () => {
@@ -700,6 +742,18 @@ jQuery(async () => {
         const monopadHtml = await $.get(`${extensionFolderPath}/monopad.html`);
         $("body").append(monopadHtml);
         ensureGlobalDebugUi();
+
+        // SillyTavern may re-mount portions of the DOM after extension load.
+        // Re-assert the debug UI a few times to keep controls on the main screen.
+        let debugUiRetries = 0;
+        const debugUiRetryTimer = setInterval(() => {
+            ensureGlobalDebugUi();
+            debugUiRetries += 1;
+            if (debugUiRetries >= 12) clearInterval(debugUiRetryTimer);
+        }, 500);
+
+        window.addEventListener("resize", ensureGlobalDebugUi);
+        window.addEventListener("orientationchange", ensureGlobalDebugUi);
 
         setTimeout(() => {
             //registerCharactersFromContext();
