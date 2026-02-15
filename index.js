@@ -17,7 +17,8 @@ const defaultSettings = {
     truthBulletAnimations: true,
     crtEffects: true,
     crtIntensity: 35,
-    bootAnimations: true
+    bootAnimations: true,
+    welcomeSeen: false
 };
 
 window.refreshActiveCharacterUI = function () {
