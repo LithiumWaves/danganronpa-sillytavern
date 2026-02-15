@@ -259,6 +259,90 @@
     letter-spacing: 1px;
 }
 
+
+
+/* =========================
+   Monopad Welcome Screen
+   ========================= */
+
+.monopad-welcome-screen {
+    overflow: hidden;
+    background:
+        radial-gradient(circle at 20% 25%, rgba(70, 130, 255, 0.22), transparent 45%),
+        radial-gradient(circle at 80% 70%, rgba(30, 95, 210, 0.24), transparent 52%),
+        linear-gradient(160deg, #040a1b 0%, #061635 50%, #071f48 100%);
+}
+
+.monopad-welcome-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(rgba(140, 210, 255, 0.16) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(140, 210, 255, 0.14) 1px, transparent 1px);
+    background-size: 42px 42px;
+    opacity: 0.4;
+    filter: drop-shadow(0 0 6px rgba(110, 210, 255, 0.25));
+    animation: monopad-grid-drift 22s linear infinite;
+}
+
+.monopad-welcome-crest {
+    position: absolute;
+    width: min(56vw, 430px);
+    max-width: 70%;
+    aspect-ratio: 1;
+    object-fit: contain;
+    left: 50%;
+    top: 52%;
+    transform: translate(-50%, -50%);
+    opacity: 0.15;
+    filter: drop-shadow(0 0 26px rgba(125, 195, 255, 0.55));
+    animation: monopad-crest-spin 24s linear infinite;
+}
+
+.monopad-welcome-content {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    text-shadow: 0 0 10px rgba(120, 220, 255, 0.35);
+    z-index: 1;
+}
+
+.monopad-welcome-kicker {
+    font-size: clamp(12px, 1.4vw, 16px);
+    letter-spacing: 0.28em;
+    color: rgba(178, 220, 255, 0.88);
+    margin-bottom: 14px;
+}
+
+.monopad-welcome-message {
+    font-size: clamp(28px, 4.2vw, 56px);
+    letter-spacing: 0.1em;
+    color: #f0f8ff;
+    margin-bottom: 12px;
+}
+
+#monopad_welcome_user {
+    color: #a6ddff;
+}
+
+.monopad-welcome-sub {
+    font-size: clamp(11px, 1.2vw, 15px);
+    letter-spacing: 0.2em;
+    color: rgba(165, 210, 255, 0.72);
+}
+
+@keyframes monopad-crest-spin {
+    from { transform: translate(-50%, -50%) rotate(0deg); }
+    to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+@keyframes monopad-grid-drift {
+    from { background-position: 0 0, 0 0; }
+    to { background-position: 42px 42px, 42px 42px; }
+}
+
 /* =========================
    CRT / Scanline Overlay
    ========================= */
