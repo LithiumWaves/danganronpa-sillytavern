@@ -721,6 +721,12 @@ function bootstrapDebugUi() {
 
     window.addEventListener("resize", ensureGlobalDebugUi);
     window.addEventListener("orientationchange", ensureGlobalDebugUi);
+
+    if (!window.__danganDebugUiWatchdog) {
+        window.__danganDebugUiWatchdog = window.setInterval(() => {
+            ensureGlobalDebugUi();
+        }, 1500);
+    }
 }
 
 function applyDebugControlsInlineLayout(controls) {
@@ -728,29 +734,34 @@ function applyDebugControlsInlineLayout(controls) {
 
     const isMobile = window.matchMedia?.("(max-width: 700px)")?.matches;
 
-    Object.assign(controls.style, {
-        position: "fixed",
-        zIndex: "2147483000",
-        display: "flex",
-        pointerEvents: "auto",
-        opacity: "0.96",
-        right: "10px",
-        left: "auto",
-        top: "auto",
-        bottom: isMobile
-            ? "calc(env(safe-area-inset-bottom, 0px) + 74px)"
-            : "14px",
-        flexDirection: isMobile ? "row" : "column",
-        gap: isMobile ? "8px" : "6px",
-        alignItems: "stretch",
-    });
+    controls.style.setProperty("position", "fixed", "important");
+    controls.style.setProperty("z-index", "2147483647", "important");
+    controls.style.setProperty("display", "flex", "important");
+    controls.style.setProperty("pointer-events", "auto", "important");
+    controls.style.setProperty("opacity", "1", "important");
+    controls.style.setProperty("right", "10px", "important");
+    controls.style.setProperty("left", "auto", "important");
+    controls.style.setProperty("top", "auto", "important");
+    controls.style.setProperty("bottom", isMobile ? "calc(env(safe-area-inset-bottom, 0px) + 74px)" : "14px", "important");
+    controls.style.setProperty("flex-direction", isMobile ? "row" : "column", "important");
+    controls.style.setProperty("gap", isMobile ? "8px" : "6px", "important");
+    controls.style.setProperty("align-items", "stretch", "important");
 
     controls.querySelectorAll("button").forEach(button => {
-        Object.assign(button.style, {
-            minHeight: isMobile ? "38px" : "auto",
-            minWidth: isMobile ? "88px" : "auto",
-            fontSize: isMobile ? "11px" : "12px",
-        });
+        button.style.setProperty("display", "inline-flex", "important");
+        button.style.setProperty("align-items", "center", "important");
+        button.style.setProperty("justify-content", "center", "important");
+        button.style.setProperty("background", "#111", "important");
+        button.style.setProperty("color", "#fff", "important");
+        button.style.setProperty("border", "1px solid #444", "important");
+        button.style.setProperty("border-radius", "6px", "important");
+        button.style.setProperty("padding", isMobile ? "7px 10px" : "6px 10px", "important");
+        button.style.setProperty("min-height", isMobile ? "38px" : "32px", "important");
+        button.style.setProperty("min-width", isMobile ? "88px" : "120px", "important");
+        button.style.setProperty("font-size", isMobile ? "11px" : "12px", "important");
+        button.style.setProperty("cursor", "pointer", "important");
+        button.style.setProperty("letter-spacing", "0.06em", "important");
+        button.style.setProperty("visibility", "visible", "important");
     });
 }
 
