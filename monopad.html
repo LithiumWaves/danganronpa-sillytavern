@@ -60,8 +60,34 @@
 
             <!-- MAP -->
             <div class="monopad-panel-content" data-panel="map">
-                <h2>Map</h2>
-                <p>World / location overview.</p>
+                <div class="map-panel-shell">
+                    <div class="map-panel-grid"></div>
+
+                    <div class="map-panel-header">
+                        <div class="map-panel-kicker">NAVIGATION</div>
+                        <div class="map-location-title">HOPE'S PEAK / FLOOR 1</div>
+                        <div class="map-location-subtitle">Main academy first floor.</div>
+                    </div>
+
+                    <div class="map-controls">
+                        <div class="map-control-group">
+                            <div class="map-control-label">AREA</div>
+                            <div class="map-area-list">
+                                <button class="map-area-button active" type="button" data-area="hopes_peak" aria-pressed="true">HOPE'S PEAK</button>
+                                <button class="map-area-button" type="button" data-area="hotel_despair" aria-pressed="false">HOTEL DESPAIR</button>
+                            </div>
+                        </div>
+
+                        <div class="map-control-group">
+                            <div class="map-control-label">FLOOR</div>
+                            <div class="map-floor-list"></div>
+                        </div>
+                    </div>
+
+                    <div class="map-image-wrap">
+                        <img class="map-image" alt="Hope's Peak floor map" />
+                    </div>
+                </div>
             </div>
 
             <!-- SKILLS & ITEMS -->

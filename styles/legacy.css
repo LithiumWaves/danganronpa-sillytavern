@@ -2456,3 +2456,141 @@
     border-color: rgba(255, 126, 148, 0.68);
     background: rgba(96, 22, 44, 0.44);
 }
+
+/* =========================
+   Monopad Map Panel
+   ========================= */
+
+.monopad-panel-content[data-panel="map"] {
+    overflow: hidden;
+    background:
+        radial-gradient(circle at 15% 20%, rgba(75, 150, 255, 0.2), transparent 42%),
+        radial-gradient(circle at 78% 72%, rgba(36, 103, 230, 0.25), transparent 55%),
+        linear-gradient(160deg, #040a1b 0%, #061635 52%, #071f48 100%);
+}
+
+.map-panel-shell {
+    position: relative;
+    height: 100%;
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    gap: 16px;
+    z-index: 1;
+}
+
+.map-panel-grid {
+    position: absolute;
+    inset: -24px;
+    background-image:
+        linear-gradient(rgba(140, 210, 255, 0.13) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(140, 210, 255, 0.12) 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.34;
+    animation: monopad-grid-drift 24s linear infinite;
+    pointer-events: none;
+}
+
+.map-panel-header,
+.map-controls,
+.map-image-wrap {
+    position: relative;
+    z-index: 1;
+}
+
+.map-panel-kicker {
+    font-size: 12px;
+    letter-spacing: 0.24em;
+    color: rgba(176, 217, 255, 0.8);
+    margin-bottom: 4px;
+}
+
+.map-location-title {
+    font-size: clamp(20px, 2.8vw, 34px);
+    letter-spacing: 0.08em;
+    color: #eef8ff;
+}
+
+.map-location-subtitle {
+    margin-top: 6px;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    color: rgba(164, 209, 255, 0.78);
+}
+
+.map-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.map-control-group {
+    border: 1px solid rgba(149, 206, 255, 0.28);
+    border-radius: 12px;
+    padding: 10px;
+    background: rgba(6, 20, 45, 0.62);
+}
+
+.map-control-label {
+    font-size: 11px;
+    letter-spacing: 0.24em;
+    color: rgba(163, 212, 255, 0.72);
+    margin-bottom: 8px;
+}
+
+.map-area-list,
+.map-floor-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.map-area-button,
+.map-floor-button {
+    border: 1px solid rgba(138, 197, 255, 0.38);
+    border-radius: 999px;
+    background: rgba(14, 40, 80, 0.7);
+    color: rgba(213, 238, 255, 0.9);
+    padding: 7px 12px;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.map-area-button:hover,
+.map-floor-button:hover {
+    border-color: rgba(170, 226, 255, 0.9);
+    transform: translateY(-1px);
+}
+
+.map-area-button.active,
+.map-floor-button.active {
+    background: linear-gradient(135deg, rgba(122, 196, 255, 0.26), rgba(48, 118, 230, 0.4));
+    border-color: rgba(177, 230, 255, 0.94);
+    color: #f3fbff;
+    box-shadow: 0 0 12px rgba(102, 180, 255, 0.35);
+}
+
+.map-image-wrap {
+    border: 1px solid rgba(150, 208, 255, 0.34);
+    border-radius: 14px;
+    background: rgba(7, 18, 37, 0.62);
+    overflow: hidden;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.map-image {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    image-rendering: auto;
+}
+
+@media (max-width: 900px) {
+    .map-controls {
+        grid-template-columns: 1fr;
+    }
+}
