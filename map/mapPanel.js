@@ -44,6 +44,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         machineRolling: false,
         machineRollTimeout: null,
         machineJingleTimeout: null,
+        machineBannerTimeout: null,
     };
 
     const selectors = {
@@ -58,7 +59,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         machineDisplayCoins: ".map-machine-coins",
         machineDisplayLoad: ".map-machine-load",
         machineDisplayDupe: ".map-machine-dupe",
-        machineResult: ".map-machine-result",
+        machineBanner: ".map-machine-banner",
         machineImage: ".map-machine-image",
         machineAdd: ".map-machine-button.add",
         machineRoll: ".map-machine-button.roll",
@@ -108,7 +109,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                         <div class="map-machine-dupe">DUPE CHANCE: 0%</div>
                     </div>
 
-                    <div class="map-machine-result">SELECT COINS, THEN ROLL.</div>
+                    <div class="map-machine-banner" aria-live="polite"></div>
                 </div>
             </div>
         `);
@@ -129,18 +130,18 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
 
             const chance = items.getMonoMonoDupeChance(state.machineCoinsLoaded);
             if (!chance.ok) {
-                updateMachineOverlay($panel, chance.reason || "MACHINE DATA UNAVAILABLE.");
+                updateMachineOverlay($panel);
                 return;
             }
 
             if (state.machineCoinsLoaded >= chance.availableCoins) {
-                updateMachineOverlay($panel, "NOT ENOUGH MONOCOINS TO INCREASE LOAD.");
+                updateMachineOverlay($panel);
                 return;
             }
 
             state.machineCoinsLoaded += 1;
             playSfx?.(getSfx?.().monocoin_insert || getSfx?.().click);
-            updateMachineOverlay($panel, `LOAD INCREASED TO ${state.machineCoinsLoaded}.`);
+            updateMachineOverlay($panel);
         });
 
         $panel.find(selectors.machineRoll).off("click").on("click", () => {
@@ -151,7 +152,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
 
             const run = items.spinMonoMonoMachine(state.machineCoinsLoaded);
             if (!run.ok) {
-                updateMachineOverlay($panel, run.reason || "ROLL FAILED.");
+                updateMachineOverlay($panel);
                 return;
             }
 
@@ -172,8 +173,10 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             if ($img.length) {
                 $img.attr("src", `${extensionFolderPath}/assets/monochine_roll.gif`);
 
+                const obtainedMessage = `You've obtained a ${run.result.name}!`;
                 state.machineJingleTimeout = setTimeout(() => {
                     playSfx?.(getSfx?.().monochine_jingle || getSfx?.().click);
+                    showMachineBanner($panel, obtainedMessage);
                 }, MACHINE_JINGLE_DELAY_MS);
 
                 state.machineRollTimeout = setTimeout(() => {
@@ -186,10 +189,25 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                 }, MACHINE_ROLL_DURATION_MS);
             }
 
-            const resultLine = `${run.duplicate ? "DUPE" : "NEW"}: ${run.result.name.toUpperCase()} (COST ${run.cost})`;
             state.machineCoinsLoaded = 1;
-            updateMachineOverlay($panel, resultLine);
+            updateMachineOverlay($panel);
         });
+    }
+
+    function showMachineBanner($panel, text) {
+        const $banner = $panel.find(selectors.machineBanner);
+        if (!$banner.length || !text) return;
+
+        if (state.machineBannerTimeout) {
+            clearTimeout(state.machineBannerTimeout);
+            state.machineBannerTimeout = null;
+        }
+
+        $banner.text(text).addClass("show");
+        state.machineBannerTimeout = setTimeout(() => {
+            $banner.removeClass("show").text("");
+            state.machineBannerTimeout = null;
+        }, 1700);
     }
 
     function closeMachineOverlay($panel) {
@@ -201,15 +219,20 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             clearTimeout(state.machineJingleTimeout);
             state.machineJingleTimeout = null;
         }
+        if (state.machineBannerTimeout) {
+            clearTimeout(state.machineBannerTimeout);
+            state.machineBannerTimeout = null;
+        }
 
         state.machineRolling = false;
         $panel.find(selectors.machineImage).attr("src", `${extensionFolderPath}/assets/monochine_idle.png`);
         $panel.find(selectors.machineRoll).prop("disabled", false);
         $panel.find(selectors.machineAdd).prop("disabled", false);
+        $panel.find(selectors.machineBanner).removeClass("show").text("");
         $panel.find(selectors.machineOverlay).removeClass("open").attr("aria-hidden", "true");
     }
 
-    function updateMachineOverlay($panel, statusMessage = "") {
+    function updateMachineOverlay($panel) {
         const items = getItemsController();
         if (!items?.getMonoMonoDupeChance) return;
 
@@ -221,15 +244,12 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         $panel.find(selectors.machineDisplayLoad).text(`LOAD: ${state.machineCoinsLoaded} COIN${state.machineCoinsLoaded === 1 ? "" : "S"}`);
         $panel.find(selectors.machineDisplayDupe).text(`DUPE CHANCE: ${chancePercent}%`);
 
-        if (statusMessage) {
-            $panel.find(selectors.machineResult).text(statusMessage);
-        }
     }
 
     function openMachineOverlay($panel) {
         ensureMachineOverlay($panel);
         state.machineCoinsLoaded = 1;
-        updateMachineOverlay($panel, "SELECT COINS, THEN ROLL.");
+        updateMachineOverlay($panel);
         state.machineRolling = false;
         $panel.find(selectors.machineRoll).prop("disabled", false);
         $panel.find(selectors.machineAdd).prop("disabled", false);
