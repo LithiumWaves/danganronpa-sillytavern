@@ -2148,6 +2148,7 @@
     transform: translateY(10px) scale(0.96);
     transition: opacity 0.2s ease, transform 0.28s ease;
     backdrop-filter: blur(4px);
+    max-width: min(78vw, 280px);
 }
 
 #monocoin-toast.show {
@@ -2164,6 +2165,27 @@
 
 #monocoin-toast.show .monocoin-toast-icon {
     animation: monocoin-spin 0.7s ease;
+}
+
+.monocoin-toast-text {
+    white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+    #monocoin-toast {
+        right: 10px;
+        top: max(10px, env(safe-area-inset-top, 0px));
+        bottom: auto;
+        padding: 8px 10px;
+        font-size: 11px;
+        letter-spacing: 0.05em;
+        max-width: min(88vw, 250px);
+    }
+
+    .monocoin-toast-icon {
+        width: 22px;
+        height: 22px;
+    }
 }
 
 @keyframes monocoin-spin {
