@@ -53,6 +53,7 @@ function buildDecagram(svg, filled) {
         const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
 
         path.dataset.index = i;
+        path.classList.add("decagram-shard");
 
         path.setAttribute(
             "d",
