@@ -96,9 +96,13 @@
     background: #120016;
     color: white;
     position: relative;
+    --dangan-crt-strength: 0.35;
+    --dangan-crt-rgb-shift: 0.65px;
     filter:
-        drop-shadow(-1px 0 rgba(255, 0, 255, 0.15))
-        drop-shadow(1px 0 rgba(0, 255, 255, 0.15));
+        drop-shadow(calc(var(--dangan-crt-rgb-shift) * -1) 0 rgba(255, 0, 255, calc(0.12 + var(--dangan-crt-strength) * 0.18)))
+        drop-shadow(var(--dangan-crt-rgb-shift) 0 rgba(0, 255, 255, calc(0.12 + var(--dangan-crt-strength) * 0.18)))
+        contrast(calc(1 + var(--dangan-crt-strength) * 0.12))
+        saturate(calc(1 + var(--dangan-crt-strength) * 0.08));
     box-shadow:
         inset 0 0 60px rgba(255, 0, 255, 0.15),
         inset 0 0 120px rgba(0, 0, 0, 0.8);
@@ -355,23 +359,72 @@
     z-index: 5;
 
     background:
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01) 45%, rgba(0, 0, 0, 0.12)),
         repeating-linear-gradient(
             to bottom,
-            rgba(255, 255, 255, 0.03),
-            rgba(255, 255, 255, 0.03) 1px,
-            rgba(0, 0, 0, 0.04) 2px,
-            rgba(0, 0, 0, 0.04) 3px
+            rgba(255, 255, 255, 0.12),
+            rgba(255, 255, 255, 0.12) 1px,
+            rgba(0, 0, 0, 0.14) 2px,
+            rgba(0, 0, 0, 0.14) 3px
         );
 
-    mix-blend-mode: overlay;
+    mix-blend-mode: screen;
     opacity: var(--dangan-crt-opacity, 0.35);
 
-    animation: crt-noise 0.6s steps(2) infinite;
+    animation: crt-noise 0.18s steps(2) infinite;
+}
+
+.monopad-crt-overlay::before,
+.monopad-crt-overlay::after {
+    content: "";
+    position: absolute;
+    inset: -15%;
+    pointer-events: none;
+}
+
+.monopad-crt-overlay::before {
+    background-image:
+        radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.1) 0 1px, transparent 2px),
+        radial-gradient(circle at 65% 70%, rgba(255, 255, 255, 0.08) 0 1px, transparent 2px);
+    background-size: 3px 3px, 4px 4px;
+    opacity: calc(var(--dangan-crt-opacity, 0.35) * 0.4);
+    mix-blend-mode: soft-light;
+    animation: crt-speckle 0.22s steps(3) infinite;
+}
+
+.monopad-crt-overlay::after {
+    background: linear-gradient(0deg, transparent 0%, rgba(255, 255, 255, 0.18) 50%, transparent 100%);
+    opacity: calc(var(--dangan-crt-opacity, 0.35) * 0.5);
+    animation: crt-roll 4.8s linear infinite;
+}
+
+#dangan_monopad_panel:not(.crt-disabled) .monopad-fullscreen-root {
+    animation: crt-flicker 0.15s steps(2) infinite;
 }
 
 @keyframes crt-noise {
-    0% { background-position: 0 0; }
-    100% { background-position: 0 100%; }
+    0% { background-position: 0 0, 0 0; }
+    100% { background-position: 0 100%, 0 100%; }
+}
+
+@keyframes crt-speckle {
+    0% { transform: translate(0, 0); }
+    33% { transform: translate(-1%, 1%); }
+    66% { transform: translate(1%, -1%); }
+    100% { transform: translate(0, 0); }
+}
+
+@keyframes crt-roll {
+    0% { transform: translateY(-60%); }
+    100% { transform: translateY(60%); }
+}
+
+@keyframes crt-flicker {
+    0% { opacity: 1; }
+    25% { opacity: 0.995; }
+    50% { opacity: 0.99; }
+    75% { opacity: 0.997; }
+    100% { opacity: 1; }
 }
 
 /* =========================

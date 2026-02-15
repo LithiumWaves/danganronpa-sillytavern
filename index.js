@@ -790,6 +790,8 @@ function applyCrtSettings() {
 
     panel.classList.toggle("crt-disabled", !enabled);
     panel.style.setProperty("--dangan-crt-opacity", (intensity / 100).toFixed(2));
+    panel.style.setProperty("--dangan-crt-strength", (intensity / 100).toFixed(2));
+    panel.style.setProperty("--dangan-crt-rgb-shift", `${(intensity / 100 * 1.8).toFixed(2)}px`);
 
     $("#dangan_crt_value").text(`${intensity}%`);
 }
