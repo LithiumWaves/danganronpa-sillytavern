@@ -1185,6 +1185,21 @@
     resize: vertical;
 }
 
+.truth-debug-choice-group {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 2px;
+}
+
+.truth-debug-choice {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: rgba(255, 214, 228, 0.9);
+}
+
 .truth-debug-actions {
     display: flex;
     justify-content: flex-end;

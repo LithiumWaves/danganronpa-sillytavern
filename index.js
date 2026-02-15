@@ -1,6 +1,6 @@
 import { extension_settings } from "../../../extensions.js";
 import { saveSettingsDebounced } from "../../../../script.js";
-import { initTruthBullets, handleTruthBullet } from "./truth/truthBullets.js";
+import { initTruthBullets, handleTruthBullet, setNextTruthBulletSfxVariant } from "./truth/truthBullets.js";
 import { buildDecagram, crackShard, shatterShard } from "./trust/trustDecagram.js";
 import { initTrustAnimations, playTrustRankUp, playTrustRankDown, playTrustMaxed, playTrustToDistrustTransition, playDistrustRankDown, playDistrustRankUp, playDistrustToTrustRecovery } from "./trust/trustAnimations.js";
 import { increaseTrust, decreaseTrust } from "./trust/trustAPI.js";
@@ -1111,6 +1111,17 @@ function ensureGlobalDebugUi() {
                 <label class="truth-debug-label" for="truth-debug-description">DESCRIPTION</label>
                 <textarea id="truth-debug-description" class="truth-debug-textarea" rows="4" maxlength="500" placeholder="Optional description"></textarea>
 
+                <div class="truth-debug-choice-group" role="radiogroup" aria-label="Truth bullet SFX">
+                    <label class="truth-debug-choice">
+                        <input type="radio" name="truth-debug-sfx" value="thh" checked />
+                        <span>THH</span>
+                    </label>
+                    <label class="truth-debug-choice">
+                        <input type="radio" name="truth-debug-sfx" value="udg" />
+                        <span>UDG</span>
+                    </label>
+                </div>
+
                 <div class="truth-debug-actions">
                     <button id="truth-debug-cancel" class="truth-debug-btn ghost" type="button">CANCEL</button>
                     <button id="truth-debug-acquire" class="truth-debug-btn" type="button">ACQUIRE</button>
@@ -1201,6 +1212,9 @@ function bindDebugControlEvents() {
             $("#truth-debug-name").trigger("focus");
             return;
         }
+
+        const selectedSfx = String($("input[name='truth-debug-sfx']:checked").val() || "thh").trim().toLowerCase();
+        setNextTruthBulletSfxVariant(selectedSfx === "udg" ? "udg" : "thh");
 
         handleTruthBullet(title, description);
         $("#truth-debug-name").val("");
