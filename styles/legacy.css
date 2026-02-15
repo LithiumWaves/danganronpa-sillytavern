@@ -2392,3 +2392,37 @@
     55% { transform: rotate(250deg) scale(1.08); }
     100% { transform: rotate(360deg) scale(1); }
 }
+
+
+.dangan-gift-reaction {
+    margin: 6px 0 8px;
+    padding: 6px 8px;
+    border: 1px dashed rgba(255, 195, 212, 0.42);
+    border-radius: 6px;
+    background: rgba(74, 25, 41, 0.45);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.dangan-gift-reaction .gift-tag {
+    font-size: 10px;
+    letter-spacing: 0.09em;
+    color: rgba(255, 225, 235, 0.92);
+}
+
+.dangan-gift-reaction .gift-body {
+    font-size: 12px;
+    line-height: 1.4;
+    color: #ffe9f0;
+}
+
+.dangan-gift-reaction.verdict-social_up {
+    border-color: rgba(117, 220, 168, 0.65);
+    background: rgba(19, 83, 58, 0.35);
+}
+
+.dangan-gift-reaction.verdict-social_down {
+    border-color: rgba(255, 126, 148, 0.68);
+    background: rgba(96, 22, 44, 0.44);
+}

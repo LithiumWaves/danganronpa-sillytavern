@@ -62,7 +62,7 @@ const itemCatalog = [
     { id: "g_iris_truth_lens", name: "Iris Truth Lens", category: "gift", rarity: "SR", description: "A specialist diagnostic lens tuned for micro eye-movement observation.", effect: "Greatly improves intention-reading in direct eye contact." },
 ];
 
-export function createItemsPanelController({ extensionName, extension_settings, saveSettingsDebounced, playSfx, getSfx }) {
+export function createItemsPanelController({ extensionName, extension_settings, saveSettingsDebounced, playSfx, getSfx, onGiftUseRequest }) {
     let activeItemsFilter = "all";
     let activeItemsSort = "recent";
     let selectedItemId = null;
@@ -169,6 +169,29 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         }
 
         saveSettingsDebounced();
+        return true;
+    }
+
+    function consumeGiftForUse(item) {
+        if (!item || item.category !== "gift") return false;
+        const consumed = discardInventoryItem(item.id, 1);
+        if (!consumed) return false;
+
+        if (typeof onGiftUseRequest === "function") {
+            onGiftUseRequest({
+                id: item.id,
+                name: item.name,
+                rarity: item.rarity,
+                description: item.description,
+                effect: item.effect,
+            });
+        }
+
+        const $result = $("#items-machine-result");
+        if ($result.length) {
+            $result.text(`QUEUED ${item.name.toUpperCase()} FOR THE NEXT CHARACTER REPLY.`);
+        }
+
         return true;
     }
 
@@ -362,7 +385,7 @@ export function createItemsPanelController({ extensionName, extension_settings, 
             <div class="items-detail-effect">${item.effect}</div> -->
 
             <div class="items-detail-actions">
-                <button class="items-detail-action" disabled>USE</button>
+                <button class="items-detail-action" data-action="use-item" ${showDiscardGift ? '' : 'disabled'}>USE</button>
                 <button class="items-detail-action" disabled>INSPECT</button>
                 ${showDiscardGift ? '<button class="items-detail-action discard" data-action="discard-gift">DISCARD GIFT</button>' : ""}
                 ${showDiscardGift ? `<button class="items-detail-action discard" data-action="discard-rarity">MASS DISCARD ${item.rarity}</button>` : ""}
@@ -370,6 +393,12 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         `);
 
         if (showDiscardGift) {
+            $detail.find('[data-action="use-item"]').on("click", () => {
+                playSfx(getSfx().click);
+                consumeGiftForUse(item);
+                renderSkillsItemsPanel();
+            });
+
             $detail.find('[data-action="discard-gift"]').on("click", () => {
                 playSfx(getSfx().click);
                 discardInventoryItem(item.id, 1);
