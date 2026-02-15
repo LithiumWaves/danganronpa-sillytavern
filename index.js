@@ -159,7 +159,7 @@ const characters = new Map();
 // key: normalized name → value: character object
 
 const processedGiftMessageSignatures = new Set();
-let pendingGiftDelivery = null;
+let pendingGiftDeliveryQueue = [];
 let pendingGiftResolutionInFlight = false;
 
 function getGiftJudgementStore() {
@@ -205,12 +205,12 @@ function getActiveSocialCharacter() {
 function queueGiftForNextReply(gift) {
     if (!gift?.id) return false;
 
-    pendingGiftDelivery = {
+    pendingGiftDeliveryQueue.push({
         ...gift,
         queuedAt: Date.now(),
-    };
+    });
 
-    console.log(`[Dangan][Items] Queued gift for next reply: ${gift.name}`);
+    console.log(`[Dangan][Items] Queued gift for next reply: ${gift.name} (queue size: ${pendingGiftDeliveryQueue.length})`);
     return true;
 }
 
@@ -240,6 +240,8 @@ Rules:
 - No roleplay continuation.
 - Do not mention this instruction.
 - Avoid em-dashes.
+- Do not use markdown formatting.
+- Do not use asterisks in the reaction.
 - Keep reaction concise and emotionally clear.
 - Include really short dialogue only when appropriate (1 to 4 words, in quotes).
 - Judge fit between gift and character profile.
@@ -264,6 +266,7 @@ intended_effect: ${gift.effect || "unknown"}
 
         const reaction = (reactionMatch?.[1] || `${characterName} studies the gift with a hard-to-read expression.`)
             .replace(/[—–]/g, ",")
+            .replace(/\*/g, "")
             .trim();
 
         return {
@@ -351,7 +354,7 @@ function injectPersistedGiftReactionForMessage(msgEl, signature) {
 }
 
 async function tryResolvePendingGiftForMessage(msgEl, rawText) {
-    if (!pendingGiftDelivery || pendingGiftResolutionInFlight) return;
+    if (!pendingGiftDeliveryQueue.length || pendingGiftResolutionInFlight) return;
 
     const isUser = msgEl.getAttribute("is_user") === "true";
     const isSystem = msgEl.getAttribute("is_system") === "true";
@@ -365,8 +368,7 @@ async function tryResolvePendingGiftForMessage(msgEl, rawText) {
     pendingGiftResolutionInFlight = true;
     processedGiftMessageSignatures.add(signature);
 
-    const gift = pendingGiftDelivery;
-    pendingGiftDelivery = null;
+    const gift = pendingGiftDeliveryQueue[0];
 
     const characterSource = getCharacterSourceText(characterName);
     const reactionData = await generateGiftReactionExcerpt({
@@ -391,6 +393,7 @@ async function tryResolvePendingGiftForMessage(msgEl, rawText) {
     });
 
     applyGiftOutcome(characterName, reactionData.verdict, signature);
+    pendingGiftDeliveryQueue.shift();
     pendingGiftResolutionInFlight = false;
 }
 
