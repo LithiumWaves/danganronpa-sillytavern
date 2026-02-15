@@ -24,7 +24,7 @@ function getFloorByKey(areaKey, floorKey) {
     return area.floors.find(floor => floor.key === floorKey) || null;
 }
 
-export function createMapPanelController({ extensionFolderPath }) {
+export function createMapPanelController({ extensionFolderPath, getItemsPanelController, playSfx, getSfx }) {
     const state = {
         area: "hopes_peak",
         floor: "floor_1",
@@ -37,6 +37,7 @@ export function createMapPanelController({ extensionFolderPath }) {
         image: ".map-image",
         title: ".map-location-title",
         subtitle: ".map-location-subtitle",
+        machinePin: ".map-machine-pin",
     };
 
     function ensureValidFloorSelection() {
@@ -101,6 +102,7 @@ export function createMapPanelController({ extensionFolderPath }) {
         const $image = $panel.find(selectors.image);
         const $title = $panel.find(selectors.title);
         const $subtitle = $panel.find(selectors.subtitle);
+        const $imageWrap = $panel.find('.map-image-wrap');
 
         if ($image.length) {
             $image.attr("src", `${extensionFolderPath}/assets/${floor.image}`);
@@ -113,6 +115,17 @@ export function createMapPanelController({ extensionFolderPath }) {
 
         if ($subtitle.length) {
             $subtitle.text(floor.description);
+        }
+
+        $imageWrap.find(selectors.machinePin).remove();
+
+        const showMachinePin = state.area === 'hopes_peak' && state.floor === 'floor_1';
+        if (showMachinePin && $imageWrap.length) {
+            $imageWrap.append(`
+                <button class="map-machine-pin" type="button" aria-label="MonoMono Machine" title="MonoMono Machine">
+                    ¥
+                </button>
+            `);
         }
     }
 
@@ -127,6 +140,25 @@ export function createMapPanelController({ extensionFolderPath }) {
         });
     }
 
+    function bindMachinePin($panel) {
+        $panel.find(selectors.machinePin).off('click').on('click', () => {
+            const items = typeof getItemsPanelController === 'function' ? getItemsPanelController() : null;
+            if (!items) return;
+
+            playSfx?.(getSfx?.().click);
+
+            const run = items.rollMonoMonoMachine?.(1);
+            const message = run?.ok
+                ? `MONOMONO MACHINE: ${run.message}`
+                : `MONOMONO MACHINE: ${run?.reason || 'UNAVAILABLE.'}`;
+
+            const $subtitle = $panel.find(selectors.subtitle);
+            if ($subtitle.length) {
+                $subtitle.text(message);
+            }
+        });
+    }
+
     function renderMapPanel() {
         const $panel = $(selectors.panel);
         if (!$panel.length) return;
@@ -136,6 +168,7 @@ export function createMapPanelController({ extensionFolderPath }) {
         updateAreaButtons($panel);
         renderFloorButtons($panel);
         renderMapImage($panel);
+        bindMachinePin($panel);
     }
 
     return {
