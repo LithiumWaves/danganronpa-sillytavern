@@ -701,11 +701,8 @@ function startDebugUiObserver() {
         const controls = document.getElementById("trust-debug-controls");
         const modal = document.getElementById("truth-debug-modal");
 
-        const hudHost = document.getElementById("dangan-debug-hud-host");
-
-        if (!controls || controls.parentElement !== document.body || !modal || modal.parentElement !== document.body || !hudHost || hudHost.parentElement !== document.body) {
+        if (!controls || controls.parentElement !== document.body || !modal || modal.parentElement !== document.body) {
             ensureGlobalDebugUi();
-            ensureFloatingDebugHud();
         }
     });
 
@@ -720,147 +717,16 @@ function bootstrapDebugUi() {
 
     ensureDebugControlsStyleTag();
     ensureGlobalDebugUi();
-    ensureFloatingDebugHud();
     startDebugUiObserver();
 
     window.addEventListener("resize", ensureGlobalDebugUi);
     window.addEventListener("orientationchange", ensureGlobalDebugUi);
-}
 
-function ensureFloatingDebugHud() {
-    if (!document.body) return;
-
-    let host = document.getElementById("dangan-debug-hud-host");
-    if (!host) {
-        host = document.createElement("div");
-        host.id = "dangan-debug-hud-host";
-        document.body.appendChild(host);
+    if (!window.__danganDebugUiWatchdog) {
+        window.__danganDebugUiWatchdog = window.setInterval(() => {
+            ensureGlobalDebugUi();
+        }, 1500);
     }
-
-    Object.assign(host.style, {
-        position: "fixed",
-        right: "10px",
-        bottom: "14px",
-        zIndex: "2147483646",
-        pointerEvents: "auto",
-    });
-
-    const shadow = host.shadowRoot || host.attachShadow({ mode: "open" });
-
-    if (!shadow.getElementById("debug-hud-wrap")) {
-        shadow.innerHTML = `
-            <style>
-                #debug-hud-wrap { display:flex; flex-direction:column; gap:6px; }
-                button {
-                    background:#111; color:#fff; border:1px solid #444; padding:6px 10px;
-                    font-size:12px; letter-spacing:1px; cursor:pointer; border-radius:6px;
-                }
-                button:hover { background:#222; }
-                #modal { position:fixed; inset:0; background:rgba(8,2,8,.72); display:none; align-items:center; justify-content:center; padding:16px; z-index:2147483647; }
-                #modal.show { display:flex; }
-                #card { width:min(420px, 96vw); border:1px solid rgba(255,190,210,.4); border-radius:10px; background:rgba(24,9,17,.96); padding:12px; display:flex; flex-direction:column; gap:8px; }
-                #title { font-size:12px; letter-spacing:.1em; color:#ffe8f0; border-bottom:1px dashed rgba(255,198,216,.28); padding-bottom:6px; }
-                label { font-size:10px; color:rgba(255,214,228,.9); }
-                input, textarea { width:100%; box-sizing:border-box; border:1px solid rgba(255,184,203,.35); border-radius:6px; background:rgba(17,7,12,.85); color:#ffeef4; padding:7px 8px; font-size:12px; }
-                textarea { resize:vertical; }
-                #actions { display:flex; justify-content:flex-end; gap:8px; }
-                .ghost { background:rgba(36,16,25,.8); border-color:rgba(255,210,225,.33); }
-                @media (max-width: 700px) {
-                    :host { bottom: calc(74px + env(safe-area-inset-bottom, 0px)) !important; }
-                    #debug-hud-wrap { flex-direction:row; gap:8px; }
-                    button { min-height:38px; min-width:88px; font-size:11px; }
-                }
-            </style>
-            <div id="debug-hud-wrap">
-                <button id="tb-open" type="button">🧠 DEBUG TB</button>
-                <button id="trust-up" type="button">▲ TRUST</button>
-                <button id="trust-down" type="button">▼ TRUST</button>
-            </div>
-            <div id="modal" aria-hidden="true">
-                <div id="card" role="dialog" aria-modal="true" aria-label="Custom truth bullet debug">
-                    <div id="title">FORCE ACQUIRE TRUTH BULLET</div>
-                    <label for="tb-name">NAME</label>
-                    <input id="tb-name" type="text" maxlength="80" placeholder="Truth Bullet Name" />
-                    <label for="tb-description">DESCRIPTION</label>
-                    <textarea id="tb-description" rows="4" maxlength="500" placeholder="Optional description"></textarea>
-                    <div id="actions">
-                        <button id="tb-cancel" class="ghost" type="button">CANCEL</button>
-                        <button id="tb-acquire" type="button">ACQUIRE</button>
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-
-    if (host.dataset.bound === "1") return;
-    host.dataset.bound = "1";
-
-    const modal = shadow.getElementById("modal");
-    const openBtn = shadow.getElementById("tb-open");
-    const cancelBtn = shadow.getElementById("tb-cancel");
-    const acquireBtn = shadow.getElementById("tb-acquire");
-    const upBtn = shadow.getElementById("trust-up");
-    const downBtn = shadow.getElementById("trust-down");
-    const nameInput = shadow.getElementById("tb-name");
-    const descInput = shadow.getElementById("tb-description");
-
-    const closeModal = () => {
-        modal.classList.remove("show");
-        modal.setAttribute("aria-hidden", "true");
-    };
-
-    openBtn?.addEventListener("click", () => {
-        playSfx(sfx.click);
-        modal.classList.add("show");
-        modal.setAttribute("aria-hidden", "false");
-        nameInput?.focus();
-    });
-
-    cancelBtn?.addEventListener("click", () => {
-        playSfx(sfx.click);
-        closeModal();
-    });
-
-    modal?.addEventListener("click", e => {
-        if (e.target === modal) closeModal();
-    });
-
-    acquireBtn?.addEventListener("click", () => {
-        playSfx(sfx.click);
-
-        const title = String(nameInput?.value || "").trim();
-        const description = String(descInput?.value || "").trim();
-
-        if (!title) {
-            nameInput?.focus();
-            return;
-        }
-
-        handleTruthBullet(title, description);
-        nameInput.value = "";
-        descInput.value = "";
-        closeModal();
-    });
-
-    upBtn?.addEventListener("click", () => {
-        const char = getActiveSocialCharacter();
-        if (!char) {
-            console.warn("[Dangan][Debug] No social character selected. Click a character name first.");
-            return;
-        }
-
-        increaseTrust(char);
-    });
-
-    downBtn?.addEventListener("click", () => {
-        const char = getActiveSocialCharacter();
-        if (!char) {
-            console.warn("[Dangan][Debug] No social character selected. Click a character name first.");
-            return;
-        }
-
-        decreaseTrust(char);
-    });
 }
 
 function applyDebugControlsInlineLayout(controls) {
@@ -868,42 +734,50 @@ function applyDebugControlsInlineLayout(controls) {
 
     const isMobile = window.matchMedia?.("(max-width: 700px)")?.matches;
 
-    Object.assign(controls.style, {
-        position: "fixed",
-        zIndex: "2147483000",
-        display: "flex",
-        pointerEvents: "auto",
-        opacity: "0.96",
-        right: "10px",
-        left: "auto",
-        top: "auto",
-        bottom: isMobile
-            ? "calc(env(safe-area-inset-bottom, 0px) + 74px)"
-            : "14px",
-        flexDirection: isMobile ? "row" : "column",
-        gap: isMobile ? "8px" : "6px",
-        alignItems: "stretch",
-    });
+    controls.style.setProperty("position", "fixed", "important");
+    controls.style.setProperty("z-index", "2147483647", "important");
+    controls.style.setProperty("display", "flex", "important");
+    controls.style.setProperty("pointer-events", "auto", "important");
+    controls.style.setProperty("opacity", "1", "important");
+    controls.style.setProperty("right", "10px", "important");
+    controls.style.setProperty("left", "auto", "important");
+    controls.style.setProperty("top", "auto", "important");
+    controls.style.setProperty("bottom", isMobile ? "calc(env(safe-area-inset-bottom, 0px) + 74px)" : "14px", "important");
+    controls.style.setProperty("flex-direction", isMobile ? "row" : "column", "important");
+    controls.style.setProperty("gap", isMobile ? "8px" : "6px", "important");
+    controls.style.setProperty("align-items", "stretch", "important");
 
     controls.querySelectorAll("button").forEach(button => {
-        Object.assign(button.style, {
-            minHeight: isMobile ? "38px" : "auto",
-            minWidth: isMobile ? "88px" : "auto",
-            fontSize: isMobile ? "11px" : "12px",
-        });
+        button.style.setProperty("display", "inline-flex", "important");
+        button.style.setProperty("align-items", "center", "important");
+        button.style.setProperty("justify-content", "center", "important");
+        button.style.setProperty("background", "#111", "important");
+        button.style.setProperty("color", "#fff", "important");
+        button.style.setProperty("border", "1px solid #444", "important");
+        button.style.setProperty("border-radius", "6px", "important");
+        button.style.setProperty("padding", isMobile ? "7px 10px" : "6px 10px", "important");
+        button.style.setProperty("min-height", isMobile ? "38px" : "32px", "important");
+        button.style.setProperty("min-width", isMobile ? "88px" : "120px", "important");
+        button.style.setProperty("font-size", isMobile ? "11px" : "12px", "important");
+        button.style.setProperty("cursor", "pointer", "important");
+        button.style.setProperty("letter-spacing", "0.06em", "important");
+        button.style.setProperty("visibility", "visible", "important");
     });
 }
 
 function ensureGlobalDebugUi() {
+    const legacyHud = document.getElementById("dangan-debug-hud-host");
+    if (legacyHud) legacyHud.remove();
+
     let controls = document.getElementById("trust-debug-controls");
 
     if (!controls) {
         controls = document.createElement("div");
         controls.id = "trust-debug-controls";
         controls.innerHTML = `
-            <button id="truth-debug-open" type="button">🧠 DEBUG TB</button>
-            <button id="trust-debug-up" type="button">▲ TRUST</button>
-            <button id="trust-debug-down" type="button">▼ TRUST</button>
+            <button id="trust-debug-up" type="button">TRUST +</button>
+            <button id="trust-debug-down" type="button">TRUST -</button>
+            <button id="truth-debug-open" type="button">NEW TRUTH BULLET</button>
         `;
     }
 
@@ -919,7 +793,7 @@ function ensureGlobalDebugUi() {
         modal.setAttribute("aria-hidden", "true");
         modal.innerHTML = `
             <div class="truth-debug-card" role="dialog" aria-modal="true" aria-label="Custom truth bullet debug">
-                <div class="truth-debug-title">FORCE ACQUIRE TRUTH BULLET</div>
+                <div class="truth-debug-title">CREATE CUSTOM TRUTH BULLET</div>
                 <label class="truth-debug-label" for="truth-debug-name">NAME</label>
                 <input id="truth-debug-name" class="truth-debug-input" type="text" maxlength="80" placeholder="Truth Bullet Name" />
 
@@ -941,10 +815,87 @@ function ensureGlobalDebugUi() {
     applyDebugControlsInlineLayout(controls);
 }
 
+// =========================
+// TRUST DEBUG CONTROLS
+// =========================
+
+function closeTruthDebugModal() {
+    $("#truth-debug-modal").addClass("hidden").attr("aria-hidden", "true");
+}
+
+function playDebugClickSfx() {
+    if (sfx?.click) playSfx(sfx.click);
+}
+
+function bindDebugControlEvents() {
+    $(document).off("click.debugControls");
+    $(document).off("click.debugModal");
+
+    $(document).on("click.debugControls", "#truth-debug-open", () => {
+        playDebugClickSfx();
+        ensureGlobalDebugUi();
+        $("#truth-debug-modal").removeClass("hidden").attr("aria-hidden", "false");
+        $("#truth-debug-name").trigger("focus");
+    });
+
+    $(document).on("click.debugControls", "#truth-debug-cancel", () => {
+        playDebugClickSfx();
+        closeTruthDebugModal();
+    });
+
+    $(document).on("click.debugModal", "#truth-debug-modal", e => {
+        if (e.target.id === "truth-debug-modal") {
+            closeTruthDebugModal();
+        }
+    });
+
+    $(document).on("click.debugControls", "#truth-debug-acquire", () => {
+        playDebugClickSfx();
+
+        const title = String($("#truth-debug-name").val() || "").trim();
+        const description = String($("#truth-debug-description").val() || "").trim();
+
+        if (!title) {
+            $("#truth-debug-name").trigger("focus");
+            return;
+        }
+
+        handleTruthBullet(title, description);
+        $("#truth-debug-name").val("");
+        $("#truth-debug-description").val("");
+        closeTruthDebugModal();
+    });
+
+    $(document).on("click.debugControls", "#trust-debug-up", () => {
+        playDebugClickSfx();
+
+        const char = getActiveSocialCharacter();
+        if (!char) {
+            console.warn("[Dangan][Debug] No social character selected. Click a character name first.");
+            return;
+        }
+
+        increaseTrust(char);
+    });
+
+    $(document).on("click.debugControls", "#trust-debug-down", () => {
+        playDebugClickSfx();
+
+        const char = getActiveSocialCharacter();
+        if (!char) {
+            console.warn("[Dangan][Debug] No social character selected. Click a character name first.");
+            return;
+        }
+
+        decreaseTrust(char);
+    });
+}
+
 jQuery(async () => {
     console.log(`[${extensionName}] Loading...`);
 
     bootstrapDebugUi();
+    bindDebugControlEvents();
 
     try {
         const settingsHtml = await $.get(`${extensionFolderPath}/example.html`);
@@ -1182,70 +1133,6 @@ applySettingsTabUI();
 loadCharacters();
 itemsPanel.renderSkillsItemsPanel();
 
-// =========================
-// TRUST DEBUG CONTROLS
-// =========================
-
-function closeTruthDebugModal() {
-    $("#truth-debug-modal").addClass("hidden").attr("aria-hidden", "true");
-}
-
-$(document).off("click.debugControls");
-$(document).off("click.debugModal");
-
-$(document).on("click.debugControls", "#truth-debug-open", () => {
-    playSfx(sfx.click);
-    $("#truth-debug-modal").removeClass("hidden").attr("aria-hidden", "false");
-    $("#truth-debug-name").trigger("focus");
-});
-
-$(document).on("click.debugControls", "#truth-debug-cancel", () => {
-    playSfx(sfx.click);
-    closeTruthDebugModal();
-});
-
-$(document).on("click.debugModal", "#truth-debug-modal", e => {
-    if (e.target.id === "truth-debug-modal") {
-        closeTruthDebugModal();
-    }
-});
-
-$(document).on("click.debugControls", "#truth-debug-acquire", () => {
-    playSfx(sfx.click);
-
-    const title = String($("#truth-debug-name").val() || "").trim();
-    const description = String($("#truth-debug-description").val() || "").trim();
-
-    if (!title) {
-        $("#truth-debug-name").trigger("focus");
-        return;
-    }
-
-    handleTruthBullet(title, description);
-    $("#truth-debug-name").val("");
-    $("#truth-debug-description").val("");
-    closeTruthDebugModal();
-});
-
-$(document).on("click.debugControls", "#trust-debug-up", () => {
-    const char = getActiveSocialCharacter();
-    if (!char) {
-        console.warn("[Dangan][Debug] No social character selected. Click a character name first.");
-        return;
-    }
-
-    increaseTrust(char);
-});
-
-$(document).on("click.debugControls", "#trust-debug-down", () => {
-    const char = getActiveSocialCharacter();
-    if (!char) {
-        console.warn("[Dangan][Debug] No social character selected. Click a character name first.");
-        return;
-    }
-
-    decreaseTrust(char);
-});
 
 // 🔴 FORCE REGISTER FROM EXISTING CHAT
 //waitForRealChat(() => {
