@@ -2715,8 +2715,8 @@
 
 .map-machine-pin {
     position: absolute;
-    left: 499px;
-    top: 252px;
+    left: 50%;
+    top: 50%;
     transform: translate(-50%, -50%);
     width: 30px;
     height: 30px;

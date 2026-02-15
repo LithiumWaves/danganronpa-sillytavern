@@ -1,3 +1,10 @@
+const FLOOR_ONE_MACHINE_PIN = {
+    x: 276,
+    y: 145,
+    width: 480,
+    height: 272,
+};
+
 const MAP_AREAS = {
     hopes_peak: {
         label: "HOPE'S PEAK",
@@ -121,8 +128,17 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
 
         const showMachinePin = state.area === 'hopes_peak' && state.floor === 'floor_1';
         if (showMachinePin && $imageWrap.length) {
+            const pinLeftPercent = (FLOOR_ONE_MACHINE_PIN.x / FLOOR_ONE_MACHINE_PIN.width) * 100;
+            const pinTopPercent = (FLOOR_ONE_MACHINE_PIN.y / FLOOR_ONE_MACHINE_PIN.height) * 100;
+
             $imageWrap.append(`
-                <button class="map-machine-pin" type="button" aria-label="MonoMono Machine" title="MonoMono Machine">
+                <button
+                    class="map-machine-pin"
+                    type="button"
+                    aria-label="MonoMono Machine"
+                    title="MonoMono Machine"
+                    style="left:${pinLeftPercent}%; top:${pinTopPercent}%;"
+                >
                     ¥
                 </button>
             `);
