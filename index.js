@@ -654,6 +654,63 @@ function loadCharacters() {
 }
 
 
+let debugUiObserver = null;
+
+function ensureDebugControlsStyleTag() {
+    if (document.getElementById("trust-debug-controls-inline-style")) return;
+
+    const style = document.createElement("style");
+    style.id = "trust-debug-controls-inline-style";
+    style.textContent = `
+#trust-debug-controls {
+    position: fixed !important;
+    right: 10px !important;
+    left: auto !important;
+    top: auto !important;
+    z-index: 2147483000 !important;
+    display: flex !important;
+    pointer-events: auto !important;
+}
+@media (max-width: 700px) {
+    #trust-debug-controls {
+        bottom: calc(74px + env(safe-area-inset-bottom, 0px)) !important;
+        flex-direction: row !important;
+    }
+}
+`;
+
+    document.head?.appendChild(style);
+}
+
+function startDebugUiObserver() {
+    if (debugUiObserver) return;
+
+    debugUiObserver = new MutationObserver(() => {
+        const controls = document.getElementById("trust-debug-controls");
+        const modal = document.getElementById("truth-debug-modal");
+
+        if (!controls || controls.parentElement !== document.body || !modal || modal.parentElement !== document.body) {
+            ensureGlobalDebugUi();
+        }
+    });
+
+    debugUiObserver.observe(document.body, {
+        childList: true,
+        subtree: true,
+    });
+}
+
+function bootstrapDebugUi() {
+    if (!document.body) return;
+
+    ensureDebugControlsStyleTag();
+    ensureGlobalDebugUi();
+    startDebugUiObserver();
+
+    window.addEventListener("resize", ensureGlobalDebugUi);
+    window.addEventListener("orientationchange", ensureGlobalDebugUi);
+}
+
 function applyDebugControlsInlineLayout(controls) {
     if (!controls) return;
 
@@ -735,6 +792,8 @@ function ensureGlobalDebugUi() {
 jQuery(async () => {
     console.log(`[${extensionName}] Loading...`);
 
+    bootstrapDebugUi();
+
     try {
         const settingsHtml = await $.get(`${extensionFolderPath}/example.html`);
         $("#extensions_settings2").append(settingsHtml);
@@ -751,9 +810,6 @@ jQuery(async () => {
             debugUiRetries += 1;
             if (debugUiRetries >= 12) clearInterval(debugUiRetryTimer);
         }, 500);
-
-        window.addEventListener("resize", ensureGlobalDebugUi);
-        window.addEventListener("orientationchange", ensureGlobalDebugUi);
 
         setTimeout(() => {
             //registerCharactersFromContext();
@@ -1076,6 +1132,7 @@ initTruthBullets({
 });
 
     } catch (error) {
+        bootstrapDebugUi();
         console.error(`[${extensionName}] ❌ Load failed:`, error);
     }
 });
