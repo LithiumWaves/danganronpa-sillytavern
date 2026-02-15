@@ -297,67 +297,6 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         };
     }
 
-    function ensureMonoMonoDebugUI() {
-        const $panel = $(`.monopad-panel-content[data-panel="skills"]`);
-        const $filterPanel = $panel.find(".items-filter-panel");
-        if (!$filterPanel.length || $filterPanel.find(".items-machine-debug").length) return;
-
-        $filterPanel.append(`
-            <div class="items-machine-debug">
-                <div class="items-machine-title">MONOMONO MACHINE (DEBUG)</div>
-                <div class="items-machine-controls">
-                    <input id="items-machine-coin-add" class="items-machine-input" type="number" min="1" step="1" value="10" />
-                    <button id="items-machine-add-coins" class="items-machine-roll alt">ADD MONOCOINS</button>
-                </div>
-                <div class="items-machine-controls">
-                    <input id="items-machine-roll-count" class="items-machine-input" type="number" min="1" step="1" value="1" />
-                    <button id="items-machine-roll" class="items-machine-roll">ROLL</button>
-                </div>
-                <div id="items-machine-result" class="items-machine-result">ENTER COINS AND ROLL FOR GIFTS.</div>
-            </div>
-        `);
-
-        $filterPanel.find("#items-machine-add-coins").on("click", () => {
-            playSfx(getSfx().click);
-
-            const raw = Number($filterPanel.find("#items-machine-coin-add").val() || 0);
-            const amount = Math.max(0, Math.floor(raw));
-
-            if (amount <= 0) {
-                $filterPanel.find("#items-machine-result").text("INPUT A POSITIVE MONOCOIN AMOUNT.");
-                return;
-            }
-
-            const inventory = extension_settings[extensionName].inventory;
-            const current = Number(inventory.monocoins || 0);
-            inventory.monocoins = Math.max(0, current + amount);
-            saveSettingsDebounced();
-
-            $filterPanel.find("#items-machine-result").text(`ADDED ${amount} MONOCOINS · TOTAL ${inventory.monocoins}`);
-            renderSkillsItemsPanel();
-        });
-
-        $filterPanel.find("#items-machine-roll").on("click", () => {
-            playSfx(getSfx().click);
-
-            const raw = Number($filterPanel.find("#items-machine-roll-count").val() || 1);
-            const coinInput = Math.max(1, Math.floor(raw));
-            const run = runMonoMonoMachine(coinInput);
-
-            if (!run.ok) {
-                $filterPanel.find("#items-machine-result").text(run.reason);
-                return;
-            }
-
-            const uniqueWon = [...new Set(run.results.map(item => item.name.toUpperCase()))].join(", ");
-            $filterPanel
-                .find("#items-machine-result")
-                .text(`ROLLED ${run.rolls}X · DUPES ${run.duplicateCount} · NEW/FOUND: ${uniqueWon || "NONE"}`);
-
-            renderSkillsItemsPanel();
-        });
-    }
-
     function renderItemDetails(item) {
         const $detail = $("#items-detail-panel");
         if (!$detail.length) return;
@@ -469,7 +408,6 @@ export function createItemsPanelController({ extensionName, extension_settings, 
 
         $("#items-monocoin-value").text(monocoins.toLocaleString());
         $("#items-trust-fragment-value").text(trustFragments.toLocaleString());
-        ensureMonoMonoDebugUI();
         bindSkillShopButton();
 
         const $skillShopRow = $panel.find("#items-skill-shop-row");
@@ -573,11 +511,25 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         };
     }
 
+
+    function rollMonoMonoMachine(coinInput = 1) {
+        const rolls = Math.max(1, Math.floor(Number(coinInput || 1)));
+        const run = runMonoMonoMachine(rolls);
+        if (!run.ok) return run;
+
+        const uniqueWon = [...new Set(run.results.map(item => item.name.toUpperCase()))].join(', ');
+        return {
+            ...run,
+            message: `ROLLED ${run.rolls}X · DUPES ${run.duplicateCount} · NEW/FOUND: ${uniqueWon || 'NONE'}`
+        };
+    }
+
     return {
         bindWindowApi,
         loadInventoryState,
         renderSkillsItemsPanel,
         setFilter,
         setSort,
+        rollMonoMonoMachine,
     };
 }
