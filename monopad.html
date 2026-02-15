@@ -249,7 +249,7 @@
             </section>
 
             <!-- AI GENERATION -->
-            <section class="settings-section">
+            <section class="settings-section settings-section-ai">
                 <div class="settings-section-title">AI GENERATION</div>
 
                 <div class="settings-item settings-item-stack">
@@ -282,12 +282,14 @@
                     />
                     <label class="settings-checkbox-row" for="dangan_openrouter_remember_key">
                         <input id="dangan_openrouter_remember_key" type="checkbox" />
-                        <span>REMEMBER KEY ON THIS DEVICE</span>
+                        <span>REMEMBER KEY ON THIS DEVICE (LESS SECURE)</span>
                     </label>
                     <div class="settings-ai-actions">
                         <button id="dangan_openrouter_key_clear" class="settings-small-button" type="button">CLEAR KEY</button>
+                        <button id="dangan_openrouter_test_connection" class="settings-small-button" type="button">TEST CONNECTION</button>
                         <span id="dangan_openrouter_key_status" class="settings-note"></span>
                     </div>
+                    <div id="dangan_openrouter_connection_status" class="settings-note"></div>
                     <div class="settings-note">By default, the key is kept in memory for this session only.</div>
                 </div>
             </section>

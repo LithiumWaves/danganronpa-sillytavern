@@ -1015,6 +1015,38 @@ async function generateWithOpenRouter(prompt, { maxTokens = 300, temperature = 0
     return String(data?.choices?.[0]?.message?.content || "").trim();
 }
 
+async function testOpenRouterConnection() {
+    const apiKey = getOpenRouterApiKey();
+    if (!apiKey) {
+        throw new Error("Missing OpenRouter API key.");
+    }
+
+    const model = String(getMonopadSetting("openrouterModel") || defaultSettings.openrouterModel).trim() || defaultSettings.openrouterModel;
+
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+            "HTTP-Referer": window.location?.origin || "https://sillytavern.app",
+            "X-Title": "Danganronpa Monopad"
+        },
+        body: JSON.stringify({
+            model,
+            messages: [{ role: "user", content: "Reply with exactly: PONG" }],
+            max_tokens: 8,
+            temperature: 0
+        })
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Connection test failed (${response.status}): ${errorText.slice(0, 180)}`);
+    }
+
+    return "Connection succeeded";
+}
+
 function getActivePersonaName() {
     const fallback = "STUDENT";
 
@@ -1103,6 +1135,11 @@ function applySettingsTabUI() {
         keyStatusEl.textContent = tab.openrouterRememberApiKey
             ? "Key persistence: saved in extension settings"
             : "Key persistence: session only";
+    }
+
+    const connectionStatusEl = document.getElementById("dangan_openrouter_connection_status");
+    if (connectionStatusEl && !connectionStatusEl.dataset.locked) {
+        connectionStatusEl.textContent = "";
     }
 
     const showOpenRouterControls = (providerSelect?.value || tab.generationProvider) === "openrouter";
@@ -1787,6 +1824,27 @@ $(".monopad-icon").on("mouseenter", function () {
             setRuntimeOpenRouterApiKey("");
             persistOpenRouterApiKeyIfAllowed();
             applySettingsTabUI();
+        });
+
+        $("#dangan_openrouter_test_connection").on("click", async function () {
+            const statusEl = document.getElementById("dangan_openrouter_connection_status");
+            if (statusEl) {
+                statusEl.dataset.locked = "true";
+                statusEl.textContent = "Testing OpenRouter connection...";
+            }
+
+            try {
+                await testOpenRouterConnection();
+                if (statusEl) statusEl.textContent = "OpenRouter connection OK.";
+            } catch (err) {
+                if (statusEl) statusEl.textContent = `OpenRouter test failed: ${err.message || err}`;
+            } finally {
+                if (statusEl) {
+                    setTimeout(() => {
+                        statusEl.dataset.locked = "";
+                    }, 250);
+                }
+            }
         });
 
 loadSettings();

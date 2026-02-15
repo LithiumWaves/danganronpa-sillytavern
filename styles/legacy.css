@@ -1556,6 +1556,21 @@
     line-height: 1.35;
 }
 
+.settings-section-ai {
+    max-height: 230px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.settings-section-ai::-webkit-scrollbar {
+    width: 6px;
+}
+
+.settings-section-ai::-webkit-scrollbar-thumb {
+    background: rgba(102, 172, 255, 0.45);
+    border-radius: 999px;
+}
+
 #dangan_crt_slider {
     width: 130px;
     accent-color: #54dfff;
@@ -1585,6 +1600,10 @@
 
     .settings-section {
         padding: 8px 9px;
+    }
+
+    .settings-section-ai {
+        max-height: 200px;
     }
 
     .settings-item {
