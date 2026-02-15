@@ -248,6 +248,50 @@
 
             </section>
 
+            <!-- AI GENERATION -->
+            <section class="settings-section">
+                <div class="settings-section-title">AI GENERATION</div>
+
+                <div class="settings-item settings-item-stack">
+                    <label class="settings-label" for="dangan_generation_provider">GENERATION SOURCE</label>
+                    <select id="dangan_generation_provider" class="settings-select">
+                        <option value="main">MAIN API CONNECTION</option>
+                        <option value="openrouter">OPENROUTER (DIRECT)</option>
+                    </select>
+                </div>
+
+                <div class="settings-item settings-item-stack settings-openrouter-only" id="dangan_openrouter_model_wrap">
+                    <label class="settings-label" for="dangan_openrouter_model">OPENROUTER MODEL</label>
+                    <input
+                        id="dangan_openrouter_model"
+                        class="settings-input"
+                        type="text"
+                        placeholder="google/gemini-2.5-flash"
+                        autocomplete="off"
+                    />
+                </div>
+
+                <div class="settings-item settings-item-stack settings-openrouter-only" id="dangan_openrouter_key_wrap">
+                    <label class="settings-label" for="dangan_openrouter_key">OPENROUTER API KEY</label>
+                    <input
+                        id="dangan_openrouter_key"
+                        class="settings-input"
+                        type="password"
+                        placeholder="sk-or-v1-..."
+                        autocomplete="off"
+                    />
+                    <label class="settings-checkbox-row" for="dangan_openrouter_remember_key">
+                        <input id="dangan_openrouter_remember_key" type="checkbox" />
+                        <span>REMEMBER KEY ON THIS DEVICE (LESS SECURE)</span>
+                    </label>
+                    <div class="settings-ai-actions">
+                        <button id="dangan_openrouter_key_clear" class="settings-small-button" type="button">CLEAR KEY</button>
+                        <span id="dangan_openrouter_key_status" class="settings-note"></span>
+                    </div>
+                    <div class="settings-note">By default, the key is kept in memory for this session only.</div>
+                </div>
+            </section>
+
         </div>
     </div>
 </div>

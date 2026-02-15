@@ -1486,6 +1486,76 @@
     min-width: 170px;
 }
 
+.settings-item-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.settings-select,
+.settings-input {
+    width: 100%;
+    border: 1px solid rgba(126, 173, 255, 0.35);
+    border-radius: 6px;
+    background: rgba(5, 13, 23, 0.88);
+    color: #d7e2f4;
+    padding: 7px 9px;
+    font: inherit;
+    letter-spacing: 0.04em;
+}
+
+.settings-input::placeholder {
+    color: rgba(214, 228, 255, 0.45);
+}
+
+.settings-select:focus,
+.settings-input:focus {
+    outline: 1px solid rgba(84, 223, 255, 0.9);
+    box-shadow: 0 0 0 2px rgba(84, 223, 255, 0.2);
+}
+
+.settings-openrouter-only.is-hidden {
+    display: none;
+}
+
+.settings-checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    color: rgba(210, 228, 255, 0.85);
+}
+
+.settings-checkbox-row input {
+    margin: 0;
+}
+
+.settings-ai-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.settings-small-button {
+    border: 1px solid rgba(126, 173, 255, 0.45);
+    background: rgba(9, 20, 34, 0.9);
+    color: #d7e2f4;
+    border-radius: 5px;
+    padding: 5px 8px;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+}
+
+.settings-note {
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    color: rgba(188, 215, 255, 0.8);
+    line-height: 1.35;
+}
+
 #dangan_crt_slider {
     width: 130px;
     accent-color: #54dfff;
@@ -1499,6 +1569,47 @@
 @media (max-width: 980px) {
     .settings-grid {
         grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 520px) {
+    .settings-header-row {
+        padding: 10px 10px;
+        gap: 10px;
+    }
+
+    .settings-grid {
+        padding: 10px;
+        gap: 10px;
+    }
+
+    .settings-section {
+        padding: 8px 9px;
+    }
+
+    .settings-item {
+        padding: 7px 0;
+    }
+
+    .settings-label {
+        font-size: 11px;
+        letter-spacing: 0.05em;
+    }
+
+    .settings-select,
+    .settings-input {
+        font-size: 11px;
+        padding: 6px 8px;
+    }
+
+    #dangan_crt_slider {
+        width: 100px;
+    }
+
+    .settings-note,
+    .settings-checkbox-row,
+    .settings-small-button {
+        font-size: 9px;
     }
 }
 

@@ -19,7 +19,11 @@ const defaultSettings = {
     crtEffects: true,
     crtIntensity: 35,
     bootAnimations: true,
-    welcomeSeen: false
+    welcomeSeen: false,
+    generationProvider: "main",
+    openrouterModel: "google/gemini-2.5-flash",
+    openrouterRememberApiKey: false,
+    openrouterApiKey: ""
 };
 
 window.refreshActiveCharacterUI = function () {
@@ -47,6 +51,7 @@ const MONOCOIN_REWARDS = {
 };
 
 let monocoinToastTimeout = null;
+let runtimeOpenRouterApiKey = "";
 
 function ensureMonocoinToast() {
     let toast = document.getElementById("monocoin-toast");
@@ -400,15 +405,6 @@ async function tryResolvePendingGiftForMessage(msgEl, rawText) {
 }
 
 async function generateIsolated(prompt, { allowDialogue = false } = {}) {
-    if (!window.SillyTavern?.getContext) {
-        throw new Error("SillyTavern context unavailable");
-    }
-
-    const ctx = SillyTavern.getContext();
-    if (!ctx.generateRaw) {
-        throw new Error("generateRaw not available");
-    }
-
     const fullPrompt = `
 You are an analysis engine.
 You do NOT roleplay.
@@ -417,6 +413,24 @@ You ONLY output structured analytical reports.
 
 ${prompt}
 `.trim();
+
+    if (isOpenRouterGenerationEnabled()) {
+        return generateWithOpenRouter(fullPrompt, {
+            maxTokens: 300,
+            temperature: 0.25,
+            topP: 0.9,
+            stop: ["USER:", "ASSISTANT:", "###"]
+        });
+    }
+
+    if (!window.SillyTavern?.getContext) {
+        throw new Error("SillyTavern context unavailable");
+    }
+
+    const ctx = SillyTavern.getContext();
+    if (!ctx.generateRaw) {
+        throw new Error("generateRaw not available");
+    }
 
     const result = await ctx.generateRaw({
         prompt: fullPrompt,
@@ -915,6 +929,14 @@ function loadSettings() {
 
     extension_settings[extensionName].giftJudgements ||= {};
 
+    const storedLegacyKey = String(extension_settings[extensionName].openrouterApiKey || "").trim();
+    const shouldRemember = !!extension_settings[extensionName].openrouterRememberApiKey;
+    setRuntimeOpenRouterApiKey(storedLegacyKey);
+
+    if (!shouldRemember && storedLegacyKey) {
+        delete extension_settings[extensionName].openrouterApiKey;
+        saveSettingsDebounced();
+    }
 }
 
 function getMonopadSetting(key) {
@@ -924,6 +946,73 @@ function getMonopadSetting(key) {
 function setMonopadSetting(key, value) {
     extension_settings[extensionName][key] = value;
     saveSettingsDebounced();
+}
+
+function getOpenRouterApiKey() {
+    if (runtimeOpenRouterApiKey) return runtimeOpenRouterApiKey;
+
+    if (!getMonopadSetting("openrouterRememberApiKey")) {
+        return "";
+    }
+
+    const key = getMonopadSetting("openrouterApiKey");
+    return typeof key === "string" ? key.trim() : "";
+}
+
+function setRuntimeOpenRouterApiKey(value) {
+    runtimeOpenRouterApiKey = String(value || "").trim();
+}
+
+function persistOpenRouterApiKeyIfAllowed() {
+    const shouldRemember = !!getMonopadSetting("openrouterRememberApiKey");
+    if (shouldRemember) {
+        setMonopadSetting("openrouterApiKey", runtimeOpenRouterApiKey);
+        return;
+    }
+
+    if (extension_settings[extensionName].openrouterApiKey) {
+        delete extension_settings[extensionName].openrouterApiKey;
+        saveSettingsDebounced();
+    }
+}
+
+function isOpenRouterGenerationEnabled() {
+    return getMonopadSetting("generationProvider") === "openrouter";
+}
+
+async function generateWithOpenRouter(prompt, { maxTokens = 300, temperature = 0.25, topP = 0.9, stop = ["USER:", "ASSISTANT:", "###"] } = {}) {
+    const apiKey = getOpenRouterApiKey();
+    if (!apiKey) {
+        throw new Error("OpenRouter is selected but no API key is configured in Monopad settings.");
+    }
+
+    const model = String(getMonopadSetting("openrouterModel") || defaultSettings.openrouterModel).trim() || defaultSettings.openrouterModel;
+
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+            "HTTP-Referer": window.location?.origin || "https://sillytavern.app",
+            "X-Title": "Danganronpa Monopad"
+        },
+        body: JSON.stringify({
+            model,
+            messages: [{ role: "user", content: prompt }],
+            max_tokens: maxTokens,
+            temperature,
+            top_p: topP,
+            stop
+        })
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`OpenRouter request failed (${response.status}): ${errorText.slice(0, 240)}`);
+    }
+
+    const data = await response.json();
+    return String(data?.choices?.[0]?.message?.content || "").trim();
 }
 
 function getActivePersonaName() {
@@ -988,6 +1077,38 @@ function applySettingsTabUI() {
     if (slider) {
         slider.value = String(Number(tab.crtIntensity) || 35);
     }
+
+    const providerSelect = document.getElementById("dangan_generation_provider");
+    if (providerSelect) {
+        providerSelect.value = tab.generationProvider || defaultSettings.generationProvider;
+    }
+
+    const modelInput = document.getElementById("dangan_openrouter_model");
+    if (modelInput) {
+        modelInput.value = tab.openrouterModel || defaultSettings.openrouterModel;
+    }
+
+    const keyInput = document.getElementById("dangan_openrouter_key");
+    if (keyInput) {
+        keyInput.value = runtimeOpenRouterApiKey || "";
+    }
+
+    const rememberKeyCheckbox = document.getElementById("dangan_openrouter_remember_key");
+    if (rememberKeyCheckbox) {
+        rememberKeyCheckbox.checked = !!tab.openrouterRememberApiKey;
+    }
+
+    const keyStatusEl = document.getElementById("dangan_openrouter_key_status");
+    if (keyStatusEl) {
+        keyStatusEl.textContent = tab.openrouterRememberApiKey
+            ? "Key persistence: saved in extension settings"
+            : "Key persistence: session only";
+    }
+
+    const showOpenRouterControls = (providerSelect?.value || tab.generationProvider) === "openrouter";
+    document.querySelectorAll(".settings-openrouter-only").forEach(el => {
+        el.classList.toggle("is-hidden", !showOpenRouterControls);
+    });
 
     applyCrtSettings();
 }
@@ -1637,6 +1758,35 @@ $(".monopad-icon").on("mouseenter", function () {
             const value = Number(e.target.value);
             setMonopadSetting("crtIntensity", Number.isFinite(value) ? value : 35);
             applyCrtSettings();
+        });
+
+        $("#dangan_generation_provider").on("change", function () {
+            setMonopadSetting("generationProvider", this.value || defaultSettings.generationProvider);
+            applySettingsTabUI();
+        });
+
+        $("#dangan_openrouter_model").on("change blur", function () {
+            const nextModel = String(this.value || "").trim() || defaultSettings.openrouterModel;
+            this.value = nextModel;
+            setMonopadSetting("openrouterModel", nextModel);
+        });
+
+        $("#dangan_openrouter_key").on("change blur", function () {
+            setRuntimeOpenRouterApiKey(this.value);
+            persistOpenRouterApiKeyIfAllowed();
+            applySettingsTabUI();
+        });
+
+        $("#dangan_openrouter_remember_key").on("change", function () {
+            setMonopadSetting("openrouterRememberApiKey", this.checked);
+            persistOpenRouterApiKeyIfAllowed();
+            applySettingsTabUI();
+        });
+
+        $("#dangan_openrouter_key_clear").on("click", function () {
+            setRuntimeOpenRouterApiKey("");
+            persistOpenRouterApiKeyIfAllowed();
+            applySettingsTabUI();
         });
 
 loadSettings();
