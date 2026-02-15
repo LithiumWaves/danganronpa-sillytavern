@@ -9,6 +9,7 @@ const MACHINE_ROLL_DURATION_MS = 2000;
 const MACHINE_JINGLE_FRAME = 50;
 const MACHINE_GIF_TOTAL_FRAMES = 100;
 const MACHINE_JINGLE_DELAY_MS = Math.round((MACHINE_JINGLE_FRAME / MACHINE_GIF_TOTAL_FRAMES) * MACHINE_ROLL_DURATION_MS);
+const MACHINE_BANNER_DELAY_MS = 500;
 
 const MAP_AREAS = {
     hopes_peak: {
@@ -36,7 +37,7 @@ function getFloorByKey(areaKey, floorKey) {
     return area.floors.find(floor => floor.key === floorKey) || null;
 }
 
-export function createMapPanelController({ extensionFolderPath, getItemsPanelController, playSfx, getSfx }) {
+export function createMapPanelController({ extensionFolderPath, getItemsPanelController, playSfx, getSfx, getSetting }) {
     const state = {
         area: "hopes_peak",
         floor: "floor_1",
@@ -45,6 +46,8 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         machineRollTimeout: null,
         machineJingleTimeout: null,
         machineBannerTimeout: null,
+        machineBannerDelayTimeout: null,
+        machineTrackStarted: false,
     };
 
     const selectors = {
@@ -82,6 +85,37 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
 
     function getItemsController() {
         return typeof getItemsPanelController === "function" ? getItemsPanelController() : null;
+    }
+
+
+    function isMachineTrackEnabled() {
+        if (typeof getSetting !== "function") return true;
+        return !!getSetting("monochineTrackEnabled");
+    }
+
+    function syncMachineTrack($panel) {
+        const track = document.getElementById("monopad_sfx_monochine_track");
+        if (!track) return;
+
+        const shouldPlay = isMachineTrackEnabled() && $panel.find(selectors.machineOverlay).hasClass("open");
+        if (shouldPlay) {
+            track.loop = true;
+            if (state.machineTrackStarted) return;
+            track.currentTime = 0;
+            track.volume = 0.4;
+            track.play().then(() => {
+                state.machineTrackStarted = true;
+            }).catch(() => {
+                state.machineTrackStarted = false;
+            });
+            return;
+        }
+
+        if (!track.paused) {
+            track.pause();
+        }
+        track.currentTime = 0;
+        state.machineTrackStarted = false;
     }
 
     function ensureMachineOverlay($panel) {
@@ -176,7 +210,14 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                 const obtainedMessage = `You've obtained a ${run.result.name}!`;
                 state.machineJingleTimeout = setTimeout(() => {
                     playSfx?.(getSfx?.().monochine_jingle || getSfx?.().click);
-                    showMachineBanner($panel, obtainedMessage);
+                    if (state.machineBannerDelayTimeout) {
+                        clearTimeout(state.machineBannerDelayTimeout);
+                        state.machineBannerDelayTimeout = null;
+                    }
+                    state.machineBannerDelayTimeout = setTimeout(() => {
+                        showMachineBanner($panel, obtainedMessage);
+                        state.machineBannerDelayTimeout = null;
+                    }, MACHINE_BANNER_DELAY_MS);
                 }, MACHINE_JINGLE_DELAY_MS);
 
                 state.machineRollTimeout = setTimeout(() => {
@@ -223,6 +264,10 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             clearTimeout(state.machineBannerTimeout);
             state.machineBannerTimeout = null;
         }
+        if (state.machineBannerDelayTimeout) {
+            clearTimeout(state.machineBannerDelayTimeout);
+            state.machineBannerDelayTimeout = null;
+        }
 
         state.machineRolling = false;
         $panel.find(selectors.machineImage).attr("src", `${extensionFolderPath}/assets/monochine_idle.png`);
@@ -230,6 +275,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         $panel.find(selectors.machineAdd).prop("disabled", false);
         $panel.find(selectors.machineBanner).removeClass("show").text("");
         $panel.find(selectors.machineOverlay).removeClass("open").attr("aria-hidden", "true");
+        syncMachineTrack($panel);
     }
 
     function updateMachineOverlay($panel) {
@@ -255,6 +301,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         $panel.find(selectors.machineAdd).prop("disabled", false);
         $panel.find(selectors.machineImage).attr("src", `${extensionFolderPath}/assets/monochine_idle.png`);
         $panel.find(selectors.machineOverlay).addClass("open").attr("aria-hidden", "false");
+        syncMachineTrack($panel);
     }
 
     function updateAreaButtons($panel) {
@@ -374,9 +421,18 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         if (!(state.area === "hopes_peak" && state.floor === "floor_1")) {
             closeMachineOverlay($panel);
         }
+
+        syncMachineTrack($panel);
+    }
+
+    function handleSettingsChanged() {
+        const $panel = $(selectors.panel);
+        if (!$panel.length) return;
+        syncMachineTrack($panel);
     }
 
     return {
         renderMapPanel,
+        handleSettingsChanged,
     };
 }
