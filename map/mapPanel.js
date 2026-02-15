@@ -162,7 +162,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                     state.machineRolling = false;
                     $panel.find(selectors.machineRoll).prop("disabled", false);
                     $panel.find(selectors.machineAdd).prop("disabled", false);
-                }, 2800);
+                }, 2000);
             }
 
             const resultLine = `${run.duplicate ? "DUPE" : "NEW"}: ${run.result.name.toUpperCase()} (COST ${run.cost})`;
