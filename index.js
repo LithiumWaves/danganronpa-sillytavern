@@ -876,6 +876,40 @@ function applyTruthDebugModalInlineLayout(modal) {
     card.style.setProperty("box-sizing", "border-box", "important");
 }
 
+function applyTruthDebugModalInlineLayout(modal) {
+    if (!modal) return;
+
+    const isMobile = window.matchMedia?.("(max-width: 700px)")?.matches;
+    const topInset = "env(safe-area-inset-top, 0px)";
+    const bottomInset = "env(safe-area-inset-bottom, 0px)";
+
+    modal.style.setProperty("position", "fixed", "important");
+    modal.style.setProperty("top", "0", "important");
+    modal.style.setProperty("left", "0", "important");
+    modal.style.setProperty("width", "100vw", "important");
+    modal.style.setProperty("height", "100dvh", "important");
+    modal.style.setProperty("z-index", "2147483646", "important");
+    modal.style.setProperty("display", "flex", "important");
+    modal.style.setProperty("align-items", "center", "important");
+    modal.style.setProperty("justify-content", "center", "important");
+    modal.style.setProperty("box-sizing", "border-box", "important");
+    modal.style.setProperty("overflow-y", "auto", "important");
+    modal.style.setProperty("padding-top", isMobile ? `max(12px, calc(${topInset} + 8px))` : "16px", "important");
+    modal.style.setProperty("padding-bottom", isMobile ? `max(12px, calc(${bottomInset} + 8px))` : "16px", "important");
+    modal.style.setProperty("padding-left", isMobile ? "10px" : "12px", "important");
+    modal.style.setProperty("padding-right", isMobile ? "10px" : "12px", "important");
+
+    const card = modal.querySelector('.truth-debug-card');
+    if (!card) return;
+
+    card.style.setProperty("width", isMobile ? "min(96vw, 430px)" : "min(420px, 96vw)", "important");
+    card.style.setProperty("max-width", "96vw", "important");
+    card.style.setProperty("max-height", isMobile ? `calc(100dvh - ${topInset} - ${bottomInset} - 20px)` : "min(86dvh, 640px)", "important");
+    card.style.setProperty("overflow-y", "auto", "important");
+    card.style.setProperty("margin", "0 auto", "important");
+    card.style.setProperty("box-sizing", "border-box", "important");
+}
+
 function ensureGlobalDebugUi() {
     const legacyHud = document.getElementById("dangan-debug-hud-host");
     if (legacyHud) legacyHud.remove();
