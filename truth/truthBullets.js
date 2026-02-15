@@ -11,7 +11,13 @@ let startV3CObserver;
 let playSfx;
 let extensionName;
 let getSetting;
+let awardMonocoins;
+let monocoinRewards;
 let deps = {};
+
+const DEFAULT_MONOCOIN_REWARD = Object.freeze({
+    truthBullet: 5,
+});
 
 export function initTruthBullets(providedDeps) {
     deps = providedDeps;
@@ -28,7 +34,9 @@ export function initTruthBullets(providedDeps) {
         startV3CObserver,
         playSfx,
         extensionName,
-        getSetting
+        getSetting,
+        awardMonocoins,
+        monocoinRewards
     } = deps);
 
     // Loads saved bullets
@@ -127,6 +135,11 @@ function addTruthBullet(title, description = "") {
     insertTruthBulletUI(bullet);
     queueTruthBulletAnimation(title);
     saveTruthBullets();
+
+    const truthReward = Number(monocoinRewards?.truthBullet ?? DEFAULT_MONOCOIN_REWARD.truthBullet);
+    if (awardMonocoins) {
+        awardMonocoins(truthReward, "new truth bullet");
+    }
 
     console.log(`[${deps.extensionName}] Truth Bullet added: ${title}`);
 }

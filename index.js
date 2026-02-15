@@ -34,6 +34,84 @@ window.refreshActiveCharacterUI = function () {
 
 let activeSocialCharacterId = null;
 let socialPanelController = null;
+let itemsPanelController = null;
+
+const MONOCOIN_REWARDS = {
+    truthBullet: 5,
+    socialRankUp: 10,
+    trustMaxed: 50,
+};
+
+let monocoinToastTimeout = null;
+
+function ensureMonocoinToast() {
+    let toast = document.getElementById("monocoin-toast");
+    if (toast) return toast;
+
+    toast = document.createElement("div");
+    toast.id = "monocoin-toast";
+    toast.innerHTML = `
+        <img class="monocoin-toast-icon" src="${extensionFolderPath}/assets/monocoin.png" alt="Monocoin" />
+        <div class="monocoin-toast-text">+0 MONOCOINS</div>
+    `;
+
+    document.body.appendChild(toast);
+    return toast;
+}
+
+function showMonocoinToast(amount) {
+    if (!amount) return;
+
+    const toast = ensureMonocoinToast();
+    const text = toast.querySelector(".monocoin-toast-text");
+    if (text) {
+        text.textContent = `+${amount} MONOCOINS`;
+    }
+
+    toast.classList.remove("show");
+    void toast.offsetWidth;
+    toast.classList.add("show");
+
+    clearTimeout(monocoinToastTimeout);
+    monocoinToastTimeout = setTimeout(() => {
+        toast.classList.remove("show");
+    }, 1400);
+}
+
+function awardMonocoins(amount = 0, reason = "") {
+    const reward = Math.max(0, Number(amount || 0));
+    if (!reward) return;
+
+    const ext = extension_settings[extensionName];
+    ext.inventory ||= {};
+
+    const current = Number(ext.inventory.monocoins || 0);
+    ext.inventory.monocoins = Math.max(0, current + reward);
+
+    saveSettingsDebounced();
+    itemsPanelController?.renderSkillsItemsPanel();
+    showMonocoinToast(reward);
+
+    if (reason) {
+        console.log(`[${extensionName}] Awarded ${reward} Monocoins (${reason}).`);
+    }
+}
+
+function increaseTrustWithRewards(char) {
+    if (!char) return;
+
+    const previous = Number(char.trustLevel ?? 1);
+    increaseTrust(char);
+
+    const current = Number(char.trustLevel ?? previous);
+    if (current <= previous) return;
+
+    awardMonocoins(MONOCOIN_REWARDS.socialRankUp, "social rank-up");
+
+    if (previous < 10 && current === 10) {
+        awardMonocoins(MONOCOIN_REWARDS.trustMaxed, "trust maxed");
+    }
+}
 
 const truthBullets = [];
 
@@ -274,7 +352,7 @@ for (const match of rawText.matchAll(SOCIAL_REGEX)) {
     if (char.trustHistory.has(signature)) continue;
 
     char.trustHistory.add(signature);
-    increaseTrust(char);
+    increaseTrustWithRewards(char);
 }
 
 // ---- Social Trust DOWN ----
@@ -989,7 +1067,7 @@ function bindDebugControlEvents() {
             return;
         }
 
-        increaseTrust(char);
+        increaseTrustWithRewards(char);
     });
 
     $(document).on("click.debugControls", "#trust-debug-down", () => {
@@ -1060,19 +1138,19 @@ jQuery(async () => {
     getSetting: getMonopadSetting
 });
 
-        const itemsPanel = createItemsPanelController({
+        itemsPanelController = createItemsPanelController({
             extensionName,
             extension_settings,
             saveSettingsDebounced,
             playSfx,
             getSfx: () => sfx,
         });
-        itemsPanel.bindWindowApi();
+        itemsPanelController.bindWindowApi();
 
         socialPanelController = createSocialPanelController({
             characters,
             saveCharacters,
-            increaseTrust,
+            increaseTrust: increaseTrustWithRewards,
             decreaseTrust,
             lookupUltimateFromLorebook,
             generateCharacterNotes,
@@ -1144,7 +1222,7 @@ if (tab === "truth" && window.renderTruthBullets) {
     }
 
     if (tab === "skills") {
-        itemsPanel.renderSkillsItemsPanel();
+        itemsPanelController.renderSkillsItemsPanel();
     }
 });
 
@@ -1212,14 +1290,14 @@ $(".monopad-icon").on("mouseenter", function () {
 
         $(".items-filter-button").on("click", function () {
             playSfx(sfx.click);
-            itemsPanel.setFilter(this.dataset.filter || "all");
-            itemsPanel.renderSkillsItemsPanel();
+            itemsPanelController.setFilter(this.dataset.filter || "all");
+            itemsPanelController.renderSkillsItemsPanel();
         });
 
         $('input[name="items-sort"]').on("change", function () {
             playSfx(sfx.click);
-            itemsPanel.setSort(this.value || "recent");
-            itemsPanel.renderSkillsItemsPanel();
+            itemsPanelController.setSort(this.value || "recent");
+            itemsPanelController.renderSkillsItemsPanel();
         });
 
         $(document).on("mouseenter", ".items-filter-button, .items-slot, .items-sort-group label, .items-detail-action", function () {
@@ -1242,10 +1320,10 @@ $(".monopad-icon").on("mouseenter", function () {
         });
 
 loadSettings();
-itemsPanel.loadInventoryState();
+itemsPanelController.loadInventoryState();
 applySettingsTabUI();
 loadCharacters();
-itemsPanel.renderSkillsItemsPanel();
+itemsPanelController.renderSkillsItemsPanel();
 
 
 // 🔴 FORCE REGISTER FROM EXISTING CHAT
@@ -1262,9 +1340,11 @@ initTruthBullets({
     characters,
     normalizeName,
     registerCharacterFromMessage,
-    increaseTrust,
+    increaseTrust: increaseTrustWithRewards,
     decreaseTrust,
     startV3CObserver,
+    awardMonocoins,
+    monocoinRewards: MONOCOIN_REWARDS,
     playSfx,
     extension_settings,
     saveSettingsDebounced,
