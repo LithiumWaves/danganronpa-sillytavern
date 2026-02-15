@@ -667,6 +667,7 @@ function loadCharacters() {
 
 
 let debugUiObserver = null;
+let debugTrayCollapsed = false;
 
 function ensureDebugControlsStyleTag() {
     if (document.getElementById("trust-debug-controls-inline-style")) return;
@@ -682,6 +683,22 @@ function ensureDebugControlsStyleTag() {
     z-index: 2147483000 !important;
     display: flex !important;
     pointer-events: auto !important;
+}
+#trust-debug-controls .debug-controls-tray {
+    display: flex !important;
+    align-items: stretch !important;
+    gap: 6px !important;
+}
+#trust-debug-controls .debug-controls-actions {
+    display: flex !important;
+    gap: 6px !important;
+    overflow: hidden !important;
+    transition: max-width 0.2s ease, opacity 0.2s ease !important;
+}
+#trust-debug-controls.collapsed .debug-controls-actions {
+    max-width: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
 }
 @media (max-width: 700px) {
     #trust-debug-controls {
@@ -730,6 +747,21 @@ function bootstrapDebugUi() {
     }
 }
 
+
+function applyDebugTrayState(controls) {
+    if (!controls) return;
+
+    controls.classList.toggle("collapsed", !!debugTrayCollapsed);
+
+    const toggleButton = controls.querySelector("#trust-debug-toggle");
+    if (!toggleButton) return;
+
+    const expanded = !debugTrayCollapsed;
+    toggleButton.textContent = expanded ? "▸" : "◂";
+    toggleButton.setAttribute("aria-label", expanded ? "Collapse debug tray" : "Expand debug tray");
+    toggleButton.setAttribute("aria-expanded", String(expanded));
+}
+
 function applyDebugControlsInlineLayout(controls) {
     if (!controls) return;
 
@@ -744,10 +776,26 @@ function applyDebugControlsInlineLayout(controls) {
     controls.style.setProperty("left", "auto", "important");
     controls.style.setProperty("top", isMobile ? "calc(env(safe-area-inset-top, 0px) + 74px)" : "auto", "important");
     controls.style.setProperty("bottom", isMobile ? "auto" : "14px", "important");
-    controls.style.setProperty("flex-direction", isMobile ? "row" : "column", "important");
-    controls.style.setProperty("gap", isMobile ? "8px" : "6px", "important");
-    controls.style.setProperty("align-items", "stretch", "important");
+    controls.style.setProperty("flex-direction", "column", "important");
+    controls.style.setProperty("gap", "0", "important");
+    controls.style.setProperty("align-items", "flex-end", "important");
     controls.style.setProperty("visibility", "visible", "important");
+
+    const tray = controls.querySelector(".debug-controls-tray");
+    const actions = controls.querySelector(".debug-controls-actions");
+
+    if (tray) {
+        tray.style.setProperty("display", "flex", "important");
+        tray.style.setProperty("flex-direction", isMobile ? "row-reverse" : "row", "important");
+        tray.style.setProperty("gap", isMobile ? "8px" : "6px", "important");
+    }
+
+    if (actions) {
+        actions.style.setProperty("display", "flex", "important");
+        actions.style.setProperty("flex-direction", isMobile ? "row" : "column", "important");
+        actions.style.setProperty("gap", isMobile ? "8px" : "6px", "important");
+        actions.style.setProperty("max-width", debugTrayCollapsed ? "0" : (isMobile ? "320px" : "420px"), "important");
+    }
 
     controls.querySelectorAll("button").forEach(button => {
         button.style.setProperty("display", "inline-flex", "important");
@@ -764,7 +812,50 @@ function applyDebugControlsInlineLayout(controls) {
         button.style.setProperty("cursor", "pointer", "important");
         button.style.setProperty("letter-spacing", "0.06em", "important");
         button.style.setProperty("visibility", "visible", "important");
+
+        if (button.id === "trust-debug-toggle") {
+            button.style.setProperty("min-width", isMobile ? "36px" : "32px", "important");
+            button.style.setProperty("padding", isMobile ? "7px 8px" : "6px 8px", "important");
+            button.style.setProperty("font-size", isMobile ? "15px" : "13px", "important");
+            button.style.setProperty("font-weight", "700", "important");
+        }
     });
+
+    applyDebugTrayState(controls);
+}
+
+function applyTruthDebugModalInlineLayout(modal) {
+    if (!modal) return;
+
+    const isMobile = window.matchMedia?.("(max-width: 700px)")?.matches;
+    const topInset = "env(safe-area-inset-top, 0px)";
+    const bottomInset = "env(safe-area-inset-bottom, 0px)";
+
+    modal.style.setProperty("position", "fixed", "important");
+    modal.style.setProperty("top", "0", "important");
+    modal.style.setProperty("left", "0", "important");
+    modal.style.setProperty("width", "100vw", "important");
+    modal.style.setProperty("height", "100dvh", "important");
+    modal.style.setProperty("z-index", "2147483646", "important");
+    modal.style.setProperty("display", "flex", "important");
+    modal.style.setProperty("align-items", "center", "important");
+    modal.style.setProperty("justify-content", "center", "important");
+    modal.style.setProperty("box-sizing", "border-box", "important");
+    modal.style.setProperty("overflow-y", "auto", "important");
+    modal.style.setProperty("padding-top", isMobile ? `max(12px, calc(${topInset} + 8px))` : "16px", "important");
+    modal.style.setProperty("padding-bottom", isMobile ? `max(12px, calc(${bottomInset} + 8px))` : "16px", "important");
+    modal.style.setProperty("padding-left", isMobile ? "10px" : "12px", "important");
+    modal.style.setProperty("padding-right", isMobile ? "10px" : "12px", "important");
+
+    const card = modal.querySelector('.truth-debug-card');
+    if (!card) return;
+
+    card.style.setProperty("width", isMobile ? "min(96vw, 430px)" : "min(420px, 96vw)", "important");
+    card.style.setProperty("max-width", "96vw", "important");
+    card.style.setProperty("max-height", isMobile ? `calc(100dvh - ${topInset} - ${bottomInset} - 20px)` : "min(86dvh, 640px)", "important");
+    card.style.setProperty("overflow-y", "auto", "important");
+    card.style.setProperty("margin", "0 auto", "important");
+    card.style.setProperty("box-sizing", "border-box", "important");
 }
 
 function applyTruthDebugModalInlineLayout(modal) {
@@ -811,9 +902,14 @@ function ensureGlobalDebugUi() {
         controls = document.createElement("div");
         controls.id = "trust-debug-controls";
         controls.innerHTML = `
-            <button id="trust-debug-up" type="button">TRUST +</button>
-            <button id="trust-debug-down" type="button">TRUST -</button>
-            <button id="truth-debug-open" type="button">NEW TRUTH BULLET</button>
+            <div class="debug-controls-tray">
+                <button id="trust-debug-toggle" type="button" aria-label="Collapse debug tray" aria-expanded="true">▸</button>
+                <div class="debug-controls-actions">
+                    <button id="trust-debug-up" type="button">TRUST +</button>
+                    <button id="trust-debug-down" type="button">TRUST -</button>
+                    <button id="truth-debug-open" type="button">NEW TRUTH BULLET</button>
+                </div>
+            </div>
         `;
     }
 
@@ -890,6 +986,15 @@ function playDebugClickSfx() {
 function bindDebugControlEvents() {
     $(document).off("click.debugControls");
     $(document).off("click.debugModal");
+
+    $(document).on("click.debugControls", "#trust-debug-toggle", () => {
+        playDebugClickSfx();
+
+        debugTrayCollapsed = !debugTrayCollapsed;
+
+        const controls = document.getElementById("trust-debug-controls");
+        applyDebugControlsInlineLayout(controls);
+    });
 
     $(document).on("click.debugControls", "#truth-debug-open", () => {
         playDebugClickSfx();

@@ -40,6 +40,7 @@ function ensureCenteredSocialOverlay(overlay) {
     overlay.style.setProperty("padding-left", isMobile ? "10px" : "16px", "important");
     overlay.style.setProperty("padding-right", isMobile ? "10px" : "16px", "important");
     overlay.style.setProperty("box-sizing", "border-box", "important");
+    overlay.style.setProperty("overflow", "hidden", "important");
     overlay.style.setProperty("z-index", "2147483600", "important");
 
     const core = overlay.querySelector(".trust-rankup-core");
@@ -47,6 +48,8 @@ function ensureCenteredSocialOverlay(overlay) {
 
     core.style.setProperty("margin", "0 auto", "important");
     core.style.setProperty("max-width", isMobile ? "94vw" : "min(460px, 96vw)", "important");
+    core.style.setProperty("max-height", isMobile ? `calc(100dvh - ${topInset} - ${bottomInset} - 20px)` : "min(86dvh, 720px)", "important");
+    core.style.setProperty("overflow-y", "auto", "important");
 }
 
 function waitForSfx(audio) {
