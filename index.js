@@ -667,6 +667,43 @@ function loadCharacters() {
 
 
 let debugUiObserver = null;
+const DEBUG_CONTROLS_COLLAPSE_STORAGE_KEY = "dangan-debug-controls-collapsed";
+
+function getDebugControlsCollapsed() {
+    try {
+        return localStorage.getItem(DEBUG_CONTROLS_COLLAPSE_STORAGE_KEY) !== "false";
+    } catch {
+        return true;
+    }
+}
+
+function applyDebugControlsCollapsedState(controls, isCollapsed) {
+    if (!controls) return;
+
+    const toggle = controls.querySelector("#trust-debug-toggle");
+    const panel = controls.querySelector(".trust-debug-buttons");
+
+    controls.dataset.collapsed = isCollapsed ? "true" : "false";
+
+    if (toggle) {
+        toggle.textContent = isCollapsed ? "DEBUG ▸" : "DEBUG ▾";
+        toggle.setAttribute("aria-expanded", isCollapsed ? "false" : "true");
+    }
+
+    if (panel) {
+        panel.style.setProperty("display", isCollapsed ? "none" : "flex", "important");
+    }
+}
+
+function setDebugControlsCollapsed(isCollapsed) {
+    try {
+        localStorage.setItem(DEBUG_CONTROLS_COLLAPSE_STORAGE_KEY, isCollapsed ? "true" : "false");
+    } catch {
+        // ignore storage failures and keep UI functional
+    }
+
+    applyDebugControlsCollapsedState(document.getElementById("trust-debug-controls"), isCollapsed);
+}
 
 function ensureDebugControlsStyleTag() {
     if (document.getElementById("trust-debug-controls-inline-style")) return;
@@ -765,6 +802,13 @@ function applyDebugControlsInlineLayout(controls) {
         button.style.setProperty("letter-spacing", "0.06em", "important");
         button.style.setProperty("visibility", "visible", "important");
     });
+
+    const panel = controls.querySelector(".trust-debug-buttons");
+    if (panel) {
+        panel.style.setProperty("display", "flex", "important");
+        panel.style.setProperty("flex-direction", isMobile ? "row" : "column", "important");
+        panel.style.setProperty("gap", isMobile ? "8px" : "6px", "important");
+    }
 }
 
 function applyTruthDebugModalInlineLayout(modal) {
@@ -811,9 +855,12 @@ function ensureGlobalDebugUi() {
         controls = document.createElement("div");
         controls.id = "trust-debug-controls";
         controls.innerHTML = `
-            <button id="trust-debug-up" type="button">TRUST +</button>
-            <button id="trust-debug-down" type="button">TRUST -</button>
-            <button id="truth-debug-open" type="button">NEW TRUTH BULLET</button>
+            <button id="trust-debug-toggle" type="button" aria-expanded="false">DEBUG ▸</button>
+            <div class="trust-debug-buttons" role="group" aria-label="Debug controls">
+                <button id="trust-debug-up" type="button">TRUST +</button>
+                <button id="trust-debug-down" type="button">TRUST -</button>
+                <button id="truth-debug-open" type="button">NEW TRUTH BULLET</button>
+            </div>
         `;
     }
 
@@ -849,6 +896,7 @@ function ensureGlobalDebugUi() {
     }
 
     applyDebugControlsInlineLayout(controls);
+    applyDebugControlsCollapsedState(controls, getDebugControlsCollapsed());
     applyTruthDebugModalInlineLayout(modal);
 }
 
@@ -896,6 +944,12 @@ function bindDebugControlEvents() {
         ensureGlobalDebugUi();
         setTruthDebugModalState(true);
         $("#truth-debug-name").trigger("focus");
+    });
+
+    $(document).on("click.debugControls", "#trust-debug-toggle", () => {
+        playDebugClickSfx();
+        const isCollapsed = getDebugControlsCollapsed();
+        setDebugControlsCollapsed(!isCollapsed);
     });
 
     $(document).on("click.debugControls", "#truth-debug-cancel", () => {
