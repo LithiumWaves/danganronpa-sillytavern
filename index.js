@@ -2275,6 +2275,7 @@ jQuery(async () => {
                 playSfx(sfx.close);
                 $panel.addClass("closed");
             }
+            $button.removeClass("open");
         });
 
 $(".monopad-icon").on("click", function () {
@@ -2349,6 +2350,7 @@ $(".monopad-icon").on("mouseenter", function () {
                     $panel.addClass("open");
                 }
                 playSfx(sfx.open);
+                $button.addClass("open");
             } else {
                 if (getMonopadSetting("bootAnimations")) {
                     $panel.addClass("shutting-down");
@@ -2358,6 +2360,7 @@ $(".monopad-icon").on("mouseenter", function () {
                     playSfx(sfx.close);
                     $panel.addClass("closed");
                 }
+                $button.removeClass("open");
             }
 
         }
@@ -2377,6 +2380,12 @@ $(".monopad-icon").on("mouseenter", function () {
                 monopadSpamCount = 0;
                 triggerMonokuma();
             }
+        });
+
+        $button.on("keydown", event => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            $button.trigger("click");
         });
 
 
