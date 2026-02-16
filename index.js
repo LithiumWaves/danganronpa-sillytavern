@@ -1697,7 +1697,7 @@ function promptAndSetMonocoins() {
 }
 
 function promptAndSetTrustFragments() {
-    const current = Number(extension_settings[extensionName]?.inventory?.skillPoints || 0);
+    const current = Number(extension_settings[extensionName]?.inventory?.trustFragments || 0);
     const raw = window.prompt("Set Trust Fragments amount:", String(current));
     if (raw === null) return;
 
@@ -1710,6 +1710,61 @@ function promptAndSetTrustFragments() {
     const next = Math.max(0, Math.floor(parsed));
     applyPayloadInventoryValue("trustFragments", next);
     appendPayloadStreamLine(`[FF-INJECT] Trust Fragments set to ${next}.`);
+}
+
+function addPayloadInventoryValue(key, amount = 0) {
+    const ext = extension_settings[extensionName] ||= {};
+    ext.inventory ||= {};
+    const current = Number(ext.inventory[key] || 0);
+    const delta = Math.max(0, Math.floor(Number(amount || 0)));
+    ext.inventory[key] = Math.max(0, current + delta);
+    saveSettingsDebounced();
+    itemsPanelController?.renderSkillsItemsPanel?.();
+    return ext.inventory[key];
+}
+
+function addPayloadXp(amount = 0) {
+    const delta = Math.max(0, Math.floor(Number(amount || 0)));
+    if (!delta) return;
+    rewards?.awardXp?.(delta, "payload debug boost");
+}
+
+function maxTrustForCharacter(char) {
+    if (!char) return false;
+
+    const before = Number(char.trustLevel ?? 1);
+    for (let i = 0; i < 40 && Number(char.trustLevel ?? 1) < 10; i += 1) {
+        increaseTrustWithRewards(char);
+    }
+
+    return Number(char.trustLevel ?? before) > before;
+}
+
+function maxTrustForAllCharacters() {
+    let boosted = 0;
+    for (const char of characters.values()) {
+        if (maxTrustForCharacter(char)) {
+            boosted += 1;
+        }
+    }
+
+    if (boosted > 0) {
+        saveCharacters();
+        socialPanelController?.renderSocialPanel?.();
+        const activeChar = getActiveSocialCharacter();
+        if (activeChar) {
+            socialPanelController?.openCharacterReport?.(activeChar);
+        }
+    }
+
+    return boosted;
+}
+
+function rescanCharactersFromContext() {
+    const before = characters.size;
+    registerCharactersFromContext();
+    socialPanelController?.renderSocialPanel?.();
+    return Math.max(0, characters.size - before);
 }
 
 function closePayloadOverlay() {
@@ -2066,6 +2121,64 @@ function bindDebugControlEvents() {
     $(document).on("click.debugControls", "#monopad-payload-edit-trust-fragments", () => {
         playDebugClickSfx();
         runPayloadActionAnimation("TRUST FRAGMENT PATCH", promptAndSetTrustFragments);
+    });
+
+    $(document).on("click.debugControls", "#monopad-payload-add-monocoins", () => {
+        playDebugClickSfx();
+        runPayloadActionAnimation("MONOCOIN BOOST", () => {
+            const total = addPayloadInventoryValue("monocoins", 500);
+            appendPayloadStreamLine(`[FF-INJECT] +500 Monocoins injected (total: ${total}).`);
+        });
+    });
+
+    $(document).on("click.debugControls", "#monopad-payload-add-trust-fragments", () => {
+        playDebugClickSfx();
+        runPayloadActionAnimation("TRUST FRAGMENT BOOST", () => {
+            const total = addPayloadInventoryValue("trustFragments", 10);
+            appendPayloadStreamLine(`[FF-INJECT] +10 Trust Fragments injected (total: ${total}).`);
+        });
+    });
+
+    $(document).on("click.debugControls", "#monopad-payload-add-xp", () => {
+        playDebugClickSfx();
+        runPayloadActionAnimation("XP BOOST", () => {
+            addPayloadXp(1000);
+            appendPayloadStreamLine("[FF-INJECT] +1000 XP injected.");
+        });
+    });
+
+    $(document).on("click.debugControls", "#monopad-payload-max-active-trust", () => {
+        playDebugClickSfx();
+        runPayloadActionAnimation("ACTIVE SOCIAL LINK OVERRIDE", () => {
+            const char = getActiveSocialCharacter();
+            if (!char) {
+                appendPayloadStreamLine("[FF-INJECT] No active social target selected.");
+                return;
+            }
+
+            const before = Number(char.trustLevel ?? 1);
+            maxTrustForCharacter(char);
+            saveCharacters();
+            socialPanelController?.renderSocialPanel?.();
+            socialPanelController?.openCharacterReport?.(char);
+            appendPayloadStreamLine(`[FF-INJECT] ${char.name} trust ${before} -> ${char.trustLevel}.`);
+        });
+    });
+
+    $(document).on("click.debugControls", "#monopad-payload-max-all-trust", () => {
+        playDebugClickSfx();
+        runPayloadActionAnimation("GLOBAL SOCIAL LINK OVERRIDE", () => {
+            const boosted = maxTrustForAllCharacters();
+            appendPayloadStreamLine(`[FF-INJECT] Maxed social links for ${boosted} character(s).`);
+        });
+    });
+
+    $(document).on("click.debugControls", "#monopad-payload-rescan-characters", () => {
+        playDebugClickSfx();
+        runPayloadActionAnimation("CHARACTER SCAN", () => {
+            const added = rescanCharactersFromContext();
+            appendPayloadStreamLine(`[FF-INJECT] Character scan complete. Added ${added} profile(s).`);
+        });
     });
 
     $(document).on("click.debugControls", "#monopad-payload-toggle-debug-controls", () => {
