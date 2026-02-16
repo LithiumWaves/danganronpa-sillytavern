@@ -11,6 +11,7 @@ import { extractUltimateFromNotes, isIgnoredCharacter, lookupUltimateFromLoreboo
 import { createMapPanelController } from "./map/mapPanel.js";
 import { MONOCOIN_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
+import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "./core/monokumaLessonScript.js";
 
 window.refreshActiveCharacterUI = function () {
     if (!activeSocialCharacterId || !socialPanelController) return;
@@ -29,6 +30,7 @@ let socialPanelController = null;
 let itemsPanelController = null;
 let mapPanelController = null;
 let hasSelectedMonopadTab = false;
+let monokumaLessonState = null;
 
 const openRouterSettings = createOpenRouterSettingsManager({
     extensionName,
@@ -780,6 +782,217 @@ function setActiveMonopadTab(tab) {
     $(`.monopad-panel-content[data-panel="${tab}"]`).addClass("active");
 }
 
+function setMapToHotelFloorOneForLesson() {
+    const areaButton = document.querySelector('.map-area-button[data-area="hotel_despair"]');
+    areaButton?.click();
+
+    const floorButton = document.querySelector('.map-floor-button[data-floor="floor_1"]');
+    floorButton?.click();
+}
+
+function removeLessonSpriteMotionClasses(overlayEl) {
+    if (!overlayEl) return;
+    overlayEl.classList.remove("sprite-hidden", "sprite-throw", "sprite-shake", "sprite-bounce");
+}
+
+async function fadeOutAudio(audioEl, durationMs = 520) {
+    if (!audioEl || audioEl.paused) return;
+
+    const originalVolume = Number.isFinite(audioEl.volume) ? audioEl.volume : 1;
+    const steps = 8;
+    const stepDelay = Math.max(30, Math.round(durationMs / steps));
+
+    for (let i = steps - 1; i >= 0; i -= 1) {
+        audioEl.volume = Math.max(0, (originalVolume * i) / steps);
+        await new Promise(resolve => setTimeout(resolve, stepDelay));
+    }
+
+    audioEl.pause();
+    audioEl.currentTime = 0;
+    audioEl.volume = originalVolume;
+}
+
+async function runMonokumaLessonStep(step, state) {
+    if (!step || !state?.overlayEl) return;
+
+    const {
+        overlayEl,
+        titleEl,
+        textEl,
+        spriteEl,
+        unlockAdvance,
+        lockAdvance,
+    } = state;
+
+    removeLessonSpriteMotionClasses(overlayEl);
+
+    if (step.board) {
+        overlayEl.classList.add("board");
+        titleEl.textContent = step.chalkTitle || MONOKUMA_LESSON_TITLE;
+    } else {
+        overlayEl.classList.remove("board");
+        titleEl.textContent = "";
+    }
+
+    if (step.action === "dropAndSwitchToTruth" || step.action === "dropAndSwitchToSocial" || step.action === "dropAndSwitchToSkills") {
+        lockAdvance();
+        overlayEl.classList.add("sprite-hidden");
+        await new Promise(resolve => setTimeout(resolve, 260));
+        if (step.tab) setActiveMonopadTab(step.tab);
+        await new Promise(resolve => setTimeout(resolve, 130));
+        removeLessonSpriteMotionClasses(overlayEl);
+        await new Promise(resolve => setTimeout(resolve, 110));
+        unlockAdvance();
+    } else if (step.action === "throwAndSwitchToMap") {
+        lockAdvance();
+        overlayEl.classList.add("sprite-throw");
+        await new Promise(resolve => setTimeout(resolve, 330));
+        removeLessonSpriteMotionClasses(overlayEl);
+        if (step.tab) setActiveMonopadTab(step.tab);
+        spriteEl.style.opacity = "0";
+        await new Promise(resolve => setTimeout(resolve, 120));
+        spriteEl.style.opacity = "1";
+        unlockAdvance();
+    } else if (step.tab) {
+        setActiveMonopadTab(step.tab);
+    }
+
+    if (step.sprite) {
+        spriteEl.src = `${extensionFolderPath}/assets/monokuma/${step.sprite}`;
+    }
+
+    if (step.action === "spawnTruthBullet") {
+        handleTruthBullet("Important Thing!", "Will this show us whodunnit?");
+        window.renderTruthBullets?.();
+    }
+
+    if (step.action === "autoReadAndDeleteTruthBullet") {
+        lockAdvance();
+
+        const truthItem = Array.from(document.querySelectorAll(".truth-item"))
+            .find(el => (el.textContent || "").toLowerCase().includes("important thing"));
+
+        truthItem?.click();
+
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+        const removeButton = document.querySelector(".truth-remove-button");
+        removeButton?.click();
+
+        unlockAdvance();
+    }
+
+    if (step.action === "switchMapToHotelFloor1") {
+        setMapToHotelFloorOneForLesson();
+    }
+
+    if (step.action === "shakeAndDrop") {
+        lockAdvance();
+        overlayEl.classList.add("sprite-shake");
+        await new Promise(resolve => setTimeout(resolve, 900));
+        overlayEl.classList.remove("sprite-shake");
+        overlayEl.classList.add("sprite-hidden");
+        await new Promise(resolve => setTimeout(resolve, 270));
+        unlockAdvance();
+    }
+
+    if (step.action === "boardReturnBounce") {
+        lockAdvance();
+        overlayEl.classList.remove("sprite-hidden");
+        overlayEl.classList.add("sprite-bounce");
+        await new Promise(resolve => setTimeout(resolve, 680));
+        overlayEl.classList.remove("sprite-bounce");
+        unlockAdvance();
+    }
+
+    textEl.textContent = step.text || "";
+}
+
+async function endMonokumaLesson({ completed = false } = {}) {
+    const state = monokumaLessonState;
+    if (!state || state.ended) return;
+    state.ended = true;
+
+    state.overlayEl.classList.remove("active", "board", "sprite-hidden", "sprite-throw", "sprite-shake", "sprite-bounce");
+    state.overlayEl.setAttribute("aria-hidden", "true");
+    state.overlayEl.onclick = null;
+
+    setActiveMonopadTab("settings");
+
+    if (completed) {
+        awardMonocoins(100, "Mr. Monokuma's Lesson completion");
+    }
+
+    await fadeOutAudio(state.trackEl, 650);
+
+    monokumaLessonState = null;
+}
+
+async function startMonokumaLesson() {
+    if (monokumaLessonState?.active) return;
+
+    const confirmed = window.confirm("Start Mr. Monokuma's Lesson? This guided tutorial will take over the Monopad until it finishes.");
+    if (!confirmed) return;
+
+    const overlayEl = document.getElementById("monokuma-lesson-overlay");
+    const titleEl = document.getElementById("monokuma-lesson-title");
+    const textEl = document.getElementById("monokuma-lesson-text");
+    const spriteEl = document.getElementById("monokuma-lesson-sprite");
+    const trackEl = document.getElementById("monokuma_lesson_track");
+
+    if (!overlayEl || !titleEl || !textEl || !spriteEl || !trackEl) return;
+
+    overlayEl.classList.add("active", "board");
+    overlayEl.setAttribute("aria-hidden", "false");
+    titleEl.textContent = MONOKUMA_LESSON_TITLE;
+
+    trackEl.loop = true;
+    trackEl.volume = 0.5;
+    trackEl.currentTime = 0;
+    trackEl.play().catch(() => {});
+
+    let canAdvance = true;
+
+    monokumaLessonState = {
+        active: true,
+        ended: false,
+        index: 0,
+        overlayEl,
+        titleEl,
+        textEl,
+        spriteEl,
+        trackEl,
+        lockAdvance: () => {
+            canAdvance = false;
+        },
+        unlockAdvance: () => {
+            canAdvance = true;
+        },
+    };
+
+    const advance = async () => {
+        const state = monokumaLessonState;
+        if (!state || state.ended || !canAdvance) return;
+
+        if (state.index >= MONOKUMA_LESSON_STEPS.length) {
+            await endMonokumaLesson({ completed: true });
+            return;
+        }
+
+        const step = MONOKUMA_LESSON_STEPS[state.index];
+        state.index += 1;
+        await runMonokumaLessonStep(step, state);
+    };
+
+    const onOverlayPointer = async () => {
+        await advance();
+    };
+
+    overlayEl.onclick = onOverlayPointer;
+
+    await advance();
+}
+
 function applyCrtSettings() {
     const panel = document.getElementById("dangan_monopad_panel");
     if (!panel) return;
@@ -1515,6 +1728,11 @@ $(".monopad-icon").on("mouseenter", function () {
 
         $(document).on("mouseenter", ".items-filter-button, .items-slot, .items-sort-group label, .items-detail-action", function () {
             playHoverWithCooldown();
+        });
+
+        $("#dangan_monokuma_lesson_button").on("click", async () => {
+            playSfx(sfx.click);
+            await startMonokumaLesson();
         });
 
         $(".settings-toggle").on("click", function () {
