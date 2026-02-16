@@ -41,7 +41,7 @@ export const MONOKUMA_LESSON_STEPS = [
     },
     {
         sprite: "monokuma_cheerful.png",
-        text: "Just click on a name: once to open their profile and one more time to generate information. Your trust with them may deepen depending on how you spend your time with them, but it can go down as well.",
+        text: " on. Your trust with them may deepen depending on how you spend your time with them, but it can go down as well.",
     },
     {
         sprite: "monokuma_sadback.png",
