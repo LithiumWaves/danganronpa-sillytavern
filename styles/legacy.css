@@ -3541,11 +3541,13 @@
 
 .monopad-payload-controls {
     margin-top: 12px;
-    display: flex;
-    justify-content: flex-end;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
 }
 
 .monopad-payload-action {
+    width: 100%;
     border: 1px solid rgba(216, 169, 255, 0.55);
     border-radius: 7px;
     background: linear-gradient(180deg, rgba(68, 26, 104, 0.92), rgba(35, 12, 57, 0.92));

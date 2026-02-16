@@ -1572,32 +1572,86 @@ function appendPayloadStreamLine(text) {
     line.textContent = text;
     stream.appendChild(line);
 
-    while (stream.children.length > 40) {
+    while (stream.children.length > 36) {
         stream.removeChild(stream.firstChild);
     }
 
     stream.scrollTop = stream.scrollHeight;
 }
 
-function startPayloadOverlayStream() {
+function renderPayloadHubIdleState() {
+    clearPayloadStreamTimer();
     const stream = document.getElementById("monopad-payload-stream");
     if (!stream) return;
 
-    clearPayloadStreamTimer();
     stream.innerHTML = "";
+    appendPayloadStreamLine("[FF-INJECT] Payload hub online.");
+    appendPayloadStreamLine("[FF-INJECT] Select an operation to inject a short payload.");
+    appendPayloadStreamLine("[FF-INJECT] Debug controls remain available in parallel.");
+}
 
-    const seedLines = [
-        "[FF-INJECT] Persistent payload channel online.",
-        "[FF-INJECT] Monopad partitions under active surveillance.",
-        "[FF-INJECT] Threading exploit beacons through trust subsystem...",
-        "[FF-INJECT] Injection stream stable."
-    ];
+function runPayloadActionAnimation(actionLabel, onComplete) {
+    clearPayloadStreamTimer();
+    const stream = document.getElementById("monopad-payload-stream");
+    if (!stream) return;
 
-    seedLines.forEach(line => appendPayloadStreamLine(line));
+    stream.innerHTML = "";
+    appendPayloadStreamLine(`[FF-INJECT] Preparing payload: ${actionLabel}`);
 
+    let tick = 0;
     payloadStreamTimer = setInterval(() => {
-        appendPayloadStreamLine(generateBreachCodeLine("[PAYLOAD] "));
-    }, 260);
+        tick += 1;
+        appendPayloadStreamLine(generateBreachCodeLine("[INJECT] "));
+
+        if (tick >= 10) {
+            clearPayloadStreamTimer();
+            appendPayloadStreamLine(`[FF-INJECT] Payload ready: ${actionLabel}`);
+            setTimeout(() => {
+                onComplete?.();
+                renderPayloadHubIdleState();
+            }, 120);
+        }
+    }, 80);
+}
+
+function applyPayloadInventoryValue(key, value) {
+    const ext = extension_settings[extensionName] ||= {};
+    ext.inventory ||= {};
+    ext.inventory[key] = Math.max(0, Number(value || 0));
+    saveSettingsDebounced();
+    itemsPanelController?.renderSkillsItemsPanel?.();
+}
+
+function promptAndSetMonocoins() {
+    const current = Number(extension_settings[extensionName]?.inventory?.monocoins || 0);
+    const raw = window.prompt("Set Monocoins amount:", String(current));
+    if (raw === null) return;
+
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) {
+        appendPayloadStreamLine("[FF-INJECT] Monocoin update rejected: invalid number.");
+        return;
+    }
+
+    const next = Math.max(0, Math.floor(parsed));
+    applyPayloadInventoryValue("monocoins", next);
+    appendPayloadStreamLine(`[FF-INJECT] Monocoins set to ${next}.`);
+}
+
+function promptAndSetTrustFragments() {
+    const current = Number(extension_settings[extensionName]?.inventory?.skillPoints || 0);
+    const raw = window.prompt("Set Trust Fragments amount:", String(current));
+    if (raw === null) return;
+
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) {
+        appendPayloadStreamLine("[FF-INJECT] Trust Fragment update rejected: invalid number.");
+        return;
+    }
+
+    const next = Math.max(0, Math.floor(parsed));
+    applyPayloadInventoryValue("skillPoints", next);
+    appendPayloadStreamLine(`[FF-INJECT] Trust Fragments set to ${next}.`);
 }
 
 function closePayloadOverlay() {
@@ -1615,7 +1669,7 @@ function openPayloadOverlay() {
 
     overlay.classList.add("open");
     overlay.setAttribute("aria-hidden", "false");
-    startPayloadOverlayStream();
+    renderPayloadHubIdleState();
 }
 
 function bootstrapDebugUi() {
@@ -1942,6 +1996,16 @@ function bindDebugControlEvents() {
         playDebugClickSfx();
         closePayloadOverlay();
         openBreachOverlay();
+    });
+
+    $(document).on("click.debugControls", "#monopad-payload-edit-monocoins", () => {
+        playDebugClickSfx();
+        runPayloadActionAnimation("MONOCOIN PATCH", promptAndSetMonocoins);
+    });
+
+    $(document).on("click.debugControls", "#monopad-payload-edit-trust-fragments", () => {
+        playDebugClickSfx();
+        runPayloadActionAnimation("TRUST FRAGMENT PATCH", promptAndSetTrustFragments);
     });
 
     $(document).on("click.debugControls", "#monopad-breach-submit", () => {
