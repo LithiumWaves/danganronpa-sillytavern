@@ -1402,6 +1402,37 @@ function setDebugAccessGranted(granted) {
     saveSettingsDebounced();
 }
 
+function isDebugControlsHidden() {
+    return Boolean(extension_settings[extensionName]?.debugControlsHidden);
+}
+
+function setDebugControlsHidden(hidden) {
+    const settings = extension_settings[extensionName] ||= {};
+    settings.debugControlsHidden = Boolean(hidden);
+    saveSettingsDebounced();
+    applyDebugControlsVisibilityState();
+    updatePayloadDebugControlsToggleLabel();
+}
+
+function applyDebugControlsVisibilityState() {
+    const controls = document.getElementById("trust-debug-controls");
+    if (!controls) return;
+
+    if (isDebugControlsHidden()) {
+        controls.style.setProperty("display", "none", "important");
+        return;
+    }
+
+    applyDebugControlsInlineLayout(controls);
+    applyDebugControlsCollapsedState(controls, getDebugControlsCollapsed());
+}
+
+function updatePayloadDebugControlsToggleLabel() {
+    const btn = document.getElementById("monopad-payload-toggle-debug-controls");
+    if (!btn) return;
+    btn.textContent = isDebugControlsHidden() ? "SHOW DEBUG BUTTONS" : "HIDE DEBUG BUTTONS";
+}
+
 function decodeDebugAccessCode() {
     const cipher = [101, 101, 100, 103, 99, 103, 100, 99, 96, 102, 98, 20, 112];
     const key = 84;
@@ -1669,6 +1700,7 @@ function openPayloadOverlay() {
 
     overlay.classList.add("open");
     overlay.setAttribute("aria-hidden", "false");
+    updatePayloadDebugControlsToggleLabel();
     renderPayloadHubIdleState();
 }
 
@@ -1846,6 +1878,7 @@ function ensureGlobalDebugUi() {
 
     applyDebugControlsInlineLayout(controls);
     applyDebugControlsCollapsedState(controls, getDebugControlsCollapsed());
+    applyDebugControlsVisibilityState();
     applyTruthDebugModalInlineLayout(modal);
 }
 
@@ -2006,6 +2039,14 @@ function bindDebugControlEvents() {
     $(document).on("click.debugControls", "#monopad-payload-edit-trust-fragments", () => {
         playDebugClickSfx();
         runPayloadActionAnimation("TRUST FRAGMENT PATCH", promptAndSetTrustFragments);
+    });
+
+    $(document).on("click.debugControls", "#monopad-payload-toggle-debug-controls", () => {
+        playDebugClickSfx();
+        setDebugControlsHidden(!isDebugControlsHidden());
+        appendPayloadStreamLine(isDebugControlsHidden()
+            ? "[FF-INJECT] Debug button cluster hidden."
+            : "[FF-INJECT] Debug button cluster restored.");
     });
 
     $(document).on("click.debugControls", "#monopad-breach-submit", () => {

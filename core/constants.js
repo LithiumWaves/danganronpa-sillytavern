@@ -12,6 +12,7 @@ export const defaultSettings = {
     welcomeSeen: false,
     monokumaLessonRewardClaimed: false,
     debugAccessGranted: false,
+    debugControlsHidden: false,
     generationProvider: "main",
     openrouterModel: "google/gemini-2.5-flash",
     openrouterRememberApiKey: false,
