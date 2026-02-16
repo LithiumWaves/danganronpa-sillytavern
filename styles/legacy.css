@@ -1240,7 +1240,7 @@
 }
 
 .social-shard-remove {
-    animation: socialShardRemove 0.45s cubic-bezier(0.2, 0.8, 0.24, 1) forwards;
+    animation: socialShardRemove 0.45s cubic-bezier(0.2, 0.8, 0.24, 1);
 }
 
 @keyframes socialShardAdd {
@@ -2505,23 +2505,10 @@
 }
 
 @media (max-width: 700px) {
-    #dangan_monopad_button {
-        position: fixed;
-        top: auto;
-        right: 12px;
-        bottom: calc(72px + env(safe-area-inset-bottom, 0px));
-        width: 44px;
-        height: 44px;
-        z-index: 2147482500;
-        display: flex;
-        visibility: visible;
-        opacity: 1;
-    }
-
     #trust-debug-controls {
         right: 10px;
         left: auto;
-        bottom: calc(122px + env(safe-area-inset-bottom, 0px));
+        bottom: calc(74px + env(safe-area-inset-bottom, 0px));
         top: auto;
         width: auto;
         transform: none;
