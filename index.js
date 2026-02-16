@@ -1650,7 +1650,7 @@ function promptAndSetTrustFragments() {
     }
 
     const next = Math.max(0, Math.floor(parsed));
-    applyPayloadInventoryValue("skillPoints", next);
+    applyPayloadInventoryValue("trustFragments", next);
     appendPayloadStreamLine(`[FF-INJECT] Trust Fragments set to ${next}.`);
 }
 
@@ -2040,6 +2040,30 @@ function bindDebugControlEvents() {
     });
 }
 
+
+function normalizeSettingsHeaderActionButtons() {
+    const headers = Array.from(document.querySelectorAll('.settings-header-actions'));
+    if (!headers.length) return;
+
+    const primaryHeader = headers[0];
+    const primaryBreach = primaryHeader.querySelector('#dangan_debug_breach_trigger');
+    const primaryTutorial = primaryHeader.querySelector('#dangan_monokuma_lesson_button');
+    const status = primaryHeader.querySelector('.settings-status');
+
+    if (primaryBreach && primaryTutorial && status) {
+        primaryHeader.insertBefore(primaryBreach, primaryTutorial);
+        primaryHeader.insertBefore(primaryTutorial, status);
+    }
+
+    document.querySelectorAll('#dangan_debug_breach_trigger').forEach((el, index) => {
+        if (index > 0) el.remove();
+    });
+
+    document.querySelectorAll('#dangan_monokuma_lesson_button').forEach((el, index) => {
+        if (index > 0) el.remove();
+    });
+}
+
 jQuery(async () => {
     console.log(`[${extensionName}] Loading...`);
 
@@ -2052,12 +2076,14 @@ jQuery(async () => {
 
         const monopadHtml = await $.get(`${extensionFolderPath}/monopad.html`);
         $("body").append(monopadHtml);
+        normalizeSettingsHeaderActionButtons();
         ensureGlobalDebugUi();
 
         // SillyTavern may re-mount portions of the DOM after extension load.
         // Re-assert the debug UI a few times to keep controls on the main screen.
         let debugUiRetries = 0;
         const debugUiRetryTimer = setInterval(() => {
+            normalizeSettingsHeaderActionButtons();
             ensureGlobalDebugUi();
             debugUiRetries += 1;
             if (debugUiRetries >= 12) clearInterval(debugUiRetryTimer);
