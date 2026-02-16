@@ -1163,9 +1163,11 @@ function ensureDebugControlsStyleTag() {
 }
 @media (max-width: 700px) {
     #trust-debug-controls {
-        top: calc(74px + env(safe-area-inset-top, 0px)) !important;
-        bottom: auto !important;
-        flex-direction: row !important;
+        left: 10px !important;
+        right: auto !important;
+        bottom: calc(84px + env(safe-area-inset-bottom, 0px)) !important;
+        top: auto !important;
+        flex-direction: column !important;
     }
 }
 `;
@@ -1218,12 +1220,12 @@ function applyDebugControlsInlineLayout(controls) {
     controls.style.setProperty("display", "flex", "important");
     controls.style.setProperty("pointer-events", "auto", "important");
     controls.style.setProperty("opacity", "1", "important");
-    controls.style.setProperty("right", "10px", "important");
-    controls.style.setProperty("left", "auto", "important");
-    controls.style.setProperty("top", isMobile ? "calc(env(safe-area-inset-top, 0px) + 74px)" : "auto", "important");
-    controls.style.setProperty("bottom", isMobile ? "auto" : "14px", "important");
-    controls.style.setProperty("flex-direction", isMobile ? "row" : "column", "important");
-    controls.style.setProperty("gap", isMobile ? "8px" : "6px", "important");
+    controls.style.setProperty("right", isMobile ? "auto" : "10px", "important");
+    controls.style.setProperty("left", isMobile ? "10px" : "auto", "important");
+    controls.style.setProperty("top", "auto", "important");
+    controls.style.setProperty("bottom", isMobile ? "calc(env(safe-area-inset-bottom, 0px) + 84px)" : "14px", "important");
+    controls.style.setProperty("flex-direction", "column", "important");
+    controls.style.setProperty("gap", "6px", "important");
     controls.style.setProperty("align-items", "stretch", "important");
     controls.style.setProperty("visibility", "visible", "important");
 
@@ -1235,9 +1237,9 @@ function applyDebugControlsInlineLayout(controls) {
         button.style.setProperty("color", "#fff", "important");
         button.style.setProperty("border", "1px solid #444", "important");
         button.style.setProperty("border-radius", "6px", "important");
-        button.style.setProperty("padding", isMobile ? "7px 10px" : "6px 10px", "important");
-        button.style.setProperty("min-height", isMobile ? "38px" : "32px", "important");
-        button.style.setProperty("min-width", isMobile ? "88px" : "120px", "important");
+        button.style.setProperty("padding", isMobile ? "6px 8px" : "6px 10px", "important");
+        button.style.setProperty("min-height", isMobile ? "34px" : "32px", "important");
+        button.style.setProperty("min-width", isMobile ? "72px" : "120px", "important");
         button.style.setProperty("font-size", isMobile ? "11px" : "12px", "important");
         button.style.setProperty("cursor", "pointer", "important");
         button.style.setProperty("letter-spacing", "0.06em", "important");
@@ -1247,8 +1249,8 @@ function applyDebugControlsInlineLayout(controls) {
     const panel = controls.querySelector(".trust-debug-buttons");
     if (panel) {
         panel.style.setProperty("display", "flex", "important");
-        panel.style.setProperty("flex-direction", isMobile ? "row" : "column", "important");
-        panel.style.setProperty("gap", isMobile ? "8px" : "6px", "important");
+        panel.style.setProperty("flex-direction", "column", "important");
+        panel.style.setProperty("gap", "6px", "important");
     }
 }
 
