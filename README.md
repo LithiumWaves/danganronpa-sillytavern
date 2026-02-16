@@ -20,7 +20,7 @@ The Generation Preset: x
 - **Map (🌐):** Area/floor navigation plus MonoMono Machine minigame.
 - **Gifts & Skills (🎁):** Inventory, item browsing, gifting flow, and skill shop display.
 - **Social (👥):** Character list, trust/distrust progress, and generated profile notes.
-- **Settings (⚙️):** Audio/display toggles, progression reset, generation provider selection.
+- **Settings (⚙️):** Audio/display toggles, progression reset, generation provider selection and a fun tutorial.
 
 ### Class Trials
 
@@ -78,6 +78,9 @@ V3C| SOCIAL_DOWN: Byakuya Togami
 ## Q&A
 - **Q: How do gifts work?**
   **A: First and foremost, gifts are obtained through a gacha minigame on the MonoMono Machine. To use them, access your inventory, select the gift and press use. The next character who sends a message in chat will receive and judge it, granting you either a rank up or down or simply staying neutral.**
+
+- **Q: There's something you didn't explain here. I'm confused. What do I do?
+  **A: Check the settings tab. On the top right is a question mark button with a short tutorial that walks you through the entire Monopad.
 
 ## Troubleshooting
 - **Extension not visible:** verify folder path and refresh SillyTavern.
