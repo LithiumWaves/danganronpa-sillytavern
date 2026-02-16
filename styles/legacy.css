@@ -3473,6 +3473,89 @@
     text-transform: none;
 }
 
+.monopad-payload-overlay {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: radial-gradient(circle at 50% 22%, rgba(24, 10, 44, 0.72), rgba(5, 2, 16, 0.94));
+    z-index: 2147483599;
+}
+
+.monopad-payload-overlay.open {
+    display: flex;
+}
+
+.monopad-payload-window {
+    width: min(660px, 95vw);
+    border: 1px solid rgba(192, 145, 255, 0.45);
+    border-radius: 10px;
+    background: linear-gradient(180deg, rgba(22, 10, 38, 0.96), rgba(9, 4, 19, 0.96));
+    box-shadow: 0 18px 45px rgba(0, 0, 0, 0.52);
+    padding: 12px;
+}
+
+.monopad-payload-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.monopad-payload-title {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: #dcb5ff;
+}
+
+.monopad-payload-close {
+    border: 1px solid rgba(210, 164, 255, 0.45);
+    background: rgba(42, 19, 70, 0.82);
+    color: #f0ddff;
+    border-radius: 6px;
+    width: 28px;
+    height: 24px;
+    cursor: pointer;
+}
+
+.monopad-payload-stream {
+    margin-top: 10px;
+    min-height: 210px;
+    max-height: 42vh;
+    overflow: auto;
+    padding: 10px;
+    border: 1px solid rgba(191, 141, 255, 0.35);
+    border-radius: 8px;
+    background: rgba(21, 8, 36, 0.82);
+    font: 12px/1.4 "IBM Plex Mono", "Share Tech Mono", monospace;
+    color: #d6b7ff;
+    text-transform: none;
+}
+
+.monopad-payload-line {
+    white-space: pre-wrap;
+    opacity: 0.92;
+}
+
+.monopad-payload-controls {
+    margin-top: 12px;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.monopad-payload-action {
+    border: 1px solid rgba(216, 169, 255, 0.55);
+    border-radius: 7px;
+    background: linear-gradient(180deg, rgba(68, 26, 104, 0.92), rgba(35, 12, 57, 0.92));
+    color: #f4e7ff;
+    padding: 8px 12px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+}
+
 
 @media (max-width: 900px) {
     .map-controls {

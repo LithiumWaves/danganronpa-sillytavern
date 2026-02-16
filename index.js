@@ -1176,6 +1176,7 @@ let breachTerminalLineTimer = null;
 let breachTerminalBootTimer = null;
 let breachAudio = null;
 let breachUnlockedThisSession = false;
+let payloadStreamTimer = null;
 
 function readUiPosition(storageKey) {
     try {
@@ -1555,6 +1556,68 @@ function runBreachSuccessSequence() {
     }, 120);
 }
 
+function clearPayloadStreamTimer() {
+    if (payloadStreamTimer) {
+        clearInterval(payloadStreamTimer);
+        payloadStreamTimer = null;
+    }
+}
+
+function appendPayloadStreamLine(text) {
+    const stream = document.getElementById("monopad-payload-stream");
+    if (!stream) return;
+
+    const line = document.createElement("div");
+    line.className = "monopad-payload-line";
+    line.textContent = text;
+    stream.appendChild(line);
+
+    while (stream.children.length > 40) {
+        stream.removeChild(stream.firstChild);
+    }
+
+    stream.scrollTop = stream.scrollHeight;
+}
+
+function startPayloadOverlayStream() {
+    const stream = document.getElementById("monopad-payload-stream");
+    if (!stream) return;
+
+    clearPayloadStreamTimer();
+    stream.innerHTML = "";
+
+    const seedLines = [
+        "[FF-INJECT] Persistent payload channel online.",
+        "[FF-INJECT] Monopad partitions under active surveillance.",
+        "[FF-INJECT] Threading exploit beacons through trust subsystem...",
+        "[FF-INJECT] Injection stream stable."
+    ];
+
+    seedLines.forEach(line => appendPayloadStreamLine(line));
+
+    payloadStreamTimer = setInterval(() => {
+        appendPayloadStreamLine(generateBreachCodeLine("[PAYLOAD] "));
+    }, 260);
+}
+
+function closePayloadOverlay() {
+    const overlay = document.getElementById("monopad-payload-overlay");
+    if (!overlay) return;
+
+    overlay.classList.remove("open");
+    overlay.setAttribute("aria-hidden", "true");
+    clearPayloadStreamTimer();
+}
+
+function openPayloadOverlay() {
+    const overlay = document.getElementById("monopad-payload-overlay");
+    if (!overlay) return;
+
+    overlay.classList.add("open");
+    overlay.setAttribute("aria-hidden", "false");
+    startPayloadOverlayStream();
+}
+
 function bootstrapDebugUi() {
     if (!document.body) return;
 
@@ -1846,6 +1909,10 @@ function bindDebugControlEvents() {
 
     $(document).on("click.debugControls", "#dangan_debug_breach_trigger", () => {
         playDebugClickSfx();
+        if (isDebugAccessGranted()) {
+            openPayloadOverlay();
+            return;
+        }
         openBreachOverlay();
     });
 
@@ -1858,6 +1925,23 @@ function bindDebugControlEvents() {
         if (e.target.id === "monopad-breach-overlay") {
             closeBreachOverlay();
         }
+    });
+
+    $(document).on("click.debugControls", "#monopad-payload-close", () => {
+        playDebugClickSfx();
+        closePayloadOverlay();
+    });
+
+    $(document).on("click.debugModal", "#monopad-payload-overlay", e => {
+        if (e.target.id === "monopad-payload-overlay") {
+            closePayloadOverlay();
+        }
+    });
+
+    $(document).on("click.debugControls", "#monopad-payload-open-breach", () => {
+        playDebugClickSfx();
+        closePayloadOverlay();
+        openBreachOverlay();
     });
 
     $(document).on("click.debugControls", "#monopad-breach-submit", () => {
@@ -2046,6 +2130,7 @@ jQuery(async () => {
 
         $("#dangan_monopad_close").on("click", () => {
             closeBreachOverlay();
+            closePayloadOverlay();
             $panel.removeClass("open booting");
 
             if (getMonopadSetting("bootAnimations")) {
