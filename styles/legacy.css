@@ -123,6 +123,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 12px;
 
     padding: 8px 12px;
     background: rgba(0, 0, 0, 0.6);
@@ -132,6 +133,57 @@
 .monopad-title {
     font-size: 14px;
     letter-spacing: 2px;
+}
+
+
+.monopad-progression {
+    flex: 1;
+    max-width: 360px;
+    min-width: 180px;
+    margin-left: auto;
+    margin-right: 8px;
+}
+
+.monopad-progression-head {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 10px;
+    letter-spacing: 0.07em;
+    color: rgba(255, 232, 240, 0.9);
+}
+
+.monopad-level-label {
+    opacity: 0.82;
+}
+
+.monopad-level-value {
+    font-size: 12px;
+    font-weight: 700;
+    color: #ffd9f3;
+}
+
+.monopad-xp-text {
+    margin-left: auto;
+    opacity: 0.82;
+}
+
+.monopad-xp-track {
+    margin-top: 4px;
+    width: 100%;
+    height: 6px;
+    border: 1px solid rgba(255, 170, 220, 0.45);
+    border-radius: 999px;
+    background: rgba(35, 9, 24, 0.85);
+    overflow: hidden;
+}
+
+.monopad-xp-fill {
+    height: 100%;
+    width: 0;
+    background: linear-gradient(90deg, rgba(255, 116, 186, 0.9), rgba(177, 98, 255, 0.9));
+    box-shadow: 0 0 10px rgba(255, 120, 200, 0.45);
+    transition: width 220ms ease;
 }
 
 /* Close button */
@@ -2395,6 +2447,33 @@
     gap: 8px;
 }
 
+.items-skill-columns {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.items-skill-column {
+    border: 1px solid rgba(255, 197, 211, 0.25);
+    background: rgba(26, 11, 17, 0.5);
+    border-radius: 6px;
+    padding: 8px;
+}
+
+.items-skill-column-title {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: rgba(255, 214, 225, 0.85);
+    margin-bottom: 8px;
+}
+
+.items-skill-column-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
 .items-slot {
     border: 1px solid rgba(255, 197, 211, 0.3);
     background: linear-gradient(180deg, rgba(40, 18, 26, 0.86), rgba(25, 12, 17, 0.86));
@@ -2789,6 +2868,10 @@
         padding: 8px;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 6px;
+    }
+
+    .items-skill-columns {
+        grid-template-columns: 1fr;
     }
 
     .items-slot {
@@ -3231,5 +3314,12 @@
 @media (max-width: 900px) {
     .map-controls {
         grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 700px) {
+    .monopad-progression {
+        min-width: 130px;
+        max-width: 220px;
     }
 }

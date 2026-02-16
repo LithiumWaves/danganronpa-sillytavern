@@ -16,6 +16,17 @@
         <div class="monopad-topbar">
             <div class="monopad-title">MONO PAD</div>
 
+            <div class="monopad-progression" aria-label="Player level progression">
+                <div class="monopad-progression-head">
+                    <span class="monopad-level-label">LV</span>
+                    <span class="monopad-level-value" id="monopad-level-value">1</span>
+                    <span class="monopad-xp-text" id="monopad-xp-text">0 / 20 XP</span>
+                </div>
+                <div class="monopad-xp-track" role="img" aria-label="Experience progress bar">
+                    <div class="monopad-xp-fill" id="monopad-xp-fill" style="width:0%"></div>
+                </div>
+            </div>
+
             <button
                 id="dangan_monopad_close"
                 class="monopad-close"
@@ -118,7 +129,7 @@
 
                             <div class="items-skill-shop-row" id="items-skill-shop-row" hidden>
                                 <button class="items-shop-button" id="items-skill-shop-button" type="button">SHOP</button>
-                                <div class="items-shop-hint">SPEND TRUST FRAGMENTS FOR NEW SKILLS (SOON)</div>
+                                <div class="items-shop-hint">SPEND TRUST FRAGMENTS FOR NEW SKILLS</div>
                             </div>
 
                             <div class="items-coin-box" title="Monocoins counter">
@@ -129,6 +140,11 @@
                             <div class="items-coin-box items-fragment-box" title="Trust Fragments counter">
                                 <span class="items-coin-label">TRUST FRAGMENTS</span>
                                 <span class="items-coin-value" id="items-trust-fragment-value">0</span>
+                            </div>
+
+                            <div class="items-coin-box items-skill-point-box" title="Skill Points counter">
+                                <span class="items-coin-label">SKILL POINTS</span>
+                                <span class="items-coin-value" id="items-skill-point-value">10</span>
                             </div>
                         </aside>
 

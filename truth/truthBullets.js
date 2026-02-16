@@ -13,10 +13,16 @@ let extensionName;
 let getSetting;
 let awardMonocoins;
 let monocoinRewards;
+let awardXp;
+let xpRewards;
 let deps = {};
 
 const DEFAULT_MONOCOIN_REWARD = Object.freeze({
     truthBullet: 5,
+});
+
+const DEFAULT_XP_REWARD = Object.freeze({
+    truthBullet: 8,
 });
 
 export function initTruthBullets(providedDeps) {
@@ -36,7 +42,9 @@ export function initTruthBullets(providedDeps) {
         extensionName,
         getSetting,
         awardMonocoins,
-        monocoinRewards
+        monocoinRewards,
+        awardXp,
+        xpRewards
     } = deps);
 
     // Loads saved bullets
@@ -140,6 +148,11 @@ function addTruthBullet(title, description = "") {
     const truthReward = Number(monocoinRewards?.truthBullet ?? DEFAULT_MONOCOIN_REWARD.truthBullet);
     if (awardMonocoins) {
         awardMonocoins(truthReward, "new truth bullet");
+    }
+
+    const truthXpReward = Number(xpRewards?.truthBullet ?? DEFAULT_XP_REWARD.truthBullet);
+    if (awardXp) {
+        awardXp(truthXpReward, "new truth bullet");
     }
 
     console.log(`[${deps.extensionName}] Truth Bullet added: ${title}`);
