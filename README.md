@@ -1,25 +1,33 @@
 # Danganronpa Extension
 
-A Monopad-style SillyTavern extension with progression, trust tracking, truth-bullet parsing, gift/inventory systems, map navigation, and optional OpenRouter-powered generation.
+Adds a menu based on the Monopad from **Danganronpa V3** with progression, trust tracking, truth-bullet parsing, gift/inventory systems, map navigation, and optional OpenRouter-powered generation.
 
 ## Installation
 1. Place this folder in:
    `scripts/extensions/third-party/danganronpa-extension`
 2. Refresh/reload SillyTavern.
-3. Open **Extensions** and enable **Danganronpa Extension**.
-4. In chat, click the Monopad crest button to open the UI.
+Alternatively, install directly from SillyTavern by accessing the extensions tab and pasting the main link.
+3. In chat, click the Monopad crest button to open the UI.
+
+## Requirements:
+The Lorebook: x
+The Generation Preset: x
 
 ## What the extension includes
 
 ### Monopad tabs
 - **Truth (🧠):** Stores discovered Truth Bullets, supports detail view and removal.
-- **Map (🌐):** Area/floor navigation plus MonoMono Machine interaction.
+- **Map (🌐):** Area/floor navigation plus MonoMono Machine minigame.
 - **Gifts & Skills (🎁):** Inventory, item browsing, gifting flow, and skill shop display.
 - **Social (👥):** Character list, trust/distrust progress, and generated profile notes.
 - **Settings (⚙️):** Audio/display toggles, progression reset, generation provider selection.
 
+### Class Trials
+
+Coming soon
+
 ### Progression and currencies
-- **Monocoins** and **XP** are awarded from core actions (for example Truth Bullet and social progress events).
+- **Monocoins** and **XP** are awarded from core actions (for example obtaining Truth Bullets and social progress events).
 - **Trust Fragments** are granted on social rank-up and spent in the skill shop.
 - Player progression displays **Level** and **XP bar** in the Monopad top bar.
 
@@ -49,7 +57,8 @@ V3C| SOCIAL_DOWN: Byakuya Togami
 2. Emit V3C lines from your prompt template/character logic.
 3. Open Monopad to review Truth Bullets and Social updates.
 4. Spend rewards in Gifts & Skills and use gifts in conversations.
-5. Tune visuals/audio/generation options from Settings.
+5. Partake in Class Trials and advance the story
+
 
 ## Settings reference
 - **Monopad Sounds** – UI SFX toggle.
@@ -63,34 +72,15 @@ V3C| SOCIAL_DOWN: Byakuya Togami
 - **Reset Level + Skill Points** – progression reset to LV1 / 0 XP / 10 SP.
 
 ## Notes and current behavior
-- Social trust can currently be adjusted via list interactions in the Social tab (single-click opens report; additional controls are planned).
+- Class Trials and what they entail are still under development and should come out soon.
 - Skill shop entries are available for ownership/equip-cost display; deeper skill effects can be expanded over time.
+
+## Q&A
+- **Q: How do gifts work?**
+  **A: First and foremost, gifts are obtained through a gacha minigame on the MonoMono Machine. To use them, access your inventory, select the gift and press use. The next character who sends a message in chat will receive and judge it, granting you either a rank up or down or simply staying neutral.**
 
 ## Troubleshooting
 - **Extension not visible:** verify folder path and refresh SillyTavern.
 - **No Truth Bullets or Social updates:** confirm your messages output valid `V3C| ...` lines.
 - **OpenRouter errors:** confirm API key/model and use **Test Connection** in Settings.
 - **Audio missing:** ensure browser autoplay permissions and extension sound toggles are enabled.
-
-## Development quick checks
-From the extension root:
-
-```bash
-# Syntax check key JS modules (Node.js)
-node --check index.js
-node --check truth/truthBullets.js
-node --check items/itemsPanel.js
-node --check social/socialPanel.js
-node --check map/mapPanel.js
-node --check core/openrouterSettings.js
-```
-
-## Project structure
-```text
-core/      constants, OpenRouter settings manager, lesson script
-truth/     truth bullet parsing, persistence, animations
-social/    social panel + character utilities
-items/     inventory, gifts, skill shop UI, rewards/progression
-map/       map panel + MonoMono machine flow
-assets/    extension images/audio
-```
