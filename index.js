@@ -861,6 +861,12 @@ async function runMonokumaLessonStep(step, state) {
         spriteEl.src = `${extensionFolderPath}/assets/monokuma/${step.sprite}`;
     }
 
+    spriteEl.style.opacity = String(
+        Number.isFinite(Number(step.spriteOpacity))
+            ? Math.max(0, Math.min(1, Number(step.spriteOpacity)))
+            : 1
+    );
+
     if (step.action === "spawnTruthBullet") {
         handleTruthBullet("Important Thing!", "Will this show us whodunnit?");
         window.renderTruthBullets?.();
@@ -888,6 +894,20 @@ async function runMonokumaLessonStep(step, state) {
         overlayEl.classList.remove("sprite-shake");
         overlayEl.classList.add("sprite-hidden");
         await new Promise(resolve => setTimeout(resolve, 270));
+        unlockAdvance();
+    }
+
+    if (step.action === "shakeDropThenBoardReturnBounce") {
+        lockAdvance();
+        overlayEl.classList.add("sprite-shake");
+        await new Promise(resolve => setTimeout(resolve, 900));
+        overlayEl.classList.remove("sprite-shake");
+        overlayEl.classList.add("sprite-hidden");
+        await new Promise(resolve => setTimeout(resolve, 270));
+        overlayEl.classList.remove("sprite-hidden");
+        overlayEl.classList.add("sprite-bounce");
+        await new Promise(resolve => setTimeout(resolve, 680));
+        overlayEl.classList.remove("sprite-bounce");
         unlockAdvance();
     }
 
