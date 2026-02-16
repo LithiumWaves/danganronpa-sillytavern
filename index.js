@@ -1163,8 +1163,8 @@ function ensureDebugControlsStyleTag() {
 }
 @media (max-width: 700px) {
     #trust-debug-controls {
-        top: calc(74px + env(safe-area-inset-top, 0px)) !important;
-        bottom: auto !important;
+        top: auto !important;
+        bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important;
         flex-direction: row !important;
     }
 }
@@ -1220,8 +1220,8 @@ function applyDebugControlsInlineLayout(controls) {
     controls.style.setProperty("opacity", "1", "important");
     controls.style.setProperty("right", "10px", "important");
     controls.style.setProperty("left", "auto", "important");
-    controls.style.setProperty("top", isMobile ? "calc(env(safe-area-inset-top, 0px) + 74px)" : "auto", "important");
-    controls.style.setProperty("bottom", isMobile ? "auto" : "14px", "important");
+    controls.style.setProperty("top", "auto", "important");
+    controls.style.setProperty("bottom", isMobile ? "calc(72px + env(safe-area-inset-bottom, 0px))" : "14px", "important");
     controls.style.setProperty("flex-direction", isMobile ? "row" : "column", "important");
     controls.style.setProperty("gap", isMobile ? "8px" : "6px", "important");
     controls.style.setProperty("align-items", "stretch", "important");
