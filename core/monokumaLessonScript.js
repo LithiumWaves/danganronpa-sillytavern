@@ -10,12 +10,12 @@ export const MONOKUMA_LESSON_STEPS = [
         board: true,
         chalkTitle: MONOKUMA_LESSON_TITLE,
         sprite: "monokuma_eto.png",
-        text: "Welcome, welcome everyone! I'll be walking you through the specifics on how to use your newly acquired Monopad, after all, it's essential to the Killing Game!",
+        text: "Welcome, students. I’m your headmaster, Monokuma! Today’s lesson: how to use that shiny little Monopad you’ve been given. It’s pretty important… unless you’re planning to die early.",
     },
     {
         tab: "settings",
         sprite: "monokuma_confused.png",
-        text: "Well this one's pretty self-explanatory... I don't want to dwindle too much on this one. If you don't get it, you probably shouldn't keep going.",
+        text: "This screen? It’s just settings. If you can’t figure this one out on your own… well, I guess that’s one less mystery for later."
     },
     {
         action: "dropAndSwitchToTruth",
@@ -26,8 +26,8 @@ export const MONOKUMA_LESSON_STEPS = [
     {
         action: "spawnTruthBullet",
         sprite: "monokuma_tadam.png",
-        text: "There we go! If you click on the Truth Bullet you'll be able to see it's description and even discard it.",
-    },
+        text: "There we go! Click one to see the details… or toss it if it’s useless."
+    },       
     {
         action: "autoReadAndDeleteTruthBullet",
         sprite: "monokuma_laugh.png",
@@ -37,7 +37,7 @@ export const MONOKUMA_LESSON_STEPS = [
         action: "dropAndSwitchToSocial",
         tab: "social",
         sprite: "monokuma_whimsyjoy.png",
-        text: "Here's where you'll find information on all your fellow students and the bonds you share... once you open up a chat, characters will appear on the very obvious tab over there.",
+        text: "Here’s where you’ll find your classmates and all those warm, fuzzy bonds you’ll form… or break."
     },
     {
         sprite: "monokuma_cheerful.png",
