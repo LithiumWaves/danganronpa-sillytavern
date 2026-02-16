@@ -129,7 +129,7 @@ function loadTruthBullets() {
    TRUTH BULLET FUNCTIONS
    ========================= */
 
-function addTruthBullet(title, description = "") {
+function addTruthBullet(title, description = "", { grantMonocoins = true, grantXp = true } = {}) {
     if (!title) return;
     if (truthBullets.some(tb => tb.title === title)) return;
 
@@ -146,12 +146,12 @@ function addTruthBullet(title, description = "") {
     saveTruthBullets();
 
     const truthReward = Number(monocoinRewards?.truthBullet ?? DEFAULT_MONOCOIN_REWARD.truthBullet);
-    if (awardMonocoins) {
+    if (grantMonocoins && awardMonocoins) {
         awardMonocoins(truthReward, "new truth bullet");
     }
 
     const truthXpReward = Number(xpRewards?.truthBullet ?? DEFAULT_XP_REWARD.truthBullet);
-    if (awardXp) {
+    if (grantXp && awardXp) {
         awardXp(truthXpReward, "new truth bullet");
     }
 
@@ -305,8 +305,8 @@ function playTruthBulletSfx() {
     deps.playSfx(sound);
 }
 
-export function handleTruthBullet(title, description) {
-    addTruthBullet(title, description);
+export function handleTruthBullet(title, description, options = {}) {
+    addTruthBullet(title, description, options);
 }
 
 
