@@ -43,7 +43,7 @@ The extension scans assistant messages for these patterns:
 - `V3C| SOCIAL: <name>`
 - `V3C| SOCIAL_UP: <name>`
 - `V3C| SOCIAL_DOWN: <name>`
-- `V3C| INVESTIGATION_START` (plays Investigation Start banner/sfx and attempts `/preset Investigation Time`)
+- `V3C| INVESTIGATION_START` (plays Investigation Start banner/sfx and attempts to enable the `Investigation Time` toggle in your current preset)
 
 ### Examples
 ```text

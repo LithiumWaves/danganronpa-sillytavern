@@ -137,34 +137,132 @@ const processedTruthSignatures = new Set();
 const processedSocialSignatures = new Set();
 const processedInvestigationSignatures = new Set();
 
-function triggerInvestigationTimePreset() {
-    const presetLabel = "Investigation Time";
+function normalizeTextToken(value) {
+    return String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[_\-]+/g, " ")
+        .replace(/\s+/g, " ");
+}
 
+function tryEnableInvestigationToggleInObject(root, { maxDepth = 6 } = {}) {
+    if (!root || typeof root !== "object") return false;
+
+    const target = normalizeTextToken("Investigation Time");
+    const queue = [{ node: root, depth: 0 }];
+    const visited = new WeakSet();
+    let touched = false;
+
+    while (queue.length) {
+        const { node, depth } = queue.shift();
+        if (!node || typeof node !== "object") continue;
+        if (visited.has(node)) continue;
+        visited.add(node);
+
+        const label = normalizeTextToken(node.name || node.label || node.title || node.id || "");
+        if (label === target || label.includes(target)) {
+            if (typeof node.enabled === "boolean") {
+                node.enabled = true;
+                touched = true;
+            }
+            if (typeof node.value === "boolean") {
+                node.value = true;
+                touched = true;
+            }
+            if (typeof node.active === "boolean") {
+                node.active = true;
+                touched = true;
+            }
+            if (typeof node.toggled === "boolean") {
+                node.toggled = true;
+                touched = true;
+            }
+            if (typeof node.isEnabled === "boolean") {
+                node.isEnabled = true;
+                touched = true;
+            }
+            if (typeof node.isActive === "boolean") {
+                node.isActive = true;
+                touched = true;
+            }
+        }
+
+        if (depth >= maxDepth) continue;
+
+        for (const value of Object.values(node)) {
+            if (!value || typeof value !== "object") continue;
+            queue.push({ node: value, depth: depth + 1 });
+        }
+    }
+
+    return touched;
+}
+
+function tryEnableInvestigationToggleViaContext() {
     if (!window.SillyTavern?.getContext) return false;
 
     const ctx = window.SillyTavern.getContext();
     if (!ctx) return false;
 
-    try {
-        if (typeof ctx.executeSlashCommandsWithOptions === "function") {
-            ctx.executeSlashCommandsWithOptions(`/preset ${presetLabel}`, { quiet: true });
+    const candidates = [
+        ctx.chatCompletionSettings,
+        ctx.chat_completion_settings,
+        ctx.mainApiSettings,
+        ctx.main_api_settings,
+        ctx.settings,
+        ctx,
+    ];
+
+    let touched = false;
+    for (const candidate of candidates) {
+        touched = tryEnableInvestigationToggleInObject(candidate) || touched;
+    }
+
+    if (!touched) return false;
+
+    if (typeof ctx.saveSettingsDebounced === "function") {
+        ctx.saveSettingsDebounced();
+    } else {
+        saveSettingsDebounced();
+    }
+
+    return true;
+}
+
+function tryEnableInvestigationToggleViaDom() {
+    const target = normalizeTextToken("Investigation Time");
+    const scope = Array.from(document.querySelectorAll("label, .menu_button, .inline-drawer-toggle, button, .toggle-item"));
+
+    for (const el of scope) {
+        const labelText = normalizeTextToken(el.textContent || el.getAttribute("aria-label") || "");
+        if (!labelText || (!labelText.includes(target) && labelText !== target)) continue;
+
+        const host = el.closest("label, .toggle-item, .settings-item, .menu_button") || el;
+        const checkbox = host.querySelector('input[type="checkbox"]') || el.querySelector?.('input[type="checkbox"]');
+
+        if (checkbox) {
+            if (checkbox.checked) return true;
+            checkbox.click();
             return true;
         }
 
-        if (typeof ctx.executeSlashCommands === "function") {
-            ctx.executeSlashCommands(`/preset ${presetLabel}`);
-            return true;
-        }
+        const pressed = host.getAttribute("aria-pressed");
+        if (pressed === "true") return true;
 
-        if (typeof ctx.sendSystemMessage === "function") {
-            ctx.sendSystemMessage("generic", `[Dangan] Switched Chat Completion preset: ${presetLabel}`);
+        if (typeof host.click === "function") {
+            host.click();
             return true;
         }
-    } catch (error) {
-        console.warn(`[Dangan][Investigation] Failed to switch preset to ${presetLabel}:`, error);
     }
 
     return false;
+}
+
+function triggerInvestigationTimeToggle() {
+    const byContext = tryEnableInvestigationToggleViaContext();
+    if (byContext) return true;
+
+    return tryEnableInvestigationToggleViaDom();
 }
 
 function showInvestigationStartBanner() {
@@ -200,11 +298,11 @@ function triggerInvestigationStart() {
         playSfx(sfx.investigation_start);
     }
 
-    const switched = triggerInvestigationTimePreset();
-    if (switched) {
-        console.log("[Dangan][Investigation] Investigation Time preset trigger sent.");
+    const toggled = triggerInvestigationTimeToggle();
+    if (toggled) {
+        console.log("[Dangan][Investigation] Investigation Time toggle enabled in current preset.");
     } else {
-        console.warn("[Dangan][Investigation] Could not auto-toggle 'Investigation Time' preset in this SillyTavern context.");
+        console.warn("[Dangan][Investigation] Could not auto-enable the Investigation Time toggle.");
     }
 }
 
