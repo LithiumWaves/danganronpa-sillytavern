@@ -15,7 +15,7 @@ export const MONOKUMA_LESSON_STEPS = [
     {
         tab: "settings",
         sprite: "monokuma_confused.png",
-        text: "This screen? It’s just settings. If you can’t figure this one out on your own… well, I guess that’s one less mystery for later."
+        text: "This screen? It’s just settings. If you can’t figure this one out on your own… well, I guess that’s one less mystery for later.",
     },
     {
         action: "dropAndSwitchToTruth",
@@ -26,7 +26,7 @@ export const MONOKUMA_LESSON_STEPS = [
     {
         action: "spawnTruthBullet",
         sprite: "monokuma_tadam.png",
-        text: "There we go! Click one to see the details… or toss it if it’s useless."
+        text: "There we go! Click one to see the details… or toss it if it’s useless.",
     },       
     {
         action: "autoReadAndDeleteTruthBullet",
@@ -37,37 +37,37 @@ export const MONOKUMA_LESSON_STEPS = [
         action: "dropAndSwitchToSocial",
         tab: "social",
         sprite: "monokuma_whimsyjoy.png",
-        text: "Here’s where you’ll find your classmates and all those warm, fuzzy bonds you’ll form… or break."
+        text: "Here’s where you’ll find your classmates and all those warm, fuzzy bonds you’ll form… or break.",
     },
     {
         sprite: "monokuma_cheerful.png",
-        text: " on. Your trust with them may deepen depending on how you spend your time with them, but it can go down as well.",
+        text: "Click a name once to view their profile. Click again to learn more. Spend time with them and your trust might grow… or maybe it won’t. People can be so disappointing.",
     },
     {
         sprite: "monokuma_sadback.png",
-        text: "Sadly your Headmaster is not a bond you can nurture. Meanies...",
+        text: "Sadly, you can’t build a bond with your beloved headmaster. Tragic, I know.",
     },
     {
         action: "dropAndSwitchToSkills",
         tab: "skills",
         sprite: "monokuma_idle.png",
-        text: "On that topic, we have gifts! Here's where you'll see what gifts you currently own. Simply select one, click on use...",
+        text: "Next up: gifts. Everything you’ve collected is listed right here. Pick one, press use...",
     },
     {
         sprite: "monokuma_tadam.png",
-        text: "And you'll give it to the next character who replies! Choose well, because what you give might affect what they think of you.",
+        text: "And it’ll go to the next person you interact with. Choose carefully. A good gift can win hearts. A bad one… well, you’ll see.",
     },
     {
         action: "throwAndSwitchToMap",
         tab: "map",
         sprite: "monokuma_tweaking.png",
-        text: "You want me to explain a map?! I'm not doing that!",
+        text: "A map? Really? You need me to explain how a map works?",
     },
     {
         action: "switchMapToHopesPeakFloor1",
         sprite: "monokuma_angry.png",
         spriteOpacity: 0.78,
-        text: "That ¥ symbol over there's where my MonoMono Machine is at. You probably noticed the Monocoin counter on the Gifts tab... you gain them by finding Truth Bullets, nurturing bonds and such.",
+        text: "That little ¥ symbol marks my MonoMono Machine. You’ve seen your Monocoins already, right? You get those from investigations, socializing… all that good stuff.",
     },
     {
         sprite: "monokuma_pissed.png",
@@ -76,10 +76,11 @@ export const MONOKUMA_LESSON_STEPS = [
     {
         board: true,
         sprite: "monokuma_idle.png",
-        text: "Well, that should be everything. Any questions you have are probably answered on the... Github page, whatever that is.",
+        text: "That’s the basics. If you still have questions, check the… GitHub page, or whatever it’s called. Do your own homework.",
     },
     {
+        board: true,
         sprite: "monokuma_eto.png",
-        text: "Have fun! Kill! Get killed! Who knows what awaits you from here on out?!",
+        text: "Anyway… enjoy your stay. Make friends. Break them. Kill. Get killed. It’s all part of the fun!",
     },
 ];
