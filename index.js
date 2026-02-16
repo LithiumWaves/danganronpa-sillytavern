@@ -1109,6 +1109,138 @@ function loadCharacters() {
 
 let debugUiObserver = null;
 const DEBUG_CONTROLS_COLLAPSE_STORAGE_KEY = "dangan-debug-controls-collapsed";
+const DEBUG_CONTROLS_POSITION_STORAGE_KEY = "dangan-debug-controls-position";
+const MONOPAD_BUTTON_POSITION_STORAGE_KEY = "dangan-monopad-button-position";
+
+function readUiPosition(storageKey) {
+    try {
+        const raw = localStorage.getItem(storageKey);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed.left !== "number" || typeof parsed.top !== "number") return null;
+        return parsed;
+    } catch {
+        return null;
+    }
+}
+
+function saveUiPosition(storageKey, left, top) {
+    try {
+        localStorage.setItem(storageKey, JSON.stringify({ left: Math.round(left), top: Math.round(top) }));
+    } catch {
+        // ignore storage failures and keep UI functional
+    }
+}
+
+function clampUiPosition(element, left, top) {
+    const rect = element.getBoundingClientRect();
+    const width = rect.width || element.offsetWidth || 44;
+    const height = rect.height || element.offsetHeight || 44;
+    const margin = 6;
+
+    const maxLeft = Math.max(margin, window.innerWidth - width - margin);
+    const maxTop = Math.max(margin, window.innerHeight - height - margin);
+
+    return {
+        left: Math.min(Math.max(left, margin), maxLeft),
+        top: Math.min(Math.max(top, margin), maxTop),
+    };
+}
+
+function applyCustomUiPosition(element, storageKey) {
+    if (!element) return false;
+
+    const saved = readUiPosition(storageKey);
+    if (!saved) return false;
+
+    const { left, top } = clampUiPosition(element, saved.left, saved.top);
+    element.style.setProperty("left", `${left}px`, "important");
+    element.style.setProperty("top", `${top}px`, "important");
+    element.style.setProperty("right", "auto", "important");
+    element.style.setProperty("bottom", "auto", "important");
+    element.dataset.customPosition = "true";
+
+    return true;
+}
+
+function attachDraggablePositioning(element, { storageKey, handleSelector, suppressClickDataKey } = {}) {
+    if (!element || element.dataset.dragPositioningInitialized === "true") return;
+    element.dataset.dragPositioningInitialized = "true";
+    element.style.setProperty("touch-action", "none");
+
+    let dragging = false;
+    let moved = false;
+    let pointerId = null;
+    let startX = 0;
+    let startY = 0;
+    let originLeft = 0;
+    let originTop = 0;
+
+    element.addEventListener("pointerdown", event => {
+        const handle = handleSelector ? event.target.closest(handleSelector) : element;
+        if (!handle || (handleSelector && !element.contains(handle))) return;
+        if (event.button !== 0) return;
+
+        const rect = element.getBoundingClientRect();
+        startX = event.clientX;
+        startY = event.clientY;
+        originLeft = rect.left;
+        originTop = rect.top;
+        pointerId = event.pointerId;
+        dragging = true;
+        moved = false;
+
+        element.setPointerCapture?.(pointerId);
+        event.preventDefault();
+    });
+
+    element.addEventListener("pointermove", event => {
+        if (!dragging || event.pointerId !== pointerId) return;
+
+        const nextLeft = originLeft + (event.clientX - startX);
+        const nextTop = originTop + (event.clientY - startY);
+        const { left, top } = clampUiPosition(element, nextLeft, nextTop);
+
+        if (Math.abs(event.clientX - startX) > 3 || Math.abs(event.clientY - startY) > 3) {
+            moved = true;
+        }
+
+        element.style.setProperty("left", `${left}px`, "important");
+        element.style.setProperty("top", `${top}px`, "important");
+        element.style.setProperty("right", "auto", "important");
+        element.style.setProperty("bottom", "auto", "important");
+        element.dataset.customPosition = "true";
+    });
+
+    const finishDrag = event => {
+        if (!dragging || event.pointerId !== pointerId) return;
+
+        element.releasePointerCapture?.(pointerId);
+        dragging = false;
+
+        if (moved) {
+            const rect = element.getBoundingClientRect();
+            const { left, top } = clampUiPosition(element, rect.left, rect.top);
+            element.style.setProperty("left", `${left}px`, "important");
+            element.style.setProperty("top", `${top}px`, "important");
+            element.style.setProperty("right", "auto", "important");
+            element.style.setProperty("bottom", "auto", "important");
+            element.dataset.customPosition = "true";
+            saveUiPosition(storageKey, left, top);
+
+            if (suppressClickDataKey) {
+                element.dataset[suppressClickDataKey] = String(Date.now() + 300);
+            }
+        }
+
+        moved = false;
+        pointerId = null;
+    };
+
+    element.addEventListener("pointerup", finishDrag);
+    element.addEventListener("pointercancel", finishDrag);
+}
+
 
 function getDebugControlsCollapsed() {
     try {
@@ -1163,9 +1295,11 @@ function ensureDebugControlsStyleTag() {
 }
 @media (max-width: 700px) {
     #trust-debug-controls {
-        top: calc(74px + env(safe-area-inset-top, 0px)) !important;
+        left: max(10px, env(safe-area-inset-left, 0px)) !important;
+        right: auto !important;
+        top: calc(env(safe-area-inset-top, 0px) + 60px) !important;
         bottom: auto !important;
-        flex-direction: row !important;
+        flex-direction: column !important;
     }
 }
 `;
@@ -1218,12 +1352,16 @@ function applyDebugControlsInlineLayout(controls) {
     controls.style.setProperty("display", "flex", "important");
     controls.style.setProperty("pointer-events", "auto", "important");
     controls.style.setProperty("opacity", "1", "important");
-    controls.style.setProperty("right", "10px", "important");
-    controls.style.setProperty("left", "auto", "important");
-    controls.style.setProperty("top", isMobile ? "calc(env(safe-area-inset-top, 0px) + 74px)" : "auto", "important");
-    controls.style.setProperty("bottom", isMobile ? "auto" : "14px", "important");
-    controls.style.setProperty("flex-direction", isMobile ? "row" : "column", "important");
-    controls.style.setProperty("gap", isMobile ? "8px" : "6px", "important");
+    const hasCustomPosition = controls.dataset.customPosition === "true" || applyCustomUiPosition(controls, DEBUG_CONTROLS_POSITION_STORAGE_KEY);
+
+    if (!hasCustomPosition) {
+        controls.style.setProperty("right", isMobile ? "auto" : "10px", "important");
+        controls.style.setProperty("left", isMobile ? "max(10px, env(safe-area-inset-left, 0px))" : "auto", "important");
+        controls.style.setProperty("top", isMobile ? "calc(env(safe-area-inset-top, 0px) + 60px)" : "auto", "important");
+        controls.style.setProperty("bottom", isMobile ? "auto" : "14px", "important");
+    }
+    controls.style.setProperty("flex-direction", "column", "important");
+    controls.style.setProperty("gap", "6px", "important");
     controls.style.setProperty("align-items", "stretch", "important");
     controls.style.setProperty("visibility", "visible", "important");
 
@@ -1235,9 +1373,9 @@ function applyDebugControlsInlineLayout(controls) {
         button.style.setProperty("color", "#fff", "important");
         button.style.setProperty("border", "1px solid #444", "important");
         button.style.setProperty("border-radius", "6px", "important");
-        button.style.setProperty("padding", isMobile ? "7px 10px" : "6px 10px", "important");
-        button.style.setProperty("min-height", isMobile ? "38px" : "32px", "important");
-        button.style.setProperty("min-width", isMobile ? "88px" : "120px", "important");
+        button.style.setProperty("padding", isMobile ? "6px 8px" : "6px 10px", "important");
+        button.style.setProperty("min-height", isMobile ? "34px" : "32px", "important");
+        button.style.setProperty("min-width", isMobile ? "72px" : "120px", "important");
         button.style.setProperty("font-size", isMobile ? "11px" : "12px", "important");
         button.style.setProperty("cursor", "pointer", "important");
         button.style.setProperty("letter-spacing", "0.06em", "important");
@@ -1247,8 +1385,8 @@ function applyDebugControlsInlineLayout(controls) {
     const panel = controls.querySelector(".trust-debug-buttons");
     if (panel) {
         panel.style.setProperty("display", "flex", "important");
-        panel.style.setProperty("flex-direction", isMobile ? "row" : "column", "important");
-        panel.style.setProperty("gap", isMobile ? "8px" : "6px", "important");
+        panel.style.setProperty("flex-direction", "column", "important");
+        panel.style.setProperty("gap", "6px", "important");
     }
 }
 
@@ -1308,6 +1446,12 @@ function ensureGlobalDebugUi() {
     if (controls.parentElement !== document.body) {
         document.body.appendChild(controls);
     }
+
+    attachDraggablePositioning(controls, {
+        storageKey: DEBUG_CONTROLS_POSITION_STORAGE_KEY,
+        handleSelector: "#trust-debug-toggle",
+        suppressClickDataKey: "suppressToggleClickUntil",
+    });
 
     let modal = document.getElementById("truth-debug-modal");
     if (!modal) {
@@ -1399,6 +1543,10 @@ function bindDebugControlEvents() {
     });
 
     $(document).on("click.debugControls", "#trust-debug-toggle", () => {
+        const controls = document.getElementById("trust-debug-controls");
+        const suppressUntil = Number(controls?.dataset?.suppressToggleClickUntil || "0");
+        if (Date.now() < suppressUntil) return;
+
         playDebugClickSfx();
         const isCollapsed = getDebugControlsCollapsed();
         setDebugControlsCollapsed(!isCollapsed);
@@ -1491,6 +1639,20 @@ jQuery(async () => {
         const $button = $("#dangan_monopad_button");
         const $panel = $("#dangan_monopad_panel");
         $panel.addClass("fullscreen");
+
+        const monopadButtonEl = $button.get(0);
+        if (monopadButtonEl) {
+            monopadButtonEl.style.setProperty("touch-action", "none");
+            applyCustomUiPosition(monopadButtonEl, MONOPAD_BUTTON_POSITION_STORAGE_KEY);
+            attachDraggablePositioning(monopadButtonEl, {
+                storageKey: MONOPAD_BUTTON_POSITION_STORAGE_KEY,
+                suppressClickDataKey: "suppressMonopadClickUntil",
+            });
+            window.addEventListener("resize", () => {
+                if (!monopadButtonEl.dataset.customPosition) return;
+                applyCustomUiPosition(monopadButtonEl, MONOPAD_BUTTON_POSITION_STORAGE_KEY);
+            });
+        }
 
         const welcomeUserEl = document.getElementById("monopad_welcome_user");
         if (welcomeUserEl) {
@@ -1698,6 +1860,9 @@ $(".monopad-icon").on("mouseenter", function () {
         }
 
         $button.on("click", () => {
+            const suppressUntil = Number(monopadButtonEl?.dataset?.suppressMonopadClickUntil || "0");
+            if (Date.now() < suppressUntil) return;
+
             unlockAudio();
             togglePanel();
 
