@@ -34,16 +34,6 @@
     box-sizing: border-box;
 }
 
-@media (max-width: 700px) and (orientation: portrait) {
-    #dangan_monopad_button {
-        top: auto;
-        right: max(10px, env(safe-area-inset-right, 0px));
-        bottom: calc(env(safe-area-inset-bottom, 0px) + 84px);
-        width: 44px;
-        height: 44px;
-    }
-}
-
 /* Crest Image */
 #dangan_monopad_button img {
     width: 70%;
@@ -2516,16 +2506,16 @@
 
 @media (max-width: 700px) {
     #trust-debug-controls {
-        left: 10px;
-        right: auto;
-        bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+        right: 10px;
+        left: auto;
+        bottom: calc(74px + env(safe-area-inset-bottom, 0px));
         top: auto;
         width: auto;
         transform: none;
-        flex-direction: column;
+        flex-direction: row;
         flex-wrap: nowrap;
-        gap: 6px;
-        justify-content: flex-start;
+        gap: 8px;
+        justify-content: flex-end;
         opacity: 1;
         z-index: 2147483000;
         padding: 0;
@@ -2537,10 +2527,10 @@
 
     #trust-debug-controls button {
         flex: 0 0 auto;
-        min-height: 34px;
-        min-width: 72px;
+        min-height: 38px;
+        min-width: 88px;
         font-size: 11px;
-        padding: 6px 8px;
+        padding: 7px 10px;
         background: rgba(24, 14, 21, 0.95);
         border-color: rgba(255, 196, 215, 0.4);
     }
