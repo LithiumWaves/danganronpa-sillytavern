@@ -174,10 +174,10 @@ export function createItemsPanelController({ extensionName, extension_settings, 
     let selectedItemId = null;
 
     const placeholderSkillShopCatalog = [
-        { id: "shop_skill_lie_detector_earring", name: "Lie Detector Earring", cost: 1, teaserEffect: "Highlights suspicious dialogue beats." },
-        { id: "shop_skill_dramatic_pause_plus", name: "Dramatic Pause+", cost: 1, teaserEffect: "Adds impact before major rebuttals." },
-        { id: "shop_skill_monokuma_warranty", name: "Monokuma Warranty", cost: 1, teaserEffect: "Survive one terrible bargain (maybe)." },
-        { id: "shop_skill_protagonist_hair_flip", name: "Protagonist Hair Flip", cost: 1, teaserEffect: "Temporarily boosts confidence in tense scenes." },
+        { id: "shop_skill_lie_detector_earring", name: "Lie Detector Earring", cost: 1, skillPointCost: 8, teaserEffect: "Highlights suspicious dialogue beats." },
+        { id: "shop_skill_dramatic_pause_plus", name: "Dramatic Pause+", cost: 1, skillPointCost: 6, teaserEffect: "Adds impact before major rebuttals." },
+        { id: "shop_skill_monokuma_warranty", name: "Monokuma Warranty", cost: 1, skillPointCost: 12, teaserEffect: "Survive one terrible bargain (maybe)." },
+        { id: "shop_skill_protagonist_hair_flip", name: "Protagonist Hair Flip", cost: 1, skillPointCost: 7, teaserEffect: "Temporarily boosts confidence in tense scenes." },
     ];
 
 
@@ -189,6 +189,8 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         ext.inventory.gifts ||= {};
         ext.inventory.skills ||= {};
         ext.inventory.keyItems ||= {};
+        ext.inventory.skillPoints ??= 99;
+        ext.inventory.equippedSkills ||= {};
 
         delete ext.inventory.skills.s_micro_focus;
         delete ext.inventory.skills.s_false_lead;
@@ -250,6 +252,46 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         if (category === "skill") return "SKILL";
         return "KEY ITEM";
     }
+    function getSkillShopEntry(skillId) {
+        return placeholderSkillShopCatalog.find(skill => skill.id === skillId) || null;
+    }
+
+    function getSkillPointCost(skillId) {
+        return Number(getSkillShopEntry(skillId)?.skillPointCost || 0);
+    }
+
+    function isSkillEquipped(skillId) {
+        return Number(extension_settings[extensionName].inventory?.equippedSkills?.[skillId] || 0) > 0;
+    }
+
+    function equipSkill(skillId) {
+        loadInventoryState();
+        const inventory = extension_settings[extensionName].inventory;
+        if (Number(inventory.skills?.[skillId] || 0) <= 0) return false;
+        if (isSkillEquipped(skillId)) return false;
+
+        const cost = getSkillPointCost(skillId);
+        const points = Number(inventory.skillPoints || 0);
+        if (points < cost) return false;
+
+        inventory.skillPoints = points - cost;
+        inventory.equippedSkills[skillId] = 1;
+        saveSettingsDebounced();
+        return true;
+    }
+
+    function unequipSkill(skillId) {
+        loadInventoryState();
+        const inventory = extension_settings[extensionName].inventory;
+        if (!isSkillEquipped(skillId)) return false;
+
+        const cost = getSkillPointCost(skillId);
+        inventory.skillPoints = Number(inventory.skillPoints || 0) + cost;
+        delete inventory.equippedSkills[skillId];
+        saveSettingsDebounced();
+        return true;
+    }
+
 
     function discardInventoryItem(itemId, amount = 1) {
         loadInventoryState();
@@ -480,22 +522,28 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         }
 
         const showDiscardGift = item.category === "gift";
+        const isSkill = item.category === "skill";
+        const skillPointCost = isSkill ? getSkillPointCost(item.id) : 0;
+        const skillPoints = Number(extension_settings[extensionName].inventory?.skillPoints || 0);
+        const equipped = isSkill ? isSkillEquipped(item.id) : false;
+        const canEquip = isSkill && !equipped && skillPoints >= skillPointCost;
+        const categoryLine = isSkill
+            ? `CATEGORY: ${formatCategoryLabel(item.category)} · COST: ${skillPointCost} SP · AVAILABLE: ${skillPoints} SP`
+            : `CATEGORY: ${formatCategoryLabel(item.category)} · RARITY: ${item.rarity}`;
 
         $detail.html(`
             <div class="items-panel-title">SELECTED ITEM</div>
             <div class="items-detail-icon">◉</div>
             <div class="items-detail-name">${item.name.toUpperCase()}</div>
-            <div class="items-detail-category">CATEGORY: ${formatCategoryLabel(item.category)} · RARITY: ${item.rarity}</div>
+            <div class="items-detail-category">${categoryLine}</div>
 
             <div class="items-detail-section-label">DESCRIPTION</div>
             <div class="items-detail-description">${item.description}</div>
 
-            <!-- <div class="items-detail-section-label">EFFECT</div>
-            <div class="items-detail-effect">${item.effect}</div> -->
-
             <div class="items-detail-actions">
-                <button class="items-detail-action" data-action="use-item" ${showDiscardGift ? '' : 'disabled'}>USE</button>
-                <button class="items-detail-action" disabled>INSPECT</button>
+                ${isSkill
+                    ? `<button class="items-detail-action" data-action="equip-skill" ${equipped || canEquip ? '' : 'disabled'}>${equipped ? 'UNEQUIP' : 'EQUIP'}</button>`
+                    : '<button class="items-detail-action" data-action="use-item" ' + (showDiscardGift ? '' : 'disabled') + '>USE</button><button class="items-detail-action" disabled>INSPECT</button>'}
                 ${showDiscardGift ? '<button class="items-detail-action discard" data-action="discard-gift">DISCARD GIFT</button>' : ""}
                 ${showDiscardGift ? `<button class="items-detail-action discard" data-action="discard-rarity">MASS DISCARD ${item.rarity}</button>` : ""}
             </div>
@@ -526,6 +574,15 @@ export function createItemsPanelController({ extensionName, extension_settings, 
                 renderSkillsItemsPanel();
             });
         }
+
+        if (isSkill) {
+            $detail.find('[data-action="equip-skill"]').on("click", () => {
+                playSfx(getSfx().click);
+                const changed = equipped ? unequipSkill(item.id) : equipSkill(item.id);
+                if (!changed) return;
+                renderSkillsItemsPanel();
+            });
+        }
     }
 
     function renderInventoryGrid() {
@@ -545,7 +602,7 @@ export function createItemsPanelController({ extensionName, extension_settings, 
             selectedItemId = items[0].id;
         }
 
-        items.forEach(item => {
+        const appendSlot = (item) => {
             const active = item.id === selectedItemId ? "active" : "";
             const $slot = $(`
                 <button class="items-slot ${active}" data-item-id="${item.id}" data-item-category="${item.category}" title="${item.name}">
@@ -562,8 +619,47 @@ export function createItemsPanelController({ extensionName, extension_settings, 
                 renderInventoryGrid();
             });
 
-            $grid.append($slot);
-        });
+            return $slot;
+        };
+
+        if (activeItemsFilter === "skill") {
+            const equippedSkills = [];
+            const unequippedSkills = [];
+
+            items.forEach((item) => {
+                if (isSkillEquipped(item.id)) {
+                    equippedSkills.push(item);
+                } else {
+                    unequippedSkills.push(item);
+                }
+            });
+
+            const $skillColumns = $('<div class="items-skill-columns"></div>');
+            const $unequippedColumn = $('<div class="items-skill-column"><div class="items-skill-column-title">NOT EQUIPPED</div><div class="items-skill-column-grid"></div></div>');
+            const $equippedColumn = $('<div class="items-skill-column"><div class="items-skill-column-title">EQUIPPED</div><div class="items-skill-column-grid"></div></div>');
+
+            const $unequippedGrid = $unequippedColumn.find('.items-skill-column-grid');
+            const $equippedGrid = $equippedColumn.find('.items-skill-column-grid');
+
+            if (!unequippedSkills.length) {
+                $unequippedGrid.append('<div class="items-empty">NO UNEQUIPPED SKILLS</div>');
+            } else {
+                unequippedSkills.forEach(item => $unequippedGrid.append(appendSlot(item)));
+            }
+
+            if (!equippedSkills.length) {
+                $equippedGrid.append('<div class="items-empty">NO EQUIPPED SKILLS</div>');
+            } else {
+                equippedSkills.forEach(item => $equippedGrid.append(appendSlot(item)));
+            }
+
+            $skillColumns.append($unequippedColumn, $equippedColumn);
+            $grid.append($skillColumns);
+        } else {
+            items.forEach(item => {
+                $grid.append(appendSlot(item));
+            });
+        }
 
         renderItemDetails(items.find(i => i.id === selectedItemId) || items[0]);
     }
@@ -574,10 +670,12 @@ export function createItemsPanelController({ extensionName, extension_settings, 
 
         const monocoins = Number(extension_settings[extensionName].inventory?.monocoins || 0);
         const trustFragments = Number(extension_settings[extensionName].inventory?.trustFragments || 0);
+        const skillPoints = Number(extension_settings[extensionName].inventory?.skillPoints || 0);
         const showSkillShop = activeItemsFilter === "skill";
 
         $("#items-monocoin-value").text(monocoins.toLocaleString());
         $("#items-trust-fragment-value").text(trustFragments.toLocaleString());
+        $("#items-skill-point-value").text(skillPoints.toLocaleString());
         bindSkillShopButton();
 
         const $skillShopRow = $panel.find("#items-skill-shop-row");
@@ -615,6 +713,7 @@ export function createItemsPanelController({ extensionName, extension_settings, 
             ...skill,
             available: trustFragments >= skill.cost,
             owned: Number(inventory.skills?.[skill.id] || 0) > 0,
+            skillPointCost: Number(skill.skillPointCost || 0),
             futureEffectHook: skill.teaserEffect,
         }));
     }
@@ -649,6 +748,7 @@ export function createItemsPanelController({ extensionName, extension_settings, 
                     <div class="items-shop-entry-main">
                         <div class="items-shop-entry-name">${skill.name.toUpperCase()}</div>
                         <div class="items-shop-entry-effect">EFFECT: ${skill.futureEffectHook.toUpperCase()}</div>
+                        <div class="items-shop-entry-effect">EQUIP COST: ${skill.skillPointCost} SP</div>
                     </div>
                     <div class="items-shop-entry-meta">
                         <div class="items-shop-entry-cost">◈ x${skill.cost} TRUST FRAGMENT</div>
@@ -711,6 +811,12 @@ export function createItemsPanelController({ extensionName, extension_settings, 
             setTrustFragments(value = 0) {
                 loadInventoryState();
                 extension_settings[extensionName].inventory.trustFragments = Math.max(0, Number(value || 0));
+                saveSettingsDebounced();
+                renderSkillsItemsPanel();
+            },
+            setSkillPoints(value = 99) {
+                loadInventoryState();
+                extension_settings[extensionName].inventory.skillPoints = Math.max(0, Number(value || 0));
                 saveSettingsDebounced();
                 renderSkillsItemsPanel();
             }
