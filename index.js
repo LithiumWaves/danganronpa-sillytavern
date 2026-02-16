@@ -918,7 +918,7 @@ async function runMonokumaLessonStep(step, state) {
     );
 
     if (step.action === "spawnTruthBullet") {
-        handleTruthBullet("Important Thing!", "Will this show us whodunnit?");
+        handleTruthBullet("Important Thing!", "Will this show us whodunnit?", { grantMonocoins: false });
         window.renderTruthBullets?.();
     }
 
