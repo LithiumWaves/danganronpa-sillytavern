@@ -961,7 +961,12 @@ async function endMonokumaLesson({ completed = false } = {}) {
     setActiveMonopadTab("settings");
 
     if (completed) {
-        awardMonocoins(100, "Mr. Monokuma's Lesson completion");
+        const settings = extension_settings[extensionName] ||= {};
+        if (!settings.monokumaLessonRewardClaimed) {
+            awardMonocoins(100, "Mr. Monokuma's Lesson completion");
+            settings.monokumaLessonRewardClaimed = true;
+            saveSettingsDebounced();
+        }
     }
 
     await fadeOutAudio(state.trackEl, 650);
@@ -1166,6 +1171,11 @@ let debugUiObserver = null;
 const DEBUG_CONTROLS_COLLAPSE_STORAGE_KEY = "dangan-debug-controls-collapsed";
 const DEBUG_CONTROLS_POSITION_STORAGE_KEY = "dangan-debug-controls-position";
 const MONOPAD_BUTTON_POSITION_STORAGE_KEY = "dangan-monopad-button-position";
+
+let breachTerminalLineTimer = null;
+let breachTerminalBootTimer = null;
+let breachAudio = null;
+let breachUnlockedThisSession = false;
 
 function readUiPosition(storageKey) {
     try {
@@ -1380,6 +1390,171 @@ function startDebugUiObserver() {
     });
 }
 
+function isDebugAccessGranted() {
+    return Boolean(extension_settings[extensionName]?.debugAccessGranted || breachUnlockedThisSession);
+}
+
+function setDebugAccessGranted(granted) {
+    const settings = extension_settings[extensionName] ||= {};
+    settings.debugAccessGranted = Boolean(granted);
+    breachUnlockedThisSession = Boolean(granted);
+    saveSettingsDebounced();
+}
+
+function decodeDebugAccessCode() {
+    const cipher = [101, 101, 100, 103, 99, 103, 100, 99, 96, 102, 98, 20, 112];
+    const key = 84;
+    return cipher.map(value => String.fromCharCode(value ^ key)).join("");
+}
+
+function clearBreachTerminalTimers() {
+    if (breachTerminalLineTimer) {
+        clearInterval(breachTerminalLineTimer);
+        breachTerminalLineTimer = null;
+    }
+
+    if (breachTerminalBootTimer) {
+        clearTimeout(breachTerminalBootTimer);
+        breachTerminalBootTimer = null;
+    }
+}
+
+function appendBreachTerminalLine(text, { className = "" } = {}) {
+    const terminal = document.getElementById("monopad-breach-terminal");
+    if (!terminal) return;
+
+    const line = document.createElement("div");
+    line.className = `monopad-breach-line ${className}`.trim();
+    line.textContent = text;
+    terminal.appendChild(line);
+    terminal.scrollTop = terminal.scrollHeight;
+}
+
+function generateBreachCodeLine(prefix = "") {
+    const chars = "01ABCDEF$#@{}[]/\\";
+    let body = "";
+    for (let i = 0; i < 36; i += 1) {
+        body += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return `${prefix}${body}`;
+}
+
+function fadeOutBreachAudio(durationMs = 900) {
+    if (!breachAudio) return;
+
+    const startVolume = Number.isFinite(breachAudio.volume) ? breachAudio.volume : 0.6;
+    const startTime = performance.now();
+
+    const tick = now => {
+        const elapsed = now - startTime;
+        const ratio = Math.min(1, elapsed / durationMs);
+        breachAudio.volume = Math.max(0, startVolume * (1 - ratio));
+
+        if (ratio >= 1) {
+            breachAudio.pause();
+            breachAudio.currentTime = 0;
+            breachAudio.volume = 0.6;
+            return;
+        }
+
+        requestAnimationFrame(tick);
+    };
+
+    requestAnimationFrame(tick);
+}
+
+function closeBreachOverlay() {
+    const overlay = document.getElementById("monopad-breach-overlay");
+    if (!overlay) return;
+
+    overlay.classList.remove("open");
+    overlay.setAttribute("aria-hidden", "true");
+    clearBreachTerminalTimers();
+    fadeOutBreachAudio(1000);
+}
+
+function startBreachOverlayBootSequence() {
+    const terminal = document.getElementById("monopad-breach-terminal");
+    const inputWrap = document.getElementById("monopad-breach-input-wrap");
+    const statusEl = document.getElementById("monopad-breach-status");
+    const inputEl = document.getElementById("monopad-breach-input");
+    if (!terminal || !inputWrap || !statusEl || !inputEl) return;
+
+    clearBreachTerminalTimers();
+    terminal.innerHTML = "";
+    inputWrap.classList.add("hidden");
+    statusEl.textContent = "";
+    inputEl.value = "";
+
+    const bootLines = [
+        "[FF-LINK] Initializing encrypted relay...",
+        "[FF-LINK] Route mask accepted.",
+        "[MONOPAD] Failsafe partitions enumerated.",
+        "[FF-LINK] Injecting override payload..."
+    ];
+
+    let lineIndex = 0;
+    breachTerminalLineTimer = setInterval(() => {
+        appendBreachTerminalLine(bootLines[lineIndex] || generateBreachCodeLine("$ "), { className: "alert" });
+        lineIndex += 1;
+        if (lineIndex >= bootLines.length) {
+            clearInterval(breachTerminalLineTimer);
+            breachTerminalLineTimer = null;
+        }
+    }, 320);
+
+    breachTerminalBootTimer = setTimeout(() => {
+        appendBreachTerminalLine("[FF-LINK] Enter access code to continue.", { className: "ok" });
+        inputWrap.classList.remove("hidden");
+        inputEl.focus();
+    }, 1650);
+}
+
+function openBreachOverlay() {
+    const overlay = document.getElementById("monopad-breach-overlay");
+    if (!overlay) return;
+
+    overlay.classList.add("open");
+    overlay.setAttribute("aria-hidden", "false");
+    startBreachOverlayBootSequence();
+}
+
+function runBreachSuccessSequence() {
+    const statusEl = document.getElementById("monopad-breach-status");
+    const inputWrap = document.getElementById("monopad-breach-input-wrap");
+    const inputEl = document.getElementById("monopad-breach-input");
+
+    if (inputWrap) inputWrap.classList.add("hidden");
+    if (inputEl) inputEl.blur();
+
+    appendBreachTerminalLine("[FF-LINK] Access code accepted.", { className: "ok" });
+    appendBreachTerminalLine("[FF-LINK] Breaching Monopad debug partitions...", { className: "alert" });
+
+    if (!breachAudio) {
+        breachAudio = new Audio(`${extensionFolderPath}/assets/nwo.mp3`);
+        breachAudio.loop = true;
+        breachAudio.volume = 0.6;
+    }
+
+    breachAudio.currentTime = 0;
+    breachAudio.play().catch(() => {});
+
+    clearBreachTerminalTimers();
+    let flyCount = 0;
+    breachTerminalLineTimer = setInterval(() => {
+        appendBreachTerminalLine(generateBreachCodeLine("# "));
+        flyCount += 1;
+
+        if (flyCount >= 22) {
+            clearBreachTerminalTimers();
+            appendBreachTerminalLine("[FF-LINK] MONOPAD SUCCESSFULLY BREACHED.", { className: "ok" });
+            if (statusEl) statusEl.textContent = "Debug controls unlocked.";
+            setDebugAccessGranted(true);
+            ensureGlobalDebugUi();
+        }
+    }, 120);
+}
+
 function bootstrapDebugUi() {
     if (!document.body) return;
 
@@ -1482,6 +1657,12 @@ function applyTruthDebugModalInlineLayout(modal) {
 function ensureGlobalDebugUi() {
     const legacyHud = document.getElementById("dangan-debug-hud-host");
     if (legacyHud) legacyHud.remove();
+
+    if (!isDebugAccessGranted()) {
+        document.getElementById("trust-debug-controls")?.remove();
+        document.getElementById("truth-debug-modal")?.remove();
+        return;
+    }
 
     let controls = document.getElementById("trust-debug-controls");
 
@@ -1589,6 +1770,7 @@ function playDebugClickSfx() {
 function bindDebugControlEvents() {
     $(document).off("click.debugControls");
     $(document).off("click.debugModal");
+    $(document).off("keydown.debugControls");
 
     $(document).on("click.debugControls", "#truth-debug-open", () => {
         playDebugClickSfx();
@@ -1660,6 +1842,53 @@ function bindDebugControlEvents() {
         }
 
         decreaseTrust(char);
+    });
+
+    $(document).on("click.debugControls", "#dangan_debug_breach_trigger", () => {
+        playDebugClickSfx();
+        openBreachOverlay();
+    });
+
+    $(document).on("click.debugControls", "#monopad-breach-close", () => {
+        playDebugClickSfx();
+        closeBreachOverlay();
+    });
+
+    $(document).on("click.debugModal", "#monopad-breach-overlay", e => {
+        if (e.target.id === "monopad-breach-overlay") {
+            closeBreachOverlay();
+        }
+    });
+
+    $(document).on("click.debugControls", "#monopad-breach-submit", () => {
+        playDebugClickSfx();
+
+        const inputEl = document.getElementById("monopad-breach-input");
+        const statusEl = document.getElementById("monopad-breach-status");
+        const entered = String(inputEl?.value || "").trim();
+
+        if (!entered) {
+            if (statusEl) statusEl.textContent = "Enter an access code.";
+            inputEl?.focus();
+            return;
+        }
+
+        if (entered !== decodeDebugAccessCode()) {
+            appendBreachTerminalLine("[FF-LINK] ACCESS DENIED", { className: "error" });
+            if (statusEl) statusEl.textContent = "Code rejected.";
+            inputEl.value = "";
+            inputEl?.focus();
+            return;
+        }
+
+        runBreachSuccessSequence();
+    });
+
+    $(document).on("keydown.debugControls", "#monopad-breach-input", e => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            document.getElementById("monopad-breach-submit")?.click();
+        }
     });
 }
 
@@ -1816,6 +2045,7 @@ jQuery(async () => {
         }
 
         $("#dangan_monopad_close").on("click", () => {
+            closeBreachOverlay();
             $panel.removeClass("open booting");
 
             if (getMonopadSetting("bootAnimations")) {
@@ -2045,6 +2275,7 @@ $(".monopad-icon").on("mouseenter", function () {
         });
 
 loadSettings();
+ensureGlobalDebugUi();
 rewards?.renderProgressionUi?.();
 itemsPanelController.loadInventoryState();
 applySettingsTabUI();
