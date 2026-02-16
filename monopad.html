@@ -16,6 +16,17 @@
         <div class="monopad-topbar">
             <div class="monopad-title">MONO PAD</div>
 
+            <div class="monopad-progression" aria-label="Player level progression">
+                <div class="monopad-progression-head">
+                    <span class="monopad-level-label">LV</span>
+                    <span class="monopad-level-value" id="monopad-level-value">1</span>
+                    <span class="monopad-xp-text" id="monopad-xp-text">0 / 20 XP</span>
+                </div>
+                <div class="monopad-xp-track" role="img" aria-label="Experience progress bar">
+                    <div class="monopad-xp-fill" id="monopad-xp-fill" style="width:0%"></div>
+                </div>
+            </div>
+
             <button
                 id="dangan_monopad_close"
                 class="monopad-close"
@@ -118,7 +129,7 @@
 
                             <div class="items-skill-shop-row" id="items-skill-shop-row" hidden>
                                 <button class="items-shop-button" id="items-skill-shop-button" type="button">SHOP</button>
-                                <div class="items-shop-hint">SPEND TRUST FRAGMENTS FOR NEW SKILLS (SOON)</div>
+                                <div class="items-shop-hint">SPEND TRUST FRAGMENTS FOR NEW SKILLS</div>
                             </div>
 
                             <div class="items-coin-box" title="Monocoins counter">
@@ -129,6 +140,11 @@
                             <div class="items-coin-box items-fragment-box" title="Trust Fragments counter">
                                 <span class="items-coin-label">TRUST FRAGMENTS</span>
                                 <span class="items-coin-value" id="items-trust-fragment-value">0</span>
+                            </div>
+
+                            <div class="items-coin-box items-skill-point-box" title="Skill Points counter">
+                                <span class="items-coin-label">SKILL POINTS</span>
+                                <span class="items-coin-value" id="items-skill-point-value">10</span>
                             </div>
                         </aside>
 
@@ -256,6 +272,20 @@
 
             </section>
 
+            <!-- PROGRESSION -->
+            <section class="settings-section">
+                <div class="settings-section-title">PROGRESSION</div>
+
+                <div class="settings-item settings-item-stack">
+                    <span class="settings-label">LEVEL DATA</span>
+                    <div class="settings-ai-actions">
+                        <button id="dangan_reset_progression" class="settings-small-button" type="button">RESET LEVEL + SKILL POINTS</button>
+                        <span id="dangan_reset_progression_status" class="settings-note"></span>
+                    </div>
+                    <div class="settings-note">Resets to LV 1, 0 XP, and 10 Skill Points.</div>
+                </div>
+            </section>
+
             <!-- AI GENERATION -->
             <section class="settings-section settings-section-ai">
                 <div class="settings-section-title">AI GENERATION</div>
@@ -315,6 +345,17 @@
                 <button class="monopad-icon" data-tab="skills">🎁</button>
                 <button class="monopad-icon" data-tab="social">👥</button>
                 <button class="monopad-icon" data-tab="settings">⚙️</button>
+            </div>
+        </div>
+
+        <div id="monopad-confirm-overlay" class="monopad-confirm-overlay" aria-hidden="true">
+            <div class="monopad-confirm-window" role="dialog" aria-modal="true" aria-labelledby="monopad-confirm-title">
+                <div class="monopad-confirm-title" id="monopad-confirm-title">CONFIRM ACTION</div>
+                <div class="monopad-confirm-message" id="monopad-confirm-message"></div>
+                <div class="monopad-confirm-actions">
+                    <button type="button" class="monopad-confirm-button cancel" id="monopad-confirm-cancel">CANCEL</button>
+                    <button type="button" class="monopad-confirm-button confirm" id="monopad-confirm-accept">CONFIRM</button>
+                </div>
             </div>
         </div>
 
