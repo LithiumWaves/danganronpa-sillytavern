@@ -520,7 +520,7 @@
 #monokuma-lesson-overlay {
     position: absolute;
     inset: 0;
-    z-index: 130;
+    z-index: 140;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.25s ease;
