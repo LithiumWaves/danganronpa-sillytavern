@@ -961,7 +961,12 @@ async function endMonokumaLesson({ completed = false } = {}) {
     setActiveMonopadTab("settings");
 
     if (completed) {
-        awardMonocoins(100, "Mr. Monokuma's Lesson completion");
+        const settings = extension_settings[extensionName] ||= {};
+        if (!settings.monokumaLessonRewardClaimed) {
+            awardMonocoins(100, "Mr. Monokuma's Lesson completion");
+            settings.monokumaLessonRewardClaimed = true;
+            saveSettingsDebounced();
+        }
     }
 
     await fadeOutAudio(state.trackEl, 650);

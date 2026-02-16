@@ -10,6 +10,7 @@ export const defaultSettings = {
     crtIntensity: 35,
     bootAnimations: true,
     welcomeSeen: false,
+    monokumaLessonRewardClaimed: false,
     generationProvider: "main",
     openrouterModel: "google/gemini-2.5-flash",
     openrouterRememberApiKey: false,
