@@ -37,7 +37,7 @@ function getFloorByKey(areaKey, floorKey) {
     return area.floors.find(floor => floor.key === floorKey) || null;
 }
 
-export function createMapPanelController({ extensionFolderPath, getItemsPanelController, playSfx, getSfx, getSetting }) {
+export function createMapPanelController({ extensionFolderPath, getItemsPanelController, playSfx, getSfx, getSetting, onWalkStep }) {
     const state = {
         area: "hopes_peak",
         floor: "floor_1",
@@ -373,6 +373,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             $button.on("click", () => {
                 if (state.floor === floor.key) return;
                 state.floor = floor.key;
+                onWalkStep?.();
                 renderMapPanel();
             });
 
@@ -433,6 +434,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
 
             state.area = nextArea;
             ensureValidFloorSelection();
+            onWalkStep?.();
             renderMapPanel();
         });
     }

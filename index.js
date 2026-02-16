@@ -1785,6 +1785,7 @@ jQuery(async () => {
             playSfx,
             getSfx: () => sfx,
             getSetting: getMonopadSetting,
+            onWalkStep: () => awardXp(XP_REWARDS.walkStep, "walked"),
         });
         mapPanelController.renderMapPanel();
 
