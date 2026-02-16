@@ -64,7 +64,7 @@ export const MONOKUMA_LESSON_STEPS = [
         text: "You want me to explain a map?! I'm not doing that!",
     },
     {
-        action: "switchMapToHotelFloor1",
+        action: "switchMapToHopesPeakFloor1",
         sprite: "monokuma_angry.png",
         spriteOpacity: 0.78,
         text: "That ¥ symbol over there's where my MonoMono Machine is at. You probably noticed the Monocoin counter on the Gifts tab... you gain them by finding Truth Bullets, nurturing bonds and such.",
@@ -74,7 +74,6 @@ export const MONOKUMA_LESSON_STEPS = [
         text: "You better not mess with it! Spend your hard-earned cash or get out!",
     },
     {
-        action: "shakeDropThenBoardReturnBounce",
         board: true,
         sprite: "monokuma_idle.png",
         text: "Well, that should be everything. Any questions you have are probably answered on the... Github page, whatever that is.",

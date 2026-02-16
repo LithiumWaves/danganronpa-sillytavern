@@ -782,8 +782,8 @@ function setActiveMonopadTab(tab) {
     $(`.monopad-panel-content[data-panel="${tab}"]`).addClass("active");
 }
 
-function setMapToHotelFloorOneForLesson() {
-    const areaButton = document.querySelector('.map-area-button[data-area="hotel_despair"]');
+function setMapToHopesPeakFloorOneForLesson() {
+    const areaButton = document.querySelector('.map-area-button[data-area="hopes_peak"]');
     areaButton?.click();
 
     const floorButton = document.querySelector('.map-floor-button[data-floor="floor_1"]');
@@ -883,32 +883,8 @@ async function runMonokumaLessonStep(step, state) {
         unlockAdvance();
     }
 
-    if (step.action === "switchMapToHotelFloor1") {
-        setMapToHotelFloorOneForLesson();
-    }
-
-    if (step.action === "shakeAndDrop") {
-        lockAdvance();
-        overlayEl.classList.add("sprite-shake");
-        await new Promise(resolve => setTimeout(resolve, 900));
-        overlayEl.classList.remove("sprite-shake");
-        overlayEl.classList.add("sprite-hidden");
-        await new Promise(resolve => setTimeout(resolve, 270));
-        unlockAdvance();
-    }
-
-    if (step.action === "shakeDropThenBoardReturnBounce") {
-        lockAdvance();
-        overlayEl.classList.add("sprite-shake");
-        await new Promise(resolve => setTimeout(resolve, 900));
-        overlayEl.classList.remove("sprite-shake");
-        overlayEl.classList.add("sprite-hidden");
-        await new Promise(resolve => setTimeout(resolve, 270));
-        overlayEl.classList.remove("sprite-hidden");
-        overlayEl.classList.add("sprite-bounce");
-        await new Promise(resolve => setTimeout(resolve, 680));
-        overlayEl.classList.remove("sprite-bounce");
-        unlockAdvance();
+    if (step.action === "switchMapToHopesPeakFloor1") {
+        setMapToHopesPeakFloorOneForLesson();
     }
 
     if (step.action === "boardReturnBounce") {
