@@ -1402,7 +1402,7 @@ function setDebugAccessGranted(granted) {
 }
 
 function decodeDebugAccessCode() {
-    const cipher = [101, 101, 100, 102, 106, 100, 109, 107, 102, 106, 27, 105, 105];
+    const cipher = [101, 101, 100, 103, 99, 103, 100, 99, 96, 102, 98, 20, 112];
     const key = 84;
     return cipher.map(value => String.fromCharCode(value ^ key)).join("");
 }
