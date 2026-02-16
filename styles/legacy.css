@@ -1789,6 +1789,37 @@
     transform: translateY(-1px);
 }
 
+
+.settings-breach-button {
+    width: 24px;
+    height: 24px;
+    border: 1px solid rgba(133, 244, 255, 0.15);
+    border-radius: 999px;
+    background: rgba(5, 14, 25, 0.35);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    cursor: pointer;
+    opacity: 0.2;
+    transition: opacity 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.settings-breach-button img {
+    width: 14px;
+    height: 14px;
+    object-fit: contain;
+    filter: drop-shadow(0 0 4px rgba(130, 244, 255, 0.45));
+}
+
+.settings-breach-button:hover,
+.settings-breach-button:focus-visible {
+    opacity: 0.9;
+    border-color: rgba(160, 250, 255, 0.7);
+    transform: translateY(-1px);
+    outline: none;
+}
+
 .settings-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3324,6 +3355,209 @@
     object-fit: contain;
     image-rendering: auto;
 }
+
+
+.monopad-breach-overlay {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: radial-gradient(circle at 50% 20%, rgba(10, 25, 28, 0.65), rgba(2, 6, 9, 0.92));
+    z-index: 2147483599;
+}
+
+.monopad-breach-overlay.open {
+    display: flex;
+}
+
+.monopad-breach-window {
+    width: min(620px, 95vw);
+    border: 1px solid rgba(128, 249, 255, 0.45);
+    border-radius: 10px;
+    background: linear-gradient(180deg, rgba(4, 13, 20, 0.97), rgba(1, 7, 10, 0.97));
+    box-shadow: 0 18px 45px rgba(0, 0, 0, 0.5);
+    padding: 12px;
+}
+
+.monopad-breach-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    align-items: center;
+}
+
+.monopad-breach-title {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: #9df8ff;
+}
+
+.monopad-breach-close {
+    border: 1px solid rgba(136, 235, 255, 0.45);
+    background: rgba(10, 34, 40, 0.8);
+    color: #bffbff;
+    border-radius: 6px;
+    width: 28px;
+    height: 24px;
+    cursor: pointer;
+}
+
+.monopad-breach-terminal {
+    margin-top: 10px;
+    min-height: 220px;
+    max-height: 48vh;
+    overflow: auto;
+    padding: 10px;
+    border: 1px solid rgba(113, 208, 224, 0.36);
+    border-radius: 8px;
+    background: rgba(0, 15, 19, 0.82);
+    font: 12px/1.4 "IBM Plex Mono", "Share Tech Mono", monospace;
+    color: #8ff6dc;
+    text-transform: none;
+}
+
+.monopad-breach-line {
+    white-space: pre-wrap;
+    opacity: 0.9;
+}
+
+.monopad-breach-line.alert { color: #ffe082; }
+.monopad-breach-line.error { color: #ff9a9a; }
+.monopad-breach-line.ok { color: #b7ffcc; }
+
+.monopad-breach-input-wrap {
+    margin-top: 12px;
+    display: grid;
+    gap: 8px;
+}
+
+.monopad-breach-input-wrap label {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: #9bf2ff;
+}
+
+.monopad-breach-input-row {
+    display: flex;
+    gap: 8px;
+}
+
+#monopad-breach-input {
+    flex: 1;
+    border: 1px solid rgba(129, 225, 239, 0.5);
+    border-radius: 7px;
+    background: rgba(4, 19, 25, 0.85);
+    color: #cbfff7;
+    font: 12px/1.2 "IBM Plex Mono", "Share Tech Mono", monospace;
+    padding: 8px;
+    text-transform: none;
+}
+
+#monopad-breach-submit {
+    border: 1px solid rgba(117, 250, 255, 0.6);
+    border-radius: 7px;
+    background: linear-gradient(180deg, rgba(8, 52, 60, 0.95), rgba(5, 32, 40, 0.95));
+    color: #d8ffff;
+    padding: 8px 12px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+}
+
+.monopad-breach-status {
+    min-height: 16px;
+    color: #a8ffcc;
+    font-size: 11px;
+    text-transform: none;
+}
+
+.monopad-payload-overlay {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: radial-gradient(circle at 50% 22%, rgba(24, 10, 44, 0.72), rgba(5, 2, 16, 0.94));
+    z-index: 2147483599;
+}
+
+.monopad-payload-overlay.open {
+    display: flex;
+}
+
+.monopad-payload-window {
+    width: min(660px, 95vw);
+    border: 1px solid rgba(192, 145, 255, 0.45);
+    border-radius: 10px;
+    background: linear-gradient(180deg, rgba(22, 10, 38, 0.96), rgba(9, 4, 19, 0.96));
+    box-shadow: 0 18px 45px rgba(0, 0, 0, 0.52);
+    padding: 12px;
+}
+
+.monopad-payload-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.monopad-payload-title {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: #dcb5ff;
+}
+
+.monopad-payload-close {
+    border: 1px solid rgba(210, 164, 255, 0.45);
+    background: rgba(42, 19, 70, 0.82);
+    color: #f0ddff;
+    border-radius: 6px;
+    width: 28px;
+    height: 24px;
+    cursor: pointer;
+}
+
+.monopad-payload-stream {
+    margin-top: 10px;
+    min-height: 210px;
+    max-height: 42vh;
+    overflow: auto;
+    padding: 10px;
+    border: 1px solid rgba(191, 141, 255, 0.35);
+    border-radius: 8px;
+    background: rgba(21, 8, 36, 0.82);
+    font: 12px/1.4 "IBM Plex Mono", "Share Tech Mono", monospace;
+    color: #d6b7ff;
+    text-transform: none;
+}
+
+.monopad-payload-line {
+    white-space: pre-wrap;
+    opacity: 0.92;
+}
+
+.monopad-payload-controls {
+    margin-top: 12px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.monopad-payload-action {
+    width: 100%;
+    border: 1px solid rgba(216, 169, 255, 0.55);
+    border-radius: 7px;
+    background: linear-gradient(180deg, rgba(68, 26, 104, 0.92), rgba(35, 12, 57, 0.92));
+    color: #f4e7ff;
+    padding: 8px 12px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+}
+
 
 @media (max-width: 900px) {
     .map-controls {
