@@ -9,7 +9,7 @@ import { createRewardSystem } from "./items/rewardSystem.js";
 import { createSocialPanelController } from "./social/socialPanel.js";
 import { extractUltimateFromNotes, isIgnoredCharacter, lookupUltimateFromLorebook, normalizeList, normalizeName } from "./social/characterUtils.js";
 import { createMapPanelController } from "./map/mapPanel.js";
-import { MONOCOIN_REWARDS, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
+import { MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "./core/monokumaLessonScript.js";
 
@@ -52,6 +52,20 @@ const {
 } = openRouterSettings;
 
 let rewards = null;
+
+function clampRewardDifficulty(value) {
+    return Object.prototype.hasOwnProperty.call(REWARD_PROFILES, value) ? value : "normal";
+}
+
+function applyRewardDifficultyProfile(profileKey) {
+    const safeProfileKey = clampRewardDifficulty(profileKey);
+    const profile = REWARD_PROFILES[safeProfileKey] || REWARD_PROFILES.normal;
+
+    Object.assign(MONOCOIN_REWARDS, profile.monocoins || REWARD_PROFILES.normal.monocoins);
+    Object.assign(XP_REWARDS, profile.xp || REWARD_PROFILES.normal.xp);
+
+    return safeProfileKey;
+}
 
 function awardMonocoins(amount = 0, reason = "") {
     rewards?.awardMonocoins(amount, reason);
@@ -963,7 +977,7 @@ async function endMonokumaLesson({ completed = false } = {}) {
     if (completed) {
         const settings = extension_settings[extensionName] ||= {};
         if (!settings.monokumaLessonRewardClaimed) {
-            awardMonocoins(100, "Mr. Monokuma's Lesson completion");
+            awardMonocoins(Number(MONOCOIN_REWARDS.tutorialCompletion || 0), "Mr. Monokuma's Lesson completion");
             settings.monokumaLessonRewardClaimed = true;
             saveSettingsDebounced();
         }
@@ -1069,6 +1083,8 @@ function applyCrtSettings() {
 
 function applySettingsTabUI() {
     const tab = extension_settings[extensionName];
+    const activeDifficulty = applyRewardDifficultyProfile(tab.rewardDifficulty || defaultSettings.rewardDifficulty);
+    tab.rewardDifficulty = activeDifficulty;
 
     $(".settings-toggle").each((_, el) => {
         const key = el.dataset.setting;
@@ -1087,6 +1103,17 @@ function applySettingsTabUI() {
     const providerSelect = document.getElementById("dangan_generation_provider");
     if (providerSelect) {
         providerSelect.value = tab.generationProvider || defaultSettings.generationProvider;
+    }
+
+    const rewardDifficultySelect = document.getElementById("dangan_reward_difficulty");
+    if (rewardDifficultySelect) {
+        rewardDifficultySelect.value = clampRewardDifficulty(tab.rewardDifficulty || defaultSettings.rewardDifficulty);
+    }
+
+    const rewardDifficultyNote = document.getElementById("dangan_reward_difficulty_note");
+    if (rewardDifficultyNote) {
+        const label = REWARD_DIFFICULTY_LABELS[activeDifficulty] || activeDifficulty.toUpperCase();
+        rewardDifficultyNote.textContent = `Profile: ${label} · TB ${MONOCOIN_REWARDS.truthBullet} MC · Social +${MONOCOIN_REWARDS.socialRankUp} MC · Tutorial ${MONOCOIN_REWARDS.tutorialCompletion} MC`;
     }
 
     const modelInput = document.getElementById("dangan_openrouter_model");
@@ -2213,8 +2240,6 @@ jQuery(async () => {
         socialPanelController = createSocialPanelController({
             characters,
             saveCharacters,
-            increaseTrust: increaseTrustWithRewards,
-            decreaseTrust,
             lookupUltimateFromLorebook,
             generateCharacterNotes,
             getActiveSocialCharacterId: () => activeSocialCharacterId,
@@ -2423,6 +2448,12 @@ $(".monopad-icon").on("mouseenter", function () {
             mapPanelController?.handleSettingsChanged?.();
         });
 
+        $("#dangan_reward_difficulty").on("change", function () {
+            const nextDifficulty = applyRewardDifficultyProfile(this.value || defaultSettings.rewardDifficulty);
+            setMonopadSetting("rewardDifficulty", nextDifficulty);
+            applySettingsTabUI();
+        });
+
         $("#dangan_openrouter_model").on("change blur", function () {
             const nextModel = String(this.value || "").trim() || defaultSettings.openrouterModel;
             this.value = nextModel;
@@ -2491,6 +2522,10 @@ $(".monopad-icon").on("mouseenter", function () {
         });
 
 loadSettings();
+const initialRewardDifficulty = applyRewardDifficultyProfile(getMonopadSetting("rewardDifficulty") || defaultSettings.rewardDifficulty);
+if (initialRewardDifficulty !== getMonopadSetting("rewardDifficulty")) {
+    setMonopadSetting("rewardDifficulty", initialRewardDifficulty);
+}
 ensureGlobalDebugUi();
 rewards?.renderProgressionUi?.();
 itemsPanelController.loadInventoryState();

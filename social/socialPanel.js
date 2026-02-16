@@ -1,8 +1,6 @@
 export function createSocialPanelController({
     characters,
     saveCharacters,
-    increaseTrust,
-    decreaseTrust,
     lookupUltimateFromLorebook,
     generateCharacterNotes,
     getActiveSocialCharacterId,
@@ -124,31 +122,8 @@ export function createSocialPanelController({
                 </div>
             `);
 
-            let clickCount = 0;
-            let clickTimer = null;
-
             $item.find(".social-name").on("click", () => {
-                clickCount++;
-
-                if (clickCount === 1) {
-                    openCharacterReport(char);
-
-                    clickTimer = setTimeout(() => {
-                        clickCount = 0;
-                    }, 450);
-                }
-
-                if (clickCount === 3) {
-                    clearTimeout(clickTimer);
-                    clickCount = 0;
-
-                    increaseTrust(char);
-                }
-            });
-
-            $item.find(".social-name").on("contextmenu", e => {
-                e.preventDefault();
-                decreaseTrust(char);
+                openCharacterReport(char);
             });
 
             $item.find(".social-delete").on("click", e => {
