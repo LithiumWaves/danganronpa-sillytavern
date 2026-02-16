@@ -9,7 +9,7 @@ import { createRewardSystem } from "./items/rewardSystem.js";
 import { createSocialPanelController } from "./social/socialPanel.js";
 import { extractUltimateFromNotes, isIgnoredCharacter, lookupUltimateFromLorebook, normalizeList, normalizeName } from "./social/characterUtils.js";
 import { createMapPanelController } from "./map/mapPanel.js";
-import { MONOCOIN_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
+import { MONOCOIN_REWARDS, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "./core/monokumaLessonScript.js";
 
@@ -59,6 +59,55 @@ function awardMonocoins(amount = 0, reason = "") {
 
 function increaseTrustWithRewards(char) {
     rewards?.increaseTrustWithRewards(char);
+}
+
+function awardXp(amount = 0, reason = "") {
+    rewards?.awardXp(amount, reason);
+}
+
+function openMonopadConfirmDialog({ title = "CONFIRM ACTION", message = "", confirmLabel = "CONFIRM", cancelLabel = "CANCEL" } = {}) {
+    return new Promise((resolve) => {
+        const overlay = document.getElementById("monopad-confirm-overlay");
+        const titleEl = document.getElementById("monopad-confirm-title");
+        const messageEl = document.getElementById("monopad-confirm-message");
+        const confirmBtn = document.getElementById("monopad-confirm-accept");
+        const cancelBtn = document.getElementById("monopad-confirm-cancel");
+
+        if (!overlay || !titleEl || !messageEl || !confirmBtn || !cancelBtn) {
+            resolve(false);
+            return;
+        }
+
+        titleEl.textContent = title;
+        messageEl.textContent = message;
+        confirmBtn.textContent = confirmLabel;
+        cancelBtn.textContent = cancelLabel;
+
+        let settled = false;
+        const finish = (accepted) => {
+            if (settled) return;
+            settled = true;
+            overlay.classList.remove("open");
+            overlay.setAttribute("aria-hidden", "true");
+            overlay.removeEventListener("click", onBackdropClick);
+            confirmBtn.removeEventListener("click", onConfirm);
+            cancelBtn.removeEventListener("click", onCancel);
+            resolve(Boolean(accepted));
+        };
+
+        const onBackdropClick = (event) => {
+            if (event.target === overlay) finish(false);
+        };
+        const onConfirm = () => finish(true);
+        const onCancel = () => finish(false);
+
+        overlay.classList.add("open");
+        overlay.setAttribute("aria-hidden", "false");
+
+        overlay.addEventListener("click", onBackdropClick);
+        confirmBtn.addEventListener("click", onConfirm);
+        cancelBtn.addEventListener("click", onCancel);
+    });
 }
 
 const truthBullets = [];
@@ -316,6 +365,7 @@ async function tryResolvePendingGiftForMessage(msgEl, rawText) {
     });
 
     applyGiftOutcome(characterName, reactionData.verdict, signature);
+    awardXp(XP_REWARDS.giftGiven, "gift delivered");
     pendingGiftDeliveryQueue.shift();
     pendingGiftResolutionInFlight = false;
 }
@@ -922,7 +972,12 @@ async function endMonokumaLesson({ completed = false } = {}) {
 async function startMonokumaLesson() {
     if (monokumaLessonState?.active) return;
 
-    const confirmed = window.confirm("Start Mr. Monokuma's Lesson? This guided tutorial will take over the Monopad until it finishes.");
+    const confirmed = await openMonopadConfirmDialog({
+        title: "START LESSON",
+        message: "Start Mr. Monokuma's Lesson? This guided tutorial will take over the Monopad until it finishes.",
+        confirmLabel: "START",
+        cancelLabel: "CANCEL",
+    });
     if (!confirmed) return;
 
     const overlayEl = document.getElementById("monokuma-lesson-overlay");
@@ -1706,6 +1761,7 @@ jQuery(async () => {
             extension_settings,
             saveSettingsDebounced,
             monocoinRewards: MONOCOIN_REWARDS,
+            xpRewards: XP_REWARDS,
             getItemsPanelController: () => itemsPanelController,
             increaseTrust,
         });
@@ -1968,7 +2024,27 @@ $(".monopad-icon").on("mouseenter", function () {
             }
         });
 
+
+        $("#dangan_reset_progression").on("click", async function () {
+            const statusEl = document.getElementById("dangan_reset_progression_status");
+            const confirmed = await openMonopadConfirmDialog({
+                title: "RESET PROGRESSION",
+                message: "Reset Level and Skill Points? This sets you to LV 1, 0 XP, and 10 Skill Points.",
+                confirmLabel: "RESET",
+                cancelLabel: "CANCEL",
+            });
+
+            if (!confirmed) {
+                if (statusEl) statusEl.textContent = "Reset cancelled.";
+                return;
+            }
+
+            rewards?.resetProgression?.({ clearEquippedSkills: true });
+            if (statusEl) statusEl.textContent = "Progression reset to LV 1.";
+        });
+
 loadSettings();
+rewards?.renderProgressionUi?.();
 itemsPanelController.loadInventoryState();
 applySettingsTabUI();
 loadCharacters();
@@ -1993,7 +2069,9 @@ initTruthBullets({
     decreaseTrust,
     startV3CObserver,
     awardMonocoins,
+    awardXp,
     monocoinRewards: MONOCOIN_REWARDS,
+    xpRewards: XP_REWARDS,
     playSfx,
     extension_settings,
     saveSettingsDebounced,

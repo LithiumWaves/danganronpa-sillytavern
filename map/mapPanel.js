@@ -371,6 +371,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             `);
 
             $button.on("click", () => {
+                if (state.floor === floor.key) return;
                 state.floor = floor.key;
                 renderMapPanel();
             });
@@ -428,6 +429,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         $panel.find(selectors.areaButtons).off("click").on("click", function () {
             const nextArea = this.dataset.area;
             if (!MAP_AREAS[nextArea]) return;
+            if (state.area === nextArea) return;
 
             state.area = nextArea;
             ensureValidFloorSelection();
