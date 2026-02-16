@@ -517,6 +517,145 @@
     transform: translateY(-260px);
 }
 
+#monokuma-lesson-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 140;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+}
+
+#monokuma-lesson-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.monokuma-lesson-backdrop {
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(circle at 18% 14%, rgba(202, 255, 192, 0.09), transparent 32%),
+        radial-gradient(circle at 82% 74%, rgba(234, 255, 183, 0.08), transparent 36%),
+        linear-gradient(180deg, rgba(9, 34, 24, 0.98), rgba(6, 22, 15, 0.98));
+    opacity: 0;
+    transition: opacity 0.35s ease;
+}
+
+#monokuma-lesson-overlay.board .monokuma-lesson-backdrop {
+    opacity: 1;
+}
+
+.monokuma-lesson-title {
+    position: absolute;
+    top: 18%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(92%, 540px);
+    text-align: center;
+    color: rgba(247, 247, 247, 0.92);
+    text-shadow: 0 0 1px rgba(255, 255, 255, 0.7), 0 1px 0 rgba(255, 255, 255, 0.38);
+    font-family: "Comic Sans MS", "Bradley Hand", "Chalkduster", "Segoe Print", cursive;
+    font-size: clamp(20px, 3.6vw, 34px);
+    letter-spacing: 0.03em;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+#monokuma-lesson-overlay.board .monokuma-lesson-title {
+    opacity: 1;
+}
+
+.monokuma-lesson-stage {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+#monokuma-lesson-sprite {
+    position: absolute;
+    left: 50%;
+    bottom: 108px;
+    width: clamp(170px, 28vw, 260px);
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+    transition: transform 0.32s ease, opacity 0.32s ease;
+    filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.45));
+}
+
+#monokuma-lesson-overlay.sprite-hidden #monokuma-lesson-sprite {
+    transform: translateX(-50%) translateY(130%);
+    opacity: 0;
+}
+
+#monokuma-lesson-overlay.sprite-throw #monokuma-lesson-sprite {
+    transform: translateX(42vw) translateY(-24vh) rotate(22deg);
+    opacity: 0;
+}
+
+#monokuma-lesson-overlay.sprite-shake #monokuma-lesson-sprite {
+    animation: monokuma-lesson-shake 0.34s linear 4;
+}
+
+#monokuma-lesson-overlay.sprite-bounce #monokuma-lesson-sprite {
+    animation: monokuma-lesson-bounce 0.65s ease;
+}
+
+.monokuma-lesson-box {
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    bottom: 12px;
+    background: linear-gradient(180deg, rgba(8, 12, 20, 0.96), rgba(6, 9, 14, 0.97));
+    border: 1px solid rgba(191, 229, 255, 0.45);
+    border-radius: 12px;
+    box-shadow: 0 -3px 20px rgba(0, 0, 0, 0.45);
+    padding: 14px 14px 10px;
+}
+
+.monokuma-lesson-nameplate {
+    position: absolute;
+    top: -13px;
+    left: 14px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #272f43, #3e5074);
+    border: 1px solid rgba(173, 205, 255, 0.5);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    color: #f2f8ff;
+    font-family: "Orbitron", "Rajdhani", monospace;
+}
+
+.monokuma-lesson-text {
+    min-height: 56px;
+    font-family: "Rajdhani", "Orbitron", monospace;
+    font-size: clamp(14px, 2.8vw, 20px);
+    line-height: 1.32;
+    color: #f4f8ff;
+    letter-spacing: 0.01em;
+}
+
+.monokuma-lesson-hint {
+    margin-top: 8px;
+    text-align: right;
+    color: rgba(164, 200, 244, 0.95);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+}
+
+@keyframes monokuma-lesson-shake {
+    0%, 100% { transform: translateX(-50%) translateY(0); }
+    25% { transform: translateX(calc(-50% - 6px)) translateY(0); }
+    75% { transform: translateX(calc(-50% + 6px)) translateY(0); }
+}
+
+@keyframes monokuma-lesson-bounce {
+    0% { transform: translateX(-50%) translateY(100%); opacity: 0; }
+    60% { transform: translateX(-50%) translateY(-8%); opacity: 1; }
+    100% { transform: translateX(-50%) translateY(0); opacity: 1; }
+}
+
 /* =========================
    Truth Bullets UI
    ========================= */
@@ -1555,6 +1694,31 @@
     box-shadow: 0 0 10px rgba(117, 241, 255, 0.15);
 }
 
+.settings-header-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.settings-help-button {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    border: 1px solid rgba(117, 241, 255, 0.65);
+    background: linear-gradient(180deg, rgba(7, 19, 33, 0.92), rgba(5, 14, 25, 0.92));
+    color: #dbfbff;
+    font: 700 16px/1 "Orbitron", "Rajdhani", monospace;
+    cursor: pointer;
+    box-shadow: 0 0 14px rgba(117, 241, 255, 0.18);
+}
+
+.settings-help-button:hover,
+.settings-help-button:focus-visible {
+    border-color: rgba(159, 252, 255, 0.95);
+    box-shadow: 0 0 18px rgba(117, 241, 255, 0.35);
+    transform: translateY(-1px);
+}
+
 .settings-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1722,6 +1886,42 @@
     .settings-header-row {
         padding: 10px 10px;
         gap: 10px;
+    }
+
+    .settings-status {
+        font-size: 9px;
+        padding: 4px 6px;
+    }
+
+    .settings-help-button {
+        width: 30px;
+        height: 30px;
+    }
+
+    .monokuma-lesson-title {
+        top: 14%;
+        width: 94%;
+    }
+
+    #monokuma-lesson-sprite {
+        bottom: 116px;
+        width: clamp(145px, 45vw, 230px);
+    }
+
+    .monokuma-lesson-box {
+        left: 10px;
+        right: 10px;
+        bottom: 10px;
+        padding: 12px 12px 8px;
+    }
+
+    .monokuma-lesson-text {
+        min-height: 74px;
+        font-size: clamp(14px, 4.5vw, 19px);
+    }
+
+    .monokuma-lesson-hint {
+        font-size: 9px;
     }
 
     .settings-grid {
@@ -2305,10 +2505,19 @@
 }
 
 @media (max-width: 700px) {
+    #dangan_monopad_button {
+        top: auto;
+        right: 10px;
+        bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+        width: 44px;
+        height: 44px;
+        z-index: 2147482500;
+    }
+
     #trust-debug-controls {
         right: 10px;
         left: auto;
-        bottom: calc(74px + env(safe-area-inset-bottom, 0px));
+        bottom: calc(64px + env(safe-area-inset-bottom, 0px));
         top: auto;
         width: auto;
         transform: none;

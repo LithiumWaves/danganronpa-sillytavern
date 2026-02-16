@@ -199,7 +199,10 @@
                 <div class="settings-header">SYSTEM SETTINGS</div>
                 <div class="settings-subheader">META / MONOPAD CONTROL SURFACE</div>
             </div>
-            <div class="settings-status">SYNC: ONLINE</div>
+            <div class="settings-header-actions">
+                <button id="dangan_monokuma_lesson_button" class="settings-help-button" type="button" title="Start Mr. Monokuma's Lesson" aria-label="Start Mr. Monokuma's Lesson">?</button>
+                <div class="settings-status">SYNC: ONLINE</div>
+            </div>
         </div>
 
         <div class="settings-grid">
@@ -315,6 +318,22 @@
             </div>
         </div>
 
+        <div id="monokuma-lesson-overlay" aria-hidden="true">
+            <div class="monokuma-lesson-backdrop"></div>
+
+            <div class="monokuma-lesson-title" id="monokuma-lesson-title"></div>
+
+            <div class="monokuma-lesson-stage">
+                <img id="monokuma-lesson-sprite" alt="Monokuma sprite" />
+            </div>
+
+            <div class="monokuma-lesson-box" role="dialog" aria-live="polite" aria-label="Mr. Monokuma's Lesson dialogue box">
+                <div class="monokuma-lesson-nameplate">MR. MONOKUMA</div>
+                <div class="monokuma-lesson-text" id="monokuma-lesson-text"></div>
+                <div class="monokuma-lesson-hint">TAP ANYWHERE TO CONTINUE</div>
+            </div>
+        </div>
+
     </div>
 </div>
 
@@ -409,6 +428,10 @@
 
 <audio id="monopad_sfx_monokuma" preload="auto">
     <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/monokuma/sfx_monokuma_annoyed.mp3" type="audio/mpeg">
+</audio>
+
+<audio id="monokuma_lesson_track" preload="auto" loop>
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/monokuma/kuma_lesson.mp3" type="audio/mpeg">
 </audio>
 
 <div id="truth-obtained-overlay">
