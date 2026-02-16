@@ -518,9 +518,9 @@
 }
 
 #monokuma-lesson-overlay {
-    position: fixed;
+    position: absolute;
     inset: 0;
-    z-index: 10050;
+    z-index: 130;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.25s ease;

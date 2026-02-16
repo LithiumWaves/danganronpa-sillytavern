@@ -873,7 +873,12 @@ async function runMonokumaLessonStep(step, state) {
             .find(el => (el.textContent || "").toLowerCase().includes("important thing"));
 
         truthItem?.click();
-        state.pendingTruthBulletCleanup = true;
+
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+        const removeButton = document.querySelector(".truth-remove-button");
+        removeButton?.click();
+
         unlockAdvance();
     }
 
@@ -957,7 +962,6 @@ async function startMonokumaLesson() {
         textEl,
         spriteEl,
         trackEl,
-        pendingTruthBulletCleanup: false,
         lockAdvance: () => {
             canAdvance = false;
         },
@@ -969,12 +973,6 @@ async function startMonokumaLesson() {
     const advance = async () => {
         const state = monokumaLessonState;
         if (!state || state.ended || !canAdvance) return;
-
-        if (state.pendingTruthBulletCleanup) {
-            const removeButton = document.querySelector(".truth-remove-button");
-            removeButton?.click();
-            state.pendingTruthBulletCleanup = false;
-        }
 
         if (state.index >= MONOKUMA_LESSON_STEPS.length) {
             await endMonokumaLesson({ completed: true });
