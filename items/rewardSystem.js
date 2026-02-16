@@ -165,6 +165,23 @@ export function createRewardSystem({ extensionName, extensionFolderPath, extensi
         }
     }
 
+
+    function resetProgression({ clearEquippedSkills = true } = {}) {
+        const { ext, progression } = ensureProgressionState();
+
+        progression.level = 1;
+        progression.xp = 0;
+        ext.inventory.skillPoints = BASE_SKILL_POINTS;
+
+        if (clearEquippedSkills) {
+            ext.inventory.equippedSkills = {};
+        }
+
+        saveSettingsDebounced();
+        renderProgressionUi();
+        getItemsPanelController()?.renderSkillsItemsPanel();
+    }
+
     function increaseTrustWithRewards(char) {
         if (!char) return;
 
@@ -193,5 +210,6 @@ export function createRewardSystem({ extensionName, extensionFolderPath, extensi
         awardXp,
         increaseTrustWithRewards,
         renderProgressionUi,
+        resetProgression,
     };
 }

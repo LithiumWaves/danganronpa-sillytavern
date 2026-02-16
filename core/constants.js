@@ -23,7 +23,6 @@ export const MONOCOIN_REWARDS = {
 };
 
 export const XP_REWARDS = {
-    walkStep: 1,
     truthBullet: 8,
     socialRankUp: 10,
     trustMaxed: 25,

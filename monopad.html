@@ -272,6 +272,20 @@
 
             </section>
 
+            <!-- PROGRESSION -->
+            <section class="settings-section">
+                <div class="settings-section-title">PROGRESSION</div>
+
+                <div class="settings-item settings-item-stack">
+                    <span class="settings-label">LEVEL DATA</span>
+                    <div class="settings-ai-actions">
+                        <button id="dangan_reset_progression" class="settings-small-button" type="button">RESET LEVEL + SKILL POINTS</button>
+                        <span id="dangan_reset_progression_status" class="settings-note"></span>
+                    </div>
+                    <div class="settings-note">Resets to LV 1, 0 XP, and 10 Skill Points.</div>
+                </div>
+            </section>
+
             <!-- AI GENERATION -->
             <section class="settings-section settings-section-ai">
                 <div class="settings-section-title">AI GENERATION</div>
@@ -331,6 +345,17 @@
                 <button class="monopad-icon" data-tab="skills">🎁</button>
                 <button class="monopad-icon" data-tab="social">👥</button>
                 <button class="monopad-icon" data-tab="settings">⚙️</button>
+            </div>
+        </div>
+
+        <div id="monopad-confirm-overlay" class="monopad-confirm-overlay" aria-hidden="true">
+            <div class="monopad-confirm-window" role="dialog" aria-modal="true" aria-labelledby="monopad-confirm-title">
+                <div class="monopad-confirm-title" id="monopad-confirm-title">CONFIRM ACTION</div>
+                <div class="monopad-confirm-message" id="monopad-confirm-message"></div>
+                <div class="monopad-confirm-actions">
+                    <button type="button" class="monopad-confirm-button cancel" id="monopad-confirm-cancel">CANCEL</button>
+                    <button type="button" class="monopad-confirm-button confirm" id="monopad-confirm-accept">CONFIRM</button>
+                </div>
             </div>
         </div>
 

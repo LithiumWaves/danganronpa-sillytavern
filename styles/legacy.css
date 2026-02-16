@@ -3323,3 +3323,71 @@
         max-width: 220px;
     }
 }
+
+
+.monopad-confirm-overlay {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(6, 2, 12, 0.72);
+    z-index: 2147483598;
+}
+
+.monopad-confirm-overlay.open {
+    display: flex;
+}
+
+.monopad-confirm-window {
+    width: min(420px, 92vw);
+    border: 1px solid rgba(255, 182, 222, 0.58);
+    border-radius: 10px;
+    background: linear-gradient(180deg, rgba(34, 10, 22, 0.95), rgba(17, 6, 13, 0.95));
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+    padding: 14px;
+}
+
+.monopad-confirm-title {
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    color: rgba(255, 216, 237, 0.96);
+}
+
+.monopad-confirm-message {
+    margin-top: 8px;
+    font-size: 11px;
+    line-height: 1.45;
+    color: rgba(255, 227, 239, 0.88);
+    text-transform: none;
+}
+
+.monopad-confirm-actions {
+    margin-top: 12px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.monopad-confirm-button {
+    border: 1px solid rgba(255, 187, 224, 0.55);
+    background: rgba(50, 16, 32, 0.72);
+    color: #ffe8f2;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.monopad-confirm-button:hover,
+.monopad-confirm-button:focus-visible {
+    background: rgba(95, 24, 54, 0.82);
+    outline: none;
+}
+
+.monopad-confirm-button.confirm {
+    border-color: rgba(255, 136, 194, 0.75);
+    background: rgba(122, 29, 73, 0.86);
+}
