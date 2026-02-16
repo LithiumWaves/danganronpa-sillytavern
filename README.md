@@ -43,6 +43,7 @@ The extension scans assistant messages for these patterns:
 - `V3C| SOCIAL: <name>`
 - `V3C| SOCIAL_UP: <name>`
 - `V3C| SOCIAL_DOWN: <name>`
+- `V3C| INVESTIGATION_START` (plays Investigation Start banner/sfx and attempts `/preset Investigation Time`)
 
 ### Examples
 ```text
@@ -50,6 +51,7 @@ V3C| TB: Bloody Handprint || Found on the west hall window.
 V3C| SOCIAL: Kyoko Kirigiri
 V3C| SOCIAL_UP: Aoi Asahina
 V3C| SOCIAL_DOWN: Byakuya Togami
+V3C| INVESTIGATION_START
 ```
 
 ## Typical usage flow
