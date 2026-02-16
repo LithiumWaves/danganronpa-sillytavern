@@ -274,6 +274,7 @@ function playDistrustToTrustRecovery() {
                 svg.classList.remove("purify-pulse");
                 delete svg.dataset.mode;
                 buildDecagram(svg, 1);
+                playShardPulse(svg, 0, "add");
             }
         },
         {
@@ -329,6 +330,7 @@ export async function playTrustToDistrustTransition() {
                 svg.classList.remove("spin-up");
                 svg.dataset.mode = "distrust";
                 buildDecagram(svg, -1);
+                playShardPulse(svg, 9, "add");
                 banner.classList.add("show");
             }
         }
