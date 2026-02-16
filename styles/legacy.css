@@ -1581,6 +1581,14 @@
     animation: distrustPurifyPulse 0.9s ease-in-out;
 }
 
+
+.monopad-panel-content.settings-panel {
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 18px;
+}
 .settings-panel {
     background:
         linear-gradient(
@@ -1945,6 +1953,12 @@
 }
 
 @media (max-width: 520px) {
+    .monopad-panel-content.settings-panel {
+        padding: 10px;
+        padding-bottom: 20px;
+    }
+
+
     .settings-header-row {
         padding: 10px 10px;
         gap: 10px;
