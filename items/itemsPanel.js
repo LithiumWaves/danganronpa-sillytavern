@@ -189,7 +189,7 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         ext.inventory.gifts ||= {};
         ext.inventory.skills ||= {};
         ext.inventory.keyItems ||= {};
-        ext.inventory.skillPoints ??= 99;
+        ext.inventory.skillPoints ??= 10;
         ext.inventory.equippedSkills ||= {};
 
         delete ext.inventory.skills.s_micro_focus;
@@ -814,7 +814,7 @@ export function createItemsPanelController({ extensionName, extension_settings, 
                 saveSettingsDebounced();
                 renderSkillsItemsPanel();
             },
-            setSkillPoints(value = 99) {
+            setSkillPoints(value = 10) {
                 loadInventoryState();
                 extension_settings[extensionName].inventory.skillPoints = Math.max(0, Number(value || 0));
                 saveSettingsDebounced();

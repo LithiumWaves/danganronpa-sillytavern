@@ -9,7 +9,7 @@ import { createRewardSystem } from "./items/rewardSystem.js";
 import { createSocialPanelController } from "./social/socialPanel.js";
 import { extractUltimateFromNotes, isIgnoredCharacter, lookupUltimateFromLorebook, normalizeList, normalizeName } from "./social/characterUtils.js";
 import { createMapPanelController } from "./map/mapPanel.js";
-import { MONOCOIN_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
+import { MONOCOIN_REWARDS, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "./core/monokumaLessonScript.js";
 
@@ -59,6 +59,10 @@ function awardMonocoins(amount = 0, reason = "") {
 
 function increaseTrustWithRewards(char) {
     rewards?.increaseTrustWithRewards(char);
+}
+
+function awardXp(amount = 0, reason = "") {
+    rewards?.awardXp(amount, reason);
 }
 
 const truthBullets = [];
@@ -316,6 +320,7 @@ async function tryResolvePendingGiftForMessage(msgEl, rawText) {
     });
 
     applyGiftOutcome(characterName, reactionData.verdict, signature);
+    awardXp(XP_REWARDS.giftGiven, "gift delivered");
     pendingGiftDeliveryQueue.shift();
     pendingGiftResolutionInFlight = false;
 }
@@ -1706,6 +1711,7 @@ jQuery(async () => {
             extension_settings,
             saveSettingsDebounced,
             monocoinRewards: MONOCOIN_REWARDS,
+            xpRewards: XP_REWARDS,
             getItemsPanelController: () => itemsPanelController,
             increaseTrust,
         });
@@ -1729,6 +1735,7 @@ jQuery(async () => {
             playSfx,
             getSfx: () => sfx,
             getSetting: getMonopadSetting,
+            onWalkStep: () => awardXp(XP_REWARDS.walkStep, "walked"),
         });
         mapPanelController.renderMapPanel();
 
@@ -1969,6 +1976,7 @@ $(".monopad-icon").on("mouseenter", function () {
         });
 
 loadSettings();
+rewards?.renderProgressionUi?.();
 itemsPanelController.loadInventoryState();
 applySettingsTabUI();
 loadCharacters();
@@ -1993,7 +2001,9 @@ initTruthBullets({
     decreaseTrust,
     startV3CObserver,
     awardMonocoins,
+    awardXp,
     monocoinRewards: MONOCOIN_REWARDS,
+    xpRewards: XP_REWARDS,
     playSfx,
     extension_settings,
     saveSettingsDebounced,
