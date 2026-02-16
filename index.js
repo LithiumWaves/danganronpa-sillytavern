@@ -1163,8 +1163,8 @@ function ensureDebugControlsStyleTag() {
 }
 @media (max-width: 700px) {
     #trust-debug-controls {
-        top: calc(74px + env(safe-area-inset-top, 0px)) !important;
-        bottom: auto !important;
+        top: auto !important;
+        bottom: calc(132px + env(safe-area-inset-bottom, 0px)) !important;
         flex-direction: row !important;
     }
 }
