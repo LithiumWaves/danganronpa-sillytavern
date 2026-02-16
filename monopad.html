@@ -216,6 +216,9 @@
                 <div class="settings-subheader">META / MONOPAD CONTROL SURFACE</div>
             </div>
             <div class="settings-header-actions">
+                <button id="dangan_debug_breach_trigger" class="settings-breach-button" type="button" aria-label="Future Foundation uplink" title="Future Foundation uplink">
+                    <img src="scripts/extensions/third-party/danganronpa-extension/assets/future_foundation.png" alt="Future Foundation" />
+                </button>
                 <button id="dangan_monokuma_lesson_button" class="settings-help-button" type="button" title="Start Mr. Monokuma's Lesson" aria-label="Start Mr. Monokuma's Lesson">?</button>
                 <div class="settings-status">SYNC: ONLINE</div>
             </div>
@@ -355,6 +358,40 @@
                 <div class="monopad-confirm-actions">
                     <button type="button" class="monopad-confirm-button cancel" id="monopad-confirm-cancel">CANCEL</button>
                     <button type="button" class="monopad-confirm-button confirm" id="monopad-confirm-accept">CONFIRM</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="monopad-breach-overlay" class="monopad-breach-overlay" aria-hidden="true">
+            <div class="monopad-breach-window" role="dialog" aria-modal="true" aria-labelledby="monopad-breach-title">
+                <div class="monopad-breach-header">
+                    <div class="monopad-breach-title" id="monopad-breach-title">FUTURE FOUNDATION // ENCRYPTED UPLINK</div>
+                    <button id="monopad-breach-close" class="monopad-breach-close" type="button" aria-label="Close breach terminal">✕</button>
+                </div>
+                <div id="monopad-breach-terminal" class="monopad-breach-terminal" aria-live="polite"></div>
+                <div id="monopad-breach-input-wrap" class="monopad-breach-input-wrap hidden">
+                    <label for="monopad-breach-input">ACCESS CODE</label>
+                    <div class="monopad-breach-input-row">
+                        <input id="monopad-breach-input" type="password" autocomplete="off" spellcheck="false" placeholder="••••••••••" />
+                        <button id="monopad-breach-submit" type="button">EXECUTE</button>
+                    </div>
+                    <div id="monopad-breach-status" class="monopad-breach-status"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="monopad-payload-overlay" class="monopad-payload-overlay" aria-hidden="true">
+            <div class="monopad-payload-window" role="dialog" aria-modal="true" aria-labelledby="monopad-payload-title">
+                <div class="monopad-payload-header">
+                    <div class="monopad-payload-title" id="monopad-payload-title">FUTURE FOUNDATION // PAYLOAD INJECTION HUB</div>
+                    <button id="monopad-payload-close" class="monopad-payload-close" type="button" aria-label="Close payload hub">✕</button>
+                </div>
+                <div id="monopad-payload-stream" class="monopad-payload-stream" aria-live="polite"></div>
+                <div class="monopad-payload-controls">
+                    <button id="monopad-payload-edit-monocoins" class="monopad-payload-action" type="button">EDIT MONOCOINS</button>
+                    <button id="monopad-payload-edit-trust-fragments" class="monopad-payload-action" type="button">EDIT TRUST FRAGMENTS</button>
+                    <button id="monopad-payload-open-breach" class="monopad-payload-action" type="button">REOPEN BREACH TERMINAL</button>
+                    <button id="monopad-payload-toggle-debug-controls" class="monopad-payload-action" type="button">HIDE DEBUG BUTTONS</button>
                 </div>
             </div>
         </div>
