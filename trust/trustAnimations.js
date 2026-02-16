@@ -330,6 +330,7 @@ export async function playTrustToDistrustTransition() {
                 svg.classList.remove("spin-up");
                 svg.dataset.mode = "distrust";
                 buildDecagram(svg, -1);
+                playShardPulse(svg, 9, "add");
                 banner.classList.add("show");
             }
         }
