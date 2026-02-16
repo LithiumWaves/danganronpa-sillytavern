@@ -9,7 +9,7 @@ import { createRewardSystem } from "./items/rewardSystem.js";
 import { createSocialPanelController } from "./social/socialPanel.js";
 import { extractUltimateFromNotes, isIgnoredCharacter, lookupUltimateFromLorebook, normalizeList, normalizeName } from "./social/characterUtils.js";
 import { createMapPanelController } from "./map/mapPanel.js";
-import { MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
+import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "./core/monokumaLessonScript.js";
 
@@ -135,6 +135,78 @@ let truthBulletAnimating = false;
 
 const processedTruthSignatures = new Set();
 const processedSocialSignatures = new Set();
+const processedInvestigationSignatures = new Set();
+
+function triggerInvestigationTimePreset() {
+    const presetLabel = "Investigation Time";
+
+    if (!window.SillyTavern?.getContext) return false;
+
+    const ctx = window.SillyTavern.getContext();
+    if (!ctx) return false;
+
+    try {
+        if (typeof ctx.executeSlashCommandsWithOptions === "function") {
+            ctx.executeSlashCommandsWithOptions(`/preset ${presetLabel}`, { quiet: true });
+            return true;
+        }
+
+        if (typeof ctx.executeSlashCommands === "function") {
+            ctx.executeSlashCommands(`/preset ${presetLabel}`);
+            return true;
+        }
+
+        if (typeof ctx.sendSystemMessage === "function") {
+            ctx.sendSystemMessage("generic", `[Dangan] Switched Chat Completion preset: ${presetLabel}`);
+            return true;
+        }
+    } catch (error) {
+        console.warn(`[Dangan][Investigation] Failed to switch preset to ${presetLabel}:`, error);
+    }
+
+    return false;
+}
+
+function showInvestigationStartBanner() {
+    const overlay = document.getElementById("dangan-investigation-overlay");
+    if (!overlay) return;
+
+    overlay.classList.remove("show");
+    void overlay.offsetWidth;
+    overlay.classList.add("show");
+
+    const titleEl = overlay.querySelector(".dangan-investigation-title");
+    if (titleEl) {
+        titleEl.textContent = "Investigation Start!";
+    }
+
+    const timer = Number(overlay.dataset.hideTimer || 0);
+    if (timer) {
+        clearTimeout(timer);
+    }
+
+    const nextTimer = window.setTimeout(() => {
+        overlay.classList.remove("show");
+        overlay.dataset.hideTimer = "";
+    }, 2600);
+
+    overlay.dataset.hideTimer = String(nextTimer);
+}
+
+function triggerInvestigationStart() {
+    showInvestigationStartBanner();
+
+    if (sfx?.investigation_start) {
+        playSfx(sfx.investigation_start);
+    }
+
+    const switched = triggerInvestigationTimePreset();
+    if (switched) {
+        console.log("[Dangan][Investigation] Investigation Time preset trigger sent.");
+    } else {
+        console.warn("[Dangan][Investigation] Could not auto-toggle 'Investigation Time' preset in this SillyTavern context.");
+    }
+}
 
 
 /* =========================
@@ -623,6 +695,16 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
     decreaseTrust(char);
 }
 
+        // ---- Investigation Start ----
+        if (INVESTIGATION_START_REGEX.test(rawText)) {
+            const signature = `INVESTIGATION||${messageSignature}`;
+            if (!processedInvestigationSignatures.has(signature)) {
+                processedInvestigationSignatures.add(signature);
+                triggerInvestigationStart();
+            }
+        }
+        INVESTIGATION_START_REGEX.lastIndex = 0;
+
         // ---- Marker Cleanup ----
        if (rawText.includes("V3C|")) {
     const walker = document.createTreeWalker(
@@ -639,6 +721,7 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
                 .replace(SOCIAL_REGEX, "")
                 .replace(SOCIAL_UP_REGEX, "")
                 .replace(SOCIAL_DOWN_REGEX, "")
+                .replace(INVESTIGATION_START_REGEX, "")
                 .trimStart();
         }
         }
@@ -2320,6 +2403,7 @@ jQuery(async () => {
         trust_max: document.getElementById("trust_sfx_max"),
         trust_shatter: document.getElementById("trust_sfx_shatter"),
         distrust_recover: document.getElementById("distrust_sfx_recover"),
+        investigation_start: document.getElementById("investigation_start_sfx"),
     }
 
         initTrustAnimations({
