@@ -162,6 +162,10 @@ const itemCatalog = [
     { id: "g_ember_signal_flare", name: "Ember Signal Flare", category: "gift", rarity: "SR", description: "A high-visibility flare for emergencies and dramatic rescues.", effect: "Greatly increases rescue event success rates." },
     { id: "g_mossy_courtyard_bench_kit", name: "Mossy Courtyard Bench Kit", category: "gift", rarity: "R", description: "A maintenance kit for restoring neglected campus benches.", effect: "Improves peaceful meetup opportunities." },
     { id: "g_cassette_confession_mix", name: "Cassette Confession Mix", category: "gift", rarity: "R", description: "A handmade mixtape labeled only with a trembling star.", effect: "Boosts emotional breakthroughs in private talks." },
+    { id: "shop_skill_lie_detector_earring", name: "Lie Detector Earring", category: "skill", rarity: "R", description: "An earring attuned to tiny tells and tonal slips.", effect: "Highlights suspicious dialogue beats." },
+    { id: "shop_skill_dramatic_pause_plus", name: "Dramatic Pause+", category: "skill", rarity: "N", description: "A stagecraft micro-module for timing your words.", effect: "Adds impact before major rebuttals." },
+    { id: "shop_skill_monokuma_warranty", name: "Monokuma Warranty", category: "skill", rarity: "SR", description: "A suspicious service contract stamped with a bear seal.", effect: "Survive one terrible bargain (maybe)." },
+    { id: "shop_skill_protagonist_hair_flip", name: "Protagonist Hair Flip", category: "skill", rarity: "R", description: "A dramatic flourish practiced in reflective surfaces.", effect: "Temporarily boosts confidence in tense scenes." },
 ];
 
 export function createItemsPanelController({ extensionName, extension_settings, saveSettingsDebounced, playSfx, getSfx, onGiftUseRequest }) {
@@ -604,11 +608,35 @@ export function createItemsPanelController({ extensionName, extension_settings, 
 
 
     function getSkillShopListings() {
+        const inventory = extension_settings[extensionName].inventory || {};
+        const trustFragments = Number(inventory.trustFragments || 0);
+
         return placeholderSkillShopCatalog.map(skill => ({
             ...skill,
-            available: false,
+            available: trustFragments >= skill.cost,
+            owned: Number(inventory.skills?.[skill.id] || 0) > 0,
             futureEffectHook: skill.teaserEffect,
         }));
+    }
+
+    function buySkillFromShop(skillId) {
+        loadInventoryState();
+
+        const skill = placeholderSkillShopCatalog.find(entry => entry.id === skillId);
+        if (!skill) return false;
+
+        const inventory = extension_settings[extensionName].inventory;
+        const owned = Number(inventory.skills?.[skill.id] || 0);
+        if (owned > 0) return false;
+
+        const trustFragments = Number(inventory.trustFragments || 0);
+        if (trustFragments < skill.cost) return false;
+
+        inventory.trustFragments = trustFragments - skill.cost;
+        inventory.skills[skill.id] = 1;
+
+        saveSettingsDebounced();
+        return true;
     }
 
     function renderSkillShopDetails() {
@@ -624,7 +652,7 @@ export function createItemsPanelController({ extensionName, extension_settings, 
                     </div>
                     <div class="items-shop-entry-meta">
                         <div class="items-shop-entry-cost">◈ x${skill.cost} TRUST FRAGMENT</div>
-                        <button class="items-shop-entry-buy" type="button" disabled>SOON</button>
+                        <button class="items-shop-entry-buy" type="button" ${skill.owned || !skill.available ? "disabled" : ""}>${skill.owned ? "OWNED" : "BUY"}</button>
                     </div>
                 </div>
             `)
@@ -633,9 +661,21 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         $detail.html(`
             <div class="items-panel-title">SKILL SHOP</div>
             <div class="items-shop-placeholder-title">TRUST FRAGMENT EXCHANGE</div>
-            <div class="items-shop-placeholder-copy">SELECTED SKILLS ARE PLACEHOLDERS FOR NOW. EACH ONE COSTS 1 TRUST FRAGMENT AND WILL RECEIVE LIVE EFFECTS LATER.</div>
+            <div class="items-shop-placeholder-copy">SELECT A SKILL TO PURCHASE WITH TRUST FRAGMENTS. THESE SKILLS CAN BE OWNED NOW AND THEIR EFFECTS WILL EXPAND OVER TIME.</div>
             <div class="items-shop-list">${skillRows}</div>
         `);
+
+        $detail.find(".items-shop-entry-buy").on("click", (evt) => {
+            const skillId = evt.currentTarget.closest(".items-shop-entry")?.dataset.shopSkillId;
+            if (!skillId) return;
+
+            const purchased = buySkillFromShop(skillId);
+            if (!purchased) return;
+
+            playSfx(getSfx().click);
+            renderSkillsItemsPanel();
+            renderSkillShopDetails();
+        });
     }
 
     function bindSkillShopButton() {
