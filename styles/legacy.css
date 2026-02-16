@@ -17,21 +17,177 @@
     position: fixed;
     top: 20px;
     right: 20px;
-    width: 48px;
-    height: 48px;
+    width: 108px;
+    height: 72px;
+    padding: 7px 10px 8px;
 
-    background: #000;
-    border: 2px solid #fff;
-    border-radius: 50%;
+    border: 1px solid rgba(255, 181, 240, 0.8);
+    border-radius: 16px;
+    background:
+        linear-gradient(160deg, rgba(73, 0, 82, 0.96) 0%, rgba(31, 0, 46, 0.95) 56%, rgba(10, 0, 18, 0.95) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 233, 251, 0.35),
+        inset 0 -8px 18px rgba(0, 0, 0, 0.55),
+        0 10px 24px rgba(0, 0, 0, 0.55),
+        0 0 20px rgba(233, 106, 255, 0.28);
 
     cursor: grab;
     z-index: 9999;
 
-    display: flex;
+    display: grid;
+    grid-template-columns: 36px 1fr;
     align-items: center;
-    justify-content: center;
+    column-gap: 8px;
 
     box-sizing: border-box;
+    overflow: hidden;
+    isolation: isolate;
+    transition:
+        transform 130ms ease,
+        box-shadow 180ms ease,
+        border-color 180ms ease,
+        filter 180ms ease;
+    animation: monopad-launcher-idle 3.2s ease-in-out infinite;
+}
+
+#dangan_monopad_button::before,
+#dangan_monopad_button::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+#dangan_monopad_button::before {
+    border-radius: inherit;
+    background:
+        linear-gradient(120deg, rgba(255, 255, 255, 0.16), transparent 24%, transparent 75%, rgba(255, 170, 246, 0.12)),
+        radial-gradient(circle at 16% 20%, rgba(255, 255, 255, 0.23), transparent 34%);
+    mix-blend-mode: screen;
+    opacity: 0.9;
+}
+
+#dangan_monopad_button::after {
+    border-radius: inherit;
+    inset: 5px;
+    border: 1px solid rgba(246, 166, 255, 0.36);
+    box-shadow: inset 0 0 12px rgba(255, 99, 228, 0.2);
+}
+
+#dangan_monopad_button:hover {
+    transform: translateY(-2px) scale(1.018);
+    border-color: rgba(255, 225, 251, 0.94);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 245, 255, 0.43),
+        inset 0 -8px 18px rgba(0, 0, 0, 0.48),
+        0 14px 30px rgba(0, 0, 0, 0.58),
+        0 0 30px rgba(255, 120, 246, 0.48);
+    filter: saturate(1.08);
+}
+
+#dangan_monopad_button:active,
+#dangan_monopad_button.dragging {
+    transform: translateY(1px) scale(0.985);
+    cursor: grabbing;
+}
+
+#dangan_monopad_button.open {
+    border-color: rgba(255, 255, 255, 0.95);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.5),
+        inset 0 -10px 22px rgba(0, 0, 0, 0.56),
+        0 0 0 1px rgba(255, 206, 247, 0.65),
+        0 0 34px rgba(255, 116, 234, 0.55),
+        0 0 58px rgba(96, 243, 255, 0.28);
+    animation: none;
+}
+
+.monopad-launcher-frame {
+    position: absolute;
+    inset: 5px;
+    border-radius: 11px;
+    border: 1px solid rgba(255, 188, 244, 0.28);
+    pointer-events: none;
+}
+
+.monopad-launcher-ping {
+    position: absolute;
+    width: 7px;
+    height: 7px;
+    top: 10px;
+    right: 12px;
+    border-radius: 50%;
+    background: #6dffcd;
+    box-shadow:
+        0 0 0 0 rgba(109, 255, 205, 0.7),
+        0 0 10px rgba(109, 255, 205, 0.8);
+    pointer-events: none;
+    animation: monopad-launcher-pulse 2s ease-out infinite;
+}
+
+#dangan_monopad_button.open .monopad-launcher-ping {
+    background: #ff8ced;
+    box-shadow:
+        0 0 0 0 rgba(255, 140, 237, 0.55),
+        0 0 12px rgba(255, 140, 237, 0.86);
+}
+
+/* Crest Image */
+#dangan_monopad_button img {
+    width: 34px;
+    height: 34px;
+    object-fit: contain;
+    padding: 3px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 25%, rgba(255, 240, 255, 0.48), rgba(255, 143, 236, 0.16) 38%, rgba(0, 0, 0, 0.12) 100%);
+    box-shadow:
+        0 0 0 1px rgba(255, 201, 247, 0.3),
+        0 0 15px rgba(255, 117, 235, 0.42);
+
+    pointer-events: none;
+    user-select: none;
+}
+
+.monopad-launcher-label {
+    display: block;
+    font-family: "Orbitron", system-ui, sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    color: rgba(255, 239, 254, 0.96);
+    text-shadow:
+        0 0 8px rgba(255, 129, 238, 0.55),
+        0 0 14px rgba(88, 220, 255, 0.3);
+    pointer-events: none;
+    user-select: none;
+}
+
+@keyframes monopad-launcher-idle {
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-1px);
+    }
+}
+
+@keyframes monopad-launcher-pulse {
+    0% {
+        box-shadow:
+            0 0 0 0 rgba(109, 255, 205, 0.58),
+            0 0 10px rgba(109, 255, 205, 0.8);
+    }
+    70% {
+        box-shadow:
+            0 0 0 9px rgba(109, 255, 205, 0),
+            0 0 15px rgba(109, 255, 205, 0.45);
+    }
+    100% {
+        box-shadow:
+            0 0 0 0 rgba(109, 255, 205, 0),
+            0 0 10px rgba(109, 255, 205, 0.5);
+    }
 }
 
 @media (max-width: 700px) {
@@ -39,19 +195,22 @@
         top: max(10px, env(safe-area-inset-top, 0px));
         right: max(10px, env(safe-area-inset-right, 0px));
         bottom: auto;
-        width: 44px;
-        height: 44px;
+        width: 102px;
+        height: 68px;
+        padding: 7px 10px;
+    }
+
+    .monopad-launcher-label {
+        font-size: 10px;
+        letter-spacing: 0.18em;
     }
 }
 
-/* Crest Image */
-#dangan_monopad_button img {
-    width: 70%;
-    height: 70%;
-    object-fit: contain;
-
-    pointer-events: none;
-    user-select: none;
+@media (prefers-reduced-motion: reduce) {
+    #dangan_monopad_button,
+    .monopad-launcher-ping {
+        animation: none;
+    }
 }
 
 /* =========================
