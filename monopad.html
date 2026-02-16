@@ -217,6 +217,9 @@
             </div>
             <div class="settings-header-actions">
                 <button id="dangan_monokuma_lesson_button" class="settings-help-button" type="button" title="Start Mr. Monokuma's Lesson" aria-label="Start Mr. Monokuma's Lesson">?</button>
+                <button id="dangan_debug_breach_trigger" class="settings-breach-button" type="button" aria-label="Future Foundation uplink" title="Future Foundation uplink">
+                    <img src="scripts/extensions/third-party/danganronpa-extension/assets/future_foundation.png" alt="Future Foundation" />
+                </button>
                 <div class="settings-status">SYNC: ONLINE</div>
             </div>
         </div>
@@ -355,6 +358,24 @@
                 <div class="monopad-confirm-actions">
                     <button type="button" class="monopad-confirm-button cancel" id="monopad-confirm-cancel">CANCEL</button>
                     <button type="button" class="monopad-confirm-button confirm" id="monopad-confirm-accept">CONFIRM</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="monopad-breach-overlay" class="monopad-breach-overlay" aria-hidden="true">
+            <div class="monopad-breach-window" role="dialog" aria-modal="true" aria-labelledby="monopad-breach-title">
+                <div class="monopad-breach-header">
+                    <div class="monopad-breach-title" id="monopad-breach-title">FUTURE FOUNDATION // ENCRYPTED UPLINK</div>
+                    <button id="monopad-breach-close" class="monopad-breach-close" type="button" aria-label="Close breach terminal">✕</button>
+                </div>
+                <div id="monopad-breach-terminal" class="monopad-breach-terminal" aria-live="polite"></div>
+                <div id="monopad-breach-input-wrap" class="monopad-breach-input-wrap hidden">
+                    <label for="monopad-breach-input">ACCESS CODE</label>
+                    <div class="monopad-breach-input-row">
+                        <input id="monopad-breach-input" type="password" autocomplete="off" spellcheck="false" placeholder="••••••••••" />
+                        <button id="monopad-breach-submit" type="button">EXECUTE</button>
+                    </div>
+                    <div id="monopad-breach-status" class="monopad-breach-status"></div>
                 </div>
             </div>
         </div>
