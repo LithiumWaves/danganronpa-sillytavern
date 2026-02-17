@@ -641,7 +641,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
 
                 const obtainedMessage = run.rollCount > 1
                     ? `You've obtained ${run.rollCount} gifts! ${run.duplicateCount} duplicate${run.duplicateCount === 1 ? "" : "s"}.`
-                    : `You've obtained a ${run.result.name}!`;
+                    : `You've obtained ${run.result.name}!`;
                 state.machineJingleTimeout = setTimeout(() => {
                     playSfx?.(getSfx?.().monochine_jingle || getSfx?.().click);
                     if (state.machineBannerDelayTimeout) {

@@ -3604,7 +3604,9 @@
     border-radius: 10px;
     background: linear-gradient(180deg, rgba(97, 40, 13, 0.94), rgba(56, 22, 8, 0.93));
     color: #ffe9c8;
+    font-family: "Orbitron", "Rajdhani", system-ui, sans-serif;
     font-size: 14px;
+    font-weight: 600;
     letter-spacing: 0.06em;
     padding: 10px 16px;
     box-shadow: 0 0 18px rgba(255, 157, 64, 0.4);
