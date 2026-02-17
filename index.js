@@ -2751,6 +2751,26 @@ function normalizeSettingsHeaderActionButtons() {
     });
 }
 
+function applyMonopadLaunchControlState(buttonEl, panelEl = null) {
+    const isEnabled = getMonopadSetting("monopadButtonEnabled") !== false;
+
+    if (buttonEl) {
+        buttonEl.style.display = isEnabled ? "flex" : "none";
+        buttonEl.setAttribute("aria-hidden", isEnabled ? "false" : "true");
+    }
+
+    if (!isEnabled && panelEl) {
+        panelEl.classList.remove("open", "booting", "boot-cold", "boot-warm", "shutting-down");
+        panelEl.classList.add("closed");
+    }
+
+    const toggleEl = document.getElementById("dangan_enable_monopad_button");
+    if (toggleEl) toggleEl.checked = isEnabled;
+
+    return isEnabled;
+}
+
+
 jQuery(async () => {
     console.log(`[${extensionName}] Loading...`);
 
@@ -2762,7 +2782,8 @@ jQuery(async () => {
         $("#extensions_settings2").append(settingsHtml);
 
         const monopadHtml = await $.get(`${extensionFolderPath}/monopad.html`);
-        $("body").append(monopadHtml);
+        const normalizedMonopadHtml = monopadHtml.replaceAll("scripts/extensions/third-party/danganronpa-extension", extensionFolderPath);
+        $("body").append(normalizedMonopadHtml);
         normalizeSettingsHeaderActionButtons();
         ensureGlobalDebugUi();
 
@@ -2784,6 +2805,7 @@ jQuery(async () => {
         const $button = $("#dangan_monopad_button");
         const $panel = $("#dangan_monopad_panel");
         $panel.addClass("fullscreen");
+        applyMonopadLaunchControlState($button.get(0), $panel.get(0));
 
         const monopadButtonEl = $button.get(0);
         if (monopadButtonEl) {
@@ -3046,6 +3068,16 @@ $(".monopad-icon").on("mouseenter", function () {
             handleMonopadToggle();
         });
 
+        $("#dangan_open_monopad_from_settings").on("click", () => {
+            unlockAudio();
+            handleMonopadToggle();
+        });
+
+        $("#dangan_enable_monopad_button").on("change", function () {
+            setMonopadSetting("monopadButtonEnabled", this.checked);
+            applyMonopadLaunchControlState(monopadButtonEl, $panel.get(0));
+        });
+
 
         $(".items-filter-button").on("click", function () {
             playSfx(sfx.click);
@@ -3172,6 +3204,7 @@ ensureGlobalDebugUi();
 rewards?.renderProgressionUi?.();
 itemsPanelController.loadInventoryState();
 applySettingsTabUI();
+applyMonopadLaunchControlState(monopadButtonEl, $panel.get(0));
 loadCharacters();
 itemsPanelController.renderSkillsItemsPanel();
 
