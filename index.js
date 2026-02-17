@@ -152,22 +152,56 @@ function getInvestigationMarkerStore() {
     return extension_settings[extensionName].investigationMarkers;
 }
 
-function hasProcessedInvestigationSignature(signature) {
-    if (!signature) return false;
-    if (processedInvestigationSignatures.has(signature)) return true;
-    return Boolean(getInvestigationMarkerStore()[signature]);
+function getInvestigationScopeKey() {
+    const ctx = window.SillyTavern?.getContext?.();
+    const groupId = ctx?.groupId ?? ctx?.group_id ?? "";
+    const characterId = ctx?.characterId ?? ctx?.character_id ?? "";
+    const chatId = ctx?.chatId ?? ctx?.chat_id ?? ctx?.chatFile ?? "";
+
+    if (groupId !== "" && groupId !== null && groupId !== undefined) {
+        return `group:${groupId}`;
+    }
+
+    if (characterId !== "" && characterId !== null && characterId !== undefined) {
+        return `char:${characterId}`;
+    }
+
+    if (chatId) {
+        return `chat:${chatId}`;
+    }
+
+    return "scope:unknown";
 }
 
-function markInvestigationSignatureProcessed(signature) {
+function buildPersistentInvestigationSignature(msgEl, marker, idx) {
+    const mesId = msgEl?.getAttribute?.("mesid") || msgEl?.dataset?.mesid || "";
+    if (!mesId || mesId === "no-id") return "";
+
+    const speaker = msgEl?.getAttribute?.("ch_name") || "unknown";
+    const scope = getInvestigationScopeKey();
+    const markerIndex = Number(marker?.index ?? -1);
+
+    return `INVESTIGATION||${scope}||${mesId}||${speaker}||${markerIndex}||${idx}`;
+}
+
+function hasProcessedInvestigationSignature(signature, persistentSignature = "") {
+    if (!signature) return false;
+    if (processedInvestigationSignatures.has(signature)) return true;
+    if (!persistentSignature) return false;
+    return Boolean(getInvestigationMarkerStore()[persistentSignature]);
+}
+
+function markInvestigationSignatureProcessed(signature, persistentSignature = "") {
     if (!signature) return;
 
     processedInvestigationSignatures.add(signature);
+    if (!persistentSignature) return;
 
     const store = getInvestigationMarkerStore();
-    store[signature] = Date.now();
+    store[persistentSignature] = Date.now();
 
     const keys = Object.keys(store);
-    const maxEntries = 800;
+    const maxEntries = 1200;
     if (keys.length > maxEntries) {
         keys
             .sort((a, b) => Number(store[a] || 0) - Number(store[b] || 0))
@@ -179,6 +213,48 @@ function markInvestigationSignatureProcessed(signature) {
 
     saveSettingsDebounced();
 }
+
+        if (canonical.includes("V3C|INVESTIGATIONSTART")) {
+            matches.push({
+                marker: line,
+                index: cursor,
+                source: "fallback",
+            });
+        }
+
+        cursor += line.length + 1;
+    }
+
+    return matches;
+}
+
+function parseInvestigationStartMarkers(text) {
+    const raw = String(text || "");
+    if (!raw) return [];
+
+    const matches = [];
+    INVESTIGATION_START_PARSE_REGEX.lastIndex = 0;
+
+    let match;
+    while ((match = INVESTIGATION_START_PARSE_REGEX.exec(raw)) !== null) {
+        matches.push({
+            marker: match[0],
+            index: match.index,
+            source: "regex",
+        });
+    }
+
+    if (matches.length) return matches;
+
+    // Fallback parser for format drift (markdown wrappers / unusual punctuation).
+    const lines = raw.split(/\r?\n/);
+    let cursor = 0;
+
+    for (const line of lines) {
+        const canonical = line
+            .toUpperCase()
+            .replace(/[|｜]/g, "|")
+            .replace(/[`*_~:;,.!?\-\s]/g, "");
 
         if (canonical.includes("V3C|INVESTIGATIONSTART")) {
             matches.push({
@@ -973,9 +1049,10 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
         investigationMarkers.forEach((marker, idx) => {
             console.debug("[Dangan][Investigation] Marker detected", marker);
             const signature = `INVESTIGATION||${messageSignature}||${marker.index}||${idx}`;
-            if (hasProcessedInvestigationSignature(signature)) return;
+            const persistentSignature = buildPersistentInvestigationSignature(msgEl, marker, idx);
+            if (hasProcessedInvestigationSignature(signature, persistentSignature)) return;
 
-            markInvestigationSignatureProcessed(signature);
+            markInvestigationSignatureProcessed(signature, persistentSignature);
             investigationStartController.trigger();
         });
 
