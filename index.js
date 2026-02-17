@@ -9,7 +9,7 @@ import { createRewardSystem } from "./items/rewardSystem.js";
 import { createSocialPanelController } from "./social/socialPanel.js";
 import { extractUltimateFromNotes, isIgnoredCharacter, lookupUltimateFromLorebook, normalizeList, normalizeName } from "./social/characterUtils.js";
 import { createMapPanelController } from "./map/mapPanel.js";
-import { MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
+import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "./core/monokumaLessonScript.js";
 
@@ -135,6 +135,204 @@ let truthBulletAnimating = false;
 
 const processedTruthSignatures = new Set();
 const processedSocialSignatures = new Set();
+const processedInvestigationSignatures = new Set();
+const INVESTIGATION_START_DETECT_REGEX = /V3C\s*\|\s*INVESTIGATION(?:_|\s*)START\b/i;
+
+
+function hasInvestigationStartMarker(text) {
+    const raw = String(text || "");
+    if (!raw) return false;
+
+    if (INVESTIGATION_START_DETECT_REGEX.test(raw)) return true;
+
+    const canonical = raw
+        .toUpperCase()
+        .replace(/\s+/g, "")
+        .replace(/_/g, "");
+
+    return canonical.includes("V3C|INVESTIGATIONSTART");
+}
+
+function normalizeTextToken(value) {
+    return String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[_\-]+/g, " ")
+        .replace(/\s+/g, " ");
+}
+
+function tryEnableInvestigationToggleInObject(root, { maxDepth = 6 } = {}) {
+    if (!root || typeof root !== "object") return false;
+
+    const target = normalizeTextToken("Investigation Time");
+    const queue = [{ node: root, depth: 0 }];
+    const visited = new WeakSet();
+    let touched = false;
+
+    while (queue.length) {
+        const { node, depth } = queue.shift();
+        if (!node || typeof node !== "object") continue;
+        if (visited.has(node)) continue;
+        visited.add(node);
+
+        const label = normalizeTextToken(node.name || node.label || node.title || node.id || "");
+        if (label === target || label.includes(target)) {
+            if (typeof node.enabled === "boolean") {
+                node.enabled = true;
+                touched = true;
+            }
+            if (typeof node.value === "boolean") {
+                node.value = true;
+                touched = true;
+            }
+            if (typeof node.active === "boolean") {
+                node.active = true;
+                touched = true;
+            }
+            if (typeof node.toggled === "boolean") {
+                node.toggled = true;
+                touched = true;
+            }
+            if (typeof node.isEnabled === "boolean") {
+                node.isEnabled = true;
+                touched = true;
+            }
+            if (typeof node.isActive === "boolean") {
+                node.isActive = true;
+                touched = true;
+            }
+        }
+
+        if (depth >= maxDepth) continue;
+
+        try {
+            for (const value of Object.values(node)) {
+                if (!value || typeof value !== "object") continue;
+                queue.push({ node: value, depth: depth + 1 });
+            }
+        } catch {
+            // Some host objects can throw on property access; skip safely.
+        }
+    }
+
+    return touched;
+}
+
+function tryEnableInvestigationToggleViaContext() {
+    if (!window.SillyTavern?.getContext) return false;
+
+    const ctx = window.SillyTavern.getContext();
+    if (!ctx) return false;
+
+    const candidates = [
+        ctx.chatCompletionSettings,
+        ctx.chat_completion_settings,
+        ctx.mainApiSettings,
+        ctx.main_api_settings,
+        ctx.settings,
+        ctx,
+    ];
+
+    let touched = false;
+    for (const candidate of candidates) {
+        try {
+            touched = tryEnableInvestigationToggleInObject(candidate) || touched;
+        } catch {
+            // Skip malformed or protected objects without breaking Investigation start flow.
+        }
+    }
+
+    if (!touched) return false;
+
+    if (typeof ctx.saveSettingsDebounced === "function") {
+        ctx.saveSettingsDebounced();
+    } else {
+        saveSettingsDebounced();
+    }
+
+    return true;
+}
+
+function tryEnableInvestigationToggleViaDom() {
+    const target = normalizeTextToken("Investigation Time");
+    const scope = Array.from(document.querySelectorAll("label, .menu_button, .inline-drawer-toggle, button, .toggle-item"));
+
+    for (const el of scope) {
+        const labelText = normalizeTextToken(el.textContent || el.getAttribute("aria-label") || "");
+        if (!labelText || (!labelText.includes(target) && labelText !== target)) continue;
+
+        const host = el.closest("label, .toggle-item, .settings-item, .menu_button") || el;
+        const checkbox = host.querySelector('input[type="checkbox"]') || el.querySelector?.('input[type="checkbox"]');
+
+        if (checkbox) {
+            if (checkbox.checked) return true;
+            checkbox.click();
+            return true;
+        }
+
+        const pressed = host.getAttribute("aria-pressed");
+        if (pressed === "true") return true;
+
+        if (typeof host.click === "function") {
+            host.click();
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function triggerInvestigationTimeToggle() {
+    const byContext = tryEnableInvestigationToggleViaContext();
+    if (byContext) return true;
+
+    return tryEnableInvestigationToggleViaDom();
+}
+
+function showInvestigationStartBanner() {
+    const overlay = document.getElementById("dangan-investigation-overlay");
+    if (!overlay) return;
+
+    overlay.classList.remove("show");
+    void overlay.offsetWidth;
+    overlay.classList.add("show");
+
+    const titleEl = overlay.querySelector(".dangan-investigation-title");
+    if (titleEl) {
+        titleEl.textContent = "Investigation Start!";
+    }
+
+    const timer = Number(overlay.dataset.hideTimer || 0);
+    if (timer) {
+        clearTimeout(timer);
+    }
+
+    const nextTimer = window.setTimeout(() => {
+        overlay.classList.remove("show");
+        overlay.dataset.hideTimer = "";
+    }, 2600);
+
+    overlay.dataset.hideTimer = String(nextTimer);
+}
+
+function triggerInvestigationStart() {
+    showInvestigationStartBanner();
+
+    if (sfx?.investigation_start) {
+        playSfx(sfx.investigation_start);
+    }
+
+    try {
+        const toggled = triggerInvestigationTimeToggle();
+        if (toggled) {
+            console.log("[Dangan][Investigation] Investigation Time toggle enabled in current preset.");
+        } else {
+            console.warn("[Dangan][Investigation] Could not auto-enable the Investigation Time toggle.");
+        }
+    } catch (error) {
+        console.warn("[Dangan][Investigation] Toggle automation failed, banner/sfx still executed:", error);
+    }
+}
 
 
 /* =========================
@@ -623,6 +821,15 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
     decreaseTrust(char);
 }
 
+        // ---- Investigation Start ----
+        if (hasInvestigationStartMarker(rawText)) {
+            const signature = `INVESTIGATION||${messageSignature}`;
+            if (!processedInvestigationSignatures.has(signature)) {
+                processedInvestigationSignatures.add(signature);
+                triggerInvestigationStart();
+            }
+        }
+
         // ---- Marker Cleanup ----
        if (rawText.includes("V3C|")) {
     const walker = document.createTreeWalker(
@@ -639,6 +846,7 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
                 .replace(SOCIAL_REGEX, "")
                 .replace(SOCIAL_UP_REGEX, "")
                 .replace(SOCIAL_DOWN_REGEX, "")
+                .replace(INVESTIGATION_START_REGEX, "")
                 .trimStart();
         }
         }
@@ -2320,6 +2528,7 @@ jQuery(async () => {
         trust_max: document.getElementById("trust_sfx_max"),
         trust_shatter: document.getElementById("trust_sfx_shatter"),
         distrust_recover: document.getElementById("distrust_sfx_recover"),
+        investigation_start: document.getElementById("investigation_start_sfx"),
     }
 
         initTrustAnimations({
