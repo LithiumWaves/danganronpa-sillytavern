@@ -152,22 +152,59 @@ function getInvestigationMarkerStore() {
     return extension_settings[extensionName].investigationMarkers;
 }
 
-function hasProcessedInvestigationSignature(signature) {
-    if (!signature) return false;
-    if (processedInvestigationSignatures.has(signature)) return true;
-    return Boolean(getInvestigationMarkerStore()[signature]);
+function getInvestigationScopeKey() {
+    const ctx = window.SillyTavern?.getContext?.();
+    const groupId = ctx?.groupId ?? ctx?.group_id ?? "";
+    const characterId = ctx?.characterId ?? ctx?.character_id ?? "";
+    const chatId = ctx?.chatId ?? ctx?.chat_id ?? ctx?.chatFile ?? "";
+
+    if (groupId !== "" && groupId !== null && groupId !== undefined) {
+        return `group:${groupId}`;
+    }
+
+    if (characterId !== "" && characterId !== null && characterId !== undefined) {
+        return `char:${characterId}`;
+    }
+
+    if (chatId) {
+        return `chat:${chatId}`;
+    }
+
+    return "scope:unknown";
 }
 
-function markInvestigationSignatureProcessed(signature) {
+function buildPersistentInvestigationSignature(msgEl, marker, idx, rawText = "") {
+    const mesId = msgEl?.getAttribute?.("mesid") || msgEl?.dataset?.mesid || "";
+    if (!mesId || mesId === "no-id") return "";
+
+    const speaker = msgEl?.getAttribute?.("ch_name") || "unknown";
+    const scope = getInvestigationScopeKey();
+    if (!scope || scope === "scope:unknown") return "";
+
+    const markerIndex = Number(marker?.index ?? -1);
+    const textFingerprint = String(rawText || "").slice(0, 140);
+
+    return `INVESTIGATION||${scope}||${mesId}||${speaker}||${markerIndex}||${idx}||${textFingerprint}`;
+}
+
+function hasProcessedInvestigationSignature(signature, persistentSignature = "") {
+    if (!signature) return false;
+    if (processedInvestigationSignatures.has(signature)) return true;
+    if (!persistentSignature) return false;
+    return Boolean(getInvestigationMarkerStore()[persistentSignature]);
+}
+
+function markInvestigationSignatureProcessed(signature, persistentSignature = "") {
     if (!signature) return;
 
     processedInvestigationSignatures.add(signature);
+    if (!persistentSignature) return;
 
     const store = getInvestigationMarkerStore();
-    store[signature] = Date.now();
+    store[persistentSignature] = Date.now();
 
     const keys = Object.keys(store);
-    const maxEntries = 800;
+    const maxEntries = 1200;
     if (keys.length > maxEntries) {
         keys
             .sort((a, b) => Number(store[a] || 0) - Number(store[b] || 0))
@@ -179,6 +216,48 @@ function markInvestigationSignatureProcessed(signature) {
 
     saveSettingsDebounced();
 }
+
+        if (canonical.includes("V3C|INVESTIGATIONSTART")) {
+            matches.push({
+                marker: line,
+                index: cursor,
+                source: "fallback",
+            });
+        }
+
+        cursor += line.length + 1;
+    }
+
+    return matches;
+}
+
+function parseInvestigationStartMarkers(text) {
+    const raw = String(text || "");
+    if (!raw) return [];
+
+    const matches = [];
+    INVESTIGATION_START_PARSE_REGEX.lastIndex = 0;
+
+    let match;
+    while ((match = INVESTIGATION_START_PARSE_REGEX.exec(raw)) !== null) {
+        matches.push({
+            marker: match[0],
+            index: match.index,
+            source: "regex",
+        });
+    }
+
+    if (matches.length) return matches;
+
+    // Fallback parser for format drift (markdown wrappers / unusual punctuation).
+    const lines = raw.split(/\r?\n/);
+    let cursor = 0;
+
+    for (const line of lines) {
+        const canonical = line
+            .toUpperCase()
+            .replace(/[|｜]/g, "|")
+            .replace(/[`*_~:;,.!?\-\s]/g, "");
 
         if (canonical.includes("V3C|INVESTIGATIONSTART")) {
             matches.push({
@@ -475,9 +554,12 @@ const investigationStartController = {
         const bannerShown = this.showBanner(displayDuration);
         const toggled = this.enableToggle();
 
-        if (!bannerShown && !sfxResult?.played && !toggled) {
+        const didAnything = Boolean(bannerShown || sfxResult?.played || toggled);
+        if (!didAnything) {
             console.info("[Dangan][Investigation] Marker detected, but no effect could be shown.");
         }
+
+        return didAnything;
     },
 };
 
@@ -882,6 +964,35 @@ function unlockAudio() {
     });
 }
 
+function stripV3CMarkersFromText(value) {
+    const text = String(value || "");
+    if (!text) return text;
+
+    const lines = text.split(/\r?\n/);
+    const kept = lines.filter((line) => {
+        const canonical = line
+            .toUpperCase()
+            .replace(/[|｜]/g, "|")
+            .replace(/[`*_~\s]/g, "");
+
+        if (canonical.startsWith("V3C|TB:")) return false;
+        if (canonical.startsWith("V3C|SOCIAL:")) return false;
+        if (canonical.startsWith("V3C|SOCIAL_UP:")) return false;
+        if (canonical.startsWith("V3C|SOCIAL_DOWN:")) return false;
+        if (canonical.includes("V3C|INVESTIGATIONSTART")) return false;
+        return true;
+    });
+
+    return kept.join("\n")
+        .replace(/V3C\s*[|｜]\s*TB:\s*([^|\n\r]+)(?:\|\|\s*([^\n\r]+))?/gi, "")
+        .replace(/V3C\s*[|｜]\s*SOCIAL:\s*([^\n\r]+)/gi, "")
+        .replace(/V3C\s*[|｜]\s*SOCIAL_UP:\s*([^\n\r]+)/gi, "")
+        .replace(/V3C\s*[|｜]\s*SOCIAL_DOWN:\s*([^\n\r]+)/gi, "")
+        .replace(/V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/gi, "")
+        .replace(/^[ \t]+/gm, "")
+        .trimStart();
+}
+
 function waitForSfx(key, callback, tries = 20) {
     if (sfx[key]) {
         callback(sfx[key]);
@@ -973,10 +1084,13 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
         investigationMarkers.forEach((marker, idx) => {
             console.debug("[Dangan][Investigation] Marker detected", marker);
             const signature = `INVESTIGATION||${messageSignature}||${marker.index}||${idx}`;
-            if (hasProcessedInvestigationSignature(signature)) return;
+            const persistentSignature = buildPersistentInvestigationSignature(msgEl, marker, idx, rawText);
+            if (hasProcessedInvestigationSignature(signature, persistentSignature)) return;
 
-            markInvestigationSignatureProcessed(signature);
-            investigationStartController.trigger();
+            const triggered = investigationStartController.trigger();
+            if (triggered) {
+                markInvestigationSignatureProcessed(signature, persistentSignature);
+            }
         });
 
         // ---- Marker Cleanup ----
@@ -989,15 +1103,8 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
 
     let textNode;
     while ((textNode = walker.nextNode())) {
-        if (/[Vv]3[Cc]\s*[|｜]/.test(textNode.nodeValue)) {
-            textNode.nodeValue = textNode.nodeValue
-                .replace(TB_REGEX, "")
-                .replace(SOCIAL_REGEX, "")
-                .replace(SOCIAL_UP_REGEX, "")
-                .replace(SOCIAL_DOWN_REGEX, "")
-                .replace(INVESTIGATION_START_REGEX, "")
-                .trimStart();
-        }
+        if (!/[Vv]3[Cc]\s*[|｜]/.test(textNode.nodeValue)) continue;
+        textNode.nodeValue = stripV3CMarkersFromText(textNode.nodeValue);
         }
     }
 
