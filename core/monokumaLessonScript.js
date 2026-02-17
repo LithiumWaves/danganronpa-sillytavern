@@ -70,7 +70,6 @@ export const MONOKUMA_LESSON_STEPS = [
     {
         action: "switchMapToHopesPeakFloor1",
         sprite: "monokuma_angry.png",
-        spriteOpacity: 0.78,
         text: "Anyways, that little ¥ symbol marks my MonoMono Machine. You’ve seen your Monocoins already, right? You get those from investigations, socializing… all that good stuff.",
     },
     {
