@@ -216,8 +216,8 @@ function normalizeTextToken(value) {
 }
 
 function getInvestigationMarkerStore() {
-    extension_settings[extensionName] ||= {};
-    extension_settings[extensionName].investigationMarkers ||= {};
+    extension_settings[extensionName] = extension_settings[extensionName] || {};
+    extension_settings[extensionName].investigationMarkers = extension_settings[extensionName].investigationMarkers || {};
     return extension_settings[extensionName].investigationMarkers;
 }
 
@@ -588,8 +588,8 @@ let pendingGiftDeliveryQueue = [];
 let pendingGiftResolutionInFlight = false;
 
 function getGiftJudgementStore() {
-    extension_settings[extensionName] ||= {};
-    extension_settings[extensionName].giftJudgements ||= {};
+    extension_settings[extensionName] = extension_settings[extensionName] || {};
+    extension_settings[extensionName].giftJudgements = extension_settings[extensionName].giftJudgements || {};
     return extension_settings[extensionName].giftJudgements;
 }
 
@@ -718,7 +718,7 @@ function applyGiftOutcome(characterName, verdict, signatureSeed) {
     const signature = `GIFT||${verdict}||${signatureSeed}`;
     if (char.trustHistory?.has(signature)) return;
 
-    char.trustHistory ||= new Set();
+    char.trustHistory = char.trustHistory || new Set();
     char.trustHistory.add(signature);
 
     if (verdict === "SOCIAL_UP") {
@@ -1482,7 +1482,7 @@ async function endMonokumaLesson({ completed = false } = {}) {
     setActiveMonopadTab("settings");
 
     if (completed) {
-        const settings = extension_settings[extensionName] ||= {};
+        const settings = extension_settings[extensionName] = extension_settings[extensionName] || {};
         if (!settings.monokumaLessonRewardClaimed) {
             awardMonocoins(Number(MONOCOIN_REWARDS.tutorialCompletion || 0), "Mr. Monokuma's Lesson completion");
             settings.monokumaLessonRewardClaimed = true;
@@ -1929,7 +1929,7 @@ function isDebugAccessGranted() {
 }
 
 function setDebugAccessGranted(granted) {
-    const settings = extension_settings[extensionName] ||= {};
+    const settings = extension_settings[extensionName] = extension_settings[extensionName] || {};
     settings.debugAccessGranted = Boolean(granted);
     breachUnlockedThisSession = Boolean(granted);
     saveSettingsDebounced();
@@ -1940,7 +1940,7 @@ function isDebugControlsHidden() {
 }
 
 function setDebugControlsHidden(hidden) {
-    const settings = extension_settings[extensionName] ||= {};
+    const settings = extension_settings[extensionName] = extension_settings[extensionName] || {};
     settings.debugControlsHidden = Boolean(hidden);
     saveSettingsDebounced();
     applyDebugControlsVisibilityState();
@@ -2179,8 +2179,8 @@ function runPayloadActionAnimation(actionLabel, onComplete) {
 }
 
 function applyPayloadInventoryValue(key, value) {
-    const ext = extension_settings[extensionName] ||= {};
-    ext.inventory ||= {};
+    const ext = extension_settings[extensionName] = extension_settings[extensionName] || {};
+    ext.inventory = ext.inventory || {};
     ext.inventory[key] = Math.max(0, Number(value || 0));
     saveSettingsDebounced();
     itemsPanelController?.renderSkillsItemsPanel?.();
@@ -2219,8 +2219,8 @@ function promptAndSetTrustFragments() {
 }
 
 function addPayloadInventoryValue(key, amount = 0) {
-    const ext = extension_settings[extensionName] ||= {};
-    ext.inventory ||= {};
+    const ext = extension_settings[extensionName] = extension_settings[extensionName] || {};
+    ext.inventory = ext.inventory || {};
     const current = Number(ext.inventory[key] || 0);
     const delta = Math.max(0, Math.floor(Number(amount || 0)));
     ext.inventory[key] = Math.max(0, current + delta);
@@ -2771,6 +2771,37 @@ function applyMonopadLaunchControlState(buttonEl, panelEl = null) {
 }
 
 
+function buildExtensionPathCandidates() {
+    const fallback = `scripts/extensions/third-party/${extensionName}`;
+    const candidates = [extensionFolderPath, fallback, `/${fallback}`]
+        .map((value) => String(value || "").trim().replace(/\/$/, ""))
+        .filter(Boolean);
+
+    return [...new Set(candidates)];
+}
+
+async function loadExtensionHtmlFile(fileName) {
+    const attempted = [];
+
+    for (const basePath of buildExtensionPathCandidates()) {
+        const url = `${basePath}/${fileName}`;
+        attempted.push(url);
+
+        try {
+            const html = await $.get(url);
+            if (url !== `${extensionFolderPath}/${fileName}`) {
+                console.warn(`[${extensionName}] Loaded ${fileName} from fallback path: ${url}`);
+            }
+            return html;
+        } catch {
+            // Try next path candidate.
+        }
+    }
+
+    throw new Error(`Unable to load ${fileName}. Tried: ${attempted.join(", ")}`);
+}
+
+
 jQuery(async () => {
     console.log(`[${extensionName}] Loading...`);
 
@@ -2778,11 +2809,11 @@ jQuery(async () => {
     bindDebugControlEvents();
 
     try {
-        const settingsHtml = await $.get(`${extensionFolderPath}/example.html`);
+        const settingsHtml = await loadExtensionHtmlFile("example.html");
         $("#extensions_settings2").append(settingsHtml);
 
-        const monopadHtml = await $.get(`${extensionFolderPath}/monopad.html`);
-        const normalizedMonopadHtml = monopadHtml.replaceAll("scripts/extensions/third-party/danganronpa-extension", extensionFolderPath);
+        const monopadHtml = await loadExtensionHtmlFile("monopad.html");
+        const normalizedMonopadHtml = monopadHtml.replace(/scripts\/extensions\/third-party\/danganronpa-extension/g, extensionFolderPath);
         $("body").append(normalizedMonopadHtml);
         normalizeSettingsHeaderActionButtons();
         ensureGlobalDebugUi();

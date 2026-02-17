@@ -183,14 +183,14 @@ export function createItemsPanelController({ extensionName, extension_settings, 
 
     function loadInventoryState() {
         const ext = extension_settings[extensionName];
-        ext.inventory ||= {};
-        ext.inventory.monocoins ??= 0;
-        ext.inventory.trustFragments ??= 0;
-        ext.inventory.gifts ||= {};
-        ext.inventory.skills ||= {};
-        ext.inventory.keyItems ||= {};
-        ext.inventory.skillPoints ??= 10;
-        ext.inventory.equippedSkills ||= {};
+        ext.inventory = ext.inventory || {};
+        if (ext.inventory.monocoins == null) ext.inventory.monocoins = 0;
+        if (ext.inventory.trustFragments == null) ext.inventory.trustFragments = 0;
+        ext.inventory.gifts = ext.inventory.gifts || {};
+        ext.inventory.skills = ext.inventory.skills || {};
+        ext.inventory.keyItems = ext.inventory.keyItems || {};
+        if (ext.inventory.skillPoints == null) ext.inventory.skillPoints = 10;
+        ext.inventory.equippedSkills = ext.inventory.equippedSkills || {};
 
         delete ext.inventory.skills.s_micro_focus;
         delete ext.inventory.skills.s_false_lead;

@@ -2,13 +2,13 @@ export function createOpenRouterSettingsManager({ extensionName, extension_setti
     let runtimeOpenRouterApiKey = "";
 
     function loadSettings() {
-        extension_settings[extensionName] ||= {};
+        extension_settings[extensionName] = extension_settings[extensionName] || {};
         extension_settings[extensionName] = {
             ...defaultSettings,
             ...extension_settings[extensionName]
         };
 
-        extension_settings[extensionName].giftJudgements ||= {};
+        extension_settings[extensionName].giftJudgements = extension_settings[extensionName].giftJudgements || {};
 
         const storedLegacyKey = String(extension_settings[extensionName].openrouterApiKey || "").trim();
         const shouldRemember = !!extension_settings[extensionName].openrouterRememberApiKey;

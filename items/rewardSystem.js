@@ -12,8 +12,8 @@ export function createRewardSystem({ extensionName, extensionFolderPath, extensi
 
     function ensureProgressionState() {
         const ext = extension_settings[extensionName];
-        ext.inventory ||= {};
-        ext.progression ||= {};
+        ext.inventory = ext.inventory || {};
+        ext.progression = ext.progression || {};
 
         const progression = ext.progression;
         progression.level = Math.max(1, Math.min(LEVEL_CAP, Number(progression.level || 1)));
@@ -96,7 +96,7 @@ export function createRewardSystem({ extensionName, extensionFolderPath, extensi
         if (!reward) return;
 
         const ext = extension_settings[extensionName];
-        ext.inventory ||= {};
+        ext.inventory = ext.inventory || {};
 
         const current = Number(ext.inventory.monocoins || 0);
         ext.inventory.monocoins = Math.max(0, current + reward);
@@ -152,7 +152,7 @@ export function createRewardSystem({ extensionName, extensionFolderPath, extensi
         if (!reward) return;
 
         const ext = extension_settings[extensionName];
-        ext.inventory ||= {};
+        ext.inventory = ext.inventory || {};
 
         const current = Number(ext.inventory.trustFragments || 0);
         ext.inventory.trustFragments = Math.max(0, current + reward);

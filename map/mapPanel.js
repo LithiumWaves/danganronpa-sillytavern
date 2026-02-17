@@ -178,7 +178,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
 
     function upsertPinOverride(locationId, x, y) {
         if (!locationId || !LOCATION_PINPOINTS[locationId]) return;
-        state.pinOverrides ||= {};
+        state.pinOverrides = state.pinOverrides || {};
         state.pinOverrides[locationId] = { x, y };
         savePinOverrides();
     }
