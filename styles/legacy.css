@@ -3128,6 +3128,10 @@
         radial-gradient(circle at 78% 72%, rgba(36, 103, 230, 0.25), transparent 55%),
         linear-gradient(160deg, #040a1b 0%, #061635 52%, #071f48 100%);
 }
+.monopad-panel-content[data-panel="map"].machine-overlay-open {
+    overflow: hidden;
+}
+
 
 .map-panel-shell {
     position: relative;
@@ -3155,6 +3159,55 @@
 .map-image-wrap {
     position: relative;
     z-index: 1;
+}
+
+.map-presence-tools {
+    grid-column: 1 / -1;
+}
+
+.map-presence-tool-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.map-presence-clear-all,
+.map-presence-restore-all {
+    font-size: 10px;
+    padding: 6px 10px;
+}
+
+.map-presence-calibration-controls {
+    margin-top: 10px;
+    display: grid;
+    gap: 8px;
+}
+
+.map-presence-calibration-label {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: rgba(190, 232, 255, 0.82);
+}
+
+.map-presence-location-select {
+    width: 100%;
+    border: 1px solid rgba(138, 197, 255, 0.42);
+    border-radius: 8px;
+    background: rgba(8, 28, 57, 0.88);
+    color: rgba(219, 241, 255, 0.94);
+    padding: 6px 8px;
+    font-size: 11px;
+}
+
+.map-presence-tool-row.compact .map-floor-button {
+    font-size: 10px;
+    padding: 6px 10px;
+}
+
+.map-presence-calibration-hint {
+    font-size: 10px;
+    color: rgba(172, 220, 255, 0.76);
+    line-height: 1.35;
 }
 
 .map-panel-kicker {
@@ -3276,40 +3329,158 @@
     left: 50%;
     top: 50%;
     transform: translate(-50%, -50%);
-    width: 16px;
-    height: 16px;
+    width: 22px;
+    height: 22px;
     border-radius: 999px;
+    border: 1px solid transparent;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 10px;
+    font-size: 11px;
     line-height: 1;
-    font-weight: 700;
+    font-weight: 800;
     z-index: 2;
-    pointer-events: none;
+    cursor: pointer;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.45);
+    transition: transform 120ms ease, filter 120ms ease, box-shadow 120ms ease;
+}
+
+.map-presence-pin .map-presence-symbol {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+}
+
+.map-presence-pin .map-presence-count {
+    position: absolute;
+    top: -6px;
+    right: -7px;
+    min-width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    padding: 0 3px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 900;
+    background: rgba(16, 21, 36, 0.96);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    color: #f4f8ff;
 }
 
 .map-presence-pin.user {
     background: rgba(103, 209, 255, 0.95);
-    border: 1px solid rgba(202, 242, 255, 0.96);
+    border-color: rgba(202, 242, 255, 0.96);
     color: #062739;
 }
 
 .map-presence-pin.character {
     background: rgba(255, 106, 133, 0.95);
-    border: 1px solid rgba(255, 224, 231, 0.96);
+    border-color: rgba(255, 224, 231, 0.96);
     color: #390612;
 }
 
-.map-machine-overlay {
+.map-presence-pin.mixed {
+    background: linear-gradient(135deg, rgba(103, 209, 255, 0.95) 0%, rgba(255, 106, 133, 0.95) 100%);
+    border-color: rgba(255, 245, 251, 0.96);
+    color: #07182f;
+}
+
+.map-presence-pin:hover,
+.map-presence-pin:focus-visible,
+.map-presence-pin.active {
+    transform: translate(-50%, -52%);
+    filter: brightness(1.08);
+    box-shadow: 0 0 18px rgba(255, 255, 255, 0.3);
+    outline: none;
+}
+
+.map-calibration-pin {
     position: absolute;
+    transform: translate(-50%, -50%);
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    border: 1px solid rgba(130, 234, 255, 0.72);
+    background: rgba(6, 40, 66, 0.72);
+    color: rgba(187, 248, 255, 0.95);
+    font-size: 10px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 3;
+}
+
+.map-calibration-pin.active {
+    border-color: rgba(255, 230, 152, 0.96);
+    background: rgba(84, 51, 8, 0.8);
+    color: #fff4c5;
+    box-shadow: 0 0 16px rgba(255, 219, 125, 0.38);
+}
+
+.map-presence-tooltip {
+    position: absolute;
+    transform: translate(-50%, calc(-100% - 14px));
+    width: min(200px, 62vw);
+    border: 1px solid rgba(175, 228, 255, 0.5);
+    border-radius: 10px;
+    background: rgba(4, 11, 25, 0.95);
+    color: #e8f2ff;
+    padding: 8px 10px;
+    z-index: 4;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.map-presence-tooltip-title {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
+}
+
+.map-presence-tooltip ul {
+    margin: 0;
+    padding-left: 16px;
+    font-size: 11px;
+}
+
+.map-presence-tooltip li {
+    margin: 0;
+}
+
+.map-presence-remove-pin {
+    margin-top: 8px;
+    border: 1px solid rgba(255, 180, 180, 0.48);
+    border-radius: 999px;
+    background: rgba(80, 16, 24, 0.7);
+    color: rgba(255, 220, 225, 0.95);
+    padding: 5px 10px;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+}
+
+.map-presence-remove-pin:hover,
+.map-presence-remove-pin:focus-visible {
+    border-color: rgba(255, 205, 205, 0.95);
+    filter: brightness(1.1);
+    outline: none;
+}
+
+.map-machine-overlay {
+    position: fixed;
     inset: 0;
     background: rgba(2, 8, 20, 0.82);
     display: none;
     align-items: center;
     justify-content: center;
-    z-index: 6;
+    padding: 16px;
+    z-index: 2147483598;
 }
 
 .map-machine-overlay.open {
@@ -3653,6 +3824,63 @@
 @media (max-width: 900px) {
     .map-controls {
         grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 640px) {
+    .map-presence-tooltip {
+        width: min(156px, 46vw);
+        padding: 6px 7px;
+        border-radius: 8px;
+    }
+
+    .map-presence-tooltip-title,
+    .map-presence-tooltip ul,
+    .map-presence-remove-pin {
+        font-size: 9px;
+    }
+
+    .map-presence-remove-pin {
+        padding: 4px 8px;
+        margin-top: 6px;
+    }
+}
+
+
+@media (max-width: 700px) {
+    .monopad-panel-content[data-panel="map"] {
+        overflow-y: auto;
+        overflow-x: hidden;
+    }
+
+    .map-panel-shell {
+        height: auto;
+        min-height: 100%;
+        grid-template-rows: auto auto auto;
+        gap: 12px;
+        padding-bottom: 8px;
+    }
+
+    .map-image-wrap {
+        width: 100%;
+        aspect-ratio: 480 / 272;
+        min-height: 180px;
+    }
+
+    .map-image {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+    }
+
+    .map-control-group {
+        padding: 8px;
+    }
+
+    .map-floor-button,
+    .map-area-button {
+        padding: 6px 10px;
+        font-size: 10px;
     }
 }
 
