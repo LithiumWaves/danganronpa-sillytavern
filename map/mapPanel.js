@@ -1,10 +1,10 @@
 import { LOCATION_PINPOINTS } from "./locationPresence.js";
 
 const FLOOR_ONE_MACHINE_PIN = {
-    x: 276,
-    y: 145,
-    width: 480,
-    height: 272,
+    x: LOCATION_PINPOINTS.academy_store?.x || 407,
+    y: LOCATION_PINPOINTS.academy_store?.y || 200,
+    width: LOCATION_PINPOINTS.academy_store?.width || 480,
+    height: LOCATION_PINPOINTS.academy_store?.height || 272,
 };
 
 const MACHINE_ROLL_DURATION_MS = 2000;
@@ -12,6 +12,10 @@ const MACHINE_JINGLE_FRAME = 50;
 const MACHINE_GIF_TOTAL_FRAMES = 100;
 const MACHINE_JINGLE_DELAY_MS = Math.round((MACHINE_JINGLE_FRAME / MACHINE_GIF_TOTAL_FRAMES) * MACHINE_ROLL_DURATION_MS);
 const MACHINE_BANNER_DELAY_MS = 500;
+
+const PIN_OVERRIDE_STORAGE_KEY = "dangan_map_pinpoint_overrides_v1";
+const MAP_POINT_WIDTH = 480;
+const MAP_POINT_HEIGHT = 272;
 
 const MAP_AREAS = {
     hopes_peak: {
@@ -51,6 +55,11 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         machineBannerTimeout: null,
         machineBannerDelayTimeout: null,
         machineTrackStarted: false,
+        clearedPresencePins: false,
+        dismissedPresencePins: new Set(),
+        calibrationMode: false,
+        selectedCalibrationLocationId: null,
+        pinOverrides: {},
     };
 
     const selectors = {
@@ -73,6 +82,16 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         machineRoll: ".map-machine-button.roll",
         machineClose: ".map-machine-close",
         presencePin: ".map-presence-pin",
+        presenceTooltip: ".map-presence-tooltip",
+        presenceClearAll: ".map-presence-clear-all",
+        presenceRestoreAll: ".map-presence-restore-all",
+        presenceRemovePin: ".map-presence-remove-pin",
+        calibrationToggle: ".map-presence-calibrate-toggle",
+        calibrationControls: ".map-presence-calibration-controls",
+        calibrationSelect: ".map-presence-location-select",
+        calibrationResetFloor: ".map-presence-calibration-reset-floor",
+        calibrationExport: ".map-presence-calibration-export",
+        calibrationPin: ".map-calibration-pin",
     };
 
     function isMapPresenceEnabled() {
@@ -90,31 +109,158 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             : { user: null, characters: [] };
     }
 
+    function escapeHtml(value) {
+        return String(value || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    }
+
+    function loadPinOverrides() {
+        try {
+            const raw = window.localStorage?.getItem(PIN_OVERRIDE_STORAGE_KEY);
+            if (!raw) return {};
+            const parsed = JSON.parse(raw);
+            return parsed && typeof parsed === "object" ? parsed : {};
+        } catch {
+            return {};
+        }
+    }
+
+    state.pinOverrides = loadPinOverrides();
+
+    function savePinOverrides() {
+        try {
+            window.localStorage?.setItem(PIN_OVERRIDE_STORAGE_KEY, JSON.stringify(state.pinOverrides || {}));
+        } catch {
+            // no-op for environments where storage is blocked
+        }
+    }
+
+    function getPinpoint(locationId) {
+        const base = LOCATION_PINPOINTS[locationId];
+        if (!base) return null;
+
+        const override = state.pinOverrides?.[locationId];
+        if (!override || typeof override !== "object") return base;
+
+        const x = Number(override.x);
+        const y = Number(override.y);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return base;
+
+        return {
+            ...base,
+            x: Math.max(0, Math.min(MAP_POINT_WIDTH, Math.round(x))),
+            y: Math.max(0, Math.min(MAP_POINT_HEIGHT, Math.round(y))),
+        };
+    }
+
+    function getCalibratableLocationEntries() {
+        return Object.entries(LOCATION_PINPOINTS)
+            .filter(([, point]) => point?.area === state.area && point?.floor === state.floor)
+            .sort((a, b) => String(a[1]?.label || a[0]).localeCompare(String(b[1]?.label || b[0])));
+    }
+
+    function ensureCalibrationTarget() {
+        const entries = getCalibratableLocationEntries();
+        if (!entries.length) {
+            state.selectedCalibrationLocationId = null;
+            return;
+        }
+
+        const hasCurrent = entries.some(([locationId]) => locationId === state.selectedCalibrationLocationId);
+        if (!hasCurrent) {
+            state.selectedCalibrationLocationId = entries[0][0];
+        }
+    }
+
+    function upsertPinOverride(locationId, x, y) {
+        if (!locationId || !LOCATION_PINPOINTS[locationId]) return;
+        state.pinOverrides ||= {};
+        state.pinOverrides[locationId] = { x, y };
+        savePinOverrides();
+    }
+
+    function resetFloorPinOverrides() {
+        const entries = getCalibratableLocationEntries();
+        if (!entries.length) return;
+
+        for (const [locationId] of entries) {
+            delete state.pinOverrides[locationId];
+        }
+
+        savePinOverrides();
+    }
+
+    function exportPinOverrides() {
+        const pretty = JSON.stringify(state.pinOverrides || {}, null, 2);
+        if (!pretty) return;
+
+        if (navigator?.clipboard?.writeText) {
+            navigator.clipboard.writeText(pretty).catch(() => {
+                window.prompt("Copy calibrated pin JSON", pretty);
+            });
+            return;
+        }
+
+        window.prompt("Copy calibrated pin JSON", pretty);
+    }
+
+    function applyTooltipViewportClamp($imageWrap, $tooltip, point) {
+        if (!$tooltip?.length || !$imageWrap?.length) return;
+
+        const wrapEl = $imageWrap.get(0);
+        const tipEl = $tooltip.get(0);
+        if (!wrapEl || !tipEl) return;
+
+        const wrapRect = wrapEl.getBoundingClientRect();
+        const tipRect = tipEl.getBoundingClientRect();
+
+        const pointX = (point.x / point.width) * wrapRect.width;
+        const pointY = (point.y / point.height) * wrapRect.height;
+
+        let leftPx = pointX - (tipRect.width / 2);
+        const minLeft = 6;
+        const maxLeft = Math.max(minLeft, wrapRect.width - tipRect.width - 6);
+        leftPx = Math.max(minLeft, Math.min(maxLeft, leftPx));
+
+        const preferredTop = pointY - tipRect.height - 14;
+        const fallbackTop = pointY + 14;
+        const topPx = preferredTop < 4 ? fallbackTop : preferredTop;
+
+        const leftPercent = (leftPx / wrapRect.width) * 100;
+        const topPercent = (topPx / wrapRect.height) * 100;
+
+        $tooltip.css({ left: `${leftPercent}%`, top: `${topPercent}%`, transform: "translate(0, 0)" });
+    }
+
+    function buildPresencePinId(pin) {
+        if (!pin || !pin.locationId) return null;
+        if (pin.type === "user") return `user::${pin.locationId}`;
+        return `character::${String(pin.label || "unknown").toLowerCase()}::${pin.locationId}`;
+    }
+
     function buildPresencePinsForFloor() {
-        if (!isMapPresenceEnabled()) return [];
+        if (!isMapPresenceEnabled() || state.clearedPresencePins) return [];
 
         const payload = getLocationPresence();
         const pins = [];
-        const dedupe = new Set();
 
         const userLocation = payload?.user?.locationId;
-        if (userLocation && LOCATION_PINPOINTS[userLocation]) {
+        if (userLocation && getPinpoint(userLocation)) {
             pins.push({
                 type: "user",
                 label: payload.user.label || "You",
                 locationId: userLocation,
             });
-            dedupe.add(`user::${userLocation}`);
         }
 
         const characters = Array.isArray(payload?.characters) ? payload.characters : [];
         for (const entry of characters) {
             const locationId = entry?.locationId;
-            if (!locationId || !LOCATION_PINPOINTS[locationId]) continue;
-
-            const pinKey = `char::${entry.name || "unknown"}::${locationId}`;
-            if (dedupe.has(pinKey)) continue;
-            dedupe.add(pinKey);
+            if (!locationId || !getPinpoint(locationId)) continue;
 
             pins.push({
                 type: "character",
@@ -123,39 +269,181 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             });
         }
 
-        return pins.filter(pin => {
-            const point = LOCATION_PINPOINTS[pin.locationId];
-            return point.area === state.area && point.floor === state.floor;
+        const dedupedPins = [];
+        const dedupe = new Set();
+        for (const pin of pins) {
+            const id = buildPresencePinId(pin);
+            if (!id || dedupe.has(id) || state.dismissedPresencePins.has(id)) continue;
+            dedupe.add(id);
+            dedupedPins.push({ ...pin, id });
+        }
+
+        return dedupedPins.filter(pin => {
+            const point = getPinpoint(pin.locationId);
+            return point?.area === state.area && point?.floor === state.floor;
         });
     }
 
+    function buildOccupantsForLocation(locationId) {
+        const payload = getLocationPresence();
+        const occupants = [];
+
+        if (payload?.user?.locationId === locationId) {
+            occupants.push({
+                type: "user",
+                label: payload.user.label || "You",
+            });
+        }
+
+        const characters = Array.isArray(payload?.characters) ? payload.characters : [];
+        for (const entry of characters) {
+            if (entry?.locationId !== locationId) continue;
+            occupants.push({
+                type: "character",
+                label: entry.name || "Unknown",
+            });
+        }
+
+        return occupants;
+    }
+
+    function clearAllPresencePins() {
+        state.clearedPresencePins = true;
+    }
+
+    function restoreAllPresencePins() {
+        state.clearedPresencePins = false;
+        state.dismissedPresencePins.clear();
+    }
+
+    function closePresenceTooltip($imageWrap) {
+        $imageWrap.find(selectors.presenceTooltip).remove();
+        $imageWrap.find(`${selectors.presencePin}.active`).removeClass("active");
+    }
+
+    function openPresenceTooltip($imageWrap, pin, point, $pin) {
+        closePresenceTooltip($imageWrap);
+
+        const occupants = buildOccupantsForLocation(pin.locationId);
+        const whoMarkup = occupants.length
+            ? occupants.map(item => item.type === "user"
+                ? `<li><strong>YOU</strong> (${escapeHtml(item.label)})</li>`
+                : `<li>${escapeHtml(item.label)}</li>`).join("")
+            : "<li>Unknown presence</li>";
+        const leftPercent = (point.x / point.width) * 100;
+        const topPercent = (point.y / point.height) * 100;
+
+        $imageWrap.append(`
+            <div class="map-presence-tooltip" role="status" style="left:${leftPercent}%; top:${topPercent}%;">
+                <div class="map-presence-tooltip-title">${escapeHtml(point.label)}</div>
+                <ul>${whoMarkup}</ul>
+                <button type="button" class="map-presence-remove-pin" data-pin-id="${escapeHtml(pin.id)}">REMOVE THIS PIN</button>
+            </div>
+        `);
+
+        const $tooltip = $imageWrap.find(selectors.presenceTooltip).last();
+        applyTooltipViewportClamp($imageWrap, $tooltip, point);
+        $pin.addClass("active");
+    }
+
     function renderPresencePins($imageWrap) {
+        closePresenceTooltip($imageWrap);
         $imageWrap.find(selectors.presencePin).remove();
         const pins = buildPresencePinsForFloor();
         if (!pins.length) return;
 
         for (const pin of pins) {
-            const point = LOCATION_PINPOINTS[pin.locationId];
+            const point = getPinpoint(pin.locationId);
             if (!point) continue;
 
             const pinLeftPercent = (point.x / point.width) * 100;
             const pinTopPercent = (point.y / point.height) * 100;
+            const pinTypeClass = pin.type === "user" ? "user" : "character";
             const pinSymbol = pin.type === "user" ? "▲" : "◆";
-            const title = pin.type === "user"
-                ? `You · ${point.label}`
-                : `${pin.label} · ${point.label}`;
+            const title = `${point.label} · ${pin.label}`;
 
-            $imageWrap.append(`
-                <div
-                    class="map-presence-pin ${pin.type}"
-                    role="img"
-                    aria-label="${title}"
-                    title="${title}"
+            const $pin = $(`
+                <button
+                    type="button"
+                    class="map-presence-pin ${pinTypeClass}"
+                    data-pin-id="${escapeHtml(pin.id)}"
+                    aria-label="${escapeHtml(title)}"
+                    title="${escapeHtml(title)}"
                     style="left:${pinLeftPercent}%; top:${pinTopPercent}%;"
                 >
-                    ${pinSymbol}
-                </div>
+                    <span class="map-presence-symbol">${pinSymbol}</span>
+                </button>
             `);
+
+            $pin.on("click", (event) => {
+                event.stopPropagation();
+                const isActive = $pin.hasClass("active");
+                if (isActive) {
+                    closePresenceTooltip($imageWrap);
+                    return;
+                }
+
+                playSfx?.(getSfx?.().click);
+                openPresenceTooltip($imageWrap, pin, point, $pin);
+            });
+
+            $imageWrap.append($pin);
+        }
+
+        $imageWrap.off("click.presenceTooltip").on("click.presenceTooltip", () => {
+            closePresenceTooltip($imageWrap);
+        });
+    }
+
+    function renderCalibrationPins($imageWrap) {
+        if (!state.calibrationMode) return;
+
+        ensureCalibrationTarget();
+        const entries = getCalibratableLocationEntries();
+        for (const [locationId, basePoint] of entries) {
+            const point = getPinpoint(locationId) || basePoint;
+            if (!point) continue;
+
+            const leftPercent = (point.x / point.width) * 100;
+            const topPercent = (point.y / point.height) * 100;
+            const isSelected = locationId === state.selectedCalibrationLocationId;
+
+            $imageWrap.append(`
+                <button
+                    type="button"
+                    class="map-calibration-pin${isSelected ? " active" : ""}"
+                    data-location-id="${escapeHtml(locationId)}"
+                    title="Calibrate ${escapeHtml(point.label)}"
+                    style="left:${leftPercent}%; top:${topPercent}%;"
+                >
+                    ✛
+                </button>
+            `);
+        }
+    }
+
+    function syncCalibrationControls($panel) {
+        const $controls = $panel.find(selectors.calibrationControls);
+        const $select = $panel.find(selectors.calibrationSelect);
+        const $toggle = $panel.find(selectors.calibrationToggle);
+
+        ensureCalibrationTarget();
+
+        $controls.prop("hidden", !state.calibrationMode);
+        $toggle.toggleClass("active", state.calibrationMode).attr("aria-pressed", String(state.calibrationMode));
+        $toggle.text(state.calibrationMode ? "CALIBRATING" : "CALIBRATE");
+
+        if (!$select.length) return;
+        const entries = getCalibratableLocationEntries();
+        $select.empty();
+        if (!entries.length) {
+            $select.append('<option value="">No floor locations</option>');
+            return;
+        }
+
+        for (const [locationId, point] of entries) {
+            const selected = locationId === state.selectedCalibrationLocationId ? 'selected="selected"' : "";
+            $select.append(`<option value="${escapeHtml(locationId)}" ${selected}>${escapeHtml(point.label)} (${escapeHtml(locationId)})</option>`);
         }
     }
 
@@ -187,7 +475,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         const track = document.getElementById("monopad_sfx_monochine_track");
         if (!track) return;
 
-        const shouldPlay = isMachineTrackEnabled() && $panel.find(selectors.machineOverlay).hasClass("open");
+        const shouldPlay = isMachineTrackEnabled() && $(selectors.machineOverlay).hasClass("open");
         if (shouldPlay) {
             track.loop = true;
             if (state.machineTrackStarted) return;
@@ -209,9 +497,9 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
     }
 
     function ensureMachineOverlay($panel) {
-        if ($panel.find(selectors.machineOverlay).length) return;
+        if ($(selectors.machineOverlay).length) return;
 
-        $panel.append(`
+        $(document.body).append(`
             <div class="map-machine-overlay" aria-hidden="true">
                 <div class="map-machine-window" role="dialog" aria-label="MonoMono Machine">
                     <button type="button" class="map-machine-close" aria-label="Close MonoMono Machine">✕</button>
@@ -240,17 +528,17 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             </div>
         `);
 
-        $panel.find(selectors.machineClose).off("click").on("click", () => {
+        $(selectors.machineClose).off("click").on("click", () => {
             closeMachineOverlay($panel);
         });
 
-        $panel.find(selectors.machineOverlay).off("click").on("click", function (event) {
+        $(selectors.machineOverlay).off("click").on("click", function (event) {
             if (event.target === this) {
                 closeMachineOverlay($panel);
             }
         });
 
-        $panel.find(selectors.machineAdd).off("click").on("click", () => {
+        $(selectors.machineAdd).off("click").on("click", () => {
             const items = getItemsController();
             if (!items?.getMonoMonoDupeChance) return;
 
@@ -270,7 +558,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             updateMachineOverlay($panel);
         });
 
-        $panel.find(selectors.machineAddRoll).off("click").on("click", () => {
+        $(selectors.machineAddRoll).off("click").on("click", () => {
             const items = getItemsController();
             if (!items?.getMonoMonoDupeChance) return;
 
@@ -290,7 +578,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             updateMachineOverlay($panel);
         });
 
-        $panel.find(selectors.machineRoll).off("click").on("click", () => {
+        $(selectors.machineRoll).off("click").on("click", () => {
             if (state.machineRolling) return;
 
             const items = getItemsController();
@@ -305,9 +593,9 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             playSfx?.(getSfx?.().monochine_turn || getSfx?.().click);
 
             state.machineRolling = true;
-            $panel.find(selectors.machineRoll).prop("disabled", true);
-            $panel.find(selectors.machineAdd).prop("disabled", true);
-            $panel.find(selectors.machineAddRoll).prop("disabled", true);
+            $(selectors.machineRoll).prop("disabled", true);
+            $(selectors.machineAdd).prop("disabled", true);
+            $(selectors.machineAddRoll).prop("disabled", true);
 
             if (state.machineRollTimeout) {
                 clearTimeout(state.machineRollTimeout);
@@ -318,7 +606,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                 state.machineJingleTimeout = null;
             }
 
-            const $img = $panel.find(selectors.machineImage);
+            const $img = $(selectors.machineImage);
             if ($img.length) {
                 $img.attr("src", `${extensionFolderPath}/assets/monochine_roll.gif`);
 
@@ -340,9 +628,9 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                 state.machineRollTimeout = setTimeout(() => {
                     $img.attr("src", `${extensionFolderPath}/assets/monochine_idle.png`);
                     state.machineRolling = false;
-                    $panel.find(selectors.machineRoll).prop("disabled", false);
-                    $panel.find(selectors.machineAdd).prop("disabled", false);
-                    $panel.find(selectors.machineAddRoll).prop("disabled", false);
+                    $(selectors.machineRoll).prop("disabled", false);
+                    $(selectors.machineAdd).prop("disabled", false);
+                    $(selectors.machineAddRoll).prop("disabled", false);
                     state.machineRollTimeout = null;
                     state.machineJingleTimeout = null;
                 }, MACHINE_ROLL_DURATION_MS);
@@ -355,7 +643,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
     }
 
     function showMachineBanner($panel, text) {
-        const $banner = $panel.find(selectors.machineBanner);
+        const $banner = $(selectors.machineBanner);
         if (!$banner.length || !text) return;
 
         if (state.machineBannerTimeout) {
@@ -389,12 +677,13 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         }
 
         state.machineRolling = false;
-        $panel.find(selectors.machineImage).attr("src", `${extensionFolderPath}/assets/monochine_idle.png`);
-        $panel.find(selectors.machineRoll).prop("disabled", false);
-        $panel.find(selectors.machineAdd).prop("disabled", false);
-        $panel.find(selectors.machineAddRoll).prop("disabled", false);
-        $panel.find(selectors.machineBanner).removeClass("show").text("");
-        $panel.find(selectors.machineOverlay).removeClass("open").attr("aria-hidden", "true");
+        $(selectors.machineImage).attr("src", `${extensionFolderPath}/assets/monochine_idle.png`);
+        $(selectors.machineRoll).prop("disabled", false);
+        $(selectors.machineAdd).prop("disabled", false);
+        $(selectors.machineAddRoll).prop("disabled", false);
+        $(selectors.machineBanner).removeClass("show").text("");
+        $panel.removeClass("machine-overlay-open");
+        $(selectors.machineOverlay).removeClass("open").attr("aria-hidden", "true");
         syncMachineTrack($panel);
     }
 
@@ -406,10 +695,10 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         const safeCoins = Math.max(0, Number(chance.availableCoins || 0));
         const chancePercent = Math.round(Number(chance.chancePercent || 0));
 
-        $panel.find(selectors.machineDisplayCoins).text(`x ${safeCoins}`);
-        $panel.find(selectors.machineDisplayLoad).text(`LOAD: ${state.machineCoinsLoaded} COIN${state.machineCoinsLoaded === 1 ? "" : "S"} / ROLL`);
-        $panel.find(selectors.machineDisplayRolls).text(`ROLLS: ${state.machineRollCount}`);
-        $panel.find(selectors.machineDisplayDupe).text(`DUPE CHANCE: ${chancePercent}% PER ROLL`);
+        $(selectors.machineDisplayCoins).text(`x ${safeCoins}`);
+        $(selectors.machineDisplayLoad).text(`LOAD: ${state.machineCoinsLoaded} COIN${state.machineCoinsLoaded === 1 ? "" : "S"} / ROLL`);
+        $(selectors.machineDisplayRolls).text(`ROLLS: ${state.machineRollCount}`);
+        $(selectors.machineDisplayDupe).text(`DUPE CHANCE: ${chancePercent}% PER ROLL`);
 
     }
 
@@ -419,11 +708,12 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         state.machineRollCount = 1;
         updateMachineOverlay($panel);
         state.machineRolling = false;
-        $panel.find(selectors.machineRoll).prop("disabled", false);
-        $panel.find(selectors.machineAdd).prop("disabled", false);
-        $panel.find(selectors.machineAddRoll).prop("disabled", false);
-        $panel.find(selectors.machineImage).attr("src", `${extensionFolderPath}/assets/monochine_idle.png`);
-        $panel.find(selectors.machineOverlay).addClass("open").attr("aria-hidden", "false");
+        $(selectors.machineRoll).prop("disabled", false);
+        $(selectors.machineAdd).prop("disabled", false);
+        $(selectors.machineAddRoll).prop("disabled", false);
+        $(selectors.machineImage).attr("src", `${extensionFolderPath}/assets/monochine_idle.png`);
+        $panel.addClass("machine-overlay-open");
+        $(selectors.machineOverlay).addClass("open").attr("aria-hidden", "false");
         syncMachineTrack($panel);
     }
 
@@ -492,7 +782,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             $subtitle.text(floor.description);
         }
 
-        $imageWrap.find(`${selectors.machinePin}, ${selectors.presencePin}`).remove();
+        $imageWrap.find(`${selectors.machinePin}, ${selectors.presencePin}, ${selectors.calibrationPin}`).remove();
 
         const showMachinePin = state.area === "hopes_peak" && state.floor === "floor_1";
         if (showMachinePin && $imageWrap.length) {
@@ -514,7 +804,86 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
 
         if ($imageWrap.length) {
             renderPresencePins($imageWrap);
+            renderCalibrationPins($imageWrap);
         }
+    }
+
+    function bindPresenceManagementButtons($panel) {
+        $panel.find(selectors.presenceClearAll).off("click").on("click", () => {
+            playSfx?.(getSfx?.().click);
+            clearAllPresencePins();
+            renderMapPanel();
+        });
+
+        $panel.find(selectors.presenceRestoreAll).off("click").on("click", () => {
+            playSfx?.(getSfx?.().click);
+            restoreAllPresencePins();
+            renderMapPanel();
+        });
+
+        $panel.off("click.removePin").on("click.removePin", selectors.presenceRemovePin, function (event) {
+            event.stopPropagation();
+            const pinId = this.dataset.pinId;
+            if (!pinId) return;
+            state.dismissedPresencePins.add(pinId);
+            playSfx?.(getSfx?.().click);
+            renderMapPanel();
+        });
+
+        $panel.find(selectors.calibrationToggle).off("click").on("click", () => {
+            state.calibrationMode = !state.calibrationMode;
+            ensureCalibrationTarget();
+            playSfx?.(getSfx?.().click);
+            renderMapPanel();
+        });
+
+        $panel.find(selectors.calibrationSelect).off("change").on("change", function () {
+            state.selectedCalibrationLocationId = this.value || null;
+            renderMapPanel();
+        });
+
+        $panel.find(selectors.calibrationResetFloor).off("click").on("click", () => {
+            resetFloorPinOverrides();
+            playSfx?.(getSfx?.().click);
+            renderMapPanel();
+        });
+
+        $panel.find(selectors.calibrationExport).off("click").on("click", () => {
+            exportPinOverrides();
+            playSfx?.(getSfx?.().click);
+        });
+
+        const $imageWrap = $panel.find(".map-image-wrap");
+        $imageWrap.off("click.calibration").on("click.calibration", (event) => {
+            if (!state.calibrationMode) return;
+            if ($(event.target).closest("button").length) return;
+            if (!state.selectedCalibrationLocationId) return;
+
+            const wrapEl = $imageWrap.get(0);
+            if (!wrapEl) return;
+
+            const rect = wrapEl.getBoundingClientRect();
+            const localX = event.clientX - rect.left;
+            const localY = event.clientY - rect.top;
+            if (rect.width <= 0 || rect.height <= 0) return;
+
+            const normalizedX = Math.round((localX / rect.width) * MAP_POINT_WIDTH);
+            const normalizedY = Math.round((localY / rect.height) * MAP_POINT_HEIGHT);
+            upsertPinOverride(state.selectedCalibrationLocationId, normalizedX, normalizedY);
+
+            playSfx?.(getSfx?.().click);
+            renderMapPanel();
+        });
+
+        $panel.off("click.calibrationPin").on("click.calibrationPin", selectors.calibrationPin, function (event) {
+            event.stopPropagation();
+            const locationId = this.dataset.locationId;
+            if (!locationId) return;
+            state.selectedCalibrationLocationId = locationId;
+            if (!state.calibrationMode) state.calibrationMode = true;
+            playSfx?.(getSfx?.().click);
+            renderMapPanel();
+        });
     }
 
     function bindAreaButtons($panel) {
@@ -547,6 +916,11 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         renderFloorButtons($panel);
         renderMapImage($panel);
         bindMachinePin($panel);
+        bindPresenceManagementButtons($panel);
+        syncCalibrationControls($panel);
+
+        const clearedLabel = state.clearedPresencePins ? "PINS CLEARED" : "CLEAR PINS";
+        $panel.find(selectors.presenceClearAll).text(clearedLabel);
         ensureMachineOverlay($panel);
 
         if (!(state.area === "hopes_peak" && state.floor === "floor_1")) {
