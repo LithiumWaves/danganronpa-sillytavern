@@ -138,6 +138,13 @@ const processedSocialSignatures = new Set();
 const processedInvestigationSignatures = new Set();
 const INVESTIGATION_START_PARSE_REGEX = /V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/gi;
 
+function normalizeTextToken(value) {
+    return String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[_\-]+/g, " ")
+        .replace(/\s+/g, " ");
+}
 
 function getInvestigationMarkerStore() {
     extension_settings[extensionName] ||= {};
@@ -173,12 +180,18 @@ function markInvestigationSignatureProcessed(signature) {
     saveSettingsDebounced();
 }
 
-function normalizeTextToken(value) {
-    return String(value || "")
-        .trim()
-        .toLowerCase()
-        .replace(/[_\-]+/g, " ")
-        .replace(/\s+/g, " ");
+        if (canonical.includes("V3C|INVESTIGATIONSTART")) {
+            matches.push({
+                marker: line,
+                index: cursor,
+                source: "fallback",
+            });
+        }
+
+        cursor += line.length + 1;
+    }
+
+    return matches;
 }
 
 function parseInvestigationStartMarkers(text) {
