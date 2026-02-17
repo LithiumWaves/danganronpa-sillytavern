@@ -3575,6 +3575,7 @@
 
 
 #dangan-investigation-overlay {
+    --investigation-banner-duration: 2200ms;
     position: fixed;
     inset: 0;
     display: grid;
@@ -3585,15 +3586,15 @@
 }
 
 #dangan-investigation-overlay.show {
-    animation: dangan-investigation-overlay 2.6s ease forwards;
+    animation: dangan-investigation-overlay var(--investigation-banner-duration) linear forwards;
 }
 
 .dangan-investigation-backdrop {
     position: absolute;
     inset: 0;
     background:
-        radial-gradient(circle at 50% 35%, rgba(255, 58, 132, 0.24), rgba(8, 1, 16, 0.86) 60%),
-        linear-gradient(160deg, rgba(120, 0, 56, 0.72), rgba(22, 0, 24, 0.82));
+        radial-gradient(circle at 50% 50%, rgba(255, 64, 181, 0.18), rgba(11, 2, 20, 0) 56%),
+        linear-gradient(180deg, rgba(15, 3, 24, 0.18), rgba(15, 3, 24, 0));
 }
 
 .dangan-investigation-scanlines {
@@ -3601,91 +3602,167 @@
     inset: 0;
     background-image: repeating-linear-gradient(
         to bottom,
-        rgba(255, 210, 232, 0.05) 0px,
-        rgba(255, 210, 232, 0.05) 1px,
+        rgba(255, 225, 247, 0.04) 0px,
+        rgba(255, 225, 247, 0.04) 1px,
         transparent 1px,
-        transparent 4px
+        transparent 3px
     );
+    opacity: 0.4;
     mix-blend-mode: screen;
-    opacity: 0.5;
 }
 
 .dangan-investigation-banner {
     position: relative;
-    width: min(86vw, 760px);
-    border: 2px solid rgba(255, 168, 214, 0.8);
-    border-radius: 14px;
-    padding: 20px 26px;
+    width: min(96vw, 1580px);
+    min-height: clamp(82px, 10.5vw, 132px);
+    border-top: 2px solid rgba(255, 171, 224, 0.9);
+    border-bottom: 2px solid rgba(140, 33, 117, 0.95);
+    border-left: none;
+    border-right: none;
+    border-radius: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(8px, 1.5vw, 14px) clamp(14px, 2.5vw, 30px);
     text-align: center;
+    overflow: visible;
     background:
-        linear-gradient(135deg, rgba(59, 7, 27, 0.94), rgba(21, 2, 17, 0.94)),
-        repeating-linear-gradient(45deg, rgba(255, 106, 170, 0.13) 0px, rgba(255, 106, 170, 0.13) 12px, transparent 12px, transparent 24px);
+        repeating-linear-gradient(
+            -9deg,
+            rgba(255, 202, 240, 0.14) 0px,
+            rgba(255, 202, 240, 0.14) 3px,
+            rgba(255, 0, 181, 0) 3px,
+            rgba(255, 0, 181, 0) 20px
+        ),
+        linear-gradient(180deg, rgba(201, 34, 139, 0.94), rgba(137, 18, 106, 0.96) 52%, rgba(182, 22, 128, 0.94));
     box-shadow:
-        0 0 0 2px rgba(255, 96, 162, 0.3) inset,
-        0 16px 54px rgba(0, 0, 0, 0.6),
-        0 0 38px rgba(255, 72, 155, 0.34);
-    transform: scale(0.78) translateY(32px);
+        0 0 0 2px rgba(112, 19, 89, 0.36) inset,
+        0 12px 36px rgba(0, 0, 0, 0.52),
+        0 0 30px rgba(255, 59, 196, 0.32);
+    transform: scale(0.965);
     opacity: 0;
 }
 
-#dangan-investigation-overlay.show .dangan-investigation-banner {
-    animation: dangan-investigation-banner 2.6s cubic-bezier(0.17, 0.89, 0.32, 1) forwards;
+.dangan-investigation-banner::before,
+.dangan-investigation-banner::after {
+    content: "";
+    position: absolute;
+    width: clamp(88px, 14vw, 200px);
+    aspect-ratio: 1 / 1;
+    background: radial-gradient(circle, rgba(19, 4, 24, 0.92) 0 44%, rgba(19, 4, 24, 0) 72%);
+    filter: blur(0.8px);
+    opacity: 0.88;
 }
 
-.dangan-investigation-kicker {
-    font-size: 11px;
-    letter-spacing: 0.24em;
-    color: rgba(255, 202, 227, 0.82);
+.dangan-investigation-banner::before {
+    left: 44%;
+    transform: translateX(-50%) rotate(15deg) scale(1.08, 0.8);
+}
+
+.dangan-investigation-banner::after {
+    left: 56%;
+    transform: translateX(-50%) rotate(-14deg) scale(1.05, 0.78);
+}
+
+#dangan-investigation-overlay.show .dangan-investigation-banner {
+    animation: dangan-investigation-banner var(--investigation-banner-duration) cubic-bezier(0.16, 0.83, 0.24, 0.99) forwards;
+}
+
+.dangan-investigation-kicker,
+.dangan-investigation-subtitle {
+    display: none;
 }
 
 .dangan-investigation-title {
-    margin-top: 8px;
+    position: relative;
+    z-index: 2;
+    margin: 0;
     font-family: "Orbitron", "Rajdhani", sans-serif;
-    font-size: clamp(30px, 5vw, 52px);
-    font-weight: 600;
-    letter-spacing: 0.08em;
+    font-size: clamp(45px, 5.1vw, 92px);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 0.84;
+    color: #ffe7f8;
     text-transform: uppercase;
-    color: #ffd8ea;
     text-shadow:
-        0 0 12px rgba(255, 153, 207, 0.65),
-        0 0 28px rgba(255, 76, 154, 0.5);
+        0 0 2px rgba(255, 239, 251, 0.95),
+        0 0 12px rgba(255, 95, 212, 0.85),
+        0 0 30px rgba(225, 34, 170, 0.52);
 }
 
-.dangan-investigation-subtitle {
-    margin-top: 8px;
-    font-size: 12px;
-    letter-spacing: 0.12em;
-    color: rgba(255, 201, 225, 0.76);
+.dangan-investigation-word {
+    display: inline-block;
+    margin: 0 0.05em;
+}
+
+.dangan-investigation-word.inv {
+    transform: rotate(-6deg) translateY(-0.02em);
+}
+
+.dangan-investigation-word.start {
+    transform: rotate(6deg) translateY(-0.08em);
+    letter-spacing: 0.08em;
+}
+
+/* Samsung S25 Ultra portrait-ish tuning + general mobile centering */
+@media (max-width: 520px) {
+    #dangan-investigation-overlay {
+        align-items: center;
+        justify-items: center;
+        padding: 0 8px;
+    }
+
+    .dangan-investigation-banner {
+        width: min(95vw, 440px);
+        min-height: clamp(92px, 21vw, 116px);
+        padding: 10px 12px;
+        transform: scale(1);
+    }
+
+    .dangan-investigation-title {
+        font-size: clamp(34px, 9.2vw, 48px);
+        letter-spacing: 0.03em;
+    }
+
+    .dangan-investigation-word {
+        margin: 0 0.02em;
+    }
+
+    .dangan-investigation-word.inv {
+        transform: rotate(-4deg) translateY(-0.01em);
+    }
+
+    .dangan-investigation-word.start {
+        transform: rotate(4deg) translateY(-0.05em);
+        letter-spacing: 0.05em;
+    }
 }
 
 @keyframes dangan-investigation-overlay {
     0% { opacity: 0; }
     8% { opacity: 1; }
-    84% { opacity: 1; }
+    90% { opacity: 1; }
     100% { opacity: 0; }
 }
 
 @keyframes dangan-investigation-banner {
     0% {
         opacity: 0;
-        transform: scale(0.78) translateY(32px) rotate(-1.2deg);
-        filter: blur(4px);
+        transform: translateY(10px) scale(0.965);
+        filter: blur(2px);
     }
-    22% {
+    9% {
         opacity: 1;
-        transform: scale(1.04) translateY(0) rotate(0.6deg);
+        transform: translateY(0) scale(1.012);
         filter: blur(0);
-    }
-    38% {
-        transform: scale(0.995) translateY(0) rotate(0deg);
     }
     82% {
         opacity: 1;
-        transform: scale(1) translateY(0);
+        transform: translateY(0) scale(1);
     }
     100% {
         opacity: 0;
-        transform: scale(0.92) translateY(-14px);
+        transform: translateY(-6px) scale(0.988);
     }
 }
 
