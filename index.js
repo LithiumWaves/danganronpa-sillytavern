@@ -146,6 +146,54 @@ function normalizeTextToken(value) {
         .replace(/\s+/g, " ");
 }
 
+function getInvestigationMarkerStore() {
+    extension_settings[extensionName] ||= {};
+    extension_settings[extensionName].investigationMarkers ||= {};
+    return extension_settings[extensionName].investigationMarkers;
+}
+
+function hasProcessedInvestigationSignature(signature) {
+    if (!signature) return false;
+    if (processedInvestigationSignatures.has(signature)) return true;
+    return Boolean(getInvestigationMarkerStore()[signature]);
+}
+
+function markInvestigationSignatureProcessed(signature) {
+    if (!signature) return;
+
+    processedInvestigationSignatures.add(signature);
+
+    const store = getInvestigationMarkerStore();
+    store[signature] = Date.now();
+
+    const keys = Object.keys(store);
+    const maxEntries = 800;
+    if (keys.length > maxEntries) {
+        keys
+            .sort((a, b) => Number(store[a] || 0) - Number(store[b] || 0))
+            .slice(0, keys.length - maxEntries)
+            .forEach((key) => {
+                delete store[key];
+            });
+    }
+
+    saveSettingsDebounced();
+}
+
+        if (canonical.includes("V3C|INVESTIGATIONSTART")) {
+            matches.push({
+                marker: line,
+                index: cursor,
+                source: "fallback",
+            });
+        }
+
+        cursor += line.length + 1;
+    }
+
+    return matches;
+}
+
 function parseInvestigationStartMarkers(text) {
     const raw = String(text || "");
     if (!raw) return [];
@@ -925,9 +973,9 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
         investigationMarkers.forEach((marker, idx) => {
             console.debug("[Dangan][Investigation] Marker detected", marker);
             const signature = `INVESTIGATION||${messageSignature}||${marker.index}||${idx}`;
-            if (processedInvestigationSignatures.has(signature)) return;
+            if (hasProcessedInvestigationSignature(signature)) return;
 
-            processedInvestigationSignatures.add(signature);
+            markInvestigationSignatureProcessed(signature);
             investigationStartController.trigger();
         });
 
