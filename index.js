@@ -136,31 +136,7 @@ let truthBulletAnimating = false;
 const processedTruthSignatures = new Set();
 const processedSocialSignatures = new Set();
 const processedInvestigationSignatures = new Set();
-const INVESTIGATION_START_DETECT_REGEX = /V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/i;
-
-
-function hasInvestigationStartMarker(text) {
-    const raw = String(text || "");
-    if (!raw) return false;
-
-    if (INVESTIGATION_START_DETECT_REGEX.test(raw)) return true;
-
-    // Fallback for model formatting quirks (markdown/code-fences/extra punctuation).
-    const sanitized = raw
-        .toUpperCase()
-        .replace(/[`*_~]/g, "")
-        .replace(/[|｜]/g, "|")
-        .replace(/[^A-Z0-9|]+/g, "");
-
-    if (sanitized.includes("V3C|INVESTIGATIONSTART")) return true;
-
-    const canonical = raw
-        .toUpperCase()
-        .replace(/\s+/g, "")
-        .replace(/_/g, "");
-
-    return canonical.includes("V3C|INVESTIGATIONSTART");
-}
+const INVESTIGATION_START_PARSE_REGEX = /V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/gi;
 
 function normalizeTextToken(value) {
     return String(value || "")
@@ -170,7 +146,49 @@ function normalizeTextToken(value) {
         .replace(/\s+/g, " ");
 }
 
-function tryEnableInvestigationToggleInObject(root, { maxDepth = 6 } = {}) {
+function parseInvestigationStartMarkers(text) {
+    const raw = String(text || "");
+    if (!raw) return [];
+
+    const matches = [];
+    INVESTIGATION_START_PARSE_REGEX.lastIndex = 0;
+
+    let match;
+    while ((match = INVESTIGATION_START_PARSE_REGEX.exec(raw)) !== null) {
+        matches.push({
+            marker: match[0],
+            index: match.index,
+            source: "regex",
+        });
+    }
+
+    if (matches.length) return matches;
+
+    // Fallback parser for format drift (markdown wrappers / unusual punctuation).
+    const lines = raw.split(/\r?\n/);
+    let cursor = 0;
+
+    for (const line of lines) {
+        const canonical = line
+            .toUpperCase()
+            .replace(/[|｜]/g, "|")
+            .replace(/[`*_~:;,.!?\-\s]/g, "");
+
+        if (canonical.includes("V3C|INVESTIGATIONSTART")) {
+            matches.push({
+                marker: line,
+                index: cursor,
+                source: "fallback",
+            });
+        }
+
+        cursor += line.length + 1;
+    }
+
+    return matches;
+}
+
+function tryEnableInvestigationToggleInObject(root, { maxDepth = 8 } = {}) {
     if (!root || typeof root !== "object") return false;
 
     const target = normalizeTextToken("Investigation Time");
@@ -184,8 +202,9 @@ function tryEnableInvestigationToggleInObject(root, { maxDepth = 6 } = {}) {
         if (visited.has(node)) continue;
         visited.add(node);
 
-        const label = normalizeTextToken(node.name || node.label || node.title || node.id || "");
-        if (label === target || label.includes(target)) {
+        const label = normalizeTextToken(node.name || node.label || node.title || node.id || node.key || "");
+        const hasInvestigationKey = /investigation/.test(label) && /time|mode|toggle|enabled|active/.test(label);
+        if (label === target || label.includes(target) || hasInvestigationKey) {
             if (typeof node.enabled === "boolean") {
                 node.enabled = true;
                 touched = true;
@@ -208,6 +227,14 @@ function tryEnableInvestigationToggleInObject(root, { maxDepth = 6 } = {}) {
             }
             if (typeof node.isActive === "boolean") {
                 node.isActive = true;
+                touched = true;
+            }
+            if (typeof node.setValue === "function") {
+                node.setValue(true);
+                touched = true;
+            }
+            if (typeof node.set === "function") {
+                node.set(true);
                 touched = true;
             }
         }
@@ -270,12 +297,14 @@ function tryEnableInvestigationToggleViaDom() {
         const labelText = normalizeTextToken(el.textContent || el.getAttribute("aria-label") || "");
         if (!labelText || (!labelText.includes(target) && labelText !== target)) continue;
 
-        const host = el.closest("label, .toggle-item, .settings-item, .menu_button") || el;
+        const host = el.closest("label, .toggle-item, .settings-item, .menu_button, .inline-drawer-toggle") || el;
         const checkbox = host.querySelector('input[type="checkbox"]') || el.querySelector?.('input[type="checkbox"]');
 
         if (checkbox) {
             if (checkbox.checked) return true;
             checkbox.click();
+            checkbox.dispatchEvent(new Event("input", { bubbles: true }));
+            checkbox.dispatchEvent(new Event("change", { bubbles: true }));
             return true;
         }
 
@@ -300,76 +329,106 @@ function triggerInvestigationTimeToggle() {
 
 function ensureInvestigationOverlay() {
     let overlay = document.getElementById("dangan-investigation-overlay");
-    if (overlay) return overlay;
 
-    overlay = document.createElement("div");
-    overlay.id = "dangan-investigation-overlay";
-    overlay.setAttribute("aria-hidden", "true");
-    overlay.innerHTML = `
-        <div class="dangan-investigation-backdrop"></div>
-        <div class="dangan-investigation-scanlines"></div>
-        <div class="dangan-investigation-banner" role="status" aria-live="polite" aria-label="Investigation start banner">
-            <div class="dangan-investigation-kicker">TRIAL ROUTE UPDATED</div>
-            <div class="dangan-investigation-title">Investigation Start!</div>
-            <div class="dangan-investigation-subtitle">Truth Bullets Enabled · Field Notes Active</div>
-        </div>
-    `;
+    // If markup exists inside a hidden panel, move it to body so it can render globally.
+    if (overlay && overlay.parentElement !== document.body) {
+        document.body.appendChild(overlay);
+    }
 
-    document.body.appendChild(overlay);
+    if (!overlay) {
+        overlay = document.createElement("div");
+        overlay.id = "dangan-investigation-overlay";
+        overlay.setAttribute("aria-hidden", "true");
+        overlay.innerHTML = `
+            <div class="dangan-investigation-backdrop"></div>
+            <div class="dangan-investigation-scanlines"></div>
+            <div class="dangan-investigation-banner" role="status" aria-live="polite" aria-label="Investigation start banner">
+                <div class="dangan-investigation-kicker">TRIAL ROUTE UPDATED</div>
+                <div class="dangan-investigation-title">Investigation Start!</div>
+                <div class="dangan-investigation-subtitle">Truth Bullets Enabled · Field Notes Active</div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+    }
+
     return overlay;
 }
 
-function showInvestigationStartBanner() {
-    const overlay = ensureInvestigationOverlay();
-    if (!overlay) return false;
+const investigationStartController = {
+    hideTimerId: null,
 
-    overlay.classList.remove("show");
-    void overlay.offsetWidth;
-    overlay.classList.add("show");
+    showBanner() {
+        const overlay = ensureInvestigationOverlay();
+        if (!overlay) return false;
 
-    const titleEl = overlay.querySelector(".dangan-investigation-title");
-    if (titleEl) {
-        titleEl.textContent = "Investigation Start!";
-    }
-
-    const timer = Number(overlay.dataset.hideTimer || 0);
-    if (timer) {
-        clearTimeout(timer);
-    }
-
-    const nextTimer = window.setTimeout(() => {
+        overlay.setAttribute("aria-hidden", "false");
         overlay.classList.remove("show");
-        overlay.dataset.hideTimer = "";
-    }, 2600);
+        void overlay.offsetWidth;
+        overlay.classList.add("show");
 
-    overlay.dataset.hideTimer = String(nextTimer);
-    return true;
-}
+        const titleEl = overlay.querySelector(".dangan-investigation-title");
+        if (titleEl) titleEl.textContent = "Investigation Start!";
 
-function triggerInvestigationStart() {
-    const bannerShown = showInvestigationStartBanner();
+        if (this.hideTimerId) {
+            clearTimeout(this.hideTimerId);
+            this.hideTimerId = null;
+        }
 
-    if (sfx?.investigation_start) {
+        const clearBanner = () => {
+            overlay.classList.remove("show");
+            overlay.setAttribute("aria-hidden", "true");
+            overlay.removeEventListener("animationend", handleAnimationEnd);
+            if (this.hideTimerId) {
+                clearTimeout(this.hideTimerId);
+                this.hideTimerId = null;
+            }
+        };
+
+        const handleAnimationEnd = (event) => {
+            if (event.target !== overlay) return;
+            clearBanner();
+        };
+
+        overlay.addEventListener("animationend", handleAnimationEnd);
+        this.hideTimerId = window.setTimeout(clearBanner, 2800);
+        return true;
+    },
+
+    playSfx() {
+        if (!sfx?.investigation_start) {
+            console.warn("[Dangan][Investigation] Investigation start SFX not loaded.");
+            return false;
+        }
         playSfx(sfx.investigation_start);
-    } else {
-        console.warn("[Dangan][Investigation] Investigation start SFX not loaded.");
-    }
+        return true;
+    },
 
-    try {
-        const toggled = triggerInvestigationTimeToggle();
-        if (toggled) {
-            console.log("[Dangan][Investigation] Investigation Time toggle enabled in current preset.");
-        } else {
+    enableToggle() {
+        try {
+            const enabled = triggerInvestigationTimeToggle();
+            if (enabled) {
+                console.log("[Dangan][Investigation] Investigation Time toggle enabled in current preset.");
+                return true;
+            }
             console.warn("[Dangan][Investigation] Could not auto-enable the Investigation Time toggle.");
+            return false;
+        } catch (error) {
+            console.warn("[Dangan][Investigation] Toggle automation failed:", error);
+            return false;
         }
+    },
 
-        if (!bannerShown && !toggled) {
-            console.info("[Dangan][Investigation] Marker detected, but no visible effect could be shown.");
+    trigger() {
+        const bannerShown = this.showBanner();
+        const sfxPlayed = this.playSfx();
+        const toggled = this.enableToggle();
+
+        if (!bannerShown && !sfxPlayed && !toggled) {
+            console.info("[Dangan][Investigation] Marker detected, but no effect could be shown.");
         }
-    } catch (error) {
-        console.warn("[Dangan][Investigation] Toggle automation failed, banner/sfx still executed:", error);
-    }
-}
+    },
+};
 
 
 /* =========================
@@ -859,13 +918,15 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
 }
 
         // ---- Investigation Start ----
-        if (hasInvestigationStartMarker(rawText)) {
-            const signature = `INVESTIGATION||${messageSignature}`;
-            if (!processedInvestigationSignatures.has(signature)) {
-                processedInvestigationSignatures.add(signature);
-                triggerInvestigationStart();
-            }
-        }
+        const investigationMarkers = parseInvestigationStartMarkers(rawText);
+        investigationMarkers.forEach((marker, idx) => {
+            console.debug("[Dangan][Investigation] Marker detected", marker);
+            const signature = `INVESTIGATION||${messageSignature}||${marker.index}||${idx}`;
+            if (processedInvestigationSignatures.has(signature)) return;
+
+            processedInvestigationSignatures.add(signature);
+            investigationStartController.trigger();
+        });
 
         // ---- Marker Cleanup ----
        if (/[Vv]3[Cc]\s*[|｜]/.test(rawText)) {
