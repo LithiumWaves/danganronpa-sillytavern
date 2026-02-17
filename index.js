@@ -136,7 +136,7 @@ let truthBulletAnimating = false;
 const processedTruthSignatures = new Set();
 const processedSocialSignatures = new Set();
 const processedInvestigationSignatures = new Set();
-const INVESTIGATION_START_DETECT_REGEX = /V3C\s*[|｜]\s*INVESTIGATION(?:_|[\s\-]*)START\b/i;
+const INVESTIGATION_START_DETECT_REGEX = /V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/i;
 
 
 function hasInvestigationStartMarker(text) {
@@ -868,7 +868,7 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
         }
 
         // ---- Marker Cleanup ----
-       if (rawText.includes("V3C|")) {
+       if (/[Vv]3[Cc]\s*[|｜]/.test(rawText)) {
     const walker = document.createTreeWalker(
         msgText,
         NodeFilter.SHOW_TEXT,
@@ -877,7 +877,7 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
 
     let textNode;
     while ((textNode = walker.nextNode())) {
-        if (textNode.nodeValue.includes("V3C|")) {
+        if (/[Vv]3[Cc]\s*[|｜]/.test(textNode.nodeValue)) {
             textNode.nodeValue = textNode.nodeValue
                 .replace(TB_REGEX, "")
                 .replace(SOCIAL_REGEX, "")
