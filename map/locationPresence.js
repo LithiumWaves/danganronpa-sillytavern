@@ -52,7 +52,7 @@ export const LOCATION_PINPOINTS = {
     hotel_bathhouse_changingroom: { area: "hotel_despair", floor: "floor_1", x: 126, y: 90, width: 480, height: 272, label: "Bathhouse Changing Room" },
     hotel_sauna: { area: "hotel_despair", floor: "floor_1", x: 126, y: 42, width: 480, height: 272, label: "Sauna" },
     hotel_kitchen: { area: "hotel_despair", floor: "floor_1", x: 301, y: 45, width: 480, height: 272, label: "Kitchen" },
-    hotel_user_room: { area: "hotel_despair", floor: "floor_1", x: 301, y: 160, width: 480, height: 272, label: "User Room" },
+    hotel_user_room: { area: "hotel_despair", floor: "floor_1", x: 301, y: 160, width: 480, height: 272, label: "{{user}}'s Room" },
 
     // Hotel Despair - Hidden Floor
     hotel_hidden_floor: { area: "hotel_despair", floor: "hidden_floor", x: 245, y: 132, width: 480, height: 272, label: "Hidden Floor" },
@@ -93,7 +93,7 @@ export const LOCATION_ALIAS_INDEX = {
     academy_classroom_5c: ["classroom 5-c", "5-c", "classroom 5c"],
     academy_greenhouse: ["greenhouse", "garden"],
     academy_dojo: ["dojo", "martial arts room"],
-    hotel_lobby: ["hotel lobby", "lobby", "reception"],
+    hotel_lobby: ["hotel lobby", "lobby", "reception", "hotel entrance"],
     hotel_dining_hall: ["dining hall", "dining"],
     hotel_trashroom: ["trash room", "garbage room", "trash", "old building hallway", "old hallway"],
     hotel_laundry: ["laundry", "laundromat"],
@@ -101,7 +101,7 @@ export const LOCATION_ALIAS_INDEX = {
     hotel_bathhouse_changingroom: ["changing room", "bathhouse changing room", "locker room", "bathhouse east"],
     hotel_sauna: ["sauna"],
     hotel_kitchen: ["kitchen", "hotel kitchen", "cook room", "restaurant", "diner"],
-    hotel_user_room: ["user room", "my room", "my dorm", "guest room", "suite", "hotel room"],
+    hotel_user_room: ["{{user}}'s room", "{{user}}'s dorm", "my room", "my dorm"],
     hotel_hidden_floor: ["hidden floor", "secret floor", "hidden level"],
 };
 
