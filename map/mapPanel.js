@@ -447,6 +447,35 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         }
     }
 
+    function syncCalibrationControls($panel) {
+        const $controls = $panel.find(selectors.calibrationControls);
+        const $select = $panel.find(selectors.calibrationSelect);
+        const $toggle = $panel.find(selectors.calibrationToggle);
+
+        ensureCalibrationTarget();
+
+        $controls.prop("hidden", !state.calibrationMode);
+        $toggle.toggleClass("active", state.calibrationMode).attr("aria-pressed", String(state.calibrationMode));
+        $toggle.text(state.calibrationMode ? "CALIBRATING" : "CALIBRATE");
+
+        if (!$select.length) return;
+        const entries = getCalibratableLocationEntries();
+        $select.empty();
+        if (!entries.length) {
+            $select.append('<option value="">No floor locations</option>');
+            return;
+        }
+
+        for (const [locationId, point] of entries) {
+            const selected = locationId === state.selectedCalibrationLocationId ? 'selected="selected"' : "";
+            $select.append(`<option value="${escapeHtml(locationId)}" ${selected}>${escapeHtml(point.label)} (${escapeHtml(locationId)})</option>`);
+        }
+
+        $imageWrap.off("click.presenceTooltip").on("click.presenceTooltip", () => {
+            closePresenceTooltip($imageWrap);
+        });
+    }
+
     function ensureValidFloorSelection() {
         const area = MAP_AREAS[state.area];
         if (!area) {
