@@ -3577,8 +3577,16 @@
 #dangan-investigation-overlay {
     --investigation-banner-duration: 2200ms;
     position: fixed;
-    inset: 0;
-    display: block;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     pointer-events: none;
     opacity: 0;
     z-index: 2147483601;
@@ -3711,6 +3719,7 @@
 @media (max-width: 520px) {
     #dangan-investigation-overlay {
         padding: 0 8px;
+        height: 100svh;
     }
 
     .dangan-investigation-banner {
