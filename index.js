@@ -2771,6 +2771,37 @@ function applyMonopadLaunchControlState(buttonEl, panelEl = null) {
 }
 
 
+function buildExtensionPathCandidates() {
+    const fallback = `scripts/extensions/third-party/${extensionName}`;
+    const candidates = [extensionFolderPath, fallback, `/${fallback}`]
+        .map((value) => String(value || "").trim().replace(/\/$/, ""))
+        .filter(Boolean);
+
+    return [...new Set(candidates)];
+}
+
+async function loadExtensionHtmlFile(fileName) {
+    const attempted = [];
+
+    for (const basePath of buildExtensionPathCandidates()) {
+        const url = `${basePath}/${fileName}`;
+        attempted.push(url);
+
+        try {
+            const html = await $.get(url);
+            if (url !== `${extensionFolderPath}/${fileName}`) {
+                console.warn(`[${extensionName}] Loaded ${fileName} from fallback path: ${url}`);
+            }
+            return html;
+        } catch {
+            // Try next path candidate.
+        }
+    }
+
+    throw new Error(`Unable to load ${fileName}. Tried: ${attempted.join(", ")}`);
+}
+
+
 jQuery(async () => {
     console.log(`[${extensionName}] Loading...`);
 
@@ -2778,11 +2809,11 @@ jQuery(async () => {
     bindDebugControlEvents();
 
     try {
-        const settingsHtml = await $.get(`${extensionFolderPath}/example.html`);
+        const settingsHtml = await loadExtensionHtmlFile("example.html");
         $("#extensions_settings2").append(settingsHtml);
 
-        const monopadHtml = await $.get(`${extensionFolderPath}/monopad.html`);
-        const normalizedMonopadHtml = monopadHtml.replaceAll("scripts/extensions/third-party/danganronpa-extension", extensionFolderPath);
+        const monopadHtml = await loadExtensionHtmlFile("monopad.html");
+        const normalizedMonopadHtml = monopadHtml.replace(/scripts\/extensions\/third-party\/danganronpa-extension/g, extensionFolderPath);
         $("body").append(normalizedMonopadHtml);
         normalizeSettingsHeaderActionButtons();
         ensureGlobalDebugUi();
