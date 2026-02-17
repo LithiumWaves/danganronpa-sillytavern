@@ -3841,6 +3841,44 @@
     }
 }
 
+
+@media (max-width: 700px) {
+    .monopad-panel-content[data-panel="map"] {
+        overflow-y: auto;
+        overflow-x: hidden;
+    }
+
+    .map-panel-shell {
+        height: auto;
+        min-height: 100%;
+        grid-template-rows: auto auto auto;
+        gap: 12px;
+        padding-bottom: 8px;
+    }
+
+    .map-image-wrap {
+        width: 100%;
+        aspect-ratio: 480 / 272;
+        min-height: 180px;
+    }
+
+    .map-image {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+    }
+
+    .map-control-group {
+        padding: 8px;
+    }
+
+    .map-floor-button,
+    .map-area-button {
+        padding: 6px 10px;
+        font-size: 10px;
+    }
+}
+
 @media (max-width: 700px) {
     .monopad-progression {
         min-width: 130px;
