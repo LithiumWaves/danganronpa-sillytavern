@@ -476,62 +476,6 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         });
     }
 
-    function renderCalibrationPins($imageWrap) {
-        if (!state.calibrationMode) return;
-
-        ensureCalibrationTarget();
-        const entries = getCalibratableLocationEntries();
-        for (const [locationId, basePoint] of entries) {
-            const point = getPinpoint(locationId) || basePoint;
-            if (!point) continue;
-
-            const leftPercent = (point.x / point.width) * 100;
-            const topPercent = (point.y / point.height) * 100;
-            const isSelected = locationId === state.selectedCalibrationLocationId;
-
-            $imageWrap.append(`
-                <button
-                    type="button"
-                    class="map-calibration-pin${isSelected ? " active" : ""}"
-                    data-location-id="${escapeHtml(locationId)}"
-                    title="Calibrate ${escapeHtml(point.label)}"
-                    style="left:${leftPercent}%; top:${topPercent}%;"
-                >
-                    ✛
-                </button>
-            `);
-        }
-    }
-
-    function syncCalibrationControls($panel) {
-        const $controls = $panel.find(selectors.calibrationControls);
-        const $select = $panel.find(selectors.calibrationSelect);
-        const $toggle = $panel.find(selectors.calibrationToggle);
-
-        ensureCalibrationTarget();
-
-        $controls.prop("hidden", !state.calibrationMode);
-        $toggle.toggleClass("active", state.calibrationMode).attr("aria-pressed", String(state.calibrationMode));
-        $toggle.text(state.calibrationMode ? "CALIBRATING" : "CALIBRATE");
-
-        if (!$select.length) return;
-        const entries = getCalibratableLocationEntries();
-        $select.empty();
-        if (!entries.length) {
-            $select.append('<option value="">No floor locations</option>');
-            return;
-        }
-
-        for (const [locationId, point] of entries) {
-            const selected = locationId === state.selectedCalibrationLocationId ? 'selected="selected"' : "";
-            $select.append(`<option value="${escapeHtml(locationId)}" ${selected}>${escapeHtml(point.label)} (${escapeHtml(locationId)})</option>`);
-        }
-
-        $imageWrap.off("click.presenceTooltip").on("click.presenceTooltip", () => {
-            closePresenceTooltip($imageWrap);
-        });
-    }
-
     function ensureValidFloorSelection() {
         const area = MAP_AREAS[state.area];
         if (!area) {
@@ -560,7 +504,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         const track = document.getElementById("monopad_sfx_monochine_track");
         if (!track) return;
 
-        const shouldPlay = isMachineTrackEnabled() && $panel.find(selectors.machineOverlay).hasClass("open");
+        const shouldPlay = isMachineTrackEnabled() && $(selectors.machineOverlay).hasClass("open");
         if (shouldPlay) {
             track.loop = true;
             if (state.machineTrackStarted) return;
@@ -582,9 +526,9 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
     }
 
     function ensureMachineOverlay($panel) {
-        if ($panel.find(selectors.machineOverlay).length) return;
+        if ($(selectors.machineOverlay).length) return;
 
-        $panel.append(`
+        $(document.body).append(`
             <div class="map-machine-overlay" aria-hidden="true">
                 <div class="map-machine-window" role="dialog" aria-label="MonoMono Machine">
                     <button type="button" class="map-machine-close" aria-label="Close MonoMono Machine">✕</button>
@@ -613,17 +557,17 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             </div>
         `);
 
-        $panel.find(selectors.machineClose).off("click").on("click", () => {
+        $(selectors.machineClose).off("click").on("click", () => {
             closeMachineOverlay($panel);
         });
 
-        $panel.find(selectors.machineOverlay).off("click").on("click", function (event) {
+        $(selectors.machineOverlay).off("click").on("click", function (event) {
             if (event.target === this) {
                 closeMachineOverlay($panel);
             }
         });
 
-        $panel.find(selectors.machineAdd).off("click").on("click", () => {
+        $(selectors.machineAdd).off("click").on("click", () => {
             const items = getItemsController();
             if (!items?.getMonoMonoDupeChance) return;
 
@@ -643,7 +587,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             updateMachineOverlay($panel);
         });
 
-        $panel.find(selectors.machineAddRoll).off("click").on("click", () => {
+        $(selectors.machineAddRoll).off("click").on("click", () => {
             const items = getItemsController();
             if (!items?.getMonoMonoDupeChance) return;
 
@@ -663,7 +607,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             updateMachineOverlay($panel);
         });
 
-        $panel.find(selectors.machineRoll).off("click").on("click", () => {
+        $(selectors.machineRoll).off("click").on("click", () => {
             if (state.machineRolling) return;
 
             const items = getItemsController();
@@ -678,9 +622,9 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             playSfx?.(getSfx?.().monochine_turn || getSfx?.().click);
 
             state.machineRolling = true;
-            $panel.find(selectors.machineRoll).prop("disabled", true);
-            $panel.find(selectors.machineAdd).prop("disabled", true);
-            $panel.find(selectors.machineAddRoll).prop("disabled", true);
+            $(selectors.machineRoll).prop("disabled", true);
+            $(selectors.machineAdd).prop("disabled", true);
+            $(selectors.machineAddRoll).prop("disabled", true);
 
             if (state.machineRollTimeout) {
                 clearTimeout(state.machineRollTimeout);
@@ -691,7 +635,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                 state.machineJingleTimeout = null;
             }
 
-            const $img = $panel.find(selectors.machineImage);
+            const $img = $(selectors.machineImage);
             if ($img.length) {
                 $img.attr("src", `${extensionFolderPath}/assets/monochine_roll.gif`);
 
@@ -713,9 +657,9 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                 state.machineRollTimeout = setTimeout(() => {
                     $img.attr("src", `${extensionFolderPath}/assets/monochine_idle.png`);
                     state.machineRolling = false;
-                    $panel.find(selectors.machineRoll).prop("disabled", false);
-                    $panel.find(selectors.machineAdd).prop("disabled", false);
-                    $panel.find(selectors.machineAddRoll).prop("disabled", false);
+                    $(selectors.machineRoll).prop("disabled", false);
+                    $(selectors.machineAdd).prop("disabled", false);
+                    $(selectors.machineAddRoll).prop("disabled", false);
                     state.machineRollTimeout = null;
                     state.machineJingleTimeout = null;
                 }, MACHINE_ROLL_DURATION_MS);
@@ -728,7 +672,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
     }
 
     function showMachineBanner($panel, text) {
-        const $banner = $panel.find(selectors.machineBanner);
+        const $banner = $(selectors.machineBanner);
         if (!$banner.length || !text) return;
 
         if (state.machineBannerTimeout) {
@@ -762,13 +706,13 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         }
 
         state.machineRolling = false;
-        $panel.find(selectors.machineImage).attr("src", `${extensionFolderPath}/assets/monochine_idle.png`);
-        $panel.find(selectors.machineRoll).prop("disabled", false);
-        $panel.find(selectors.machineAdd).prop("disabled", false);
-        $panel.find(selectors.machineAddRoll).prop("disabled", false);
-        $panel.find(selectors.machineBanner).removeClass("show").text("");
+        $(selectors.machineImage).attr("src", `${extensionFolderPath}/assets/monochine_idle.png`);
+        $(selectors.machineRoll).prop("disabled", false);
+        $(selectors.machineAdd).prop("disabled", false);
+        $(selectors.machineAddRoll).prop("disabled", false);
+        $(selectors.machineBanner).removeClass("show").text("");
         $panel.removeClass("machine-overlay-open");
-        $panel.find(selectors.machineOverlay).removeClass("open").attr("aria-hidden", "true");
+        $(selectors.machineOverlay).removeClass("open").attr("aria-hidden", "true");
         syncMachineTrack($panel);
     }
 
@@ -780,10 +724,10 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         const safeCoins = Math.max(0, Number(chance.availableCoins || 0));
         const chancePercent = Math.round(Number(chance.chancePercent || 0));
 
-        $panel.find(selectors.machineDisplayCoins).text(`x ${safeCoins}`);
-        $panel.find(selectors.machineDisplayLoad).text(`LOAD: ${state.machineCoinsLoaded} COIN${state.machineCoinsLoaded === 1 ? "" : "S"} / ROLL`);
-        $panel.find(selectors.machineDisplayRolls).text(`ROLLS: ${state.machineRollCount}`);
-        $panel.find(selectors.machineDisplayDupe).text(`DUPE CHANCE: ${chancePercent}% PER ROLL`);
+        $(selectors.machineDisplayCoins).text(`x ${safeCoins}`);
+        $(selectors.machineDisplayLoad).text(`LOAD: ${state.machineCoinsLoaded} COIN${state.machineCoinsLoaded === 1 ? "" : "S"} / ROLL`);
+        $(selectors.machineDisplayRolls).text(`ROLLS: ${state.machineRollCount}`);
+        $(selectors.machineDisplayDupe).text(`DUPE CHANCE: ${chancePercent}% PER ROLL`);
 
     }
 
@@ -793,12 +737,12 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         state.machineRollCount = 1;
         updateMachineOverlay($panel);
         state.machineRolling = false;
-        $panel.find(selectors.machineRoll).prop("disabled", false);
-        $panel.find(selectors.machineAdd).prop("disabled", false);
-        $panel.find(selectors.machineAddRoll).prop("disabled", false);
-        $panel.find(selectors.machineImage).attr("src", `${extensionFolderPath}/assets/monochine_idle.png`);
+        $(selectors.machineRoll).prop("disabled", false);
+        $(selectors.machineAdd).prop("disabled", false);
+        $(selectors.machineAddRoll).prop("disabled", false);
+        $(selectors.machineImage).attr("src", `${extensionFolderPath}/assets/monochine_idle.png`);
         $panel.addClass("machine-overlay-open");
-        $panel.find(selectors.machineOverlay).addClass("open").attr("aria-hidden", "false");
+        $(selectors.machineOverlay).addClass("open").attr("aria-hidden", "false");
         syncMachineTrack($panel);
     }
 
