@@ -1,9 +1,9 @@
 export const LOCATION_PINPOINTS = {
     // Hope's Peak - Floor 1 (extension map layout)
-    academy_entrance_hall: { area: "hopes_peak", floor: "floor_1", x: 239, y: 224, width: 480, height: 272, label: "Entrance Hall" },
-    academy_av_room: { area: "hopes_peak", floor: "floor_1", x: 338, y: 189, width: 480, height: 272, label: "A/V Room" },
+    academy_entrance_hall: { area: "hopes_peak", floor: "floor_1", x: 257, y: 239, width: 480, height: 272, label: "Entrance Hall" },
+    academy_av_room: { area: "hopes_peak", floor: "floor_1", x: 314, y: 206, width: 480, height: 272, label: "A/V Room" },
     academy_store: { area: "hopes_peak", floor: "floor_1", x: 256, y: 151, width: 480, height: 272, label: "School Store" },
-    academy_infirmary: { area: "hopes_peak", floor: "floor_1", x: 205, y: 162, width: 480, height: 272, label: "Infirmary" },
+    academy_infirmary: { area: "hopes_peak", floor: "floor_1", x: 214, y: 186, width: 480, height: 272, label: "Infirmary" },
     academy_bathroom: { area: "hopes_peak", floor: "floor_1", x: 166, y: 158, width: 480, height: 272, label: "Bathroom" },
     academy_gym: { area: "hopes_peak", floor: "floor_1", x: 125, y: 67, width: 480, height: 272, label: "Gym" },
     academy_classroom_1a: { area: "hopes_peak", floor: "floor_1", x: 325, y: 123, width: 480, height: 272, label: "Classroom 1-A" },
