@@ -344,7 +344,7 @@ function ensureInvestigationOverlay() {
             <div class="dangan-investigation-scanlines"></div>
             <div class="dangan-investigation-banner" role="status" aria-live="polite" aria-label="Investigation start banner">
                 <div class="dangan-investigation-kicker">TRIAL ROUTE UPDATED</div>
-                <div class="dangan-investigation-title">Investigation Start!</div>
+                <div class="dangan-investigation-title"><span class="dangan-investigation-word inv">Investigation</span> <span class="dangan-investigation-word start">START!</span></div>
                 <div class="dangan-investigation-subtitle">Truth Bullets Enabled · Field Notes Active</div>
             </div>
         `;
@@ -358,50 +358,52 @@ function ensureInvestigationOverlay() {
 const investigationStartController = {
     hideTimerId: null,
 
-    showBanner() {
+    clearBanner() {
+        const overlay = document.getElementById("dangan-investigation-overlay");
+        if (!overlay) return;
+
+        overlay.classList.remove("show");
+        overlay.setAttribute("aria-hidden", "true");
+
+        if (this.hideTimerId) {
+            clearTimeout(this.hideTimerId);
+            this.hideTimerId = null;
+        }
+    },
+
+    showBanner(durationMs = 2200) {
         const overlay = ensureInvestigationOverlay();
         if (!overlay) return false;
 
+        overlay.style.setProperty("--investigation-banner-duration", `${Math.max(900, Math.round(durationMs))}ms`);
         overlay.setAttribute("aria-hidden", "false");
         overlay.classList.remove("show");
         void overlay.offsetWidth;
         overlay.classList.add("show");
-
-        const titleEl = overlay.querySelector(".dangan-investigation-title");
-        if (titleEl) titleEl.textContent = "Investigation Start!";
 
         if (this.hideTimerId) {
             clearTimeout(this.hideTimerId);
             this.hideTimerId = null;
         }
 
-        const clearBanner = () => {
-            overlay.classList.remove("show");
-            overlay.setAttribute("aria-hidden", "true");
-            overlay.removeEventListener("animationend", handleAnimationEnd);
-            if (this.hideTimerId) {
-                clearTimeout(this.hideTimerId);
-                this.hideTimerId = null;
-            }
-        };
-
-        const handleAnimationEnd = (event) => {
-            if (event.target !== overlay) return;
-            clearBanner();
-        };
-
-        overlay.addEventListener("animationend", handleAnimationEnd);
-        this.hideTimerId = window.setTimeout(clearBanner, 2800);
+        this.hideTimerId = window.setTimeout(() => this.clearBanner(), Math.max(900, Math.round(durationMs)));
         return true;
     },
 
     playSfx() {
         if (!sfx?.investigation_start) {
             console.warn("[Dangan][Investigation] Investigation start SFX not loaded.");
-            return false;
+            return { played: false, durationMs: 2200 };
         }
+
         playSfx(sfx.investigation_start);
-        return true;
+
+        const durationSec = Number(sfx.investigation_start.duration);
+        const durationMs = Number.isFinite(durationSec) && durationSec > 0
+            ? Math.round(durationSec * 1000)
+            : 2200;
+
+        return { played: true, durationMs };
     },
 
     enableToggle() {
@@ -420,11 +422,12 @@ const investigationStartController = {
     },
 
     trigger() {
-        const bannerShown = this.showBanner();
-        const sfxPlayed = this.playSfx();
+        const sfxResult = this.playSfx();
+        const displayDuration = Math.max(1400, (sfxResult?.durationMs || 2200) + 120);
+        const bannerShown = this.showBanner(displayDuration);
         const toggled = this.enableToggle();
 
-        if (!bannerShown && !sfxPlayed && !toggled) {
+        if (!bannerShown && !sfxResult?.played && !toggled) {
             console.info("[Dangan][Investigation] Marker detected, but no effect could be shown.");
         }
     },
