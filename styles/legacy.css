@@ -495,34 +495,82 @@
 
 #dangan_monopad_panel.booting .monopad-fullscreen-root {
     opacity: 0;
-    transform: translateY(8px) scale(0.99);
-    filter: brightness(1.35) saturate(1.1);
 }
 
-#dangan_monopad_panel.open.booting .monopad-fullscreen-root {
-    animation: monopad-boot 0.56s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+#dangan_monopad_panel.open.booting.boot-cold .monopad-fullscreen-root {
+    animation: monopad-boot-cold 0.9s cubic-bezier(0.16, 0.84, 0.26, 1) forwards;
 }
 
-@keyframes monopad-boot {
+#dangan_monopad_panel.open.booting.boot-warm .monopad-fullscreen-root {
+    animation: monopad-boot-warm 0.46s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+#dangan_monopad_panel.open.booting.boot-cold .monopad-crt-overlay {
+    animation: crt-boot-cold-flicker 0.44s steps(3, end) 1;
+}
+
+#dangan_monopad_panel.open.booting.boot-warm .monopad-crt-overlay {
+    animation: crt-boot-warm-flicker 0.24s ease-out 1;
+}
+
+@keyframes monopad-boot-cold {
     0% {
         opacity: 0;
-        transform: translateY(8px) scale(0.99);
-        filter: brightness(1.35) saturate(1.1);
+        transform: scale(0.995) translateY(12px);
+        filter: brightness(0.22) saturate(1.3);
     }
-    35% {
-        opacity: 0.92;
-        transform: translateY(0) scale(1);
-        filter: brightness(1.14) saturate(1.05);
+    18% {
+        opacity: 0.2;
+        transform: scale(0.998) translateY(8px);
+        filter: brightness(1.55) saturate(1.4);
     }
-    70% {
+    52% {
+        opacity: 0.88;
+        transform: scale(1.003) translateY(0);
+        filter: brightness(1.18) saturate(1.08);
+    }
+    75% {
         opacity: 1;
-        filter: brightness(1.04) saturate(1.02);
+        transform: scale(1) translateY(0);
+        filter: brightness(1.05) saturate(1.03);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+        filter: brightness(1) saturate(1);
+    }
+}
+
+@keyframes monopad-boot-warm {
+    0% {
+        opacity: 0;
+        transform: translateY(7px) scale(0.992);
+        filter: brightness(1.22) saturate(1.12);
+    }
+    45% {
+        opacity: 0.94;
+        transform: translateY(0) scale(1);
+        filter: brightness(1.1) saturate(1.05);
     }
     100% {
         opacity: 1;
         transform: translateY(0) scale(1);
         filter: brightness(1) saturate(1);
     }
+}
+
+@keyframes crt-boot-cold-flicker {
+    0% { opacity: 0.05; }
+    20% { opacity: 0.52; }
+    40% { opacity: 0.14; }
+    60% { opacity: 0.4; }
+    100% { opacity: 0; }
+}
+
+@keyframes crt-boot-warm-flicker {
+    0% { opacity: 0.18; }
+    50% { opacity: 0.26; }
+    100% { opacity: 0; }
 }
 
 /* =========================

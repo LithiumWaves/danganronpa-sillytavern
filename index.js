@@ -2792,6 +2792,11 @@ jQuery(async () => {
         let monopadSpamCount = 0;
         let monopadSpamTimer = null;
         let monokumaCooldown = false;
+        let hasBootedThisSession = false;
+
+        const MONOPAD_BOOT_COLD_DURATION_MS = 900;
+        const MONOPAD_BOOT_WARM_DURATION_MS = 460;
+        const MONOPAD_SHUTDOWN_DURATION_MS = 420;
 
         function triggerMonokuma() {
             if (monokumaCooldown) return;
@@ -2805,10 +2810,10 @@ jQuery(async () => {
             setTimeout(() => (monokumaCooldown = false), 6000);
         }
 
-        $("#dangan_monopad_close").on("click", () => {
+        function closeMonopadPanel() {
             closeBreachOverlay();
             closePayloadOverlay();
-            $panel.removeClass("open booting");
+            $panel.removeClass("open booting boot-cold boot-warm");
 
             if (getMonopadSetting("bootAnimations")) {
                 $panel.addClass("shutting-down");
@@ -2816,11 +2821,15 @@ jQuery(async () => {
 
                 setTimeout(() => {
                     $panel.removeClass("shutting-down").addClass("closed");
-                }, 420);
+                }, MONOPAD_SHUTDOWN_DURATION_MS);
             } else {
                 playSfx(sfx.close);
                 $panel.addClass("closed");
             }
+        }
+
+        $("#dangan_monopad_close").on("click", () => {
+            closeMonopadPanel();
         });
 
 $(".monopad-icon").on("click", function () {
@@ -2872,7 +2881,7 @@ $(".monopad-icon").on("mouseenter", function () {
 });
         function togglePanel() {
             const isOpen = $panel.hasClass("open");
-            $panel.removeClass("open closed booting");
+            $panel.removeClass("open closed booting boot-cold boot-warm");
 
             if (!isOpen) {
                 const welcomeUserEl = document.getElementById("monopad_welcome_user");
@@ -2889,21 +2898,18 @@ $(".monopad-icon").on("mouseenter", function () {
                 }
 
                 if (getMonopadSetting("bootAnimations")) {
-                    $panel.addClass("open booting");
-                    setTimeout(() => $panel.removeClass("booting"), 560);
+                    const bootModeClass = hasBootedThisSession ? "boot-warm" : "boot-cold";
+                    const bootDuration = hasBootedThisSession ? MONOPAD_BOOT_WARM_DURATION_MS : MONOPAD_BOOT_COLD_DURATION_MS;
+                    $panel.addClass(`open booting ${bootModeClass}`);
+                    setTimeout(() => $panel.removeClass("booting boot-cold boot-warm"), bootDuration);
+                    hasBootedThisSession = true;
                 } else {
                     $panel.addClass("open");
+                    hasBootedThisSession = true;
                 }
                 playSfx(sfx.open);
             } else {
-                if (getMonopadSetting("bootAnimations")) {
-                    $panel.addClass("shutting-down");
-                    playSfx(sfx.close);
-                    setTimeout(() => $panel.removeClass("shutting-down").addClass("closed"), 420);
-                } else {
-                    playSfx(sfx.close);
-                    $panel.addClass("closed");
-                }
+                closeMonopadPanel();
             }
 
         }
