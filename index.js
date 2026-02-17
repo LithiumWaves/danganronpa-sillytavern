@@ -136,6 +136,7 @@ let truthBulletAnimating = false;
 const processedTruthSignatures = new Set();
 const processedSocialSignatures = new Set();
 const processedInvestigationSignatures = new Set();
+const INVESTIGATION_START_DETECT_REGEX = /V3C\|\s*INVESTIGATION_START\b/i;
 
 function normalizeTextToken(value) {
     return String(value || "")
@@ -189,9 +190,13 @@ function tryEnableInvestigationToggleInObject(root, { maxDepth = 6 } = {}) {
 
         if (depth >= maxDepth) continue;
 
-        for (const value of Object.values(node)) {
-            if (!value || typeof value !== "object") continue;
-            queue.push({ node: value, depth: depth + 1 });
+        try {
+            for (const value of Object.values(node)) {
+                if (!value || typeof value !== "object") continue;
+                queue.push({ node: value, depth: depth + 1 });
+            }
+        } catch {
+            // Some host objects can throw on property access; skip safely.
         }
     }
 
@@ -215,7 +220,11 @@ function tryEnableInvestigationToggleViaContext() {
 
     let touched = false;
     for (const candidate of candidates) {
-        touched = tryEnableInvestigationToggleInObject(candidate) || touched;
+        try {
+            touched = tryEnableInvestigationToggleInObject(candidate) || touched;
+        } catch {
+            // Skip malformed or protected objects without breaking Investigation start flow.
+        }
     }
 
     if (!touched) return false;
@@ -298,11 +307,15 @@ function triggerInvestigationStart() {
         playSfx(sfx.investigation_start);
     }
 
-    const toggled = triggerInvestigationTimeToggle();
-    if (toggled) {
-        console.log("[Dangan][Investigation] Investigation Time toggle enabled in current preset.");
-    } else {
-        console.warn("[Dangan][Investigation] Could not auto-enable the Investigation Time toggle.");
+    try {
+        const toggled = triggerInvestigationTimeToggle();
+        if (toggled) {
+            console.log("[Dangan][Investigation] Investigation Time toggle enabled in current preset.");
+        } else {
+            console.warn("[Dangan][Investigation] Could not auto-enable the Investigation Time toggle.");
+        }
+    } catch (error) {
+        console.warn("[Dangan][Investigation] Toggle automation failed, banner/sfx still executed:", error);
     }
 }
 
@@ -794,14 +807,13 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
 }
 
         // ---- Investigation Start ----
-        if (INVESTIGATION_START_REGEX.test(rawText)) {
+        if (INVESTIGATION_START_DETECT_REGEX.test(rawText)) {
             const signature = `INVESTIGATION||${messageSignature}`;
             if (!processedInvestigationSignatures.has(signature)) {
                 processedInvestigationSignatures.add(signature);
                 triggerInvestigationStart();
             }
         }
-        INVESTIGATION_START_REGEX.lastIndex = 0;
 
         // ---- Marker Cleanup ----
        if (rawText.includes("V3C|")) {
