@@ -502,7 +502,7 @@
 }
 
 #dangan_monopad_panel.open.booting.boot-warm .monopad-fullscreen-root {
-    animation: monopad-boot-warm 0.46s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    animation: monopad-boot-warm 0.68s cubic-bezier(0.22, 0.74, 0.24, 1) forwards;
 }
 
 #dangan_monopad_panel.open.booting.boot-cold .monopad-crt-overlay {
@@ -510,7 +510,7 @@
 }
 
 #dangan_monopad_panel.open.booting.boot-warm .monopad-crt-overlay {
-    animation: crt-boot-warm-flicker 0.24s ease-out 1;
+    animation: crt-boot-warm-flicker 0.36s ease-out 1;
 }
 
 @keyframes monopad-boot-cold {
@@ -544,13 +544,18 @@
 @keyframes monopad-boot-warm {
     0% {
         opacity: 0;
-        transform: translateY(7px) scale(0.992);
-        filter: brightness(1.22) saturate(1.12);
+        transform: translateY(11px) scale(0.988);
+        filter: brightness(0.88) saturate(1.16);
     }
-    45% {
-        opacity: 0.94;
-        transform: translateY(0) scale(1);
-        filter: brightness(1.1) saturate(1.05);
+    28% {
+        opacity: 0.55;
+        transform: translateY(5px) scale(0.995);
+        filter: brightness(1.24) saturate(1.12);
+    }
+    62% {
+        opacity: 0.95;
+        transform: translateY(0) scale(1.001);
+        filter: brightness(1.08) saturate(1.04);
     }
     100% {
         opacity: 1;
@@ -568,8 +573,9 @@
 }
 
 @keyframes crt-boot-warm-flicker {
-    0% { opacity: 0.18; }
-    50% { opacity: 0.26; }
+    0% { opacity: 0.12; }
+    35% { opacity: 0.28; }
+    70% { opacity: 0.15; }
     100% { opacity: 0; }
 }
 

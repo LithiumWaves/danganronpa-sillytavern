@@ -2795,7 +2795,7 @@ jQuery(async () => {
         let hasBootedThisSession = false;
 
         const MONOPAD_BOOT_COLD_DURATION_MS = 900;
-        const MONOPAD_BOOT_WARM_DURATION_MS = 460;
+        const MONOPAD_BOOT_WARM_DURATION_MS = 680;
         const MONOPAD_SHUTDOWN_DURATION_MS = 420;
 
         function triggerMonokuma() {
