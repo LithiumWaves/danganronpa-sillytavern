@@ -2869,15 +2869,23 @@ jQuery(async () => {
             },
         });
 
-        mapPanelController = createMapPanelController({
-            extensionFolderPath,
-            getItemsPanelController: () => itemsPanelController,
-            playSfx,
-            getSfx: () => sfx,
-            getSetting: getMonopadSetting,
-            onWalkStep: () => awardXp(XP_REWARDS.walkStep, "walked"),
-        });
-        mapPanelController.renderMapPanel();
+        try {
+            mapPanelController = createMapPanelController({
+                extensionFolderPath,
+                getItemsPanelController: () => itemsPanelController,
+                playSfx,
+                getSfx: () => sfx,
+                getSetting: getMonopadSetting,
+                onWalkStep: () => awardXp(XP_REWARDS.walkStep, "walked"),
+            });
+            mapPanelController?.renderMapPanel?.();
+        } catch (error) {
+            console.error("[Dangan][Map] Failed to initialize map panel controller:", error);
+            mapPanelController = {
+                renderMapPanel: () => { },
+                handleSettingsChanged: () => { },
+            };
+        }
 
         let lastHoverTime = 0;
         const HOVER_COOLDOWN = 80;
