@@ -6,6 +6,7 @@ export const defaultSettings = {
     trustCeremonies: true,
     truthBulletAnimations: true,
     monochineTrackEnabled: true,
+    mapPresencePinsEnabled: true,
     crtEffects: true,
     crtIntensity: 35,
     bootAnimations: true,

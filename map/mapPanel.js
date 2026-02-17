@@ -1,3 +1,5 @@
+import { LOCATION_PINPOINTS } from "./locationPresence.js";
+
 const FLOOR_ONE_MACHINE_PIN = {
     x: 276,
     y: 145,
@@ -70,7 +72,92 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         machineAddRoll: ".map-machine-button.add-roll",
         machineRoll: ".map-machine-button.roll",
         machineClose: ".map-machine-close",
+        presencePin: ".map-presence-pin",
     };
+
+    function isMapPresenceEnabled() {
+        if (typeof getSetting !== "function") return true;
+        return !!getSetting("mapPresencePinsEnabled");
+    }
+
+    function getLocationPresence() {
+        const payload = typeof window.getMonopadRecentLocationPresence === "function"
+            ? window.getMonopadRecentLocationPresence()
+            : null;
+
+        return payload && typeof payload === "object"
+            ? payload
+            : { user: null, characters: [] };
+    }
+
+    function buildPresencePinsForFloor() {
+        if (!isMapPresenceEnabled()) return [];
+
+        const payload = getLocationPresence();
+        const pins = [];
+        const dedupe = new Set();
+
+        const userLocation = payload?.user?.locationId;
+        if (userLocation && LOCATION_PINPOINTS[userLocation]) {
+            pins.push({
+                type: "user",
+                label: payload.user.label || "You",
+                locationId: userLocation,
+            });
+            dedupe.add(`user::${userLocation}`);
+        }
+
+        const characters = Array.isArray(payload?.characters) ? payload.characters : [];
+        for (const entry of characters) {
+            const locationId = entry?.locationId;
+            if (!locationId || !LOCATION_PINPOINTS[locationId]) continue;
+
+            const pinKey = `char::${entry.name || "unknown"}::${locationId}`;
+            if (dedupe.has(pinKey)) continue;
+            dedupe.add(pinKey);
+
+            pins.push({
+                type: "character",
+                label: entry.name || "Unknown",
+                locationId,
+            });
+        }
+
+        return pins.filter(pin => {
+            const point = LOCATION_PINPOINTS[pin.locationId];
+            return point.area === state.area && point.floor === state.floor;
+        });
+    }
+
+    function renderPresencePins($imageWrap) {
+        $imageWrap.find(selectors.presencePin).remove();
+        const pins = buildPresencePinsForFloor();
+        if (!pins.length) return;
+
+        for (const pin of pins) {
+            const point = LOCATION_PINPOINTS[pin.locationId];
+            if (!point) continue;
+
+            const pinLeftPercent = (point.x / point.width) * 100;
+            const pinTopPercent = (point.y / point.height) * 100;
+            const pinSymbol = pin.type === "user" ? "▲" : "◆";
+            const title = pin.type === "user"
+                ? `You · ${point.label}`
+                : `${pin.label} · ${point.label}`;
+
+            $imageWrap.append(`
+                <div
+                    class="map-presence-pin ${pin.type}"
+                    role="img"
+                    aria-label="${title}"
+                    title="${title}"
+                    style="left:${pinLeftPercent}%; top:${pinTopPercent}%;"
+                >
+                    ${pinSymbol}
+                </div>
+            `);
+        }
+    }
 
     function ensureValidFloorSelection() {
         const area = MAP_AREAS[state.area];
@@ -405,7 +492,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             $subtitle.text(floor.description);
         }
 
-        $imageWrap.find(selectors.machinePin).remove();
+        $imageWrap.find(`${selectors.machinePin}, ${selectors.presencePin}`).remove();
 
         const showMachinePin = state.area === "hopes_peak" && state.floor === "floor_1";
         if (showMachinePin && $imageWrap.length) {
@@ -423,6 +510,10 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                     ¥
                 </button>
             `);
+        }
+
+        if ($imageWrap.length) {
+            renderPresencePins($imageWrap);
         }
     }
 

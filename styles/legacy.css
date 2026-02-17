@@ -3271,6 +3271,36 @@
     outline: none;
 }
 
+.map-presence-pin {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 700;
+    z-index: 2;
+    pointer-events: none;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.45);
+}
+
+.map-presence-pin.user {
+    background: rgba(103, 209, 255, 0.95);
+    border: 1px solid rgba(202, 242, 255, 0.96);
+    color: #062739;
+}
+
+.map-presence-pin.character {
+    background: rgba(255, 106, 133, 0.95);
+    border: 1px solid rgba(255, 224, 231, 0.96);
+    color: #390612;
+}
 
 .map-machine-overlay {
     position: absolute;
