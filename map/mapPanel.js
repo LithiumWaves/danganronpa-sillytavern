@@ -51,6 +51,8 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         machineBannerTimeout: null,
         machineBannerDelayTimeout: null,
         machineTrackStarted: false,
+        clearedPresencePins: false,
+        dismissedPresencePins: new Set(),
     };
 
     const selectors = {
@@ -74,6 +76,9 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         machineClose: ".map-machine-close",
         presencePin: ".map-presence-pin",
         presenceTooltip: ".map-presence-tooltip",
+        presenceClearAll: ".map-presence-clear-all",
+        presenceRestoreAll: ".map-presence-restore-all",
+        presenceRemovePin: ".map-presence-remove-pin",
     };
 
     function isMapPresenceEnabled() {
@@ -91,30 +96,34 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             : { user: null, characters: [] };
     }
 
+    function escapeHtml(value) {
+        return String(value || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    }
+
+    function buildPresencePinId(pin) {
+        if (!pin || !pin.locationId) return null;
+        if (pin.type === "user") return `user::${pin.locationId}`;
+        return `character::${String(pin.label || "unknown").toLowerCase()}::${pin.locationId}`;
+    }
+
     function buildPresencePinsForFloor() {
-        if (!isMapPresenceEnabled()) return [];
+        if (!isMapPresenceEnabled() || state.clearedPresencePins) return [];
 
         const payload = getLocationPresence();
-        const byLocation = new Map();
-
-        function ensureLocationBucket(locationId) {
-            const existing = byLocation.get(locationId);
-            if (existing) return existing;
-
-            const bucket = {
-                locationId,
-                userLabel: null,
-                characters: [],
-            };
-
-            byLocation.set(locationId, bucket);
-            return bucket;
-        }
+        const pins = [];
 
         const userLocation = payload?.user?.locationId;
         if (userLocation && LOCATION_PINPOINTS[userLocation]) {
-            const bucket = ensureLocationBucket(userLocation);
-            bucket.userLabel = payload.user.label || "You";
+            pins.push({
+                type: "user",
+                label: payload.user.label || "You",
+                locationId: userLocation,
+            });
         }
 
         const characters = Array.isArray(payload?.characters) ? payload.characters : [];
@@ -122,17 +131,58 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             const locationId = entry?.locationId;
             if (!locationId || !LOCATION_PINPOINTS[locationId]) continue;
 
-            const bucket = ensureLocationBucket(locationId);
-            const characterName = entry.name || "Unknown";
-            if (!bucket.characters.includes(characterName)) {
-                bucket.characters.push(characterName);
-            }
+            pins.push({
+                type: "character",
+                label: entry.name || "Unknown",
+                locationId,
+            });
         }
 
-        return Array.from(byLocation.values()).filter(pin => {
+        const dedupedPins = [];
+        const dedupe = new Set();
+        for (const pin of pins) {
+            const id = buildPresencePinId(pin);
+            if (!id || dedupe.has(id) || state.dismissedPresencePins.has(id)) continue;
+            dedupe.add(id);
+            dedupedPins.push({ ...pin, id });
+        }
+
+        return dedupedPins.filter(pin => {
             const point = LOCATION_PINPOINTS[pin.locationId];
-            return point.area === state.area && point.floor === state.floor;
+            return point?.area === state.area && point?.floor === state.floor;
         });
+    }
+
+    function buildOccupantsForLocation(locationId) {
+        const payload = getLocationPresence();
+        const occupants = [];
+
+        if (payload?.user?.locationId === locationId) {
+            occupants.push({
+                type: "user",
+                label: payload.user.label || "You",
+            });
+        }
+
+        const characters = Array.isArray(payload?.characters) ? payload.characters : [];
+        for (const entry of characters) {
+            if (entry?.locationId !== locationId) continue;
+            occupants.push({
+                type: "character",
+                label: entry.name || "Unknown",
+            });
+        }
+
+        return occupants;
+    }
+
+    function clearAllPresencePins() {
+        state.clearedPresencePins = true;
+    }
+
+    function restoreAllPresencePins() {
+        state.clearedPresencePins = false;
+        state.dismissedPresencePins.clear();
     }
 
     function closePresenceTooltip($imageWrap) {
@@ -143,22 +193,20 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
     function openPresenceTooltip($imageWrap, pin, point, $pin) {
         closePresenceTooltip($imageWrap);
 
-        const who = [];
-        if (pin.userLabel) {
-            who.push(`<li><strong>YOU</strong> (${pin.userLabel})</li>`);
-        }
-        for (const name of pin.characters) {
-            who.push(`<li>${name}</li>`);
-        }
-
-        const whoMarkup = who.length ? who.join("") : "<li>Unknown presence</li>";
+        const occupants = buildOccupantsForLocation(pin.locationId);
+        const whoMarkup = occupants.length
+            ? occupants.map(item => item.type === "user"
+                ? `<li><strong>YOU</strong> (${escapeHtml(item.label)})</li>`
+                : `<li>${escapeHtml(item.label)}</li>`).join("")
+            : "<li>Unknown presence</li>";
         const leftPercent = (point.x / point.width) * 100;
         const topPercent = (point.y / point.height) * 100;
 
         $imageWrap.append(`
             <div class="map-presence-tooltip" role="status" style="left:${leftPercent}%; top:${topPercent}%;">
-                <div class="map-presence-tooltip-title">${point.label}</div>
+                <div class="map-presence-tooltip-title">${escapeHtml(point.label)}</div>
                 <ul>${whoMarkup}</ul>
+                <button type="button" class="map-presence-remove-pin" data-pin-id="${escapeHtml(pin.id)}">REMOVE THIS PIN</button>
             </div>
         `);
 
@@ -177,27 +225,20 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
 
             const pinLeftPercent = (point.x / point.width) * 100;
             const pinTopPercent = (point.y / point.height) * 100;
-            const hasUser = !!pin.userLabel;
-            const hasCharacters = pin.characters.length > 0;
-            const pinTypeClass = hasUser && hasCharacters
-                ? "mixed"
-                : hasUser
-                    ? "user"
-                    : "character";
-            const pinSymbol = hasUser ? "▲" : "◆";
-            const charCountBadge = hasCharacters ? `<span class="map-presence-count">${pin.characters.length}</span>` : "";
-            const title = `${point.label} · ${hasUser ? "You" : "Characters"}`;
+            const pinTypeClass = pin.type === "user" ? "user" : "character";
+            const pinSymbol = pin.type === "user" ? "▲" : "◆";
+            const title = `${point.label} · ${pin.label}`;
 
             const $pin = $(`
                 <button
                     type="button"
                     class="map-presence-pin ${pinTypeClass}"
-                    aria-label="${title}"
-                    title="${title}"
+                    data-pin-id="${escapeHtml(pin.id)}"
+                    aria-label="${escapeHtml(title)}"
+                    title="${escapeHtml(title)}"
                     style="left:${pinLeftPercent}%; top:${pinTopPercent}%;"
                 >
                     <span class="map-presence-symbol">${pinSymbol}</span>
-                    ${charCountBadge}
                 </button>
             `);
 
@@ -579,6 +620,29 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         }
     }
 
+    function bindPresenceManagementButtons($panel) {
+        $panel.find(selectors.presenceClearAll).off("click").on("click", () => {
+            playSfx?.(getSfx?.().click);
+            clearAllPresencePins();
+            renderMapPanel();
+        });
+
+        $panel.find(selectors.presenceRestoreAll).off("click").on("click", () => {
+            playSfx?.(getSfx?.().click);
+            restoreAllPresencePins();
+            renderMapPanel();
+        });
+
+        $panel.off("click.removePin").on("click.removePin", selectors.presenceRemovePin, function (event) {
+            event.stopPropagation();
+            const pinId = this.dataset.pinId;
+            if (!pinId) return;
+            state.dismissedPresencePins.add(pinId);
+            playSfx?.(getSfx?.().click);
+            renderMapPanel();
+        });
+    }
+
     function bindAreaButtons($panel) {
         $panel.find(selectors.areaButtons).off("click").on("click", function () {
             const nextArea = this.dataset.area;
@@ -609,6 +673,10 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         renderFloorButtons($panel);
         renderMapImage($panel);
         bindMachinePin($panel);
+        bindPresenceManagementButtons($panel);
+
+        const clearedLabel = state.clearedPresencePins ? "PINS CLEARED" : "CLEAR PINS";
+        $panel.find(selectors.presenceClearAll).text(clearedLabel);
         ensureMachineOverlay($panel);
 
         if (!(state.area === "hopes_peak" && state.floor === "floor_1")) {
