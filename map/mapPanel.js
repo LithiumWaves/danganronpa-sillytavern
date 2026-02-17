@@ -443,6 +443,10 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             const selected = locationId === state.selectedCalibrationLocationId ? 'selected="selected"' : "";
             $select.append(`<option value="${escapeHtml(locationId)}" ${selected}>${escapeHtml(point.label)} (${escapeHtml(locationId)})</option>`);
         }
+
+        $imageWrap.off("click.presenceTooltip").on("click.presenceTooltip", () => {
+            closePresenceTooltip($imageWrap);
+        });
     }
 
     function ensureValidFloorSelection() {
