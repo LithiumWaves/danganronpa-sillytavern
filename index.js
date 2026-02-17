@@ -136,30 +136,78 @@ let truthBulletAnimating = false;
 const processedTruthSignatures = new Set();
 const processedSocialSignatures = new Set();
 const processedInvestigationSignatures = new Set();
-const INVESTIGATION_START_DETECT_REGEX = /V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/i;
+const INVESTIGATION_START_PARSE_REGEX = /V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/gi;
 
 
-function hasInvestigationStartMarker(text) {
-    const raw = String(text || "");
-    if (!raw) return false;
+function getInvestigationMarkerStore() {
+    extension_settings[extensionName] ||= {};
+    extension_settings[extensionName].investigationMarkers ||= {};
+    return extension_settings[extensionName].investigationMarkers;
+}
 
-    if (INVESTIGATION_START_DETECT_REGEX.test(raw)) return true;
+function getInvestigationScopeKey() {
+    const ctx = window.SillyTavern?.getContext?.();
+    const groupId = ctx?.groupId ?? ctx?.group_id ?? "";
+    const characterId = ctx?.characterId ?? ctx?.character_id ?? "";
+    const chatId = ctx?.chatId ?? ctx?.chat_id ?? ctx?.chatFile ?? "";
 
-    // Fallback for model formatting quirks (markdown/code-fences/extra punctuation).
-    const sanitized = raw
-        .toUpperCase()
-        .replace(/[`*_~]/g, "")
-        .replace(/[|｜]/g, "|")
-        .replace(/[^A-Z0-9|]+/g, "");
+    if (groupId !== "" && groupId !== null && groupId !== undefined) {
+        return `group:${groupId}`;
+    }
 
-    if (sanitized.includes("V3C|INVESTIGATIONSTART")) return true;
+    if (characterId !== "" && characterId !== null && characterId !== undefined) {
+        return `char:${characterId}`;
+    }
 
-    const canonical = raw
-        .toUpperCase()
-        .replace(/\s+/g, "")
-        .replace(/_/g, "");
+    if (chatId) {
+        return `chat:${chatId}`;
+    }
 
-    return canonical.includes("V3C|INVESTIGATIONSTART");
+    return "scope:unknown";
+}
+
+function buildPersistentInvestigationSignature(msgEl, marker, idx, rawText = "") {
+    const mesId = msgEl?.getAttribute?.("mesid") || msgEl?.dataset?.mesid || "";
+    if (!mesId || mesId === "no-id") return "";
+
+    const speaker = msgEl?.getAttribute?.("ch_name") || "unknown";
+    const scope = getInvestigationScopeKey();
+    if (!scope || scope === "scope:unknown") return "";
+
+    const markerIndex = Number(marker?.index ?? -1);
+    const textFingerprint = String(rawText || "").slice(0, 140);
+
+    return `INVESTIGATION||${scope}||${mesId}||${speaker}||${markerIndex}||${idx}||${textFingerprint}`;
+}
+
+function hasProcessedInvestigationSignature(signature, persistentSignature = "") {
+    if (!signature) return false;
+    if (processedInvestigationSignatures.has(signature)) return true;
+    if (!persistentSignature) return false;
+    return Boolean(getInvestigationMarkerStore()[persistentSignature]);
+}
+
+function markInvestigationSignatureProcessed(signature, persistentSignature = "") {
+    if (!signature) return;
+
+    processedInvestigationSignatures.add(signature);
+    if (!persistentSignature) return;
+
+    const store = getInvestigationMarkerStore();
+    store[persistentSignature] = Date.now();
+
+    const keys = Object.keys(store);
+    const maxEntries = 1200;
+    if (keys.length > maxEntries) {
+        keys
+            .sort((a, b) => Number(store[a] || 0) - Number(store[b] || 0))
+            .slice(0, keys.length - maxEntries)
+            .forEach((key) => {
+                delete store[key];
+            });
+    }
+
+    saveSettingsDebounced();
 }
 
 function normalizeTextToken(value) {
@@ -170,7 +218,49 @@ function normalizeTextToken(value) {
         .replace(/\s+/g, " ");
 }
 
-function tryEnableInvestigationToggleInObject(root, { maxDepth = 6 } = {}) {
+function parseInvestigationStartMarkers(text) {
+    const raw = String(text || "");
+    if (!raw) return [];
+
+    const matches = [];
+    INVESTIGATION_START_PARSE_REGEX.lastIndex = 0;
+
+    let match;
+    while ((match = INVESTIGATION_START_PARSE_REGEX.exec(raw)) !== null) {
+        matches.push({
+            marker: match[0],
+            index: match.index,
+            source: "regex",
+        });
+    }
+
+    if (matches.length) return matches;
+
+    // Fallback parser for format drift (markdown wrappers / unusual punctuation).
+    const lines = raw.split(/\r?\n/);
+    let cursor = 0;
+
+    for (const line of lines) {
+        const canonical = line
+            .toUpperCase()
+            .replace(/[|｜]/g, "|")
+            .replace(/[`*_~:;,.!?\-\s]/g, "");
+
+        if (canonical.includes("V3C|INVESTIGATIONSTART")) {
+            matches.push({
+                marker: line,
+                index: cursor,
+                source: "fallback",
+            });
+        }
+
+        cursor += line.length + 1;
+    }
+
+    return matches;
+}
+
+function tryEnableInvestigationToggleInObject(root, { maxDepth = 8 } = {}) {
     if (!root || typeof root !== "object") return false;
 
     const target = normalizeTextToken("Investigation Time");
@@ -184,8 +274,9 @@ function tryEnableInvestigationToggleInObject(root, { maxDepth = 6 } = {}) {
         if (visited.has(node)) continue;
         visited.add(node);
 
-        const label = normalizeTextToken(node.name || node.label || node.title || node.id || "");
-        if (label === target || label.includes(target)) {
+        const label = normalizeTextToken(node.name || node.label || node.title || node.id || node.key || "");
+        const hasInvestigationKey = /investigation/.test(label) && /time|mode|toggle|enabled|active/.test(label);
+        if (label === target || label.includes(target) || hasInvestigationKey) {
             if (typeof node.enabled === "boolean") {
                 node.enabled = true;
                 touched = true;
@@ -208,6 +299,14 @@ function tryEnableInvestigationToggleInObject(root, { maxDepth = 6 } = {}) {
             }
             if (typeof node.isActive === "boolean") {
                 node.isActive = true;
+                touched = true;
+            }
+            if (typeof node.setValue === "function") {
+                node.setValue(true);
+                touched = true;
+            }
+            if (typeof node.set === "function") {
+                node.set(true);
                 touched = true;
             }
         }
@@ -270,12 +369,14 @@ function tryEnableInvestigationToggleViaDom() {
         const labelText = normalizeTextToken(el.textContent || el.getAttribute("aria-label") || "");
         if (!labelText || (!labelText.includes(target) && labelText !== target)) continue;
 
-        const host = el.closest("label, .toggle-item, .settings-item, .menu_button") || el;
+        const host = el.closest("label, .toggle-item, .settings-item, .menu_button, .inline-drawer-toggle") || el;
         const checkbox = host.querySelector('input[type="checkbox"]') || el.querySelector?.('input[type="checkbox"]');
 
         if (checkbox) {
             if (checkbox.checked) return true;
             checkbox.click();
+            checkbox.dispatchEvent(new Event("input", { bubbles: true }));
+            checkbox.dispatchEvent(new Event("change", { bubbles: true }));
             return true;
         }
 
@@ -300,76 +401,112 @@ function triggerInvestigationTimeToggle() {
 
 function ensureInvestigationOverlay() {
     let overlay = document.getElementById("dangan-investigation-overlay");
-    if (overlay) return overlay;
 
-    overlay = document.createElement("div");
-    overlay.id = "dangan-investigation-overlay";
-    overlay.setAttribute("aria-hidden", "true");
-    overlay.innerHTML = `
-        <div class="dangan-investigation-backdrop"></div>
-        <div class="dangan-investigation-scanlines"></div>
-        <div class="dangan-investigation-banner" role="status" aria-live="polite" aria-label="Investigation start banner">
-            <div class="dangan-investigation-kicker">TRIAL ROUTE UPDATED</div>
-            <div class="dangan-investigation-title">Investigation Start!</div>
-            <div class="dangan-investigation-subtitle">Truth Bullets Enabled · Field Notes Active</div>
-        </div>
-    `;
+    // If markup exists inside a hidden panel, move it to body so it can render globally.
+    if (overlay && overlay.parentElement !== document.body) {
+        document.body.appendChild(overlay);
+    }
 
-    document.body.appendChild(overlay);
+    if (!overlay) {
+        overlay = document.createElement("div");
+        overlay.id = "dangan-investigation-overlay";
+        overlay.setAttribute("aria-hidden", "true");
+        overlay.innerHTML = `
+            <div class="dangan-investigation-backdrop"></div>
+            <div class="dangan-investigation-scanlines"></div>
+            <div class="dangan-investigation-banner" role="status" aria-live="polite" aria-label="Investigation start banner">
+                <div class="dangan-investigation-kicker">TRIAL ROUTE UPDATED</div>
+                <div class="dangan-investigation-title"><span class="dangan-investigation-word inv">Investigation</span> <span class="dangan-investigation-word start">START!</span></div>
+                <div class="dangan-investigation-subtitle">Truth Bullets Enabled · Field Notes Active</div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+    }
+
     return overlay;
 }
 
-function showInvestigationStartBanner() {
-    const overlay = ensureInvestigationOverlay();
-    if (!overlay) return false;
+const investigationStartController = {
+    hideTimerId: null,
 
-    overlay.classList.remove("show");
-    void overlay.offsetWidth;
-    overlay.classList.add("show");
+    clearBanner() {
+        const overlay = document.getElementById("dangan-investigation-overlay");
+        if (!overlay) return;
 
-    const titleEl = overlay.querySelector(".dangan-investigation-title");
-    if (titleEl) {
-        titleEl.textContent = "Investigation Start!";
-    }
-
-    const timer = Number(overlay.dataset.hideTimer || 0);
-    if (timer) {
-        clearTimeout(timer);
-    }
-
-    const nextTimer = window.setTimeout(() => {
         overlay.classList.remove("show");
-        overlay.dataset.hideTimer = "";
-    }, 2600);
+        overlay.setAttribute("aria-hidden", "true");
 
-    overlay.dataset.hideTimer = String(nextTimer);
-    return true;
-}
+        if (this.hideTimerId) {
+            clearTimeout(this.hideTimerId);
+            this.hideTimerId = null;
+        }
+    },
 
-function triggerInvestigationStart() {
-    const bannerShown = showInvestigationStartBanner();
+    showBanner(durationMs = 2200) {
+        const overlay = ensureInvestigationOverlay();
+        if (!overlay) return false;
 
-    if (sfx?.investigation_start) {
+        overlay.style.setProperty("--investigation-banner-duration", `${Math.max(900, Math.round(durationMs))}ms`);
+        overlay.setAttribute("aria-hidden", "false");
+        overlay.classList.remove("show");
+        void overlay.offsetWidth;
+        overlay.classList.add("show");
+
+        if (this.hideTimerId) {
+            clearTimeout(this.hideTimerId);
+            this.hideTimerId = null;
+        }
+
+        this.hideTimerId = window.setTimeout(() => this.clearBanner(), Math.max(900, Math.round(durationMs)));
+        return true;
+    },
+
+    playSfx() {
+        if (!sfx?.investigation_start) {
+            console.warn("[Dangan][Investigation] Investigation start SFX not loaded.");
+            return { played: false, durationMs: 2200 };
+        }
+
         playSfx(sfx.investigation_start);
-    } else {
-        console.warn("[Dangan][Investigation] Investigation start SFX not loaded.");
-    }
 
-    try {
-        const toggled = triggerInvestigationTimeToggle();
-        if (toggled) {
-            console.log("[Dangan][Investigation] Investigation Time toggle enabled in current preset.");
-        } else {
+        const durationSec = Number(sfx.investigation_start.duration);
+        const durationMs = Number.isFinite(durationSec) && durationSec > 0
+            ? Math.round(durationSec * 1000)
+            : 2200;
+
+        return { played: true, durationMs };
+    },
+
+    enableToggle() {
+        try {
+            const enabled = triggerInvestigationTimeToggle();
+            if (enabled) {
+                console.log("[Dangan][Investigation] Investigation Time toggle enabled in current preset.");
+                return true;
+            }
             console.warn("[Dangan][Investigation] Could not auto-enable the Investigation Time toggle.");
+            return false;
+        } catch (error) {
+            console.warn("[Dangan][Investigation] Toggle automation failed:", error);
+            return false;
+        }
+    },
+
+    trigger() {
+        const sfxResult = this.playSfx();
+        const displayDuration = Math.max(1400, (sfxResult?.durationMs || 2200) + 120);
+        const bannerShown = this.showBanner(displayDuration);
+        const toggled = this.enableToggle();
+
+        const didAnything = Boolean(bannerShown || sfxResult?.played || toggled);
+        if (!didAnything) {
+            console.info("[Dangan][Investigation] Marker detected, but no effect could be shown.");
         }
 
-        if (!bannerShown && !toggled) {
-            console.info("[Dangan][Investigation] Marker detected, but no visible effect could be shown.");
-        }
-    } catch (error) {
-        console.warn("[Dangan][Investigation] Toggle automation failed, banner/sfx still executed:", error);
-    }
-}
+        return didAnything;
+    },
+};
 
 
 /* =========================
@@ -772,6 +909,35 @@ function unlockAudio() {
     });
 }
 
+function stripV3CMarkersFromText(value) {
+    const text = String(value || "");
+    if (!text) return text;
+
+    const lines = text.split(/\r?\n/);
+    const kept = lines.filter((line) => {
+        const canonical = line
+            .toUpperCase()
+            .replace(/[|｜]/g, "|")
+            .replace(/[`*_~\s]/g, "");
+
+        if (canonical.startsWith("V3C|TB:")) return false;
+        if (canonical.startsWith("V3C|SOCIAL:")) return false;
+        if (canonical.startsWith("V3C|SOCIAL_UP:")) return false;
+        if (canonical.startsWith("V3C|SOCIAL_DOWN:")) return false;
+        if (canonical.includes("V3C|INVESTIGATIONSTART")) return false;
+        return true;
+    });
+
+    return kept.join("\n")
+        .replace(/V3C\s*[|｜]\s*TB:\s*([^|\n\r]+)(?:\|\|\s*([^\n\r]+))?/gi, "")
+        .replace(/V3C\s*[|｜]\s*SOCIAL:\s*([^\n\r]+)/gi, "")
+        .replace(/V3C\s*[|｜]\s*SOCIAL_UP:\s*([^\n\r]+)/gi, "")
+        .replace(/V3C\s*[|｜]\s*SOCIAL_DOWN:\s*([^\n\r]+)/gi, "")
+        .replace(/V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/gi, "")
+        .replace(/^[ \t]+/gm, "")
+        .trimStart();
+}
+
 function waitForSfx(key, callback, tries = 20) {
     if (sfx[key]) {
         callback(sfx[key]);
@@ -859,13 +1025,18 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
 }
 
         // ---- Investigation Start ----
-        if (hasInvestigationStartMarker(rawText)) {
-            const signature = `INVESTIGATION||${messageSignature}`;
-            if (!processedInvestigationSignatures.has(signature)) {
-                processedInvestigationSignatures.add(signature);
-                triggerInvestigationStart();
+        const investigationMarkers = parseInvestigationStartMarkers(rawText);
+        investigationMarkers.forEach((marker, idx) => {
+            console.debug("[Dangan][Investigation] Marker detected", marker);
+            const signature = `INVESTIGATION||${messageSignature}||${marker.index}||${idx}`;
+            const persistentSignature = buildPersistentInvestigationSignature(msgEl, marker, idx, rawText);
+            if (hasProcessedInvestigationSignature(signature, persistentSignature)) return;
+
+            const triggered = investigationStartController.trigger();
+            if (triggered) {
+                markInvestigationSignatureProcessed(signature, persistentSignature);
             }
-        }
+        });
 
         // ---- Marker Cleanup ----
        if (/[Vv]3[Cc]\s*[|｜]/.test(rawText)) {
@@ -877,15 +1048,8 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
 
     let textNode;
     while ((textNode = walker.nextNode())) {
-        if (/[Vv]3[Cc]\s*[|｜]/.test(textNode.nodeValue)) {
-            textNode.nodeValue = textNode.nodeValue
-                .replace(TB_REGEX, "")
-                .replace(SOCIAL_REGEX, "")
-                .replace(SOCIAL_UP_REGEX, "")
-                .replace(SOCIAL_DOWN_REGEX, "")
-                .replace(INVESTIGATION_START_REGEX, "")
-                .trimStart();
-        }
+        if (!/[Vv]3[Cc]\s*[|｜]/.test(textNode.nodeValue)) continue;
+        textNode.nodeValue = stripV3CMarkersFromText(textNode.nodeValue);
         }
     }
 
