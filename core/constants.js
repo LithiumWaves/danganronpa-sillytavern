@@ -8,8 +8,14 @@ function resolveExtensionFolderPath() {
         if (!moduleUrl) return fallback;
 
         const parsed = new URL(moduleUrl);
-        const basePath = decodeURI(parsed.pathname).replace(/\/[^/]*$/, "").replace(/^\/+/, "");
-        return basePath || fallback;
+        const normalizedPath = decodeURIComponent(parsed.pathname || "").replace(/\\/g, "/");
+        const scriptRoot = normalizedPath.replace(/\/[^/]*$/, "");
+        const extensionRoot = scriptRoot.endsWith("/core") ? scriptRoot.slice(0, -5) : scriptRoot;
+        const fromScripts = extensionRoot.match(/\/scripts\/extensions\/[^?#]+$/)?.[0];
+
+        if (!fromScripts) return fallback;
+
+        return fromScripts.replace(/^\/+/, "");
     } catch {
         return fallback;
     }
