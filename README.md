@@ -10,8 +10,8 @@ Alternatively, install directly from SillyTavern by accessing the extensions tab
 3. In chat, click the Monopad crest button to open the UI.
 
 ## Requirements:
-The Lorebook: x
-The Generation Preset: x
+The Lorebook: [TBA]
+The Generation Preset: [TBA]
 
 ## What the extension includes
 
