@@ -73,6 +73,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         machineRoll: ".map-machine-button.roll",
         machineClose: ".map-machine-close",
         presencePin: ".map-presence-pin",
+        presenceTooltip: ".map-presence-tooltip",
     };
 
     function isMapPresenceEnabled() {
@@ -94,17 +95,26 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         if (!isMapPresenceEnabled()) return [];
 
         const payload = getLocationPresence();
-        const pins = [];
-        const dedupe = new Set();
+        const byLocation = new Map();
+
+        function ensureLocationBucket(locationId) {
+            const existing = byLocation.get(locationId);
+            if (existing) return existing;
+
+            const bucket = {
+                locationId,
+                userLabel: null,
+                characters: [],
+            };
+
+            byLocation.set(locationId, bucket);
+            return bucket;
+        }
 
         const userLocation = payload?.user?.locationId;
         if (userLocation && LOCATION_PINPOINTS[userLocation]) {
-            pins.push({
-                type: "user",
-                label: payload.user.label || "You",
-                locationId: userLocation,
-            });
-            dedupe.add(`user::${userLocation}`);
+            const bucket = ensureLocationBucket(userLocation);
+            bucket.userLabel = payload.user.label || "You";
         }
 
         const characters = Array.isArray(payload?.characters) ? payload.characters : [];
@@ -112,24 +122,51 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             const locationId = entry?.locationId;
             if (!locationId || !LOCATION_PINPOINTS[locationId]) continue;
 
-            const pinKey = `char::${entry.name || "unknown"}::${locationId}`;
-            if (dedupe.has(pinKey)) continue;
-            dedupe.add(pinKey);
-
-            pins.push({
-                type: "character",
-                label: entry.name || "Unknown",
-                locationId,
-            });
+            const bucket = ensureLocationBucket(locationId);
+            const characterName = entry.name || "Unknown";
+            if (!bucket.characters.includes(characterName)) {
+                bucket.characters.push(characterName);
+            }
         }
 
-        return pins.filter(pin => {
+        return Array.from(byLocation.values()).filter(pin => {
             const point = LOCATION_PINPOINTS[pin.locationId];
             return point.area === state.area && point.floor === state.floor;
         });
     }
 
+    function closePresenceTooltip($imageWrap) {
+        $imageWrap.find(selectors.presenceTooltip).remove();
+        $imageWrap.find(`${selectors.presencePin}.active`).removeClass("active");
+    }
+
+    function openPresenceTooltip($imageWrap, pin, point, $pin) {
+        closePresenceTooltip($imageWrap);
+
+        const who = [];
+        if (pin.userLabel) {
+            who.push(`<li><strong>YOU</strong> (${pin.userLabel})</li>`);
+        }
+        for (const name of pin.characters) {
+            who.push(`<li>${name}</li>`);
+        }
+
+        const whoMarkup = who.length ? who.join("") : "<li>Unknown presence</li>";
+        const leftPercent = (point.x / point.width) * 100;
+        const topPercent = (point.y / point.height) * 100;
+
+        $imageWrap.append(`
+            <div class="map-presence-tooltip" role="status" style="left:${leftPercent}%; top:${topPercent}%;">
+                <div class="map-presence-tooltip-title">${point.label}</div>
+                <ul>${whoMarkup}</ul>
+            </div>
+        `);
+
+        $pin.addClass("active");
+    }
+
     function renderPresencePins($imageWrap) {
+        closePresenceTooltip($imageWrap);
         $imageWrap.find(selectors.presencePin).remove();
         const pins = buildPresencePinsForFloor();
         if (!pins.length) return;
@@ -140,23 +177,48 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
 
             const pinLeftPercent = (point.x / point.width) * 100;
             const pinTopPercent = (point.y / point.height) * 100;
-            const pinSymbol = pin.type === "user" ? "▲" : "◆";
-            const title = pin.type === "user"
-                ? `You · ${point.label}`
-                : `${pin.label} · ${point.label}`;
+            const hasUser = !!pin.userLabel;
+            const hasCharacters = pin.characters.length > 0;
+            const pinTypeClass = hasUser && hasCharacters
+                ? "mixed"
+                : hasUser
+                    ? "user"
+                    : "character";
+            const pinSymbol = hasUser ? "▲" : "◆";
+            const charCountBadge = hasCharacters ? `<span class="map-presence-count">${pin.characters.length}</span>` : "";
+            const title = `${point.label} · ${hasUser ? "You" : "Characters"}`;
 
-            $imageWrap.append(`
-                <div
-                    class="map-presence-pin ${pin.type}"
-                    role="img"
+            const $pin = $(`
+                <button
+                    type="button"
+                    class="map-presence-pin ${pinTypeClass}"
                     aria-label="${title}"
                     title="${title}"
                     style="left:${pinLeftPercent}%; top:${pinTopPercent}%;"
                 >
-                    ${pinSymbol}
-                </div>
+                    <span class="map-presence-symbol">${pinSymbol}</span>
+                    ${charCountBadge}
+                </button>
             `);
+
+            $pin.on("click", (event) => {
+                event.stopPropagation();
+                const isActive = $pin.hasClass("active");
+                if (isActive) {
+                    closePresenceTooltip($imageWrap);
+                    return;
+                }
+
+                playSfx?.(getSfx?.().click);
+                openPresenceTooltip($imageWrap, pin, point, $pin);
+            });
+
+            $imageWrap.append($pin);
         }
+
+        $imageWrap.off("click.presenceTooltip").on("click.presenceTooltip", () => {
+            closePresenceTooltip($imageWrap);
+        });
     }
 
     function ensureValidFloorSelection() {
