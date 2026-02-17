@@ -2782,7 +2782,7 @@ jQuery(async () => {
         $("#extensions_settings2").append(settingsHtml);
 
         const monopadHtml = await $.get(`${extensionFolderPath}/monopad.html`);
-        const normalizedMonopadHtml = monopadHtml.replaceAll("scripts/extensions/third-party/danganronpa-extension", extensionFolderPath);
+        const normalizedMonopadHtml = monopadHtml.replace(/scripts\/extensions\/third-party\/danganronpa-extension/g, extensionFolderPath);
         $("body").append(normalizedMonopadHtml);
         normalizeSettingsHeaderActionButtons();
         ensureGlobalDebugUi();
