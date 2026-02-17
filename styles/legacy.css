@@ -495,28 +495,33 @@
 
 #dangan_monopad_panel.booting .monopad-fullscreen-root {
     opacity: 0;
-    transform: scaleY(0.98);
-    filter: brightness(2);
+    transform: translateY(8px) scale(0.99);
+    filter: brightness(1.35) saturate(1.1);
 }
 
 #dangan_monopad_panel.open.booting .monopad-fullscreen-root {
-    animation: monopad-boot 0.45s ease-out forwards;
+    animation: monopad-boot 0.56s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
 @keyframes monopad-boot {
     0% {
         opacity: 0;
-        transform: scaleY(0.98);
-        filter: brightness(2);
+        transform: translateY(8px) scale(0.99);
+        filter: brightness(1.35) saturate(1.1);
     }
-    40% {
+    35% {
+        opacity: 0.92;
+        transform: translateY(0) scale(1);
+        filter: brightness(1.14) saturate(1.05);
+    }
+    70% {
         opacity: 1;
-        filter: brightness(1.6);
+        filter: brightness(1.04) saturate(1.02);
     }
     100% {
         opacity: 1;
-        transform: scaleY(1);
-        filter: brightness(1);
+        transform: translateY(0) scale(1);
+        filter: brightness(1) saturate(1);
     }
 }
 
@@ -525,33 +530,35 @@
    ========================= */
 
 #dangan_monopad_panel.shutting-down .monopad-fullscreen-root {
-    animation: monopad-shutdown 0.35s ease-in forwards;
+    animation: monopad-shutdown 0.42s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
 @keyframes monopad-shutdown {
     0% {
         opacity: 1;
-        transform: scaleY(1);
-        filter: brightness(1);
+        transform: translateY(0) scale(1);
+        filter: brightness(1) saturate(1);
     }
-    40% {
-        filter: brightness(1.4);
+    45% {
+        opacity: 0.86;
+        filter: brightness(1.06) saturate(1.03);
     }
     100% {
         opacity: 0;
-        transform: scaleY(0.92);
-        filter: brightness(0);
+        transform: translateY(6px) scale(0.985);
+        filter: brightness(0.78) saturate(0.95);
     }
 }
 
 /* CRT spike on shutdown */
 #dangan_monopad_panel.shutting-down .monopad-crt-overlay {
-    animation: crt-shutdown-flicker 0.25s steps(2);
+    animation: crt-shutdown-flicker 0.32s ease-out;
 }
 
 @keyframes crt-shutdown-flicker {
-    0% { opacity: 0.35; }
-    50% { opacity: 0.9; }
+    0% { opacity: 0.3; }
+    35% { opacity: 0.52; }
+    70% { opacity: 0.2; }
     100% { opacity: 0; }
 }
 

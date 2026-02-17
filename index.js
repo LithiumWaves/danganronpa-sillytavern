@@ -2816,7 +2816,7 @@ jQuery(async () => {
 
                 setTimeout(() => {
                     $panel.removeClass("shutting-down").addClass("closed");
-                }, 350);
+                }, 420);
             } else {
                 playSfx(sfx.close);
                 $panel.addClass("closed");
@@ -2890,7 +2890,7 @@ $(".monopad-icon").on("mouseenter", function () {
 
                 if (getMonopadSetting("bootAnimations")) {
                     $panel.addClass("open booting");
-                    setTimeout(() => $panel.removeClass("booting"), 450);
+                    setTimeout(() => $panel.removeClass("booting"), 560);
                 } else {
                     $panel.addClass("open");
                 }
@@ -2899,7 +2899,7 @@ $(".monopad-icon").on("mouseenter", function () {
                 if (getMonopadSetting("bootAnimations")) {
                     $panel.addClass("shutting-down");
                     playSfx(sfx.close);
-                    setTimeout(() => $panel.removeClass("shutting-down").addClass("closed"), 350);
+                    setTimeout(() => $panel.removeClass("shutting-down").addClass("closed"), 420);
                 } else {
                     playSfx(sfx.close);
                     $panel.addClass("closed");
