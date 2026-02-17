@@ -216,63 +216,6 @@ function markInvestigationSignatureProcessed(signature, persistentSignature = ""
 
     saveSettingsDebounced();
 }
-
-        if (canonical.includes("V3C|INVESTIGATIONSTART")) {
-            matches.push({
-                marker: line,
-                index: cursor,
-                source: "fallback",
-            });
-        }
-
-        cursor += line.length + 1;
-    }
-
-    return matches;
-}
-
-function parseInvestigationStartMarkers(text) {
-    const raw = String(text || "");
-    if (!raw) return [];
-
-    const matches = [];
-    INVESTIGATION_START_PARSE_REGEX.lastIndex = 0;
-
-    let match;
-    while ((match = INVESTIGATION_START_PARSE_REGEX.exec(raw)) !== null) {
-        matches.push({
-            marker: match[0],
-            index: match.index,
-            source: "regex",
-        });
-    }
-
-    if (matches.length) return matches;
-
-    // Fallback parser for format drift (markdown wrappers / unusual punctuation).
-    const lines = raw.split(/\r?\n/);
-    let cursor = 0;
-
-    for (const line of lines) {
-        const canonical = line
-            .toUpperCase()
-            .replace(/[|｜]/g, "|")
-            .replace(/[`*_~:;,.!?\-\s]/g, "");
-
-        if (canonical.includes("V3C|INVESTIGATIONSTART")) {
-            matches.push({
-                marker: line,
-                index: cursor,
-                source: "fallback",
-            });
-        }
-
-        cursor += line.length + 1;
-    }
-
-    return matches;
-}
-
 function parseInvestigationStartMarkers(text) {
     const raw = String(text || "");
     if (!raw) return [];
