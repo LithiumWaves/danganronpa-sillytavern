@@ -1791,7 +1791,6 @@ function attachDraggablePositioning(element, { storageKey, handleSelector, suppr
         moved = false;
 
         element.setPointerCapture?.(pointerId);
-        event.preventDefault();
     });
 
     element.addEventListener("pointermove", event => {
