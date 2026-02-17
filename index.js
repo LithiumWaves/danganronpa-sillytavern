@@ -9,6 +9,7 @@ import { createRewardSystem } from "./items/rewardSystem.js";
 import { createSocialPanelController } from "./social/socialPanel.js";
 import { extractUltimateFromNotes, isIgnoredCharacter, lookupUltimateFromLorebook, normalizeList, normalizeName } from "./social/characterUtils.js";
 import { createMapPanelController } from "./map/mapPanel.js";
+import { getLocationPromptReference, resolveLocationIdFromText } from "./map/locationPresence.js";
 import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "./core/monokumaLessonScript.js";
@@ -52,6 +53,74 @@ const {
 } = openRouterSettings;
 
 let rewards = null;
+let recentLocationMentions = [];
+
+function pushRecentLocationMention(entry) {
+    if (!entry?.locationId || !entry?.messageSignature) return;
+
+    const normalizedSpeaker = normalizeName(entry.speakerName || "");
+    recentLocationMentions = recentLocationMentions.filter(item => {
+        if (item.messageSignature === entry.messageSignature && normalizeName(item.speakerName || "") === normalizedSpeaker) {
+            return false;
+        }
+        return true;
+    });
+
+    recentLocationMentions.push({
+        messageSignature: entry.messageSignature,
+        speakerName: String(entry.speakerName || "").trim(),
+        isUser: Boolean(entry.isUser),
+        locationId: entry.locationId,
+        createdAt: Date.now(),
+    });
+
+    const overflow = recentLocationMentions.length - 5;
+    if (overflow > 0) {
+        recentLocationMentions.splice(0, overflow);
+    }
+}
+
+function buildRecentLocationPresence() {
+    const latestBySpeaker = new Map();
+
+    for (let i = recentLocationMentions.length - 1; i >= 0; i -= 1) {
+        const item = recentLocationMentions[i];
+        const speakerKey = item.isUser
+            ? "__user__"
+            : normalizeName(item.speakerName || `unknown_${i}`);
+
+        if (!speakerKey || latestBySpeaker.has(speakerKey)) continue;
+        latestBySpeaker.set(speakerKey, item);
+    }
+
+    const userEntry = latestBySpeaker.get("__user__") || null;
+    const characters = [];
+
+    latestBySpeaker.forEach((item, key) => {
+        if (key === "__user__") return;
+        if (!item?.speakerName || !item?.locationId) return;
+
+        characters.push({
+            name: item.speakerName,
+            locationId: item.locationId,
+        });
+    });
+
+    return {
+        user: userEntry
+            ? {
+                locationId: userEntry.locationId,
+                label: getActivePersonaName(),
+            }
+            : null,
+        characters,
+    };
+}
+
+window.getMonopadRecentLocationPresence = function () {
+    return buildRecentLocationPresence();
+};
+
 
 function clampRewardDifficulty(value) {
     return Object.prototype.hasOwnProperty.call(REWARD_PROFILES, value) ? value : "normal";
@@ -613,6 +682,9 @@ name: ${gift.name}
 rarity: ${gift.rarity}
 description: ${gift.description}
 intended_effect: ${gift.effect || "unknown"}
+
+LOCATION ALIAS REFERENCE (for map tracking parser):
+${getLocationPromptReference()}
 `.trim();
 
     try {
@@ -936,6 +1008,33 @@ function stripV3CMarkersFromText(value) {
         .trimStart();
 }
 
+function maybeTrackMessageLocation(msgEl, rawText) {
+    const locationId = resolveLocationIdFromText(rawText);
+    if (!locationId) return;
+
+    const isUser = msgEl.getAttribute("is_user") === "true";
+    const isSystem = msgEl.getAttribute("is_system") === "true";
+    if (isSystem) return;
+
+    const speakerName = isUser
+        ? getActivePersonaName()
+        : (msgEl.getAttribute("ch_name") || msgEl.getAttribute("name") || "").trim();
+
+    if (!isUser && !speakerName) return;
+
+    const signature = buildMessageSignature(msgEl, rawText);
+    pushRecentLocationMention({
+        messageSignature: signature,
+        speakerName,
+        isUser,
+        locationId,
+    });
+
+    if (document.querySelector('.monopad-panel-content[data-panel="map"].active')) {
+        mapPanelController?.renderMapPanel?.();
+    }
+}
+
 function waitForSfx(key, callback, tries = 20) {
     if (sfx[key]) {
         callback(sfx[key]);
@@ -968,6 +1067,7 @@ function processAllMessages() {
 
         const rawText = msgText.textContent;
         const messageSignature = buildMessageSignature(msgEl, rawText);
+        maybeTrackMessageLocation(msgEl, rawText);
         injectPersistedGiftReactionForMessage(msgEl, messageSignature);
         void tryResolvePendingGiftForMessage(msgEl, rawText);
 
