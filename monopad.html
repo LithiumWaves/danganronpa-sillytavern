@@ -99,6 +99,17 @@
                             <div class="map-presence-tool-row">
                                 <button class="map-floor-button map-presence-clear-all" type="button">CLEAR PINS</button>
                                 <button class="map-floor-button map-presence-restore-all" type="button">RESTORE PINS</button>
+                                <button class="map-floor-button map-presence-calibrate-toggle" type="button">CALIBRATE</button>
+                            </div>
+
+                            <div class="map-presence-calibration-controls" hidden>
+                                <label class="map-presence-calibration-label" for="map-presence-location-select">PIN TARGET</label>
+                                <select id="map-presence-location-select" class="map-presence-location-select"></select>
+                                <div class="map-presence-tool-row compact">
+                                    <button class="map-floor-button map-presence-calibration-reset-floor" type="button">RESET FLOOR</button>
+                                    <button class="map-floor-button map-presence-calibration-export" type="button">COPY PIN JSON</button>
+                                </div>
+                                <div class="map-presence-calibration-hint">Calibration mode: select a location, then tap/click the map to reposition that pin.</div>
                             </div>
                         </div>
                     </div>

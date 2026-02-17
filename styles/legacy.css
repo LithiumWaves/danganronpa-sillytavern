@@ -3173,6 +3173,39 @@
     padding: 6px 10px;
 }
 
+.map-presence-calibration-controls {
+    margin-top: 10px;
+    display: grid;
+    gap: 8px;
+}
+
+.map-presence-calibration-label {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: rgba(190, 232, 255, 0.82);
+}
+
+.map-presence-location-select {
+    width: 100%;
+    border: 1px solid rgba(138, 197, 255, 0.42);
+    border-radius: 8px;
+    background: rgba(8, 28, 57, 0.88);
+    color: rgba(219, 241, 255, 0.94);
+    padding: 6px 8px;
+    font-size: 11px;
+}
+
+.map-presence-tool-row.compact .map-floor-button {
+    font-size: 10px;
+    padding: 6px 10px;
+}
+
+.map-presence-calibration-hint {
+    font-size: 10px;
+    color: rgba(172, 220, 255, 0.76);
+    line-height: 1.35;
+}
+
 .map-panel-kicker {
     font-size: 12px;
     letter-spacing: 0.24em;
@@ -3359,6 +3392,31 @@
     filter: brightness(1.08);
     box-shadow: 0 0 18px rgba(255, 255, 255, 0.3);
     outline: none;
+}
+
+.map-calibration-pin {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    border: 1px solid rgba(130, 234, 255, 0.72);
+    background: rgba(6, 40, 66, 0.72);
+    color: rgba(187, 248, 255, 0.95);
+    font-size: 10px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 3;
+}
+
+.map-calibration-pin.active {
+    border-color: rgba(255, 230, 152, 0.96);
+    background: rgba(84, 51, 8, 0.8);
+    color: #fff4c5;
+    box-shadow: 0 0 16px rgba(255, 219, 125, 0.38);
 }
 
 .map-presence-tooltip {
@@ -3761,6 +3819,25 @@
 @media (max-width: 900px) {
     .map-controls {
         grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 640px) {
+    .map-presence-tooltip {
+        width: min(156px, 46vw);
+        padding: 6px 7px;
+        border-radius: 8px;
+    }
+
+    .map-presence-tooltip-title,
+    .map-presence-tooltip ul,
+    .map-presence-remove-pin {
+        font-size: 9px;
+    }
+
+    .map-presence-remove-pin {
+        padding: 4px 8px;
+        margin-top: 6px;
     }
 }
 

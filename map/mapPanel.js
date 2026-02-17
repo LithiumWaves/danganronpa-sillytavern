@@ -13,6 +13,10 @@ const MACHINE_GIF_TOTAL_FRAMES = 100;
 const MACHINE_JINGLE_DELAY_MS = Math.round((MACHINE_JINGLE_FRAME / MACHINE_GIF_TOTAL_FRAMES) * MACHINE_ROLL_DURATION_MS);
 const MACHINE_BANNER_DELAY_MS = 500;
 
+const PIN_OVERRIDE_STORAGE_KEY = "dangan_map_pinpoint_overrides_v1";
+const MAP_POINT_WIDTH = 480;
+const MAP_POINT_HEIGHT = 272;
+
 const MAP_AREAS = {
     hopes_peak: {
         label: "HOPE'S PEAK",
@@ -53,6 +57,9 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         machineTrackStarted: false,
         clearedPresencePins: false,
         dismissedPresencePins: new Set(),
+        calibrationMode: false,
+        selectedCalibrationLocationId: null,
+        pinOverrides: loadPinOverrides(),
     };
 
     const selectors = {
@@ -79,6 +86,12 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         presenceClearAll: ".map-presence-clear-all",
         presenceRestoreAll: ".map-presence-restore-all",
         presenceRemovePin: ".map-presence-remove-pin",
+        calibrationToggle: ".map-presence-calibrate-toggle",
+        calibrationControls: ".map-presence-calibration-controls",
+        calibrationSelect: ".map-presence-location-select",
+        calibrationResetFloor: ".map-presence-calibration-reset-floor",
+        calibrationExport: ".map-presence-calibration-export",
+        calibrationPin: ".map-calibration-pin",
     };
 
     function isMapPresenceEnabled() {
@@ -105,6 +118,122 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             .replace(/'/g, "&#39;");
     }
 
+    function loadPinOverrides() {
+        try {
+            const raw = window.localStorage?.getItem(PIN_OVERRIDE_STORAGE_KEY);
+            if (!raw) return {};
+            const parsed = JSON.parse(raw);
+            return parsed && typeof parsed === "object" ? parsed : {};
+        } catch {
+            return {};
+        }
+    }
+
+    function savePinOverrides() {
+        try {
+            window.localStorage?.setItem(PIN_OVERRIDE_STORAGE_KEY, JSON.stringify(state.pinOverrides || {}));
+        } catch {
+            // no-op for environments where storage is blocked
+        }
+    }
+
+    function getPinpoint(locationId) {
+        const base = LOCATION_PINPOINTS[locationId];
+        if (!base) return null;
+
+        const override = state.pinOverrides?.[locationId];
+        if (!override || typeof override !== "object") return base;
+
+        const x = Number(override.x);
+        const y = Number(override.y);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return base;
+
+        return {
+            ...base,
+            x: Math.max(0, Math.min(MAP_POINT_WIDTH, Math.round(x))),
+            y: Math.max(0, Math.min(MAP_POINT_HEIGHT, Math.round(y))),
+        };
+    }
+
+    function getCalibratableLocationEntries() {
+        return Object.entries(LOCATION_PINPOINTS)
+            .filter(([, point]) => point?.area === state.area && point?.floor === state.floor)
+            .sort((a, b) => String(a[1]?.label || a[0]).localeCompare(String(b[1]?.label || b[0])));
+    }
+
+    function ensureCalibrationTarget() {
+        const entries = getCalibratableLocationEntries();
+        if (!entries.length) {
+            state.selectedCalibrationLocationId = null;
+            return;
+        }
+
+        const hasCurrent = entries.some(([locationId]) => locationId === state.selectedCalibrationLocationId);
+        if (!hasCurrent) {
+            state.selectedCalibrationLocationId = entries[0][0];
+        }
+    }
+
+    function upsertPinOverride(locationId, x, y) {
+        if (!locationId || !LOCATION_PINPOINTS[locationId]) return;
+        state.pinOverrides ||= {};
+        state.pinOverrides[locationId] = { x, y };
+        savePinOverrides();
+    }
+
+    function resetFloorPinOverrides() {
+        const entries = getCalibratableLocationEntries();
+        if (!entries.length) return;
+
+        for (const [locationId] of entries) {
+            delete state.pinOverrides[locationId];
+        }
+
+        savePinOverrides();
+    }
+
+    function exportPinOverrides() {
+        const pretty = JSON.stringify(state.pinOverrides || {}, null, 2);
+        if (!pretty) return;
+
+        if (navigator?.clipboard?.writeText) {
+            navigator.clipboard.writeText(pretty).catch(() => {
+                window.prompt("Copy calibrated pin JSON", pretty);
+            });
+            return;
+        }
+
+        window.prompt("Copy calibrated pin JSON", pretty);
+    }
+
+    function applyTooltipViewportClamp($imageWrap, $tooltip, point) {
+        if (!$tooltip?.length || !$imageWrap?.length) return;
+
+        const wrapEl = $imageWrap.get(0);
+        const tipEl = $tooltip.get(0);
+        if (!wrapEl || !tipEl) return;
+
+        const wrapRect = wrapEl.getBoundingClientRect();
+        const tipRect = tipEl.getBoundingClientRect();
+
+        const pointX = (point.x / point.width) * wrapRect.width;
+        const pointY = (point.y / point.height) * wrapRect.height;
+
+        let leftPx = pointX - (tipRect.width / 2);
+        const minLeft = 6;
+        const maxLeft = Math.max(minLeft, wrapRect.width - tipRect.width - 6);
+        leftPx = Math.max(minLeft, Math.min(maxLeft, leftPx));
+
+        const preferredTop = pointY - tipRect.height - 14;
+        const fallbackTop = pointY + 14;
+        const topPx = preferredTop < 4 ? fallbackTop : preferredTop;
+
+        const leftPercent = (leftPx / wrapRect.width) * 100;
+        const topPercent = (topPx / wrapRect.height) * 100;
+
+        $tooltip.css({ left: `${leftPercent}%`, top: `${topPercent}%`, transform: "translate(0, 0)" });
+    }
+
     function buildPresencePinId(pin) {
         if (!pin || !pin.locationId) return null;
         if (pin.type === "user") return `user::${pin.locationId}`;
@@ -118,7 +247,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         const pins = [];
 
         const userLocation = payload?.user?.locationId;
-        if (userLocation && LOCATION_PINPOINTS[userLocation]) {
+        if (userLocation && getPinpoint(userLocation)) {
             pins.push({
                 type: "user",
                 label: payload.user.label || "You",
@@ -129,7 +258,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         const characters = Array.isArray(payload?.characters) ? payload.characters : [];
         for (const entry of characters) {
             const locationId = entry?.locationId;
-            if (!locationId || !LOCATION_PINPOINTS[locationId]) continue;
+            if (!locationId || !getPinpoint(locationId)) continue;
 
             pins.push({
                 type: "character",
@@ -148,7 +277,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         }
 
         return dedupedPins.filter(pin => {
-            const point = LOCATION_PINPOINTS[pin.locationId];
+            const point = getPinpoint(pin.locationId);
             return point?.area === state.area && point?.floor === state.floor;
         });
     }
@@ -210,6 +339,8 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             </div>
         `);
 
+        const $tooltip = $imageWrap.find(selectors.presenceTooltip).last();
+        applyTooltipViewportClamp($imageWrap, $tooltip, point);
         $pin.addClass("active");
     }
 
@@ -220,7 +351,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         if (!pins.length) return;
 
         for (const pin of pins) {
-            const point = LOCATION_PINPOINTS[pin.locationId];
+            const point = getPinpoint(pin.locationId);
             if (!point) continue;
 
             const pinLeftPercent = (point.x / point.width) * 100;
@@ -255,6 +386,62 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             });
 
             $imageWrap.append($pin);
+        }
+
+        $imageWrap.off("click.presenceTooltip").on("click.presenceTooltip", () => {
+            closePresenceTooltip($imageWrap);
+        });
+    }
+
+    function renderCalibrationPins($imageWrap) {
+        if (!state.calibrationMode) return;
+
+        ensureCalibrationTarget();
+        const entries = getCalibratableLocationEntries();
+        for (const [locationId, basePoint] of entries) {
+            const point = getPinpoint(locationId) || basePoint;
+            if (!point) continue;
+
+            const leftPercent = (point.x / point.width) * 100;
+            const topPercent = (point.y / point.height) * 100;
+            const isSelected = locationId === state.selectedCalibrationLocationId;
+
+            $imageWrap.append(`
+                <button
+                    type="button"
+                    class="map-calibration-pin${isSelected ? " active" : ""}"
+                    data-location-id="${escapeHtml(locationId)}"
+                    title="Calibrate ${escapeHtml(point.label)}"
+                    style="left:${leftPercent}%; top:${topPercent}%;"
+                >
+                    ✛
+                </button>
+            `);
+        }
+    }
+
+    function syncCalibrationControls($panel) {
+        const $controls = $panel.find(selectors.calibrationControls);
+        const $select = $panel.find(selectors.calibrationSelect);
+        const $toggle = $panel.find(selectors.calibrationToggle);
+
+        ensureCalibrationTarget();
+
+        $controls.prop("hidden", !state.calibrationMode);
+        $toggle.toggleClass("active", state.calibrationMode).attr("aria-pressed", String(state.calibrationMode));
+        $toggle.text(state.calibrationMode ? "CALIBRATING" : "CALIBRATE");
+
+        if (!$select.length) return;
+        const entries = getCalibratableLocationEntries();
+        $select.empty();
+        if (!entries.length) {
+            $select.append('<option value="">No floor locations</option>');
+            return;
+        }
+
+        for (const [locationId, point] of entries) {
+            const selected = locationId === state.selectedCalibrationLocationId ? 'selected="selected"' : "";
+            $select.append(`<option value="${escapeHtml(locationId)}" ${selected}>${escapeHtml(point.label)} (${escapeHtml(locationId)})</option>`);
         }
 
         $imageWrap.off("click.presenceTooltip").on("click.presenceTooltip", () => {
@@ -595,7 +782,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             $subtitle.text(floor.description);
         }
 
-        $imageWrap.find(`${selectors.machinePin}, ${selectors.presencePin}`).remove();
+        $imageWrap.find(`${selectors.machinePin}, ${selectors.presencePin}, ${selectors.calibrationPin}`).remove();
 
         const showMachinePin = state.area === "hopes_peak" && state.floor === "floor_1";
         if (showMachinePin && $imageWrap.length) {
@@ -617,6 +804,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
 
         if ($imageWrap.length) {
             renderPresencePins($imageWrap);
+            renderCalibrationPins($imageWrap);
         }
     }
 
@@ -638,6 +826,61 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             const pinId = this.dataset.pinId;
             if (!pinId) return;
             state.dismissedPresencePins.add(pinId);
+            playSfx?.(getSfx?.().click);
+            renderMapPanel();
+        });
+
+        $panel.find(selectors.calibrationToggle).off("click").on("click", () => {
+            state.calibrationMode = !state.calibrationMode;
+            ensureCalibrationTarget();
+            playSfx?.(getSfx?.().click);
+            renderMapPanel();
+        });
+
+        $panel.find(selectors.calibrationSelect).off("change").on("change", function () {
+            state.selectedCalibrationLocationId = this.value || null;
+            renderMapPanel();
+        });
+
+        $panel.find(selectors.calibrationResetFloor).off("click").on("click", () => {
+            resetFloorPinOverrides();
+            playSfx?.(getSfx?.().click);
+            renderMapPanel();
+        });
+
+        $panel.find(selectors.calibrationExport).off("click").on("click", () => {
+            exportPinOverrides();
+            playSfx?.(getSfx?.().click);
+        });
+
+        const $imageWrap = $panel.find(".map-image-wrap");
+        $imageWrap.off("click.calibration").on("click.calibration", (event) => {
+            if (!state.calibrationMode) return;
+            if ($(event.target).closest("button").length) return;
+            if (!state.selectedCalibrationLocationId) return;
+
+            const wrapEl = $imageWrap.get(0);
+            if (!wrapEl) return;
+
+            const rect = wrapEl.getBoundingClientRect();
+            const localX = event.clientX - rect.left;
+            const localY = event.clientY - rect.top;
+            if (rect.width <= 0 || rect.height <= 0) return;
+
+            const normalizedX = Math.round((localX / rect.width) * MAP_POINT_WIDTH);
+            const normalizedY = Math.round((localY / rect.height) * MAP_POINT_HEIGHT);
+            upsertPinOverride(state.selectedCalibrationLocationId, normalizedX, normalizedY);
+
+            playSfx?.(getSfx?.().click);
+            renderMapPanel();
+        });
+
+        $panel.off("click.calibrationPin").on("click.calibrationPin", selectors.calibrationPin, function (event) {
+            event.stopPropagation();
+            const locationId = this.dataset.locationId;
+            if (!locationId) return;
+            state.selectedCalibrationLocationId = locationId;
+            if (!state.calibrationMode) state.calibrationMode = true;
             playSfx?.(getSfx?.().click);
             renderMapPanel();
         });
@@ -674,6 +917,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         renderMapImage($panel);
         bindMachinePin($panel);
         bindPresenceManagementButtons($panel);
+        syncCalibrationControls($panel);
 
         const clearedLabel = state.clearedPresencePins ? "PINS CLEARED" : "CLEAR PINS";
         $panel.find(selectors.presenceClearAll).text(clearedLabel);
