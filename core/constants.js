@@ -8,10 +8,23 @@ function resolveExtensionFolderPath() {
         if (!moduleUrl) return fallback;
 
         const parsed = new URL(moduleUrl);
+        const protocol = String(parsed.protocol || "").toLowerCase();
         const normalizedPath = decodeURIComponent(parsed.pathname || "").replace(/\\/g, "/");
-        const scriptRoot = normalizedPath.replace(/\/[^/]*$/, "");
-        const extensionRoot = scriptRoot.endsWith("/core") ? scriptRoot.slice(0, -5) : scriptRoot;
-        return extensionRoot || fallback;
+
+        if (protocol === "http:" || protocol === "https:") {
+            const scriptRoot = normalizedPath.replace(/\/[^/]*$/, "");
+            const extensionRoot = scriptRoot.endsWith("/core") ? scriptRoot.slice(0, -5) : scriptRoot;
+            return extensionRoot.replace(/^\//, "") || fallback;
+        }
+
+        if (protocol === "file:") {
+            const webPathMatch = normalizedPath.match(/\/scripts\/extensions\/third-party\/[^/]+/i);
+            if (webPathMatch?.[0]) {
+                return webPathMatch[0].replace(/^\//, "");
+            }
+        }
+
+        return fallback;
     } catch {
         return fallback;
     }
