@@ -136,7 +136,7 @@ let truthBulletAnimating = false;
 const processedTruthSignatures = new Set();
 const processedSocialSignatures = new Set();
 const processedInvestigationSignatures = new Set();
-const INVESTIGATION_START_DETECT_REGEX = /V3C\s*\|\s*INVESTIGATION(?:_|\s*)START\b/i;
+const INVESTIGATION_START_DETECT_REGEX = /V3C\s*[|｜]\s*INVESTIGATION(?:_|[\s\-]*)START\b/i;
 
 
 function hasInvestigationStartMarker(text) {
@@ -144,6 +144,15 @@ function hasInvestigationStartMarker(text) {
     if (!raw) return false;
 
     if (INVESTIGATION_START_DETECT_REGEX.test(raw)) return true;
+
+    // Fallback for model formatting quirks (markdown/code-fences/extra punctuation).
+    const sanitized = raw
+        .toUpperCase()
+        .replace(/[`*_~]/g, "")
+        .replace(/[|｜]/g, "|")
+        .replace(/[^A-Z0-9|]+/g, "");
+
+    if (sanitized.includes("V3C|INVESTIGATIONSTART")) return true;
 
     const canonical = raw
         .toUpperCase()
@@ -289,9 +298,30 @@ function triggerInvestigationTimeToggle() {
     return tryEnableInvestigationToggleViaDom();
 }
 
+function ensureInvestigationOverlay() {
+    let overlay = document.getElementById("dangan-investigation-overlay");
+    if (overlay) return overlay;
+
+    overlay = document.createElement("div");
+    overlay.id = "dangan-investigation-overlay";
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.innerHTML = `
+        <div class="dangan-investigation-backdrop"></div>
+        <div class="dangan-investigation-scanlines"></div>
+        <div class="dangan-investigation-banner" role="status" aria-live="polite" aria-label="Investigation start banner">
+            <div class="dangan-investigation-kicker">TRIAL ROUTE UPDATED</div>
+            <div class="dangan-investigation-title">Investigation Start!</div>
+            <div class="dangan-investigation-subtitle">Truth Bullets Enabled · Field Notes Active</div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+    return overlay;
+}
+
 function showInvestigationStartBanner() {
-    const overlay = document.getElementById("dangan-investigation-overlay");
-    if (!overlay) return;
+    const overlay = ensureInvestigationOverlay();
+    if (!overlay) return false;
 
     overlay.classList.remove("show");
     void overlay.offsetWidth;
@@ -313,13 +343,16 @@ function showInvestigationStartBanner() {
     }, 2600);
 
     overlay.dataset.hideTimer = String(nextTimer);
+    return true;
 }
 
 function triggerInvestigationStart() {
-    showInvestigationStartBanner();
+    const bannerShown = showInvestigationStartBanner();
 
     if (sfx?.investigation_start) {
         playSfx(sfx.investigation_start);
+    } else {
+        console.warn("[Dangan][Investigation] Investigation start SFX not loaded.");
     }
 
     try {
@@ -328,6 +361,10 @@ function triggerInvestigationStart() {
             console.log("[Dangan][Investigation] Investigation Time toggle enabled in current preset.");
         } else {
             console.warn("[Dangan][Investigation] Could not auto-enable the Investigation Time toggle.");
+        }
+
+        if (!bannerShown && !toggled) {
+            console.info("[Dangan][Investigation] Marker detected, but no visible effect could be shown.");
         }
     } catch (error) {
         console.warn("[Dangan][Investigation] Toggle automation failed, banner/sfx still executed:", error);
