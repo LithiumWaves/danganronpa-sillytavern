@@ -3128,6 +3128,10 @@
         radial-gradient(circle at 78% 72%, rgba(36, 103, 230, 0.25), transparent 55%),
         linear-gradient(160deg, #040a1b 0%, #061635 52%, #071f48 100%);
 }
+.monopad-panel-content[data-panel="map"].machine-overlay-open {
+    overflow: hidden;
+}
+
 
 .map-panel-shell {
     position: relative;
@@ -3469,13 +3473,14 @@
 }
 
 .map-machine-overlay {
-    position: absolute;
+    position: fixed;
     inset: 0;
     background: rgba(2, 8, 20, 0.82);
     display: none;
     align-items: center;
     justify-content: center;
-    z-index: 6;
+    padding: 16px;
+    z-index: 2147483598;
 }
 
 .map-machine-overlay.open {

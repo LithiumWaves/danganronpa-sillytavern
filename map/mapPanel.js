@@ -532,118 +532,6 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         });
     }
 
-    function renderCalibrationPins($imageWrap) {
-        if (!state.calibrationMode) return;
-
-        ensureCalibrationTarget();
-        const entries = getCalibratableLocationEntries();
-        for (const [locationId, basePoint] of entries) {
-            const point = getPinpoint(locationId) || basePoint;
-            if (!point) continue;
-
-            const leftPercent = (point.x / point.width) * 100;
-            const topPercent = (point.y / point.height) * 100;
-            const isSelected = locationId === state.selectedCalibrationLocationId;
-
-            $imageWrap.append(`
-                <button
-                    type="button"
-                    class="map-calibration-pin${isSelected ? " active" : ""}"
-                    data-location-id="${escapeHtml(locationId)}"
-                    title="Calibrate ${escapeHtml(point.label)}"
-                    style="left:${leftPercent}%; top:${topPercent}%;"
-                >
-                    ✛
-                </button>
-            `);
-        }
-    }
-
-    function syncCalibrationControls($panel) {
-        const $controls = $panel.find(selectors.calibrationControls);
-        const $select = $panel.find(selectors.calibrationSelect);
-        const $toggle = $panel.find(selectors.calibrationToggle);
-
-        ensureCalibrationTarget();
-
-        $controls.prop("hidden", !state.calibrationMode);
-        $toggle.toggleClass("active", state.calibrationMode).attr("aria-pressed", String(state.calibrationMode));
-        $toggle.text(state.calibrationMode ? "CALIBRATING" : "CALIBRATE");
-
-        if (!$select.length) return;
-        const entries = getCalibratableLocationEntries();
-        $select.empty();
-        if (!entries.length) {
-            $select.append('<option value="">No floor locations</option>');
-            return;
-        }
-
-        for (const [locationId, point] of entries) {
-            const selected = locationId === state.selectedCalibrationLocationId ? 'selected="selected"' : "";
-            $select.append(`<option value="${escapeHtml(locationId)}" ${selected}>${escapeHtml(point.label)} (${escapeHtml(locationId)})</option>`);
-        }
-
-        $imageWrap.off("click.presenceTooltip").on("click.presenceTooltip", () => {
-            closePresenceTooltip($imageWrap);
-        });
-    }
-
-    function renderCalibrationPins($imageWrap) {
-        if (!state.calibrationMode) return;
-
-        ensureCalibrationTarget();
-        const entries = getCalibratableLocationEntries();
-        for (const [locationId, basePoint] of entries) {
-            const point = getPinpoint(locationId) || basePoint;
-            if (!point) continue;
-
-            const leftPercent = (point.x / point.width) * 100;
-            const topPercent = (point.y / point.height) * 100;
-            const isSelected = locationId === state.selectedCalibrationLocationId;
-
-            $imageWrap.append(`
-                <button
-                    type="button"
-                    class="map-calibration-pin${isSelected ? " active" : ""}"
-                    data-location-id="${escapeHtml(locationId)}"
-                    title="Calibrate ${escapeHtml(point.label)}"
-                    style="left:${leftPercent}%; top:${topPercent}%;"
-                >
-                    ✛
-                </button>
-            `);
-        }
-    }
-
-    function syncCalibrationControls($panel) {
-        const $controls = $panel.find(selectors.calibrationControls);
-        const $select = $panel.find(selectors.calibrationSelect);
-        const $toggle = $panel.find(selectors.calibrationToggle);
-
-        ensureCalibrationTarget();
-
-        $controls.prop("hidden", !state.calibrationMode);
-        $toggle.toggleClass("active", state.calibrationMode).attr("aria-pressed", String(state.calibrationMode));
-        $toggle.text(state.calibrationMode ? "CALIBRATING" : "CALIBRATE");
-
-        if (!$select.length) return;
-        const entries = getCalibratableLocationEntries();
-        $select.empty();
-        if (!entries.length) {
-            $select.append('<option value="">No floor locations</option>');
-            return;
-        }
-
-        for (const [locationId, point] of entries) {
-            const selected = locationId === state.selectedCalibrationLocationId ? 'selected="selected"' : "";
-            $select.append(`<option value="${escapeHtml(locationId)}" ${selected}>${escapeHtml(point.label)} (${escapeHtml(locationId)})</option>`);
-        }
-
-        $imageWrap.off("click.presenceTooltip").on("click.presenceTooltip", () => {
-            closePresenceTooltip($imageWrap);
-        });
-    }
-
     function ensureValidFloorSelection() {
         const area = MAP_AREAS[state.area];
         if (!area) {
@@ -879,6 +767,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         $panel.find(selectors.machineAdd).prop("disabled", false);
         $panel.find(selectors.machineAddRoll).prop("disabled", false);
         $panel.find(selectors.machineBanner).removeClass("show").text("");
+        $panel.removeClass("machine-overlay-open");
         $panel.find(selectors.machineOverlay).removeClass("open").attr("aria-hidden", "true");
         syncMachineTrack($panel);
     }
@@ -908,6 +797,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         $panel.find(selectors.machineAdd).prop("disabled", false);
         $panel.find(selectors.machineAddRoll).prop("disabled", false);
         $panel.find(selectors.machineImage).attr("src", `${extensionFolderPath}/assets/monochine_idle.png`);
+        $panel.addClass("machine-overlay-open");
         $panel.find(selectors.machineOverlay).addClass("open").attr("aria-hidden", "false");
         syncMachineTrack($panel);
     }
