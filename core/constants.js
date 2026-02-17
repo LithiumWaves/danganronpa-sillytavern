@@ -11,11 +11,7 @@ function resolveExtensionFolderPath() {
         const normalizedPath = decodeURIComponent(parsed.pathname || "").replace(/\\/g, "/");
         const scriptRoot = normalizedPath.replace(/\/[^/]*$/, "");
         const extensionRoot = scriptRoot.endsWith("/core") ? scriptRoot.slice(0, -5) : scriptRoot;
-        const fromScripts = extensionRoot.match(/\/scripts\/extensions\/[^?#]+$/)?.[0];
-
-        if (!fromScripts) return fallback;
-
-        return fromScripts.replace(/^\/+/, "");
+        return extensionRoot || fallback;
     } catch {
         return fallback;
     }
