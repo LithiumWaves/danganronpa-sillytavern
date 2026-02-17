@@ -206,8 +206,6 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         $panel.find(selectors.machineRoll).off("click").on("click", () => {
             if (state.machineRolling) return;
 
-            playSfx?.(getSfx?.().monochine_turn || getSfx?.().click);
-
             const items = getItemsController();
             if (!items?.spinMonoMonoMachine) return;
 
@@ -216,6 +214,8 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                 updateMachineOverlay($panel);
                 return;
             }
+
+            playSfx?.(getSfx?.().monochine_turn || getSfx?.().click);
 
             state.machineRolling = true;
             $panel.find(selectors.machineRoll).prop("disabled", true);
