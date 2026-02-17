@@ -64,10 +64,14 @@ export const MONOKUMA_LESSON_STEPS = [
         text: "A map? Really? You need me to explain how a map works?",
     },
     {
+        sprite: "monokuma_angry.png",
+        text: "All you need to know is that if your location markers are acting up, you can calibrate and pinpoint where every room is by clicking on that very obvious button.",
+    },
+    {
         action: "switchMapToHopesPeakFloor1",
         sprite: "monokuma_angry.png",
         spriteOpacity: 0.78,
-        text: "That little ¥ symbol marks my MonoMono Machine. You’ve seen your Monocoins already, right? You get those from investigations, socializing… all that good stuff.",
+        text: "Anyways, that little ¥ symbol marks my MonoMono Machine. You’ve seen your Monocoins already, right? You get those from investigations, socializing… all that good stuff.",
     },
     {
         sprite: "monokuma_pissed.png",
