@@ -158,7 +158,31 @@ function parseInvestigationStartMarkers(text) {
         matches.push({
             marker: match[0],
             index: match.index,
+            source: "regex",
         });
+    }
+
+    if (matches.length) return matches;
+
+    // Fallback parser for format drift (markdown wrappers / unusual punctuation).
+    const lines = raw.split(/\r?\n/);
+    let cursor = 0;
+
+    for (const line of lines) {
+        const canonical = line
+            .toUpperCase()
+            .replace(/[|｜]/g, "|")
+            .replace(/[`*_~:;,.!?\-\s]/g, "");
+
+        if (canonical.includes("V3C|INVESTIGATIONSTART")) {
+            matches.push({
+                marker: line,
+                index: cursor,
+                source: "fallback",
+            });
+        }
+
+        cursor += line.length + 1;
     }
 
     return matches;
@@ -305,22 +329,29 @@ function triggerInvestigationTimeToggle() {
 
 function ensureInvestigationOverlay() {
     let overlay = document.getElementById("dangan-investigation-overlay");
-    if (overlay) return overlay;
 
-    overlay = document.createElement("div");
-    overlay.id = "dangan-investigation-overlay";
-    overlay.setAttribute("aria-hidden", "true");
-    overlay.innerHTML = `
-        <div class="dangan-investigation-backdrop"></div>
-        <div class="dangan-investigation-scanlines"></div>
-        <div class="dangan-investigation-banner" role="status" aria-live="polite" aria-label="Investigation start banner">
-            <div class="dangan-investigation-kicker">TRIAL ROUTE UPDATED</div>
-            <div class="dangan-investigation-title">Investigation Start!</div>
-            <div class="dangan-investigation-subtitle">Truth Bullets Enabled · Field Notes Active</div>
-        </div>
-    `;
+    // If markup exists inside a hidden panel, move it to body so it can render globally.
+    if (overlay && overlay.parentElement !== document.body) {
+        document.body.appendChild(overlay);
+    }
 
-    document.body.appendChild(overlay);
+    if (!overlay) {
+        overlay = document.createElement("div");
+        overlay.id = "dangan-investigation-overlay";
+        overlay.setAttribute("aria-hidden", "true");
+        overlay.innerHTML = `
+            <div class="dangan-investigation-backdrop"></div>
+            <div class="dangan-investigation-scanlines"></div>
+            <div class="dangan-investigation-banner" role="status" aria-live="polite" aria-label="Investigation start banner">
+                <div class="dangan-investigation-kicker">TRIAL ROUTE UPDATED</div>
+                <div class="dangan-investigation-title">Investigation Start!</div>
+                <div class="dangan-investigation-subtitle">Truth Bullets Enabled · Field Notes Active</div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+    }
+
     return overlay;
 }
 
@@ -331,6 +362,7 @@ const investigationStartController = {
         const overlay = ensureInvestigationOverlay();
         if (!overlay) return false;
 
+        overlay.setAttribute("aria-hidden", "false");
         overlay.classList.remove("show");
         void overlay.offsetWidth;
         overlay.classList.add("show");
@@ -345,6 +377,7 @@ const investigationStartController = {
 
         const clearBanner = () => {
             overlay.classList.remove("show");
+            overlay.setAttribute("aria-hidden", "true");
             overlay.removeEventListener("animationend", handleAnimationEnd);
             if (this.hideTimerId) {
                 clearTimeout(this.hideTimerId);
@@ -887,6 +920,7 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
         // ---- Investigation Start ----
         const investigationMarkers = parseInvestigationStartMarkers(rawText);
         investigationMarkers.forEach((marker, idx) => {
+            console.debug("[Dangan][Investigation] Marker detected", marker);
             const signature = `INVESTIGATION||${messageSignature}||${marker.index}||${idx}`;
             if (processedInvestigationSignatures.has(signature)) return;
 
