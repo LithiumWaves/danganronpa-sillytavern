@@ -136,7 +136,22 @@ let truthBulletAnimating = false;
 const processedTruthSignatures = new Set();
 const processedSocialSignatures = new Set();
 const processedInvestigationSignatures = new Set();
-const INVESTIGATION_START_DETECT_REGEX = /V3C\|\s*INVESTIGATION_START\b/i;
+const INVESTIGATION_START_DETECT_REGEX = /V3C\s*\|\s*INVESTIGATION(?:_|\s*)START\b/i;
+
+
+function hasInvestigationStartMarker(text) {
+    const raw = String(text || "");
+    if (!raw) return false;
+
+    if (INVESTIGATION_START_DETECT_REGEX.test(raw)) return true;
+
+    const canonical = raw
+        .toUpperCase()
+        .replace(/\s+/g, "")
+        .replace(/_/g, "");
+
+    return canonical.includes("V3C|INVESTIGATIONSTART");
+}
 
 function normalizeTextToken(value) {
     return String(value || "")
@@ -807,7 +822,7 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
 }
 
         // ---- Investigation Start ----
-        if (INVESTIGATION_START_DETECT_REGEX.test(rawText)) {
+        if (hasInvestigationStartMarker(rawText)) {
             const signature = `INVESTIGATION||${messageSignature}`;
             if (!processedInvestigationSignatures.has(signature)) {
                 processedInvestigationSignatures.add(signature);
