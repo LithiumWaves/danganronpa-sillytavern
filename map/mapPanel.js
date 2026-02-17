@@ -1,10 +1,10 @@
 import { LOCATION_PINPOINTS } from "./locationPresence.js";
 
 const FLOOR_ONE_MACHINE_PIN = {
-    x: 276,
-    y: 145,
-    width: 480,
-    height: 272,
+    x: LOCATION_PINPOINTS.academy_store?.x || 407,
+    y: LOCATION_PINPOINTS.academy_store?.y || 200,
+    width: LOCATION_PINPOINTS.academy_store?.width || 480,
+    height: LOCATION_PINPOINTS.academy_store?.height || 272,
 };
 
 const MACHINE_ROLL_DURATION_MS = 2000;
@@ -419,6 +419,31 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                     ✛
                 </button>
             `);
+        }
+    }
+
+    function syncCalibrationControls($panel) {
+        const $controls = $panel.find(selectors.calibrationControls);
+        const $select = $panel.find(selectors.calibrationSelect);
+        const $toggle = $panel.find(selectors.calibrationToggle);
+
+        ensureCalibrationTarget();
+
+        $controls.prop("hidden", !state.calibrationMode);
+        $toggle.toggleClass("active", state.calibrationMode).attr("aria-pressed", String(state.calibrationMode));
+        $toggle.text(state.calibrationMode ? "CALIBRATING" : "CALIBRATE");
+
+        if (!$select.length) return;
+        const entries = getCalibratableLocationEntries();
+        $select.empty();
+        if (!entries.length) {
+            $select.append('<option value="">No floor locations</option>');
+            return;
+        }
+
+        for (const [locationId, point] of entries) {
+            const selected = locationId === state.selectedCalibrationLocationId ? 'selected="selected"' : "";
+            $select.append(`<option value="${escapeHtml(locationId)}" ${selected}>${escapeHtml(point.label)} (${escapeHtml(locationId)})</option>`);
         }
     }
 
