@@ -3578,8 +3578,7 @@
     --investigation-banner-duration: 2200ms;
     position: fixed;
     inset: 0;
-    display: grid;
-    place-items: center;
+    display: block;
     pointer-events: none;
     opacity: 0;
     z-index: 2147483601;
@@ -3612,7 +3611,9 @@
 }
 
 .dangan-investigation-banner {
-    position: relative;
+    position: absolute;
+    top: 50%;
+    left: 50%;
     width: min(96vw, 1580px);
     max-width: 100%;
     min-height: clamp(82px, 10.5vw, 132px);
@@ -3641,7 +3642,7 @@
         0 0 0 2px rgba(112, 19, 89, 0.36) inset,
         0 12px 36px rgba(0, 0, 0, 0.52),
         0 0 30px rgba(255, 59, 196, 0.32);
-    transform: scale(0.965);
+    transform: translate3d(-50%, -50%, 0) scale(0.965);
     opacity: 0;
 }
 
@@ -3709,8 +3710,6 @@
 /* Samsung S25 Ultra portrait-ish tuning + general mobile centering */
 @media (max-width: 520px) {
     #dangan-investigation-overlay {
-        align-items: center;
-        justify-items: center;
         padding: 0 8px;
     }
 
@@ -3718,7 +3717,7 @@
         width: min(95vw, 440px);
         min-height: clamp(92px, 21vw, 116px);
         padding: 10px 12px;
-        transform: scale(1);
+        transform: translate3d(-50%, -50%, 0) scale(1);
     }
 
     .dangan-investigation-title {
@@ -3750,21 +3749,21 @@
 @keyframes dangan-investigation-banner {
     0% {
         opacity: 0;
-        transform: translateY(10px) scale(0.965);
+        transform: translate3d(-50%, calc(-50% + 10px), 0) scale(0.965);
         filter: blur(2px);
     }
     9% {
         opacity: 1;
-        transform: scale(1.012);
+        transform: translate3d(-50%, -50%, 0) scale(1.012);
         filter: blur(0);
     }
     82% {
         opacity: 1;
-        transform: scale(1);
+        transform: translate3d(-50%, -50%, 0) scale(1);
     }
     100% {
         opacity: 0;
-        transform: translateY(-6px) scale(0.988);
+        transform: translate3d(-50%, calc(-50% - 6px), 0) scale(0.988);
     }
 }
 
