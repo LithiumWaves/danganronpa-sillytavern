@@ -1800,7 +1800,7 @@ function attachDraggablePositioning(element, { storageKey, handleSelector, suppr
         const nextTop = originTop + (event.clientY - startY);
         const { left, top } = clampUiPosition(element, nextLeft, nextTop);
 
-        if (Math.abs(event.clientX - startX) > 3 || Math.abs(event.clientY - startY) > 3) {
+        if (Math.abs(event.clientX - startX) > 8 || Math.abs(event.clientY - startY) > 8) {
             moved = true;
         }
 
@@ -1828,7 +1828,7 @@ function attachDraggablePositioning(element, { storageKey, handleSelector, suppr
             saveUiPosition(storageKey, left, top);
 
             if (suppressClickDataKey) {
-                element.dataset[suppressClickDataKey] = String(Date.now() + 300);
+                element.dataset[suppressClickDataKey] = String(Date.now() + 220);
             }
         }
 
@@ -3021,7 +3021,7 @@ $(".monopad-icon").on("mouseenter", function () {
 
         }
 
-        $button.on("click", () => {
+        const handleMonopadToggle = () => {
             const suppressUntil = Number(monopadButtonEl?.dataset?.suppressMonopadClickUntil || "0");
             if (Date.now() < suppressUntil) return;
 
@@ -3036,6 +3036,14 @@ $(".monopad-icon").on("mouseenter", function () {
                 monopadSpamCount = 0;
                 triggerMonokuma();
             }
+        };
+
+        $button.on("click", handleMonopadToggle);
+
+        $button.on("keydown", event => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            handleMonopadToggle();
         });
 
 
