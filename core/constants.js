@@ -1,5 +1,21 @@
 export const extensionName = "danganronpa-extension";
-export const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
+
+function resolveExtensionFolderPath() {
+    const fallback = `scripts/extensions/third-party/${extensionName}`;
+
+    try {
+        const moduleUrl = typeof import.meta?.url === "string" ? import.meta.url : "";
+        if (!moduleUrl) return fallback;
+
+        const parsed = new URL(moduleUrl);
+        const basePath = decodeURI(parsed.pathname).replace(/\/[^/]*$/, "").replace(/^\/+/, "");
+        return basePath || fallback;
+    } catch {
+        return fallback;
+    }
+}
+
+export const extensionFolderPath = resolveExtensionFolderPath();
 
 export const defaultSettings = {
     monopadSounds: true,
@@ -10,6 +26,7 @@ export const defaultSettings = {
     crtEffects: true,
     crtIntensity: 35,
     bootAnimations: true,
+    monopadButtonEnabled: true,
     welcomeSeen: false,
     monokumaLessonRewardClaimed: false,
     debugAccessGranted: false,
