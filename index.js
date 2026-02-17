@@ -3041,7 +3041,7 @@ $(".monopad-icon").on("mouseenter", function () {
         $button.on("click", handleMonopadToggle);
 
         $button.on("keydown", event => {
-            if (event.key !== "Enter" && event.key !== " ") return;
+            if (event.key !== "Delete" && event.key !== "Del") return;
             event.preventDefault();
             handleMonopadToggle();
         });
