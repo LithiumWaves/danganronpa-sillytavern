@@ -3324,6 +3324,34 @@
     outline: none;
 }
 
+
+.map-trial-pin {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 32px;
+    height: 32px;
+    border-radius: 999px;
+    border: 1px solid rgba(160, 229, 255, 0.95);
+    background: radial-gradient(circle at 30% 25%, rgba(233, 251, 255, 0.95), rgba(33, 132, 186, 0.9));
+    color: #01253a;
+    font-weight: 800;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 0 16px rgba(73, 192, 255, 0.42);
+    z-index: 2;
+}
+
+.map-trial-pin:hover,
+.map-trial-pin:focus-visible {
+    transform: translate(-50%, -52%);
+    filter: brightness(1.08);
+    box-shadow: 0 0 20px rgba(132, 221, 255, 0.58);
+    outline: none;
+}
+
 .map-presence-pin {
     position: absolute;
     left: 50%;

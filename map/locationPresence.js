@@ -8,6 +8,7 @@ export const LOCATION_PINPOINTS = {
     academy_gym: { area: "hopes_peak", floor: "floor_1", x: 138, y: 83, width: 480, height: 272, label: "Gym" },
     academy_classroom_1a: { area: "hopes_peak", floor: "floor_1", x: 332, y: 119, width: 480, height: 272, label: "Classroom 1-A" },
     academy_classroom_1b: { area: "hopes_peak", floor: "floor_1", x: 332, y: 155, width: 480, height: 272, label: "Classroom 1-B" },
+    academy_trial_grounds: { area: "hopes_peak", floor: "floor_1", x: 279, y: 86, width: 480, height: 272, label: "Trial Grounds" },
 
     // Hope's Peak - Floor 2 (extension map layout)
     academy_pool: { area: "hopes_peak", floor: "floor_2", x: 132, y: 65, width: 480, height: 272, label: "Pool" },
@@ -68,6 +69,7 @@ export const LOCATION_ALIAS_INDEX = {
     academy_gym: ["gym", "gymnasium"],
     academy_classroom_1a: ["classroom 1-a", "1-a", "classroom 1a"],
     academy_classroom_1b: ["classroom 1-b", "1-b", "classroom 1b"],
+    academy_trial_grounds: ["trial grounds", "class trial grounds", "trial room", "courtroom", "court room"],
     academy_pool: ["pool", "swimming pool"],
     academy_bathhouse: ["bathhouse", "bath house"],
     academy_library: ["library", "archives"],

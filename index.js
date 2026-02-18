@@ -10,9 +10,10 @@ import { createSocialPanelController } from "./social/socialPanel.js";
 import { extractUltimateFromNotes, isIgnoredCharacter, lookupUltimateFromLorebook, normalizeList, normalizeName } from "./social/characterUtils.js";
 import { createMapPanelController } from "./map/mapPanel.js";
 import { getLocationPromptReference, resolveLocationIdFromText } from "./map/locationPresence.js";
-import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
+import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, TRIAL_START_REGEX, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "./core/monokumaLessonScript.js";
+import { createTrialController } from "./trial/trialController.js";
 
 window.refreshActiveCharacterUI = function () {
     if (!activeSocialCharacterId || !socialPanelController) return;
@@ -30,6 +31,7 @@ let activeSocialCharacterId = null;
 let socialPanelController = null;
 let itemsPanelController = null;
 let mapPanelController = null;
+let trialController = null;
 let hasSelectedMonopadTab = false;
 let monokumaLessonState = null;
 
@@ -206,6 +208,8 @@ const processedTruthSignatures = new Set();
 const processedSocialSignatures = new Set();
 const processedInvestigationSignatures = new Set();
 const INVESTIGATION_START_PARSE_REGEX = /V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/gi;
+const processedTrialStartSignatures = new Set();
+const TRIAL_START_PARSE_REGEX = /V3C\s*[|｜]\s*TRIAL(?:\s*[_\-]?\s*)START\b/gi;
 
 function normalizeTextToken(value) {
     return String(value || "")
@@ -326,6 +330,123 @@ function parseInvestigationStartMarkers(text) {
 
     return matches;
 }
+
+function parseTrialStartMarkers(text) {
+    const raw = String(text || "");
+    if (!raw) return [];
+
+    const matches = [];
+    TRIAL_START_PARSE_REGEX.lastIndex = 0;
+
+    let match;
+    while ((match = TRIAL_START_PARSE_REGEX.exec(raw)) !== null) {
+        matches.push({
+            marker: match[0],
+            index: match.index,
+            source: "regex",
+        });
+    }
+
+    if (matches.length) return matches;
+
+    const lines = raw.split(/\r?\n/);
+    let cursor = 0;
+
+    for (const line of lines) {
+        const canonical = line
+            .toUpperCase()
+            .replace(/[|｜]/g, "|")
+            .replace(/[`*_~:;,.!?\-\s]/g, "");
+
+        if (canonical.includes("V3C|TRIALSTART")) {
+            matches.push({
+                marker: line,
+                index: cursor,
+                source: "fallback",
+            });
+        }
+
+        cursor += line.length + 1;
+    }
+
+    return matches;
+}
+
+function buildTrialStartPersistentSignature(msgEl, marker, idx, rawText = "") {
+    const mesId = msgEl?.getAttribute?.("mesid") || msgEl?.dataset?.mesid || "";
+    if (!mesId || mesId === "no-id") return "";
+
+    const speaker = msgEl?.getAttribute?.("ch_name") || "unknown";
+    const scope = getInvestigationScopeKey();
+    if (!scope || scope === "scope:unknown") return "";
+
+    const markerIndex = Number(marker?.index ?? -1);
+    const textFingerprint = String(rawText || "").slice(0, 140);
+
+    return `TRIAL_START||${scope}||${mesId}||${speaker}||${markerIndex}||${idx}||${textFingerprint}`;
+}
+
+function getTrialStartMarkerStore() {
+    extension_settings[extensionName] ||= {};
+    extension_settings[extensionName].trialStartMarkers ||= {};
+    return extension_settings[extensionName].trialStartMarkers;
+}
+
+function hasProcessedTrialStartSignature(signature, persistentSignature = "") {
+    if (!signature) return false;
+    if (processedTrialStartSignatures.has(signature)) return true;
+    if (!persistentSignature) return false;
+    return Boolean(getTrialStartMarkerStore()[persistentSignature]);
+}
+
+function markTrialStartSignatureProcessed(signature, persistentSignature = "") {
+    if (!signature) return;
+
+    processedTrialStartSignatures.add(signature);
+    if (!persistentSignature) return;
+
+    const store = getTrialStartMarkerStore();
+    store[persistentSignature] = Date.now();
+
+    const keys = Object.keys(store);
+    const maxEntries = 1200;
+    if (keys.length > maxEntries) {
+        keys
+            .sort((a, b) => Number(store[a] || 0) - Number(store[b] || 0))
+            .slice(0, keys.length - maxEntries)
+            .forEach((key) => {
+                delete store[key];
+            });
+    }
+
+    saveSettingsDebounced();
+}
+
+function getEquippedSkillsSnapshot() {
+    const inventory = extension_settings[extensionName]?.inventory || {};
+    const equipped = inventory.equippedSkills || {};
+    return Object.keys(equipped).filter(skillId => Number(equipped[skillId] || 0) > 0);
+}
+
+function getTruthBulletsSnapshot() {
+    const bullets = extension_settings[extensionName]?.truthBullets;
+    return Array.isArray(bullets) ? bullets : [];
+}
+
+function buildTrialCaseSummary() {
+    const bullets = getTruthBulletsSnapshot();
+    if (!bullets.length) {
+        return "No Truth Bullets logged yet. Review witness statements before opening arguments.";
+    }
+
+    const line = bullets
+        .slice(-3)
+        .map((bullet, index) => `${index + 1}. ${String(bullet?.title || "Unknown Bullet")}`)
+        .join(" ");
+
+    return `Current evidence focus: ${line}`;
+}
+
 
 function tryEnableInvestigationToggleInObject(root, { maxDepth = 8 } = {}) {
     if (!root || typeof root !== "object") return false;
@@ -574,6 +695,59 @@ const investigationStartController = {
         return didAnything;
     },
 };
+
+async function triggerTrialStartFromMarker(markerText = "V3C| TRIAL_START") {
+    if (!trialController) return false;
+
+    try {
+        const result = await trialController.requestStartFromMarker({ markerText });
+        if (result?.started) {
+            console.log("[Dangan][Trial] Class Trial started from marker.");
+            return true;
+        }
+
+        if (result?.reason) {
+            console.info(`[Dangan][Trial] Trial start not triggered: ${result.reason}`);
+        }
+    } catch (error) {
+        console.warn("[Dangan][Trial] Failed to start trial from marker:", error);
+    }
+
+    return false;
+}
+
+
+async function triggerTrialStartFromMapPin() {
+    if (!trialController) return false;
+
+    const state = trialController.getState?.();
+    if (state?.phase && state.phase !== trialController.phases?.IDLE) {
+        console.info(`[Dangan][Trial] Trial already active (${state.phase}).`);
+        return false;
+    }
+
+    const accepted = await openMonopadConfirmDialog({
+        title: "TRIAL GROUNDS",
+        message: "Start Class Trial from Trial Grounds?",
+        confirmLabel: "START TRIAL",
+        cancelLabel: "CANCEL",
+    });
+
+    if (!accepted) return false;
+
+    const result = trialController.requestStartFromUi?.({ source: "map_pin" });
+    if (result?.started) {
+        console.log("[Dangan][Trial] Class Trial started from map pin.");
+        return true;
+    }
+
+    if (result?.reason) {
+        console.info(`[Dangan][Trial] Trial start not triggered: ${result.reason}`);
+    }
+
+    return false;
+}
+
 
 
 /* =========================
@@ -995,6 +1169,7 @@ function stripV3CMarkersFromText(value) {
         if (canonical.startsWith("V3C|SOCIAL_UP:")) return false;
         if (canonical.startsWith("V3C|SOCIAL_DOWN:")) return false;
         if (canonical.includes("V3C|INVESTIGATIONSTART")) return false;
+        if (canonical.includes("V3C|TRIALSTART")) return false;
         return true;
     });
 
@@ -1004,6 +1179,7 @@ function stripV3CMarkersFromText(value) {
         .replace(/V3C\s*[|｜]\s*SOCIAL_UP:\s*([^\n\r]+)/gi, "")
         .replace(/V3C\s*[|｜]\s*SOCIAL_DOWN:\s*([^\n\r]+)/gi, "")
         .replace(/V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/gi, "")
+        .replace(TRIAL_START_REGEX, "")
         .replace(/^[ \t]+/gm, "")
         .trimStart();
 }
@@ -1134,6 +1310,19 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
             if (triggered) {
                 markInvestigationSignatureProcessed(signature, persistentSignature);
             }
+        });
+
+
+        // ---- Trial Start ----
+        const trialStartMarkers = parseTrialStartMarkers(rawText);
+        trialStartMarkers.forEach((marker, idx) => {
+            console.debug("[Dangan][Trial] Start marker detected", marker);
+            const signature = `TRIAL_START||${messageSignature}||${marker.index}||${idx}`;
+            const persistentSignature = buildTrialStartPersistentSignature(msgEl, marker, idx, rawText);
+            if (hasProcessedTrialStartSignature(signature, persistentSignature)) return;
+
+            markTrialStartSignatureProcessed(signature, persistentSignature);
+            void triggerTrialStartFromMarker(String(marker?.marker || "V3C| TRIAL_START"));
         });
 
         // ---- Marker Cleanup ----
@@ -2936,6 +3125,7 @@ jQuery(async () => {
                 getSfx: () => sfx,
                 getSetting: getMonopadSetting,
                 onWalkStep: () => awardXp(XP_REWARDS.walkStep, "walked"),
+                onTrialStartRequest: () => triggerTrialStartFromMapPin(),
             });
             mapPanelController?.renderMapPanel?.();
         } catch (error) {
@@ -3239,6 +3429,18 @@ if (initialRewardDifficulty !== getMonopadSetting("rewardDifficulty")) {
     setMonopadSetting("rewardDifficulty", initialRewardDifficulty);
 }
 ensureGlobalDebugUi();
+trialController = createTrialController({
+    extensionName,
+    extension_settings,
+    saveSettingsDebounced,
+    buildCaseSummary: buildTrialCaseSummary,
+    getEquippedSkills: getEquippedSkillsSnapshot,
+    getTruthBullets: getTruthBulletsSnapshot,
+    openConfirmDialog: openMonopadConfirmDialog,
+});
+window.danganTrial = trialController;
+window.startClassTrial = () => trialController?.requestStartFromUi?.({ source: "manual" });
+window.cancelClassTrial = () => trialController?.cancelTrial?.();
 rewards?.renderProgressionUi?.();
 itemsPanelController.loadInventoryState();
 applySettingsTabUI();
