@@ -2772,8 +2772,15 @@ function applyMonopadLaunchControlState(buttonEl, panelEl = null) {
 
 
 function buildExtensionPathCandidates() {
-    const fallback = `scripts/extensions/third-party/${extensionName}`;
-    const candidates = [extensionFolderPath, fallback, `/${fallback}`]
+    const thirdPartyFallback = `scripts/extensions/third-party/${extensionName}`;
+    const directFallback = `scripts/extensions/${extensionName}`;
+    const candidates = [
+        extensionFolderPath,
+        thirdPartyFallback,
+        directFallback,
+        `/${thirdPartyFallback}`,
+        `/${directFallback}`,
+    ]
         .map((value) => String(value || "").trim().replace(/\/$/, ""))
         .filter(Boolean);
 
