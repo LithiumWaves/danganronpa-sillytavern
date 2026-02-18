@@ -24,7 +24,13 @@ The Generation Preset: [TBA]
 
 ### Class Trials
 
-Class Trial implementation planning is documented in `docs/class-trial-implementation-plan.md`.
+Class Trial scaffolding is now available from the map panel (Start Class Trial), including:
+- Discussion sections (before/after debate)
+- A Nonstop Debate phase placeholder
+- Hangman's Gambit prototype phase
+- Additional minigame slots for future trial mechanics
+
+Detailed architecture planning remains in `docs/class-trial-implementation-plan.md`.
 
 ### Progression and currencies
 - **Monocoins** and **XP** are awarded from core actions (for example obtaining Truth Bullets and social progress events).

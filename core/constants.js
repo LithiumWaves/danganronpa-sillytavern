@@ -73,6 +73,9 @@ export const defaultSettings = {
     openrouterRememberApiKey: false,
     openrouterApiKey: "",
     rewardDifficulty: "normal",
+    trialEnabled: true,
+    trialWaveMin: 3,
+    trialWaveMax: 8,
 };
 
 export const REWARD_DIFFICULTY_LABELS = {
