@@ -1,33 +1,55 @@
 export const extensionName = "danganronpa-extension";
 
+function normalizeWebExtensionPath(pathname = "") {
+    const normalized = String(pathname || "").replace(/\\/g, "/");
+    const match = normalized.match(/\/(scripts\/extensions(?:\/third-party)?\/[^/]+)/i);
+    if (match?.[1]) return match[1].replace(/^\//, "");
+    return "";
+}
+
 function resolveExtensionFolderPath() {
-    const fallback = `scripts/extensions/third-party/${extensionName}`;
+    const fallbackPaths = [
+        `scripts/extensions/third-party/${extensionName}`,
+        `scripts/extensions/${extensionName}`,
+    ];
 
     try {
         const moduleUrl = typeof import.meta?.url === "string" ? import.meta.url : "";
-        if (!moduleUrl) return fallback;
+        if (moduleUrl) {
+            const parsed = new URL(moduleUrl, window.location?.href || undefined);
+            const protocol = String(parsed.protocol || "").toLowerCase();
+            const normalizedPath = decodeURIComponent(parsed.pathname || "").replace(/\\/g, "/");
 
-        const parsed = new URL(moduleUrl);
-        const protocol = String(parsed.protocol || "").toLowerCase();
-        const normalizedPath = decodeURIComponent(parsed.pathname || "").replace(/\\/g, "/");
+            if (protocol === "http:" || protocol === "https:") {
+                const scriptRoot = normalizedPath.replace(/\/[^/]*$/, "");
+                const extensionRoot = scriptRoot.endsWith("/core") ? scriptRoot.slice(0, -5) : scriptRoot;
+                const normalized = normalizeWebExtensionPath(extensionRoot);
+                if (normalized) return normalized;
+            }
 
-        if (protocol === "http:" || protocol === "https:") {
-            const scriptRoot = normalizedPath.replace(/\/[^/]*$/, "");
-            const extensionRoot = scriptRoot.endsWith("/core") ? scriptRoot.slice(0, -5) : scriptRoot;
-            return extensionRoot.replace(/^\//, "") || fallback;
-        }
-
-        if (protocol === "file:") {
-            const webPathMatch = normalizedPath.match(/\/scripts\/extensions\/third-party\/[^/]+/i);
-            if (webPathMatch?.[0]) {
-                return webPathMatch[0].replace(/^\//, "");
+            if (protocol === "file:") {
+                const normalized = normalizeWebExtensionPath(normalizedPath);
+                if (normalized) return normalized;
             }
         }
-
-        return fallback;
     } catch {
-        return fallback;
+        // fall through to script src detection and fallback paths
     }
+
+    try {
+        const scriptTags = Array.from(document.querySelectorAll('script[src]'));
+        for (const script of scriptTags) {
+            const src = String(script.getAttribute('src') || "");
+            if (!src.includes(extensionName)) continue;
+            const parsedSrc = new URL(src, window.location?.href || undefined);
+            const normalized = normalizeWebExtensionPath(parsedSrc.pathname || "");
+            if (normalized) return normalized;
+        }
+    } catch {
+        // fallback below
+    }
+
+    return fallbackPaths[0];
 }
 
 export const extensionFolderPath = resolveExtensionFolderPath();
