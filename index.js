@@ -13,7 +13,6 @@ import { getLocationPromptReference, resolveLocationIdFromText } from "./map/loc
 import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "./core/monokumaLessonScript.js";
-import { createTrialController } from "./trial/trialController.js";
 
 window.refreshActiveCharacterUI = function () {
     if (!activeSocialCharacterId || !socialPanelController) return;
@@ -33,7 +32,6 @@ let itemsPanelController = null;
 let mapPanelController = null;
 let hasSelectedMonopadTab = false;
 let monokumaLessonState = null;
-let trialController = null;
 
 const openRouterSettings = createOpenRouterSettingsManager({
     extensionName,
@@ -2930,13 +2928,6 @@ jQuery(async () => {
             },
         });
 
-        trialController = createTrialController({
-            getSetting: getMonopadSetting,
-            playSfx,
-            getSfx: () => sfx,
-            extensionFolderPath,
-        });
-
         try {
             mapPanelController = createMapPanelController({
                 extensionFolderPath,
@@ -2945,8 +2936,6 @@ jQuery(async () => {
                 getSfx: () => sfx,
                 getSetting: getMonopadSetting,
                 onWalkStep: () => awardXp(XP_REWARDS.walkStep, "walked"),
-                onStartClassTrial: () => trialController?.startTrial?.(),
-                getClassTrialSummary: () => trialController?.getSummary?.(),
             });
             mapPanelController?.renderMapPanel?.();
         } catch (error) {
