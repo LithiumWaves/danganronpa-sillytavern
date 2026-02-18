@@ -43,7 +43,7 @@ function getFloorByKey(areaKey, floorKey) {
     return area.floors.find(floor => floor.key === floorKey) || null;
 }
 
-export function createMapPanelController({ extensionFolderPath, getItemsPanelController, playSfx, getSfx, getSetting, onWalkStep, onStartClassTrial, getClassTrialSummary }) {
+export function createMapPanelController({ extensionFolderPath, getItemsPanelController, playSfx, getSfx, getSetting, onWalkStep }) {
     const state = {
         area: "hopes_peak",
         floor: "floor_1",
@@ -92,8 +92,6 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         calibrationResetFloor: ".map-presence-calibration-reset-floor",
         calibrationExport: ".map-presence-calibration-export",
         calibrationPin: ".map-calibration-pin",
-        trialStart: ".map-trial-start",
-        trialStatus: ".map-trial-status",
     };
 
     function isMapPresenceEnabled() {
@@ -917,33 +915,6 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         });
     }
 
-
-    function bindTrialControls($panel) {
-        $panel.find(selectors.trialStart).off("click").on("click", () => {
-            playSfx?.(getSfx?.().click);
-            onStartClassTrial?.();
-            renderMapPanel();
-        });
-    }
-
-    function updateTrialStatus($panel) {
-        const $status = $panel.find(selectors.trialStatus);
-        const $button = $panel.find(selectors.trialStart);
-        if (!$status.length || !$button.length) return;
-
-        const summary = typeof getClassTrialSummary === "function"
-            ? getClassTrialSummary()
-            : null;
-
-        const isActive = Boolean(summary?.active);
-        const statusText = summary?.statusText || "READY";
-
-        $status.text(`STATUS: ${statusText}`);
-        $button.text(isActive ? "TRIAL ACTIVE" : "START CLASS TRIAL");
-        $button.attr("aria-pressed", isActive ? "true" : "false");
-        $button.toggleClass("active", isActive);
-    }
-
     function bindAreaButtons($panel) {
         $panel.find(selectors.areaButtons).off("click").on("click", function () {
             const nextArea = this.dataset.area;
@@ -975,12 +946,10 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         renderMapImage($panel);
         bindMachinePin($panel);
         bindPresenceManagementButtons($panel);
-        bindTrialControls($panel);
         syncCalibrationControls($panel);
 
         const clearedLabel = state.clearedPresencePins ? "PINS CLEARED" : "CLEAR PINS";
         $panel.find(selectors.presenceClearAll).text(clearedLabel);
-        updateTrialStatus($panel);
         ensureMachineOverlay($panel);
 
         if (!(state.area === "hopes_peak" && state.floor === "floor_1")) {
