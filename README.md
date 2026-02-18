@@ -24,7 +24,7 @@ The Generation Preset: [TBA]
 
 ### Class Trials
 
-Coming soon
+Class Trial implementation planning is documented in `docs/class-trial-implementation-plan.md`.
 
 ### Progression and currencies
 - **Monocoins** and **XP** are awarded from core actions (for example obtaining Truth Bullets and social progress events).
