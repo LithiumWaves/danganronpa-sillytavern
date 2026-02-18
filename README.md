@@ -17,7 +17,7 @@ The Generation Preset: [TBA]
 
 ### Monopad tabs
 - **Truth (🧠):** Stores discovered Truth Bullets, supports detail view and removal.
-- **Map (🌐):** Area/floor navigation plus MonoMono Machine minigame.
+- **Map (🌐):** Area/floor navigation plus MonoMono Machine minigame and a Trial Grounds start pin on Academy Floor 1.
 - **Gifts & Skills (🎁):** Inventory, item browsing, gifting flow, and skill shop display.
 - **Social (👥):** Character list, trust/distrust progress, and generated profile notes.
 - **Settings (⚙️):** Audio/display toggles, progression reset, generation provider selection and a fun tutorial.

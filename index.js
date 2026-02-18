@@ -717,6 +717,38 @@ async function triggerTrialStartFromMarker(markerText = "V3C| TRIAL_START") {
 }
 
 
+async function triggerTrialStartFromMapPin() {
+    if (!trialController) return false;
+
+    const state = trialController.getState?.();
+    if (state?.phase && state.phase !== trialController.phases?.IDLE) {
+        console.info(`[Dangan][Trial] Trial already active (${state.phase}).`);
+        return false;
+    }
+
+    const accepted = await openMonopadConfirmDialog({
+        title: "TRIAL GROUNDS",
+        message: "Start Class Trial from Trial Grounds?",
+        confirmLabel: "START TRIAL",
+        cancelLabel: "CANCEL",
+    });
+
+    if (!accepted) return false;
+
+    const result = trialController.requestStartFromUi?.({ source: "map_pin" });
+    if (result?.started) {
+        console.log("[Dangan][Trial] Class Trial started from map pin.");
+        return true;
+    }
+
+    if (result?.reason) {
+        console.info(`[Dangan][Trial] Trial start not triggered: ${result.reason}`);
+    }
+
+    return false;
+}
+
+
 
 /* =========================
    SOCIAL / CHARACTER DATA
@@ -3093,6 +3125,7 @@ jQuery(async () => {
                 getSfx: () => sfx,
                 getSetting: getMonopadSetting,
                 onWalkStep: () => awardXp(XP_REWARDS.walkStep, "walked"),
+                onTrialStartRequest: () => triggerTrialStartFromMapPin(),
             });
             mapPanelController?.renderMapPanel?.();
         } catch (error) {
