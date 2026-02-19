@@ -5,16 +5,19 @@ const MARKER_TYPES = {
         chime: "dingdongbingbong.mp3",
         voice: "daytime_announ.mp3",
         label: "DAYTIME ANNOUNCEMENT",
+        transcript: "Good morning, everyone! It is now 7 a.m. and nighttime is officialy over! Time to rise and shine! Get ready to greet another beee-yutiful day!",
     },
     NIGHT_ANNOUN: {
         chime: "dingdongbingbong.mp3",
         voice: "nighttime_announ.mp3",
         label: "NIGHTTIME ANNOUNCEMENT",
+        transcript: "Mm, ahem, this is a school announcement. It is now 10 p.m. As such, it is officially nighttime. Soon the doors to the dining hall will be locked, and entry at that point is strictly prohibited. Okay then... sweet dreams, everyone! Good night, sleep tight, don't let the bed bugs bite...",
     },
     BDA: {
         chime: "bda_bell.mp3",
         voice: "bda_announ.mp3",
         label: "BODY DISCOVERY ANNOUNCEMENT",
+        transcript: "A body has been discovered! Now then, after a certain amount of time has passed, the class trial will begin!",
     },
 };
 
@@ -167,6 +170,32 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
                 transition: transform 180ms ease-in, opacity 120ms linear;
             }
 
+            .mono-announ-dialogue {
+                position: absolute;
+                left: 8px;
+                right: 8px;
+                bottom: 8px;
+                background: rgba(0, 0, 0, 0.62);
+                border: 1px solid rgba(255, 255, 255, 0.36);
+                border-radius: 6px;
+                color: #f5f5f5;
+                font-size: 10px;
+                line-height: 1.35;
+                padding: 7px 8px;
+                letter-spacing: 0.03em;
+                text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
+                opacity: 0;
+                transform: translateY(4px);
+                transition: opacity 120ms ease, transform 120ms ease;
+                max-height: 42%;
+                overflow: hidden;
+            }
+
+            .mono-announ-screen.speaking .mono-announ-dialogue {
+                opacity: 1;
+                transform: translateY(0);
+            }
+
             .mono-announ-scanline {
                 position: absolute;
                 inset: 0;
@@ -216,6 +245,7 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
                 <div class="mono-announ-screen">
                     <div class="mono-announ-tv-glow"></div>
                     <img src="${extensionFolderPath}/assets/monokuma/mono_announ.png" alt="Monokuma announcement monitor" />
+                    <div class="mono-announ-dialogue" aria-live="off"></div>
                     <div class="mono-announ-scanline"></div>
                 </div>
                 <div class="mono-announ-label">MONOKUMA COMMUNICATION SYSTEM</div>
@@ -305,6 +335,36 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         };
     }
 
+
+    function revealDialogue(dialogueEl, text, durationMs = 4500) {
+        if (!dialogueEl) return Promise.resolve();
+
+        const fullText = String(text || "").trim();
+        if (!fullText) {
+            dialogueEl.textContent = "";
+            return Promise.resolve();
+        }
+
+        const totalDuration = Math.max(2200, Number(durationMs) || 4500);
+        const chars = Array.from(fullText);
+        const stepMs = Math.max(14, Math.floor(totalDuration / Math.max(1, chars.length)));
+
+        return new Promise(resolve => {
+            let index = 0;
+            dialogueEl.textContent = "";
+
+            const timer = setInterval(() => {
+                index += 1;
+                dialogueEl.textContent = chars.slice(0, index).join("");
+
+                if (index >= chars.length) {
+                    clearInterval(timer);
+                    resolve();
+                }
+            }, stepMs);
+        });
+    }
+
     async function runAnnouncement(type) {
         const config = MARKER_TYPES[type];
         if (!config) return;
@@ -317,13 +377,15 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         const monitor = root.querySelector(".mono-announ-monitor");
         const screen = root.querySelector(".mono-announ-screen");
         const label = root.querySelector(".mono-announ-label");
+        const dialogue = root.querySelector(".mono-announ-dialogue");
 
-        if (!sting || !monitor || !screen || !label) return;
+        if (!sting || !monitor || !screen || !label || !dialogue) return;
 
         label.textContent = config.label;
         sting.classList.remove("active");
         monitor.classList.remove("on");
-        screen.classList.remove("turning-on", "ready", "turning-off");
+        screen.classList.remove("turning-on", "ready", "turning-off", "speaking");
+        dialogue.textContent = "";
 
         void sting.offsetWidth;
         sting.classList.add("active");
@@ -337,10 +399,20 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
 
         await delay(180);
         screen.classList.add("ready");
-        await playTrack(audio[`${type}_VOICE`]);
+
+        const voiceTrack = audio[`${type}_VOICE`];
+        const voiceDurationMs = Number.isFinite(voiceTrack?.duration)
+            ? Math.max(2200, Math.round(voiceTrack.duration * 1000))
+            : Math.max(2200, Math.round((config.transcript?.length || 60) * 45));
+
+        screen.classList.add("speaking");
+        await Promise.all([
+            playTrack(voiceTrack),
+            revealDialogue(dialogue, config.transcript, voiceDurationMs),
+        ]);
 
         await delay(220);
-        screen.classList.remove("turning-on", "ready");
+        screen.classList.remove("turning-on", "ready", "speaking");
         screen.classList.add("turning-off");
         playTvTurnOffEffect();
 
