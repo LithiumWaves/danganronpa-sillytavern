@@ -1021,13 +1021,6 @@ function createVnModeController() {
         renderCurrent();
     }
 
-    function jumpToLatestFromStart() {
-        const messages = getMessageEntries();
-        messageIndex = Math.max(0, messages.length - 1);
-        chunkIndex = 0;
-        renderCurrent();
-    }
-
     lockBtnEl?.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -1135,9 +1128,6 @@ function createVnModeController() {
         const messages = getMessageEntries();
         const currentChatScope = getChatScopeSignature();
         const chatScopeChanged = currentChatScope !== lastObservedChatScope;
-        const previousCount = lastObservedMessageCount;
-        const hadMessageCountChange = messages.length !== previousCount;
-        const previousLastSignature = lastObservedLastSignature;
         const currentLastSignature = getMessageSignature(messages[messages.length - 1]);
         const hadLastSignatureChange = currentLastSignature !== previousLastSignature;
         lastObservedMessageCount = messages.length;
@@ -1148,24 +1138,12 @@ function createVnModeController() {
             return;
         }
 
-        const maxIndex = messages.length - 1;
-        const wasAtTailBeforeNewMessage = hadMessageCountChange && messageIndex >= Math.max(0, maxIndex - 1);
-
         if (chatScopeChanged) {
             jumpToLatest();
-        } else if (hadMessageCountChange && previousCount === 0 && messages.length > 0) {
-            jumpToLatest();
-        } else if (!hadMessageCountChange && hadLastSignatureChange) {
-            jumpToLatest();
-        } else if (!hadMessageCountChange && hadLastSignatureChange) {
-            jumpToLatest();
-        } else if (hadMessageCountChange && messages.length > previousCount && wasAtTailBeforeNewMessage) {
-            jumpToLatestFromStart();
-        } else if (messageIndex >= maxIndex || wasAtTailBeforeNewMessage) {
-            jumpToLatest();
-        } else {
-            renderCurrent();
+            return;
         }
+
+        renderCurrent();
     });
 
     const chatEl = document.getElementById('chat');
