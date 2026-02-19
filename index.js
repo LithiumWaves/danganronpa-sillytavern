@@ -573,6 +573,7 @@ function createVnModeController() {
     let composeCollapsed = false;
     let lastObservedMessageCount = 0;
     let lastObservedLastSignature = '';
+    let lastObservedChatScope = '';
 
     const host = document.createElement('div');
     host.id = 'dangan-vn-overlay';
@@ -884,6 +885,25 @@ function createVnModeController() {
         return [];
     }
 
+    function getChatScopeSignature() {
+        const ctx = window.SillyTavern?.getContext?.();
+        const groupId = ctx?.groupId ?? ctx?.group_id ?? '';
+        const characterId = ctx?.characterId ?? ctx?.character_id ?? '';
+        const chatId = ctx?.chatId ?? ctx?.chat_id ?? ctx?.chatFile ?? '';
+
+        if (groupId !== '' && groupId !== null && groupId !== undefined) {
+            return `group:${groupId}`;
+        }
+        if (characterId !== '' && characterId !== null && characterId !== undefined) {
+            return `char:${characterId}`;
+        }
+        if (chatId) {
+            return `chat:${chatId}`;
+        }
+
+        return 'scope:unknown';
+    }
+
     function getMessageSignature(entry) {
         if (!entry) return '';
         return `${entry.key || ''}::${entry.name || ''}::${entry.text || ''}`;
@@ -1113,6 +1133,8 @@ function createVnModeController() {
         }
         if (!host.classList.contains('active')) return;
         const messages = getMessageEntries();
+        const currentChatScope = getChatScopeSignature();
+        const chatScopeChanged = currentChatScope !== lastObservedChatScope;
         const previousCount = lastObservedMessageCount;
         const hadMessageCountChange = messages.length !== previousCount;
         const previousLastSignature = lastObservedLastSignature;
@@ -1120,6 +1142,7 @@ function createVnModeController() {
         const hadLastSignatureChange = currentLastSignature !== previousLastSignature;
         lastObservedMessageCount = messages.length;
         lastObservedLastSignature = currentLastSignature;
+        lastObservedChatScope = currentChatScope;
         if (!messages.length) {
             renderCurrent();
             return;
@@ -1128,7 +1151,11 @@ function createVnModeController() {
         const maxIndex = messages.length - 1;
         const wasAtTailBeforeNewMessage = hadMessageCountChange && messageIndex >= Math.max(0, maxIndex - 1);
 
-        if (hadMessageCountChange && previousCount === 0 && messages.length > 0) {
+        if (chatScopeChanged) {
+            jumpToLatest();
+        } else if (hadMessageCountChange && previousCount === 0 && messages.length > 0) {
+            jumpToLatest();
+        } else if (!hadMessageCountChange && hadLastSignatureChange) {
             jumpToLatest();
         } else if (!hadMessageCountChange && hadLastSignatureChange) {
             jumpToLatest();
@@ -1179,6 +1206,7 @@ function createVnModeController() {
                 lastObservedMessageCount = getMessageEntries().length;
                 const enabledMessages = getMessageEntries();
                 lastObservedLastSignature = getMessageSignature(enabledMessages[enabledMessages.length - 1]);
+                lastObservedChatScope = getChatScopeSignature();
                 jumpToLatest();
             }
 
@@ -1193,6 +1221,13 @@ function createVnModeController() {
                 renderTranscript();
             }
             if (!host.classList.contains('active')) return;
+            const currentChatScope = getChatScopeSignature();
+            const chatScopeChanged = currentChatScope !== lastObservedChatScope;
+            lastObservedChatScope = currentChatScope;
+            if (chatScopeChanged) {
+                jumpToLatest();
+                return;
+            }
             renderCurrent();
         },
         setMonopadOpen(isOpen) {
