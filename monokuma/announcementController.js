@@ -142,6 +142,10 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
                 animation: monoTvGlow 0.32s ease-out;
             }
 
+            .mono-announ-screen.turning-off .mono-announ-tv-glow {
+                animation: monoTvOffGlow 0.2s ease-in;
+            }
+
             .mono-announ-screen img {
                 width: 100%;
                 height: 100%;
@@ -154,6 +158,13 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
             .mono-announ-screen.ready img {
                 opacity: 1;
                 transition: opacity 170ms linear;
+            }
+
+            .mono-announ-screen.turning-off img {
+                opacity: 0;
+                transform: scaleY(0.05);
+                filter: brightness(3.2) contrast(1.4);
+                transition: transform 180ms ease-in, opacity 120ms linear;
             }
 
             .mono-announ-scanline {
@@ -187,6 +198,12 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
 
             @keyframes monoTvGlow {
                 from { opacity: 0.9; }
+                to { opacity: 0; }
+            }
+
+            @keyframes monoTvOffGlow {
+                from { opacity: 0; }
+                35% { opacity: 1; }
                 to { opacity: 0; }
             }
         `;
@@ -262,6 +279,32 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         };
     }
 
+    function playTvTurnOffEffect() {
+        if (!shouldPlayAudio()) return;
+        const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextCtor) return;
+
+        const ctx = new AudioContextCtor();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = "square";
+        osc.frequency.setValueAtTime(1200, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(90, ctx.currentTime + 0.14);
+
+        gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.05, ctx.currentTime + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.18);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.2);
+        osc.onended = () => {
+            ctx.close().catch(() => {});
+        };
+    }
+
     async function runAnnouncement(type) {
         const config = MARKER_TYPES[type];
         if (!config) return;
@@ -280,7 +323,7 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         label.textContent = config.label;
         sting.classList.remove("active");
         monitor.classList.remove("on");
-        screen.classList.remove("turning-on", "ready");
+        screen.classList.remove("turning-on", "ready", "turning-off");
 
         void sting.offsetWidth;
         sting.classList.add("active");
@@ -296,10 +339,15 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         screen.classList.add("ready");
         await playTrack(audio[`${type}_VOICE`]);
 
-        await delay(2400);
+        await delay(220);
+        screen.classList.remove("turning-on", "ready");
+        screen.classList.add("turning-off");
+        playTvTurnOffEffect();
+
+        await delay(230);
         sting.classList.remove("active");
         monitor.classList.remove("on");
-        screen.classList.remove("turning-on", "ready");
+        screen.classList.remove("turning-off");
     }
 
     return {
