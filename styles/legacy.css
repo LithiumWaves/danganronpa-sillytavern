@@ -4216,7 +4216,7 @@
 
 #dangan-vn-overlay.active {
     display: flex;
-    pointer-events: auto;
+    pointer-events: none;
 }
 
 .dangan-vn-frame {
@@ -4230,6 +4230,7 @@
     color: #f4f8ff;
     padding: 14px 14px 10px;
     cursor: pointer;
+    pointer-events: auto;
 }
 
 .dangan-vn-nameplate {

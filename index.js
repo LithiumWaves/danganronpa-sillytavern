@@ -598,6 +598,7 @@ function createVnModeController() {
                 color: '#f4f8ff',
                 padding: '14px 14px 10px',
                 cursor: 'pointer',
+                pointerEvents: 'auto',
             });
         }
     }
@@ -727,7 +728,7 @@ function createVnModeController() {
         renderCurrent();
     }
 
-    host.addEventListener('click', advance);
+    frameEl?.addEventListener('click', advance);
 
     const observer = new MutationObserver(() => {
         ensureHostAttached();
@@ -757,7 +758,7 @@ function createVnModeController() {
             host.classList.toggle('active', isEnabled);
             host.setAttribute('aria-hidden', isEnabled ? 'false' : 'true');
             host.style.display = isEnabled ? 'flex' : 'none';
-            host.style.pointerEvents = isEnabled ? 'auto' : 'none';
+            host.style.pointerEvents = 'none';
 
             const chatRoot = document.getElementById('chat');
             chatRoot?.classList.toggle('dangan-vn-hidden', isEnabled);
