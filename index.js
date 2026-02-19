@@ -557,6 +557,7 @@ function createVnModeController() {
     const CHUNK_SIZE = 170;
     let chunkIndex = 0;
     let messageIndex = 0;
+    let monopadOpen = false;
 
     const host = document.createElement('div');
     host.id = 'dangan-vn-overlay';
@@ -609,7 +610,25 @@ function createVnModeController() {
         }
     }
 
+    function updateBottomOffset() {
+        if (!frameEl) return;
+
+        const composeEl = document.querySelector('#send_form, #chat_input_container, #send_textarea, #send_textarea_holder, .send_form');
+        const composeRect = composeEl?.getBoundingClientRect?.();
+        const composeHeight = Number.isFinite(composeRect?.height) ? composeRect.height : 0;
+        const offset = Math.max(0, Math.round(composeHeight + 8));
+        host.style.setProperty('--dangan-vn-bottom-offset', `${offset}px`);
+    }
+
+    function syncMonopadVisibility() {
+        const shouldHideFrame = monopadOpen;
+        if (!frameEl) return;
+        frameEl.style.display = shouldHideFrame ? 'none' : '';
+    }
+
     applyInlineFallbackStyles();
+    updateBottomOffset();
+    syncMonopadVisibility();
 
     const htmlDecodeBuffer = document.createElement('div');
     const toPlainText = (value) => {
@@ -732,6 +751,8 @@ function createVnModeController() {
 
     const observer = new MutationObserver(() => {
         ensureHostAttached();
+        updateBottomOffset();
+        syncMonopadVisibility();
         if (!host.classList.contains('active')) return;
         const messages = getMessageEntries();
         if (!messages.length) {
@@ -750,6 +771,16 @@ function createVnModeController() {
     const chatEl = document.getElementById('chat');
     if (chatEl) observer.observe(chatEl, { childList: true, subtree: true });
 
+    const panelEl = document.getElementById('dangan_monopad_panel');
+    if (panelEl) {
+        const panelObserver = new MutationObserver(() => {
+            const panelLooksOpen = panelEl.classList.contains('open') || panelEl.classList.contains('booting') || panelEl.classList.contains('shutting-down');
+            monopadOpen = panelLooksOpen;
+            syncMonopadVisibility();
+        });
+        panelObserver.observe(panelEl, { attributes: true, attributeFilter: ['class'] });
+    }
+
     return {
         setEnabled(enabled) {
             const isEnabled = !!enabled;
@@ -759,6 +790,8 @@ function createVnModeController() {
             host.setAttribute('aria-hidden', isEnabled ? 'false' : 'true');
             host.style.display = isEnabled ? 'flex' : 'none';
             host.style.pointerEvents = 'none';
+            updateBottomOffset();
+            syncMonopadVisibility();
 
             const chatRoot = document.getElementById('chat');
             chatRoot?.classList.toggle('dangan-vn-hidden', isEnabled);
@@ -771,8 +804,14 @@ function createVnModeController() {
         },
         refresh() {
             ensureHostAttached();
+            updateBottomOffset();
+            syncMonopadVisibility();
             if (!host.classList.contains('active')) return;
             renderCurrent();
+        },
+        setMonopadOpen(isOpen) {
+            monopadOpen = !!isOpen;
+            syncMonopadVisibility();
         },
     };
 }
@@ -3502,6 +3541,7 @@ jQuery(async () => {
         function closeMonopadPanel() {
             closeBreachOverlay();
             closePayloadOverlay();
+            vnModeController?.setMonopadOpen?.(false);
             $panel.removeClass("open booting boot-cold boot-warm");
 
             if (getMonopadSetting("bootAnimations")) {
@@ -3573,6 +3613,7 @@ $(".monopad-icon").on("mouseenter", function () {
             $panel.removeClass("open closed booting boot-cold boot-warm");
 
             if (!isOpen) {
+                vnModeController?.setMonopadOpen?.(true);
                 const welcomeUserEl = document.getElementById("monopad_welcome_user");
                 if (welcomeUserEl) {
                     welcomeUserEl.textContent = getActivePersonaName();

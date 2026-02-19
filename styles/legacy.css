@@ -4212,6 +4212,7 @@
     justify-content: center;
     pointer-events: none;
     background: transparent;
+    --dangan-vn-bottom-offset: 0px;
 }
 
 #dangan-vn-overlay.active {
@@ -4222,7 +4223,7 @@
 .dangan-vn-frame {
     width: min(980px, calc(100vw - 18px));
     min-height: 170px;
-    margin: 0 9px 10px;
+    margin: 0 9px calc(var(--dangan-vn-bottom-offset) + 10px);
     border-radius: 12px;
     border: 1px solid rgba(191, 229, 255, 0.45);
     background: linear-gradient(180deg, rgba(8, 12, 20, 0.96), rgba(6, 9, 14, 0.97));
