@@ -1129,6 +1129,7 @@ function createVnModeController() {
         const currentChatScope = getChatScopeSignature();
         const chatScopeChanged = currentChatScope !== lastObservedChatScope;
         const currentLastSignature = getMessageSignature(messages[messages.length - 1]);
+        const hadLastSignatureChange = currentLastSignature !== previousLastSignature;
         lastObservedMessageCount = messages.length;
         lastObservedLastSignature = currentLastSignature;
         lastObservedChatScope = currentChatScope;
