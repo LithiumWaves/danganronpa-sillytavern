@@ -4262,9 +4262,7 @@
     text-transform: uppercase;
 }
 
-#chat.dangan-vn-hidden,
-#chat_wrapper.dangan-vn-hidden,
-#chat_display.dangan-vn-hidden {
+#chat.dangan-vn-hidden {
     visibility: hidden !important;
     pointer-events: none !important;
 }

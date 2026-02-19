@@ -572,13 +572,50 @@ function createVnModeController() {
     const nameEl = host.querySelector('#dangan-vn-name');
     const textEl = host.querySelector('#dangan-vn-text');
 
-    function getMessageElements() {
-        return Array.from(document.querySelectorAll('.mes')).filter(msgEl => {
+    function getContextMessages() {
+        const ctx = window.SillyTavern?.getContext?.();
+        const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+
+        const messages = chat
+            .map((msg, idx) => {
+                const isUser = Boolean(msg?.is_user ?? msg?.isUser);
+                const isSystem = Boolean(msg?.is_system ?? msg?.isSystem ?? msg?.is_system_message);
+                const name = String(msg?.name || msg?.ch_name || msg?.character_name || '').trim();
+                const text = String(msg?.mes || msg?.message || msg?.content || '').trim();
+
+                return {
+                    key: `ctx-${idx}`,
+                    isUser,
+                    isSystem,
+                    name,
+                    text,
+                };
+            })
+            .filter(msg => !msg.isUser && !msg.isSystem && msg.text);
+
+        return messages;
+    }
+
+    function getDomMessages() {
+        return Array.from(document.querySelectorAll('.mes')).map((msgEl, idx) => {
             const isUser = msgEl.getAttribute('is_user') === 'true';
             const isSystem = msgEl.getAttribute('is_system') === 'true';
-            const text = (msgEl.querySelector('.mes_text')?.textContent || '').trim();
-            return !isUser && !isSystem && text;
-        });
+            const text = String(msgEl.querySelector('.mes_text')?.textContent || '').trim();
+            const name = String(msgEl.getAttribute('ch_name') || msgEl.getAttribute('name') || '').trim();
+            return {
+                key: `dom-${idx}`,
+                isUser,
+                isSystem,
+                name,
+                text,
+            };
+        }).filter(msg => !msg.isUser && !msg.isSystem && msg.text);
+    }
+
+    function getMessageEntries() {
+        const contextMessages = getContextMessages();
+        if (contextMessages.length) return contextMessages;
+        return getDomMessages();
     }
 
     function splitIntoChunks(text = '') {
@@ -599,7 +636,7 @@ function createVnModeController() {
     }
 
     function renderCurrent() {
-        const messages = getMessageElements();
+        const messages = getMessageEntries();
         if (!messages.length) {
             nameEl.textContent = '—';
             textEl.textContent = 'No character replies yet.';
@@ -609,24 +646,21 @@ function createVnModeController() {
         if (messageIndex >= messages.length) messageIndex = messages.length - 1;
         if (messageIndex < 0) messageIndex = 0;
 
-        const messageEl = messages[messageIndex];
-        const speakerName = (messageEl.getAttribute('ch_name') || messageEl.getAttribute('name') || 'UNKNOWN').trim();
-        const raw = messageEl.querySelector('.mes_text')?.textContent || '';
-        const clean = stripV3CMarkersFromText(raw).replace(/\s+/g, ' ').trim();
+        const message = messages[messageIndex];
+        const clean = stripV3CMarkersFromText(message.text).replace(/\s+/g, ' ').trim();
         const chunks = splitIntoChunks(clean);
 
         if (chunkIndex >= chunks.length) chunkIndex = Math.max(0, chunks.length - 1);
-        nameEl.textContent = speakerName || 'UNKNOWN';
+        nameEl.textContent = message.name || 'UNKNOWN';
         textEl.textContent = chunks[chunkIndex] || '...';
     }
 
     function advance() {
-        const messages = getMessageElements();
+        const messages = getMessageEntries();
         if (!messages.length) return;
 
-        const messageEl = messages[Math.min(messageIndex, messages.length - 1)];
-        const raw = messageEl?.querySelector('.mes_text')?.textContent || '';
-        const chunks = splitIntoChunks(stripV3CMarkersFromText(raw));
+        const message = messages[Math.min(messageIndex, messages.length - 1)];
+        const chunks = splitIntoChunks(stripV3CMarkersFromText(message.text));
 
         if (chunkIndex + 1 < chunks.length) {
             chunkIndex += 1;
@@ -639,7 +673,7 @@ function createVnModeController() {
     }
 
     function jumpToLatest() {
-        const messages = getMessageElements();
+        const messages = getMessageEntries();
         messageIndex = Math.max(0, messages.length - 1);
         chunkIndex = 0;
         renderCurrent();
@@ -651,8 +685,12 @@ function createVnModeController() {
 
     const observer = new MutationObserver(() => {
         if (!host.classList.contains('active')) return;
-        const messages = getMessageElements();
-        if (!messages.length) return;
+        const messages = getMessageEntries();
+        if (!messages.length) {
+            renderCurrent();
+            return;
+        }
+
         const maxIndex = messages.length - 1;
         if (messageIndex >= maxIndex) {
             jumpToLatest();
@@ -672,8 +710,6 @@ function createVnModeController() {
 
             const hiddenTargets = [
                 document.getElementById('chat'),
-                document.getElementById('chat_wrapper'),
-                document.getElementById('chat_display'),
             ];
             hiddenTargets.forEach(el => {
                 if (!el) return;
