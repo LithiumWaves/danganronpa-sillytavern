@@ -34,6 +34,7 @@ let mapPanelController = null;
 let trialController = null;
 let hasSelectedMonopadTab = false;
 let monokumaLessonState = null;
+let vnModeController = null;
 
 const openRouterSettings = createOpenRouterSettingsManager({
     extensionName,
@@ -447,6 +448,331 @@ function buildTrialCaseSummary() {
     return `Current evidence focus: ${line}`;
 }
 
+
+function tryEnableVisualNovelToggleInObject(root, { maxDepth = 8 } = {}) {
+    if (!root || typeof root !== "object") return false;
+
+    const queue = [{ node: root, depth: 0 }];
+    const visited = new WeakSet();
+    let touched = false;
+
+    while (queue.length) {
+        const { node, depth } = queue.shift();
+        if (!node || typeof node !== "object" || visited.has(node)) continue;
+        visited.add(node);
+
+        const label = normalizeTextToken(node.name || node.label || node.title || node.id || node.key || "");
+        const isVisualNovelSetting = /visual/.test(label) && /novel|vn/.test(label) && /mode|toggle|enabled|active/.test(label);
+
+        if (isVisualNovelSetting) {
+            if (typeof node.enabled === "boolean") { node.enabled = true; touched = true; }
+            if (typeof node.value === "boolean") { node.value = true; touched = true; }
+            if (typeof node.active === "boolean") { node.active = true; touched = true; }
+            if (typeof node.toggled === "boolean") { node.toggled = true; touched = true; }
+            if (typeof node.isEnabled === "boolean") { node.isEnabled = true; touched = true; }
+            if (typeof node.isActive === "boolean") { node.isActive = true; touched = true; }
+            if (typeof node.setValue === "function") { node.setValue(true); touched = true; }
+            if (typeof node.set === "function") { node.set(true); touched = true; }
+        }
+
+        if (depth >= maxDepth) continue;
+
+        try {
+            for (const value of Object.values(node)) {
+                if (value && typeof value === "object") queue.push({ node: value, depth: depth + 1 });
+            }
+        } catch {
+            // skip host objects that throw on traversal
+        }
+    }
+
+    return touched;
+}
+
+function tryEnableSillyTavernVisualNovelMode() {
+    const ctx = window.SillyTavern?.getContext?.();
+    let touched = false;
+
+    const candidates = [
+        ctx?.chatCompletionSettings,
+        ctx?.chat_completion_settings,
+        ctx?.mainApiSettings,
+        ctx?.main_api_settings,
+        ctx?.settings,
+        ctx,
+        window.SillyTavern,
+    ];
+
+    for (const candidate of candidates) {
+        try {
+            touched = tryEnableVisualNovelToggleInObject(candidate) || touched;
+        } catch {
+            // ignore malformed hosts
+        }
+    }
+
+    const domCandidates = Array.from(document.querySelectorAll('label, .menu_button, .inline-drawer-toggle, button, .toggle-item'));
+    for (const el of domCandidates) {
+        const labelText = normalizeTextToken(el.textContent || el.getAttribute('aria-label') || el.getAttribute('title') || '');
+        if (!(/visual/.test(labelText) && /novel|vn/.test(labelText))) continue;
+
+        const host = el.closest('label, .toggle-item, .settings-item, .menu_button, .inline-drawer-toggle') || el;
+        const checkbox = host.querySelector('input[type="checkbox"]') || el.querySelector?.('input[type="checkbox"]');
+
+        if (checkbox) {
+            if (!checkbox.checked) {
+                checkbox.click();
+                checkbox.dispatchEvent(new Event('input', { bubbles: true }));
+                checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            touched = true;
+            break;
+        }
+
+        if (host.getAttribute('aria-pressed') !== 'true' && typeof host.click === 'function') {
+            host.click();
+            touched = true;
+            break;
+        }
+
+        if (host.getAttribute('aria-pressed') === 'true') {
+            touched = true;
+            break;
+        }
+    }
+
+    if (touched) {
+        if (typeof ctx?.saveSettingsDebounced === 'function') {
+            ctx.saveSettingsDebounced();
+        } else {
+            saveSettingsDebounced();
+        }
+    }
+
+    return touched;
+}
+
+function createVnModeController() {
+    const CHUNK_SIZE = 180;
+    let chunkIndex = 0;
+    let messageIndex = 0;
+
+    const host = document.createElement('div');
+    host.id = 'dangan-vn-overlay';
+    host.setAttribute('aria-hidden', 'true');
+    host.innerHTML = `
+        <div class="dangan-vn-frame" role="dialog" aria-live="polite" aria-label="Dangan Visual Novel dialogue">
+            <div class="dangan-vn-name" id="dangan-vn-name">—</div>
+            <div class="dangan-vn-text" id="dangan-vn-text">Visual Novel Mode ready.</div>
+            <div class="dangan-vn-input">Tap dialogue box to continue · Type in SillyTavern input below</div>
+        </div>
+    `;
+    document.body.appendChild(host);
+
+    const frameEl = host.querySelector('.dangan-vn-frame');
+    const nameEl = host.querySelector('#dangan-vn-name');
+    const textEl = host.querySelector('#dangan-vn-text');
+
+    function applyInlineFallbackStyles() {
+        Object.assign(host.style, {
+            position: 'fixed',
+            inset: '0',
+            zIndex: '2147483646',
+            display: 'none',
+            alignItems: 'flex-end',
+            justifyContent: 'center',
+            pointerEvents: 'none',
+            background: 'radial-gradient(circle at 50% 25%, rgba(73,120,194,0.14), rgba(5,8,13,0.78))',
+        });
+
+        if (frameEl) {
+            Object.assign(frameEl.style, {
+                width: 'min(980px, calc(100vw - 18px))',
+                minHeight: '170px',
+                margin: '0 9px 10px',
+                borderRadius: '14px',
+                border: '1px solid rgba(187,223,255,0.48)',
+                background: 'linear-gradient(180deg, rgba(10,17,28,0.97), rgba(6,10,17,0.98))',
+                boxShadow: '0 -8px 30px rgba(0,0,0,0.5)',
+                color: '#f4f8ff',
+                padding: '14px 14px 10px',
+                cursor: 'pointer',
+            });
+        }
+    }
+
+    function ensureHostAttached() {
+        if (host.parentElement !== document.body) {
+            document.body.appendChild(host);
+        }
+    }
+
+    applyInlineFallbackStyles();
+
+    const htmlDecodeBuffer = document.createElement('div');
+    const toPlainText = (value) => {
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+        htmlDecodeBuffer.innerHTML = raw;
+        return String(htmlDecodeBuffer.textContent || htmlDecodeBuffer.innerText || '').trim();
+    };
+
+    function getContextMessages() {
+        const ctx = window.SillyTavern?.getContext?.();
+        const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+
+        return chat.map((msg, idx) => {
+            const isUser = String(msg?.is_user ?? msg?.isUser ?? '').toLowerCase() === 'true' || msg?.is_user === true || msg?.isUser === true;
+            const isSystem = String(msg?.is_system ?? msg?.isSystem ?? msg?.is_system_message ?? '').toLowerCase() === 'true' || msg?.is_system === true || msg?.isSystem === true || msg?.is_system_message === true;
+            const name = String(msg?.name || msg?.ch_name || msg?.character_name || msg?.display_name || '').trim();
+            const textRaw = msg?.mes ?? msg?.message ?? msg?.content ?? msg?.swipe_info?.[msg?.swipe_id || 0]?.mes ?? '';
+            const text = toPlainText(textRaw);
+
+            return {
+                key: `ctx-${idx}`,
+                isUser,
+                isSystem,
+                name,
+                text,
+            };
+        }).filter(msg => !msg.isUser && !msg.isSystem && msg.text);
+    }
+
+    function getDomMessages() {
+        return Array.from(document.querySelectorAll('.mes')).map((msgEl, idx) => {
+            const isUser = msgEl.getAttribute('is_user') === 'true';
+            const isSystem = msgEl.getAttribute('is_system') === 'true';
+            const name = String(msgEl.getAttribute('ch_name') || msgEl.getAttribute('name') || '').trim();
+            const text = toPlainText(msgEl.querySelector('.mes_text')?.innerHTML || msgEl.querySelector('.mes_text')?.textContent || '');
+            return { key: `dom-${idx}`, isUser, isSystem, name, text };
+        }).filter(msg => !msg.isUser && !msg.isSystem && msg.text);
+    }
+
+    function getMessageEntries() {
+        const byContext = getContextMessages();
+        if (byContext.length) return byContext;
+        const byDom = getDomMessages();
+        if (byDom.length) return byDom;
+        return [];
+    }
+
+    function splitIntoChunks(text = '') {
+        const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+        if (!normalized) return [];
+
+        const chunks = [];
+        let remaining = normalized;
+        while (remaining.length > CHUNK_SIZE) {
+            let splitAt = remaining.lastIndexOf('.', CHUNK_SIZE);
+            if (splitAt < CHUNK_SIZE * 0.45) splitAt = remaining.lastIndexOf(' ', CHUNK_SIZE);
+            if (splitAt < 1) splitAt = CHUNK_SIZE;
+            chunks.push(remaining.slice(0, splitAt + 1).trim());
+            remaining = remaining.slice(splitAt + 1).trim();
+        }
+
+        if (remaining) chunks.push(remaining);
+        return chunks;
+    }
+
+    function renderCurrent() {
+        const messages = getMessageEntries();
+        if (!messages.length) {
+            nameEl.textContent = 'SYSTEM';
+            textEl.textContent = 'No character replies available yet. Send a message and wait for a character response.';
+            return;
+        }
+
+        messageIndex = Math.max(0, Math.min(messageIndex, messages.length - 1));
+
+        const entry = messages[messageIndex];
+        const clean = stripV3CMarkersFromText(entry.text).replace(/\s+/g, ' ').trim();
+        const chunks = splitIntoChunks(clean);
+
+        if (!chunks.length) {
+            nameEl.textContent = entry.name || 'UNKNOWN';
+            textEl.textContent = '...';
+            return;
+        }
+
+        chunkIndex = Math.max(0, Math.min(chunkIndex, chunks.length - 1));
+        nameEl.textContent = entry.name || 'UNKNOWN';
+        textEl.textContent = chunks[chunkIndex];
+    }
+
+    function advance() {
+        const messages = getMessageEntries();
+        if (!messages.length) {
+            renderCurrent();
+            return;
+        }
+
+        const entry = messages[Math.min(messageIndex, messages.length - 1)];
+        const chunks = splitIntoChunks(stripV3CMarkersFromText(entry.text));
+
+        if (chunkIndex + 1 < chunks.length) {
+            chunkIndex += 1;
+        } else {
+            messageIndex = Math.min(messages.length - 1, messageIndex + 1);
+            chunkIndex = 0;
+        }
+
+        renderCurrent();
+    }
+
+    function jumpToLatest() {
+        const messages = getMessageEntries();
+        messageIndex = Math.max(0, messages.length - 1);
+        chunkIndex = 0;
+        renderCurrent();
+    }
+
+    host.addEventListener('click', advance);
+
+    const observer = new MutationObserver(() => {
+        ensureHostAttached();
+        if (!host.classList.contains('active')) return;
+        const messages = getMessageEntries();
+        if (!messages.length) {
+            renderCurrent();
+            return;
+        }
+
+        const maxIndex = messages.length - 1;
+        if (messageIndex >= maxIndex) {
+            jumpToLatest();
+        } else {
+            renderCurrent();
+        }
+    });
+
+    const chatEl = document.getElementById('chat');
+    if (chatEl) observer.observe(chatEl, { childList: true, subtree: true });
+
+    return {
+        setEnabled(enabled) {
+            const isEnabled = !!enabled;
+            ensureHostAttached();
+
+            host.classList.toggle('active', isEnabled);
+            host.setAttribute('aria-hidden', isEnabled ? 'false' : 'true');
+            host.style.display = isEnabled ? 'flex' : 'none';
+            host.style.pointerEvents = isEnabled ? 'auto' : 'none';
+
+            const chatRoot = document.getElementById('chat');
+            chatRoot?.classList.toggle('dangan-vn-hidden', isEnabled);
+
+            if (isEnabled) {
+                jumpToLatest();
+                tryEnableSillyTavernVisualNovelMode();
+            }
+        },
+        refresh() {
+            ensureHostAttached();
+            if (!host.classList.contains('active')) return;
+            renderCurrent();
+        },
+    };
+}
 
 function tryEnableInvestigationToggleInObject(root, { maxDepth = 8 } = {}) {
     if (!root || typeof root !== "object") return false;
@@ -1354,6 +1680,7 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
 
     // 🟢 Initial pass (important for reloads & history)
     processAllMessages();
+    vnModeController?.refresh?.();
 
     console.log(`[${extensionName}] [Dangan] V3C marker observer active (swipe-safe)`);
 }
@@ -1845,6 +2172,7 @@ function applySettingsTabUI() {
     });
 
     applyCrtSettings();
+    vnModeController?.setEnabled?.(!!tab.vnModeEnabled);
 }
 
 function saveCharacters() {
@@ -3013,6 +3341,7 @@ jQuery(async () => {
         $("body").append(normalizedMonopadHtml);
         normalizeSettingsHeaderActionButtons();
         ensureGlobalDebugUi();
+        vnModeController = createVnModeController();
 
         // SillyTavern may re-mount portions of the DOM after extension load.
         // Re-assert the debug UI a few times to keep controls on the main screen.
@@ -3335,6 +3664,9 @@ $(".monopad-icon").on("mouseenter", function () {
             const next = !getMonopadSetting(key);
             setMonopadSetting(key, next);
             applySettingsTabUI();
+            if (key === "vnModeEnabled" && next) {
+                tryEnableSillyTavernVisualNovelMode();
+            }
             mapPanelController?.handleSettingsChanged?.();
         });
 
