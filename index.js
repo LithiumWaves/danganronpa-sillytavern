@@ -449,7 +449,7 @@ function buildTrialCaseSummary() {
 }
 
 
-function tryEnableVisualNovelToggleInObject(root, { maxDepth = 8 } = {}) {
+function trySetVisualNovelToggleInObject(root, enabled, { maxDepth = 8 } = {}) {
     if (!root || typeof root !== "object") return false;
 
     const queue = [{ node: root, depth: 0 }];
@@ -465,14 +465,14 @@ function tryEnableVisualNovelToggleInObject(root, { maxDepth = 8 } = {}) {
         const isVisualNovelSetting = /visual/.test(label) && /novel|vn/.test(label) && /mode|toggle|enabled|active/.test(label);
 
         if (isVisualNovelSetting) {
-            if (typeof node.enabled === "boolean") { node.enabled = true; touched = true; }
-            if (typeof node.value === "boolean") { node.value = true; touched = true; }
-            if (typeof node.active === "boolean") { node.active = true; touched = true; }
-            if (typeof node.toggled === "boolean") { node.toggled = true; touched = true; }
-            if (typeof node.isEnabled === "boolean") { node.isEnabled = true; touched = true; }
-            if (typeof node.isActive === "boolean") { node.isActive = true; touched = true; }
-            if (typeof node.setValue === "function") { node.setValue(true); touched = true; }
-            if (typeof node.set === "function") { node.set(true); touched = true; }
+            if (typeof node.enabled === "boolean") { node.enabled = enabled; touched = true; }
+            if (typeof node.value === "boolean") { node.value = enabled; touched = true; }
+            if (typeof node.active === "boolean") { node.active = enabled; touched = true; }
+            if (typeof node.toggled === "boolean") { node.toggled = enabled; touched = true; }
+            if (typeof node.isEnabled === "boolean") { node.isEnabled = enabled; touched = true; }
+            if (typeof node.isActive === "boolean") { node.isActive = enabled; touched = true; }
+            if (typeof node.setValue === "function") { node.setValue(enabled); touched = true; }
+            if (typeof node.set === "function") { node.set(enabled); touched = true; }
         }
 
         if (depth >= maxDepth) continue;
@@ -489,7 +489,7 @@ function tryEnableVisualNovelToggleInObject(root, { maxDepth = 8 } = {}) {
     return touched;
 }
 
-function tryEnableSillyTavernVisualNovelMode() {
+function trySetSillyTavernVisualNovelMode(enabled) {
     const ctx = window.SillyTavern?.getContext?.();
     let touched = false;
 
@@ -505,7 +505,7 @@ function tryEnableSillyTavernVisualNovelMode() {
 
     for (const candidate of candidates) {
         try {
-            touched = tryEnableVisualNovelToggleInObject(candidate) || touched;
+            touched = trySetVisualNovelToggleInObject(candidate, enabled) || touched;
         } catch {
             // ignore malformed hosts
         }
@@ -520,7 +520,7 @@ function tryEnableSillyTavernVisualNovelMode() {
         const checkbox = host.querySelector('input[type="checkbox"]') || el.querySelector?.('input[type="checkbox"]');
 
         if (checkbox) {
-            if (!checkbox.checked) {
+            if (checkbox.checked !== enabled) {
                 checkbox.click();
                 checkbox.dispatchEvent(new Event('input', { bubbles: true }));
                 checkbox.dispatchEvent(new Event('change', { bubbles: true }));
@@ -529,13 +529,14 @@ function tryEnableSillyTavernVisualNovelMode() {
             break;
         }
 
-        if (host.getAttribute('aria-pressed') !== 'true' && typeof host.click === 'function') {
+        const isPressed = host.getAttribute('aria-pressed') === 'true';
+        if (isPressed !== enabled && typeof host.click === 'function') {
             host.click();
             touched = true;
             break;
         }
 
-        if (host.getAttribute('aria-pressed') === 'true') {
+        if (isPressed === enabled) {
             touched = true;
             break;
         }
@@ -553,23 +554,52 @@ function tryEnableSillyTavernVisualNovelMode() {
 }
 
 function createVnModeController() {
-    const CHUNK_SIZE = 180;
+    const CHUNK_SIZE = 170;
+    const VN_POSITION_KEY = `${extensionName}-vn-box-position`;
     let chunkIndex = 0;
     let messageIndex = 0;
+    let monopadOpen = false;
+    let moveUnlocked = false;
+    let isDragging = false;
+    let movedDuringPointer = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let frameStartX = 0;
+    let frameStartY = 0;
+    let framePosX = null;
+    let framePosY = null;
+    let transcriptOpen = false;
+    let vnEnabled = false;
 
     const host = document.createElement('div');
     host.id = 'dangan-vn-overlay';
     host.setAttribute('aria-hidden', 'true');
     host.innerHTML = `
         <div class="dangan-vn-frame" role="dialog" aria-live="polite" aria-label="Dangan Visual Novel dialogue">
-            <div class="dangan-vn-name" id="dangan-vn-name">—</div>
+            <div class="dangan-vn-controls">
+                <button type="button" class="dangan-vn-control dangan-vn-transcript-toggle" id="dangan-vn-transcript-toggle" aria-label="Open transcript" title="Open transcript">TRANSCRIPT</button>
+                <button type="button" class="dangan-vn-control dangan-vn-lock" id="dangan-vn-lock" aria-label="Unlock Visual Novel box movement" title="Unlock Visual Novel box movement">🔒</button>
+            </div>
+            <div class="dangan-vn-nameplate" id="dangan-vn-name">—</div>
             <div class="dangan-vn-text" id="dangan-vn-text">Visual Novel Mode ready.</div>
             <div class="dangan-vn-input">Tap dialogue box to continue · Type in SillyTavern input below</div>
+        </div>
+        <div class="dangan-vn-transcript" id="dangan-vn-transcript" aria-hidden="true">
+            <div class="dangan-vn-transcript-header">
+                <div class="dangan-vn-transcript-title">Class Transcript</div>
+                <button type="button" class="dangan-vn-transcript-close" id="dangan-vn-transcript-close" aria-label="Close transcript">✕</button>
+            </div>
+            <div class="dangan-vn-transcript-body" id="dangan-vn-transcript-body"></div>
         </div>
     `;
     document.body.appendChild(host);
 
     const frameEl = host.querySelector('.dangan-vn-frame');
+    const lockBtnEl = host.querySelector('#dangan-vn-lock');
+    const transcriptToggleEl = host.querySelector('#dangan-vn-transcript-toggle');
+    const transcriptEl = host.querySelector('#dangan-vn-transcript');
+    const transcriptCloseEl = host.querySelector('#dangan-vn-transcript-close');
+    const transcriptBodyEl = host.querySelector('#dangan-vn-transcript-body');
     const nameEl = host.querySelector('#dangan-vn-name');
     const textEl = host.querySelector('#dangan-vn-text');
 
@@ -582,7 +612,7 @@ function createVnModeController() {
             alignItems: 'flex-end',
             justifyContent: 'center',
             pointerEvents: 'none',
-            background: 'radial-gradient(circle at 50% 25%, rgba(73,120,194,0.14), rgba(5,8,13,0.78))',
+            background: 'transparent',
         });
 
         if (frameEl) {
@@ -590,13 +620,14 @@ function createVnModeController() {
                 width: 'min(980px, calc(100vw - 18px))',
                 minHeight: '170px',
                 margin: '0 9px 10px',
-                borderRadius: '14px',
-                border: '1px solid rgba(187,223,255,0.48)',
-                background: 'linear-gradient(180deg, rgba(10,17,28,0.97), rgba(6,10,17,0.98))',
-                boxShadow: '0 -8px 30px rgba(0,0,0,0.5)',
+                borderRadius: '12px',
+                border: '1px solid rgba(191, 229, 255, 0.45)',
+                background: 'linear-gradient(180deg, rgba(8, 12, 20, 0.96), rgba(6, 9, 14, 0.97))',
+                boxShadow: '0 -3px 20px rgba(0, 0, 0, 0.45)',
                 color: '#f4f8ff',
                 padding: '14px 14px 10px',
                 cursor: 'pointer',
+                pointerEvents: 'auto',
             });
         }
     }
@@ -607,7 +638,170 @@ function createVnModeController() {
         }
     }
 
+    function clampPosition(nextX, nextY) {
+        if (!frameEl) return { x: 0, y: 0 };
+
+        const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+        const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+        const rect = frameEl.getBoundingClientRect();
+        const maxX = Math.max(0, Math.round(vw - rect.width));
+        const maxY = Math.max(0, Math.round(vh - rect.height));
+
+        return {
+            x: Math.max(0, Math.min(maxX, Math.round(nextX))),
+            y: Math.max(0, Math.min(maxY, Math.round(nextY))),
+        };
+    }
+
+    function savePosition() {
+        if (!Number.isFinite(framePosX) || !Number.isFinite(framePosY)) return;
+        try {
+            localStorage.setItem(VN_POSITION_KEY, JSON.stringify({ x: framePosX, y: framePosY }));
+        } catch {
+            // ignore storage failures
+        }
+    }
+
+    function clearSavedPosition() {
+        try {
+            localStorage.removeItem(VN_POSITION_KEY);
+        } catch {
+            // ignore storage failures
+        }
+    }
+
+    function setFramePosition(nextX, nextY) {
+        if (!frameEl) return;
+        const { x, y } = clampPosition(nextX, nextY);
+        framePosX = x;
+        framePosY = y;
+        frameEl.classList.add('dangan-vn-custom-pos');
+        frameEl.style.left = `${x}px`;
+        frameEl.style.top = `${y}px`;
+    }
+
+    function resetFramePosition() {
+        if (!frameEl) return;
+        framePosX = null;
+        framePosY = null;
+        frameEl.classList.remove('dangan-vn-custom-pos');
+        frameEl.style.left = '';
+        frameEl.style.top = '';
+        clearSavedPosition();
+    }
+
+    function restoreSavedPosition() {
+        try {
+            const raw = localStorage.getItem(VN_POSITION_KEY);
+            if (!raw) return;
+            const parsed = JSON.parse(raw);
+            if (!parsed || !Number.isFinite(parsed.x) || !Number.isFinite(parsed.y)) return;
+            setFramePosition(parsed.x, parsed.y);
+        } catch {
+            // ignore storage failures
+        }
+    }
+
+    function setMoveUnlocked(unlocked) {
+        moveUnlocked = !!unlocked;
+        if (!lockBtnEl) return;
+        lockBtnEl.textContent = moveUnlocked ? '🔓' : '🔒';
+        lockBtnEl.setAttribute('aria-label', moveUnlocked ? 'Lock Visual Novel box movement' : 'Unlock Visual Novel box movement');
+        lockBtnEl.setAttribute('title', moveUnlocked ? 'Lock Visual Novel box movement' : 'Unlock Visual Novel box movement');
+        frameEl?.classList.toggle('move-unlocked', moveUnlocked);
+    }
+
+    function setTranscriptOpen(open) {
+        transcriptOpen = !!open;
+        host.classList.toggle('transcript-open', transcriptOpen);
+        transcriptEl?.setAttribute('aria-hidden', transcriptOpen ? 'false' : 'true');
+        transcriptToggleEl?.setAttribute('aria-expanded', transcriptOpen ? 'true' : 'false');
+        if (transcriptOpen) {
+            renderTranscript();
+        }
+    }
+
+    function updateBottomOffset() {
+        if (!frameEl) return;
+
+        if (vnEnabled) {
+            host.style.setProperty('--dangan-vn-bottom-offset', '0px');
+            return;
+        }
+
+        const composeEl = document.querySelector('#send_form, #chat_input_container, #send_textarea, #send_textarea_holder, .send_form');
+        const composeRect = composeEl?.getBoundingClientRect?.();
+        const composeHeight = Number.isFinite(composeRect?.height) ? composeRect.height : 0;
+        const offset = Math.max(0, Math.round(composeHeight + 8));
+        host.style.setProperty('--dangan-vn-bottom-offset', `${offset}px`);
+    }
+
+    function syncMonopadVisibility() {
+        const shouldHideFrame = monopadOpen;
+        if (!frameEl) return;
+        frameEl.style.display = shouldHideFrame ? 'none' : '';
+    }
+
+    function getComposeElement() {
+        return document.querySelector('#send_form, #chat_input_container, #send_textarea_holder, .send_form');
+    }
+
+    function undockTypingSection() {
+        const composeEl = getComposeElement();
+        if (!composeEl) return;
+        composeEl.classList.remove('dangan-vn-compose-docked');
+        composeEl.style.position = '';
+        composeEl.style.left = '';
+        composeEl.style.top = '';
+        composeEl.style.width = '';
+        composeEl.style.maxWidth = '';
+        composeEl.style.margin = '';
+        composeEl.style.transform = '';
+        composeEl.style.zIndex = '';
+    }
+
+    function dockTypingSection() {
+        const composeEl = getComposeElement();
+        if (!composeEl) return;
+
+        if (!vnEnabled || monopadOpen || frameEl?.style.display === 'none') {
+            undockTypingSection();
+            return;
+        }
+
+        const frameRect = frameEl?.getBoundingClientRect?.();
+        if (!frameRect || !Number.isFinite(frameRect.width)) {
+            undockTypingSection();
+            return;
+        }
+
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+        const composeRect = composeEl.getBoundingClientRect();
+        const composeHeight = Number.isFinite(composeRect.height) ? composeRect.height : 52;
+
+        const width = Math.max(220, Math.round(frameRect.width));
+        const maxLeft = Math.max(0, viewportWidth - width);
+        const left = Math.max(0, Math.min(maxLeft, Math.round(frameRect.left)));
+        const maxTop = Math.max(0, viewportHeight - composeHeight - 4);
+        const top = Math.max(0, Math.min(maxTop, Math.round(frameRect.bottom + 6)));
+
+        composeEl.classList.add('dangan-vn-compose-docked');
+        composeEl.style.position = 'fixed';
+        composeEl.style.left = `${left}px`;
+        composeEl.style.top = `${top}px`;
+        composeEl.style.width = `${width}px`;
+        composeEl.style.maxWidth = `${width}px`;
+        composeEl.style.margin = '0';
+        composeEl.style.transform = 'none';
+        composeEl.style.zIndex = '2147483644';
+    }
+
     applyInlineFallbackStyles();
+    updateBottomOffset();
+    syncMonopadVisibility();
+    restoreSavedPosition();
+    setMoveUnlocked(false);
 
     const htmlDecodeBuffer = document.createElement('div');
     const toPlainText = (value) => {
@@ -654,6 +848,38 @@ function createVnModeController() {
         const byDom = getDomMessages();
         if (byDom.length) return byDom;
         return [];
+    }
+
+    function renderTranscript() {
+        if (!transcriptBodyEl) return;
+
+        const entries = getMessageEntries();
+        transcriptBodyEl.innerHTML = '';
+
+        if (!entries.length) {
+            const emptyEl = document.createElement('div');
+            emptyEl.className = 'dangan-vn-transcript-empty';
+            emptyEl.textContent = 'No transcript entries yet.';
+            transcriptBodyEl.appendChild(emptyEl);
+            return;
+        }
+
+        for (const entry of entries) {
+            const row = document.createElement('div');
+            row.className = 'dangan-vn-transcript-entry';
+
+            const speaker = document.createElement('div');
+            speaker.className = 'dangan-vn-transcript-speaker';
+            speaker.textContent = entry.name || 'UNKNOWN';
+
+            const message = document.createElement('div');
+            message.className = 'dangan-vn-transcript-message';
+            message.textContent = stripV3CMarkersFromText(entry.text || '').replace(/\s+/g, ' ').trim() || '...';
+
+            row.appendChild(speaker);
+            row.appendChild(message);
+            transcriptBodyEl.appendChild(row);
+        }
     }
 
     function splitIntoChunks(text = '') {
@@ -706,6 +932,14 @@ function createVnModeController() {
             return;
         }
 
+        if (messageIndex >= messages.length - 1) {
+            const currentEntry = messages[messages.length - 1];
+            const currentChunks = splitIntoChunks(stripV3CMarkersFromText(currentEntry?.text || ''));
+            if (chunkIndex >= Math.max(0, currentChunks.length - 1)) {
+                return;
+            }
+        }
+
         const entry = messages[Math.min(messageIndex, messages.length - 1)];
         const chunks = splitIntoChunks(stripV3CMarkersFromText(entry.text));
 
@@ -726,10 +960,109 @@ function createVnModeController() {
         renderCurrent();
     }
 
-    host.addEventListener('click', advance);
+    lockBtnEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (moveUnlocked) {
+            setMoveUnlocked(false);
+            if (Number.isFinite(framePosX) && Number.isFinite(framePosY)) {
+                savePosition();
+            }
+            return;
+        }
+
+        setMoveUnlocked(true);
+    });
+
+    transcriptToggleEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setTranscriptOpen(!transcriptOpen);
+    });
+
+    transcriptCloseEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setTranscriptOpen(false);
+    });
+
+    frameEl?.addEventListener('dblclick', (event) => {
+        if (!moveUnlocked) return;
+        event.preventDefault();
+        event.stopPropagation();
+        resetFramePosition();
+    });
+
+    frameEl?.addEventListener('pointerdown', (event) => {
+        if (!moveUnlocked || event.button !== 0 || !frameEl) return;
+        const target = event.target;
+        if (target instanceof Element && target.closest('.dangan-vn-lock')) return;
+
+        isDragging = true;
+        movedDuringPointer = false;
+        dragStartX = event.clientX;
+        dragStartY = event.clientY;
+
+        const rect = frameEl.getBoundingClientRect();
+        frameStartX = Number.isFinite(framePosX) ? framePosX : rect.left;
+        frameStartY = Number.isFinite(framePosY) ? framePosY : rect.top;
+
+        frameEl.setPointerCapture?.(event.pointerId);
+        event.preventDefault();
+    });
+
+    frameEl?.addEventListener('pointermove', (event) => {
+        if (!moveUnlocked || !isDragging || !frameEl) return;
+        const dx = event.clientX - dragStartX;
+        const dy = event.clientY - dragStartY;
+        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+            movedDuringPointer = true;
+        }
+        setFramePosition(frameStartX + dx, frameStartY + dy);
+        dockTypingSection();
+        event.preventDefault();
+    });
+
+    frameEl?.addEventListener('pointerup', (event) => {
+        if (!isDragging) return;
+        isDragging = false;
+        frameEl?.releasePointerCapture?.(event.pointerId);
+        if (movedDuringPointer) {
+            savePosition();
+        }
+    });
+
+    frameEl?.addEventListener('pointercancel', () => {
+        isDragging = false;
+    });
+
+    frameEl?.addEventListener('click', (event) => {
+        if (isDragging || movedDuringPointer) {
+            movedDuringPointer = false;
+            return;
+        }
+        const target = event.target;
+        if (target instanceof Element && target.closest('.dangan-vn-lock')) return;
+        if (target instanceof Element && target.closest('.dangan-vn-transcript-toggle')) return;
+        advance();
+    });
+
+    window.addEventListener('resize', () => {
+        updateBottomOffset();
+        if (Number.isFinite(framePosX) && Number.isFinite(framePosY)) {
+            setFramePosition(framePosX, framePosY);
+        }
+        dockTypingSection();
+    });
 
     const observer = new MutationObserver(() => {
         ensureHostAttached();
+        updateBottomOffset();
+        syncMonopadVisibility();
+        dockTypingSection();
+        if (transcriptOpen) {
+            renderTranscript();
+        }
         if (!host.classList.contains('active')) return;
         const messages = getMessageEntries();
         if (!messages.length) {
@@ -748,28 +1081,58 @@ function createVnModeController() {
     const chatEl = document.getElementById('chat');
     if (chatEl) observer.observe(chatEl, { childList: true, subtree: true });
 
+    const panelEl = document.getElementById('dangan_monopad_panel');
+    if (panelEl) {
+        const panelObserver = new MutationObserver(() => {
+            const panelLooksOpen = panelEl.classList.contains('open') || panelEl.classList.contains('booting') || panelEl.classList.contains('shutting-down');
+            monopadOpen = panelLooksOpen;
+            syncMonopadVisibility();
+        });
+        panelObserver.observe(panelEl, { attributes: true, attributeFilter: ['class'] });
+    }
+
     return {
         setEnabled(enabled) {
             const isEnabled = !!enabled;
+            vnEnabled = isEnabled;
             ensureHostAttached();
 
             host.classList.toggle('active', isEnabled);
             host.setAttribute('aria-hidden', isEnabled ? 'false' : 'true');
             host.style.display = isEnabled ? 'flex' : 'none';
-            host.style.pointerEvents = isEnabled ? 'auto' : 'none';
+            host.style.pointerEvents = 'none';
+            updateBottomOffset();
+            syncMonopadVisibility();
+            dockTypingSection();
+            if (!isEnabled) {
+                setTranscriptOpen(false);
+                undockTypingSection();
+            }
 
             const chatRoot = document.getElementById('chat');
             chatRoot?.classList.toggle('dangan-vn-hidden', isEnabled);
 
             if (isEnabled) {
                 jumpToLatest();
-                tryEnableSillyTavernVisualNovelMode();
             }
+
+            trySetSillyTavernVisualNovelMode(isEnabled);
         },
         refresh() {
             ensureHostAttached();
+            updateBottomOffset();
+            syncMonopadVisibility();
+            dockTypingSection();
+            if (transcriptOpen) {
+                renderTranscript();
+            }
             if (!host.classList.contains('active')) return;
             renderCurrent();
+        },
+        setMonopadOpen(isOpen) {
+            monopadOpen = !!isOpen;
+            syncMonopadVisibility();
+            dockTypingSection();
         },
     };
 }
@@ -3499,6 +3862,7 @@ jQuery(async () => {
         function closeMonopadPanel() {
             closeBreachOverlay();
             closePayloadOverlay();
+            vnModeController?.setMonopadOpen?.(false);
             $panel.removeClass("open booting boot-cold boot-warm");
 
             if (getMonopadSetting("bootAnimations")) {
@@ -3570,6 +3934,7 @@ $(".monopad-icon").on("mouseenter", function () {
             $panel.removeClass("open closed booting boot-cold boot-warm");
 
             if (!isOpen) {
+                vnModeController?.setMonopadOpen?.(true);
                 const welcomeUserEl = document.getElementById("monopad_welcome_user");
                 if (welcomeUserEl) {
                     welcomeUserEl.textContent = getActivePersonaName();
@@ -3665,7 +4030,7 @@ $(".monopad-icon").on("mouseenter", function () {
             setMonopadSetting(key, next);
             applySettingsTabUI();
             if (key === "vnModeEnabled" && next) {
-                tryEnableSillyTavernVisualNovelMode();
+                trySetSillyTavernVisualNovelMode(true);
             }
             mapPanelController?.handleSettingsChanged?.();
         });
