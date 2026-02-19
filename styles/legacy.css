@@ -4211,36 +4211,74 @@
     align-items: end;
     justify-content: center;
     pointer-events: none;
-    background: radial-gradient(circle at 50% 25%, rgba(73, 120, 194, 0.14), rgba(5, 8, 13, 0.78));
+    background: transparent;
+    --dangan-vn-bottom-offset: 0px;
 }
 
 #dangan-vn-overlay.active {
     display: flex;
-    pointer-events: auto;
+    pointer-events: none;
 }
 
 .dangan-vn-frame {
+    position: relative;
     width: min(980px, calc(100vw - 18px));
     min-height: 170px;
-    margin: 0 9px 10px;
-    border-radius: 14px;
-    border: 1px solid rgba(187, 223, 255, 0.48);
-    background: linear-gradient(180deg, rgba(10, 17, 28, 0.97), rgba(6, 10, 17, 0.98));
-    box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.5);
+    margin: 0 9px calc(var(--dangan-vn-bottom-offset) + 10px);
+    border-radius: 12px;
+    border: 1px solid rgba(191, 229, 255, 0.45);
+    background: linear-gradient(180deg, rgba(8, 12, 20, 0.96), rgba(6, 9, 14, 0.97));
+    box-shadow: 0 -3px 20px rgba(0, 0, 0, 0.45);
     color: #f4f8ff;
     padding: 14px 14px 10px;
     cursor: pointer;
+    pointer-events: auto;
 }
 
-.dangan-vn-name {
+.dangan-vn-frame.move-unlocked {
+    cursor: move;
+}
+
+.dangan-vn-frame.dangan-vn-custom-pos {
+    position: fixed;
+    margin: 0;
+}
+
+.dangan-vn-lock {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    border: 1px solid rgba(173, 205, 255, 0.5);
+    background: rgba(22, 31, 47, 0.9);
+    color: #f3f8ff;
+    font-size: 13px;
+    line-height: 1;
     display: inline-flex;
-    margin-bottom: 10px;
-    padding: 4px 10px;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.dangan-vn-lock:hover,
+.dangan-vn-lock:focus-visible {
+    background: rgba(45, 63, 95, 0.95);
+    outline: none;
+}
+
+.dangan-vn-nameplate {
+    display: inline-flex;
+    margin-bottom: 8px;
+    padding: 3px 9px;
     border-radius: 999px;
-    background: linear-gradient(90deg, #2d3750, #445a84);
-    border: 1px solid rgba(183, 212, 255, 0.45);
-    font-size: 11px;
-    letter-spacing: 0.12em;
+    background: linear-gradient(90deg, #272f43, #3e5074);
+    border: 1px solid rgba(173, 205, 255, 0.5);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    color: #f2f8ff;
     font-family: "Orbitron", "Rajdhani", monospace;
 }
 
@@ -4255,7 +4293,7 @@
 .dangan-vn-input {
     margin-top: 10px;
     border-top: 1px solid rgba(176, 211, 255, 0.24);
-    padding-top: 8px;
+    padding-top: 9px;
     font-size: 11px;
     letter-spacing: 0.1em;
     color: rgba(167, 204, 251, 0.92);
@@ -4271,7 +4309,7 @@
 @media (max-width: 480px) {
     #dangan-vn-overlay {
         align-items: flex-end;
-        background: radial-gradient(circle at 50% 20%, rgba(73, 120, 194, 0.2), rgba(2, 5, 10, 0.86));
+        background: transparent;
     }
 
     .dangan-vn-frame {
@@ -4282,7 +4320,7 @@
         padding: 10px 10px 8px;
     }
 
-    .dangan-vn-name {
+    .dangan-vn-nameplate {
         font-size: 10px;
         letter-spacing: 0.1em;
         margin-bottom: 8px;
