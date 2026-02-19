@@ -449,7 +449,7 @@ function buildTrialCaseSummary() {
 }
 
 
-function tryEnableVisualNovelToggleInObject(root, { maxDepth = 8 } = {}) {
+function trySetVisualNovelToggleInObject(root, enabled, { maxDepth = 8 } = {}) {
     if (!root || typeof root !== "object") return false;
 
     const queue = [{ node: root, depth: 0 }];
@@ -465,14 +465,14 @@ function tryEnableVisualNovelToggleInObject(root, { maxDepth = 8 } = {}) {
         const isVisualNovelSetting = /visual/.test(label) && /novel|vn/.test(label) && /mode|toggle|enabled|active/.test(label);
 
         if (isVisualNovelSetting) {
-            if (typeof node.enabled === "boolean") { node.enabled = true; touched = true; }
-            if (typeof node.value === "boolean") { node.value = true; touched = true; }
-            if (typeof node.active === "boolean") { node.active = true; touched = true; }
-            if (typeof node.toggled === "boolean") { node.toggled = true; touched = true; }
-            if (typeof node.isEnabled === "boolean") { node.isEnabled = true; touched = true; }
-            if (typeof node.isActive === "boolean") { node.isActive = true; touched = true; }
-            if (typeof node.setValue === "function") { node.setValue(true); touched = true; }
-            if (typeof node.set === "function") { node.set(true); touched = true; }
+            if (typeof node.enabled === "boolean") { node.enabled = enabled; touched = true; }
+            if (typeof node.value === "boolean") { node.value = enabled; touched = true; }
+            if (typeof node.active === "boolean") { node.active = enabled; touched = true; }
+            if (typeof node.toggled === "boolean") { node.toggled = enabled; touched = true; }
+            if (typeof node.isEnabled === "boolean") { node.isEnabled = enabled; touched = true; }
+            if (typeof node.isActive === "boolean") { node.isActive = enabled; touched = true; }
+            if (typeof node.setValue === "function") { node.setValue(enabled); touched = true; }
+            if (typeof node.set === "function") { node.set(enabled); touched = true; }
         }
 
         if (depth >= maxDepth) continue;
@@ -489,7 +489,7 @@ function tryEnableVisualNovelToggleInObject(root, { maxDepth = 8 } = {}) {
     return touched;
 }
 
-function tryEnableSillyTavernVisualNovelMode() {
+function trySetSillyTavernVisualNovelMode(enabled) {
     const ctx = window.SillyTavern?.getContext?.();
     let touched = false;
 
@@ -505,7 +505,7 @@ function tryEnableSillyTavernVisualNovelMode() {
 
     for (const candidate of candidates) {
         try {
-            touched = tryEnableVisualNovelToggleInObject(candidate) || touched;
+            touched = trySetVisualNovelToggleInObject(candidate, enabled) || touched;
         } catch {
             // ignore malformed hosts
         }
@@ -520,7 +520,7 @@ function tryEnableSillyTavernVisualNovelMode() {
         const checkbox = host.querySelector('input[type="checkbox"]') || el.querySelector?.('input[type="checkbox"]');
 
         if (checkbox) {
-            if (!checkbox.checked) {
+            if (checkbox.checked !== enabled) {
                 checkbox.click();
                 checkbox.dispatchEvent(new Event('input', { bubbles: true }));
                 checkbox.dispatchEvent(new Event('change', { bubbles: true }));
@@ -529,13 +529,14 @@ function tryEnableSillyTavernVisualNovelMode() {
             break;
         }
 
-        if (host.getAttribute('aria-pressed') !== 'true' && typeof host.click === 'function') {
+        const isPressed = host.getAttribute('aria-pressed') === 'true';
+        if (isPressed !== enabled && typeof host.click === 'function') {
             host.click();
             touched = true;
             break;
         }
 
-        if (host.getAttribute('aria-pressed') === 'true') {
+        if (isPressed === enabled) {
             touched = true;
             break;
         }
@@ -553,16 +554,17 @@ function tryEnableSillyTavernVisualNovelMode() {
 }
 
 function createVnModeController() {
-    const CHUNK_SIZE = 180;
+    const CHUNK_SIZE = 170;
     let chunkIndex = 0;
     let messageIndex = 0;
+    let monopadOpen = false;
 
     const host = document.createElement('div');
     host.id = 'dangan-vn-overlay';
     host.setAttribute('aria-hidden', 'true');
     host.innerHTML = `
         <div class="dangan-vn-frame" role="dialog" aria-live="polite" aria-label="Dangan Visual Novel dialogue">
-            <div class="dangan-vn-name" id="dangan-vn-name">—</div>
+            <div class="dangan-vn-nameplate" id="dangan-vn-name">—</div>
             <div class="dangan-vn-text" id="dangan-vn-text">Visual Novel Mode ready.</div>
             <div class="dangan-vn-input">Tap dialogue box to continue · Type in SillyTavern input below</div>
         </div>
@@ -582,7 +584,7 @@ function createVnModeController() {
             alignItems: 'flex-end',
             justifyContent: 'center',
             pointerEvents: 'none',
-            background: 'radial-gradient(circle at 50% 25%, rgba(73,120,194,0.14), rgba(5,8,13,0.78))',
+            background: 'transparent',
         });
 
         if (frameEl) {
@@ -590,13 +592,14 @@ function createVnModeController() {
                 width: 'min(980px, calc(100vw - 18px))',
                 minHeight: '170px',
                 margin: '0 9px 10px',
-                borderRadius: '14px',
-                border: '1px solid rgba(187,223,255,0.48)',
-                background: 'linear-gradient(180deg, rgba(10,17,28,0.97), rgba(6,10,17,0.98))',
-                boxShadow: '0 -8px 30px rgba(0,0,0,0.5)',
+                borderRadius: '12px',
+                border: '1px solid rgba(191, 229, 255, 0.45)',
+                background: 'linear-gradient(180deg, rgba(8, 12, 20, 0.96), rgba(6, 9, 14, 0.97))',
+                boxShadow: '0 -3px 20px rgba(0, 0, 0, 0.45)',
                 color: '#f4f8ff',
                 padding: '14px 14px 10px',
                 cursor: 'pointer',
+                pointerEvents: 'auto',
             });
         }
     }
@@ -607,7 +610,25 @@ function createVnModeController() {
         }
     }
 
+    function updateBottomOffset() {
+        if (!frameEl) return;
+
+        const composeEl = document.querySelector('#send_form, #chat_input_container, #send_textarea, #send_textarea_holder, .send_form');
+        const composeRect = composeEl?.getBoundingClientRect?.();
+        const composeHeight = Number.isFinite(composeRect?.height) ? composeRect.height : 0;
+        const offset = Math.max(0, Math.round(composeHeight + 8));
+        host.style.setProperty('--dangan-vn-bottom-offset', `${offset}px`);
+    }
+
+    function syncMonopadVisibility() {
+        const shouldHideFrame = monopadOpen;
+        if (!frameEl) return;
+        frameEl.style.display = shouldHideFrame ? 'none' : '';
+    }
+
     applyInlineFallbackStyles();
+    updateBottomOffset();
+    syncMonopadVisibility();
 
     const htmlDecodeBuffer = document.createElement('div');
     const toPlainText = (value) => {
@@ -726,10 +747,12 @@ function createVnModeController() {
         renderCurrent();
     }
 
-    host.addEventListener('click', advance);
+    frameEl?.addEventListener('click', advance);
 
     const observer = new MutationObserver(() => {
         ensureHostAttached();
+        updateBottomOffset();
+        syncMonopadVisibility();
         if (!host.classList.contains('active')) return;
         const messages = getMessageEntries();
         if (!messages.length) {
@@ -748,6 +771,16 @@ function createVnModeController() {
     const chatEl = document.getElementById('chat');
     if (chatEl) observer.observe(chatEl, { childList: true, subtree: true });
 
+    const panelEl = document.getElementById('dangan_monopad_panel');
+    if (panelEl) {
+        const panelObserver = new MutationObserver(() => {
+            const panelLooksOpen = panelEl.classList.contains('open') || panelEl.classList.contains('booting') || panelEl.classList.contains('shutting-down');
+            monopadOpen = panelLooksOpen;
+            syncMonopadVisibility();
+        });
+        panelObserver.observe(panelEl, { attributes: true, attributeFilter: ['class'] });
+    }
+
     return {
         setEnabled(enabled) {
             const isEnabled = !!enabled;
@@ -756,20 +789,29 @@ function createVnModeController() {
             host.classList.toggle('active', isEnabled);
             host.setAttribute('aria-hidden', isEnabled ? 'false' : 'true');
             host.style.display = isEnabled ? 'flex' : 'none';
-            host.style.pointerEvents = isEnabled ? 'auto' : 'none';
+            host.style.pointerEvents = 'none';
+            updateBottomOffset();
+            syncMonopadVisibility();
 
             const chatRoot = document.getElementById('chat');
             chatRoot?.classList.toggle('dangan-vn-hidden', isEnabled);
 
             if (isEnabled) {
                 jumpToLatest();
-                tryEnableSillyTavernVisualNovelMode();
             }
+
+            trySetSillyTavernVisualNovelMode(isEnabled);
         },
         refresh() {
             ensureHostAttached();
+            updateBottomOffset();
+            syncMonopadVisibility();
             if (!host.classList.contains('active')) return;
             renderCurrent();
+        },
+        setMonopadOpen(isOpen) {
+            monopadOpen = !!isOpen;
+            syncMonopadVisibility();
         },
     };
 }
@@ -3499,6 +3541,7 @@ jQuery(async () => {
         function closeMonopadPanel() {
             closeBreachOverlay();
             closePayloadOverlay();
+            vnModeController?.setMonopadOpen?.(false);
             $panel.removeClass("open booting boot-cold boot-warm");
 
             if (getMonopadSetting("bootAnimations")) {
@@ -3570,6 +3613,7 @@ $(".monopad-icon").on("mouseenter", function () {
             $panel.removeClass("open closed booting boot-cold boot-warm");
 
             if (!isOpen) {
+                vnModeController?.setMonopadOpen?.(true);
                 const welcomeUserEl = document.getElementById("monopad_welcome_user");
                 if (welcomeUserEl) {
                     welcomeUserEl.textContent = getActivePersonaName();
@@ -3665,7 +3709,7 @@ $(".monopad-icon").on("mouseenter", function () {
             setMonopadSetting(key, next);
             applySettingsTabUI();
             if (key === "vnModeEnabled" && next) {
-                tryEnableSillyTavernVisualNovelMode();
+                trySetSillyTavernVisualNovelMode(true);
             }
             mapPanelController?.handleSettingsChanged?.();
         });
