@@ -2787,8 +2787,6 @@ function attachDraggablePositioning(element, { storageKey, handleSelector, suppr
         pointerId = event.pointerId;
         dragging = true;
         moved = false;
-
-        element.setPointerCapture?.(pointerId);
     });
 
     element.addEventListener("pointermove", event => {
@@ -2799,7 +2797,10 @@ function attachDraggablePositioning(element, { storageKey, handleSelector, suppr
         const { left, top } = clampUiPosition(element, nextLeft, nextTop);
 
         if (Math.abs(event.clientX - startX) > 8 || Math.abs(event.clientY - startY) > 8) {
-            moved = true;
+            if (!moved) {
+                moved = true;
+                element.setPointerCapture?.(pointerId);
+            }
         }
 
         element.style.setProperty("left", `${left}px`, "important");
@@ -3389,6 +3390,15 @@ function applyTruthDebugModalInlineLayout(modal) {
     card.style.setProperty("box-sizing", "border-box", "important");
 }
 
+function applyAnnouncementDebugModalInlineLayout(modal) {
+    if (!modal) return;
+    applyTruthDebugModalInlineLayout(modal);
+
+    const card = modal.querySelector('.truth-debug-card');
+    if (!card) return;
+    card.setAttribute("aria-label", "Monokuma announcement debug");
+}
+
 function ensureGlobalDebugUi() {
     const legacyHud = document.getElementById("dangan-debug-hud-host");
     if (legacyHud) legacyHud.remove();
@@ -3396,6 +3406,7 @@ function ensureGlobalDebugUi() {
     if (!isDebugAccessGranted()) {
         document.getElementById("trust-debug-controls")?.remove();
         document.getElementById("truth-debug-modal")?.remove();
+        document.getElementById("announcement-debug-modal")?.remove();
         return;
     }
 
@@ -3410,6 +3421,8 @@ function ensureGlobalDebugUi() {
                 <button id="trust-debug-up" type="button">TRUST +</button>
                 <button id="trust-debug-down" type="button">TRUST -</button>
                 <button id="truth-debug-open" type="button">NEW TRUTH BULLET</button>
+                <button id="investigation-debug-trigger" type="button">INVESTIGATION START</button>
+                <button id="announcement-debug-open" type="button">MONOKUMA ANNOUNCEMENT</button>
             </div>
         `;
     }
@@ -3458,14 +3471,51 @@ function ensureGlobalDebugUi() {
         `;
     }
 
+    let announcementModal = document.getElementById("announcement-debug-modal");
+    if (!announcementModal) {
+        announcementModal = document.createElement("div");
+        announcementModal.id = "announcement-debug-modal";
+        announcementModal.className = "truth-debug-modal hidden";
+        announcementModal.setAttribute("aria-hidden", "true");
+        announcementModal.innerHTML = `
+            <div class="truth-debug-card" role="dialog" aria-modal="true" aria-label="Monokuma announcement debug">
+                <div class="truth-debug-title">TRIGGER MONOKUMA ANNOUNCEMENT</div>
+                <div class="truth-debug-choice-group" role="radiogroup" aria-label="Announcement type">
+                    <label class="truth-debug-choice">
+                        <input type="radio" name="announcement-debug-type" value="DAY_ANNOUN" checked />
+                        <span>DAY_ANNOUN</span>
+                    </label>
+                    <label class="truth-debug-choice">
+                        <input type="radio" name="announcement-debug-type" value="NIGHT_ANNOUN" />
+                        <span>NIGHT_ANNOUN</span>
+                    </label>
+                    <label class="truth-debug-choice">
+                        <input type="radio" name="announcement-debug-type" value="BDA" />
+                        <span>BDA</span>
+                    </label>
+                </div>
+
+                <div class="truth-debug-actions">
+                    <button id="announcement-debug-cancel" class="truth-debug-btn ghost" type="button">CANCEL</button>
+                    <button id="announcement-debug-trigger" class="truth-debug-btn" type="button">TRIGGER</button>
+                </div>
+            </div>
+        `;
+    }
+
     if (modal.parentElement !== document.body) {
         document.body.appendChild(modal);
+    }
+
+    if (announcementModal.parentElement !== document.body) {
+        document.body.appendChild(announcementModal);
     }
 
     applyDebugControlsInlineLayout(controls);
     applyDebugControlsCollapsedState(controls, getDebugControlsCollapsed());
     applyDebugControlsVisibilityState();
     applyTruthDebugModalInlineLayout(modal);
+    applyAnnouncementDebugModalInlineLayout(announcementModal);
 }
 
 // =========================
@@ -3473,30 +3523,55 @@ function ensureGlobalDebugUi() {
 // =========================
 
 
-function setTruthDebugModalState(isOpen) {
+function syncDebugControlsModalVisibility() {
     const controls = document.getElementById("trust-debug-controls");
+    const truthModal = document.getElementById("truth-debug-modal");
+    const announcementModal = document.getElementById("announcement-debug-modal");
+    const isAnyModalOpen = !truthModal?.classList.contains("hidden") || !announcementModal?.classList.contains("hidden");
+
+    if (!controls) return;
+    controls.style.setProperty("visibility", isAnyModalOpen ? "hidden" : "visible", "important");
+    controls.style.setProperty("pointer-events", isAnyModalOpen ? "none" : "auto", "important");
+}
+
+function setTruthDebugModalState(isOpen) {
     const modal = document.getElementById("truth-debug-modal");
-
-    if (controls) {
-        controls.style.setProperty("visibility", isOpen ? "hidden" : "visible", "important");
-        controls.style.setProperty("pointer-events", isOpen ? "none" : "auto", "important");
-    }
-
     if (!modal) return;
 
     if (isOpen) {
         modal.classList.remove("hidden");
         modal.setAttribute("aria-hidden", "false");
         applyTruthDebugModalInlineLayout(modal);
-        return;
+    } else {
+        modal.classList.add("hidden");
+        modal.setAttribute("aria-hidden", "true");
     }
 
-    modal.classList.add("hidden");
-    modal.setAttribute("aria-hidden", "true");
+    syncDebugControlsModalVisibility();
+}
+
+function setAnnouncementDebugModalState(isOpen) {
+    const modal = document.getElementById("announcement-debug-modal");
+    if (!modal) return;
+
+    if (isOpen) {
+        modal.classList.remove("hidden");
+        modal.setAttribute("aria-hidden", "false");
+        applyAnnouncementDebugModalInlineLayout(modal);
+    } else {
+        modal.classList.add("hidden");
+        modal.setAttribute("aria-hidden", "true");
+    }
+
+    syncDebugControlsModalVisibility();
 }
 
 function closeTruthDebugModal() {
     setTruthDebugModalState(false);
+}
+
+function closeAnnouncementDebugModal() {
+    setAnnouncementDebugModalState(false);
 }
 
 function playDebugClickSfx() {
@@ -3515,7 +3590,7 @@ function bindDebugControlEvents() {
         $("#truth-debug-name").trigger("focus");
     });
 
-    $(document).on("click.debugControls", "#trust-debug-toggle", () => {
+    const toggleTray = () => {
         const controls = document.getElementById("trust-debug-controls");
         const suppressUntil = Number(controls?.dataset?.suppressToggleClickUntil || "0");
         if (Date.now() < suppressUntil) return;
@@ -3523,7 +3598,9 @@ function bindDebugControlEvents() {
         playDebugClickSfx();
         const isCollapsed = getDebugControlsCollapsed();
         setDebugControlsCollapsed(!isCollapsed);
-    });
+    };
+
+    $(document).on("click.debugControls", "#trust-debug-toggle", toggleTray);
 
     $(document).on("click.debugControls", "#truth-debug-cancel", () => {
         playDebugClickSfx();
@@ -3533,6 +3610,23 @@ function bindDebugControlEvents() {
     $(document).on("click.debugModal", "#truth-debug-modal", e => {
         if (e.target.id === "truth-debug-modal") {
             closeTruthDebugModal();
+        }
+    });
+
+    $(document).on("click.debugControls", "#announcement-debug-open", () => {
+        playDebugClickSfx();
+        ensureGlobalDebugUi();
+        setAnnouncementDebugModalState(true);
+    });
+
+    $(document).on("click.debugControls", "#announcement-debug-cancel", () => {
+        playDebugClickSfx();
+        closeAnnouncementDebugModal();
+    });
+
+    $(document).on("click.debugModal", "#announcement-debug-modal", e => {
+        if (e.target.id === "announcement-debug-modal") {
+            closeAnnouncementDebugModal();
         }
     });
 
@@ -3578,6 +3672,18 @@ function bindDebugControlEvents() {
         }
 
         decreaseTrust(char);
+    });
+
+    $(document).on("click.debugControls", "#investigation-debug-trigger", () => {
+        playDebugClickSfx();
+        investigationStartController.trigger();
+    });
+
+    $(document).on("click.debugControls", "#announcement-debug-trigger", () => {
+        playDebugClickSfx();
+        const selectedType = String($("input[name='announcement-debug-type']:checked").val() || "DAY_ANNOUN").trim();
+        monokumaAnnouncementController?.trigger(selectedType);
+        closeAnnouncementDebugModal();
     });
 
     $(document).on("click.debugControls", "#dangan_debug_breach_trigger", () => {
@@ -3722,6 +3828,12 @@ function bindDebugControlEvents() {
             e.preventDefault();
             document.getElementById("monopad-breach-submit")?.click();
         }
+    });
+
+    $(document).on("keydown.debugControls", e => {
+        if (e.key !== "Escape") return;
+        closeTruthDebugModal();
+        closeAnnouncementDebugModal();
     });
 }
 
