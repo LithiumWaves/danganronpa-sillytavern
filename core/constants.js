@@ -60,6 +60,7 @@ export const defaultSettings = {
     truthBulletAnimations: true,
     monochineTrackEnabled: true,
     mapPresencePinsEnabled: true,
+    vnModeEnabled: false,
     crtEffects: true,
     crtIntensity: 35,
     bootAnimations: true,

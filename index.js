@@ -34,6 +34,7 @@ let mapPanelController = null;
 let trialController = null;
 let hasSelectedMonopadTab = false;
 let monokumaLessonState = null;
+let vnModeController = null;
 
 const openRouterSettings = createOpenRouterSettingsManager({
     extensionName,
@@ -447,6 +448,248 @@ function buildTrialCaseSummary() {
     return `Current evidence focus: ${line}`;
 }
 
+
+function tryEnableVisualNovelToggleInObject(root, { maxDepth = 8 } = {}) {
+    if (!root || typeof root !== "object") return false;
+
+    const queue = [{ node: root, depth: 0 }];
+    const visited = new WeakSet();
+    let touched = false;
+
+    while (queue.length) {
+        const { node, depth } = queue.shift();
+        if (!node || typeof node !== "object" || visited.has(node)) continue;
+        visited.add(node);
+
+        const label = normalizeTextToken(node.name || node.label || node.title || node.id || node.key || "");
+        const isVisualNovelSetting = /visual/.test(label) && /novel|vn/.test(label) && /mode|toggle|enabled|active/.test(label);
+
+        if (isVisualNovelSetting) {
+            if (typeof node.enabled === "boolean") { node.enabled = true; touched = true; }
+            if (typeof node.value === "boolean") { node.value = true; touched = true; }
+            if (typeof node.active === "boolean") { node.active = true; touched = true; }
+            if (typeof node.toggled === "boolean") { node.toggled = true; touched = true; }
+            if (typeof node.isEnabled === "boolean") { node.isEnabled = true; touched = true; }
+            if (typeof node.isActive === "boolean") { node.isActive = true; touched = true; }
+            if (typeof node.setValue === "function") { node.setValue(true); touched = true; }
+            if (typeof node.set === "function") { node.set(true); touched = true; }
+        }
+
+        if (depth >= maxDepth) continue;
+
+        try {
+            for (const value of Object.values(node)) {
+                if (value && typeof value === "object") queue.push({ node: value, depth: depth + 1 });
+            }
+        } catch {
+            // skip host objects that throw on traversal
+        }
+    }
+
+    return touched;
+}
+
+function tryEnableSillyTavernVisualNovelMode() {
+    const ctx = window.SillyTavern?.getContext?.();
+    let touched = false;
+
+    const candidates = [
+        ctx?.chatCompletionSettings,
+        ctx?.chat_completion_settings,
+        ctx?.mainApiSettings,
+        ctx?.main_api_settings,
+        ctx?.settings,
+        ctx,
+        window.SillyTavern,
+    ];
+
+    for (const candidate of candidates) {
+        try {
+            touched = tryEnableVisualNovelToggleInObject(candidate) || touched;
+        } catch {
+            // ignore malformed hosts
+        }
+    }
+
+    const domCandidates = Array.from(document.querySelectorAll('label, .menu_button, .inline-drawer-toggle, button, .toggle-item'));
+    for (const el of domCandidates) {
+        const labelText = normalizeTextToken(el.textContent || el.getAttribute('aria-label') || el.getAttribute('title') || '');
+        if (!(/visual/.test(labelText) && /novel|vn/.test(labelText))) continue;
+
+        const host = el.closest('label, .toggle-item, .settings-item, .menu_button, .inline-drawer-toggle') || el;
+        const checkbox = host.querySelector('input[type="checkbox"]') || el.querySelector?.('input[type="checkbox"]');
+
+        if (checkbox) {
+            if (!checkbox.checked) {
+                checkbox.click();
+                checkbox.dispatchEvent(new Event('input', { bubbles: true }));
+                checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            touched = true;
+            break;
+        }
+
+        if (host.getAttribute('aria-pressed') !== 'true' && typeof host.click === 'function') {
+            host.click();
+            touched = true;
+            break;
+        }
+
+        if (host.getAttribute('aria-pressed') === 'true') {
+            touched = true;
+            break;
+        }
+    }
+
+    if (touched) {
+        if (typeof ctx?.saveSettingsDebounced === 'function') {
+            ctx.saveSettingsDebounced();
+        } else {
+            saveSettingsDebounced();
+        }
+    }
+
+    return touched;
+}
+
+function createVnModeController() {
+    const CHUNK_SIZE = 220;
+    let chunkIndex = 0;
+    let messageIndex = 0;
+
+    const host = document.createElement('div');
+    host.id = 'dangan-vn-overlay';
+    host.setAttribute('aria-hidden', 'true');
+    host.innerHTML = `
+        <div class="dangan-vn-frame" role="dialog" aria-live="polite" aria-label="Dangan Visual Novel dialogue">
+            <div class="dangan-vn-name" id="dangan-vn-name">—</div>
+            <div class="dangan-vn-text" id="dangan-vn-text">Visual Novel Mode ready.</div>
+            <div class="dangan-vn-input">Typing section: use the regular SillyTavern input box to reply.</div>
+        </div>
+    `;
+    document.body.appendChild(host);
+
+    const nameEl = host.querySelector('#dangan-vn-name');
+    const textEl = host.querySelector('#dangan-vn-text');
+
+    function getMessageElements() {
+        return Array.from(document.querySelectorAll('.mes')).filter(msgEl => {
+            const isUser = msgEl.getAttribute('is_user') === 'true';
+            const isSystem = msgEl.getAttribute('is_system') === 'true';
+            const text = (msgEl.querySelector('.mes_text')?.textContent || '').trim();
+            return !isUser && !isSystem && text;
+        });
+    }
+
+    function splitIntoChunks(text = '') {
+        const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+        if (!normalized) return [];
+
+        const chunks = [];
+        let remaining = normalized;
+        while (remaining.length > CHUNK_SIZE) {
+            let splitAt = remaining.lastIndexOf('.', CHUNK_SIZE);
+            if (splitAt < CHUNK_SIZE * 0.45) splitAt = remaining.lastIndexOf(' ', CHUNK_SIZE);
+            if (splitAt < 1) splitAt = CHUNK_SIZE;
+            chunks.push(remaining.slice(0, splitAt + 1).trim());
+            remaining = remaining.slice(splitAt + 1).trim();
+        }
+        if (remaining) chunks.push(remaining);
+        return chunks;
+    }
+
+    function renderCurrent() {
+        const messages = getMessageElements();
+        if (!messages.length) {
+            nameEl.textContent = '—';
+            textEl.textContent = 'No character replies yet.';
+            return;
+        }
+
+        if (messageIndex >= messages.length) messageIndex = messages.length - 1;
+        if (messageIndex < 0) messageIndex = 0;
+
+        const messageEl = messages[messageIndex];
+        const speakerName = (messageEl.getAttribute('ch_name') || messageEl.getAttribute('name') || 'UNKNOWN').trim();
+        const raw = messageEl.querySelector('.mes_text')?.textContent || '';
+        const clean = stripV3CMarkersFromText(raw).replace(/\s+/g, ' ').trim();
+        const chunks = splitIntoChunks(clean);
+
+        if (chunkIndex >= chunks.length) chunkIndex = Math.max(0, chunks.length - 1);
+        nameEl.textContent = speakerName || 'UNKNOWN';
+        textEl.textContent = chunks[chunkIndex] || '...';
+    }
+
+    function advance() {
+        const messages = getMessageElements();
+        if (!messages.length) return;
+
+        const messageEl = messages[Math.min(messageIndex, messages.length - 1)];
+        const raw = messageEl?.querySelector('.mes_text')?.textContent || '';
+        const chunks = splitIntoChunks(stripV3CMarkersFromText(raw));
+
+        if (chunkIndex + 1 < chunks.length) {
+            chunkIndex += 1;
+        } else {
+            messageIndex = Math.min(messages.length - 1, messageIndex + 1);
+            chunkIndex = 0;
+        }
+
+        renderCurrent();
+    }
+
+    function jumpToLatest() {
+        const messages = getMessageElements();
+        messageIndex = Math.max(0, messages.length - 1);
+        chunkIndex = 0;
+        renderCurrent();
+    }
+
+    host.addEventListener('click', () => {
+        advance();
+    });
+
+    const observer = new MutationObserver(() => {
+        if (!host.classList.contains('active')) return;
+        const messages = getMessageElements();
+        if (!messages.length) return;
+        const maxIndex = messages.length - 1;
+        if (messageIndex >= maxIndex) {
+            jumpToLatest();
+        } else {
+            renderCurrent();
+        }
+    });
+
+    const chatEl = document.getElementById('chat');
+    if (chatEl) observer.observe(chatEl, { childList: true, subtree: true });
+
+    return {
+        setEnabled(enabled) {
+            host.classList.toggle('active', !!enabled);
+            host.setAttribute('aria-hidden', enabled ? 'false' : 'true');
+            document.body.classList.toggle('dangan-vn-mode-active', !!enabled);
+
+            const hiddenTargets = [
+                document.getElementById('chat'),
+                document.getElementById('chat_wrapper'),
+                document.getElementById('chat_display'),
+            ];
+            hiddenTargets.forEach(el => {
+                if (!el) return;
+                el.classList.toggle('dangan-vn-hidden', !!enabled);
+            });
+
+            if (enabled) {
+                jumpToLatest();
+                tryEnableSillyTavernVisualNovelMode();
+            }
+        },
+        refresh() {
+            if (host.classList.contains('active')) renderCurrent();
+        },
+    };
+}
 
 function tryEnableInvestigationToggleInObject(root, { maxDepth = 8 } = {}) {
     if (!root || typeof root !== "object") return false;
@@ -1354,6 +1597,7 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
 
     // 🟢 Initial pass (important for reloads & history)
     processAllMessages();
+    vnModeController?.refresh?.();
 
     console.log(`[${extensionName}] [Dangan] V3C marker observer active (swipe-safe)`);
 }
@@ -1845,6 +2089,7 @@ function applySettingsTabUI() {
     });
 
     applyCrtSettings();
+    vnModeController?.setEnabled?.(!!tab.vnModeEnabled);
 }
 
 function saveCharacters() {
@@ -3013,6 +3258,7 @@ jQuery(async () => {
         $("body").append(normalizedMonopadHtml);
         normalizeSettingsHeaderActionButtons();
         ensureGlobalDebugUi();
+        vnModeController = createVnModeController();
 
         // SillyTavern may re-mount portions of the DOM after extension load.
         // Re-assert the debug UI a few times to keep controls on the main screen.
@@ -3335,6 +3581,9 @@ $(".monopad-icon").on("mouseenter", function () {
             const next = !getMonopadSetting(key);
             setMonopadSetting(key, next);
             applySettingsTabUI();
+            if (key === "vnModeEnabled" && next) {
+                tryEnableSillyTavernVisualNovelMode();
+            }
             mapPanelController?.handleSettingsChanged?.();
         });
 
