@@ -572,6 +572,7 @@ function createVnModeController() {
     let vnEnabled = false;
     let composeCollapsed = false;
     let lastObservedMessageCount = 0;
+    let lastObservedLastSignature = '';
 
     const host = document.createElement('div');
     host.id = 'dangan-vn-overlay';
@@ -883,6 +884,11 @@ function createVnModeController() {
         return [];
     }
 
+    function getMessageSignature(entry) {
+        if (!entry) return '';
+        return `${entry.key || ''}::${entry.name || ''}::${entry.text || ''}`;
+    }
+
     function renderTranscript() {
         if (!transcriptBodyEl) return;
 
@@ -995,6 +1001,13 @@ function createVnModeController() {
         renderCurrent();
     }
 
+    function jumpToLatestFromStart() {
+        const messages = getMessageEntries();
+        messageIndex = Math.max(0, messages.length - 1);
+        chunkIndex = 0;
+        renderCurrent();
+    }
+
     lockBtnEl?.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -1100,8 +1113,12 @@ function createVnModeController() {
         }
         if (!host.classList.contains('active')) return;
         const messages = getMessageEntries();
-        const hadMessageCountChange = messages.length !== lastObservedMessageCount;
+        const previousCount = lastObservedMessageCount;
+        const previousLastSignature = lastObservedLastSignature;
+        const hadMessageCountChange = messages.length !== previousCount;
+        const currentLastSignature = getMessageSignature(messages[messages.length - 1]);
         lastObservedMessageCount = messages.length;
+        lastObservedLastSignature = currentLastSignature;
         if (!messages.length) {
             renderCurrent();
             return;
@@ -1109,7 +1126,14 @@ function createVnModeController() {
 
         const maxIndex = messages.length - 1;
         const wasAtTailBeforeNewMessage = hadMessageCountChange && messageIndex >= Math.max(0, maxIndex - 1);
-        if (messageIndex >= maxIndex || wasAtTailBeforeNewMessage) {
+        const isSingleAppend = hadMessageCountChange
+            && messages.length === previousCount + 1
+            && previousCount > 0
+            && getMessageSignature(messages[messages.length - 2]) === previousLastSignature;
+
+        if (isSingleAppend && wasAtTailBeforeNewMessage) {
+            jumpToLatestFromStart();
+        } else if (messageIndex >= maxIndex || wasAtTailBeforeNewMessage) {
             jumpToLatest();
         } else {
             renderCurrent();
@@ -1152,6 +1176,8 @@ function createVnModeController() {
 
             if (isEnabled) {
                 lastObservedMessageCount = getMessageEntries().length;
+                const enabledMessages = getMessageEntries();
+                lastObservedLastSignature = getMessageSignature(enabledMessages[enabledMessages.length - 1]);
                 jumpToLatest();
             }
 
