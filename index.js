@@ -570,6 +570,8 @@ function createVnModeController() {
     let framePosY = null;
     let transcriptOpen = false;
     let vnEnabled = false;
+    let composeCollapsed = false;
+    let lastObservedMessageCount = 0;
 
     const host = document.createElement('div');
     host.id = 'dangan-vn-overlay';
@@ -749,7 +751,11 @@ function createVnModeController() {
     function undockTypingSection() {
         const composeEl = getComposeElement();
         if (!composeEl) return;
+        const toggleBtn = composeEl.querySelector('.dangan-vn-compose-collapse-toggle');
+        toggleBtn?.remove();
+        composeCollapsed = false;
         composeEl.classList.remove('dangan-vn-compose-docked');
+        composeEl.classList.remove('dangan-vn-compose-collapsed');
         composeEl.style.position = '';
         composeEl.style.left = '';
         composeEl.style.top = '';
@@ -758,6 +764,31 @@ function createVnModeController() {
         composeEl.style.margin = '';
         composeEl.style.transform = '';
         composeEl.style.zIndex = '';
+    }
+
+    function ensureComposeCollapseToggle(composeEl) {
+        if (!composeEl) return;
+
+        let toggleBtn = composeEl.querySelector('.dangan-vn-compose-collapse-toggle');
+        if (!toggleBtn) {
+            toggleBtn = document.createElement('button');
+            toggleBtn.type = 'button';
+            toggleBtn.className = 'dangan-vn-compose-collapse-toggle';
+            toggleBtn.textContent = '▾';
+            toggleBtn.title = 'Collapse typing section';
+            toggleBtn.setAttribute('aria-label', 'Collapse typing section');
+            composeEl.prepend(toggleBtn);
+
+            toggleBtn.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                composeCollapsed = !composeCollapsed;
+                composeEl.classList.toggle('dangan-vn-compose-collapsed', composeCollapsed);
+                toggleBtn.textContent = composeCollapsed ? '▸' : '▾';
+                toggleBtn.title = composeCollapsed ? 'Expand typing section' : 'Collapse typing section';
+                toggleBtn.setAttribute('aria-label', composeCollapsed ? 'Expand typing section' : 'Collapse typing section');
+            });
+        }
     }
 
     function dockTypingSection() {
@@ -784,9 +815,11 @@ function createVnModeController() {
         const maxLeft = Math.max(0, viewportWidth - width);
         const left = Math.max(0, Math.min(maxLeft, Math.round(frameRect.left)));
         const maxTop = Math.max(0, viewportHeight - composeHeight - 4);
-        const top = Math.max(0, Math.min(maxTop, Math.round(frameRect.bottom + 6)));
+        const top = Math.max(0, Math.min(maxTop, Math.round(frameRect.bottom - 1)));
 
+        ensureComposeCollapseToggle(composeEl);
         composeEl.classList.add('dangan-vn-compose-docked');
+        composeEl.classList.toggle('dangan-vn-compose-collapsed', composeCollapsed);
         composeEl.style.position = 'fixed';
         composeEl.style.left = `${left}px`;
         composeEl.style.top = `${top}px`;
@@ -956,7 +989,9 @@ function createVnModeController() {
     function jumpToLatest() {
         const messages = getMessageEntries();
         messageIndex = Math.max(0, messages.length - 1);
-        chunkIndex = 0;
+        const latest = messages[messageIndex];
+        const latestChunks = splitIntoChunks(stripV3CMarkersFromText(latest?.text || ''));
+        chunkIndex = Math.max(0, latestChunks.length - 1);
         renderCurrent();
     }
 
@@ -1065,13 +1100,16 @@ function createVnModeController() {
         }
         if (!host.classList.contains('active')) return;
         const messages = getMessageEntries();
+        const hadMessageCountChange = messages.length !== lastObservedMessageCount;
+        lastObservedMessageCount = messages.length;
         if (!messages.length) {
             renderCurrent();
             return;
         }
 
         const maxIndex = messages.length - 1;
-        if (messageIndex >= maxIndex) {
+        const wasAtTailBeforeNewMessage = hadMessageCountChange && messageIndex >= Math.max(0, maxIndex - 1);
+        if (messageIndex >= maxIndex || wasAtTailBeforeNewMessage) {
             jumpToLatest();
         } else {
             renderCurrent();
@@ -1113,6 +1151,7 @@ function createVnModeController() {
             chatRoot?.classList.toggle('dangan-vn-hidden', isEnabled);
 
             if (isEnabled) {
+                lastObservedMessageCount = getMessageEntries().length;
                 jumpToLatest();
             }
 

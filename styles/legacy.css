@@ -4381,8 +4381,37 @@
     border-top: 0 !important;
     background: linear-gradient(180deg, rgba(7, 11, 18, 0.97), rgba(5, 8, 14, 0.98)) !important;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42) !important;
-    padding: 6px 8px !important;
+    padding: 4px 8px 6px !important;
     backdrop-filter: blur(1.5px);
+    display: grid !important;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 6px;
+}
+
+.dangan-vn-compose-collapse-toggle {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px !important;
+    border: 1px solid rgba(146, 183, 236, 0.45) !important;
+    background: rgba(21, 31, 49, 0.92) !important;
+    color: #edf5ff !important;
+    cursor: pointer;
+    padding: 0 !important;
+    line-height: 1;
+}
+
+.dangan-vn-compose-collapse-toggle:hover {
+    background: rgba(37, 52, 79, 0.96) !important;
+}
+
+.dangan-vn-compose-docked.dangan-vn-compose-collapsed {
+    min-height: 32px;
+    padding-bottom: 4px !important;
+}
+
+.dangan-vn-compose-docked.dangan-vn-compose-collapsed > :not(.dangan-vn-compose-collapse-toggle) {
+    display: none !important;
 }
 
 .dangan-vn-compose-docked #send_textarea,
@@ -4397,6 +4426,7 @@
     font-size: 14px;
     line-height: 1.25;
     padding: 6px 10px !important;
+    width: 100%;
 }
 
 .dangan-vn-compose-docked button,
