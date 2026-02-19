@@ -14,10 +14,6 @@ import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, 
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "./core/monokumaLessonScript.js";
 import { createTrialController } from "./trial/trialController.js";
-import { createLocationPresenceTracker } from "./core/locationPresenceTracker.js";
-import { createRewardDifficultyManager } from "./core/rewards/rewardDifficulty.js";
-import { openMonopadConfirmDialog } from "./core/ui/confirmDialog.js";
-import { createMarkerPersistence, normalizeTextToken, parseInvestigationStartMarkers, parseTrialStartMarkers } from "./core/trial/markerParsing.js";
 
 window.refreshActiveCharacterUI = function () {
     if (!activeSocialCharacterId || !socialPanelController) return;
@@ -60,25 +56,88 @@ const {
 } = openRouterSettings;
 
 let rewards = null;
+let recentLocationMentions = [];
 
-const locationPresenceTracker = createLocationPresenceTracker({
-    getActivePersonaName: () => getActivePersonaName(),
-});
+function pushRecentLocationMention(entry) {
+    if (!entry?.locationId || !entry?.messageSignature) return;
 
-const {
-    pushRecentLocationMention,
-    buildRecentLocationPresence,
-} = locationPresenceTracker;
+    const normalizedSpeaker = normalizeName(entry.speakerName || "");
+    recentLocationMentions = recentLocationMentions.filter(item => {
+        if (item.messageSignature === entry.messageSignature && normalizeName(item.speakerName || "") === normalizedSpeaker) {
+            return false;
+        }
+        return true;
+    });
+
+    recentLocationMentions.push({
+        messageSignature: entry.messageSignature,
+        speakerName: String(entry.speakerName || "").trim(),
+        isUser: Boolean(entry.isUser),
+        locationId: entry.locationId,
+        createdAt: Date.now(),
+    });
+
+    const overflow = recentLocationMentions.length - 5;
+    if (overflow > 0) {
+        recentLocationMentions.splice(0, overflow);
+    }
+}
+
+function buildRecentLocationPresence() {
+    const latestBySpeaker = new Map();
+
+    for (let i = recentLocationMentions.length - 1; i >= 0; i -= 1) {
+        const item = recentLocationMentions[i];
+        const speakerKey = item.isUser
+            ? "__user__"
+            : normalizeName(item.speakerName || `unknown_${i}`);
+
+        if (!speakerKey || latestBySpeaker.has(speakerKey)) continue;
+        latestBySpeaker.set(speakerKey, item);
+    }
+
+    const userEntry = latestBySpeaker.get("__user__") || null;
+    const characters = [];
+
+    latestBySpeaker.forEach((item, key) => {
+        if (key === "__user__") return;
+        if (!item?.speakerName || !item?.locationId) return;
+
+        characters.push({
+            name: item.speakerName,
+            locationId: item.locationId,
+        });
+    });
+
+    return {
+        user: userEntry
+            ? {
+                locationId: userEntry.locationId,
+                label: getActivePersonaName(),
+            }
+            : null,
+        characters,
+    };
+}
 
 window.getMonopadRecentLocationPresence = function () {
     return buildRecentLocationPresence();
 };
 
-const { applyRewardDifficultyProfile } = createRewardDifficultyManager({
-    REWARD_PROFILES,
-    MONOCOIN_REWARDS,
-    XP_REWARDS,
-});
+
+function clampRewardDifficulty(value) {
+    return Object.prototype.hasOwnProperty.call(REWARD_PROFILES, value) ? value : "normal";
+}
+
+function applyRewardDifficultyProfile(profileKey) {
+    const safeProfileKey = clampRewardDifficulty(profileKey);
+    const profile = REWARD_PROFILES[safeProfileKey] || REWARD_PROFILES.normal;
+
+    Object.assign(MONOCOIN_REWARDS, profile.monocoins || REWARD_PROFILES.normal.monocoins);
+    Object.assign(XP_REWARDS, profile.xp || REWARD_PROFILES.normal.xp);
+
+    return safeProfileKey;
+}
 
 function awardMonocoins(amount = 0, reason = "") {
     rewards?.awardMonocoins(amount, reason);
@@ -92,6 +151,51 @@ function awardXp(amount = 0, reason = "") {
     rewards?.awardXp(amount, reason);
 }
 
+function openMonopadConfirmDialog({ title = "CONFIRM ACTION", message = "", confirmLabel = "CONFIRM", cancelLabel = "CANCEL" } = {}) {
+    return new Promise((resolve) => {
+        const overlay = document.getElementById("monopad-confirm-overlay");
+        const titleEl = document.getElementById("monopad-confirm-title");
+        const messageEl = document.getElementById("monopad-confirm-message");
+        const confirmBtn = document.getElementById("monopad-confirm-accept");
+        const cancelBtn = document.getElementById("monopad-confirm-cancel");
+
+        if (!overlay || !titleEl || !messageEl || !confirmBtn || !cancelBtn) {
+            resolve(false);
+            return;
+        }
+
+        titleEl.textContent = title;
+        messageEl.textContent = message;
+        confirmBtn.textContent = confirmLabel;
+        cancelBtn.textContent = cancelLabel;
+
+        let settled = false;
+        const finish = (accepted) => {
+            if (settled) return;
+            settled = true;
+            overlay.classList.remove("open");
+            overlay.setAttribute("aria-hidden", "true");
+            overlay.removeEventListener("click", onBackdropClick);
+            confirmBtn.removeEventListener("click", onConfirm);
+            cancelBtn.removeEventListener("click", onCancel);
+            resolve(Boolean(accepted));
+        };
+
+        const onBackdropClick = (event) => {
+            if (event.target === overlay) finish(false);
+        };
+        const onConfirm = () => finish(true);
+        const onCancel = () => finish(false);
+
+        overlay.classList.add("open");
+        overlay.setAttribute("aria-hidden", "false");
+
+        overlay.addEventListener("click", onBackdropClick);
+        confirmBtn.addEventListener("click", onConfirm);
+        cancelBtn.addEventListener("click", onCancel);
+    });
+}
+
 const truthBullets = [];
 
 const truthBulletQueue = [];
@@ -103,18 +207,221 @@ let truthBulletAnimating = false;
 
 const processedTruthSignatures = new Set();
 const processedSocialSignatures = new Set();
-const {
-    buildPersistentInvestigationSignature,
-    hasProcessedInvestigationSignature,
-    markInvestigationSignatureProcessed,
-    buildTrialStartPersistentSignature,
-    hasProcessedTrialStartSignature,
-    markTrialStartSignatureProcessed,
-} = createMarkerPersistence({
-    extension_settings,
-    extensionName,
-    saveSettingsDebounced,
-});
+const processedInvestigationSignatures = new Set();
+const INVESTIGATION_START_PARSE_REGEX = /V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/gi;
+const processedTrialStartSignatures = new Set();
+const TRIAL_START_PARSE_REGEX = /V3C\s*[|｜]\s*TRIAL(?:\s*[_\-]?\s*)START\b/gi;
+
+function normalizeTextToken(value) {
+    return String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[_\-]+/g, " ")
+        .replace(/\s+/g, " ");
+}
+
+function getInvestigationMarkerStore() {
+    extension_settings[extensionName] ||= {};
+    extension_settings[extensionName].investigationMarkers ||= {};
+    return extension_settings[extensionName].investigationMarkers;
+}
+
+function getInvestigationScopeKey() {
+    const ctx = window.SillyTavern?.getContext?.();
+    const groupId = ctx?.groupId ?? ctx?.group_id ?? "";
+    const characterId = ctx?.characterId ?? ctx?.character_id ?? "";
+    const chatId = ctx?.chatId ?? ctx?.chat_id ?? ctx?.chatFile ?? "";
+
+    if (groupId !== "" && groupId !== null && groupId !== undefined) {
+        return `group:${groupId}`;
+    }
+
+    if (characterId !== "" && characterId !== null && characterId !== undefined) {
+        return `char:${characterId}`;
+    }
+
+    if (chatId) {
+        return `chat:${chatId}`;
+    }
+
+    return "scope:unknown";
+}
+
+function buildPersistentInvestigationSignature(msgEl, marker, idx, rawText = "") {
+    const mesId = msgEl?.getAttribute?.("mesid") || msgEl?.dataset?.mesid || "";
+    if (!mesId || mesId === "no-id") return "";
+
+    const speaker = msgEl?.getAttribute?.("ch_name") || "unknown";
+    const scope = getInvestigationScopeKey();
+    if (!scope || scope === "scope:unknown") return "";
+
+    const markerIndex = Number(marker?.index ?? -1);
+    const textFingerprint = String(rawText || "").slice(0, 140);
+
+    return `INVESTIGATION||${scope}||${mesId}||${speaker}||${markerIndex}||${idx}||${textFingerprint}`;
+}
+
+function hasProcessedInvestigationSignature(signature, persistentSignature = "") {
+    if (!signature) return false;
+    if (processedInvestigationSignatures.has(signature)) return true;
+    if (!persistentSignature) return false;
+    return Boolean(getInvestigationMarkerStore()[persistentSignature]);
+}
+
+function markInvestigationSignatureProcessed(signature, persistentSignature = "") {
+    if (!signature) return;
+
+    processedInvestigationSignatures.add(signature);
+    if (!persistentSignature) return;
+
+    const store = getInvestigationMarkerStore();
+    store[persistentSignature] = Date.now();
+
+    const keys = Object.keys(store);
+    const maxEntries = 1200;
+    if (keys.length > maxEntries) {
+        keys
+            .sort((a, b) => Number(store[a] || 0) - Number(store[b] || 0))
+            .slice(0, keys.length - maxEntries)
+            .forEach((key) => {
+                delete store[key];
+            });
+    }
+
+    saveSettingsDebounced();
+}
+function parseInvestigationStartMarkers(text) {
+    const raw = String(text || "");
+    if (!raw) return [];
+
+    const matches = [];
+    INVESTIGATION_START_PARSE_REGEX.lastIndex = 0;
+
+    let match;
+    while ((match = INVESTIGATION_START_PARSE_REGEX.exec(raw)) !== null) {
+        matches.push({
+            marker: match[0],
+            index: match.index,
+            source: "regex",
+        });
+    }
+
+    if (matches.length) return matches;
+
+    // Fallback parser for format drift (markdown wrappers / unusual punctuation).
+    const lines = raw.split(/\r?\n/);
+    let cursor = 0;
+
+    for (const line of lines) {
+        const canonical = line
+            .toUpperCase()
+            .replace(/[|｜]/g, "|")
+            .replace(/[`*_~:;,.!?\-\s]/g, "");
+
+        if (canonical.includes("V3C|INVESTIGATIONSTART")) {
+            matches.push({
+                marker: line,
+                index: cursor,
+                source: "fallback",
+            });
+        }
+
+        cursor += line.length + 1;
+    }
+
+    return matches;
+}
+
+function parseTrialStartMarkers(text) {
+    const raw = String(text || "");
+    if (!raw) return [];
+
+    const matches = [];
+    TRIAL_START_PARSE_REGEX.lastIndex = 0;
+
+    let match;
+    while ((match = TRIAL_START_PARSE_REGEX.exec(raw)) !== null) {
+        matches.push({
+            marker: match[0],
+            index: match.index,
+            source: "regex",
+        });
+    }
+
+    if (matches.length) return matches;
+
+    const lines = raw.split(/\r?\n/);
+    let cursor = 0;
+
+    for (const line of lines) {
+        const canonical = line
+            .toUpperCase()
+            .replace(/[|｜]/g, "|")
+            .replace(/[`*_~:;,.!?\-\s]/g, "");
+
+        if (canonical.includes("V3C|TRIALSTART")) {
+            matches.push({
+                marker: line,
+                index: cursor,
+                source: "fallback",
+            });
+        }
+
+        cursor += line.length + 1;
+    }
+
+    return matches;
+}
+
+function buildTrialStartPersistentSignature(msgEl, marker, idx, rawText = "") {
+    const mesId = msgEl?.getAttribute?.("mesid") || msgEl?.dataset?.mesid || "";
+    if (!mesId || mesId === "no-id") return "";
+
+    const speaker = msgEl?.getAttribute?.("ch_name") || "unknown";
+    const scope = getInvestigationScopeKey();
+    if (!scope || scope === "scope:unknown") return "";
+
+    const markerIndex = Number(marker?.index ?? -1);
+    const textFingerprint = String(rawText || "").slice(0, 140);
+
+    return `TRIAL_START||${scope}||${mesId}||${speaker}||${markerIndex}||${idx}||${textFingerprint}`;
+}
+
+function getTrialStartMarkerStore() {
+    extension_settings[extensionName] ||= {};
+    extension_settings[extensionName].trialStartMarkers ||= {};
+    return extension_settings[extensionName].trialStartMarkers;
+}
+
+function hasProcessedTrialStartSignature(signature, persistentSignature = "") {
+    if (!signature) return false;
+    if (processedTrialStartSignatures.has(signature)) return true;
+    if (!persistentSignature) return false;
+    return Boolean(getTrialStartMarkerStore()[persistentSignature]);
+}
+
+function markTrialStartSignatureProcessed(signature, persistentSignature = "") {
+    if (!signature) return;
+
+    processedTrialStartSignatures.add(signature);
+    if (!persistentSignature) return;
+
+    const store = getTrialStartMarkerStore();
+    store[persistentSignature] = Date.now();
+
+    const keys = Object.keys(store);
+    const maxEntries = 1200;
+    if (keys.length > maxEntries) {
+        keys
+            .sort((a, b) => Number(store[a] || 0) - Number(store[b] || 0))
+            .slice(0, keys.length - maxEntries)
+            .forEach((key) => {
+                delete store[key];
+            });
+    }
+
+    saveSettingsDebounced();
+}
 
 function getEquippedSkillsSnapshot() {
     const inventory = extension_settings[extensionName]?.inventory || {};
