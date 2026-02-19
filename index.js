@@ -569,8 +569,45 @@ function createVnModeController() {
     `;
     document.body.appendChild(host);
 
+    const frameEl = host.querySelector('.dangan-vn-frame');
     const nameEl = host.querySelector('#dangan-vn-name');
     const textEl = host.querySelector('#dangan-vn-text');
+
+    function applyInlineFallbackStyles() {
+        Object.assign(host.style, {
+            position: 'fixed',
+            inset: '0',
+            zIndex: '2147483646',
+            display: 'none',
+            alignItems: 'flex-end',
+            justifyContent: 'center',
+            pointerEvents: 'none',
+            background: 'radial-gradient(circle at 50% 25%, rgba(73,120,194,0.14), rgba(5,8,13,0.78))',
+        });
+
+        if (frameEl) {
+            Object.assign(frameEl.style, {
+                width: 'min(980px, calc(100vw - 18px))',
+                minHeight: '170px',
+                margin: '0 9px 10px',
+                borderRadius: '14px',
+                border: '1px solid rgba(187,223,255,0.48)',
+                background: 'linear-gradient(180deg, rgba(10,17,28,0.97), rgba(6,10,17,0.98))',
+                boxShadow: '0 -8px 30px rgba(0,0,0,0.5)',
+                color: '#f4f8ff',
+                padding: '14px 14px 10px',
+                cursor: 'pointer',
+            });
+        }
+    }
+
+    function ensureHostAttached() {
+        if (host.parentElement !== document.body) {
+            document.body.appendChild(host);
+        }
+    }
+
+    applyInlineFallbackStyles();
 
     const htmlDecodeBuffer = document.createElement('div');
     const toPlainText = (value) => {
@@ -692,6 +729,7 @@ function createVnModeController() {
     host.addEventListener('click', advance);
 
     const observer = new MutationObserver(() => {
+        ensureHostAttached();
         if (!host.classList.contains('active')) return;
         const messages = getMessageEntries();
         if (!messages.length) {
@@ -713,8 +751,12 @@ function createVnModeController() {
     return {
         setEnabled(enabled) {
             const isEnabled = !!enabled;
+            ensureHostAttached();
+
             host.classList.toggle('active', isEnabled);
             host.setAttribute('aria-hidden', isEnabled ? 'false' : 'true');
+            host.style.display = isEnabled ? 'flex' : 'none';
+            host.style.pointerEvents = isEnabled ? 'auto' : 'none';
 
             const chatRoot = document.getElementById('chat');
             chatRoot?.classList.toggle('dangan-vn-hidden', isEnabled);
@@ -725,6 +767,7 @@ function createVnModeController() {
             }
         },
         refresh() {
+            ensureHostAttached();
             if (!host.classList.contains('active')) return;
             renderCurrent();
         },
