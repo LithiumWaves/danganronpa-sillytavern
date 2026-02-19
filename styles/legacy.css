@@ -4375,6 +4375,45 @@
     letter-spacing: 0.06em;
 }
 
+.dangan-vn-compose-docked {
+    border: 1px solid rgba(173, 205, 255, 0.45) !important;
+    border-radius: 0 0 12px 12px !important;
+    border-top: 0 !important;
+    background: linear-gradient(180deg, rgba(7, 11, 18, 0.97), rgba(5, 8, 14, 0.98)) !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42) !important;
+    padding: 6px 8px !important;
+    backdrop-filter: blur(1.5px);
+}
+
+.dangan-vn-compose-docked #send_textarea,
+.dangan-vn-compose-docked textarea,
+.dangan-vn-compose-docked .send_textarea {
+    min-height: 34px !important;
+    border-radius: 8px !important;
+    border: 1px solid rgba(146, 183, 236, 0.4) !important;
+    background: rgba(14, 20, 32, 0.9) !important;
+    color: #f2f7ff !important;
+    font-family: "Rajdhani", "Orbitron", monospace;
+    font-size: 14px;
+    line-height: 1.25;
+    padding: 6px 10px !important;
+}
+
+.dangan-vn-compose-docked button,
+.dangan-vn-compose-docked .menu_button,
+.dangan-vn-compose-docked [type="button"] {
+    border-radius: 8px !important;
+    border: 1px solid rgba(146, 183, 236, 0.45) !important;
+    background: rgba(21, 31, 49, 0.92) !important;
+    color: #edf5ff !important;
+}
+
+.dangan-vn-compose-docked button:hover,
+.dangan-vn-compose-docked .menu_button:hover,
+.dangan-vn-compose-docked [type="button"]:hover {
+    background: rgba(37, 52, 79, 0.96) !important;
+}
+
 .dangan-vn-nameplate {
     display: inline-flex;
     margin-bottom: 8px;

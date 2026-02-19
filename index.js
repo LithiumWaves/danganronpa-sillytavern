@@ -569,6 +569,7 @@ function createVnModeController() {
     let framePosX = null;
     let framePosY = null;
     let transcriptOpen = false;
+    let vnEnabled = false;
 
     const host = document.createElement('div');
     host.id = 'dangan-vn-overlay';
@@ -723,6 +724,11 @@ function createVnModeController() {
     function updateBottomOffset() {
         if (!frameEl) return;
 
+        if (vnEnabled) {
+            host.style.setProperty('--dangan-vn-bottom-offset', '0px');
+            return;
+        }
+
         const composeEl = document.querySelector('#send_form, #chat_input_container, #send_textarea, #send_textarea_holder, .send_form');
         const composeRect = composeEl?.getBoundingClientRect?.();
         const composeHeight = Number.isFinite(composeRect?.height) ? composeRect.height : 0;
@@ -734,6 +740,61 @@ function createVnModeController() {
         const shouldHideFrame = monopadOpen;
         if (!frameEl) return;
         frameEl.style.display = shouldHideFrame ? 'none' : '';
+    }
+
+    function getComposeElement() {
+        return document.querySelector('#send_form, #chat_input_container, #send_textarea_holder, .send_form');
+    }
+
+    function undockTypingSection() {
+        const composeEl = getComposeElement();
+        if (!composeEl) return;
+        composeEl.classList.remove('dangan-vn-compose-docked');
+        composeEl.style.position = '';
+        composeEl.style.left = '';
+        composeEl.style.top = '';
+        composeEl.style.width = '';
+        composeEl.style.maxWidth = '';
+        composeEl.style.margin = '';
+        composeEl.style.transform = '';
+        composeEl.style.zIndex = '';
+    }
+
+    function dockTypingSection() {
+        const composeEl = getComposeElement();
+        if (!composeEl) return;
+
+        if (!vnEnabled || monopadOpen || frameEl?.style.display === 'none') {
+            undockTypingSection();
+            return;
+        }
+
+        const frameRect = frameEl?.getBoundingClientRect?.();
+        if (!frameRect || !Number.isFinite(frameRect.width)) {
+            undockTypingSection();
+            return;
+        }
+
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+        const composeRect = composeEl.getBoundingClientRect();
+        const composeHeight = Number.isFinite(composeRect.height) ? composeRect.height : 52;
+
+        const width = Math.max(220, Math.round(frameRect.width));
+        const maxLeft = Math.max(0, viewportWidth - width);
+        const left = Math.max(0, Math.min(maxLeft, Math.round(frameRect.left)));
+        const maxTop = Math.max(0, viewportHeight - composeHeight - 4);
+        const top = Math.max(0, Math.min(maxTop, Math.round(frameRect.bottom + 6)));
+
+        composeEl.classList.add('dangan-vn-compose-docked');
+        composeEl.style.position = 'fixed';
+        composeEl.style.left = `${left}px`;
+        composeEl.style.top = `${top}px`;
+        composeEl.style.width = `${width}px`;
+        composeEl.style.maxWidth = `${width}px`;
+        composeEl.style.margin = '0';
+        composeEl.style.transform = 'none';
+        composeEl.style.zIndex = '2147483644';
     }
 
     applyInlineFallbackStyles();
@@ -958,6 +1019,7 @@ function createVnModeController() {
             movedDuringPointer = true;
         }
         setFramePosition(frameStartX + dx, frameStartY + dy);
+        dockTypingSection();
         event.preventDefault();
     });
 
@@ -990,12 +1052,14 @@ function createVnModeController() {
         if (Number.isFinite(framePosX) && Number.isFinite(framePosY)) {
             setFramePosition(framePosX, framePosY);
         }
+        dockTypingSection();
     });
 
     const observer = new MutationObserver(() => {
         ensureHostAttached();
         updateBottomOffset();
         syncMonopadVisibility();
+        dockTypingSection();
         if (transcriptOpen) {
             renderTranscript();
         }
@@ -1030,6 +1094,7 @@ function createVnModeController() {
     return {
         setEnabled(enabled) {
             const isEnabled = !!enabled;
+            vnEnabled = isEnabled;
             ensureHostAttached();
 
             host.classList.toggle('active', isEnabled);
@@ -1038,8 +1103,10 @@ function createVnModeController() {
             host.style.pointerEvents = 'none';
             updateBottomOffset();
             syncMonopadVisibility();
+            dockTypingSection();
             if (!isEnabled) {
                 setTranscriptOpen(false);
+                undockTypingSection();
             }
 
             const chatRoot = document.getElementById('chat');
@@ -1055,6 +1122,7 @@ function createVnModeController() {
             ensureHostAttached();
             updateBottomOffset();
             syncMonopadVisibility();
+            dockTypingSection();
             if (transcriptOpen) {
                 renderTranscript();
             }
@@ -1064,6 +1132,7 @@ function createVnModeController() {
         setMonopadOpen(isOpen) {
             monopadOpen = !!isOpen;
             syncMonopadVisibility();
+            dockTypingSection();
         },
     };
 }
