@@ -1157,11 +1157,9 @@ function createVnModeController() {
             jumpToLatest();
         } else if (!hadMessageCountChange && hadLastSignatureChange) {
             jumpToLatest();
-        } else if (!hadMessageCountChange && hadLastSignatureChange) {
-            jumpToLatest();
         } else if (hadMessageCountChange && messages.length > previousCount && wasAtTailBeforeNewMessage) {
-            jumpToLatestFromStart();
-        } else if (messageIndex >= maxIndex || wasAtTailBeforeNewMessage) {
+            renderCurrent();
+        } else if (messageIndex >= maxIndex || (wasAtTailBeforeNewMessage && !hadMessageCountChange)) {
             jumpToLatest();
         } else {
             renderCurrent();
