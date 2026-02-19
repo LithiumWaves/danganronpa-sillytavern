@@ -14,6 +14,7 @@ import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, 
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "./core/monokumaLessonScript.js";
 import { createTrialController } from "./trial/trialController.js";
+import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers } from "./monokuma/announcementController.js";
 
 window.refreshActiveCharacterUI = function () {
     if (!activeSocialCharacterId || !socialPanelController) return;
@@ -35,6 +36,7 @@ let trialController = null;
 let hasSelectedMonopadTab = false;
 let monokumaLessonState = null;
 let vnModeController = null;
+let monokumaAnnouncementController = null;
 
 const openRouterSettings = createOpenRouterSettingsManager({
     extensionName,
@@ -211,6 +213,7 @@ const processedInvestigationSignatures = new Set();
 const INVESTIGATION_START_PARSE_REGEX = /V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/gi;
 const processedTrialStartSignatures = new Set();
 const TRIAL_START_PARSE_REGEX = /V3C\s*[|｜]\s*TRIAL(?:\s*[_\-]?\s*)START\b/gi;
+const processedMonokumaAnnouncementSignatures = new Set();
 
 function normalizeTextToken(value) {
     return String(value || "")
@@ -1958,6 +1961,9 @@ function stripV3CMarkersFromText(value) {
         if (canonical.startsWith("V3C|SOCIAL_DOWN:")) return false;
         if (canonical.includes("V3C|INVESTIGATIONSTART")) return false;
         if (canonical.includes("V3C|TRIALSTART")) return false;
+        if (canonical.includes("V3C|DAYANNOUN")) return false;
+        if (canonical.includes("V3C|NIGHTANNOUN")) return false;
+        if (canonical.includes("V3C|BDA")) return false;
         return true;
     });
 
@@ -1968,6 +1974,9 @@ function stripV3CMarkersFromText(value) {
         .replace(/V3C\s*[|｜]\s*SOCIAL_DOWN:\s*([^\n\r]+)/gi, "")
         .replace(/V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/gi, "")
         .replace(TRIAL_START_REGEX, "")
+        .replace(/V3C\s*[|｜]\s*DAY(?:\s*[_\-]?\s*)ANNOUN\b/gi, "")
+        .replace(/V3C\s*[|｜]\s*NIGHT(?:\s*[_\-]?\s*)ANNOUN\b/gi, "")
+        .replace(/V3C\s*[|｜]\s*BDA\b/gi, "")
         .replace(/^[ \t]+/gm, "")
         .trimStart();
 }
@@ -2111,6 +2120,16 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
 
             markTrialStartSignatureProcessed(signature, persistentSignature);
             void triggerTrialStartFromMarker(String(marker?.marker || "V3C| TRIAL_START"));
+        });
+
+        // ---- Monokuma Announcements ----
+        const monokumaAnnouncementMarkers = parseMonokumaAnnouncementMarkers(rawText);
+        monokumaAnnouncementMarkers.forEach((marker, idx) => {
+            const signature = `MONOKUMA_ANNOUN||${messageSignature}||${marker.index}||${idx}||${marker.type}`;
+            if (processedMonokumaAnnouncementSignatures.has(signature)) return;
+
+            processedMonokumaAnnouncementSignatures.add(signature);
+            monokumaAnnouncementController?.trigger(marker.type);
         });
 
         // ---- Marker Cleanup ----
@@ -3804,6 +3823,10 @@ jQuery(async () => {
         normalizeSettingsHeaderActionButtons();
         ensureGlobalDebugUi();
         vnModeController = createVnModeController();
+        monokumaAnnouncementController = createMonokumaAnnouncementController({
+            extensionFolderPath,
+            shouldPlayAudio: () => Boolean(extension_settings[extensionName]?.monopadSounds),
+        });
 
         // SillyTavern may re-mount portions of the DOM after extension load.
         // Re-assert the debug UI a few times to keep controls on the main screen.
