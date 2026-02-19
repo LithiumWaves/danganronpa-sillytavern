@@ -1,0 +1,989 @@
+
+/* =========================
+   Truth Bullets UI
+   ========================= */
+
+.truth-container {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    height: 100%;
+    gap: 16px;
+}
+
+/* LEFT PANEL */
+
+.truth-list {
+    border-right: 1px solid rgba(255, 255, 255, 0.15);
+    display: flex;
+    flex-direction: column;
+}
+
+.truth-list-header {
+    padding: 12px;
+    font-size: 14px;
+    letter-spacing: 0.12em;
+    opacity: 0.8;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.truth-list-items {
+    flex: 1;
+    padding: 8px;
+    overflow-y: auto;
+}
+
+/* Empty State */
+
+.truth-empty {
+    opacity: 0.4;
+    font-size: 12px;
+    text-align: center;
+    margin-top: 24px;
+}
+
+/* Truth Bullet Item */
+
+.truth-item {
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    cursor: pointer;
+
+    font-size: 13px;
+    letter-spacing: 0.08em;
+
+    background: rgba(255, 255, 255, 0.05);
+    border-left: 3px solid transparent;
+
+    transition:
+        background 0.12s ease,
+        border-color 0.12s ease,
+        transform 0.12s ease;
+}
+
+.truth-item:hover {
+    background: rgba(255, 255, 255, 0.12);
+    transform: translateX(2px);
+}
+
+.truth-item.active {
+    background: rgba(255, 0, 255, 0.2);
+    border-color: rgba(255, 0, 255, 0.9);
+}
+
+/* RIGHT PANEL */
+
+.truth-details {
+    padding: 16px;
+    position: relative;
+}
+
+.truth-details-placeholder {
+    opacity: 0.35;
+    font-size: 13px;
+    letter-spacing: 0.12em;
+    text-align: center;
+    margin-top: 40px;
+}
+
+/* Detail Content */
+
+.truth-title {
+    font-size: 18px;
+    margin-bottom: 12px;
+}
+
+.truth-description {
+    font-size: 13px;
+    line-height: 1.6;
+    margin-bottom: 16px;
+}
+
+.truth-meta {
+    font-size: 11px;
+    opacity: 0.6;
+    letter-spacing: 0.08em;
+}
+
+#truth-obtained-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.75);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+}
+
+#truth-obtained-overlay.show {
+    opacity: 1;
+}
+
+.truth-obtained-inner {
+    position: relative;
+    text-align: center;
+    font-family: "New Rodin Pro", sans-serif;
+    color: #fff;
+    animation: truth-pop 0.6s ease-out;
+}
+
+.truth-obtained-label {
+    font-size: 22px;
+    letter-spacing: 2px;
+    margin-bottom: 10px;
+    color: #ff3b3b;
+}
+
+.truth-obtained-title {
+    font-size: 34px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+@keyframes truth-pop {
+    from {
+        transform: scale(0.85);
+        opacity: 0;
+    }
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+#truth-bullet-fly {
+    position: absolute;
+    top: 50%;
+    left: -30%;
+    transform: translate(-50%, -50%);
+    height: 120px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* When animation plays */
+#truth-obtained-overlay.show #truth-bullet-fly {
+    animation: bullet-slide 1.8s ease-in-out forwards;
+}
+
+/* KEYFRAMES */
+@keyframes bullet-slide {
+    0% {
+        left: -30%;
+        opacity: 0;
+    }
+
+    15% {
+        opacity: 1;
+    }
+
+    /* Arrive behind title */
+    35% {
+        left: 50%;
+    }
+
+    /* Pause behind title */
+    65% {
+        left: 50%;
+    }
+
+    /* Exit right */
+    100% {
+        left: 110%;
+        opacity: 0;
+    }
+}
+
+.truth-remove-button {
+    background: transparent;
+    border: 1px solid rgba(255, 60, 60, 0.6);
+    color: #ff4a4a;
+
+    font-family: inherit;
+    font-size: 0.85rem;
+    letter-spacing: 0.08em;
+
+    padding: 6px 10px;
+    margin-top: 10px;
+
+    cursor: pointer;
+
+    transition:
+        color 0.15s ease,
+        border-color 0.15s ease,
+        background-color 0.15s ease;
+}
+
+.truth-remove-button:hover {
+    color: #ffffff;
+    background-color: rgba(255, 60, 60, 0.15);
+    border-color: #ff6b6b;
+}
+
+.truth-remove-button:active {
+    background-color: rgba(255, 60, 60, 0.25);
+}
+
+.truth-remove-button:focus {
+    outline: none;
+}
+
+.truth-description {
+    margin-top: 6px;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    color: rgba(255, 255, 255, 0.85);
+    letter-spacing: 0.03em;
+}
+
+.truth-description::before {
+    content: "DETAILS:";
+    display: block;
+    font-size: 0.65rem;
+    opacity: 0.6;
+    margin-bottom: 2px;
+}
+
+/* =========================
+   SOCIAL PANEL LAYOUT
+   ========================= */
+
+.monopad-panel-content[data-panel="social"] {
+    height: 100%;
+}
+
+.social-container {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    height: 100%;
+}
+
+/* LEFT LIST */
+.social-list {
+    border-right: 1px solid rgba(255,255,255,0.15);
+    display: flex;
+    flex-direction: column;
+}
+
+.social-list-header {
+    padding: 12px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    border-bottom: 1px solid rgba(255,255,255,0.15);
+}
+
+.social-list-items {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.social-empty {
+    padding: 16px;
+    opacity: 0.5;
+    font-style: italic;
+}
+
+/* RIGHT REPORT PANEL */
+
+.social-report {
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.report-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.report-name {
+    font-size: 20px;
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+
+.report-ultimate {
+    font-size: 12px;
+    opacity: 0.7;
+}
+
+.report-divider {
+    height: 1px;
+    background: rgba(255,255,255,0.15);
+}
+
+/* TRUST METER */
+
+.report-trust {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.trust-label {
+    font-size: 12px;
+    letter-spacing: 1px;
+    opacity: 0.8;
+}
+
+.trust-bar {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 4px;
+}
+
+.trust-segment {
+    height: 10px;
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.25);
+}
+
+.trust-segment.filled {
+    background: linear-gradient(
+        to bottom,
+        #ff4bd8,
+        #a100c9
+    );
+    box-shadow: 0 0 6px rgba(255,75,216,0.6);
+}
+
+.trust-value {
+    font-size: 12px;
+    opacity: 0.8;
+}
+
+/* =========================
+   DISTRUST BAR STYLING
+   ========================= */
+
+/* Base distrust segment */
+.trust-segment.distrust {
+    background: linear-gradient(
+        180deg,
+        #ff4a4a 0%,
+        #c41616 100%
+    );
+    box-shadow:
+        inset 0 0 6px rgba(255, 80, 80, 0.8),
+        0 0 6px rgba(255, 0, 0, 0.4);
+}
+
+/* Optional: subtle pulse to make it feel "hostile" */
+.trust-segment.distrust {
+    animation: distrust-pulse 1.6s ease-in-out infinite alternate;
+}
+
+@keyframes distrust-pulse {
+    from {
+        filter: brightness(1);
+    }
+    to {
+        filter: brightness(1.15);
+    }
+}
+
+.trust-label.distrust {
+    color: #ff4a4a;
+    text-shadow: 0 0 6px rgba(255, 0, 0, 0.6);
+}
+
+/* NOTES */
+
+.report-notes {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.notes-label {
+    font-size: 12px;
+    letter-spacing: 1px;
+    opacity: 0.8;
+}
+
+.notes-content {
+    font-size: 13px;
+    line-height: 1.4;
+    opacity: 0.9;
+}
+
+.monopad-panel-content::before,
+.monopad-panel-content::after {
+    content: none !important;
+}
+
+.social-list-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.social-delete {
+    opacity: 0.4;
+    cursor: pointer;
+    font-weight: bold;
+    margin-left: 8px;
+}
+
+.social-delete:hover {
+    opacity: 1;
+    color: #ff4d4d;
+}
+
+.character-stats {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.stat {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9em;
+}
+
+.stat .label {
+    color: #aaa;
+    letter-spacing: 0.05em;
+}
+
+.stat .value {
+    font-weight: 500;
+}
+
+/* =========================
+   CHARACTER STATS GRID
+   ========================= */
+
+.character-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 16px;
+    margin: 12px 0 16px;
+    padding: 10px;
+    border: 1px solid rgba(255,255,255,0.15);
+    background: rgba(0,0,0,0.25);
+    font-family: "Rajdhani", sans-serif;
+}
+
+.character-stats .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.character-stats .stat-wide {
+    grid-column: 1 / -1;
+}
+
+.character-stats .label {
+    font-family: "Orbitron", sans-serif;
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    opacity: 0.75;
+    text-transform: uppercase;
+}
+
+.character-stats .value {
+    font-family: "Rajdhani", sans-serif;
+    font-size: 14px;
+    line-height: 1.4;
+    word-wrap: break-word;
+    white-space: normal;
+}
+
+#trust-rankup-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+#trust-rankup-overlay.show {
+    opacity: 1;
+    pointer-events: all;
+}
+
+.trust-rankup-core {
+    text-align: center;
+}
+
+#trust-decagram {
+    width: 260px;
+    height: 260px;
+}
+
+.trust-banner {
+    margin-top: 20px;
+    font-size: 22px;
+    letter-spacing: 2px;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.trust-banner.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+#trust-rankup-overlay.distrust {
+    background: rgba(40, 0, 0, 0.88);
+}
+
+#trust-rankup-overlay.distrust .trust-banner {
+    color: #ff4d4d;
+    text-shadow:
+        0 0 8px rgba(255, 0, 0, 0.6),
+        0 0 14px rgba(150, 0, 0, 0.4);
+}
+
+
+#trust-rankup-overlay .trust-rankup-core {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 22px 24px;
+    border-radius: 18px;
+    background: radial-gradient(circle at 50% 15%, rgba(24, 48, 82, 0.22), rgba(5, 10, 18, 0.6));
+    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+}
+
+#trust-rankup-overlay.social-add .trust-rankup-core {
+    box-shadow: 0 18px 62px rgba(45, 106, 189, 0.28);
+}
+
+#trust-rankup-overlay.social-remove .trust-rankup-core {
+    box-shadow: 0 18px 62px rgba(166, 40, 40, 0.28);
+}
+
+#trust-rankup-overlay.social-surge .trust-rankup-core {
+    box-shadow: 0 20px 70px rgba(246, 184, 67, 0.3);
+}
+
+.decagram-shard {
+    transform-box: fill-box;
+    transform-origin: center;
+}
+
+.social-shard-add {
+    animation: socialShardAdd 0.52s cubic-bezier(0.2, 0.92, 0.2, 1);
+}
+
+.social-shard-remove {
+    animation: socialShardRemove 0.45s cubic-bezier(0.2, 0.8, 0.24, 1);
+}
+
+@keyframes socialShardAdd {
+    0% {
+        transform: scale(0.45);
+        filter: brightness(1.45) drop-shadow(0 0 12px rgba(120, 190, 255, 0.7));
+    }
+    70% {
+        transform: scale(1.08);
+    }
+    100% {
+        transform: scale(1);
+        filter: brightness(1);
+    }
+}
+
+@keyframes socialShardRemove {
+    0% {
+        transform: scale(1);
+        filter: brightness(1.25);
+    }
+    100% {
+        transform: scale(0.5) rotate(-10deg);
+        opacity: 0.12;
+        filter: brightness(0.9);
+    }
+}
+
+.decagram-shard.shatter {
+    animation: distrust-shatter 0.45s ease-out forwards;
+    filter: drop-shadow(0 0 6px rgba(255, 40, 40, 0.8));
+}
+
+#monokuma-trust-down {
+    position: absolute; /* IMPORTANT */
+    left: 20px;
+    bottom: 20px;
+
+    width: 180px;
+    z-index: 50; /* BELOW overlays, ABOVE content */
+    pointer-events: none;
+
+    transform: translateY(260px); /* hidden below monopad */
+    opacity: 0;
+
+    transition:
+        transform 0.35s ease-out,
+        opacity 0.25s ease-out;
+}
+
+#monokuma-trust-down.show {
+    transform: translateY(0);
+    opacity: 1;
+}
+
+
+#trust-debug-controls {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    z-index: 2147483000;
+
+    display: flex !important;
+    flex-direction: column;
+    gap: 6px;
+
+    opacity: 0.92;
+    pointer-events: auto;
+}
+
+#trust-debug-controls button {
+    background: #111;
+    color: #fff;
+    border: 1px solid #444;
+    padding: 6px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    letter-spacing: 1px;
+}
+
+#trust-debug-controls button:hover {
+    background: #222;
+}
+
+.truth-debug-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 100010;
+    background: rgba(8, 2, 8, 0.72);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+
+.truth-debug-card {
+    width: min(420px, 96vw);
+    border: 1px solid rgba(255, 190, 210, 0.4);
+    border-radius: 10px;
+    background: rgba(24, 9, 17, 0.96);
+    box-shadow: 0 14px 50px rgba(0, 0, 0, 0.45);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.truth-debug-title {
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    color: #ffe8f0;
+    border-bottom: 1px dashed rgba(255, 198, 216, 0.28);
+    padding-bottom: 6px;
+}
+
+.truth-debug-label {
+    font-size: 10px;
+    color: rgba(255, 214, 228, 0.9);
+}
+
+.truth-debug-input,
+.truth-debug-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid rgba(255, 184, 203, 0.35);
+    border-radius: 6px;
+    background: rgba(17, 7, 12, 0.85);
+    color: #ffeef4;
+    padding: 7px 8px;
+    font-size: 12px;
+}
+
+.truth-debug-textarea {
+    resize: vertical;
+}
+
+.truth-debug-choice-group {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 2px;
+}
+
+.truth-debug-choice {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: rgba(255, 214, 228, 0.9);
+}
+
+.truth-debug-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.truth-debug-btn {
+    border: 1px solid rgba(255, 173, 196, 0.5);
+    border-radius: 6px;
+    background: linear-gradient(180deg, rgba(157, 42, 76, 0.86), rgba(92, 23, 42, 0.84));
+    color: #fff4f8;
+    padding: 7px 10px;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+}
+
+.truth-debug-btn.ghost {
+    background: rgba(36, 16, 25, 0.8);
+    border-color: rgba(255, 210, 225, 0.33);
+}
+
+.truth-debug-btn:hover,
+.truth-debug-btn:focus-visible {
+    filter: brightness(1.08);
+    outline: none;
+}
+
+#trust-rankup-overlay.max {
+    box-shadow: inset 0 0 120px rgba(255, 215, 100, 0.15);
+}
+
+.trust-banner {
+    text-shadow: 0 0 12px rgba(255, 215, 100, 0.7);
+}
+
+/* Base shard */
+.decagram-shard {
+    transition:
+        fill 1.4s cubic-bezier(0.16, 1, 0.3, 1),
+        filter 1.4s ease;
+}
+
+@keyframes shard-shatter {
+    0% {
+        transform: translate(0, 0) rotate(0deg) scale(1);
+        opacity: 1;
+    }
+    100% {
+        transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(0.6);
+        opacity: 0;
+    }
+}
+
+.trust-shatter {
+    animation: shard-shatter 0.35s ease-out forwards;
+}
+
+@keyframes final-fill {
+    0% {
+        transform: scale(0.2);
+        opacity: 0;
+    }
+    60% {
+        transform: scale(1.05);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+.final-shard {
+    animation: final-fill 1.2s ease-out forwards;
+    transform-origin: center;
+}
+
+#trust-rankup-overlay.show {
+    cursor: pointer;
+}
+
+/* Falling shard */
+.trust-fall {
+    animation: shardFall 0.9s cubic-bezier(.22,.61,.36,1) forwards;
+}
+
+@keyframes shardFall {
+    to {
+        transform: translateY(120px) rotate(25deg);
+        opacity: 0;
+    }
+}
+
+/* Rapid spin */
+.spin-up {
+    animation: spinFast 0.6s linear forwards;
+}
+
+@keyframes spinFast {
+    to {
+        transform: rotate(720deg);
+    }
+}
+
+/* Red crystal emphasis */
+.distrust-crystal {
+    filter:
+        drop-shadow(0 0 6px rgba(255, 0, 0, 0.8))
+        drop-shadow(0 0 12px rgba(180, 0, 0, 0.6));
+    animation: pulseRed 1.3s ease-out forwards;
+}
+
+@keyframes pulseRed {
+    0% { transform: scale(0.7); }
+    100% { transform: scale(1); }
+}
+
+@keyframes distrustPurifyPulse {
+    0%   { transform: scale(1); }
+    50%  { transform: scale(1.06); }
+    100% { transform: scale(1); }
+}
+
+#trust-decagram.purify-pulse {
+    animation: distrustPurifyPulse 0.9s ease-in-out;
+}
+
+
+.monopad-panel-content.settings-panel {
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 18px;
+}
+.settings-panel {
+    background:
+        linear-gradient(
+            180deg,
+            rgba(10, 14, 20, 0.95),
+            rgba(6, 9, 14, 0.98)
+        );
+    color: #cfd6df;
+    font-family: monospace;
+}
+
+.settings-header {
+    text-align: center;
+    font-size: 14px;
+    letter-spacing: 2px;
+    opacity: 0.8;
+    padding: 14px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.settings-section {
+    padding: 16px;
+}
+
+.settings-section-title {
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    opacity: 0.6;
+    margin-bottom: 10px;
+}
+
+.settings-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    padding: 10px 0;
+    border-bottom: 1px dashed rgba(255,255,255,0.06);
+}
+
+.settings-label {
+    font-size: 12px;
+    letter-spacing: 0.5px;
+}
+
+.settings-toggle {
+    width: 36px;
+    height: 18px;
+    border-radius: 10px;
+    background: #3a3f47;
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.settings-toggle::after {
+    content: "";
+    width: 14px;
+    height: 14px;
+    background: #bfc7d5;
+    border-radius: 50%;
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    transition: transform 0.2s ease;
+}
+
+/* ON STATE */
+.settings-toggle.on {
+    background: #1f6ad6;
+}
+
+.settings-toggle.on::after {
+    transform: translateX(18px);
+}
+
+.settings-panel .settings-item:hover {
+    background: rgba(255,255,255,0.03);
+}
+
+
+#dangan_monopad_panel.crt-disabled .monopad-crt-overlay {
+    display: none;
+}
+
+.settings-toggle {
+    border: 0;
+    outline: none;
+}
+
+.settings-toggle:focus-visible {
+    box-shadow: 0 0 0 2px rgba(111, 179, 255, 0.8);
+}
+
+.settings-item-slider {
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.settings-slider-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 150px;
+}
+
+#dangan_crt_slider {
+    width: 120px;
+}
+
+#dangan_crt_value {
+    font-size: 11px;
+    opacity: 0.8;
+    min-width: 36px;
+    text-align: right;
+}
+
