@@ -1114,7 +1114,6 @@ function createVnModeController() {
         if (!host.classList.contains('active')) return;
         const messages = getMessageEntries();
         const previousCount = lastObservedMessageCount;
-        const previousLastSignature = lastObservedLastSignature;
         const hadMessageCountChange = messages.length !== previousCount;
         const currentLastSignature = getMessageSignature(messages[messages.length - 1]);
         lastObservedMessageCount = messages.length;
@@ -1126,12 +1125,10 @@ function createVnModeController() {
 
         const maxIndex = messages.length - 1;
         const wasAtTailBeforeNewMessage = hadMessageCountChange && messageIndex >= Math.max(0, maxIndex - 1);
-        const isSingleAppend = hadMessageCountChange
-            && messages.length === previousCount + 1
-            && previousCount > 0
-            && getMessageSignature(messages[messages.length - 2]) === previousLastSignature;
 
-        if (isSingleAppend && wasAtTailBeforeNewMessage) {
+        if (hadMessageCountChange && previousCount === 0 && messages.length > 0) {
+            jumpToLatest();
+        } else if (hadMessageCountChange && messages.length > previousCount && wasAtTailBeforeNewMessage) {
             jumpToLatestFromStart();
         } else if (messageIndex >= maxIndex || wasAtTailBeforeNewMessage) {
             jumpToLatest();
