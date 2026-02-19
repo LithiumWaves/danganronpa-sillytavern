@@ -555,15 +555,26 @@ function trySetSillyTavernVisualNovelMode(enabled) {
 
 function createVnModeController() {
     const CHUNK_SIZE = 170;
+    const VN_POSITION_KEY = `${extensionName}-vn-box-position`;
     let chunkIndex = 0;
     let messageIndex = 0;
     let monopadOpen = false;
+    let moveUnlocked = false;
+    let isDragging = false;
+    let movedDuringPointer = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let frameStartX = 0;
+    let frameStartY = 0;
+    let framePosX = null;
+    let framePosY = null;
 
     const host = document.createElement('div');
     host.id = 'dangan-vn-overlay';
     host.setAttribute('aria-hidden', 'true');
     host.innerHTML = `
         <div class="dangan-vn-frame" role="dialog" aria-live="polite" aria-label="Dangan Visual Novel dialogue">
+            <button type="button" class="dangan-vn-lock" id="dangan-vn-lock" aria-label="Unlock Visual Novel box movement" title="Unlock Visual Novel box movement">🔒</button>
             <div class="dangan-vn-nameplate" id="dangan-vn-name">—</div>
             <div class="dangan-vn-text" id="dangan-vn-text">Visual Novel Mode ready.</div>
             <div class="dangan-vn-input">Tap dialogue box to continue · Type in SillyTavern input below</div>
@@ -572,6 +583,7 @@ function createVnModeController() {
     document.body.appendChild(host);
 
     const frameEl = host.querySelector('.dangan-vn-frame');
+    const lockBtnEl = host.querySelector('#dangan-vn-lock');
     const nameEl = host.querySelector('#dangan-vn-name');
     const textEl = host.querySelector('#dangan-vn-text');
 
@@ -610,6 +622,79 @@ function createVnModeController() {
         }
     }
 
+    function clampPosition(nextX, nextY) {
+        if (!frameEl) return { x: 0, y: 0 };
+
+        const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+        const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+        const rect = frameEl.getBoundingClientRect();
+        const maxX = Math.max(0, Math.round(vw - rect.width));
+        const maxY = Math.max(0, Math.round(vh - rect.height));
+
+        return {
+            x: Math.max(0, Math.min(maxX, Math.round(nextX))),
+            y: Math.max(0, Math.min(maxY, Math.round(nextY))),
+        };
+    }
+
+    function savePosition() {
+        if (!Number.isFinite(framePosX) || !Number.isFinite(framePosY)) return;
+        try {
+            localStorage.setItem(VN_POSITION_KEY, JSON.stringify({ x: framePosX, y: framePosY }));
+        } catch {
+            // ignore storage failures
+        }
+    }
+
+    function clearSavedPosition() {
+        try {
+            localStorage.removeItem(VN_POSITION_KEY);
+        } catch {
+            // ignore storage failures
+        }
+    }
+
+    function setFramePosition(nextX, nextY) {
+        if (!frameEl) return;
+        const { x, y } = clampPosition(nextX, nextY);
+        framePosX = x;
+        framePosY = y;
+        frameEl.classList.add('dangan-vn-custom-pos');
+        frameEl.style.left = `${x}px`;
+        frameEl.style.top = `${y}px`;
+    }
+
+    function resetFramePosition() {
+        if (!frameEl) return;
+        framePosX = null;
+        framePosY = null;
+        frameEl.classList.remove('dangan-vn-custom-pos');
+        frameEl.style.left = '';
+        frameEl.style.top = '';
+        clearSavedPosition();
+    }
+
+    function restoreSavedPosition() {
+        try {
+            const raw = localStorage.getItem(VN_POSITION_KEY);
+            if (!raw) return;
+            const parsed = JSON.parse(raw);
+            if (!parsed || !Number.isFinite(parsed.x) || !Number.isFinite(parsed.y)) return;
+            setFramePosition(parsed.x, parsed.y);
+        } catch {
+            // ignore storage failures
+        }
+    }
+
+    function setMoveUnlocked(unlocked) {
+        moveUnlocked = !!unlocked;
+        if (!lockBtnEl) return;
+        lockBtnEl.textContent = moveUnlocked ? '🔓' : '🔒';
+        lockBtnEl.setAttribute('aria-label', moveUnlocked ? 'Lock Visual Novel box movement' : 'Unlock Visual Novel box movement');
+        lockBtnEl.setAttribute('title', moveUnlocked ? 'Lock Visual Novel box movement' : 'Unlock Visual Novel box movement');
+        frameEl?.classList.toggle('move-unlocked', moveUnlocked);
+    }
+
     function updateBottomOffset() {
         if (!frameEl) return;
 
@@ -629,6 +714,8 @@ function createVnModeController() {
     applyInlineFallbackStyles();
     updateBottomOffset();
     syncMonopadVisibility();
+    restoreSavedPosition();
+    setMoveUnlocked(false);
 
     const htmlDecodeBuffer = document.createElement('div');
     const toPlainText = (value) => {
@@ -747,7 +834,85 @@ function createVnModeController() {
         renderCurrent();
     }
 
-    frameEl?.addEventListener('click', advance);
+    lockBtnEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (moveUnlocked) {
+            setMoveUnlocked(false);
+            if (Number.isFinite(framePosX) && Number.isFinite(framePosY)) {
+                savePosition();
+            }
+            return;
+        }
+
+        setMoveUnlocked(true);
+    });
+
+    frameEl?.addEventListener('dblclick', (event) => {
+        if (!moveUnlocked) return;
+        event.preventDefault();
+        event.stopPropagation();
+        resetFramePosition();
+    });
+
+    frameEl?.addEventListener('pointerdown', (event) => {
+        if (!moveUnlocked || event.button !== 0 || !frameEl) return;
+        const target = event.target;
+        if (target instanceof Element && target.closest('.dangan-vn-lock')) return;
+
+        isDragging = true;
+        movedDuringPointer = false;
+        dragStartX = event.clientX;
+        dragStartY = event.clientY;
+
+        const rect = frameEl.getBoundingClientRect();
+        frameStartX = Number.isFinite(framePosX) ? framePosX : rect.left;
+        frameStartY = Number.isFinite(framePosY) ? framePosY : rect.top;
+
+        frameEl.setPointerCapture?.(event.pointerId);
+        event.preventDefault();
+    });
+
+    frameEl?.addEventListener('pointermove', (event) => {
+        if (!moveUnlocked || !isDragging || !frameEl) return;
+        const dx = event.clientX - dragStartX;
+        const dy = event.clientY - dragStartY;
+        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+            movedDuringPointer = true;
+        }
+        setFramePosition(frameStartX + dx, frameStartY + dy);
+        event.preventDefault();
+    });
+
+    frameEl?.addEventListener('pointerup', (event) => {
+        if (!isDragging) return;
+        isDragging = false;
+        frameEl?.releasePointerCapture?.(event.pointerId);
+        if (movedDuringPointer) {
+            savePosition();
+        }
+    });
+
+    frameEl?.addEventListener('pointercancel', () => {
+        isDragging = false;
+    });
+
+    frameEl?.addEventListener('click', (event) => {
+        if (isDragging || movedDuringPointer) {
+            movedDuringPointer = false;
+            return;
+        }
+        const target = event.target;
+        if (target instanceof Element && target.closest('.dangan-vn-lock')) return;
+        advance();
+    });
+
+    window.addEventListener('resize', () => {
+        updateBottomOffset();
+        if (Number.isFinite(framePosX) && Number.isFinite(framePosY)) {
+            setFramePosition(framePosX, framePosY);
+        }
+    });
 
     const observer = new MutationObserver(() => {
         ensureHostAttached();

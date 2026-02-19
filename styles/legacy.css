@@ -4221,6 +4221,7 @@
 }
 
 .dangan-vn-frame {
+    position: relative;
     width: min(980px, calc(100vw - 18px));
     min-height: 170px;
     margin: 0 9px calc(var(--dangan-vn-bottom-offset) + 10px);
@@ -4232,6 +4233,40 @@
     padding: 14px 14px 10px;
     cursor: pointer;
     pointer-events: auto;
+}
+
+.dangan-vn-frame.move-unlocked {
+    cursor: move;
+}
+
+.dangan-vn-frame.dangan-vn-custom-pos {
+    position: fixed;
+    margin: 0;
+}
+
+.dangan-vn-lock {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    border: 1px solid rgba(173, 205, 255, 0.5);
+    background: rgba(22, 31, 47, 0.9);
+    color: #f3f8ff;
+    font-size: 13px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.dangan-vn-lock:hover,
+.dangan-vn-lock:focus-visible {
+    background: rgba(45, 63, 95, 0.95);
+    outline: none;
 }
 
 .dangan-vn-nameplate {
