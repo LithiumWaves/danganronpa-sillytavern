@@ -553,7 +553,7 @@ function tryEnableSillyTavernVisualNovelMode() {
 }
 
 function createVnModeController() {
-    const CHUNK_SIZE = 220;
+    const CHUNK_SIZE = 180;
     let chunkIndex = 0;
     let messageIndex = 0;
 
@@ -564,7 +564,7 @@ function createVnModeController() {
         <div class="dangan-vn-frame" role="dialog" aria-live="polite" aria-label="Dangan Visual Novel dialogue">
             <div class="dangan-vn-name" id="dangan-vn-name">—</div>
             <div class="dangan-vn-text" id="dangan-vn-text">Visual Novel Mode ready.</div>
-            <div class="dangan-vn-input">Typing section: use the regular SillyTavern input box to reply.</div>
+            <div class="dangan-vn-input">Tap dialogue box to continue · Type in SillyTavern input below</div>
         </div>
     `;
     document.body.appendChild(host);
@@ -572,38 +572,27 @@ function createVnModeController() {
     const nameEl = host.querySelector('#dangan-vn-name');
     const textEl = host.querySelector('#dangan-vn-text');
 
+    const htmlDecodeBuffer = document.createElement('div');
+    const toPlainText = (value) => {
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+        htmlDecodeBuffer.innerHTML = raw;
+        return String(htmlDecodeBuffer.textContent || htmlDecodeBuffer.innerText || '').trim();
+    };
+
     function getContextMessages() {
         const ctx = window.SillyTavern?.getContext?.();
         const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
 
-        const messages = chat
-            .map((msg, idx) => {
-                const isUser = Boolean(msg?.is_user ?? msg?.isUser);
-                const isSystem = Boolean(msg?.is_system ?? msg?.isSystem ?? msg?.is_system_message);
-                const name = String(msg?.name || msg?.ch_name || msg?.character_name || '').trim();
-                const text = String(msg?.mes || msg?.message || msg?.content || '').trim();
+        return chat.map((msg, idx) => {
+            const isUser = String(msg?.is_user ?? msg?.isUser ?? '').toLowerCase() === 'true' || msg?.is_user === true || msg?.isUser === true;
+            const isSystem = String(msg?.is_system ?? msg?.isSystem ?? msg?.is_system_message ?? '').toLowerCase() === 'true' || msg?.is_system === true || msg?.isSystem === true || msg?.is_system_message === true;
+            const name = String(msg?.name || msg?.ch_name || msg?.character_name || msg?.display_name || '').trim();
+            const textRaw = msg?.mes ?? msg?.message ?? msg?.content ?? msg?.swipe_info?.[msg?.swipe_id || 0]?.mes ?? '';
+            const text = toPlainText(textRaw);
 
-                return {
-                    key: `ctx-${idx}`,
-                    isUser,
-                    isSystem,
-                    name,
-                    text,
-                };
-            })
-            .filter(msg => !msg.isUser && !msg.isSystem && msg.text);
-
-        return messages;
-    }
-
-    function getDomMessages() {
-        return Array.from(document.querySelectorAll('.mes')).map((msgEl, idx) => {
-            const isUser = msgEl.getAttribute('is_user') === 'true';
-            const isSystem = msgEl.getAttribute('is_system') === 'true';
-            const text = String(msgEl.querySelector('.mes_text')?.textContent || '').trim();
-            const name = String(msgEl.getAttribute('ch_name') || msgEl.getAttribute('name') || '').trim();
             return {
-                key: `dom-${idx}`,
+                key: `ctx-${idx}`,
                 isUser,
                 isSystem,
                 name,
@@ -612,10 +601,22 @@ function createVnModeController() {
         }).filter(msg => !msg.isUser && !msg.isSystem && msg.text);
     }
 
+    function getDomMessages() {
+        return Array.from(document.querySelectorAll('.mes')).map((msgEl, idx) => {
+            const isUser = msgEl.getAttribute('is_user') === 'true';
+            const isSystem = msgEl.getAttribute('is_system') === 'true';
+            const name = String(msgEl.getAttribute('ch_name') || msgEl.getAttribute('name') || '').trim();
+            const text = toPlainText(msgEl.querySelector('.mes_text')?.innerHTML || msgEl.querySelector('.mes_text')?.textContent || '');
+            return { key: `dom-${idx}`, isUser, isSystem, name, text };
+        }).filter(msg => !msg.isUser && !msg.isSystem && msg.text);
+    }
+
     function getMessageEntries() {
-        const contextMessages = getContextMessages();
-        if (contextMessages.length) return contextMessages;
-        return getDomMessages();
+        const byContext = getContextMessages();
+        if (byContext.length) return byContext;
+        const byDom = getDomMessages();
+        if (byDom.length) return byDom;
+        return [];
     }
 
     function splitIntoChunks(text = '') {
@@ -631,6 +632,7 @@ function createVnModeController() {
             chunks.push(remaining.slice(0, splitAt + 1).trim());
             remaining = remaining.slice(splitAt + 1).trim();
         }
+
         if (remaining) chunks.push(remaining);
         return chunks;
     }
@@ -638,29 +640,37 @@ function createVnModeController() {
     function renderCurrent() {
         const messages = getMessageEntries();
         if (!messages.length) {
-            nameEl.textContent = '—';
-            textEl.textContent = 'No character replies yet.';
+            nameEl.textContent = 'SYSTEM';
+            textEl.textContent = 'No character replies available yet. Send a message and wait for a character response.';
             return;
         }
 
-        if (messageIndex >= messages.length) messageIndex = messages.length - 1;
-        if (messageIndex < 0) messageIndex = 0;
+        messageIndex = Math.max(0, Math.min(messageIndex, messages.length - 1));
 
-        const message = messages[messageIndex];
-        const clean = stripV3CMarkersFromText(message.text).replace(/\s+/g, ' ').trim();
+        const entry = messages[messageIndex];
+        const clean = stripV3CMarkersFromText(entry.text).replace(/\s+/g, ' ').trim();
         const chunks = splitIntoChunks(clean);
 
-        if (chunkIndex >= chunks.length) chunkIndex = Math.max(0, chunks.length - 1);
-        nameEl.textContent = message.name || 'UNKNOWN';
-        textEl.textContent = chunks[chunkIndex] || '...';
+        if (!chunks.length) {
+            nameEl.textContent = entry.name || 'UNKNOWN';
+            textEl.textContent = '...';
+            return;
+        }
+
+        chunkIndex = Math.max(0, Math.min(chunkIndex, chunks.length - 1));
+        nameEl.textContent = entry.name || 'UNKNOWN';
+        textEl.textContent = chunks[chunkIndex];
     }
 
     function advance() {
         const messages = getMessageEntries();
-        if (!messages.length) return;
+        if (!messages.length) {
+            renderCurrent();
+            return;
+        }
 
-        const message = messages[Math.min(messageIndex, messages.length - 1)];
-        const chunks = splitIntoChunks(stripV3CMarkersFromText(message.text));
+        const entry = messages[Math.min(messageIndex, messages.length - 1)];
+        const chunks = splitIntoChunks(stripV3CMarkersFromText(entry.text));
 
         if (chunkIndex + 1 < chunks.length) {
             chunkIndex += 1;
@@ -679,9 +689,7 @@ function createVnModeController() {
         renderCurrent();
     }
 
-    host.addEventListener('click', () => {
-        advance();
-    });
+    host.addEventListener('click', advance);
 
     const observer = new MutationObserver(() => {
         if (!host.classList.contains('active')) return;
@@ -704,25 +712,21 @@ function createVnModeController() {
 
     return {
         setEnabled(enabled) {
-            host.classList.toggle('active', !!enabled);
-            host.setAttribute('aria-hidden', enabled ? 'false' : 'true');
-            document.body.classList.toggle('dangan-vn-mode-active', !!enabled);
+            const isEnabled = !!enabled;
+            host.classList.toggle('active', isEnabled);
+            host.setAttribute('aria-hidden', isEnabled ? 'false' : 'true');
 
-            const hiddenTargets = [
-                document.getElementById('chat'),
-            ];
-            hiddenTargets.forEach(el => {
-                if (!el) return;
-                el.classList.toggle('dangan-vn-hidden', !!enabled);
-            });
+            const chatRoot = document.getElementById('chat');
+            chatRoot?.classList.toggle('dangan-vn-hidden', isEnabled);
 
-            if (enabled) {
+            if (isEnabled) {
                 jumpToLatest();
                 tryEnableSillyTavernVisualNovelMode();
             }
         },
         refresh() {
-            if (host.classList.contains('active')) renderCurrent();
+            if (!host.classList.contains('active')) return;
+            renderCurrent();
         },
     };
 }
