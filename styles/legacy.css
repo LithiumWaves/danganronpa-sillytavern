@@ -4235,6 +4235,41 @@
     pointer-events: auto;
 }
 
+.dangan-vn-controls {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: inline-flex;
+    gap: 6px;
+    z-index: 2;
+}
+
+.dangan-vn-control {
+    height: 26px;
+    border-radius: 6px;
+    border: 1px solid rgba(173, 205, 255, 0.5);
+    background: rgba(22, 31, 47, 0.9);
+    color: #f3f8ff;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.dangan-vn-control:hover,
+.dangan-vn-control:focus-visible {
+    background: rgba(45, 63, 95, 0.95);
+    outline: none;
+}
+
+.dangan-vn-transcript-toggle {
+    padding: 0 9px;
+    font-family: "Orbitron", "Rajdhani", monospace;
+}
+
 .dangan-vn-frame.move-unlocked {
     cursor: move;
 }
@@ -4245,28 +4280,99 @@
 }
 
 .dangan-vn-lock {
-    position: absolute;
-    top: 8px;
-    right: 8px;
+    position: relative;
     width: 26px;
-    height: 26px;
-    border-radius: 6px;
-    border: 1px solid rgba(173, 205, 255, 0.5);
-    background: rgba(22, 31, 47, 0.9);
-    color: #f3f8ff;
+    padding: 0;
     font-size: 13px;
-    line-height: 1;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    z-index: 2;
 }
 
-.dangan-vn-lock:hover,
-.dangan-vn-lock:focus-visible {
+.dangan-vn-transcript {
+    position: fixed;
+    inset: 40px min(24px, 2vw) calc(var(--dangan-vn-bottom-offset) + 24px) min(24px, 2vw);
+    z-index: 2147483645;
+    display: none;
+    flex-direction: column;
+    border: 1px solid rgba(173, 205, 255, 0.45);
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(8, 12, 20, 0.98), rgba(6, 9, 14, 0.98));
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.48);
+    overflow: hidden;
+    pointer-events: auto;
+}
+
+#dangan-vn-overlay.transcript-open .dangan-vn-transcript {
+    display: flex;
+}
+
+.dangan-vn-transcript-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(166, 201, 248, 0.3);
+    background: linear-gradient(90deg, rgba(39, 47, 67, 0.95), rgba(62, 80, 116, 0.9));
+}
+
+.dangan-vn-transcript-title {
+    font-family: "Orbitron", "Rajdhani", monospace;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    color: #f5f8ff;
+    text-transform: uppercase;
+}
+
+.dangan-vn-transcript-close {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    border: 1px solid rgba(173, 205, 255, 0.45);
+    background: rgba(19, 26, 41, 0.9);
+    color: #f3f8ff;
+    cursor: pointer;
+}
+
+.dangan-vn-transcript-close:hover,
+.dangan-vn-transcript-close:focus-visible {
     background: rgba(45, 63, 95, 0.95);
     outline: none;
+}
+
+.dangan-vn-transcript-body {
+    flex: 1;
+    overflow: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.dangan-vn-transcript-entry {
+    border: 1px solid rgba(150, 189, 243, 0.28);
+    border-radius: 10px;
+    background: rgba(14, 21, 34, 0.92);
+    padding: 8px 10px;
+}
+
+.dangan-vn-transcript-speaker {
+    font-family: "Orbitron", "Rajdhani", monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #b9d8ff;
+    margin-bottom: 5px;
+}
+
+.dangan-vn-transcript-message {
+    font-size: 14px;
+    line-height: 1.4;
+    color: #f4f8ff;
+}
+
+.dangan-vn-transcript-empty {
+    color: rgba(189, 217, 255, 0.85);
+    font-size: 13px;
+    letter-spacing: 0.06em;
 }
 
 .dangan-vn-nameplate {

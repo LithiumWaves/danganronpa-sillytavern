@@ -568,22 +568,37 @@ function createVnModeController() {
     let frameStartY = 0;
     let framePosX = null;
     let framePosY = null;
+    let transcriptOpen = false;
 
     const host = document.createElement('div');
     host.id = 'dangan-vn-overlay';
     host.setAttribute('aria-hidden', 'true');
     host.innerHTML = `
         <div class="dangan-vn-frame" role="dialog" aria-live="polite" aria-label="Dangan Visual Novel dialogue">
-            <button type="button" class="dangan-vn-lock" id="dangan-vn-lock" aria-label="Unlock Visual Novel box movement" title="Unlock Visual Novel box movement">🔒</button>
+            <div class="dangan-vn-controls">
+                <button type="button" class="dangan-vn-control dangan-vn-transcript-toggle" id="dangan-vn-transcript-toggle" aria-label="Open transcript" title="Open transcript">TRANSCRIPT</button>
+                <button type="button" class="dangan-vn-control dangan-vn-lock" id="dangan-vn-lock" aria-label="Unlock Visual Novel box movement" title="Unlock Visual Novel box movement">🔒</button>
+            </div>
             <div class="dangan-vn-nameplate" id="dangan-vn-name">—</div>
             <div class="dangan-vn-text" id="dangan-vn-text">Visual Novel Mode ready.</div>
             <div class="dangan-vn-input">Tap dialogue box to continue · Type in SillyTavern input below</div>
+        </div>
+        <div class="dangan-vn-transcript" id="dangan-vn-transcript" aria-hidden="true">
+            <div class="dangan-vn-transcript-header">
+                <div class="dangan-vn-transcript-title">Class Transcript</div>
+                <button type="button" class="dangan-vn-transcript-close" id="dangan-vn-transcript-close" aria-label="Close transcript">✕</button>
+            </div>
+            <div class="dangan-vn-transcript-body" id="dangan-vn-transcript-body"></div>
         </div>
     `;
     document.body.appendChild(host);
 
     const frameEl = host.querySelector('.dangan-vn-frame');
     const lockBtnEl = host.querySelector('#dangan-vn-lock');
+    const transcriptToggleEl = host.querySelector('#dangan-vn-transcript-toggle');
+    const transcriptEl = host.querySelector('#dangan-vn-transcript');
+    const transcriptCloseEl = host.querySelector('#dangan-vn-transcript-close');
+    const transcriptBodyEl = host.querySelector('#dangan-vn-transcript-body');
     const nameEl = host.querySelector('#dangan-vn-name');
     const textEl = host.querySelector('#dangan-vn-text');
 
@@ -695,6 +710,16 @@ function createVnModeController() {
         frameEl?.classList.toggle('move-unlocked', moveUnlocked);
     }
 
+    function setTranscriptOpen(open) {
+        transcriptOpen = !!open;
+        host.classList.toggle('transcript-open', transcriptOpen);
+        transcriptEl?.setAttribute('aria-hidden', transcriptOpen ? 'false' : 'true');
+        transcriptToggleEl?.setAttribute('aria-expanded', transcriptOpen ? 'true' : 'false');
+        if (transcriptOpen) {
+            renderTranscript();
+        }
+    }
+
     function updateBottomOffset() {
         if (!frameEl) return;
 
@@ -764,6 +789,38 @@ function createVnModeController() {
         return [];
     }
 
+    function renderTranscript() {
+        if (!transcriptBodyEl) return;
+
+        const entries = getMessageEntries();
+        transcriptBodyEl.innerHTML = '';
+
+        if (!entries.length) {
+            const emptyEl = document.createElement('div');
+            emptyEl.className = 'dangan-vn-transcript-empty';
+            emptyEl.textContent = 'No transcript entries yet.';
+            transcriptBodyEl.appendChild(emptyEl);
+            return;
+        }
+
+        for (const entry of entries) {
+            const row = document.createElement('div');
+            row.className = 'dangan-vn-transcript-entry';
+
+            const speaker = document.createElement('div');
+            speaker.className = 'dangan-vn-transcript-speaker';
+            speaker.textContent = entry.name || 'UNKNOWN';
+
+            const message = document.createElement('div');
+            message.className = 'dangan-vn-transcript-message';
+            message.textContent = stripV3CMarkersFromText(entry.text || '').replace(/\s+/g, ' ').trim() || '...';
+
+            row.appendChild(speaker);
+            row.appendChild(message);
+            transcriptBodyEl.appendChild(row);
+        }
+    }
+
     function splitIntoChunks(text = '') {
         const normalized = String(text || '').replace(/\s+/g, ' ').trim();
         if (!normalized) return [];
@@ -814,6 +871,14 @@ function createVnModeController() {
             return;
         }
 
+        if (messageIndex >= messages.length - 1) {
+            const currentEntry = messages[messages.length - 1];
+            const currentChunks = splitIntoChunks(stripV3CMarkersFromText(currentEntry?.text || ''));
+            if (chunkIndex >= Math.max(0, currentChunks.length - 1)) {
+                return;
+            }
+        }
+
         const entry = messages[Math.min(messageIndex, messages.length - 1)];
         const chunks = splitIntoChunks(stripV3CMarkersFromText(entry.text));
 
@@ -846,6 +911,18 @@ function createVnModeController() {
         }
 
         setMoveUnlocked(true);
+    });
+
+    transcriptToggleEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setTranscriptOpen(!transcriptOpen);
+    });
+
+    transcriptCloseEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setTranscriptOpen(false);
     });
 
     frameEl?.addEventListener('dblclick', (event) => {
@@ -904,6 +981,7 @@ function createVnModeController() {
         }
         const target = event.target;
         if (target instanceof Element && target.closest('.dangan-vn-lock')) return;
+        if (target instanceof Element && target.closest('.dangan-vn-transcript-toggle')) return;
         advance();
     });
 
@@ -918,6 +996,9 @@ function createVnModeController() {
         ensureHostAttached();
         updateBottomOffset();
         syncMonopadVisibility();
+        if (transcriptOpen) {
+            renderTranscript();
+        }
         if (!host.classList.contains('active')) return;
         const messages = getMessageEntries();
         if (!messages.length) {
@@ -957,6 +1038,9 @@ function createVnModeController() {
             host.style.pointerEvents = 'none';
             updateBottomOffset();
             syncMonopadVisibility();
+            if (!isEnabled) {
+                setTranscriptOpen(false);
+            }
 
             const chatRoot = document.getElementById('chat');
             chatRoot?.classList.toggle('dangan-vn-hidden', isEnabled);
@@ -971,6 +1055,9 @@ function createVnModeController() {
             ensureHostAttached();
             updateBottomOffset();
             syncMonopadVisibility();
+            if (transcriptOpen) {
+                renderTranscript();
+            }
             if (!host.classList.contains('active')) return;
             renderCurrent();
         },
