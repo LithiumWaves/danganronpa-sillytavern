@@ -1115,7 +1115,9 @@ function createVnModeController() {
         const messages = getMessageEntries();
         const previousCount = lastObservedMessageCount;
         const hadMessageCountChange = messages.length !== previousCount;
+        const previousLastSignature = lastObservedLastSignature;
         const currentLastSignature = getMessageSignature(messages[messages.length - 1]);
+        const hadLastSignatureChange = currentLastSignature !== previousLastSignature;
         lastObservedMessageCount = messages.length;
         lastObservedLastSignature = currentLastSignature;
         if (!messages.length) {
@@ -1127,6 +1129,8 @@ function createVnModeController() {
         const wasAtTailBeforeNewMessage = hadMessageCountChange && messageIndex >= Math.max(0, maxIndex - 1);
 
         if (hadMessageCountChange && previousCount === 0 && messages.length > 0) {
+            jumpToLatest();
+        } else if (!hadMessageCountChange && hadLastSignatureChange) {
             jumpToLatest();
         } else if (hadMessageCountChange && messages.length > previousCount && wasAtTailBeforeNewMessage) {
             jumpToLatestFromStart();
