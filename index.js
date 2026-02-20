@@ -1770,9 +1770,7 @@ function createTrialDiscussionController() {
         if (!cleaned.trim()) return [];
 
         return cleaned
-            .split(/
-?
-/)
+            .split(/\r?\n/)
             .map(line => line.trim())
             .filter(Boolean)
             .map(line => ({ speaker: fallbackSpeaker, line }));
