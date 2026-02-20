@@ -1687,23 +1687,13 @@ function ensureTrialIntroOverlay() {
 
 function createTrialDiscussionController() {
     const queue = [];
-    let activeTimer = null;
-    let currentToken = 0;
     let lastPhase = null;
     let pollId = null;
     let markerScopedDiscussionActive = false;
     let forcedVnDuringDiscussion = false;
 
-    function clearActiveTimer() {
-        if (!activeTimer) return;
-        clearTimeout(activeTimer);
-        activeTimer = null;
-    }
-
     function clearQueue() {
         queue.length = 0;
-        clearActiveTimer();
-        currentToken += 1;
     }
 
     function isDiscussionPhase(phase) {
@@ -1741,25 +1731,14 @@ function createTrialDiscussionController() {
         if (textEl) textEl.textContent = String(entry?.line || '...');
     }
 
-    function playNextFromQueue(token, phase) {
-        if (token !== currentToken) return;
-        if (!queue.length) return;
-
-        const entry = queue.shift();
-        renderLine(entry, phase);
-
-        const duration = Math.max(1800, Math.min(4200, 1050 + String(entry?.line || "").length * 22));
-        activeTimer = window.setTimeout(() => {
-            if (token !== currentToken) return;
-            activeTimer = null;
-            playNextFromQueue(token, phase);
-        }, duration);
-    }
-
     function enqueue(entries = [], phase = null) {
         if (!Array.isArray(entries) || !entries.length) return;
-        queue.push(...entries.filter(Boolean));
-        if (!activeTimer) playNextFromQueue(currentToken, phase);
+
+        // Do not auto-scroll through queued lines; keep VN behavior stable by showing only the latest line.
+        const latestEntry = entries[entries.length - 1];
+        queue.length = 0;
+        queue.push(latestEntry);
+        renderLine(latestEntry, phase);
     }
 
     function extractDiscussionEntries(rawText, fallbackSpeaker = "UNKNOWN") {
