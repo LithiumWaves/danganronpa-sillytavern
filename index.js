@@ -1964,6 +1964,7 @@ function stripV3CMarkersFromText(value) {
         if (canonical.includes("V3C|DAYANNOUN")) return false;
         if (canonical.includes("V3C|NIGHTANNOUN")) return false;
         if (canonical.includes("V3C|BDA")) return false;
+        if (canonical.includes("V3C|BODYDISCOVERY")) return false;
         return true;
     });
 
@@ -1977,6 +1978,7 @@ function stripV3CMarkersFromText(value) {
         .replace(/V3C\s*[|｜]\s*DAY(?:\s*[_\-]?\s*)ANNOUN\b/gi, "")
         .replace(/V3C\s*[|｜]\s*NIGHT(?:\s*[_\-]?\s*)ANNOUN\b/gi, "")
         .replace(/V3C\s*[|｜]\s*BDA\b/gi, "")
+        .replace(/V3C\s*[|｜]\s*BODY(?:\s*[_\-]?\s*)DISCOVERY\b/gi, "")
         .replace(/^[ \t]+/gm, "")
         .trimStart();
 }
@@ -2123,7 +2125,18 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
         });
 
         // ---- Monokuma Announcements ----
-        const monokumaAnnouncementMarkers = parseMonokumaAnnouncementMarkers(rawText);
+        const monokumaAnnouncementMarkers = parseMonokumaAnnouncementMarkers(rawText)
+            .slice()
+            .sort((a, b) => {
+                const aPriority = a?.type === "BODY_DISCOVERY" ? 0 : 1;
+                const bPriority = b?.type === "BODY_DISCOVERY" ? 0 : 1;
+                if (aPriority !== bPriority) return aPriority - bPriority;
+
+                const aIndex = Number.isFinite(Number(a?.index)) ? Number(a.index) : Number.MAX_SAFE_INTEGER;
+                const bIndex = Number.isFinite(Number(b?.index)) ? Number(b.index) : Number.MAX_SAFE_INTEGER;
+                return aIndex - bIndex;
+            });
+
         monokumaAnnouncementMarkers.forEach((marker, idx) => {
             const signature = `MONOKUMA_ANNOUN||${messageSignature}||${marker.index}||${idx}||${marker.type}`;
             if (processedMonokumaAnnouncementSignatures.has(signature)) return;
