@@ -1559,6 +1559,7 @@ function ensureTrialIntroOverlay() {
             <div class="dangan-trial-intro-actions">
                 <button type="button" class="dangan-trial-intro-start" id="dangan-trial-intro-start">Start Trial</button>
                 <button type="button" class="dangan-trial-intro-skills" id="dangan-trial-intro-skills">Equip Skills</button>
+                <button type="button" class="dangan-trial-intro-cancel" id="dangan-trial-intro-cancel">Cancel Trial</button>
             </div>
             <section class="dangan-trial-case-summary" aria-live="polite">
                 <div class="dangan-trial-case-summary-label">Case Summary</div>
@@ -1587,12 +1588,20 @@ function ensureTrialIntroOverlay() {
         itemsPanelController?.renderSkillsItemsPanel?.();
     });
 
+    const cancelBtn = overlay.querySelector("#dangan-trial-intro-cancel");
+    cancelBtn?.addEventListener("click", () => {
+        trialController?.cancelTrial?.();
+        trialIntroUiController?.sync?.();
+    });
+
     document.body.appendChild(overlay);
     return overlay;
 }
 
 function createTrialIntroUiController() {
     let isVisible = false;
+    let lastPhase = null;
+    let pollId = null;
 
     function setVisible(nextVisible) {
         const overlay = ensureTrialIntroOverlay();
@@ -1614,11 +1623,14 @@ function createTrialIntroUiController() {
     function sync() {
         if (!trialController) {
             setVisible(false);
+            lastPhase = null;
             return;
         }
 
         const trialState = trialController.getState?.();
-        const isTrialIntro = trialState?.phase === trialController.phases?.TRIAL_INTRO;
+        const phase = trialState?.phase || null;
+        lastPhase = phase;
+        const isTrialIntro = phase === trialController.phases?.TRIAL_INTRO;
         const overlay = ensureTrialIntroOverlay();
         const summaryEl = overlay.querySelector("#dangan-trial-case-summary-text");
         if (summaryEl) {
@@ -1628,8 +1640,27 @@ function createTrialIntroUiController() {
         setVisible(isTrialIntro);
     }
 
+    function startAutoSync() {
+        if (pollId) return;
+
+        const tick = () => {
+            if (!trialController) {
+                if (lastPhase !== null) sync();
+                return;
+            }
+            const phase = trialController.getState?.()?.phase || null;
+            if (phase !== lastPhase) {
+                sync();
+            }
+        };
+
+        pollId = window.setInterval(tick, 250);
+        document.addEventListener("visibilitychange", tick);
+    }
+
     return {
         sync,
+        startAutoSync,
     };
 }
 
@@ -4478,6 +4509,7 @@ trialController = createTrialController({
     openConfirmDialog: openMonopadConfirmDialog,
 });
 trialIntroUiController = createTrialIntroUiController();
+trialIntroUiController?.startAutoSync?.();
 trialIntroUiController?.sync?.();
 window.danganTrial = trialController;
 window.startClassTrial = () => {
