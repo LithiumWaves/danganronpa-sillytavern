@@ -34,6 +34,7 @@ let itemsPanelController = null;
 let mapPanelController = null;
 let trialController = null;
 let trialIntroUiController = null;
+let trialIntroOstController = null;
 let hasSelectedMonopadTab = false;
 let monokumaLessonState = null;
 let vnModeController = null;
@@ -1542,6 +1543,47 @@ async function triggerTrialStartFromMapPin() {
     return false;
 }
 
+function createTrialIntroOstController() {
+    const candidateTracks = [
+        "trialunderground.mp3",
+    ].map(fileName => `${extensionFolderPath}/assets/classtrial/trialunderground/${fileName}`);
+
+    let activeAudio = null;
+    let activeTrackIndex = -1;
+
+    function stop() {
+        if (!activeAudio) return;
+        activeAudio.pause();
+        activeAudio.currentTime = 0;
+    }
+
+    function play() {
+        if (!extension_settings[extensionName]?.monopadSounds) return;
+
+        if (!activeAudio) {
+            activeTrackIndex = 0;
+            activeAudio = new Audio(candidateTracks[activeTrackIndex]);
+            activeAudio.loop = true;
+            activeAudio.preload = "auto";
+            activeAudio.volume = 0.42;
+            activeAudio.addEventListener("error", () => {
+                if (activeTrackIndex >= candidateTracks.length - 1) return;
+                activeTrackIndex += 1;
+                activeAudio.src = candidateTracks[activeTrackIndex];
+                activeAudio.load();
+                activeAudio.play().catch(() => {});
+            });
+        }
+
+        activeAudio.play().catch(() => {});
+    }
+
+    return {
+        play,
+        stop,
+    };
+}
+
 function ensureTrialIntroOverlay() {
     let overlay = document.getElementById("dangan-trial-intro-overlay");
     if (overlay) return overlay;
@@ -1603,18 +1645,54 @@ function createTrialIntroUiController() {
     let lastPhase = null;
     let pollId = null;
 
+    function applyViewportSafeLayout(overlay) {
+        if (!overlay) return;
+
+        const shell = overlay.querySelector('.dangan-trial-intro-shell');
+        const viewportHeight = Math.max(320, window.innerHeight || 0);
+        const viewportWidth = Math.max(280, window.innerWidth || 0);
+        const isMobile = viewportWidth <= 700;
+
+        overlay.style.position = 'fixed';
+        overlay.style.inset = '0';
+        overlay.style.zIndex = '2147483647';
+        overlay.style.justifyContent = 'center';
+        overlay.style.alignItems = isMobile ? 'flex-end' : 'center';
+
+        if (!shell) return;
+
+        shell.style.boxSizing = 'border-box';
+        shell.style.maxHeight = `${Math.max(220, viewportHeight - 16)}px`;
+
+        if (isMobile) {
+            shell.style.width = `${Math.max(280, Math.min(540, viewportWidth - 16))}px`;
+            shell.style.margin = '0 auto';
+            shell.style.borderRadius = '12px';
+        } else {
+            shell.style.width = '';
+            shell.style.margin = '';
+            shell.style.borderRadius = '';
+        }
+    }
+
     function setVisible(nextVisible) {
         const overlay = ensureTrialIntroOverlay();
         overlay.classList.toggle("active", nextVisible);
         overlay.setAttribute("aria-hidden", nextVisible ? "false" : "true");
+        overlay.style.display = nextVisible ? 'flex' : 'none';
+        overlay.style.pointerEvents = nextVisible ? 'auto' : 'none';
 
         const vnModeOn = !!getMonopadSetting("vnModeEnabled");
         document.body.classList.toggle("dangan-trial-vn-chat-hidden", nextVisible && vnModeOn);
 
+        if (nextVisible) {
+            applyViewportSafeLayout(overlay);
+        }
+
         if (nextVisible && !isVisible) {
-            playSfx?.(sfx?.open);
+            trialIntroOstController?.play?.();
         } else if (!nextVisible && isVisible) {
-            playSfx?.(sfx?.close);
+            trialIntroOstController?.stop?.();
         }
 
         isVisible = nextVisible;
@@ -1651,11 +1729,18 @@ function createTrialIntroUiController() {
             const phase = trialController.getState?.()?.phase || null;
             if (phase !== lastPhase) {
                 sync();
+                return;
+            }
+
+            if (isVisible) {
+                applyViewportSafeLayout(document.getElementById('dangan-trial-intro-overlay'));
             }
         };
 
         pollId = window.setInterval(tick, 250);
         document.addEventListener("visibilitychange", tick);
+        window.addEventListener('resize', tick);
+        window.addEventListener('orientationchange', tick);
     }
 
     return {
@@ -4508,6 +4593,7 @@ trialController = createTrialController({
     getTruthBullets: getTruthBulletsSnapshot,
     openConfirmDialog: openMonopadConfirmDialog,
 });
+trialIntroOstController = createTrialIntroOstController();
 trialIntroUiController = createTrialIntroUiController();
 trialIntroUiController?.startAutoSync?.();
 trialIntroUiController?.sync?.();
