@@ -1,5 +1,68 @@
+
+
 @import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600&family=Rajdhani:wght@400;500;600&display=swap");
+
+body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-frame {
+    width: min(980px, 96vw);
+    max-width: 980px;
+    border-radius: 14px;
+    border: 1px solid rgba(232, 61, 221, 0.78);
+    background:
+        linear-gradient(120deg, rgba(35, 10, 58, 0.68) 0%, rgba(15, 10, 38, 0.82) 55%, rgba(12, 7, 28, 0.88) 100%),
+        repeating-linear-gradient(-28deg, rgba(198, 58, 255, 0.2) 0 70px, rgba(76, 31, 136, 0.18) 70px 140px);
+    box-shadow: 0 0 34px rgba(234, 48, 211, 0.24), 0 0 44px rgba(65, 196, 255, 0.19);
+    padding: 14px 18px 16px;
+}
+
+body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-nameplate {
+    font-size: 40px;
+    letter-spacing: 0.03em;
+    color: #ffd8fb;
+    margin-top: 2px;
+}
+
+body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-text {
+    font-size: 42px;
+    line-height: 1.14;
+    color: #f4f8ff;
+    text-shadow: 0 0 14px rgba(111, 221, 255, 0.25);
+}
+
+body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-input,
+body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-controls {
+    display: none;
+}
+
+#dangan-trial-discussion-phase-inline {
+    display: none;
+    font-size: 26px;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #76ebff;
+    margin-bottom: 4px;
+}
+
+@media (max-width: 700px) {
+    body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-frame {
+        width: calc(100vw - 12px);
+        border-radius: 10px;
+        padding: 10px 10px 12px;
+    }
+
+    #dangan-trial-discussion-phase-inline {
+        font-size: 15px;
+    }
+
+    body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-nameplate {
+        font-size: 20px;
+    }
+
+    body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-text {
+        font-size: 22px;
+    }
+}
 
 /* =========================
  Monopad Typography
@@ -34,53 +97,6 @@
     box-sizing: border-box;
 }
 
-
-.dangan-trial-discussion-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 2147483644;
-    display: none;
-    align-items: flex-end;
-    justify-content: center;
-    pointer-events: none;
-    padding: 18px;
-    box-sizing: border-box;
-}
-
-.dangan-trial-discussion-overlay.active {
-    display: flex;
-}
-
-.dangan-trial-discussion-shell {
-    width: min(960px, 96vw);
-    border: 1px solid rgba(244, 80, 225, 0.55);
-    border-radius: 12px;
-    background: linear-gradient(180deg, rgba(5, 8, 18, 0.9), rgba(8, 3, 19, 0.88));
-    box-shadow: 0 0 34px rgba(53, 185, 255, 0.24);
-    color: #e7f7ff;
-    padding: 14px 18px;
-}
-
-.dangan-trial-discussion-phase {
-    color: rgba(106, 222, 255, 0.9);
-    font-size: 12px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    margin-bottom: 5px;
-}
-
-.dangan-trial-discussion-speaker {
-    color: rgba(255, 104, 222, 0.95);
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    margin-bottom: 6px;
-}
-
-.dangan-trial-discussion-line {
-    font-size: 22px;
-    line-height: 1.35;
-    text-shadow: 0 0 12px rgba(74, 199, 255, 0.3);
-}
 
 @media (max-width: 700px) {
     #dangan_monopad_button {
@@ -3641,18 +3657,6 @@ body.dangan-trial-vn-chat-hidden #chat {
 
 @media (max-width: 700px) {
  
-    .dangan-trial-discussion-overlay {
-        padding: 8px;
-    }
-
-    .dangan-trial-discussion-shell {
-        width: 100%;
-        padding: 12px;
-    }
-
-    .dangan-trial-discussion-line {
-        font-size: 17px;
-    }
 
     .dangan-trial-intro-overlay {
         align-items: flex-end;

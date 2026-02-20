@@ -1692,26 +1692,7 @@ function createTrialDiscussionController() {
     let lastPhase = null;
     let pollId = null;
     let markerScopedDiscussionActive = false;
-
-    function ensureOverlay() {
-        let overlay = document.getElementById("dangan-trial-discussion-overlay");
-        if (overlay) return overlay;
-
-        overlay = document.createElement("section");
-        overlay.id = "dangan-trial-discussion-overlay";
-        overlay.className = "dangan-trial-discussion-overlay";
-        overlay.setAttribute("aria-hidden", "true");
-        overlay.innerHTML = `
-            <div class="dangan-trial-discussion-shell" role="status" aria-live="polite">
-                <div class="dangan-trial-discussion-phase" id="dangan-trial-discussion-phase">Discussion</div>
-                <div class="dangan-trial-discussion-speaker" id="dangan-trial-discussion-speaker">—</div>
-                <div class="dangan-trial-discussion-line" id="dangan-trial-discussion-line">Awaiting statements...</div>
-            </div>
-        `;
-
-        document.body.appendChild(overlay);
-        return overlay;
-    }
+    let forcedVnDuringDiscussion = false;
 
     function clearActiveTimer() {
         if (!activeTimer) return;
@@ -1725,20 +1706,6 @@ function createTrialDiscussionController() {
         currentToken += 1;
     }
 
-    function setOverlayVisibility(visible) {
-        const overlay = ensureOverlay();
-        overlay.classList.toggle("active", visible);
-        overlay.setAttribute("aria-hidden", visible ? "false" : "true");
-    }
-
-    function renderLine(entry) {
-        const overlay = ensureOverlay();
-        const speakerEl = overlay.querySelector("#dangan-trial-discussion-speaker");
-        const lineEl = overlay.querySelector("#dangan-trial-discussion-line");
-        if (speakerEl) speakerEl.textContent = String(entry?.speaker || "UNKNOWN").toUpperCase();
-        if (lineEl) lineEl.textContent = String(entry?.line || "...");
-    }
-
     function isDiscussionPhase(phase) {
         return phase === trialController?.phases?.DISCUSSION_PRE_DEBATE || phase === trialController?.phases?.DISCUSSION_POST_DEBATE;
     }
@@ -1749,31 +1716,50 @@ function createTrialDiscussionController() {
         return "Discussion";
     }
 
-    function updatePhaseLabel(phase) {
-        const overlay = ensureOverlay();
-        const phaseEl = overlay.querySelector("#dangan-trial-discussion-phase");
-        if (phaseEl) phaseEl.textContent = phaseLabel(phase);
+    function ensureVnTrialLabel() {
+        const frame = document.querySelector('#dangan-vn-overlay .dangan-vn-frame');
+        if (!frame) return null;
+
+        let phaseEl = frame.querySelector('#dangan-trial-discussion-phase-inline');
+        if (!phaseEl) {
+            phaseEl = document.createElement('div');
+            phaseEl.id = 'dangan-trial-discussion-phase-inline';
+            phaseEl.className = 'dangan-trial-discussion-phase-inline';
+            frame.insertBefore(phaseEl, frame.firstChild);
+        }
+
+        return phaseEl;
     }
 
-    function playNextFromQueue(token) {
+    function renderLine(entry, phase) {
+        const phaseEl = ensureVnTrialLabel();
+        if (phaseEl) phaseEl.textContent = phaseLabel(phase).toUpperCase();
+
+        const nameEl = document.getElementById('dangan-vn-name');
+        const textEl = document.getElementById('dangan-vn-text');
+        if (nameEl) nameEl.textContent = String(entry?.speaker || 'UNKNOWN').toUpperCase();
+        if (textEl) textEl.textContent = String(entry?.line || '...');
+    }
+
+    function playNextFromQueue(token, phase) {
         if (token !== currentToken) return;
         if (!queue.length) return;
 
         const entry = queue.shift();
-        renderLine(entry);
+        renderLine(entry, phase);
 
         const duration = Math.max(1800, Math.min(4200, 1050 + String(entry?.line || "").length * 22));
         activeTimer = window.setTimeout(() => {
             if (token !== currentToken) return;
             activeTimer = null;
-            playNextFromQueue(token);
+            playNextFromQueue(token, phase);
         }, duration);
     }
 
-    function enqueue(entries = []) {
+    function enqueue(entries = [], phase = null) {
         if (!Array.isArray(entries) || !entries.length) return;
         queue.push(...entries.filter(Boolean));
-        if (!activeTimer) playNextFromQueue(currentToken);
+        if (!activeTimer) playNextFromQueue(currentToken, phase);
     }
 
     function extractDiscussionEntries(rawText, fallbackSpeaker = "UNKNOWN") {
@@ -1784,10 +1770,33 @@ function createTrialDiscussionController() {
         if (!cleaned.trim()) return [];
 
         return cleaned
-            .split(/\r?\n/)
+            .split(/
+?
+/)
             .map(line => line.trim())
             .filter(Boolean)
             .map(line => ({ speaker: fallbackSpeaker, line }));
+    }
+
+    function setDiscussionVisualState(active, phase = null) {
+        document.body.classList.toggle('dangan-trial-discussion-vn-active', active);
+        const phaseEl = ensureVnTrialLabel();
+        if (phaseEl) {
+            phaseEl.style.display = active ? 'block' : 'none';
+            if (active) phaseEl.textContent = phaseLabel(phase).toUpperCase();
+        }
+
+        if (active) {
+            if (vnModeController) {
+                vnModeController.setEnabled?.(true);
+                forcedVnDuringDiscussion = true;
+            }
+        } else {
+            if (forcedVnDuringDiscussion && vnModeController) {
+                vnModeController.setEnabled?.(!!getMonopadSetting('vnModeEnabled'));
+            }
+            forcedVnDuringDiscussion = false;
+        }
     }
 
     function ingestMessage({ messageSignature = "", rawText = "", speaker = "UNKNOWN" } = {}) {
@@ -1809,7 +1818,7 @@ function createTrialDiscussionController() {
         const shouldEnqueueScoped = markerScopedDiscussionActive || hasStart;
 
         if (shouldEnqueueFallback || shouldEnqueueScoped) {
-            enqueue(extractDiscussionEntries(rawText, speaker));
+            enqueue(extractDiscussionEntries(rawText, speaker), phase);
         }
 
         if (hasEnd) markerScopedDiscussionActive = false;
@@ -1817,7 +1826,7 @@ function createTrialDiscussionController() {
 
     function sync() {
         if (!trialController) {
-            setOverlayVisibility(false);
+            setDiscussionVisualState(false);
             clearQueue();
             lastPhase = null;
             markerScopedDiscussionActive = false;
@@ -1826,8 +1835,7 @@ function createTrialDiscussionController() {
 
         const phase = trialController.getState?.()?.phase;
         const inDiscussion = isDiscussionPhase(phase);
-        updatePhaseLabel(phase);
-        setOverlayVisibility(inDiscussion);
+        setDiscussionVisualState(inDiscussion, phase);
 
         if (!inDiscussion) {
             clearQueue();
@@ -1854,6 +1862,7 @@ function createTrialDiscussionController() {
         ingestMessage,
     };
 }
+
 
 function createTrialIntroUiController() {
     let isVisible = false;
