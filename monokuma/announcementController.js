@@ -1,4 +1,4 @@
-const MONOKUMA_MARKER_REGEX = /V3C\s*[|｜]\s*(DAY(?:\s*[_\-]?\s*)ANNOUN|NIGHT(?:\s*[_\-]?\s*)ANNOUN|BDA)\b/gi;
+const MONOKUMA_MARKER_REGEX = /V3C\s*[|｜]\s*(DAY(?:\s*[_\-]?\s*)ANNOUN|NIGHT(?:\s*[_\-]?\s*)ANNOUN|BDA|BODY(?:\s*[_\-]?\s*)DISCOVERY)\b/gi;
 
 const MARKER_TYPES = {
     DAY_ANNOUN: {
@@ -19,6 +19,11 @@ const MARKER_TYPES = {
         label: "BODY DISCOVERY ANNOUNCEMENT",
         transcript: "A body has been discovered! Now then, after a certain amount of time has passed, the class trial will begin!",
     },
+    BODY_DISCOVERY: {
+        voice: "despairnoise.mp3",
+        label: "BODY DISCOVERY",
+        transcript: "A body has been discovered...",
+    },
 };
 
 function normalizeMarkerType(rawType = "") {
@@ -28,6 +33,7 @@ function normalizeMarkerType(rawType = "") {
 
     if (token === "DAYANNOUN") return "DAY_ANNOUN";
     if (token === "NIGHTANNOUN") return "NIGHT_ANNOUN";
+    if (token === "BODYDISCOVERY") return "BODY_DISCOVERY";
     return token;
 }
 
@@ -61,6 +67,7 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         DAY_ANNOUN_VOICE: new Audio(`${extensionFolderPath}/assets/monokuma/daytime_announ.mp3`),
         NIGHT_ANNOUN_VOICE: new Audio(`${extensionFolderPath}/assets/monokuma/nighttime_announ.mp3`),
         BDA_VOICE: new Audio(`${extensionFolderPath}/assets/monokuma/bda_announ.mp3`),
+        BODY_DISCOVERY_VOICE: new Audio(`${extensionFolderPath}/assets/sfx/etc/despairnoise.mp3`),
     };
 
     Object.values(audio).forEach(track => {
@@ -69,6 +76,97 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
 
     function getRoot() {
         return document.getElementById("monokuma-announcement-root");
+    }
+
+    function getBodyDiscoveryOverlay() {
+        return document.getElementById("dangan-body-discovery-overlay");
+    }
+
+    function mountBodyDiscoveryOverlay() {
+        let overlay = getBodyDiscoveryOverlay();
+        if (overlay) return overlay;
+
+        const style = document.createElement("style");
+        style.id = "dangan-body-discovery-style";
+        style.textContent = `
+            #dangan-body-discovery-overlay {
+                position: fixed;
+                inset: 0;
+                z-index: 24000;
+                pointer-events: none;
+                opacity: 0;
+                background: radial-gradient(circle at center, rgba(38, 38, 38, 0.95) 0%, rgba(0, 0, 0, 0.98) 72%);
+                transition: opacity 120ms linear;
+            }
+
+            #dangan-body-discovery-overlay.active {
+                opacity: 1;
+            }
+
+            .dangan-body-discovery-static {
+                position: absolute;
+                inset: -35%;
+                background-image:
+                    radial-gradient(circle at 20% 30%, rgba(255,255,255,0.38) 0 1px, transparent 1px),
+                    radial-gradient(circle at 74% 61%, rgba(255,255,255,0.24) 0 1px, transparent 1px),
+                    radial-gradient(circle at 49% 77%, rgba(255,255,255,0.34) 0 1px, transparent 1px);
+                background-size: 5px 5px, 6px 6px, 4px 4px;
+                opacity: 0.78;
+                mix-blend-mode: screen;
+                animation: danganBodyStatic 90ms steps(3, end) infinite;
+            }
+
+            .dangan-body-discovery-shake {
+                position: absolute;
+                inset: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                animation: danganBodyShake 120ms steps(2, end) infinite;
+            }
+
+            .dangan-body-discovery-card {
+                padding: 16px 20px;
+                border: 2px solid rgba(255,255,255,0.75);
+                background: rgba(0,0,0,0.58);
+                color: #fff;
+                letter-spacing: 0.2em;
+                font-family: "Orbitron", "Rajdhani", sans-serif;
+                font-size: clamp(18px, 2.2vw, 34px);
+                text-transform: uppercase;
+                text-shadow: 0 2px 18px rgba(255,255,255,0.35);
+            }
+
+            @keyframes danganBodyStatic {
+                0% { transform: translate3d(-2%, 1%, 0) rotate(0deg); }
+                25% { transform: translate3d(1%, -2%, 0) rotate(0.3deg); }
+                50% { transform: translate3d(2%, 2%, 0) rotate(-0.25deg); }
+                75% { transform: translate3d(-1%, -1%, 0) rotate(0.25deg); }
+                100% { transform: translate3d(1%, 0%, 0) rotate(-0.2deg); }
+            }
+
+            @keyframes danganBodyShake {
+                0% { transform: translate(0, 0); }
+                25% { transform: translate(-8px, 4px); }
+                50% { transform: translate(8px, -5px); }
+                75% { transform: translate(-7px, -3px); }
+                100% { transform: translate(6px, 4px); }
+            }
+        `;
+
+        overlay = document.createElement("div");
+        overlay.id = "dangan-body-discovery-overlay";
+        overlay.setAttribute("aria-hidden", "true");
+        overlay.innerHTML = `
+            <div class="dangan-body-discovery-static"></div>
+            <div class="dangan-body-discovery-shake">
+                <div class="dangan-body-discovery-card" role="status" aria-live="polite">BODY DISCOVERED</div>
+            </div>
+        `;
+
+        document.head.appendChild(style);
+        document.body.appendChild(overlay);
+        return overlay;
     }
 
     function mountUi() {
@@ -260,7 +358,7 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    function playTrack(track) {
+    function playTrack(track, { fallbackMs = null } = {}) {
         if (!track || !shouldPlayAudio()) return Promise.resolve();
 
         track.currentTime = 0;
@@ -279,7 +377,10 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
             track.addEventListener("ended", finish, { once: true });
             track.addEventListener("error", finish, { once: true });
             track.play().catch(finish);
-            setTimeout(finish, Math.max(1500, (track.duration || 0) * 1000 + 500));
+            const computedFallback = Number.isFinite(fallbackMs) && fallbackMs > 0
+                ? fallbackMs
+                : Math.max(1500, (track.duration || 0) * 1000 + 500);
+            setTimeout(finish, computedFallback);
         });
     }
 
@@ -365,6 +466,24 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         });
     }
 
+    async function runBodyDiscoverySequence() {
+        const overlay = mountBodyDiscoveryOverlay();
+        if (!overlay) return;
+
+        overlay.classList.add("active");
+        overlay.setAttribute("aria-hidden", "false");
+
+        const voiceTrack = audio.BODY_DISCOVERY_VOICE;
+        const fallbackMs = Number.isFinite(voiceTrack?.duration)
+            ? Math.max(2500, Math.round(voiceTrack.duration * 1000) + 600)
+            : 30000;
+
+        await playTrack(voiceTrack, { fallbackMs });
+
+        overlay.classList.remove("active");
+        overlay.setAttribute("aria-hidden", "true");
+    }
+
     async function runAnnouncement(type) {
         const config = MARKER_TYPES[type];
         if (!config) return;
@@ -380,6 +499,11 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         const dialogue = root.querySelector(".mono-announ-dialogue");
 
         if (!sting || !monitor || !screen || !label || !dialogue) return;
+
+        if (type === "BODY_DISCOVERY") {
+            await runBodyDiscoverySequence();
+            return;
+        }
 
         label.textContent = config.label;
         sting.classList.remove("active");
