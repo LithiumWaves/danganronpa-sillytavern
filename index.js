@@ -1545,15 +1545,7 @@ async function triggerTrialStartFromMapPin() {
 
 function createTrialIntroOstController() {
     const candidateTracks = [
-        "trial_underground.mp3",
         "trialunderground.mp3",
-        "trial-underground.mp3",
-        "trial_underground.ogg",
-        "trialunderground.ogg",
-        "trial-underground.ogg",
-        "trial_underground.m4a",
-        "trialunderground.m4a",
-        "trial-underground.m4a",
     ].map(fileName => `${extensionFolderPath}/assets/classtrial/trialunderground/${fileName}`);
 
     let activeAudio = null;
