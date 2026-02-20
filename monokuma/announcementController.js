@@ -152,6 +152,34 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
                 75% { transform: translate(-7px, -3px); }
                 100% { transform: translate(6px, 4px); }
             }
+
+            @media (max-width: 900px) and (orientation: portrait) {
+                .dangan-body-discovery-static {
+                    inset: -18%;
+                }
+
+                .dangan-body-discovery-shake {
+                    padding: max(8px, env(safe-area-inset-top)) 12px max(8px, env(safe-area-inset-bottom));
+                    box-sizing: border-box;
+                    animation: danganBodyShakeMobile 120ms steps(2, end) infinite;
+                }
+
+                .dangan-body-discovery-card {
+                    width: min(100%, 420px);
+                    padding: 12px 14px;
+                    letter-spacing: 0.12em;
+                    font-size: clamp(16px, 5.5vw, 24px);
+                    text-align: center;
+                }
+            }
+
+            @keyframes danganBodyShakeMobile {
+                0% { transform: translate(0, 0); }
+                25% { transform: translate(-4px, 2px); }
+                50% { transform: translate(4px, -3px); }
+                75% { transform: translate(-3px, -2px); }
+                100% { transform: translate(3px, 2px); }
+            }
         `;
 
         overlay = document.createElement("div");

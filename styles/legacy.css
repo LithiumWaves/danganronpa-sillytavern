@@ -4481,6 +4481,71 @@
 }
 
 
+
+@media (max-width: 900px) and (orientation: portrait) {
+    #dangan-vn-overlay {
+        align-items: flex-end;
+    }
+
+    .dangan-vn-frame {
+        width: calc(100vw - 12px);
+        margin: 0 6px calc(var(--dangan-vn-bottom-offset) + 6px + env(safe-area-inset-bottom));
+        min-height: 128px;
+        max-height: 44vh;
+        overflow: auto;
+        padding: 9px 9px 7px;
+    }
+
+    .dangan-vn-controls {
+        top: 6px;
+        right: 6px;
+        gap: 4px;
+    }
+
+    .dangan-vn-control {
+        height: 22px;
+        font-size: 10px;
+    }
+
+    .dangan-vn-transcript {
+        inset: max(10px, env(safe-area-inset-top)) 8px calc(var(--dangan-vn-bottom-offset) + 10px + env(safe-area-inset-bottom)) 8px;
+    }
+
+    .dangan-vn-compose-docked {
+        width: 100%;
+        min-width: 0;
+        padding: 4px 6px 6px !important;
+        gap: 4px;
+        grid-template-columns: 22px minmax(0, 1fr) auto;
+        box-sizing: border-box;
+    }
+
+    .dangan-vn-compose-collapse-toggle {
+        width: 22px;
+        height: 22px;
+    }
+
+    .dangan-vn-compose-docked #send_textarea,
+    .dangan-vn-compose-docked textarea,
+    .dangan-vn-compose-docked .send_textarea {
+        min-width: 0;
+        font-size: 13px;
+        padding: 5px 8px !important;
+    }
+
+    .dangan-vn-text {
+        min-height: 56px;
+        font-size: clamp(14px, 4.2vw, 18px);
+        line-height: 1.28;
+    }
+
+    .dangan-vn-input {
+        margin-top: 6px;
+        padding-top: 5px;
+        font-size: 9px;
+    }
+}
+
 @media (max-width: 480px) {
     #dangan-vn-overlay {
         align-items: flex-end;
