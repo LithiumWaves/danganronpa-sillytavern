@@ -7,6 +7,13 @@ const FLOOR_ONE_MACHINE_PIN = {
     height: LOCATION_PINPOINTS.academy_store?.height || 272,
 };
 
+const FLOOR_ONE_TRIAL_PIN = {
+    x: LOCATION_PINPOINTS.academy_trial_grounds?.x || 279,
+    y: LOCATION_PINPOINTS.academy_trial_grounds?.y || 86,
+    width: LOCATION_PINPOINTS.academy_trial_grounds?.width || 480,
+    height: LOCATION_PINPOINTS.academy_trial_grounds?.height || 272,
+};
+
 const MACHINE_ROLL_DURATION_MS = 2000;
 const MACHINE_JINGLE_FRAME = 50;
 const MACHINE_GIF_TOTAL_FRAMES = 100;
@@ -43,7 +50,7 @@ function getFloorByKey(areaKey, floorKey) {
     return area.floors.find(floor => floor.key === floorKey) || null;
 }
 
-export function createMapPanelController({ extensionFolderPath, getItemsPanelController, playSfx, getSfx, getSetting, onWalkStep }) {
+export function createMapPanelController({ extensionFolderPath, getItemsPanelController, playSfx, getSfx, getSetting, onWalkStep, onTrialStartRequest }) {
     const state = {
         area: "hopes_peak",
         floor: "floor_1",
@@ -70,6 +77,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         title: ".map-location-title",
         subtitle: ".map-location-subtitle",
         machinePin: ".map-machine-pin",
+        trialPin: ".map-trial-pin",
         machineOverlay: ".map-machine-overlay",
         machineDisplayCoins: ".map-machine-coins",
         machineDisplayLoad: ".map-machine-load",
@@ -811,7 +819,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             $subtitle.text(floor.description);
         }
 
-        $imageWrap.find(`${selectors.machinePin}, ${selectors.presencePin}, ${selectors.calibrationPin}`).remove();
+        $imageWrap.find(`${selectors.machinePin}, ${selectors.trialPin}, ${selectors.presencePin}, ${selectors.calibrationPin}`).remove();
 
         const showMachinePin = state.area === "hopes_peak" && state.floor === "floor_1";
         if (showMachinePin && $imageWrap.length) {
@@ -827,6 +835,25 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                     style="left:${pinLeftPercent}%; top:${pinTopPercent}%;"
                 >
                     ¥
+                </button>
+            `);
+        }
+
+
+        const showTrialPin = state.area === "hopes_peak" && state.floor === "floor_1";
+        if (showTrialPin && $imageWrap.length) {
+            const pinLeftPercent = (FLOOR_ONE_TRIAL_PIN.x / FLOOR_ONE_TRIAL_PIN.width) * 100;
+            const pinTopPercent = (FLOOR_ONE_TRIAL_PIN.y / FLOOR_ONE_TRIAL_PIN.height) * 100;
+
+            $imageWrap.append(`
+                <button
+                    class="map-trial-pin"
+                    type="button"
+                    aria-label="Trial Grounds"
+                    title="Trial Grounds"
+                    style="left:${pinLeftPercent}%; top:${pinTopPercent}%;"
+                >
+                    ⚖
                 </button>
             `);
         }
@@ -935,6 +962,17 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         });
     }
 
+    function bindTrialPin($panel) {
+        $panel.find(selectors.trialPin).off("click").on("click", async () => {
+            playSfx?.(getSfx?.().click);
+            try {
+                await onTrialStartRequest?.({ source: "map_pin", area: state.area, floor: state.floor });
+            } catch (error) {
+                console.warn("[Dangan][Trial] Map trial pin failed to start trial:", error);
+            }
+        });
+    }
+
     function renderMapPanel() {
         const $panel = $(selectors.panel);
         if (!$panel.length) return;
@@ -945,6 +983,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         renderFloorButtons($panel);
         renderMapImage($panel);
         bindMachinePin($panel);
+        bindTrialPin($panel);
         bindPresenceManagementButtons($panel);
         syncCalibrationControls($panel);
 

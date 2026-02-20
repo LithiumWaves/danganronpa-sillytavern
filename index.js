@@ -10,9 +10,10 @@ import { createSocialPanelController } from "./social/socialPanel.js";
 import { extractUltimateFromNotes, isIgnoredCharacter, lookupUltimateFromLorebook, normalizeList, normalizeName } from "./social/characterUtils.js";
 import { createMapPanelController } from "./map/mapPanel.js";
 import { getLocationPromptReference, resolveLocationIdFromText } from "./map/locationPresence.js";
-import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
+import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, TRIAL_START_REGEX, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "./core/monokumaLessonScript.js";
+import { createTrialController } from "./trial/trialController.js";
 
 window.refreshActiveCharacterUI = function () {
     if (!activeSocialCharacterId || !socialPanelController) return;
@@ -30,6 +31,7 @@ let activeSocialCharacterId = null;
 let socialPanelController = null;
 let itemsPanelController = null;
 let mapPanelController = null;
+let trialController = null;
 let hasSelectedMonopadTab = false;
 let monokumaLessonState = null;
 
@@ -206,6 +208,8 @@ const processedTruthSignatures = new Set();
 const processedSocialSignatures = new Set();
 const processedInvestigationSignatures = new Set();
 const INVESTIGATION_START_PARSE_REGEX = /V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/gi;
+const processedTrialStartSignatures = new Set();
+const TRIAL_START_PARSE_REGEX = /V3C\s*[|｜]\s*TRIAL(?:\s*[_\-]?\s*)START\b/gi;
 
 function normalizeTextToken(value) {
     return String(value || "")
@@ -326,6 +330,123 @@ function parseInvestigationStartMarkers(text) {
 
     return matches;
 }
+
+function parseTrialStartMarkers(text) {
+    const raw = String(text || "");
+    if (!raw) return [];
+
+    const matches = [];
+    TRIAL_START_PARSE_REGEX.lastIndex = 0;
+
+    let match;
+    while ((match = TRIAL_START_PARSE_REGEX.exec(raw)) !== null) {
+        matches.push({
+            marker: match[0],
+            index: match.index,
+            source: "regex",
+        });
+    }
+
+    if (matches.length) return matches;
+
+    const lines = raw.split(/\r?\n/);
+    let cursor = 0;
+
+    for (const line of lines) {
+        const canonical = line
+            .toUpperCase()
+            .replace(/[|｜]/g, "|")
+            .replace(/[`*_~:;,.!?\-\s]/g, "");
+
+        if (canonical.includes("V3C|TRIALSTART")) {
+            matches.push({
+                marker: line,
+                index: cursor,
+                source: "fallback",
+            });
+        }
+
+        cursor += line.length + 1;
+    }
+
+    return matches;
+}
+
+function buildTrialStartPersistentSignature(msgEl, marker, idx, rawText = "") {
+    const mesId = msgEl?.getAttribute?.("mesid") || msgEl?.dataset?.mesid || "";
+    if (!mesId || mesId === "no-id") return "";
+
+    const speaker = msgEl?.getAttribute?.("ch_name") || "unknown";
+    const scope = getInvestigationScopeKey();
+    if (!scope || scope === "scope:unknown") return "";
+
+    const markerIndex = Number(marker?.index ?? -1);
+    const textFingerprint = String(rawText || "").slice(0, 140);
+
+    return `TRIAL_START||${scope}||${mesId}||${speaker}||${markerIndex}||${idx}||${textFingerprint}`;
+}
+
+function getTrialStartMarkerStore() {
+    extension_settings[extensionName] ||= {};
+    extension_settings[extensionName].trialStartMarkers ||= {};
+    return extension_settings[extensionName].trialStartMarkers;
+}
+
+function hasProcessedTrialStartSignature(signature, persistentSignature = "") {
+    if (!signature) return false;
+    if (processedTrialStartSignatures.has(signature)) return true;
+    if (!persistentSignature) return false;
+    return Boolean(getTrialStartMarkerStore()[persistentSignature]);
+}
+
+function markTrialStartSignatureProcessed(signature, persistentSignature = "") {
+    if (!signature) return;
+
+    processedTrialStartSignatures.add(signature);
+    if (!persistentSignature) return;
+
+    const store = getTrialStartMarkerStore();
+    store[persistentSignature] = Date.now();
+
+    const keys = Object.keys(store);
+    const maxEntries = 1200;
+    if (keys.length > maxEntries) {
+        keys
+            .sort((a, b) => Number(store[a] || 0) - Number(store[b] || 0))
+            .slice(0, keys.length - maxEntries)
+            .forEach((key) => {
+                delete store[key];
+            });
+    }
+
+    saveSettingsDebounced();
+}
+
+function getEquippedSkillsSnapshot() {
+    const inventory = extension_settings[extensionName]?.inventory || {};
+    const equipped = inventory.equippedSkills || {};
+    return Object.keys(equipped).filter(skillId => Number(equipped[skillId] || 0) > 0);
+}
+
+function getTruthBulletsSnapshot() {
+    const bullets = extension_settings[extensionName]?.truthBullets;
+    return Array.isArray(bullets) ? bullets : [];
+}
+
+function buildTrialCaseSummary() {
+    const bullets = getTruthBulletsSnapshot();
+    if (!bullets.length) {
+        return "No Truth Bullets logged yet. Review witness statements before opening arguments.";
+    }
+
+    const line = bullets
+        .slice(-3)
+        .map((bullet, index) => `${index + 1}. ${String(bullet?.title || "Unknown Bullet")}`)
+        .join(" ");
+
+    return `Current evidence focus: ${line}`;
+}
+
 
 function tryEnableInvestigationToggleInObject(root, { maxDepth = 8 } = {}) {
     if (!root || typeof root !== "object") return false;
@@ -574,6 +695,190 @@ const investigationStartController = {
         return didAnything;
     },
 };
+
+async function triggerTrialStartFromMarker(markerText = "V3C| TRIAL_START") {
+    if (!trialController) return false;
+
+    try {
+        const result = await trialController.requestStartFromMarker({ markerText });
+        if (result?.started) {
+            console.log("[Dangan][Trial] Class Trial started from marker.");
+            syncTrialIntroUiWithState();
+            return true;
+        }
+
+        if (result?.reason) {
+            console.info(`[Dangan][Trial] Trial start not triggered: ${result.reason}`);
+        }
+    } catch (error) {
+        console.warn("[Dangan][Trial] Failed to start trial from marker:", error);
+    }
+
+    return false;
+}
+
+
+async function triggerTrialStartFromMapPin() {
+    if (!trialController) return false;
+
+    const state = trialController.getState?.();
+    if (state?.phase && state.phase !== trialController.phases?.IDLE) {
+        console.info(`[Dangan][Trial] Trial already active (${state.phase}).`);
+        return false;
+    }
+
+    const accepted = await openMonopadConfirmDialog({
+        title: "TRIAL GROUNDS",
+        message: "Start Class Trial from Trial Grounds?",
+        confirmLabel: "START TRIAL",
+        cancelLabel: "CANCEL",
+    });
+
+    if (!accepted) return false;
+
+    const result = trialController.requestStartFromUi?.({ source: "map_pin" });
+    if (result?.started) {
+        console.log("[Dangan][Trial] Class Trial started from map pin.");
+        syncTrialIntroUiWithState();
+        return true;
+    }
+
+    if (result?.reason) {
+        console.info(`[Dangan][Trial] Trial start not triggered: ${result.reason}`);
+    }
+
+    return false;
+}
+
+
+function isVisualNovelModeEnabled() {
+    const ctx = window.SillyTavern?.getContext?.();
+    const candidates = [
+        ctx?.visualNovelMode,
+        ctx?.vnMode,
+        ctx?.power_user?.visualNovelMode,
+        ctx?.power_user?.vnMode,
+        window.SillyTavern?.context?.visualNovelMode,
+        window.SillyTavern?.context?.vnMode,
+        window.power_user?.visualNovelMode,
+        window.power_user?.vnMode,
+    ];
+
+    for (const value of candidates) {
+        if (typeof value === "boolean") return value;
+    }
+
+    const labels = Array.from(document.querySelectorAll("label, .toggle-item, .menu_button, .inline-drawer-toggle"));
+    for (const el of labels) {
+        const text = String(el.textContent || el.getAttribute("aria-label") || "").toLowerCase();
+        if (!text.includes("visual novel")) continue;
+
+        const checkbox = el.querySelector('input[type="checkbox"]') || el.closest("label")?.querySelector?.('input[type="checkbox"]');
+        if (checkbox && typeof checkbox.checked === "boolean") return checkbox.checked;
+
+        const host = el.closest(".toggle-item, .menu_button, .inline-drawer-toggle") || el;
+        const pressed = host.getAttribute("aria-pressed");
+        if (pressed === "true") return true;
+        if (host.classList.contains("active") || host.classList.contains("enabled")) return true;
+    }
+
+    return false;
+}
+
+function ensureTrialIntroOverlay() {
+    let overlay = document.getElementById("dangan-trial-intro-overlay");
+    if (overlay && overlay.parentElement !== document.body) {
+        document.body.appendChild(overlay);
+    }
+
+    if (!overlay) {
+        overlay = document.createElement("div");
+        overlay.id = "dangan-trial-intro-overlay";
+        overlay.setAttribute("aria-hidden", "true");
+        overlay.innerHTML = `
+            <div class="dangan-trial-intro-backdrop"></div>
+            <div class="dangan-trial-intro-panel" role="dialog" aria-label="Class Trial Start">
+                <div class="dangan-trial-intro-kicker">CLASS TRIAL</div>
+                <div class="dangan-trial-intro-title">TRIAL PREPARATION</div>
+                <div class="dangan-trial-intro-actions">
+                    <button type="button" class="dangan-trial-intro-button start" data-action="start-discussion">START TRIAL</button>
+                    <button type="button" class="dangan-trial-intro-button skills" data-action="equip-skills">EQUIP SKILLS</button>
+                    <button type="button" class="dangan-trial-intro-button exit" data-action="cancel-trial">EXIT</button>
+                </div>
+                <div class="dangan-trial-intro-session-meta"></div>
+                <div class="dangan-trial-intro-summary-wrap">
+                    <div class="dangan-trial-intro-summary-label">CASE SUMMARY</div>
+                    <div class="dangan-trial-intro-summary">Case summary pending.</div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        overlay.addEventListener("click", (event) => {
+            if (event.target !== overlay) return;
+            trialController?.cancelTrial?.();
+        });
+
+        overlay.querySelector('[data-action="start-discussion"]')?.addEventListener("click", () => {
+            playSfx(sfx.click);
+            const result = trialController?.transitionTo?.(trialController?.phases?.DISCUSSION_PRE_DEBATE, "trial intro continue");
+            if (!result?.ok) {
+                console.warn("[Dangan][Trial] Could not advance to discussion phase:", result?.reason || "unknown");
+            }
+        });
+
+        overlay.querySelector('[data-action="equip-skills"]')?.addEventListener("click", () => {
+            playSfx(sfx.click);
+            try {
+                const panel = document.getElementById("dangan_monopad_panel");
+                const isOpen = panel?.classList.contains("open");
+                if (!isOpen) {
+                    document.getElementById("dangan_monopad_button")?.click();
+                }
+                setActiveMonopadTab("skills");
+            } catch (error) {
+                console.warn("[Dangan][Trial] Could not open skills tab from trial intro:", error);
+            }
+        });
+
+        overlay.querySelector('[data-action="cancel-trial"]')?.addEventListener("click", () => {
+            playSfx(sfx.click);
+            trialController?.cancelTrial?.();
+        });
+    }
+
+    return overlay;
+}
+
+function syncTrialIntroUiWithState() {
+    const overlay = ensureTrialIntroOverlay();
+    if (!overlay) return;
+
+    const state = trialController?.getState?.();
+    const phase = state?.phase || trialController?.phases?.IDLE;
+    const session = state?.session || null;
+    const active = phase === trialController?.phases?.TRIAL_INTRO;
+
+    overlay.classList.toggle("show", active);
+    overlay.setAttribute("aria-hidden", active ? "false" : "true");
+
+    const summaryEl = overlay.querySelector(".dangan-trial-intro-summary");
+    const metaEl = overlay.querySelector(".dangan-trial-intro-session-meta");
+    if (summaryEl) {
+        summaryEl.textContent = session?.caseSummary || "Case summary pending.";
+    }
+
+    if (metaEl) {
+        const bullets = Array.isArray(session?.truthBullets) ? session.truthBullets.length : 0;
+        const skills = Array.isArray(session?.equippedSkills) ? session.equippedSkills.length : 0;
+        metaEl.textContent = `TRUTH BULLETS: ${bullets} · EQUIPPED SKILLS: ${skills}`;
+    }
+
+    const vnActive = active && isVisualNovelModeEnabled();
+    document.body.classList.toggle("dangan-trial-vn-mode-active", vnActive);
+}
+
 
 
 /* =========================
@@ -995,6 +1300,7 @@ function stripV3CMarkersFromText(value) {
         if (canonical.startsWith("V3C|SOCIAL_UP:")) return false;
         if (canonical.startsWith("V3C|SOCIAL_DOWN:")) return false;
         if (canonical.includes("V3C|INVESTIGATIONSTART")) return false;
+        if (canonical.includes("V3C|TRIALSTART")) return false;
         return true;
     });
 
@@ -1004,6 +1310,7 @@ function stripV3CMarkersFromText(value) {
         .replace(/V3C\s*[|｜]\s*SOCIAL_UP:\s*([^\n\r]+)/gi, "")
         .replace(/V3C\s*[|｜]\s*SOCIAL_DOWN:\s*([^\n\r]+)/gi, "")
         .replace(/V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/gi, "")
+        .replace(TRIAL_START_REGEX, "")
         .replace(/^[ \t]+/gm, "")
         .trimStart();
 }
@@ -1134,6 +1441,19 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
             if (triggered) {
                 markInvestigationSignatureProcessed(signature, persistentSignature);
             }
+        });
+
+
+        // ---- Trial Start ----
+        const trialStartMarkers = parseTrialStartMarkers(rawText);
+        trialStartMarkers.forEach((marker, idx) => {
+            console.debug("[Dangan][Trial] Start marker detected", marker);
+            const signature = `TRIAL_START||${messageSignature}||${marker.index}||${idx}`;
+            const persistentSignature = buildTrialStartPersistentSignature(msgEl, marker, idx, rawText);
+            if (hasProcessedTrialStartSignature(signature, persistentSignature)) return;
+
+            markTrialStartSignatureProcessed(signature, persistentSignature);
+            void triggerTrialStartFromMarker(String(marker?.marker || "V3C| TRIAL_START"));
         });
 
         // ---- Marker Cleanup ----
@@ -2936,6 +3256,7 @@ jQuery(async () => {
                 getSfx: () => sfx,
                 getSetting: getMonopadSetting,
                 onWalkStep: () => awardXp(XP_REWARDS.walkStep, "walked"),
+                onTrialStartRequest: () => triggerTrialStartFromMapPin(),
             });
             mapPanelController?.renderMapPanel?.();
         } catch (error) {
@@ -3239,6 +3560,28 @@ if (initialRewardDifficulty !== getMonopadSetting("rewardDifficulty")) {
     setMonopadSetting("rewardDifficulty", initialRewardDifficulty);
 }
 ensureGlobalDebugUi();
+trialController = createTrialController({
+    extensionName,
+    extension_settings,
+    saveSettingsDebounced,
+    buildCaseSummary: buildTrialCaseSummary,
+    getEquippedSkills: getEquippedSkillsSnapshot,
+    getTruthBullets: getTruthBulletsSnapshot,
+    openConfirmDialog: openMonopadConfirmDialog,
+    onStateChange: () => syncTrialIntroUiWithState(),
+});
+window.danganTrial = trialController;
+window.startClassTrial = () => {
+    const result = trialController?.requestStartFromUi?.({ source: "manual" });
+    syncTrialIntroUiWithState();
+    return result;
+};
+window.cancelClassTrial = () => {
+    const result = trialController?.cancelTrial?.();
+    syncTrialIntroUiWithState();
+    return result;
+};
+syncTrialIntroUiWithState();
 rewards?.renderProgressionUi?.();
 itemsPanelController.loadInventoryState();
 applySettingsTabUI();
