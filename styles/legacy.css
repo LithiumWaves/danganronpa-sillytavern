@@ -34,6 +34,54 @@
     box-sizing: border-box;
 }
 
+
+.dangan-trial-discussion-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483644;
+    display: none;
+    align-items: flex-end;
+    justify-content: center;
+    pointer-events: none;
+    padding: 18px;
+    box-sizing: border-box;
+}
+
+.dangan-trial-discussion-overlay.active {
+    display: flex;
+}
+
+.dangan-trial-discussion-shell {
+    width: min(960px, 96vw);
+    border: 1px solid rgba(244, 80, 225, 0.55);
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(5, 8, 18, 0.9), rgba(8, 3, 19, 0.88));
+    box-shadow: 0 0 34px rgba(53, 185, 255, 0.24);
+    color: #e7f7ff;
+    padding: 14px 18px;
+}
+
+.dangan-trial-discussion-phase {
+    color: rgba(106, 222, 255, 0.9);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+}
+
+.dangan-trial-discussion-speaker {
+    color: rgba(255, 104, 222, 0.95);
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    margin-bottom: 6px;
+}
+
+.dangan-trial-discussion-line {
+    font-size: 22px;
+    line-height: 1.35;
+    text-shadow: 0 0 12px rgba(74, 199, 255, 0.3);
+}
+
 @media (max-width: 700px) {
     #dangan_monopad_button {
         top: max(10px, env(safe-area-inset-top, 0px));
@@ -3350,6 +3398,319 @@
     filter: brightness(1.08);
     box-shadow: 0 0 20px rgba(132, 221, 255, 0.58);
     outline: none;
+}
+
+
+.dangan-trial-intro-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483645;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    background: rgba(3, 8, 16, 0.62);
+}
+
+.dangan-trial-intro-overlay.active {
+    display: flex;
+    pointer-events: auto;
+}
+
+.dangan-trial-intro-shell {
+    box-sizing: border-box;
+    width: min(900px, 92vw);
+    min-height: min(460px, 84vh);
+    max-height: calc(100svh - 32px);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 20px;
+    border: 1px solid rgba(159, 232, 255, 0.48);
+    border-radius: 14px;
+    background: linear-gradient(165deg, rgba(7, 22, 39, 0.96), rgba(12, 38, 65, 0.9));
+    box-shadow: 0 16px 42px rgba(0, 0, 0, 0.45);
+    padding: 28px;
+    color: #eef9ff;
+}
+
+.dangan-trial-intro-header h2 {
+    margin: 0;
+    font-size: 30px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.dangan-trial-intro-header p {
+    margin: 10px 0 0;
+    color: rgba(224, 244, 255, 0.84);
+}
+
+.dangan-trial-intro-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.dangan-trial-intro-actions button {
+    border: 1px solid rgba(170, 234, 255, 0.58);
+    border-radius: 8px;
+    background: rgba(9, 29, 49, 0.92);
+    color: #ecf7ff;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 10px 16px;
+    cursor: pointer;
+}
+
+.dangan-trial-intro-actions button:hover,
+.dangan-trial-intro-actions button:focus-visible {
+    filter: brightness(1.12);
+    outline: none;
+}
+
+.dangan-trial-case-summary {
+    margin-top: auto;
+    border: 1px solid rgba(161, 226, 255, 0.36);
+    border-radius: 10px;
+    background: rgba(6, 18, 31, 0.72);
+    padding: 14px;
+}
+
+.dangan-trial-case-summary-label {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(173, 226, 255, 0.9);
+}
+
+.dangan-trial-case-summary p {
+    margin: 8px 0 0;
+    color: rgba(238, 250, 255, 0.96);
+}
+
+body.dangan-trial-vn-chat-hidden #chat {
+    visibility: hidden;
+}
+
+
+.dangan-trial-intro-cancel {
+    border-color: rgba(255, 167, 167, 0.5) !important;
+    background: rgba(67, 18, 24, 0.9) !important;
+    color: #ffe9ec !important;
+}
+
+
+.dangan-trial-intro-overlay {
+    overflow: hidden;
+    background: radial-gradient(circle at 50% 35%, rgba(43, 10, 66, 0.64), rgba(2, 4, 14, 0.9));
+}
+
+.dangan-trial-backdrop {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.dangan-trial-grid {
+    position: absolute;
+    inset: 0;
+    background:
+        repeating-linear-gradient(0deg, rgba(241, 46, 201, 0.26) 0 2px, transparent 2px 132px),
+        repeating-linear-gradient(90deg, rgba(74, 193, 255, 0.24) 0 2px, transparent 2px 170px);
+    mix-blend-mode: screen;
+    opacity: 0.6;
+}
+
+.dangan-trial-cylinder,
+.dangan-trial-cylinder-alt {
+    position: absolute;
+    right: -8%;
+    top: 8%;
+    width: min(56vw, 560px);
+    height: min(76vh, 760px);
+    border-radius: 50%;
+    border: 4px solid rgba(84, 214, 255, 0.7);
+    box-shadow: 0 0 48px rgba(78, 184, 255, 0.48), inset 0 0 26px rgba(76, 204, 255, 0.38);
+    transform: perspective(700px) rotateY(-26deg) rotateZ(8deg);
+    animation: dangan-trial-cylinder-spin 9s linear infinite;
+}
+
+.dangan-trial-cylinder::before,
+.dangan-trial-cylinder-alt::before {
+    content: "";
+    position: absolute;
+    inset: 10% 18%;
+    border-radius: 50%;
+    border: 2px solid rgba(127, 230, 255, 0.56);
+}
+
+.dangan-trial-cylinder-alt {
+    right: 4%;
+    top: 13%;
+    opacity: 0.52;
+    animation-duration: 13s;
+    animation-direction: reverse;
+}
+
+.dangan-trial-glow-orb {
+    position: absolute;
+    right: 18%;
+    top: 44%;
+    width: 260px;
+    height: 260px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(84, 220, 255, 0.38), rgba(84, 220, 255, 0));
+    filter: blur(4px);
+}
+
+.dangan-trial-intro-shell {
+    position: relative;
+    z-index: 1;
+    border: 1px solid rgba(246, 76, 224, 0.62);
+    background:
+        linear-gradient(180deg, rgba(10, 6, 24, 0.86), rgba(6, 5, 18, 0.94)),
+        radial-gradient(circle at 80% 30%, rgba(83, 180, 255, 0.22), transparent 55%);
+    box-shadow: 0 0 36px rgba(226, 45, 202, 0.22), 0 0 64px rgba(64, 178, 255, 0.2);
+}
+
+.dangan-trial-intro-shell::before,
+.dangan-trial-intro-shell::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, rgba(54, 218, 255, 0.85), rgba(242, 45, 214, 0.88), rgba(54, 218, 255, 0.85));
+}
+
+.dangan-trial-intro-shell::before { top: 0; }
+.dangan-trial-intro-shell::after { bottom: 0; }
+
+.dangan-trial-prep-label {
+    display: inline-block;
+    margin-bottom: 8px;
+    font-size: 15px;
+    letter-spacing: 0.06em;
+    color: #63d8ff;
+    text-shadow: 0 0 10px rgba(103, 219, 255, 0.6);
+}
+
+.dangan-trial-intro-header h2 {
+    color: #ff5bd5;
+    text-shadow: 0 0 14px rgba(255, 88, 226, 0.55);
+}
+
+.dangan-trial-case-summary {
+    border-color: rgba(70, 192, 255, 0.58);
+    background: linear-gradient(165deg, rgba(9, 14, 35, 0.88), rgba(25, 8, 34, 0.85));
+}
+
+.dangan-trial-intro-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.dangan-trial-intro-start {
+    grid-column: 1 / -1;
+    font-size: 26px;
+    letter-spacing: 0.06em;
+    border-color: rgba(79, 225, 255, 0.72) !important;
+    background: linear-gradient(90deg, rgba(29, 103, 158, 0.92), rgba(45, 188, 252, 0.9)) !important;
+    color: #f3fbff !important;
+}
+
+.dangan-trial-intro-skills {
+    border-color: rgba(63, 218, 255, 0.62) !important;
+    background: linear-gradient(90deg, rgba(27, 100, 149, 0.82), rgba(45, 180, 250, 0.78)) !important;
+}
+
+.dangan-trial-intro-cancel {
+    border-color: rgba(255, 137, 233, 0.58) !important;
+    background: linear-gradient(90deg, rgba(102, 20, 90, 0.85), rgba(66, 18, 72, 0.82)) !important;
+}
+
+@keyframes dangan-trial-cylinder-spin {
+    from { transform: perspective(700px) rotateY(-26deg) rotateZ(8deg) rotate(0deg); }
+    to { transform: perspective(700px) rotateY(-26deg) rotateZ(8deg) rotate(360deg); }
+}
+
+@media (max-width: 700px) {
+ 
+    .dangan-trial-discussion-overlay {
+        padding: 8px;
+    }
+
+    .dangan-trial-discussion-shell {
+        width: 100%;
+        padding: 12px;
+    }
+
+    .dangan-trial-discussion-line {
+        font-size: 17px;
+    }
+
+    .dangan-trial-intro-overlay {
+        align-items: flex-end;
+        justify-content: center;
+        padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
+        box-sizing: border-box;
+        overflow-y: auto;
+    }
+
+    .dangan-trial-intro-shell {
+        width: min(100%, 540px);
+        min-height: 0;
+        max-height: calc(100svh - max(16px, env(safe-area-inset-top) + env(safe-area-inset-bottom)));
+        border-radius: 12px;
+        padding: 14px;
+        gap: 12px;
+        overflow: auto;
+        margin: 0 auto;
+    }
+
+    .dangan-trial-intro-header h2 {
+        font-size: 22px;
+    }
+
+    .dangan-trial-intro-header p {
+        font-size: 13px;
+    }
+
+    .dangan-trial-cylinder,
+    .dangan-trial-cylinder-alt {
+        right: -26%;
+        top: 14%;
+        width: 480px;
+        height: 620px;
+        opacity: 0.5;
+    }
+
+    .dangan-trial-glow-orb {
+        right: -6%;
+        top: 50%;
+        width: 180px;
+        height: 180px;
+    }
+
+    .dangan-trial-intro-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+
+    .dangan-trial-intro-actions button {
+        width: 100%;
+        text-align: center;
+    }
+
+    .dangan-trial-intro-start {
+        font-size: 19px;
+    }
 }
 
 .map-presence-pin {
