@@ -3370,8 +3370,10 @@
 }
 
 .dangan-trial-intro-shell {
+    box-sizing: border-box;
     width: min(900px, 92vw);
     min-height: min(460px, 84vh);
+    max-height: calc(100svh - 32px);
     display: flex;
     flex-direction: column;
     justify-content: space-between;
@@ -3458,16 +3460,18 @@ body.dangan-trial-vn-chat-hidden #chat {
         justify-content: center;
         padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
         box-sizing: border-box;
+        overflow-y: auto;
     }
 
     .dangan-trial-intro-shell {
-        width: 100%;
+        width: min(100%, 540px);
         min-height: 0;
-        max-height: min(100dvh - 16px, 100vh - 16px);
+        max-height: calc(100svh - max(16px, env(safe-area-inset-top) + env(safe-area-inset-bottom)));
         border-radius: 12px;
         padding: 14px;
         gap: 12px;
         overflow: auto;
+        margin: 0 auto;
     }
 
     .dangan-trial-intro-header h2 {
