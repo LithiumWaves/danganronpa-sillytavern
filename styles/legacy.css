@@ -3352,6 +3352,144 @@
     outline: none;
 }
 
+
+.dangan-trial-intro-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483645;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    background: rgba(3, 8, 16, 0.62);
+}
+
+.dangan-trial-intro-overlay.active {
+    display: flex;
+    pointer-events: auto;
+}
+
+.dangan-trial-intro-shell {
+    width: min(900px, 92vw);
+    min-height: min(460px, 84vh);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 20px;
+    border: 1px solid rgba(159, 232, 255, 0.48);
+    border-radius: 14px;
+    background: linear-gradient(165deg, rgba(7, 22, 39, 0.96), rgba(12, 38, 65, 0.9));
+    box-shadow: 0 16px 42px rgba(0, 0, 0, 0.45);
+    padding: 28px;
+    color: #eef9ff;
+}
+
+.dangan-trial-intro-header h2 {
+    margin: 0;
+    font-size: 30px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.dangan-trial-intro-header p {
+    margin: 10px 0 0;
+    color: rgba(224, 244, 255, 0.84);
+}
+
+.dangan-trial-intro-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.dangan-trial-intro-actions button {
+    border: 1px solid rgba(170, 234, 255, 0.58);
+    border-radius: 8px;
+    background: rgba(9, 29, 49, 0.92);
+    color: #ecf7ff;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 10px 16px;
+    cursor: pointer;
+}
+
+.dangan-trial-intro-actions button:hover,
+.dangan-trial-intro-actions button:focus-visible {
+    filter: brightness(1.12);
+    outline: none;
+}
+
+.dangan-trial-case-summary {
+    margin-top: auto;
+    border: 1px solid rgba(161, 226, 255, 0.36);
+    border-radius: 10px;
+    background: rgba(6, 18, 31, 0.72);
+    padding: 14px;
+}
+
+.dangan-trial-case-summary-label {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(173, 226, 255, 0.9);
+}
+
+.dangan-trial-case-summary p {
+    margin: 8px 0 0;
+    color: rgba(238, 250, 255, 0.96);
+}
+
+body.dangan-trial-vn-chat-hidden #chat {
+    visibility: hidden;
+}
+
+
+.dangan-trial-intro-cancel {
+    border-color: rgba(255, 167, 167, 0.5) !important;
+    background: rgba(67, 18, 24, 0.9) !important;
+    color: #ffe9ec !important;
+}
+
+@media (max-width: 700px) {
+    .dangan-trial-intro-overlay {
+        align-items: flex-end;
+        justify-content: center;
+        padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
+        box-sizing: border-box;
+    }
+
+    .dangan-trial-intro-shell {
+        width: 100%;
+        min-height: 0;
+        max-height: min(100dvh - 16px, 100vh - 16px);
+        border-radius: 12px;
+        padding: 14px;
+        gap: 12px;
+        overflow: auto;
+    }
+
+    .dangan-trial-intro-header h2 {
+        font-size: 22px;
+    }
+
+    .dangan-trial-intro-header p {
+        font-size: 13px;
+    }
+
+    .dangan-trial-intro-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+
+    .dangan-trial-intro-actions button {
+        width: 100%;
+        text-align: center;
+    }
+}
+
 .map-presence-pin {
     position: absolute;
     left: 50%;
