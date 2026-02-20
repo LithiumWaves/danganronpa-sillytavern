@@ -43,11 +43,25 @@ export function createTrialController({
     getEquippedSkills,
     getTruthBullets,
     openConfirmDialog,
+    onStateChange,
 }) {
     const state = {
         phase: TRIAL_PHASES.IDLE,
         session: null,
     };
+
+
+    function emitStateChange(eventName = "update") {
+        try {
+            onStateChange?.({
+                event: eventName,
+                phase: state.phase,
+                session: deepClone(state.session),
+            });
+        } catch (error) {
+            console.warn("[Dangan][Trial] State change callback failed:", error);
+        }
+    }
 
     function ensureStore() {
         extension_settings[extensionName] ||= {};
@@ -66,6 +80,7 @@ export function createTrialController({
         store.session = deepClone(state.session);
         store.updatedAt = Date.now();
         saveSettingsDebounced?.();
+        emitStateChange("persist");
     }
 
     function initializeFromSettings() {
@@ -83,6 +98,7 @@ export function createTrialController({
         }
 
         persistState();
+        emitStateChange("init");
     }
 
     function canTransition(toPhase) {

@@ -45,7 +45,6 @@ The extension scans assistant messages for these patterns:
 - `V3C| SOCIAL_DOWN: <name>`
 - `V3C| INVESTIGATION_START` (plays Investigation Start banner/sfx and attempts to enable the `Investigation Time` toggle in your current preset)
 - `V3C| TRIAL_START` (opens a confirmation prompt to begin Class Trial phase flow)
-- `V3C| BODY_DISCOVERY` (plays a separate static/shake body discovery cutscene using `assets/sfx/etc/despairnoise.mp3`)
 
 ### Examples
 ```text
@@ -55,7 +54,6 @@ V3C| SOCIAL_UP: Aoi Asahina
 V3C| SOCIAL_DOWN: Byakuya Togami
 V3C| INVESTIGATION_START
 V3C| TRIAL_START
-V3C| BODY_DISCOVERY
 ```
 
 ## Typical usage flow

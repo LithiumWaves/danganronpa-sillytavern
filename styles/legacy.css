@@ -4203,379 +4203,125 @@
     background: rgba(122, 29, 73, 0.86);
 }
 
-#dangan-vn-overlay {
+/* =========================
+   TRIAL INTRO OVERLAY (PHASE 3 SHELL)
+   ========================= */
+
+#dangan-trial-intro-overlay {
     position: fixed;
     inset: 0;
-    z-index: 2147483000;
     display: none;
-    align-items: end;
+    align-items: center;
     justify-content: center;
-    pointer-events: none;
-    background: transparent;
-    --dangan-vn-bottom-offset: 0px;
+    z-index: 2147482500;
 }
 
-#dangan-vn-overlay.active {
+#dangan-trial-intro-overlay.show {
     display: flex;
-    pointer-events: none;
 }
 
-.dangan-vn-frame {
-    position: relative;
-    width: min(980px, calc(100vw - 18px));
-    min-height: 170px;
-    margin: 0 9px calc(var(--dangan-vn-bottom-offset) + 10px);
-    border-radius: 12px;
-    border: 1px solid rgba(191, 229, 255, 0.45);
-    background: linear-gradient(180deg, rgba(8, 12, 20, 0.96), rgba(6, 9, 14, 0.97));
-    box-shadow: 0 -3px 20px rgba(0, 0, 0, 0.45);
-    color: #f4f8ff;
-    padding: 14px 14px 10px;
-    cursor: pointer;
-    pointer-events: auto;
-}
-
-.dangan-vn-controls {
+.dangan-trial-intro-backdrop {
     position: absolute;
-    top: 8px;
-    right: 8px;
-    display: inline-flex;
-    gap: 6px;
-    z-index: 2;
+    inset: 0;
+    background: radial-gradient(circle at 50% 35%, rgba(42, 18, 66, 0.42), rgba(0, 0, 0, 0.86));
+    backdrop-filter: blur(3px);
 }
 
-.dangan-vn-control {
-    height: 26px;
-    border-radius: 6px;
-    border: 1px solid rgba(173, 205, 255, 0.5);
-    background: rgba(22, 31, 47, 0.9);
-    color: #f3f8ff;
-    font-size: 11px;
-    letter-spacing: 0.08em;
-    line-height: 1;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-}
-
-.dangan-vn-control:hover,
-.dangan-vn-control:focus-visible {
-    background: rgba(45, 63, 95, 0.95);
-    outline: none;
-}
-
-.dangan-vn-transcript-toggle {
-    padding: 0 9px;
-    font-family: "Orbitron", "Rajdhani", monospace;
-}
-
-.dangan-vn-frame.move-unlocked {
-    cursor: move;
-}
-
-.dangan-vn-frame.dangan-vn-custom-pos {
-    position: fixed;
-    margin: 0;
-}
-
-.dangan-vn-lock {
+.dangan-trial-intro-panel {
     position: relative;
-    width: 26px;
-    padding: 0;
-    font-size: 13px;
-}
-
-.dangan-vn-transcript {
-    position: fixed;
-    inset: 40px min(24px, 2vw) calc(var(--dangan-vn-bottom-offset) + 24px) min(24px, 2vw);
-    z-index: 2147483645;
-    display: none;
-    flex-direction: column;
-    border: 1px solid rgba(173, 205, 255, 0.45);
-    border-radius: 12px;
-    background: linear-gradient(180deg, rgba(8, 12, 20, 0.98), rgba(6, 9, 14, 0.98));
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.48);
+    width: min(920px, 92vw);
+    min-height: min(560px, 88vh);
+    border: 1px solid rgba(179, 228, 255, 0.4);
+    border-radius: 20px;
+    background: linear-gradient(180deg, rgba(8, 18, 36, 0.92), rgba(3, 8, 17, 0.95));
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.55);
     overflow: hidden;
-    pointer-events: auto;
+    padding: 40px 42px 150px;
+    color: #e9f6ff;
 }
 
-#dangan-vn-overlay.transcript-open .dangan-vn-transcript {
-    display: flex;
-}
-
-.dangan-vn-transcript-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 10px 12px;
-    border-bottom: 1px solid rgba(166, 201, 248, 0.3);
-    background: linear-gradient(90deg, rgba(39, 47, 67, 0.95), rgba(62, 80, 116, 0.9));
-}
-
-.dangan-vn-transcript-title {
-    font-family: "Orbitron", "Rajdhani", monospace;
+.dangan-trial-intro-kicker {
     font-size: 12px;
-    letter-spacing: 0.12em;
-    color: #f5f8ff;
-    text-transform: uppercase;
+    letter-spacing: 0.24em;
+    opacity: 0.85;
 }
 
-.dangan-vn-transcript-close {
-    width: 24px;
-    height: 24px;
-    border-radius: 6px;
-    border: 1px solid rgba(173, 205, 255, 0.45);
-    background: rgba(19, 26, 41, 0.9);
-    color: #f3f8ff;
+.dangan-trial-intro-title {
+    margin-top: 8px;
+    font-size: clamp(30px, 4.4vw, 52px);
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    color: #b8ecff;
+}
+
+.dangan-trial-intro-actions {
+    margin-top: 30px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.dangan-trial-intro-button {
+    border: 1px solid rgba(162, 227, 255, 0.6);
+    background: linear-gradient(180deg, rgba(20, 81, 117, 0.75), rgba(9, 33, 60, 0.9));
+    color: #d9f7ff;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    border-radius: 10px;
+    padding: 10px 16px;
     cursor: pointer;
 }
 
-.dangan-vn-transcript-close:hover,
-.dangan-vn-transcript-close:focus-visible {
-    background: rgba(45, 63, 95, 0.95);
+.dangan-trial-intro-button:hover,
+.dangan-trial-intro-button:focus-visible {
+    filter: brightness(1.08);
     outline: none;
 }
 
-.dangan-vn-transcript-body {
-    flex: 1;
-    overflow: auto;
-    padding: 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+.dangan-trial-intro-button.start {
+    border-color: rgba(153, 241, 255, 0.86);
+    box-shadow: 0 0 16px rgba(85, 207, 255, 0.34);
 }
 
-.dangan-vn-transcript-entry {
-    border: 1px solid rgba(150, 189, 243, 0.28);
-    border-radius: 10px;
-    background: rgba(14, 21, 34, 0.92);
-    padding: 8px 10px;
+.dangan-trial-intro-button.exit {
+    border-color: rgba(255, 157, 157, 0.7);
+    background: linear-gradient(180deg, rgba(116, 30, 48, 0.72), rgba(52, 8, 20, 0.9));
 }
 
-.dangan-vn-transcript-speaker {
-    font-family: "Orbitron", "Rajdhani", monospace;
-    font-size: 10px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: #b9d8ff;
-    margin-bottom: 5px;
-}
-
-.dangan-vn-transcript-message {
-    font-size: 14px;
-    line-height: 1.4;
-    color: #f4f8ff;
-}
-
-.dangan-vn-transcript-empty {
-    color: rgba(189, 217, 255, 0.85);
-    font-size: 13px;
+.dangan-trial-intro-session-meta {
+    margin-top: 18px;
+    font-size: 12px;
+    opacity: 0.86;
     letter-spacing: 0.06em;
 }
 
-.dangan-vn-compose-docked {
-    border: 1px solid rgba(173, 205, 255, 0.45) !important;
-    border-radius: 0 0 12px 12px !important;
-    border-top: 0 !important;
-    background: linear-gradient(180deg, rgba(7, 11, 18, 0.97), rgba(5, 8, 14, 0.98)) !important;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42) !important;
-    padding: 4px 8px 6px !important;
-    backdrop-filter: blur(1.5px);
-    display: grid !important;
-    grid-template-columns: auto 1fr auto;
-    align-items: center;
-    gap: 6px;
+.dangan-trial-intro-summary-wrap {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-top: 1px solid rgba(140, 208, 238, 0.35);
+    background: linear-gradient(180deg, rgba(4, 20, 38, 0.88), rgba(2, 8, 14, 0.94));
+    padding: 16px 22px 18px;
 }
 
-.dangan-vn-compose-collapse-toggle {
-    width: 24px;
-    height: 24px;
-    border-radius: 6px !important;
-    border: 1px solid rgba(146, 183, 236, 0.45) !important;
-    background: rgba(21, 31, 49, 0.92) !important;
-    color: #edf5ff !important;
-    cursor: pointer;
-    padding: 0 !important;
-    line-height: 1;
-}
-
-.dangan-vn-compose-collapse-toggle:hover {
-    background: rgba(37, 52, 79, 0.96) !important;
-}
-
-.dangan-vn-compose-docked.dangan-vn-compose-collapsed {
-    min-height: 32px;
-    padding-bottom: 4px !important;
-}
-
-.dangan-vn-compose-docked.dangan-vn-compose-collapsed > :not(.dangan-vn-compose-collapse-toggle) {
-    display: none !important;
-}
-
-.dangan-vn-compose-docked #send_textarea,
-.dangan-vn-compose-docked textarea,
-.dangan-vn-compose-docked .send_textarea {
-    min-height: 34px !important;
-    border-radius: 8px !important;
-    border: 1px solid rgba(146, 183, 236, 0.4) !important;
-    background: rgba(14, 20, 32, 0.9) !important;
-    color: #f2f7ff !important;
-    font-family: "Rajdhani", "Orbitron", monospace;
-    font-size: 14px;
-    line-height: 1.25;
-    padding: 6px 10px !important;
-    width: 100%;
-}
-
-.dangan-vn-compose-docked button,
-.dangan-vn-compose-docked .menu_button,
-.dangan-vn-compose-docked [type="button"] {
-    border-radius: 8px !important;
-    border: 1px solid rgba(146, 183, 236, 0.45) !important;
-    background: rgba(21, 31, 49, 0.92) !important;
-    color: #edf5ff !important;
-}
-
-.dangan-vn-compose-docked button:hover,
-.dangan-vn-compose-docked .menu_button:hover,
-.dangan-vn-compose-docked [type="button"]:hover {
-    background: rgba(37, 52, 79, 0.96) !important;
-}
-
-.dangan-vn-nameplate {
-    display: inline-flex;
-    margin-bottom: 8px;
-    padding: 3px 9px;
-    border-radius: 999px;
-    background: linear-gradient(90deg, #272f43, #3e5074);
-    border: 1px solid rgba(173, 205, 255, 0.5);
-    font-size: 10px;
-    letter-spacing: 0.14em;
-    color: #f2f8ff;
-    font-family: "Orbitron", "Rajdhani", monospace;
-}
-
-.dangan-vn-text {
-    min-height: 78px;
-    font-size: clamp(16px, 2.2vw, 24px);
-    line-height: 1.35;
-    letter-spacing: 0.01em;
-    font-family: "Rajdhani", "Orbitron", monospace;
-}
-
-.dangan-vn-input {
-    margin-top: 10px;
-    border-top: 1px solid rgba(176, 211, 255, 0.24);
-    padding-top: 9px;
+.dangan-trial-intro-summary-label {
     font-size: 11px;
-    letter-spacing: 0.1em;
-    color: rgba(167, 204, 251, 0.92);
-    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    opacity: 0.8;
 }
 
-#chat.dangan-vn-hidden {
+.dangan-trial-intro-summary {
+    margin-top: 8px;
+    font-size: 14px;
+    line-height: 1.45;
+    color: #dbf3ff;
+}
+
+body.dangan-trial-vn-mode-active #chat,
+body.dangan-trial-vn-mode-active #send_form,
+body.dangan-trial-vn-mode-active #form_sheld,
+body.dangan-trial-vn-mode-active #chat-input-container,
+body.dangan-trial-vn-mode-active #chat_form {
     visibility: hidden !important;
-    pointer-events: none !important;
-}
-
-
-
-@media (max-width: 900px) and (orientation: portrait) {
-    #dangan-vn-overlay {
-        align-items: flex-end;
-    }
-
-    .dangan-vn-frame {
-        width: calc(100vw - 12px);
-        margin: 0 6px calc(var(--dangan-vn-bottom-offset) + 6px + env(safe-area-inset-bottom));
-        min-height: 128px;
-        max-height: 44vh;
-        overflow: auto;
-        padding: 9px 9px 7px;
-    }
-
-    .dangan-vn-controls {
-        top: 6px;
-        right: 6px;
-        gap: 4px;
-    }
-
-    .dangan-vn-control {
-        height: 22px;
-        font-size: 10px;
-    }
-
-    .dangan-vn-transcript {
-        inset: max(10px, env(safe-area-inset-top)) 8px calc(var(--dangan-vn-bottom-offset) + 10px + env(safe-area-inset-bottom)) 8px;
-    }
-
-    .dangan-vn-compose-docked {
-        width: 100%;
-        min-width: 0;
-        padding: 4px 6px 6px !important;
-        gap: 4px;
-        grid-template-columns: 22px minmax(0, 1fr) auto;
-        box-sizing: border-box;
-    }
-
-    .dangan-vn-compose-collapse-toggle {
-        width: 22px;
-        height: 22px;
-    }
-
-    .dangan-vn-compose-docked #send_textarea,
-    .dangan-vn-compose-docked textarea,
-    .dangan-vn-compose-docked .send_textarea {
-        min-width: 0;
-        font-size: 13px;
-        padding: 5px 8px !important;
-    }
-
-    .dangan-vn-text {
-        min-height: 56px;
-        font-size: clamp(14px, 4.2vw, 18px);
-        line-height: 1.28;
-    }
-
-    .dangan-vn-input {
-        margin-top: 6px;
-        padding-top: 5px;
-        font-size: 9px;
-    }
-}
-
-@media (max-width: 480px) {
-    #dangan-vn-overlay {
-        align-items: flex-end;
-        background: transparent;
-    }
-
-    .dangan-vn-frame {
-        width: calc(100vw - 10px);
-        margin: 0 5px calc(6px + env(safe-area-inset-bottom));
-        min-height: 150px;
-        border-radius: 10px;
-        padding: 10px 10px 8px;
-    }
-
-    .dangan-vn-nameplate {
-        font-size: 10px;
-        letter-spacing: 0.1em;
-        margin-bottom: 8px;
-    }
-
-    .dangan-vn-text {
-        min-height: 64px;
-        font-size: clamp(15px, 4.4vw, 20px);
-        line-height: 1.3;
-    }
-
-    .dangan-vn-input {
-        margin-top: 8px;
-        padding-top: 6px;
-        font-size: 9px;
-        letter-spacing: 0.08em;
-    }
 }
