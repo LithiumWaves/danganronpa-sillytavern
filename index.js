@@ -1770,7 +1770,8 @@ function createTrialDiscussionController() {
         if (!cleaned.trim()) return [];
 
         return cleaned
-            .split(/?
+            .split(/
+?
 /)
             .map(line => line.trim())
             .filter(Boolean)
