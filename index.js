@@ -1964,6 +1964,7 @@ function stripV3CMarkersFromText(value) {
         if (canonical.includes("V3C|DAYANNOUN")) return false;
         if (canonical.includes("V3C|NIGHTANNOUN")) return false;
         if (canonical.includes("V3C|BDA")) return false;
+        if (canonical.includes("V3C|BODYDISCOVERY")) return false;
         return true;
     });
 
@@ -1977,6 +1978,7 @@ function stripV3CMarkersFromText(value) {
         .replace(/V3C\s*[|｜]\s*DAY(?:\s*[_\-]?\s*)ANNOUN\b/gi, "")
         .replace(/V3C\s*[|｜]\s*NIGHT(?:\s*[_\-]?\s*)ANNOUN\b/gi, "")
         .replace(/V3C\s*[|｜]\s*BDA\b/gi, "")
+        .replace(/V3C\s*[|｜]\s*BODY(?:\s*[_\-]?\s*)DISCOVERY\b/gi, "")
         .replace(/^[ \t]+/gm, "")
         .trimStart();
 }
