@@ -1545,7 +1545,7 @@ async function triggerTrialStartFromMapPin() {
 
 function createTrialIntroOstController() {
     const candidateTracks = buildExtensionPathCandidates()
-        .map(basePath => `${basePath}/assets/classtrial/trialunderground/trialunderground.mp3`);
+        .map(basePath => `${basePath}/assets/classtrial/trialunderground.mp3`);
 
     let activeAudio = null;
     let activeTrackIndex = -1;
