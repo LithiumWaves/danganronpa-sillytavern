@@ -1544,12 +1544,19 @@ async function triggerTrialStartFromMapPin() {
 }
 
 function createTrialIntroOstController() {
-    const candidateTracks = [
-        "trialunderground.mp3",
-    ].map(fileName => `${extensionFolderPath}/assets/classtrial/trialunderground/${fileName}`);
+    const candidateTracks = buildExtensionPathCandidates()
+        .map(basePath => `${basePath}/assets/classtrial/trialunderground/trialunderground.mp3`);
 
     let activeAudio = null;
     let activeTrackIndex = -1;
+
+    function moveToNextTrack() {
+        if (!activeAudio) return;
+        if (activeTrackIndex >= candidateTracks.length - 1) return;
+        activeTrackIndex += 1;
+        activeAudio.src = candidateTracks[activeTrackIndex];
+        activeAudio.load();
+    }
 
     function stop() {
         if (!activeAudio) return;
@@ -1559,6 +1566,7 @@ function createTrialIntroOstController() {
 
     function play() {
         if (!extension_settings[extensionName]?.monopadSounds) return;
+        if (!candidateTracks.length) return;
 
         if (!activeAudio) {
             activeTrackIndex = 0;
@@ -1566,11 +1574,14 @@ function createTrialIntroOstController() {
             activeAudio.loop = true;
             activeAudio.preload = "auto";
             activeAudio.volume = 0.42;
+
             activeAudio.addEventListener("error", () => {
-                if (activeTrackIndex >= candidateTracks.length - 1) return;
-                activeTrackIndex += 1;
-                activeAudio.src = candidateTracks[activeTrackIndex];
-                activeAudio.load();
+                const previousIndex = activeTrackIndex;
+                moveToNextTrack();
+                if (previousIndex === activeTrackIndex) {
+                    console.warn("[Dangan][Trial] Could not load trialunderground.mp3 from any extension path candidate.");
+                    return;
+                }
                 activeAudio.play().catch(() => {});
             });
         }
