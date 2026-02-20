@@ -1604,20 +1604,27 @@ function ensureTrialIntroOverlay() {
     overlay.className = "dangan-trial-intro-overlay";
     overlay.setAttribute("aria-hidden", "true");
     overlay.innerHTML = `
+        <div class="dangan-trial-backdrop" aria-hidden="true">
+            <div class="dangan-trial-grid"></div>
+            <div class="dangan-trial-cylinder"></div>
+            <div class="dangan-trial-cylinder dangan-trial-cylinder-alt"></div>
+            <div class="dangan-trial-glow-orb"></div>
+        </div>
         <div class="dangan-trial-intro-shell" role="dialog" aria-modal="false" aria-labelledby="dangan-trial-intro-title">
             <header class="dangan-trial-intro-header">
+                <div class="dangan-trial-prep-label">Court Preparation</div>
                 <h2 id="dangan-trial-intro-title">Class Trial</h2>
-                <p>Prepare your opening arguments before entering the debate floor.</p>
+                <p>Sharpen your Truth Bullets and ready your opening statement.</p>
             </header>
-            <div class="dangan-trial-intro-actions">
-                <button type="button" class="dangan-trial-intro-start" id="dangan-trial-intro-start">Start Trial</button>
-                <button type="button" class="dangan-trial-intro-skills" id="dangan-trial-intro-skills">Equip Skills</button>
-                <button type="button" class="dangan-trial-intro-cancel" id="dangan-trial-intro-cancel">Cancel Trial</button>
-            </div>
             <section class="dangan-trial-case-summary" aria-live="polite">
                 <div class="dangan-trial-case-summary-label">Case Summary</div>
                 <p id="dangan-trial-case-summary-text">Case summary pending.</p>
             </section>
+            <div class="dangan-trial-intro-actions">
+                <button type="button" class="dangan-trial-intro-skills" id="dangan-trial-intro-skills">Equip Skills</button>
+                <button type="button" class="dangan-trial-intro-cancel" id="dangan-trial-intro-cancel">Withdraw</button>
+                <button type="button" class="dangan-trial-intro-start" id="dangan-trial-intro-start">Begin Class Trial</button>
+            </div>
         </div>
     `;
 
