@@ -33,6 +33,7 @@ let socialPanelController = null;
 let itemsPanelController = null;
 let mapPanelController = null;
 let trialController = null;
+let trialIntroUiController = null;
 let hasSelectedMonopadTab = false;
 let monokumaLessonState = null;
 let vnModeController = null;
@@ -1492,6 +1493,7 @@ async function triggerTrialStartFromMarker(markerText = "V3C| TRIAL_START") {
 
     try {
         const result = await trialController.requestStartFromMarker({ markerText });
+        trialIntroUiController?.sync?.();
         if (result?.started) {
             console.log("[Dangan][Trial] Class Trial started from marker.");
             return true;
@@ -1527,6 +1529,7 @@ async function triggerTrialStartFromMapPin() {
     if (!accepted) return false;
 
     const result = trialController.requestStartFromUi?.({ source: "map_pin" });
+    trialIntroUiController?.sync?.();
     if (result?.started) {
         console.log("[Dangan][Trial] Class Trial started from map pin.");
         return true;
@@ -1537,6 +1540,97 @@ async function triggerTrialStartFromMapPin() {
     }
 
     return false;
+}
+
+function ensureTrialIntroOverlay() {
+    let overlay = document.getElementById("dangan-trial-intro-overlay");
+    if (overlay) return overlay;
+
+    overlay = document.createElement("section");
+    overlay.id = "dangan-trial-intro-overlay";
+    overlay.className = "dangan-trial-intro-overlay";
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.innerHTML = `
+        <div class="dangan-trial-intro-shell" role="dialog" aria-modal="false" aria-labelledby="dangan-trial-intro-title">
+            <header class="dangan-trial-intro-header">
+                <h2 id="dangan-trial-intro-title">Class Trial</h2>
+                <p>Prepare your opening arguments before entering the debate floor.</p>
+            </header>
+            <div class="dangan-trial-intro-actions">
+                <button type="button" class="dangan-trial-intro-start" id="dangan-trial-intro-start">Start Trial</button>
+                <button type="button" class="dangan-trial-intro-skills" id="dangan-trial-intro-skills">Equip Skills</button>
+            </div>
+            <section class="dangan-trial-case-summary" aria-live="polite">
+                <div class="dangan-trial-case-summary-label">Case Summary</div>
+                <p id="dangan-trial-case-summary-text">Case summary pending.</p>
+            </section>
+        </div>
+    `;
+
+    const startBtn = overlay.querySelector("#dangan-trial-intro-start");
+    startBtn?.addEventListener("click", () => {
+        if (!trialController) return;
+        const result = trialController.transitionTo?.(trialController.phases.DISCUSSION_PRE_DEBATE, "trial_intro_start");
+        if (!result?.ok) {
+            console.info("[Dangan][Trial] Could not enter discussion_pre_debate from trial_intro.");
+        }
+        trialIntroUiController?.sync?.();
+    });
+
+    const skillsBtn = overlay.querySelector("#dangan-trial-intro-skills");
+    skillsBtn?.addEventListener("click", () => {
+        const panel = document.getElementById("dangan_monopad_panel");
+        if (panel && !panel.classList.contains("open")) {
+            document.getElementById("dangan_monopad_button")?.click();
+        }
+        setActiveMonopadTab("skills");
+        itemsPanelController?.renderSkillsItemsPanel?.();
+    });
+
+    document.body.appendChild(overlay);
+    return overlay;
+}
+
+function createTrialIntroUiController() {
+    let isVisible = false;
+
+    function setVisible(nextVisible) {
+        const overlay = ensureTrialIntroOverlay();
+        overlay.classList.toggle("active", nextVisible);
+        overlay.setAttribute("aria-hidden", nextVisible ? "false" : "true");
+
+        const vnModeOn = !!getMonopadSetting("vnModeEnabled");
+        document.body.classList.toggle("dangan-trial-vn-chat-hidden", nextVisible && vnModeOn);
+
+        if (nextVisible && !isVisible) {
+            playSfx?.(sfx?.open);
+        } else if (!nextVisible && isVisible) {
+            playSfx?.(sfx?.close);
+        }
+
+        isVisible = nextVisible;
+    }
+
+    function sync() {
+        if (!trialController) {
+            setVisible(false);
+            return;
+        }
+
+        const trialState = trialController.getState?.();
+        const isTrialIntro = trialState?.phase === trialController.phases?.TRIAL_INTRO;
+        const overlay = ensureTrialIntroOverlay();
+        const summaryEl = overlay.querySelector("#dangan-trial-case-summary-text");
+        if (summaryEl) {
+            summaryEl.textContent = String(trialState?.session?.caseSummary || "Case summary pending.");
+        }
+
+        setVisible(isTrialIntro);
+    }
+
+    return {
+        sync,
+    };
 }
 
 
@@ -2667,6 +2761,7 @@ function applySettingsTabUI() {
 
     applyCrtSettings();
     vnModeController?.setEnabled?.(!!tab.vnModeEnabled);
+    trialIntroUiController?.sync?.();
 }
 
 function saveCharacters() {
@@ -4382,9 +4477,19 @@ trialController = createTrialController({
     getTruthBullets: getTruthBulletsSnapshot,
     openConfirmDialog: openMonopadConfirmDialog,
 });
+trialIntroUiController = createTrialIntroUiController();
+trialIntroUiController?.sync?.();
 window.danganTrial = trialController;
-window.startClassTrial = () => trialController?.requestStartFromUi?.({ source: "manual" });
-window.cancelClassTrial = () => trialController?.cancelTrial?.();
+window.startClassTrial = () => {
+    const result = trialController?.requestStartFromUi?.({ source: "manual" });
+    trialIntroUiController?.sync?.();
+    return result;
+};
+window.cancelClassTrial = () => {
+    const result = trialController?.cancelTrial?.();
+    trialIntroUiController?.sync?.();
+    return result;
+};
 rewards?.renderProgressionUi?.();
 itemsPanelController.loadInventoryState();
 applySettingsTabUI();
