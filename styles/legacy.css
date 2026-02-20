@@ -34,6 +34,54 @@
     box-sizing: border-box;
 }
 
+
+.dangan-trial-discussion-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483644;
+    display: none;
+    align-items: flex-end;
+    justify-content: center;
+    pointer-events: none;
+    padding: 18px;
+    box-sizing: border-box;
+}
+
+.dangan-trial-discussion-overlay.active {
+    display: flex;
+}
+
+.dangan-trial-discussion-shell {
+    width: min(960px, 96vw);
+    border: 1px solid rgba(244, 80, 225, 0.55);
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(5, 8, 18, 0.9), rgba(8, 3, 19, 0.88));
+    box-shadow: 0 0 34px rgba(53, 185, 255, 0.24);
+    color: #e7f7ff;
+    padding: 14px 18px;
+}
+
+.dangan-trial-discussion-phase {
+    color: rgba(106, 222, 255, 0.9);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+}
+
+.dangan-trial-discussion-speaker {
+    color: rgba(255, 104, 222, 0.95);
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    margin-bottom: 6px;
+}
+
+.dangan-trial-discussion-line {
+    font-size: 22px;
+    line-height: 1.35;
+    text-shadow: 0 0 12px rgba(74, 199, 255, 0.3);
+}
+
 @media (max-width: 700px) {
     #dangan_monopad_button {
         top: max(10px, env(safe-area-inset-top, 0px));
@@ -3592,6 +3640,20 @@ body.dangan-trial-vn-chat-hidden #chat {
 }
 
 @media (max-width: 700px) {
+ 
+    .dangan-trial-discussion-overlay {
+        padding: 8px;
+    }
+
+    .dangan-trial-discussion-shell {
+        width: 100%;
+        padding: 12px;
+    }
+
+    .dangan-trial-discussion-line {
+        font-size: 17px;
+    }
+
     .dangan-trial-intro-overlay {
         align-items: flex-end;
         justify-content: center;

@@ -35,6 +35,7 @@ let mapPanelController = null;
 let trialController = null;
 let trialIntroUiController = null;
 let trialIntroOstController = null;
+let trialDiscussionController = null;
 let hasSelectedMonopadTab = false;
 let monokumaLessonState = null;
 let vnModeController = null;
@@ -215,6 +216,9 @@ const processedInvestigationSignatures = new Set();
 const INVESTIGATION_START_PARSE_REGEX = /V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/gi;
 const processedTrialStartSignatures = new Set();
 const TRIAL_START_PARSE_REGEX = /V3C\s*[|｜]\s*TRIAL(?:\s*[_\-]?\s*)START\b/gi;
+const TRIAL_DISCUSSION_START_PARSE_REGEX = /V3C\s*[|｜]\s*TRIAL(?:\s*[_\-]?\s*)DISCUSSION(?:\s*[_\-]?\s*)START\b/gi;
+const TRIAL_DISCUSSION_END_PARSE_REGEX = /V3C\s*[|｜]\s*TRIAL(?:\s*[_\-]?\s*)DISCUSSION(?:\s*[_\-]?\s*)END\b/gi;
+const processedTrialDiscussionSignatures = new Set();
 const processedMonokumaAnnouncementSignatures = new Set();
 
 function normalizeTextToken(value) {
@@ -376,6 +380,27 @@ function parseTrialStartMarkers(text) {
     }
 
     return matches;
+}
+
+function parseTrialDiscussionMarkers(text) {
+    const raw = String(text || "");
+    if (!raw) return { startMarkers: [], endMarkers: [] };
+
+    const startMarkers = [];
+    const endMarkers = [];
+
+    TRIAL_DISCUSSION_START_PARSE_REGEX.lastIndex = 0;
+    TRIAL_DISCUSSION_END_PARSE_REGEX.lastIndex = 0;
+
+    let match;
+    while ((match = TRIAL_DISCUSSION_START_PARSE_REGEX.exec(raw)) !== null) {
+        startMarkers.push({ marker: match[0], index: match.index, type: "start" });
+    }
+    while ((match = TRIAL_DISCUSSION_END_PARSE_REGEX.exec(raw)) !== null) {
+        endMarkers.push({ marker: match[0], index: match.index, type: "end" });
+    }
+
+    return { startMarkers, endMarkers };
 }
 
 function buildTrialStartPersistentSignature(msgEl, marker, idx, rawText = "") {
@@ -1495,6 +1520,7 @@ async function triggerTrialStartFromMarker(markerText = "V3C| TRIAL_START") {
     try {
         const result = await trialController.requestStartFromMarker({ markerText });
         trialIntroUiController?.sync?.();
+        trialDiscussionController?.sync?.();
         if (result?.started) {
             console.log("[Dangan][Trial] Class Trial started from marker.");
             return true;
@@ -1531,6 +1557,7 @@ async function triggerTrialStartFromMapPin() {
 
     const result = trialController.requestStartFromUi?.({ source: "map_pin" });
     trialIntroUiController?.sync?.();
+    trialDiscussionController?.sync?.();
     if (result?.started) {
         console.log("[Dangan][Trial] Class Trial started from map pin.");
         return true;
@@ -1656,6 +1683,176 @@ function ensureTrialIntroOverlay() {
 
     document.body.appendChild(overlay);
     return overlay;
+}
+
+function createTrialDiscussionController() {
+    const queue = [];
+    let activeTimer = null;
+    let currentToken = 0;
+    let lastPhase = null;
+    let pollId = null;
+    let markerScopedDiscussionActive = false;
+
+    function ensureOverlay() {
+        let overlay = document.getElementById("dangan-trial-discussion-overlay");
+        if (overlay) return overlay;
+
+        overlay = document.createElement("section");
+        overlay.id = "dangan-trial-discussion-overlay";
+        overlay.className = "dangan-trial-discussion-overlay";
+        overlay.setAttribute("aria-hidden", "true");
+        overlay.innerHTML = `
+            <div class="dangan-trial-discussion-shell" role="status" aria-live="polite">
+                <div class="dangan-trial-discussion-phase" id="dangan-trial-discussion-phase">Discussion</div>
+                <div class="dangan-trial-discussion-speaker" id="dangan-trial-discussion-speaker">—</div>
+                <div class="dangan-trial-discussion-line" id="dangan-trial-discussion-line">Awaiting statements...</div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+        return overlay;
+    }
+
+    function clearActiveTimer() {
+        if (!activeTimer) return;
+        clearTimeout(activeTimer);
+        activeTimer = null;
+    }
+
+    function clearQueue() {
+        queue.length = 0;
+        clearActiveTimer();
+        currentToken += 1;
+    }
+
+    function setOverlayVisibility(visible) {
+        const overlay = ensureOverlay();
+        overlay.classList.toggle("active", visible);
+        overlay.setAttribute("aria-hidden", visible ? "false" : "true");
+    }
+
+    function renderLine(entry) {
+        const overlay = ensureOverlay();
+        const speakerEl = overlay.querySelector("#dangan-trial-discussion-speaker");
+        const lineEl = overlay.querySelector("#dangan-trial-discussion-line");
+        if (speakerEl) speakerEl.textContent = String(entry?.speaker || "UNKNOWN").toUpperCase();
+        if (lineEl) lineEl.textContent = String(entry?.line || "...");
+    }
+
+    function isDiscussionPhase(phase) {
+        return phase === trialController?.phases?.DISCUSSION_PRE_DEBATE || phase === trialController?.phases?.DISCUSSION_POST_DEBATE;
+    }
+
+    function phaseLabel(phase) {
+        if (phase === trialController?.phases?.DISCUSSION_PRE_DEBATE) return "Pre-Debate Discussion";
+        if (phase === trialController?.phases?.DISCUSSION_POST_DEBATE) return "Post-Debate Discussion";
+        return "Discussion";
+    }
+
+    function updatePhaseLabel(phase) {
+        const overlay = ensureOverlay();
+        const phaseEl = overlay.querySelector("#dangan-trial-discussion-phase");
+        if (phaseEl) phaseEl.textContent = phaseLabel(phase);
+    }
+
+    function playNextFromQueue(token) {
+        if (token !== currentToken) return;
+        if (!queue.length) return;
+
+        const entry = queue.shift();
+        renderLine(entry);
+
+        const duration = Math.max(1800, Math.min(4200, 1050 + String(entry?.line || "").length * 22));
+        activeTimer = window.setTimeout(() => {
+            if (token !== currentToken) return;
+            activeTimer = null;
+            playNextFromQueue(token);
+        }, duration);
+    }
+
+    function enqueue(entries = []) {
+        if (!Array.isArray(entries) || !entries.length) return;
+        queue.push(...entries.filter(Boolean));
+        if (!activeTimer) playNextFromQueue(currentToken);
+    }
+
+    function extractDiscussionEntries(rawText, fallbackSpeaker = "UNKNOWN") {
+        const text = String(rawText || "");
+        if (!text.trim()) return [];
+
+        const cleaned = stripV3CMarkersFromText(text);
+        if (!cleaned.trim()) return [];
+
+        return cleaned
+            .split(/\r?\n/)
+            .map(line => line.trim())
+            .filter(Boolean)
+            .map(line => ({ speaker: fallbackSpeaker, line }));
+    }
+
+    function ingestMessage({ messageSignature = "", rawText = "", speaker = "UNKNOWN" } = {}) {
+        if (!trialController) return;
+        const phase = trialController.getState?.()?.phase;
+        if (!isDiscussionPhase(phase)) return;
+
+        const { startMarkers, endMarkers } = parseTrialDiscussionMarkers(rawText);
+        const hasStart = startMarkers.length > 0;
+        const hasEnd = endMarkers.length > 0;
+
+        if (hasStart) markerScopedDiscussionActive = true;
+
+        const markerSignature = `TRIAL_DISCUSSION||${messageSignature}||${hasStart}||${hasEnd}`;
+        if (processedTrialDiscussionSignatures.has(markerSignature)) return;
+        processedTrialDiscussionSignatures.add(markerSignature);
+
+        const shouldEnqueueFallback = !hasStart && !hasEnd && !markerScopedDiscussionActive;
+        const shouldEnqueueScoped = markerScopedDiscussionActive || hasStart;
+
+        if (shouldEnqueueFallback || shouldEnqueueScoped) {
+            enqueue(extractDiscussionEntries(rawText, speaker));
+        }
+
+        if (hasEnd) markerScopedDiscussionActive = false;
+    }
+
+    function sync() {
+        if (!trialController) {
+            setOverlayVisibility(false);
+            clearQueue();
+            lastPhase = null;
+            markerScopedDiscussionActive = false;
+            return;
+        }
+
+        const phase = trialController.getState?.()?.phase;
+        const inDiscussion = isDiscussionPhase(phase);
+        updatePhaseLabel(phase);
+        setOverlayVisibility(inDiscussion);
+
+        if (!inDiscussion) {
+            clearQueue();
+            markerScopedDiscussionActive = false;
+        }
+
+        lastPhase = phase;
+    }
+
+    function startAutoSync() {
+        if (pollId) return;
+        const tick = () => {
+            const phase = trialController?.getState?.()?.phase || null;
+            if (phase !== lastPhase) {
+                sync();
+            }
+        };
+        pollId = window.setInterval(tick, 250);
+    }
+
+    return {
+        sync,
+        startAutoSync,
+        ingestMessage,
+    };
 }
 
 function createTrialIntroUiController() {
@@ -2203,6 +2400,8 @@ function stripV3CMarkersFromText(value) {
         .replace(/V3C\s*[|｜]\s*SOCIAL_DOWN:\s*([^\n\r]+)/gi, "")
         .replace(/V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/gi, "")
         .replace(TRIAL_START_REGEX, "")
+        .replace(TRIAL_DISCUSSION_START_PARSE_REGEX, "")
+        .replace(TRIAL_DISCUSSION_END_PARSE_REGEX, "")
         .replace(/V3C\s*[|｜]\s*DAY(?:\s*[_\-]?\s*)ANNOUN\b/gi, "")
         .replace(/V3C\s*[|｜]\s*NIGHT(?:\s*[_\-]?\s*)ANNOUN\b/gi, "")
         .replace(/V3C\s*[|｜]\s*BDA\b/gi, "")
@@ -2270,7 +2469,16 @@ function processAllMessages() {
 
         const rawText = msgText.textContent;
         const messageSignature = buildMessageSignature(msgEl, rawText);
+        const isUserMessage = msgEl.getAttribute("is_user") === "true";
+        const speakerName = isUserMessage
+            ? getActivePersonaName()
+            : (msgEl.getAttribute("ch_name") || msgEl.getAttribute("name") || "UNKNOWN");
         maybeTrackMessageLocation(msgEl, rawText);
+        trialDiscussionController?.ingestMessage?.({
+            messageSignature,
+            rawText,
+            speaker: speakerName,
+        });
         injectPersistedGiftReactionForMessage(msgEl, messageSignature);
         void tryResolvePendingGiftForMessage(msgEl, rawText);
 
@@ -2896,6 +3104,7 @@ function applySettingsTabUI() {
     applyCrtSettings();
     vnModeController?.setEnabled?.(!!tab.vnModeEnabled);
     trialIntroUiController?.sync?.();
+    trialDiscussionController?.sync?.();
 }
 
 function saveCharacters() {
@@ -4613,17 +4822,22 @@ trialController = createTrialController({
 });
 trialIntroOstController = createTrialIntroOstController();
 trialIntroUiController = createTrialIntroUiController();
+trialDiscussionController = createTrialDiscussionController();
 trialIntroUiController?.startAutoSync?.();
+trialDiscussionController?.startAutoSync?.();
 trialIntroUiController?.sync?.();
+trialDiscussionController?.sync?.();
 window.danganTrial = trialController;
 window.startClassTrial = () => {
     const result = trialController?.requestStartFromUi?.({ source: "manual" });
     trialIntroUiController?.sync?.();
+    trialDiscussionController?.sync?.();
     return result;
 };
 window.cancelClassTrial = () => {
     const result = trialController?.cancelTrial?.();
     trialIntroUiController?.sync?.();
+    trialDiscussionController?.sync?.();
     return result;
 };
 rewards?.renderProgressionUi?.();
