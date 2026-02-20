@@ -3483,7 +3483,12 @@ body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-text {
 }
 
 body.dangan-trial-vn-chat-hidden #chat {
-    visibility: hidden;
+    opacity: 0.2;
+    filter: saturate(0.75) blur(1.5px);
+    transform: scale(0.995);
+    transform-origin: center bottom;
+    transition: opacity 160ms ease, filter 160ms ease, transform 160ms ease;
+    pointer-events: none;
 }
 
 
@@ -4553,6 +4558,14 @@ body.dangan-trial-vn-chat-hidden #chat {
     pointer-events: none;
     background: transparent;
     --dangan-vn-bottom-offset: 0px;
+    --dangan-vn-surface: var(--SmartThemeBlurTintColor, rgba(8, 12, 20, 0.96));
+    --dangan-vn-surface-strong: var(--SmartThemeQuoteColor, rgba(6, 9, 14, 0.97));
+    --dangan-vn-border: var(--SmartThemeBorderColor, rgba(191, 229, 255, 0.45));
+    --dangan-vn-text: var(--SmartThemeBodyColor, #f4f8ff);
+    --dangan-vn-muted-text: color-mix(in srgb, var(--dangan-vn-text) 72%, transparent);
+    --dangan-vn-accent: var(--SmartThemeEmColor, #b9d8ff);
+    --dangan-vn-accent-strong: var(--SmartThemeUnderlineColor, #3e5074);
+    --dangan-vn-shadow: rgba(0, 0, 0, 0.45);
 }
 
 #dangan-vn-overlay.active {
@@ -4566,10 +4579,10 @@ body.dangan-trial-vn-chat-hidden #chat {
     min-height: 170px;
     margin: 0 9px calc(var(--dangan-vn-bottom-offset) + 10px);
     border-radius: 12px;
-    border: 1px solid rgba(191, 229, 255, 0.45);
-    background: linear-gradient(180deg, rgba(8, 12, 20, 0.96), rgba(6, 9, 14, 0.97));
-    box-shadow: 0 -3px 20px rgba(0, 0, 0, 0.45);
-    color: #f4f8ff;
+    border: 1px solid var(--dangan-vn-border);
+    background: linear-gradient(180deg, var(--dangan-vn-surface), var(--dangan-vn-surface-strong));
+    box-shadow: 0 -3px 20px var(--dangan-vn-shadow);
+    color: var(--dangan-vn-text);
     padding: 14px 14px 10px;
     cursor: pointer;
     pointer-events: auto;
@@ -4587,9 +4600,9 @@ body.dangan-trial-vn-chat-hidden #chat {
 .dangan-vn-control {
     height: 26px;
     border-radius: 6px;
-    border: 1px solid rgba(173, 205, 255, 0.5);
-    background: rgba(22, 31, 47, 0.9);
-    color: #f3f8ff;
+    border: 1px solid color-mix(in srgb, var(--dangan-vn-border) 85%, transparent);
+    background: color-mix(in srgb, var(--dangan-vn-surface-strong) 84%, black 16%);
+    color: var(--dangan-vn-text);
     font-size: 11px;
     letter-spacing: 0.08em;
     line-height: 1;
@@ -4601,7 +4614,7 @@ body.dangan-trial-vn-chat-hidden #chat {
 
 .dangan-vn-control:hover,
 .dangan-vn-control:focus-visible {
-    background: rgba(45, 63, 95, 0.95);
+    background: color-mix(in srgb, var(--dangan-vn-accent-strong) 52%, var(--dangan-vn-surface-strong));
     outline: none;
 }
 
@@ -4632,10 +4645,10 @@ body.dangan-trial-vn-chat-hidden #chat {
     z-index: 2147483645;
     display: none;
     flex-direction: column;
-    border: 1px solid rgba(173, 205, 255, 0.45);
+    border: 1px solid var(--dangan-vn-border);
     border-radius: 12px;
-    background: linear-gradient(180deg, rgba(8, 12, 20, 0.98), rgba(6, 9, 14, 0.98));
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.48);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--dangan-vn-surface) 88%, black), color-mix(in srgb, var(--dangan-vn-surface-strong) 90%, black));
+    box-shadow: 0 8px 30px color-mix(in srgb, var(--dangan-vn-shadow) 85%, black);
     overflow: hidden;
     pointer-events: auto;
 }
@@ -4650,15 +4663,15 @@ body.dangan-trial-vn-chat-hidden #chat {
     justify-content: space-between;
     gap: 10px;
     padding: 10px 12px;
-    border-bottom: 1px solid rgba(166, 201, 248, 0.3);
-    background: linear-gradient(90deg, rgba(39, 47, 67, 0.95), rgba(62, 80, 116, 0.9));
+    border-bottom: 1px solid color-mix(in srgb, var(--dangan-vn-border) 70%, transparent);
+    background: linear-gradient(90deg, color-mix(in srgb, var(--dangan-vn-surface-strong) 86%, black), color-mix(in srgb, var(--dangan-vn-accent-strong) 52%, var(--dangan-vn-surface-strong)));
 }
 
 .dangan-vn-transcript-title {
     font-family: "Orbitron", "Rajdhani", monospace;
     font-size: 12px;
     letter-spacing: 0.12em;
-    color: #f5f8ff;
+    color: var(--dangan-vn-text);
     text-transform: uppercase;
 }
 
@@ -4666,15 +4679,15 @@ body.dangan-trial-vn-chat-hidden #chat {
     width: 24px;
     height: 24px;
     border-radius: 6px;
-    border: 1px solid rgba(173, 205, 255, 0.45);
-    background: rgba(19, 26, 41, 0.9);
-    color: #f3f8ff;
+    border: 1px solid var(--dangan-vn-border);
+    background: color-mix(in srgb, var(--dangan-vn-surface-strong) 86%, black);
+    color: var(--dangan-vn-text);
     cursor: pointer;
 }
 
 .dangan-vn-transcript-close:hover,
 .dangan-vn-transcript-close:focus-visible {
-    background: rgba(45, 63, 95, 0.95);
+    background: color-mix(in srgb, var(--dangan-vn-accent-strong) 50%, var(--dangan-vn-surface-strong));
     outline: none;
 }
 
@@ -4688,9 +4701,9 @@ body.dangan-trial-vn-chat-hidden #chat {
 }
 
 .dangan-vn-transcript-entry {
-    border: 1px solid rgba(150, 189, 243, 0.28);
+    border: 1px solid color-mix(in srgb, var(--dangan-vn-border) 62%, transparent);
     border-radius: 10px;
-    background: rgba(14, 21, 34, 0.92);
+    background: color-mix(in srgb, var(--dangan-vn-surface-strong) 85%, black);
     padding: 8px 10px;
 }
 
@@ -4699,28 +4712,28 @@ body.dangan-trial-vn-chat-hidden #chat {
     font-size: 10px;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: #b9d8ff;
+    color: var(--dangan-vn-accent);
     margin-bottom: 5px;
 }
 
 .dangan-vn-transcript-message {
     font-size: 14px;
     line-height: 1.4;
-    color: #f4f8ff;
+    color: var(--dangan-vn-text);
 }
 
 .dangan-vn-transcript-empty {
-    color: rgba(189, 217, 255, 0.85);
+    color: var(--dangan-vn-muted-text);
     font-size: 13px;
     letter-spacing: 0.06em;
 }
 
 .dangan-vn-compose-docked {
-    border: 1px solid rgba(173, 205, 255, 0.45) !important;
+    border: 1px solid var(--dangan-vn-border) !important;
     border-radius: 0 0 12px 12px !important;
     border-top: 0 !important;
-    background: linear-gradient(180deg, rgba(7, 11, 18, 0.97), rgba(5, 8, 14, 0.98)) !important;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42) !important;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--dangan-vn-surface) 88%, black), color-mix(in srgb, var(--dangan-vn-surface-strong) 92%, black)) !important;
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--dangan-vn-shadow) 82%, black) !important;
     padding: 4px 8px 6px !important;
     backdrop-filter: blur(1.5px);
     display: grid !important;
@@ -4733,16 +4746,16 @@ body.dangan-trial-vn-chat-hidden #chat {
     width: 24px;
     height: 24px;
     border-radius: 6px !important;
-    border: 1px solid rgba(146, 183, 236, 0.45) !important;
-    background: rgba(21, 31, 49, 0.92) !important;
-    color: #edf5ff !important;
+    border: 1px solid color-mix(in srgb, var(--dangan-vn-border) 72%, transparent) !important;
+    background: color-mix(in srgb, var(--dangan-vn-surface-strong) 84%, black) !important;
+    color: var(--dangan-vn-text) !important;
     cursor: pointer;
     padding: 0 !important;
     line-height: 1;
 }
 
 .dangan-vn-compose-collapse-toggle:hover {
-    background: rgba(37, 52, 79, 0.96) !important;
+    background: color-mix(in srgb, var(--dangan-vn-accent-strong) 50%, var(--dangan-vn-surface-strong)) !important;
 }
 
 .dangan-vn-compose-docked.dangan-vn-compose-collapsed {
@@ -4759,10 +4772,9 @@ body.dangan-trial-vn-chat-hidden #chat {
 .dangan-vn-compose-docked .send_textarea {
     min-height: 34px !important;
     border-radius: 8px !important;
-    border: 1px solid rgba(146, 183, 236, 0.4) !important;
-    background: rgba(14, 20, 32, 0.9) !important;
-    color: #f2f7ff !important;
-    font-family: "Rajdhani", "Orbitron", monospace;
+    border: 1px solid color-mix(in srgb, var(--dangan-vn-border) 70%, transparent) !important;
+    background: color-mix(in srgb, var(--dangan-vn-surface-strong) 82%, black) !important;
+    color: var(--dangan-vn-text) !important;
     font-size: 14px;
     line-height: 1.25;
     padding: 6px 10px !important;
@@ -4773,15 +4785,15 @@ body.dangan-trial-vn-chat-hidden #chat {
 .dangan-vn-compose-docked .menu_button,
 .dangan-vn-compose-docked [type="button"] {
     border-radius: 8px !important;
-    border: 1px solid rgba(146, 183, 236, 0.45) !important;
-    background: rgba(21, 31, 49, 0.92) !important;
-    color: #edf5ff !important;
+    border: 1px solid color-mix(in srgb, var(--dangan-vn-border) 72%, transparent) !important;
+    background: color-mix(in srgb, var(--dangan-vn-surface-strong) 86%, black) !important;
+    color: var(--dangan-vn-text) !important;
 }
 
 .dangan-vn-compose-docked button:hover,
 .dangan-vn-compose-docked .menu_button:hover,
 .dangan-vn-compose-docked [type="button"]:hover {
-    background: rgba(37, 52, 79, 0.96) !important;
+    background: color-mix(in srgb, var(--dangan-vn-accent-strong) 48%, var(--dangan-vn-surface-strong)) !important;
 }
 
 .dangan-vn-nameplate {
@@ -4789,11 +4801,11 @@ body.dangan-trial-vn-chat-hidden #chat {
     margin-bottom: 8px;
     padding: 3px 9px;
     border-radius: 999px;
-    background: linear-gradient(90deg, #272f43, #3e5074);
-    border: 1px solid rgba(173, 205, 255, 0.5);
+    background: linear-gradient(90deg, color-mix(in srgb, var(--dangan-vn-surface-strong) 85%, black), color-mix(in srgb, var(--dangan-vn-accent-strong) 55%, var(--dangan-vn-surface-strong)));
+    border: 1px solid var(--dangan-vn-border);
     font-size: 10px;
     letter-spacing: 0.14em;
-    color: #f2f8ff;
+    color: var(--dangan-vn-text);
     font-family: "Orbitron", "Rajdhani", monospace;
 }
 
@@ -4802,21 +4814,25 @@ body.dangan-trial-vn-chat-hidden #chat {
     font-size: clamp(16px, 2.2vw, 24px);
     line-height: 1.35;
     letter-spacing: 0.01em;
-    font-family: "Rajdhani", "Orbitron", monospace;
+    font-family: inherit;
 }
 
 .dangan-vn-input {
     margin-top: 10px;
-    border-top: 1px solid rgba(176, 211, 255, 0.24);
+    border-top: 1px solid color-mix(in srgb, var(--dangan-vn-border) 55%, transparent);
     padding-top: 9px;
     font-size: 11px;
     letter-spacing: 0.1em;
-    color: rgba(167, 204, 251, 0.92);
+    color: var(--dangan-vn-muted-text);
     text-transform: uppercase;
 }
 
 #chat.dangan-vn-hidden {
-    visibility: hidden !important;
+    opacity: 0.25 !important;
+    filter: saturate(0.8) blur(1.5px);
+    transform: scale(0.995);
+    transform-origin: center bottom;
+    transition: opacity 160ms ease, filter 160ms ease, transform 160ms ease;
     pointer-events: none !important;
 }
 
