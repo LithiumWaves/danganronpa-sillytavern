@@ -33,6 +33,8 @@ let socialPanelController = null;
 let itemsPanelController = null;
 let mapPanelController = null;
 let trialController = null;
+let trialIntroUiController = null;
+let trialIntroOstController = null;
 let hasSelectedMonopadTab = false;
 let monokumaLessonState = null;
 let vnModeController = null;
@@ -1492,6 +1494,7 @@ async function triggerTrialStartFromMarker(markerText = "V3C| TRIAL_START") {
 
     try {
         const result = await trialController.requestStartFromMarker({ markerText });
+        trialIntroUiController?.sync?.();
         if (result?.started) {
             console.log("[Dangan][Trial] Class Trial started from marker.");
             return true;
@@ -1527,6 +1530,7 @@ async function triggerTrialStartFromMapPin() {
     if (!accepted) return false;
 
     const result = trialController.requestStartFromUi?.({ source: "map_pin" });
+    trialIntroUiController?.sync?.();
     if (result?.started) {
         console.log("[Dangan][Trial] Class Trial started from map pin.");
         return true;
@@ -1537,6 +1541,223 @@ async function triggerTrialStartFromMapPin() {
     }
 
     return false;
+}
+
+function createTrialIntroOstController() {
+    const candidateTracks = buildExtensionPathCandidates()
+        .map(basePath => `${basePath}/assets/classtrial/trialunderground/trialunderground.mp3`);
+
+    let activeAudio = null;
+    let activeTrackIndex = -1;
+
+    function moveToNextTrack() {
+        if (!activeAudio) return;
+        if (activeTrackIndex >= candidateTracks.length - 1) return;
+        activeTrackIndex += 1;
+        activeAudio.src = candidateTracks[activeTrackIndex];
+        activeAudio.load();
+    }
+
+    function stop() {
+        if (!activeAudio) return;
+        activeAudio.pause();
+        activeAudio.currentTime = 0;
+    }
+
+    function play() {
+        if (!extension_settings[extensionName]?.monopadSounds) return;
+        if (!candidateTracks.length) return;
+
+        if (!activeAudio) {
+            activeTrackIndex = 0;
+            activeAudio = new Audio(candidateTracks[activeTrackIndex]);
+            activeAudio.loop = true;
+            activeAudio.preload = "auto";
+            activeAudio.volume = 0.42;
+
+            activeAudio.addEventListener("error", () => {
+                const previousIndex = activeTrackIndex;
+                moveToNextTrack();
+                if (previousIndex === activeTrackIndex) {
+                    console.warn("[Dangan][Trial] Could not load trialunderground.mp3 from any extension path candidate.");
+                    return;
+                }
+                activeAudio.play().catch(() => {});
+            });
+        }
+
+        activeAudio.play().catch(() => {});
+    }
+
+    return {
+        play,
+        stop,
+    };
+}
+
+function ensureTrialIntroOverlay() {
+    let overlay = document.getElementById("dangan-trial-intro-overlay");
+    if (overlay) return overlay;
+
+    overlay = document.createElement("section");
+    overlay.id = "dangan-trial-intro-overlay";
+    overlay.className = "dangan-trial-intro-overlay";
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.innerHTML = `
+        <div class="dangan-trial-intro-shell" role="dialog" aria-modal="false" aria-labelledby="dangan-trial-intro-title">
+            <header class="dangan-trial-intro-header">
+                <h2 id="dangan-trial-intro-title">Class Trial</h2>
+                <p>Prepare your opening arguments before entering the debate floor.</p>
+            </header>
+            <div class="dangan-trial-intro-actions">
+                <button type="button" class="dangan-trial-intro-start" id="dangan-trial-intro-start">Start Trial</button>
+                <button type="button" class="dangan-trial-intro-skills" id="dangan-trial-intro-skills">Equip Skills</button>
+                <button type="button" class="dangan-trial-intro-cancel" id="dangan-trial-intro-cancel">Cancel Trial</button>
+            </div>
+            <section class="dangan-trial-case-summary" aria-live="polite">
+                <div class="dangan-trial-case-summary-label">Case Summary</div>
+                <p id="dangan-trial-case-summary-text">Case summary pending.</p>
+            </section>
+        </div>
+    `;
+
+    const startBtn = overlay.querySelector("#dangan-trial-intro-start");
+    startBtn?.addEventListener("click", () => {
+        if (!trialController) return;
+        const result = trialController.transitionTo?.(trialController.phases.DISCUSSION_PRE_DEBATE, "trial_intro_start");
+        if (!result?.ok) {
+            console.info("[Dangan][Trial] Could not enter discussion_pre_debate from trial_intro.");
+        }
+        trialIntroUiController?.sync?.();
+    });
+
+    const skillsBtn = overlay.querySelector("#dangan-trial-intro-skills");
+    skillsBtn?.addEventListener("click", () => {
+        const panel = document.getElementById("dangan_monopad_panel");
+        if (panel && !panel.classList.contains("open")) {
+            document.getElementById("dangan_monopad_button")?.click();
+        }
+        setActiveMonopadTab("skills");
+        itemsPanelController?.renderSkillsItemsPanel?.();
+    });
+
+    const cancelBtn = overlay.querySelector("#dangan-trial-intro-cancel");
+    cancelBtn?.addEventListener("click", () => {
+        trialController?.cancelTrial?.();
+        trialIntroUiController?.sync?.();
+    });
+
+    document.body.appendChild(overlay);
+    return overlay;
+}
+
+function createTrialIntroUiController() {
+    let isVisible = false;
+    let lastPhase = null;
+    let pollId = null;
+
+    function applyViewportSafeLayout(overlay) {
+        if (!overlay) return;
+
+        const shell = overlay.querySelector('.dangan-trial-intro-shell');
+        const viewportHeight = Math.max(320, window.innerHeight || 0);
+        const viewportWidth = Math.max(280, window.innerWidth || 0);
+        const isMobile = viewportWidth <= 700;
+
+        overlay.style.position = 'fixed';
+        overlay.style.inset = '0';
+        overlay.style.zIndex = '2147483647';
+        overlay.style.justifyContent = 'center';
+        overlay.style.alignItems = isMobile ? 'flex-end' : 'center';
+
+        if (!shell) return;
+
+        shell.style.boxSizing = 'border-box';
+        shell.style.maxHeight = `${Math.max(220, viewportHeight - 16)}px`;
+
+        if (isMobile) {
+            shell.style.width = `${Math.max(280, Math.min(540, viewportWidth - 16))}px`;
+            shell.style.margin = '0 auto';
+            shell.style.borderRadius = '12px';
+        } else {
+            shell.style.width = '';
+            shell.style.margin = '';
+            shell.style.borderRadius = '';
+        }
+    }
+
+    function setVisible(nextVisible) {
+        const overlay = ensureTrialIntroOverlay();
+        overlay.classList.toggle("active", nextVisible);
+        overlay.setAttribute("aria-hidden", nextVisible ? "false" : "true");
+        overlay.style.display = nextVisible ? 'flex' : 'none';
+        overlay.style.pointerEvents = nextVisible ? 'auto' : 'none';
+
+        const vnModeOn = !!getMonopadSetting("vnModeEnabled");
+        document.body.classList.toggle("dangan-trial-vn-chat-hidden", nextVisible && vnModeOn);
+
+        if (nextVisible) {
+            applyViewportSafeLayout(overlay);
+        }
+
+        if (nextVisible && !isVisible) {
+            trialIntroOstController?.play?.();
+        } else if (!nextVisible && isVisible) {
+            trialIntroOstController?.stop?.();
+        }
+
+        isVisible = nextVisible;
+    }
+
+    function sync() {
+        if (!trialController) {
+            setVisible(false);
+            lastPhase = null;
+            return;
+        }
+
+        const trialState = trialController.getState?.();
+        const phase = trialState?.phase || null;
+        lastPhase = phase;
+        const isTrialIntro = phase === trialController.phases?.TRIAL_INTRO;
+        const overlay = ensureTrialIntroOverlay();
+        const summaryEl = overlay.querySelector("#dangan-trial-case-summary-text");
+        if (summaryEl) {
+            summaryEl.textContent = String(trialState?.session?.caseSummary || "Case summary pending.");
+        }
+
+        setVisible(isTrialIntro);
+    }
+
+    function startAutoSync() {
+        if (pollId) return;
+
+        const tick = () => {
+            if (!trialController) {
+                if (lastPhase !== null) sync();
+                return;
+            }
+            const phase = trialController.getState?.()?.phase || null;
+            if (phase !== lastPhase) {
+                sync();
+                return;
+            }
+
+            if (isVisible) {
+                applyViewportSafeLayout(document.getElementById('dangan-trial-intro-overlay'));
+            }
+        };
+
+        pollId = window.setInterval(tick, 250);
+        document.addEventListener("visibilitychange", tick);
+        window.addEventListener('resize', tick);
+        window.addEventListener('orientationchange', tick);
+    }
+
+    return {
+        sync,
+        startAutoSync,
+    };
 }
 
 
@@ -2667,6 +2888,7 @@ function applySettingsTabUI() {
 
     applyCrtSettings();
     vnModeController?.setEnabled?.(!!tab.vnModeEnabled);
+    trialIntroUiController?.sync?.();
 }
 
 function saveCharacters() {
@@ -4382,9 +4604,21 @@ trialController = createTrialController({
     getTruthBullets: getTruthBulletsSnapshot,
     openConfirmDialog: openMonopadConfirmDialog,
 });
+trialIntroOstController = createTrialIntroOstController();
+trialIntroUiController = createTrialIntroUiController();
+trialIntroUiController?.startAutoSync?.();
+trialIntroUiController?.sync?.();
 window.danganTrial = trialController;
-window.startClassTrial = () => trialController?.requestStartFromUi?.({ source: "manual" });
-window.cancelClassTrial = () => trialController?.cancelTrial?.();
+window.startClassTrial = () => {
+    const result = trialController?.requestStartFromUi?.({ source: "manual" });
+    trialIntroUiController?.sync?.();
+    return result;
+};
+window.cancelClassTrial = () => {
+    const result = trialController?.cancelTrial?.();
+    trialIntroUiController?.sync?.();
+    return result;
+};
 rewards?.renderProgressionUi?.();
 itemsPanelController.loadInventoryState();
 applySettingsTabUI();
