@@ -4784,9 +4784,16 @@ body.dangan-trial-vn-chat-hidden #chat {
     background: rgba(37, 52, 79, 0.96) !important;
 }
 
+.dangan-vn-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
 .dangan-vn-nameplate {
     display: inline-flex;
-    margin-bottom: 8px;
     padding: 3px 9px;
     border-radius: 999px;
     background: linear-gradient(90deg, #272f43, #3e5074);
@@ -4797,6 +4804,15 @@ body.dangan-trial-vn-chat-hidden #chat {
     font-family: "Orbitron", "Rajdhani", monospace;
 }
 
+
+.dangan-vn-position {
+    font-family: "Orbitron", "Rajdhani", monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: rgba(186, 215, 255, 0.86);
+    white-space: nowrap;
+}
+
 .dangan-vn-text {
     min-height: 78px;
     font-size: clamp(16px, 2.2vw, 24px);
@@ -4805,14 +4821,39 @@ body.dangan-trial-vn-chat-hidden #chat {
     font-family: "Rajdhani", "Orbitron", monospace;
 }
 
-.dangan-vn-input {
+
+.dangan-vn-footer {
     margin-top: 10px;
     border-top: 1px solid rgba(176, 211, 255, 0.24);
     padding-top: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.dangan-vn-input {
     font-size: 11px;
     letter-spacing: 0.1em;
     color: rgba(167, 204, 251, 0.92);
     text-transform: uppercase;
+}
+
+
+.dangan-vn-nav {
+    display: inline-flex;
+    gap: 6px;
+}
+
+.dangan-vn-nav-button {
+    min-width: 74px;
+    padding: 0 8px;
+}
+
+.dangan-vn-nav-button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
 }
 
 #chat.dangan-vn-hidden {
@@ -4849,6 +4890,21 @@ body.dangan-trial-vn-chat-hidden #chat {
 
     .dangan-vn-transcript {
         inset: max(10px, env(safe-area-inset-top)) 8px calc(var(--dangan-vn-bottom-offset) + 10px + env(safe-area-inset-bottom)) 8px;
+    }
+
+
+    .dangan-vn-footer {
+        gap: 6px;
+    }
+
+    .dangan-vn-input {
+        width: 100%;
+        order: 2;
+    }
+
+    .dangan-vn-nav {
+        width: 100%;
+        justify-content: flex-end;
     }
 
     .dangan-vn-compose-docked {
