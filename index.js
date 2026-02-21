@@ -13,6 +13,9 @@ import { getLocationPromptReference, resolveLocationIdFromText } from "./map/loc
 import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, TRIAL_START_REGEX, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "./core/monokumaLessonScript.js";
+import { createRecentLocationTracker } from "./core/locationPresenceHistory.js";
+import { createRewardDifficultyManager } from "./core/rewardDifficulty.js";
+import { openMonopadConfirmDialog } from "./core/confirmDialog.js";
 import { createTrialController } from "./trial/trialController.js";
 import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers } from "./monokuma/announcementController.js";
 
@@ -62,88 +65,27 @@ const {
 } = openRouterSettings;
 
 let rewards = null;
-let recentLocationMentions = [];
 
-function pushRecentLocationMention(entry) {
-    if (!entry?.locationId || !entry?.messageSignature) return;
-
-    const normalizedSpeaker = normalizeName(entry.speakerName || "");
-    recentLocationMentions = recentLocationMentions.filter(item => {
-        if (item.messageSignature === entry.messageSignature && normalizeName(item.speakerName || "") === normalizedSpeaker) {
-            return false;
-        }
-        return true;
-    });
-
-    recentLocationMentions.push({
-        messageSignature: entry.messageSignature,
-        speakerName: String(entry.speakerName || "").trim(),
-        isUser: Boolean(entry.isUser),
-        locationId: entry.locationId,
-        createdAt: Date.now(),
-    });
-
-    const overflow = recentLocationMentions.length - 5;
-    if (overflow > 0) {
-        recentLocationMentions.splice(0, overflow);
-    }
-}
-
-function buildRecentLocationPresence() {
-    const latestBySpeaker = new Map();
-
-    for (let i = recentLocationMentions.length - 1; i >= 0; i -= 1) {
-        const item = recentLocationMentions[i];
-        const speakerKey = item.isUser
-            ? "__user__"
-            : normalizeName(item.speakerName || `unknown_${i}`);
-
-        if (!speakerKey || latestBySpeaker.has(speakerKey)) continue;
-        latestBySpeaker.set(speakerKey, item);
-    }
-
-    const userEntry = latestBySpeaker.get("__user__") || null;
-    const characters = [];
-
-    latestBySpeaker.forEach((item, key) => {
-        if (key === "__user__") return;
-        if (!item?.speakerName || !item?.locationId) return;
-
-        characters.push({
-            name: item.speakerName,
-            locationId: item.locationId,
-        });
-    });
-
-    return {
-        user: userEntry
-            ? {
-                locationId: userEntry.locationId,
-                label: getActivePersonaName(),
-            }
-            : null,
-        characters,
-    };
-}
+const {
+    pushRecentLocationMention,
+    buildRecentLocationPresence,
+} = createRecentLocationTracker({
+    normalizeName,
+    getActivePersonaName: () => getActivePersonaName(),
+});
 
 window.getMonopadRecentLocationPresence = function () {
     return buildRecentLocationPresence();
 };
 
-
-function clampRewardDifficulty(value) {
-    return Object.prototype.hasOwnProperty.call(REWARD_PROFILES, value) ? value : "normal";
-}
-
-function applyRewardDifficultyProfile(profileKey) {
-    const safeProfileKey = clampRewardDifficulty(profileKey);
-    const profile = REWARD_PROFILES[safeProfileKey] || REWARD_PROFILES.normal;
-
-    Object.assign(MONOCOIN_REWARDS, profile.monocoins || REWARD_PROFILES.normal.monocoins);
-    Object.assign(XP_REWARDS, profile.xp || REWARD_PROFILES.normal.xp);
-
-    return safeProfileKey;
-}
+const {
+    clampRewardDifficulty,
+    applyRewardDifficultyProfile,
+} = createRewardDifficultyManager({
+    rewardProfiles: REWARD_PROFILES,
+    monocoins: MONOCOIN_REWARDS,
+    xp: XP_REWARDS,
+});
 
 function awardMonocoins(amount = 0, reason = "") {
     rewards?.awardMonocoins(amount, reason);
@@ -155,51 +97,6 @@ function increaseTrustWithRewards(char) {
 
 function awardXp(amount = 0, reason = "") {
     rewards?.awardXp(amount, reason);
-}
-
-function openMonopadConfirmDialog({ title = "CONFIRM ACTION", message = "", confirmLabel = "CONFIRM", cancelLabel = "CANCEL" } = {}) {
-    return new Promise((resolve) => {
-        const overlay = document.getElementById("monopad-confirm-overlay");
-        const titleEl = document.getElementById("monopad-confirm-title");
-        const messageEl = document.getElementById("monopad-confirm-message");
-        const confirmBtn = document.getElementById("monopad-confirm-accept");
-        const cancelBtn = document.getElementById("monopad-confirm-cancel");
-
-        if (!overlay || !titleEl || !messageEl || !confirmBtn || !cancelBtn) {
-            resolve(false);
-            return;
-        }
-
-        titleEl.textContent = title;
-        messageEl.textContent = message;
-        confirmBtn.textContent = confirmLabel;
-        cancelBtn.textContent = cancelLabel;
-
-        let settled = false;
-        const finish = (accepted) => {
-            if (settled) return;
-            settled = true;
-            overlay.classList.remove("open");
-            overlay.setAttribute("aria-hidden", "true");
-            overlay.removeEventListener("click", onBackdropClick);
-            confirmBtn.removeEventListener("click", onConfirm);
-            cancelBtn.removeEventListener("click", onCancel);
-            resolve(Boolean(accepted));
-        };
-
-        const onBackdropClick = (event) => {
-            if (event.target === overlay) finish(false);
-        };
-        const onConfirm = () => finish(true);
-        const onCancel = () => finish(false);
-
-        overlay.classList.add("open");
-        overlay.setAttribute("aria-hidden", "false");
-
-        overlay.addEventListener("click", onBackdropClick);
-        confirmBtn.addEventListener("click", onConfirm);
-        cancelBtn.addEventListener("click", onCancel);
-    });
 }
 
 const truthBullets = [];
@@ -282,10 +179,9 @@ function markInvestigationSignatureProcessed(signature, persistentSignature = ""
     if (!signature) return;
 
     processedInvestigationSignatures.add(signature);
-    if (!persistentSignature) return;
 
     const store = getInvestigationMarkerStore();
-    store[persistentSignature] = Date.now();
+    store[persistentSignature || `RUNTIME||${signature}`] = Date.now();
 
     const keys = Object.keys(store);
     const maxEntries = 1200;
@@ -439,6 +335,56 @@ function markTrialStartSignatureProcessed(signature, persistentSignature = "") {
 
     const store = getTrialStartMarkerStore();
     store[persistentSignature] = Date.now();
+
+    const keys = Object.keys(store);
+    const maxEntries = 1200;
+    if (keys.length > maxEntries) {
+        keys
+            .sort((a, b) => Number(store[a] || 0) - Number(store[b] || 0))
+            .slice(0, keys.length - maxEntries)
+            .forEach((key) => {
+                delete store[key];
+            });
+    }
+
+    saveSettingsDebounced();
+}
+
+function getMonokumaAnnouncementMarkerStore() {
+    extension_settings[extensionName] ||= {};
+    extension_settings[extensionName].monokumaAnnouncementMarkers ||= {};
+    return extension_settings[extensionName].monokumaAnnouncementMarkers;
+}
+
+function buildMonokumaAnnouncementPersistentSignature(msgEl, marker, idx, rawText = "") {
+    const mesId = msgEl?.getAttribute?.("mesid") || msgEl?.dataset?.mesid || "";
+    if (!mesId || mesId === "no-id") return "";
+
+    const speaker = msgEl?.getAttribute?.("ch_name") || "unknown";
+    const scope = getInvestigationScopeKey();
+    if (!scope || scope === "scope:unknown") return "";
+
+    const markerIndex = Number(marker?.index ?? -1);
+    const markerType = String(marker?.type || "UNKNOWN");
+    const textFingerprint = String(rawText || "").slice(0, 140);
+
+    return `MONOKUMA_ANNOUN||${scope}||${mesId}||${speaker}||${markerType}||${markerIndex}||${idx}||${textFingerprint}`;
+}
+
+function hasProcessedMonokumaAnnouncementSignature(signature, persistentSignature = "") {
+    if (!signature) return false;
+    if (processedMonokumaAnnouncementSignatures.has(signature)) return true;
+    if (!persistentSignature) return false;
+    return Boolean(getMonokumaAnnouncementMarkerStore()[persistentSignature]);
+}
+
+function markMonokumaAnnouncementSignatureProcessed(signature, persistentSignature = "") {
+    if (!signature) return;
+
+    processedMonokumaAnnouncementSignatures.add(signature);
+
+    const store = getMonokumaAnnouncementMarkerStore();
+    store[persistentSignature || `RUNTIME||${signature}`] = Date.now();
 
     const keys = Object.keys(store);
     const maxEntries = 1200;
@@ -615,9 +561,18 @@ function createVnModeController() {
                 <button type="button" class="dangan-vn-control dangan-vn-transcript-toggle" id="dangan-vn-transcript-toggle" aria-label="Open transcript" title="Open transcript">TRANSCRIPT</button>
                 <button type="button" class="dangan-vn-control dangan-vn-lock" id="dangan-vn-lock" aria-label="Unlock Visual Novel box movement" title="Unlock Visual Novel box movement">🔒</button>
             </div>
-            <div class="dangan-vn-nameplate" id="dangan-vn-name">—</div>
+            <div class="dangan-vn-header">
+                <div class="dangan-vn-nameplate" id="dangan-vn-name">—</div>
+                <div class="dangan-vn-position" id="dangan-vn-position" aria-live="polite">Line 0 / 0</div>
+            </div>
             <div class="dangan-vn-text" id="dangan-vn-text">Visual Novel Mode ready.</div>
-            <div class="dangan-vn-input">Tap dialogue box to continue · Type in SillyTavern input below</div>
+            <div class="dangan-vn-footer">
+                <div class="dangan-vn-input">Click text, press →, or use Next · Type in SillyTavern input below</div>
+                <div class="dangan-vn-nav">
+                    <button type="button" class="dangan-vn-control dangan-vn-nav-button" id="dangan-vn-prev" aria-label="Show previous line">◀ Prev</button>
+                    <button type="button" class="dangan-vn-control dangan-vn-nav-button" id="dangan-vn-next" aria-label="Show next line">Next ▶</button>
+                </div>
+            </div>
         </div>
         <div class="dangan-vn-transcript" id="dangan-vn-transcript" aria-hidden="true">
             <div class="dangan-vn-transcript-header">
@@ -636,7 +591,31 @@ function createVnModeController() {
     const transcriptCloseEl = host.querySelector('#dangan-vn-transcript-close');
     const transcriptBodyEl = host.querySelector('#dangan-vn-transcript-body');
     const nameEl = host.querySelector('#dangan-vn-name');
+    const positionEl = host.querySelector('#dangan-vn-position');
     const textEl = host.querySelector('#dangan-vn-text');
+    const prevBtnEl = host.querySelector('#dangan-vn-prev');
+    const nextBtnEl = host.querySelector('#dangan-vn-next');
+
+    function updateNavigationState(messages = getMessageEntries()) {
+        const total = messages.length;
+        const current = total ? Math.min(total, messageIndex + 1) : 0;
+        if (positionEl) {
+            positionEl.textContent = `Line ${current} / ${total}`;
+        }
+
+        const hasPrevious = total > 0 && (chunkIndex > 0 || messageIndex > 0);
+        const hasNext = (() => {
+            if (!total) return false;
+            const currentEntry = messages[Math.min(messageIndex, total - 1)];
+            const chunks = splitIntoChunks(stripV3CMarkersFromText(currentEntry?.text || ''));
+            const canAdvanceWithinCurrent = chunkIndex + 1 < chunks.length;
+            const canAdvanceToNext = messageIndex < total - 1;
+            return canAdvanceWithinCurrent || canAdvanceToNext;
+        })();
+
+        if (prevBtnEl) prevBtnEl.disabled = !hasPrevious;
+        if (nextBtnEl) nextBtnEl.disabled = !hasNext;
+    }
 
     function applyInlineFallbackStyles() {
         Object.assign(host.style, {
@@ -995,6 +974,7 @@ function createVnModeController() {
         if (!messages.length) {
             nameEl.textContent = 'SYSTEM';
             textEl.textContent = 'No character replies available yet. Send a message and wait for a character response.';
+            updateNavigationState(messages);
             return;
         }
 
@@ -1007,12 +987,14 @@ function createVnModeController() {
         if (!chunks.length) {
             nameEl.textContent = entry.name || 'UNKNOWN';
             textEl.textContent = '...';
+            updateNavigationState(messages);
             return;
         }
 
         chunkIndex = Math.max(0, Math.min(chunkIndex, chunks.length - 1));
         nameEl.textContent = entry.name || 'UNKNOWN';
         textEl.textContent = chunks[chunkIndex];
+        updateNavigationState(messages);
     }
 
     function advance() {
@@ -1037,6 +1019,30 @@ function createVnModeController() {
             chunkIndex += 1;
         } else {
             messageIndex = Math.min(messages.length - 1, messageIndex + 1);
+            chunkIndex = 0;
+        }
+
+        renderCurrent();
+    }
+
+    function retreat() {
+        const messages = getMessageEntries();
+        if (!messages.length) {
+            renderCurrent();
+            return;
+        }
+
+        const entry = messages[Math.min(messageIndex, messages.length - 1)];
+        const chunks = splitIntoChunks(stripV3CMarkersFromText(entry.text));
+
+        if (chunkIndex > 0) {
+            chunkIndex -= 1;
+        } else if (messageIndex > 0) {
+            messageIndex -= 1;
+            const previousEntry = messages[messageIndex];
+            const previousChunks = splitIntoChunks(stripV3CMarkersFromText(previousEntry.text));
+            chunkIndex = Math.max(0, previousChunks.length - 1);
+        } else if (chunks.length) {
             chunkIndex = 0;
         }
 
@@ -1083,6 +1089,18 @@ function createVnModeController() {
         event.preventDefault();
         event.stopPropagation();
         setTranscriptOpen(false);
+    });
+
+    prevBtnEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        retreat();
+    });
+
+    nextBtnEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        advance();
     });
 
     frameEl?.addEventListener('dblclick', (event) => {
@@ -1143,7 +1161,20 @@ function createVnModeController() {
         const target = event.target;
         if (target instanceof Element && target.closest('.dangan-vn-lock')) return;
         if (target instanceof Element && target.closest('.dangan-vn-transcript-toggle')) return;
+        if (target instanceof Element && target.closest('.dangan-vn-nav-button')) return;
         advance();
+    });
+
+    window.addEventListener('keydown', (event) => {
+        if (!vnEnabled || !host.classList.contains('active')) return;
+        if (event.key === 'ArrowRight') {
+            advance();
+        } else if (event.key === 'ArrowLeft') {
+            retreat();
+        } else {
+            return;
+        }
+        event.preventDefault();
     });
 
     window.addEventListener('resize', () => {
@@ -2465,6 +2496,7 @@ function applyGiftOutcome(characterName, verdict, signatureSeed) {
 
     char.trustHistory ||= new Set();
     char.trustHistory.add(signature);
+    saveCharacters();
 
     if (verdict === "SOCIAL_UP") {
         increaseTrustWithRewards(char);
@@ -2814,6 +2846,7 @@ function startV3CObserver() {
 
 function processAllMessages() {
     const messages = document.querySelectorAll(".mes");
+    let socialHistoryMutated = false;
 
     messages.forEach(msgEl => {
         // 🔑 REGISTER CHARACTER FROM DOM
@@ -2866,6 +2899,7 @@ for (const match of rawText.matchAll(regex)) {
     if (char.trustHistory.has(signature)) continue;
 
     char.trustHistory.add(signature);
+    socialHistoryMutated = true;
     increaseTrustWithRewards(char);
 }
 }
@@ -2885,8 +2919,14 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
     if (char.trustHistory.has(signature)) continue;
 
     char.trustHistory.add(signature);
+    socialHistoryMutated = true;
     decreaseTrust(char);
 }
+
+        if (socialHistoryMutated) {
+            saveCharacters();
+            socialHistoryMutated = false;
+        }
 
         // ---- Investigation Start ----
         const investigationMarkers = parseInvestigationStartMarkers(rawText);
@@ -2930,9 +2970,10 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
 
         monokumaAnnouncementMarkers.forEach((marker, idx) => {
             const signature = `MONOKUMA_ANNOUN||${messageSignature}||${marker.index}||${idx}||${marker.type}`;
-            if (processedMonokumaAnnouncementSignatures.has(signature)) return;
+            const persistentSignature = buildMonokumaAnnouncementPersistentSignature(msgEl, marker, idx, rawText);
+            if (hasProcessedMonokumaAnnouncementSignature(signature, persistentSignature)) return;
 
-            processedMonokumaAnnouncementSignatures.add(signature);
+            markMonokumaAnnouncementSignatureProcessed(signature, persistentSignature);
             monokumaAnnouncementController?.trigger(marker.type);
         });
 

@@ -1,0 +1,110 @@
+/* =========================
+   SOCIAL PANEL LAYOUT
+   ========================= */
+
+.monopad-panel-content[data-panel="social"] {
+    height: 100%;
+}
+
+.social-container {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    height: 100%;
+}
+
+/* LEFT LIST */
+.social-list {
+    border-right: 1px solid rgba(255,255,255,0.15);
+    display: flex;
+    flex-direction: column;
+}
+
+.social-list-header {
+    padding: 12px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    border-bottom: 1px solid rgba(255,255,255,0.15);
+}
+
+.social-list-items {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.social-empty {
+    padding: 16px;
+    opacity: 0.5;
+    font-style: italic;
+}
+
+/* RIGHT REPORT PANEL */
+
+.social-report {
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.report-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.report-name {
+    font-size: 20px;
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+
+.report-ultimate {
+    font-size: 12px;
+    opacity: 0.7;
+}
+
+.report-divider {
+    height: 1px;
+    background: rgba(255,255,255,0.15);
+}
+
+/* TRUST METER */
+
+.report-trust {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.trust-label {
+    font-size: 12px;
+    letter-spacing: 1px;
+    opacity: 0.8;
+}
+
+.trust-bar {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 4px;
+}
+
+.trust-segment {
+    height: 10px;
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.25);
+}
+
+.trust-segment.filled {
+    background: linear-gradient(
+        to bottom,
+        #ff4bd8,
+        #a100c9
+    );
+    box-shadow: 0 0 6px rgba(255,75,216,0.6);
+}
+
+.trust-value {
+    font-size: 12px;
+    opacity: 0.8;
+}
+

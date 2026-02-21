@@ -1,0 +1,48 @@
+/* =========================
+   Monopad Panel Transitions
+   ========================= */
+
+.monopad-panel-content {
+    position: absolute;
+    inset: 0;
+
+    padding: 24px;
+    box-sizing: border-box;
+
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+
+    pointer-events: none;
+
+    transition:
+        opacity 0.18s ease-out,
+        transform 0.18s ease-out;
+}
+
+.monopad-panel-content.active {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+
+    pointer-events: auto;
+}
+
+.monopad-panel-content.active {
+    animation: monopad-snap 0.12s ease-out;
+}
+
+@keyframes monopad-snap {
+    0% {
+        filter: brightness(1.4);
+    }
+    100% {
+        filter: brightness(1);
+    }
+}
+
+.monopad-panel-content h2 {
+    margin-top: 0;
+    letter-spacing: 1px;
+}
+
+
+
