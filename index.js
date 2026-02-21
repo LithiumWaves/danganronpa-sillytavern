@@ -784,6 +784,7 @@ function createVnModeController() {
         composeEl.style.margin = '';
         composeEl.style.transform = '';
         composeEl.style.zIndex = '';
+        document.body.classList.remove('dangan-vn-compose-docked-active');
     }
 
     function ensureComposeCollapseToggle(composeEl) {
@@ -848,6 +849,7 @@ function createVnModeController() {
         composeEl.style.margin = '0';
         composeEl.style.transform = 'none';
         composeEl.style.zIndex = '2147483644';
+        document.body.classList.add('dangan-vn-compose-docked-active');
     }
 
     applyInlineFallbackStyles();
