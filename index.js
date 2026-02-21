@@ -39,6 +39,7 @@ let trialController = null;
 let trialIntroUiController = null;
 let trialIntroOstController = null;
 let trialDiscussionController = null;
+let nonstopDebateController = null;
 let hasSelectedMonopadTab = false;
 let monokumaLessonState = null;
 let vnModeController = null;
@@ -1552,6 +1553,7 @@ async function triggerTrialStartFromMarker(markerText = "V3C| TRIAL_START") {
         const result = await trialController.requestStartFromMarker({ markerText });
         trialIntroUiController?.sync?.();
         trialDiscussionController?.sync?.();
+        nonstopDebateController?.sync?.();
         if (result?.started) {
             console.log("[Dangan][Trial] Class Trial started from marker.");
             return true;
@@ -1589,6 +1591,7 @@ async function triggerTrialStartFromMapPin() {
     const result = trialController.requestStartFromUi?.({ source: "map_pin" });
     trialIntroUiController?.sync?.();
     trialDiscussionController?.sync?.();
+    nonstopDebateController?.sync?.();
     if (result?.started) {
         console.log("[Dangan][Trial] Class Trial started from map pin.");
         return true;
@@ -1829,7 +1832,13 @@ function createTrialDiscussionController() {
             enqueue(extractDiscussionEntries(rawText, speaker), phase);
         }
 
-        if (hasEnd) markerScopedDiscussionActive = false;
+        if (hasEnd) {
+            markerScopedDiscussionActive = false;
+            if (phase === trialController?.phases?.DISCUSSION_PRE_DEBATE) {
+                trialController?.transitionTo?.(trialController.phases.NONSTOP_INTRO_CUTSCENE, 'discussion_segment_complete');
+                nonstopDebateController?.sync?.();
+            }
+        }
     }
 
     function sync() {
@@ -1871,6 +1880,183 @@ function createTrialDiscussionController() {
     };
 }
 
+
+function createNonstopDebateController() {
+    const phrasePool = [
+        "The timeline still has a hole.",
+        "Someone lied about the door lock.",
+        "The camera angle doesn't match.",
+        "The blood pattern contradicts the statement.",
+        "That alibi arrived too late.",
+        "The sound cue happened earlier.",
+        "The key movement was never explained.",
+        "A witness skipped a critical detail.",
+    ];
+
+    let introTimer = null;
+    let activeRound = null;
+    let roundToken = 0;
+
+    function ensureOverlay() {
+        let overlay = document.getElementById('dangan-nsd-overlay');
+        if (overlay) return overlay;
+
+        overlay = document.createElement('section');
+        overlay.id = 'dangan-nsd-overlay';
+        overlay.className = 'dangan-nsd-overlay';
+        overlay.setAttribute('aria-hidden', 'true');
+        overlay.innerHTML = `
+            <div class="dangan-nsd-cutscene" id="dangan-nsd-cutscene">
+                <div class="dangan-nsd-ring"></div>
+                <div class="dangan-nsd-banner">NONSTOP DEBATE</div>
+            </div>
+            <div class="dangan-nsd-active" id="dangan-nsd-active">
+                <div class="dangan-nsd-round-label" id="dangan-nsd-round-label">Round 1</div>
+                <div class="dangan-nsd-phrases" id="dangan-nsd-phrases"></div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+        return overlay;
+    }
+
+    function clearIntroTimer() {
+        if (!introTimer) return;
+        clearTimeout(introTimer);
+        introTimer = null;
+    }
+
+    function hideOverlay() {
+        const overlay = ensureOverlay();
+        overlay.classList.remove('active', 'phase-cutscene', 'phase-active');
+        overlay.setAttribute('aria-hidden', 'true');
+        clearIntroTimer();
+        roundToken += 1;
+        activeRound = null;
+    }
+
+    function pickRoundSize() {
+        return Math.floor(Math.random() * 6) + 3; // 3..8
+    }
+
+    function buildRound() {
+        const size = pickRoundSize();
+        const phrases = [];
+        for (let i = 0; i < size; i += 1) {
+            const source = phrasePool[Math.floor(Math.random() * phrasePool.length)];
+            phrases.push(`${source}`);
+        }
+        const weakPointIndex = Math.floor(Math.random() * phrases.length);
+        return { phrases, weakPointIndex };
+    }
+
+    function renderRound(roundIndex, roundData) {
+        const overlay = ensureOverlay();
+        const labelEl = overlay.querySelector('#dangan-nsd-round-label');
+        const phrasesEl = overlay.querySelector('#dangan-nsd-phrases');
+        if (labelEl) labelEl.textContent = `Round ${roundIndex}`;
+        if (!phrasesEl) return;
+
+        phrasesEl.innerHTML = '';
+        roundData.phrases.forEach((text, index) => {
+            const el = document.createElement('button');
+            el.type = 'button';
+            el.className = 'dangan-nsd-phrase';
+            el.textContent = text;
+            el.dataset.index = String(index);
+            el.addEventListener('click', () => {
+                window.fireTruthBulletAtPhrase?.(index);
+            });
+            phrasesEl.appendChild(el);
+        });
+    }
+
+    function startActivePhase() {
+        const state = trialController?.getState?.();
+        if (state?.phase !== trialController?.phases?.NONSTOP_ACTIVE) return;
+
+        roundToken += 1;
+        const token = roundToken;
+        const overlay = ensureOverlay();
+        overlay.classList.add('active', 'phase-active');
+        overlay.classList.remove('phase-cutscene');
+        overlay.setAttribute('aria-hidden', 'false');
+
+        const roundData = buildRound();
+        activeRound = {
+            token,
+            roundIndex: 1,
+            ...roundData,
+        };
+
+        renderRound(activeRound.roundIndex, activeRound);
+    }
+
+    function beginCutscene() {
+        const state = trialController?.getState?.();
+        if (state?.phase !== trialController?.phases?.NONSTOP_INTRO_CUTSCENE) return;
+
+        const overlay = ensureOverlay();
+        overlay.classList.add('active', 'phase-cutscene');
+        overlay.classList.remove('phase-active');
+        overlay.setAttribute('aria-hidden', 'false');
+
+        clearIntroTimer();
+        introTimer = window.setTimeout(() => {
+            const stillCutscene = trialController?.getState?.()?.phase === trialController?.phases?.NONSTOP_INTRO_CUTSCENE;
+            if (!stillCutscene) return;
+            trialController?.transitionTo?.(trialController.phases.NONSTOP_ACTIVE, 'nsd_cutscene_complete');
+            sync();
+        }, 2100);
+    }
+
+    function handleShot(index) {
+        const state = trialController?.getState?.();
+        if (state?.phase !== trialController?.phases?.NONSTOP_ACTIVE) return { hit: false, reason: 'not_active' };
+        if (!activeRound) return { hit: false, reason: 'no_round' };
+
+        const parsed = Number(index);
+        if (!Number.isInteger(parsed) || parsed < 0 || parsed >= activeRound.phrases.length) {
+            return { hit: false, reason: 'invalid_target' };
+        }
+
+        if (parsed === activeRound.weakPointIndex) {
+            trialController?.transitionTo?.(trialController.phases.DISCUSSION_POST_DEBATE, 'nsd_hit');
+            sync();
+            return { hit: true };
+        }
+
+        // Miss -> continue with next bounded round.
+        activeRound = {
+            token: activeRound.token,
+            roundIndex: activeRound.roundIndex + 1,
+            ...buildRound(),
+        };
+        renderRound(activeRound.roundIndex, activeRound);
+        return { hit: false, reason: 'miss' };
+    }
+
+    function sync() {
+        const phase = trialController?.getState?.()?.phase;
+        if (phase === trialController?.phases?.NONSTOP_INTRO_CUTSCENE) {
+            beginCutscene();
+            return;
+        }
+        if (phase === trialController?.phases?.NONSTOP_ACTIVE) {
+            startActivePhase();
+            return;
+        }
+
+        hideOverlay();
+    }
+
+    window.fireTruthBulletAtPhrase = (index) => handleShot(index);
+
+    return {
+        sync,
+        handleShot,
+    };
+}
 
 function createTrialIntroUiController() {
     let isVisible = false;
@@ -3149,6 +3335,7 @@ function applySettingsTabUI() {
     vnModeController?.setEnabled?.(!!tab.vnModeEnabled);
     trialIntroUiController?.sync?.();
     trialDiscussionController?.sync?.();
+    nonstopDebateController?.sync?.();
 }
 
 function saveCharacters() {
@@ -4867,21 +5054,25 @@ trialController = createTrialController({
 trialIntroOstController = createTrialIntroOstController();
 trialIntroUiController = createTrialIntroUiController();
 trialDiscussionController = createTrialDiscussionController();
+nonstopDebateController = createNonstopDebateController();
 trialIntroUiController?.startAutoSync?.();
 trialDiscussionController?.startAutoSync?.();
 trialIntroUiController?.sync?.();
 trialDiscussionController?.sync?.();
+nonstopDebateController?.sync?.();
 window.danganTrial = trialController;
 window.startClassTrial = () => {
     const result = trialController?.requestStartFromUi?.({ source: "manual" });
     trialIntroUiController?.sync?.();
     trialDiscussionController?.sync?.();
+    nonstopDebateController?.sync?.();
     return result;
 };
 window.cancelClassTrial = () => {
     const result = trialController?.cancelTrial?.();
     trialIntroUiController?.sync?.();
     trialDiscussionController?.sync?.();
+    nonstopDebateController?.sync?.();
     return result;
 };
 rewards?.renderProgressionUi?.();
