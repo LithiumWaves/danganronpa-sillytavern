@@ -1931,10 +1931,26 @@ function createNonstopDebateController() {
 
     function extractQuotedSegments(text) {
         const raw = String(text || '');
-        const matches = Array.from(raw.matchAll(/"([^"\n\r]+)"/g))
-            .map(m => String(m[1] || "").trim())
-            .filter(Boolean);
-        return matches;
+        const segments = [];
+        let start = -1;
+
+        for (let i = 0; i < raw.length; i += 1) {
+            const ch = raw[i];
+            if (ch !== '"') continue;
+
+            if (start === -1) {
+                start = i + 1;
+                continue;
+            }
+
+            const segment = raw.slice(start, i).trim();
+            if (segment && segment.indexOf('\n') === -1 && segment.indexOf('\r') === -1) {
+                segments.push(segment);
+            }
+            start = -1;
+        }
+
+        return segments;
     }
 
     function extractField(text, key) {
