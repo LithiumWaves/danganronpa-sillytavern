@@ -1604,7 +1604,7 @@ async function triggerTrialStartFromMapPin() {
     return false;
 }
 
-function createTrialIntroOstController__dedup1() {
+function createTrialIntroOstController() {
     const candidateTracks = buildExtensionPathCandidates()
         .map(basePath => `${basePath}/assets/classtrial/trialunderground.mp3`);
 
@@ -1656,7 +1656,7 @@ function createTrialIntroOstController__dedup1() {
     };
 }
 
-function ensureTrialIntroOverlay__dedup1() {
+function ensureTrialIntroOverlay() {
     let overlay = document.getElementById("dangan-trial-intro-overlay");
     if (overlay) return overlay;
 
@@ -1719,7 +1719,7 @@ function ensureTrialIntroOverlay__dedup1() {
     return overlay;
 }
 
-function createTrialDiscussionController__dedup1() {
+function createTrialDiscussionController() {
     const queue = [];
     let lastPhase = null;
     let pollId = null;
@@ -1881,7 +1881,7 @@ function createTrialDiscussionController__dedup1() {
 }
 
 
-function createNonstopDebateController__dedup1() {
+function createNonstopDebateController() {
     let introTimer = null;
     let phaseTimer = null;
     let roundToken = 0;
@@ -2224,7 +2224,7 @@ Use short analytical output only.`, { allowDialogue: true });
 }
 
 
-function createTrialIntroUiController__dedup1() {
+function createTrialIntroUiController() {
     let isVisible = false;
     let lastPhase = null;
     let pollId = null;
@@ -2351,13 +2351,13 @@ function createTrialIntroUiController__dedup1() {
 }
 
 
-function syncTrialPhaseControllers__dedup1() {
+function syncTrialPhaseControllers() {
     trialIntroUiController?.sync?.();
     trialDiscussionController?.sync?.();
     nonstopDebateController?.sync?.();
 }
 
-function forceTrialToPhase__dedup1(targetPhase) {
+function forceTrialToPhase(targetPhase) {
     if (!trialController?.phases) {
         return { ok: false, reason: "trial_controller_unavailable" };
     }
@@ -2485,7 +2485,7 @@ function createTrialIntroOstController() {
     };
 }
 
-function ensureTrialIntroOverlay__dedup2() {
+function ensureTrialIntroOverlay() {
     let overlay = document.getElementById("dangan-trial-intro-overlay");
     if (overlay) return overlay;
 
@@ -2548,7 +2548,7 @@ function ensureTrialIntroOverlay__dedup2() {
     return overlay;
 }
 
-function createTrialDiscussionController__dedup2() {
+function createTrialDiscussionController() {
     const queue = [];
     let lastPhase = null;
     let pollId = null;
@@ -2710,7 +2710,7 @@ function createTrialDiscussionController__dedup2() {
 }
 
 
-function createNonstopDebateController__dedup2() {
+function createNonstopDebateController() {
     let introTimer = null;
     let phaseTimer = null;
     let roundToken = 0;
@@ -3058,7 +3058,7 @@ Use short analytical output only.`, { allowDialogue: true });
         }
 
 
-function createTrialIntroUiController__dedup2() {
+function createTrialIntroUiController() {
     let isVisible = false;
     let lastPhase = null;
     let pollId = null;
@@ -3191,13 +3191,13 @@ function createTrialIntroUiController__dedup2() {
 }
 
 
-function syncTrialPhaseControllers__dedup2() {
+function syncTrialPhaseControllers() {
     trialIntroUiController?.sync?.();
     trialDiscussionController?.sync?.();
     nonstopDebateController?.sync?.();
 }
 
-function forceTrialToPhase__dedup2(targetPhase) {
+function forceTrialToPhase(targetPhase) {
     if (!trialController?.phases) {
         return { ok: false, reason: "trial_controller_unavailable" };
     }
@@ -3325,7 +3325,7 @@ function buildTrialIntroOstControllerInstance() {
     };
 }
 
-function ensureTrialIntroOverlay__dedup3() {
+function ensureTrialIntroOverlay() {
     let overlay = document.getElementById("dangan-trial-intro-overlay");
     if (overlay) return overlay;
 
@@ -3388,7 +3388,7 @@ function ensureTrialIntroOverlay__dedup3() {
     return overlay;
 }
 
-function createTrialDiscussionController__dedup3() {
+function createTrialDiscussionController() {
     const queue = [];
     let lastPhase = null;
     let pollId = null;
@@ -3550,7 +3550,7 @@ function createTrialDiscussionController__dedup3() {
 }
 
 
-function createNonstopDebateController__dedup3() {
+function createNonstopDebateController() {
     let introTimer = null;
     let phaseTimer = null;
     let roundToken = 0;
@@ -3893,7 +3893,7 @@ Use short analytical output only.`, { allowDialogue: true });
 }
 
 
-function createTrialIntroUiController__dedup3() {
+function createTrialIntroUiController() {
     let isVisible = false;
     let lastPhase = null;
     let pollId = null;
@@ -4020,13 +4020,13 @@ function createTrialIntroUiController__dedup3() {
 }
 
 
-function syncTrialPhaseControllers__dedup3() {
+function syncTrialPhaseControllers() {
     trialIntroUiController?.sync?.();
     trialDiscussionController?.sync?.();
     nonstopDebateController?.sync?.();
 }
 
-function forceTrialToPhase__dedup3(targetPhase) {
+function forceTrialToPhase(targetPhase) {
     if (!trialController?.phases) {
         return { ok: false, reason: "trial_controller_unavailable" };
     }
@@ -4156,7 +4156,7 @@ var buildTrialIntroOstControllerInstance = window.buildTrialIntroOstControllerIn
 
 window.buildTrialIntroOstControllerInstance = buildTrialIntroOstControllerInstance;
 
-function ensureTrialIntroOverlay__dedup4() {
+function ensureTrialIntroOverlay() {
     let overlay = document.getElementById("dangan-trial-intro-overlay");
     if (overlay) return overlay;
 
@@ -4219,7 +4219,7 @@ function ensureTrialIntroOverlay__dedup4() {
     return overlay;
 }
 
-function createTrialDiscussionController__dedup4() {
+function createTrialDiscussionController() {
     const queue = [];
     let lastPhase = null;
     let pollId = null;
@@ -4381,7 +4381,7 @@ function createTrialDiscussionController__dedup4() {
 }
 
 
-function createNonstopDebateController__dedup4() {
+function createNonstopDebateController() {
     let introTimer = null;
     let phaseTimer = null;
     let roundToken = 0;
@@ -4724,7 +4724,7 @@ Use short analytical output only.`, { allowDialogue: true });
 }
 
 
-function createTrialIntroUiController__dedup4() {
+function createTrialIntroUiController() {
     let isVisible = false;
     let lastPhase = null;
     let pollId = null;
