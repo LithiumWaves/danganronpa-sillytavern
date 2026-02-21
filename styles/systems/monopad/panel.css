@@ -1,0 +1,40 @@
+/* =========================
+   Monopad Panel
+   ========================= */
+
+.monopad-panel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+
+    background: #0e0e0e;
+    border: 2px solid #fff;
+    border-radius: 0;
+
+    z-index: 10000;
+}
+
+/* Visibility states */
+.monopad-panel.closed {
+    display: none;
+}
+
+.monopad-panel.open {
+    display: block;
+}
+
+/* Header */
+.monopad-header {
+    background: #1a1a1a;
+    padding: 6px;
+    border-bottom: 1px solid #fff;
+}
+
+/* Content */
+.monopad-content {
+    padding: 8px;
+    font-size: 13px;
+}
+
