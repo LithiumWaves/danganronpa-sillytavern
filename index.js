@@ -1954,12 +1954,30 @@ function createNonstopDebateController() {
     }
 
     function extractField(text, key) {
-        const regex = new RegExp(`^${key}\\s*:\\s*(.+)$`, "im");
+        const escapedKey = String(key || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`^${escapedKey}\\s*:\\s*(.+)$`, 'im');
         return String(text.match(regex)?.[1] || '').trim();
     }
 
+    function splitWords(value) {
+        return String(value || '')
+            .replaceAll('\n', ' ')
+            .replaceAll('\r', ' ')
+            .split(' ')
+            .map(word => word.trim())
+            .filter(Boolean);
+    }
+
+    function splitLines(value) {
+        return String(value || '')
+            .replaceAll('\r', '')
+            .split('\n')
+            .map(line => line.trim())
+            .filter(Boolean);
+    }
+
     function chooseWeakPointRange(dialogue) {
-        const words = String(dialogue || '').split(/\s+/).filter(Boolean);
+        const words = splitWords(dialogue);
         if (!words.length) return { start: 0, end: 0 };
         const span = Math.max(1, Math.min(3, Math.floor(words.length / 3)));
         const start = Math.floor(Math.random() * Math.max(1, words.length - span + 1));
@@ -2006,7 +2024,7 @@ Use short analytical output only.`, { allowDialogue: true });
 
         if (labelEl) labelEl.textContent = `Round 1 · Replies: ${replyIndex}/${replyTotal}`;
 
-        const words = String(dialogue || '').split(/\s+/).filter(Boolean);
+        const words = splitWords(dialogue);
         const weakStart = weakRange?.start ?? -1;
         const weakEnd = weakRange?.end ?? -1;
 
@@ -2105,9 +2123,7 @@ Use short analytical output only.`, { allowDialogue: true });
 
             const speaker = extractField(rawReply, 'speaker') || 'UNKNOWN';
             const quotes = extractQuotedSegments(rawReply);
-            const dialogue = quotes[0] || String(rawReply || '').split(/
-?
-/).find(Boolean) || '...';
+            const dialogue = quotes[0] || splitLines(rawReply)[0] || '...';
 
             replyIndex += 1;
             weakPointCounter += 1;
