@@ -33,6 +33,10 @@ let socialPanelController = null;
 let itemsPanelController = null;
 let mapPanelController = null;
 let trialController = null;
+let trialIntroUiController = null;
+let trialIntroOstController = null;
+let trialDiscussionController = null;
+let nonstopDebateController = null;
 let hasSelectedMonopadTab = false;
 let monokumaLessonState = null;
 let vnModeController = null;
@@ -213,6 +217,9 @@ const processedInvestigationSignatures = new Set();
 const INVESTIGATION_START_PARSE_REGEX = /V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/gi;
 const processedTrialStartSignatures = new Set();
 const TRIAL_START_PARSE_REGEX = /V3C\s*[|｜]\s*TRIAL(?:\s*[_\-]?\s*)START\b/gi;
+const TRIAL_DISCUSSION_START_PARSE_REGEX = /V3C\s*[|｜]\s*TRIAL(?:\s*[_\-]?\s*)DISCUSSION(?:\s*[_\-]?\s*)START\b/gi;
+const TRIAL_DISCUSSION_END_PARSE_REGEX = /V3C\s*[|｜]\s*TRIAL(?:\s*[_\-]?\s*)DISCUSSION(?:\s*[_\-]?\s*)END\b/gi;
+const processedTrialDiscussionSignatures = new Set();
 const processedMonokumaAnnouncementSignatures = new Set();
 
 function normalizeTextToken(value) {
@@ -374,6 +381,27 @@ function parseTrialStartMarkers(text) {
     }
 
     return matches;
+}
+
+function parseTrialDiscussionMarkers(text) {
+    const raw = String(text || "");
+    if (!raw) return { startMarkers: [], endMarkers: [] };
+
+    const startMarkers = [];
+    const endMarkers = [];
+
+    TRIAL_DISCUSSION_START_PARSE_REGEX.lastIndex = 0;
+    TRIAL_DISCUSSION_END_PARSE_REGEX.lastIndex = 0;
+
+    let match;
+    while ((match = TRIAL_DISCUSSION_START_PARSE_REGEX.exec(raw)) !== null) {
+        startMarkers.push({ marker: match[0], index: match.index, type: "start" });
+    }
+    while ((match = TRIAL_DISCUSSION_END_PARSE_REGEX.exec(raw)) !== null) {
+        endMarkers.push({ marker: match[0], index: match.index, type: "end" });
+    }
+
+    return { startMarkers, endMarkers };
 }
 
 function buildTrialStartPersistentSignature(msgEl, marker, idx, rawText = "") {
@@ -1492,6 +1520,9 @@ async function triggerTrialStartFromMarker(markerText = "V3C| TRIAL_START") {
 
     try {
         const result = await trialController.requestStartFromMarker({ markerText });
+        trialIntroUiController?.sync?.();
+        trialDiscussionController?.sync?.();
+        nonstopDebateController?.sync?.();
         if (result?.started) {
             console.log("[Dangan][Trial] Class Trial started from marker.");
             return true;
@@ -1527,6 +1558,9 @@ async function triggerTrialStartFromMapPin() {
     if (!accepted) return false;
 
     const result = trialController.requestStartFromUi?.({ source: "map_pin" });
+    trialIntroUiController?.sync?.();
+    trialDiscussionController?.sync?.();
+    nonstopDebateController?.sync?.();
     if (result?.started) {
         console.log("[Dangan][Trial] Class Trial started from map pin.");
         return true;
@@ -1537,6 +1571,586 @@ async function triggerTrialStartFromMapPin() {
     }
 
     return false;
+}
+
+function createTrialIntroOstController() {
+    const candidateTracks = buildExtensionPathCandidates()
+        .map(basePath => `${basePath}/assets/classtrial/trialunderground.mp3`);
+
+    let activeAudio = null;
+    let activeTrackIndex = -1;
+
+    function moveToNextTrack() {
+        if (!activeAudio) return;
+        if (activeTrackIndex >= candidateTracks.length - 1) return;
+        activeTrackIndex += 1;
+        activeAudio.src = candidateTracks[activeTrackIndex];
+        activeAudio.load();
+    }
+
+    function stop() {
+        if (!activeAudio) return;
+        activeAudio.pause();
+        activeAudio.currentTime = 0;
+    }
+
+    function play() {
+        if (!extension_settings[extensionName]?.monopadSounds) return;
+        if (!candidateTracks.length) return;
+
+        if (!activeAudio) {
+            activeTrackIndex = 0;
+            activeAudio = new Audio(candidateTracks[activeTrackIndex]);
+            activeAudio.loop = true;
+            activeAudio.preload = "auto";
+            activeAudio.volume = 0.42;
+
+            activeAudio.addEventListener("error", () => {
+                const previousIndex = activeTrackIndex;
+                moveToNextTrack();
+                if (previousIndex === activeTrackIndex) {
+                    console.warn("[Dangan][Trial] Could not load trialunderground.mp3 from any extension path candidate.");
+                    return;
+                }
+                activeAudio.play().catch(() => {});
+            });
+        }
+
+        activeAudio.play().catch(() => {});
+    }
+
+    return {
+        play,
+        stop,
+    };
+}
+
+function ensureTrialIntroOverlay() {
+    let overlay = document.getElementById("dangan-trial-intro-overlay");
+    if (overlay) return overlay;
+
+    overlay = document.createElement("section");
+    overlay.id = "dangan-trial-intro-overlay";
+    overlay.className = "dangan-trial-intro-overlay";
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.innerHTML = `
+        <div class="dangan-trial-backdrop" aria-hidden="true">
+            <div class="dangan-trial-grid"></div>
+            <div class="dangan-trial-cylinder"></div>
+            <div class="dangan-trial-cylinder dangan-trial-cylinder-alt"></div>
+            <div class="dangan-trial-glow-orb"></div>
+        </div>
+        <div class="dangan-trial-intro-shell" role="dialog" aria-modal="false" aria-labelledby="dangan-trial-intro-title">
+            <header class="dangan-trial-intro-header">
+                <div class="dangan-trial-prep-label">Court Preparation</div>
+                <h2 id="dangan-trial-intro-title">Class Trial</h2>
+                <p>Sharpen your Truth Bullets and ready your opening statement.</p>
+            </header>
+            <section class="dangan-trial-case-summary" aria-live="polite">
+                <div class="dangan-trial-case-summary-label">Case Summary</div>
+                <p id="dangan-trial-case-summary-text">Case summary pending.</p>
+            </section>
+            <div class="dangan-trial-intro-actions">
+                <button type="button" class="dangan-trial-intro-skills" id="dangan-trial-intro-skills">Equip Skills</button>
+                <button type="button" class="dangan-trial-intro-cancel" id="dangan-trial-intro-cancel">Withdraw</button>
+                <button type="button" class="dangan-trial-intro-start" id="dangan-trial-intro-start">Begin Class Trial</button>
+            </div>
+        </div>
+    `;
+
+    const startBtn = overlay.querySelector("#dangan-trial-intro-start");
+    startBtn?.addEventListener("click", () => {
+        if (!trialController) return;
+        const result = trialController.transitionTo?.(trialController.phases.DISCUSSION_PRE_DEBATE, "trial_intro_start");
+        if (!result?.ok) {
+            console.info("[Dangan][Trial] Could not enter discussion_pre_debate from trial_intro.");
+        }
+        trialIntroUiController?.sync?.();
+    });
+
+    const skillsBtn = overlay.querySelector("#dangan-trial-intro-skills");
+    skillsBtn?.addEventListener("click", () => {
+        const panel = document.getElementById("dangan_monopad_panel");
+        if (panel && !panel.classList.contains("open")) {
+            document.getElementById("dangan_monopad_button")?.click();
+        }
+        setActiveMonopadTab("skills");
+        itemsPanelController?.renderSkillsItemsPanel?.();
+    });
+
+    const cancelBtn = overlay.querySelector("#dangan-trial-intro-cancel");
+    cancelBtn?.addEventListener("click", () => {
+        trialController?.cancelTrial?.();
+        trialIntroUiController?.sync?.();
+    });
+
+    document.body.appendChild(overlay);
+    return overlay;
+}
+
+function createTrialDiscussionController() {
+    const queue = [];
+    let lastPhase = null;
+    let pollId = null;
+    let markerScopedDiscussionActive = false;
+    let forcedVnDuringDiscussion = false;
+
+    function clearQueue() {
+        queue.length = 0;
+    }
+
+    function isDiscussionPhase(phase) {
+        return phase === trialController?.phases?.DISCUSSION_PRE_DEBATE || phase === trialController?.phases?.DISCUSSION_POST_DEBATE;
+    }
+
+    function phaseLabel(phase) {
+        if (phase === trialController?.phases?.DISCUSSION_PRE_DEBATE) return "Pre-Debate Discussion";
+        if (phase === trialController?.phases?.DISCUSSION_POST_DEBATE) return "Post-Debate Discussion";
+        return "Discussion";
+    }
+
+    function ensureVnTrialLabel() {
+        const frame = document.querySelector('#dangan-vn-overlay .dangan-vn-frame');
+        if (!frame) return null;
+
+        let phaseEl = frame.querySelector('#dangan-trial-discussion-phase-inline');
+        if (!phaseEl) {
+            phaseEl = document.createElement('div');
+            phaseEl.id = 'dangan-trial-discussion-phase-inline';
+            phaseEl.className = 'dangan-trial-discussion-phase-inline';
+            frame.insertBefore(phaseEl, frame.firstChild);
+        }
+
+        return phaseEl;
+    }
+
+    function renderLine(entry, phase) {
+        const phaseEl = ensureVnTrialLabel();
+        if (phaseEl) phaseEl.textContent = phaseLabel(phase).toUpperCase();
+
+        const nameEl = document.getElementById('dangan-vn-name');
+        const textEl = document.getElementById('dangan-vn-text');
+        if (nameEl) nameEl.textContent = String(entry?.speaker || 'UNKNOWN').toUpperCase();
+        if (textEl) textEl.textContent = String(entry?.line || '...');
+    }
+
+    function enqueue(entries = [], phase = null) {
+        if (!Array.isArray(entries) || !entries.length) return;
+
+        // Do not auto-scroll through queued lines; keep VN behavior stable by showing only the latest line.
+        const latestEntry = entries[entries.length - 1];
+        queue.length = 0;
+        queue.push(latestEntry);
+        renderLine(latestEntry, phase);
+    }
+
+    function extractDiscussionEntries(rawText, fallbackSpeaker = "UNKNOWN") {
+        const text = String(rawText || "");
+        if (!text.trim()) return [];
+
+        const cleaned = stripV3CMarkersFromText(text);
+        if (!cleaned.trim()) return [];
+
+        return cleaned
+            .split(/\r?\n/)
+            .map(line => line.trim())
+            .filter(Boolean)
+            .map(line => ({ speaker: fallbackSpeaker, line }));
+    }
+
+    function setDiscussionVisualState(active, phase = null) {
+        document.body.classList.toggle('dangan-trial-discussion-vn-active', active);
+        const phaseEl = ensureVnTrialLabel();
+        if (phaseEl) {
+            phaseEl.style.display = active ? 'block' : 'none';
+            if (active) phaseEl.textContent = phaseLabel(phase).toUpperCase();
+        }
+
+        if (active) {
+            if (vnModeController) {
+                vnModeController.setEnabled?.(true);
+                forcedVnDuringDiscussion = true;
+            }
+        } else {
+            if (forcedVnDuringDiscussion && vnModeController) {
+                vnModeController.setEnabled?.(!!getMonopadSetting('vnModeEnabled'));
+            }
+            forcedVnDuringDiscussion = false;
+        }
+    }
+
+    function ingestMessage({ messageSignature = "", rawText = "", speaker = "UNKNOWN" } = {}) {
+        if (!trialController) return;
+        const phase = trialController.getState?.()?.phase;
+        if (!isDiscussionPhase(phase)) return;
+
+        const { startMarkers, endMarkers } = parseTrialDiscussionMarkers(rawText);
+        const hasStart = startMarkers.length > 0;
+        const hasEnd = endMarkers.length > 0;
+
+        if (hasStart) markerScopedDiscussionActive = true;
+
+        const markerSignature = `TRIAL_DISCUSSION||${messageSignature}||${hasStart}||${hasEnd}`;
+        if (processedTrialDiscussionSignatures.has(markerSignature)) return;
+        processedTrialDiscussionSignatures.add(markerSignature);
+
+        const shouldEnqueueFallback = !hasStart && !hasEnd && !markerScopedDiscussionActive;
+        const shouldEnqueueScoped = markerScopedDiscussionActive || hasStart;
+
+        if (shouldEnqueueFallback || shouldEnqueueScoped) {
+            enqueue(extractDiscussionEntries(rawText, speaker), phase);
+        }
+
+        if (hasEnd) {
+            markerScopedDiscussionActive = false;
+            if (phase === trialController?.phases?.DISCUSSION_PRE_DEBATE) {
+                trialController?.transitionTo?.(trialController.phases.NONSTOP_INTRO_CUTSCENE, 'discussion_segment_complete');
+                nonstopDebateController?.sync?.();
+            }
+        }
+    }
+
+    function sync() {
+        if (!trialController) {
+            setDiscussionVisualState(false);
+            clearQueue();
+            lastPhase = null;
+            markerScopedDiscussionActive = false;
+            return;
+        }
+
+        const phase = trialController.getState?.()?.phase;
+        const inDiscussion = isDiscussionPhase(phase);
+        setDiscussionVisualState(inDiscussion, phase);
+
+        if (!inDiscussion) {
+            clearQueue();
+            markerScopedDiscussionActive = false;
+        }
+
+        lastPhase = phase;
+    }
+
+    function startAutoSync() {
+        if (pollId) return;
+        const tick = () => {
+            const phase = trialController?.getState?.()?.phase || null;
+            if (phase !== lastPhase) {
+                sync();
+            }
+        };
+        pollId = window.setInterval(tick, 250);
+    }
+
+    return {
+        sync,
+        startAutoSync,
+        ingestMessage,
+    };
+}
+
+
+function createNonstopDebateController() {
+    const phrasePool = [
+        "The timeline still has a hole.",
+        "Someone lied about the door lock.",
+        "The camera angle doesn't match.",
+        "The blood pattern contradicts the statement.",
+        "That alibi arrived too late.",
+        "The sound cue happened earlier.",
+        "The key movement was never explained.",
+        "A witness skipped a critical detail.",
+    ];
+
+    let introTimer = null;
+    let activeRound = null;
+    let roundToken = 0;
+
+    function ensureOverlay() {
+        let overlay = document.getElementById('dangan-nsd-overlay');
+        if (overlay) return overlay;
+
+        overlay = document.createElement('section');
+        overlay.id = 'dangan-nsd-overlay';
+        overlay.className = 'dangan-nsd-overlay';
+        overlay.setAttribute('aria-hidden', 'true');
+        overlay.innerHTML = `
+            <div class="dangan-nsd-cutscene" id="dangan-nsd-cutscene">
+                <div class="dangan-nsd-ring"></div>
+                <div class="dangan-nsd-banner">NONSTOP DEBATE</div>
+            </div>
+            <div class="dangan-nsd-active" id="dangan-nsd-active">
+                <div class="dangan-nsd-round-label" id="dangan-nsd-round-label">Round 1</div>
+                <div class="dangan-nsd-phrases" id="dangan-nsd-phrases"></div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+        return overlay;
+    }
+
+    function clearIntroTimer() {
+        if (!introTimer) return;
+        clearTimeout(introTimer);
+        introTimer = null;
+    }
+
+    function hideOverlay() {
+        const overlay = ensureOverlay();
+        overlay.classList.remove('active', 'phase-cutscene', 'phase-active');
+        overlay.setAttribute('aria-hidden', 'true');
+        clearIntroTimer();
+        roundToken += 1;
+        activeRound = null;
+    }
+
+    function pickRoundSize() {
+        return Math.floor(Math.random() * 6) + 3; // 3..8
+    }
+
+    function buildRound() {
+        const size = pickRoundSize();
+        const phrases = [];
+        for (let i = 0; i < size; i += 1) {
+            const source = phrasePool[Math.floor(Math.random() * phrasePool.length)];
+            phrases.push(`${source}`);
+        }
+        const weakPointIndex = Math.floor(Math.random() * phrases.length);
+        return { phrases, weakPointIndex };
+    }
+
+    function renderRound(roundIndex, roundData) {
+        const overlay = ensureOverlay();
+        const labelEl = overlay.querySelector('#dangan-nsd-round-label');
+        const phrasesEl = overlay.querySelector('#dangan-nsd-phrases');
+        if (labelEl) labelEl.textContent = `Round ${roundIndex}`;
+        if (!phrasesEl) return;
+
+        phrasesEl.innerHTML = '';
+        roundData.phrases.forEach((text, index) => {
+            const el = document.createElement('button');
+            el.type = 'button';
+            el.className = 'dangan-nsd-phrase';
+            el.textContent = text;
+            el.dataset.index = String(index);
+            el.addEventListener('click', () => {
+                window.fireTruthBulletAtPhrase?.(index);
+            });
+            phrasesEl.appendChild(el);
+        });
+    }
+
+    function startActivePhase() {
+        const state = trialController?.getState?.();
+        if (state?.phase !== trialController?.phases?.NONSTOP_ACTIVE) return;
+
+        roundToken += 1;
+        const token = roundToken;
+        const overlay = ensureOverlay();
+        overlay.classList.add('active', 'phase-active');
+        overlay.classList.remove('phase-cutscene');
+        overlay.setAttribute('aria-hidden', 'false');
+
+        const roundData = buildRound();
+        activeRound = {
+            token,
+            roundIndex: 1,
+            ...roundData,
+        };
+
+        renderRound(activeRound.roundIndex, activeRound);
+    }
+
+    function beginCutscene() {
+        const state = trialController?.getState?.();
+        if (state?.phase !== trialController?.phases?.NONSTOP_INTRO_CUTSCENE) return;
+
+        const overlay = ensureOverlay();
+        overlay.classList.add('active', 'phase-cutscene');
+        overlay.classList.remove('phase-active');
+        overlay.setAttribute('aria-hidden', 'false');
+
+        clearIntroTimer();
+        introTimer = window.setTimeout(() => {
+            const stillCutscene = trialController?.getState?.()?.phase === trialController?.phases?.NONSTOP_INTRO_CUTSCENE;
+            if (!stillCutscene) return;
+            trialController?.transitionTo?.(trialController.phases.NONSTOP_ACTIVE, 'nsd_cutscene_complete');
+            sync();
+        }, 2100);
+    }
+
+    function handleShot(index) {
+        const state = trialController?.getState?.();
+        if (state?.phase !== trialController?.phases?.NONSTOP_ACTIVE) return { hit: false, reason: 'not_active' };
+        if (!activeRound) return { hit: false, reason: 'no_round' };
+
+        const parsed = Number(index);
+        if (!Number.isInteger(parsed) || parsed < 0 || parsed >= activeRound.phrases.length) {
+            return { hit: false, reason: 'invalid_target' };
+        }
+
+        if (parsed === activeRound.weakPointIndex) {
+            trialController?.transitionTo?.(trialController.phases.DISCUSSION_POST_DEBATE, 'nsd_hit');
+            sync();
+            return { hit: true };
+        }
+
+        // Miss -> continue with next bounded round.
+        activeRound = {
+            token: activeRound.token,
+            roundIndex: activeRound.roundIndex + 1,
+            ...buildRound(),
+        };
+        renderRound(activeRound.roundIndex, activeRound);
+        return { hit: false, reason: 'miss' };
+    }
+
+    function sync() {
+        const phase = trialController?.getState?.()?.phase;
+        if (phase === trialController?.phases?.NONSTOP_INTRO_CUTSCENE) {
+            beginCutscene();
+            return;
+        }
+        if (phase === trialController?.phases?.NONSTOP_ACTIVE) {
+            startActivePhase();
+            return;
+        }
+
+        hideOverlay();
+    }
+
+    window.fireTruthBulletAtPhrase = (index) => handleShot(index);
+
+    return {
+        sync,
+        handleShot,
+    };
+}
+
+function createTrialIntroUiController() {
+    let isVisible = false;
+    let lastPhase = null;
+    let pollId = null;
+
+    function applyViewportSafeLayout(overlay) {
+        if (!overlay) return;
+
+        const shell = overlay.querySelector('.dangan-trial-intro-shell');
+        const visualViewport = window.visualViewport;
+        const viewportHeight = Math.max(320, Math.round(visualViewport?.height || window.innerHeight || 0));
+        const viewportWidth = Math.max(280, window.innerWidth || 0);
+        const viewportOffsetTop = Math.max(0, Math.round(visualViewport?.offsetTop || 0));
+        const isMobile = viewportWidth <= 700;
+
+        overlay.style.position = 'fixed';
+        overlay.style.inset = '0';
+        overlay.style.zIndex = '2147483647';
+        overlay.style.justifyContent = 'center';
+        overlay.style.alignItems = isMobile ? 'flex-end' : 'center';
+        overlay.style.boxSizing = 'border-box';
+
+        if (!shell) return;
+
+        shell.style.boxSizing = 'border-box';
+        shell.style.overflow = 'auto';
+
+        if (isMobile) {
+            const topPadding = Math.max(10, viewportOffsetTop + 10);
+            const sidePadding = 8;
+            const bottomPadding = 10;
+
+            overlay.style.padding = `${topPadding}px ${sidePadding}px ${bottomPadding}px`;
+
+            const maxHeight = Math.max(220, viewportHeight - topPadding - bottomPadding);
+            shell.style.width = `${Math.max(280, Math.min(540, viewportWidth - 16))}px`;
+            shell.style.minHeight = '0';
+            shell.style.maxHeight = `${maxHeight}px`;
+            shell.style.height = 'auto';
+            shell.style.margin = '0 auto';
+            shell.style.borderRadius = '12px';
+        } else {
+            overlay.style.padding = '';
+            shell.style.minHeight = '';
+            shell.style.maxHeight = `${Math.max(220, viewportHeight - 16)}px`;
+            shell.style.height = '';
+            shell.style.width = '';
+            shell.style.margin = '';
+            shell.style.borderRadius = '';
+        }
+    }
+
+    function setVisible(nextVisible) {
+        const overlay = ensureTrialIntroOverlay();
+        overlay.classList.toggle("active", nextVisible);
+        overlay.setAttribute("aria-hidden", nextVisible ? "false" : "true");
+        overlay.style.display = nextVisible ? 'flex' : 'none';
+        overlay.style.pointerEvents = nextVisible ? 'auto' : 'none';
+
+        const vnModeOn = !!getMonopadSetting("vnModeEnabled");
+        document.body.classList.toggle("dangan-trial-vn-chat-hidden", nextVisible && vnModeOn);
+
+        if (nextVisible) {
+            applyViewportSafeLayout(overlay);
+        }
+
+        if (nextVisible && !isVisible) {
+            trialIntroOstController?.play?.();
+        } else if (!nextVisible && isVisible) {
+            trialIntroOstController?.stop?.();
+        }
+
+        isVisible = nextVisible;
+    }
+
+    function sync() {
+        if (!trialController) {
+            setVisible(false);
+            lastPhase = null;
+            return;
+        }
+
+        const trialState = trialController.getState?.();
+        const phase = trialState?.phase || null;
+        lastPhase = phase;
+        const isTrialIntro = phase === trialController.phases?.TRIAL_INTRO;
+        const overlay = ensureTrialIntroOverlay();
+        const summaryEl = overlay.querySelector("#dangan-trial-case-summary-text");
+        if (summaryEl) {
+            summaryEl.textContent = String(trialState?.session?.caseSummary || "Case summary pending.");
+        }
+
+        setVisible(isTrialIntro);
+    }
+
+    function startAutoSync() {
+        if (pollId) return;
+
+        const tick = () => {
+            if (!trialController) {
+                if (lastPhase !== null) sync();
+                return;
+            }
+            const phase = trialController.getState?.()?.phase || null;
+            if (phase !== lastPhase) {
+                sync();
+                return;
+            }
+
+            if (isVisible) {
+                applyViewportSafeLayout(document.getElementById('dangan-trial-intro-overlay'));
+            }
+        };
+
+        pollId = window.setInterval(tick, 250);
+        document.addEventListener("visibilitychange", tick);
+        window.addEventListener('resize', tick);
+        window.addEventListener('orientationchange', tick);
+    }
+
+    return {
+        sync,
+        startAutoSync,
+    };
 }
 
 
@@ -1975,6 +2589,8 @@ function stripV3CMarkersFromText(value) {
         .replace(/V3C\s*[|｜]\s*SOCIAL_DOWN:\s*([^\n\r]+)/gi, "")
         .replace(/V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/gi, "")
         .replace(TRIAL_START_REGEX, "")
+        .replace(TRIAL_DISCUSSION_START_PARSE_REGEX, "")
+        .replace(TRIAL_DISCUSSION_END_PARSE_REGEX, "")
         .replace(/V3C\s*[|｜]\s*DAY(?:\s*[_\-]?\s*)ANNOUN\b/gi, "")
         .replace(/V3C\s*[|｜]\s*NIGHT(?:\s*[_\-]?\s*)ANNOUN\b/gi, "")
         .replace(/V3C\s*[|｜]\s*BDA\b/gi, "")
@@ -2042,7 +2658,16 @@ function processAllMessages() {
 
         const rawText = msgText.textContent;
         const messageSignature = buildMessageSignature(msgEl, rawText);
+        const isUserMessage = msgEl.getAttribute("is_user") === "true";
+        const speakerName = isUserMessage
+            ? getActivePersonaName()
+            : (msgEl.getAttribute("ch_name") || msgEl.getAttribute("name") || "UNKNOWN");
         maybeTrackMessageLocation(msgEl, rawText);
+        trialDiscussionController?.ingestMessage?.({
+            messageSignature,
+            rawText,
+            speaker: speakerName,
+        });
         injectPersistedGiftReactionForMessage(msgEl, messageSignature);
         void tryResolvePendingGiftForMessage(msgEl, rawText);
 
@@ -2667,6 +3292,9 @@ function applySettingsTabUI() {
 
     applyCrtSettings();
     vnModeController?.setEnabled?.(!!tab.vnModeEnabled);
+    trialIntroUiController?.sync?.();
+    trialDiscussionController?.sync?.();
+    nonstopDebateController?.sync?.();
 }
 
 function saveCharacters() {
@@ -4382,9 +5010,30 @@ trialController = createTrialController({
     getTruthBullets: getTruthBulletsSnapshot,
     openConfirmDialog: openMonopadConfirmDialog,
 });
+trialIntroOstController = createTrialIntroOstController();
+trialIntroUiController = createTrialIntroUiController();
+trialDiscussionController = createTrialDiscussionController();
+nonstopDebateController = createNonstopDebateController();
+trialIntroUiController?.startAutoSync?.();
+trialDiscussionController?.startAutoSync?.();
+trialIntroUiController?.sync?.();
+trialDiscussionController?.sync?.();
+nonstopDebateController?.sync?.();
 window.danganTrial = trialController;
-window.startClassTrial = () => trialController?.requestStartFromUi?.({ source: "manual" });
-window.cancelClassTrial = () => trialController?.cancelTrial?.();
+window.startClassTrial = () => {
+    const result = trialController?.requestStartFromUi?.({ source: "manual" });
+    trialIntroUiController?.sync?.();
+    trialDiscussionController?.sync?.();
+    nonstopDebateController?.sync?.();
+    return result;
+};
+window.cancelClassTrial = () => {
+    const result = trialController?.cancelTrial?.();
+    trialIntroUiController?.sync?.();
+    trialDiscussionController?.sync?.();
+    nonstopDebateController?.sync?.();
+    return result;
+};
 rewards?.renderProgressionUi?.();
 itemsPanelController.loadInventoryState();
 applySettingsTabUI();
