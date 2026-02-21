@@ -574,6 +574,7 @@ function createVnModeController() {
                 <div class="dangan-vn-nav">
                     <button type="button" class="dangan-vn-control dangan-vn-nav-button" id="dangan-vn-prev" aria-label="Show previous line">◀ Prev</button>
                     <button type="button" class="dangan-vn-control dangan-vn-nav-button" id="dangan-vn-next" aria-label="Show next line">Next ▶</button>
+                    <button type="button" class="dangan-vn-control dangan-vn-nav-button dangan-vn-regenerate" id="dangan-vn-regenerate" aria-label="Regenerate current reply">↻ Regenerate</button>
                 </div>
             </div>
         </div>
@@ -599,6 +600,40 @@ function createVnModeController() {
     const progressFillEl = host.querySelector('#dangan-vn-progress-fill');
     const prevBtnEl = host.querySelector('#dangan-vn-prev');
     const nextBtnEl = host.querySelector('#dangan-vn-next');
+    const regenerateBtnEl = host.querySelector('#dangan-vn-regenerate');
+
+
+    function isElementVisible(el) {
+        if (!(el instanceof Element)) return false;
+        const style = window.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+    }
+
+    function getRegenerateControl() {
+        const controls = Array.from(document.querySelectorAll('button, .menu_button, [role="button"], a'));
+        for (const control of controls) {
+            if (!(control instanceof Element)) continue;
+            if (control.closest('#dangan-vn-overlay')) continue;
+            const label = `${control.getAttribute('aria-label') || ''} ${control.getAttribute('title') || ''} ${control.textContent || ''}`.toLowerCase();
+            if (!/\bregenerate\b/.test(label)) continue;
+            if (!isElementVisible(control)) continue;
+            return control;
+        }
+        return null;
+    }
+
+    function triggerRegenerate() {
+        const control = getRegenerateControl();
+        if (!control) return false;
+        if (typeof control.click === 'function') {
+            control.click();
+            return true;
+        }
+        control.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        return true;
+    }
 
     function updateNavigationState(messages = getMessageEntries()) {
         const total = messages.length;
@@ -619,6 +654,7 @@ function createVnModeController() {
 
         if (prevBtnEl) prevBtnEl.disabled = !hasPrevious;
         if (nextBtnEl) nextBtnEl.disabled = !hasNext;
+        if (regenerateBtnEl) regenerateBtnEl.disabled = !getRegenerateControl();
         if (progressFillEl) {
             const percent = total > 0 ? Math.max(0, Math.min(100, Math.round((current / total) * 100))) : 0;
             progressFillEl.style.width = `${percent}%`;
@@ -1121,6 +1157,13 @@ function createVnModeController() {
         event.preventDefault();
         event.stopPropagation();
         advance();
+    });
+
+    regenerateBtnEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        triggerRegenerate();
+        updateNavigationState();
     });
 
     frameEl?.addEventListener('dblclick', (event) => {

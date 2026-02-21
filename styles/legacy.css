@@ -4791,6 +4791,12 @@ body.dangan-trial-vn-chat-hidden #chat {
     background: rgba(37, 52, 79, 0.96) !important;
 }
 
+
+/* Hide compose submenu trigger in VN docked mode; use dedicated VN controls instead. */
+.dangan-vn-compose-docked :is(#options_button, #option_button, [data-testid*="options"], [aria-label*="options" i], [title*="options" i]) {
+    display: none !important;
+}
+
 /* Keep SillyTavern popout/submenu panels readable and independent from docked-control button theming. */
 .dangan-vn-compose-docked :is(.dropdown-menu, .options-content, .menu_panel, [role="menu"], .popup, .list-group) {
     border: 1px solid rgba(157, 195, 247, 0.32) !important;
@@ -4916,6 +4922,10 @@ body.dangan-trial-vn-chat-hidden #chat {
 .dangan-vn-nav-button {
     min-width: 74px;
     padding: 0 8px;
+}
+
+.dangan-vn-regenerate {
+    min-width: 108px;
 }
 
 .dangan-vn-nav-button:disabled {
