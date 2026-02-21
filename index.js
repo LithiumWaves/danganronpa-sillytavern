@@ -3047,10 +3047,16 @@ Use short analytical output only.`, { allowDialogue: true });
     // Backward compatibility no-op for older hooks.
     window.fireTruthBulletAtPhrase = () => ({ hit: false, reason: 'use_weak_point' });
 
-    return {
-        sync,
-    };
-}
+    try {
+        const result = await trialController.requestStartFromMarker({ markerText });
+        trialIntroUiController?.sync?.();
+        trialDiscussionController?.sync?.();
+        nonstopDebateController?.sync?.();
+        if (result?.started) {
+            console.log("[Dangan][Trial] Class Trial started from marker.");
+            return true;
+        }
+
 
 function createTrialIntroUiController__dedup2() {
     let isVisible = false;
