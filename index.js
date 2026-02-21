@@ -13,6 +13,9 @@ import { getLocationPromptReference, resolveLocationIdFromText } from "./map/loc
 import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, TRIAL_START_REGEX, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "./core/monokumaLessonScript.js";
+import { createRecentLocationTracker } from "./core/locationPresenceHistory.js";
+import { createRewardDifficultyManager } from "./core/rewardDifficulty.js";
+import { openMonopadConfirmDialog } from "./core/confirmDialog.js";
 import { createTrialController } from "./trial/trialController.js";
 import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers } from "./monokuma/announcementController.js";
 
@@ -61,88 +64,27 @@ const {
 } = openRouterSettings;
 
 let rewards = null;
-let recentLocationMentions = [];
 
-function pushRecentLocationMention(entry) {
-    if (!entry?.locationId || !entry?.messageSignature) return;
-
-    const normalizedSpeaker = normalizeName(entry.speakerName || "");
-    recentLocationMentions = recentLocationMentions.filter(item => {
-        if (item.messageSignature === entry.messageSignature && normalizeName(item.speakerName || "") === normalizedSpeaker) {
-            return false;
-        }
-        return true;
-    });
-
-    recentLocationMentions.push({
-        messageSignature: entry.messageSignature,
-        speakerName: String(entry.speakerName || "").trim(),
-        isUser: Boolean(entry.isUser),
-        locationId: entry.locationId,
-        createdAt: Date.now(),
-    });
-
-    const overflow = recentLocationMentions.length - 5;
-    if (overflow > 0) {
-        recentLocationMentions.splice(0, overflow);
-    }
-}
-
-function buildRecentLocationPresence() {
-    const latestBySpeaker = new Map();
-
-    for (let i = recentLocationMentions.length - 1; i >= 0; i -= 1) {
-        const item = recentLocationMentions[i];
-        const speakerKey = item.isUser
-            ? "__user__"
-            : normalizeName(item.speakerName || `unknown_${i}`);
-
-        if (!speakerKey || latestBySpeaker.has(speakerKey)) continue;
-        latestBySpeaker.set(speakerKey, item);
-    }
-
-    const userEntry = latestBySpeaker.get("__user__") || null;
-    const characters = [];
-
-    latestBySpeaker.forEach((item, key) => {
-        if (key === "__user__") return;
-        if (!item?.speakerName || !item?.locationId) return;
-
-        characters.push({
-            name: item.speakerName,
-            locationId: item.locationId,
-        });
-    });
-
-    return {
-        user: userEntry
-            ? {
-                locationId: userEntry.locationId,
-                label: getActivePersonaName(),
-            }
-            : null,
-        characters,
-    };
-}
+const {
+    pushRecentLocationMention,
+    buildRecentLocationPresence,
+} = createRecentLocationTracker({
+    normalizeName,
+    getActivePersonaName: () => getActivePersonaName(),
+});
 
 window.getMonopadRecentLocationPresence = function () {
     return buildRecentLocationPresence();
 };
 
-
-function clampRewardDifficulty(value) {
-    return Object.prototype.hasOwnProperty.call(REWARD_PROFILES, value) ? value : "normal";
-}
-
-function applyRewardDifficultyProfile(profileKey) {
-    const safeProfileKey = clampRewardDifficulty(profileKey);
-    const profile = REWARD_PROFILES[safeProfileKey] || REWARD_PROFILES.normal;
-
-    Object.assign(MONOCOIN_REWARDS, profile.monocoins || REWARD_PROFILES.normal.monocoins);
-    Object.assign(XP_REWARDS, profile.xp || REWARD_PROFILES.normal.xp);
-
-    return safeProfileKey;
-}
+const {
+    clampRewardDifficulty,
+    applyRewardDifficultyProfile,
+} = createRewardDifficultyManager({
+    rewardProfiles: REWARD_PROFILES,
+    monocoins: MONOCOIN_REWARDS,
+    xp: XP_REWARDS,
+});
 
 function awardMonocoins(amount = 0, reason = "") {
     rewards?.awardMonocoins(amount, reason);
@@ -154,51 +96,6 @@ function increaseTrustWithRewards(char) {
 
 function awardXp(amount = 0, reason = "") {
     rewards?.awardXp(amount, reason);
-}
-
-function openMonopadConfirmDialog({ title = "CONFIRM ACTION", message = "", confirmLabel = "CONFIRM", cancelLabel = "CANCEL" } = {}) {
-    return new Promise((resolve) => {
-        const overlay = document.getElementById("monopad-confirm-overlay");
-        const titleEl = document.getElementById("monopad-confirm-title");
-        const messageEl = document.getElementById("monopad-confirm-message");
-        const confirmBtn = document.getElementById("monopad-confirm-accept");
-        const cancelBtn = document.getElementById("monopad-confirm-cancel");
-
-        if (!overlay || !titleEl || !messageEl || !confirmBtn || !cancelBtn) {
-            resolve(false);
-            return;
-        }
-
-        titleEl.textContent = title;
-        messageEl.textContent = message;
-        confirmBtn.textContent = confirmLabel;
-        cancelBtn.textContent = cancelLabel;
-
-        let settled = false;
-        const finish = (accepted) => {
-            if (settled) return;
-            settled = true;
-            overlay.classList.remove("open");
-            overlay.setAttribute("aria-hidden", "true");
-            overlay.removeEventListener("click", onBackdropClick);
-            confirmBtn.removeEventListener("click", onConfirm);
-            cancelBtn.removeEventListener("click", onCancel);
-            resolve(Boolean(accepted));
-        };
-
-        const onBackdropClick = (event) => {
-            if (event.target === overlay) finish(false);
-        };
-        const onConfirm = () => finish(true);
-        const onCancel = () => finish(false);
-
-        overlay.classList.add("open");
-        overlay.setAttribute("aria-hidden", "false");
-
-        overlay.addEventListener("click", onBackdropClick);
-        confirmBtn.addEventListener("click", onConfirm);
-        cancelBtn.addEventListener("click", onCancel);
-    });
 }
 
 const truthBullets = [];
