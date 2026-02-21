@@ -4983,7 +4983,7 @@ body.dangan-trial-vn-chat-hidden #chat {
 
 .dangan-nsd-active {
     width: min(1180px, 96vw);
-    pointer-events: auto;
+    pointer-events: none;
 }
 
 .dangan-nsd-round-label {
@@ -4994,30 +4994,69 @@ body.dangan-trial-vn-chat-hidden #chat {
     margin-bottom: 10px;
 }
 
-.dangan-nsd-phrases {
+.dangan-nsd-floating-layer {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 10px;
+    gap: 8px;
+    align-content: end;
+    min-height: min(56vh, 520px);
 }
 
-.dangan-nsd-phrase {
-    border: 1px solid rgba(233, 89, 223, 0.66);
+.dangan-nsd-floating-line {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: baseline;
+    align-self: center;
+    max-width: min(1100px, 94vw);
+    padding: 8px 12px;
     border-radius: 999px;
-    background: rgba(15, 19, 34, 0.88);
+    border: 1px solid rgba(233, 89, 223, 0.46);
+    background: rgba(15, 19, 34, 0.72);
     color: #eef8ff;
-    padding: 10px 12px;
+    font-size: 22px;
+    line-height: 1.2;
+    letter-spacing: 0.01em;
+    transform: translateX(var(--nsd-drift-x, 0px));
+    animation: dangan-nsd-float-in 240ms ease-out;
+}
+
+.dangan-nsd-floating-speaker {
+    color: rgba(123, 234, 255, 0.96);
     font-size: 14px;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.08em;
+}
+
+.dangan-nsd-floating-quote {
+    color: #f4f9ff;
+}
+
+.dangan-nsd-weak-point {
+    border: 1px solid rgba(255, 119, 171, 0.85);
+    border-radius: 6px;
+    padding: 0 4px;
+    margin: 0 1px;
+    background: rgba(140, 21, 61, 0.85);
+    color: #fff4f7;
     cursor: pointer;
 }
 
-.dangan-nsd-phrase:hover,
-.dangan-nsd-phrase:focus-visible {
+.dangan-nsd-weak-point:hover,
+.dangan-nsd-weak-point:focus-visible {
     outline: none;
-    filter: brightness(1.1);
+    filter: brightness(1.12);
+}
+
+body.dangan-trial-nsd-active #dangan-vn-overlay {
+    display: none !important;
 }
 
 @keyframes dangan-nsd-ring-spin {
     from { transform: perspective(700px) rotateX(70deg) rotate(0deg); }
     to { transform: perspective(700px) rotateX(70deg) rotate(360deg); }
 }
+
+@keyframes dangan-nsd-float-in {
+    from { opacity: 0; transform: translateY(8px) scale(0.98) translateX(var(--nsd-drift-x, 0px)); }
+    to { opacity: 1; transform: translateY(0) scale(1) translateX(var(--nsd-drift-x, 0px)); }
+}
+
