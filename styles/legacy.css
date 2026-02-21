@@ -5058,3 +5058,144 @@ body.dangan-vn-compose-docked-active :is(.dropdown-menu, .options-content, .menu
         letter-spacing: 0.08em;
     }
 }
+
+
+.dangan-nsd-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483646;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    background: radial-gradient(circle at 50% 40%, rgba(17, 24, 44, 0.28), rgba(0, 0, 0, 0.72));
+}
+
+.dangan-nsd-overlay.active {
+    display: flex;
+}
+
+.dangan-nsd-cutscene,
+.dangan-nsd-active {
+    display: none;
+}
+
+.dangan-nsd-overlay.phase-cutscene .dangan-nsd-cutscene {
+    display: flex;
+}
+
+.dangan-nsd-overlay.phase-active .dangan-nsd-active {
+    display: block;
+}
+
+.dangan-nsd-cutscene {
+    width: min(940px, 92vw);
+    height: min(560px, 80vh);
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.dangan-nsd-ring {
+    width: min(72vw, 540px);
+    height: min(72vw, 540px);
+    border-radius: 50%;
+    border: 6px solid rgba(81, 220, 255, 0.72);
+    box-shadow: 0 0 46px rgba(81, 220, 255, 0.4), inset 0 0 30px rgba(116, 114, 255, 0.35);
+    transform: perspective(700px) rotateX(70deg);
+    animation: dangan-nsd-ring-spin 1.8s linear infinite;
+}
+
+.dangan-nsd-banner {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 14%;
+    padding: 10px 18px;
+    border: 1px solid rgba(244, 88, 224, 0.72);
+    background: rgba(16, 10, 35, 0.88);
+    color: #f3f8ff;
+    font-size: 28px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.dangan-nsd-active {
+    width: min(1180px, 96vw);
+    pointer-events: none;
+}
+
+.dangan-nsd-round-label {
+    color: #75e8ff;
+    font-size: 13px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+}
+
+.dangan-nsd-floating-layer {
+    display: grid;
+    gap: 8px;
+    align-content: end;
+    min-height: min(56vh, 520px);
+}
+
+.dangan-nsd-floating-line {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: baseline;
+    align-self: center;
+    max-width: min(1100px, 94vw);
+    padding: 8px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(233, 89, 223, 0.46);
+    background: rgba(15, 19, 34, 0.72);
+    color: #eef8ff;
+    font-size: 22px;
+    line-height: 1.2;
+    letter-spacing: 0.01em;
+    transform: translateX(var(--nsd-drift-x, 0px));
+    animation: dangan-nsd-float-in 240ms ease-out;
+}
+
+.dangan-nsd-floating-speaker {
+    color: rgba(123, 234, 255, 0.96);
+    font-size: 14px;
+    letter-spacing: 0.08em;
+}
+
+.dangan-nsd-floating-quote {
+    color: #f4f9ff;
+}
+
+.dangan-nsd-weak-point {
+    border: 1px solid rgba(255, 119, 171, 0.85);
+    border-radius: 6px;
+    padding: 0 4px;
+    margin: 0 1px;
+    background: rgba(140, 21, 61, 0.85);
+    color: #fff4f7;
+    cursor: pointer;
+}
+
+.dangan-nsd-weak-point:hover,
+.dangan-nsd-weak-point:focus-visible {
+    outline: none;
+    filter: brightness(1.12);
+}
+
+body.dangan-trial-nsd-active #dangan-vn-overlay {
+    display: none !important;
+}
+
+@keyframes dangan-nsd-ring-spin {
+    from { transform: perspective(700px) rotateX(70deg) rotate(0deg); }
+    to { transform: perspective(700px) rotateX(70deg) rotate(360deg); }
+}
+
+@keyframes dangan-nsd-float-in {
+    from { opacity: 0; transform: translateY(8px) scale(0.98) translateX(var(--nsd-drift-x, 0px)); }
+    to { opacity: 1; transform: translateY(0) scale(1) translateX(var(--nsd-drift-x, 0px)); }
+}
+
