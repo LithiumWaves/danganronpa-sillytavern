@@ -178,10 +178,9 @@ function markInvestigationSignatureProcessed(signature, persistentSignature = ""
     if (!signature) return;
 
     processedInvestigationSignatures.add(signature);
-    if (!persistentSignature) return;
 
     const store = getInvestigationMarkerStore();
-    store[persistentSignature] = Date.now();
+    store[persistentSignature || `RUNTIME||${signature}`] = Date.now();
 
     const keys = Object.keys(store);
     const maxEntries = 1200;
@@ -335,6 +334,56 @@ function markTrialStartSignatureProcessed(signature, persistentSignature = "") {
 
     const store = getTrialStartMarkerStore();
     store[persistentSignature] = Date.now();
+
+    const keys = Object.keys(store);
+    const maxEntries = 1200;
+    if (keys.length > maxEntries) {
+        keys
+            .sort((a, b) => Number(store[a] || 0) - Number(store[b] || 0))
+            .slice(0, keys.length - maxEntries)
+            .forEach((key) => {
+                delete store[key];
+            });
+    }
+
+    saveSettingsDebounced();
+}
+
+function getMonokumaAnnouncementMarkerStore() {
+    extension_settings[extensionName] ||= {};
+    extension_settings[extensionName].monokumaAnnouncementMarkers ||= {};
+    return extension_settings[extensionName].monokumaAnnouncementMarkers;
+}
+
+function buildMonokumaAnnouncementPersistentSignature(msgEl, marker, idx, rawText = "") {
+    const mesId = msgEl?.getAttribute?.("mesid") || msgEl?.dataset?.mesid || "";
+    if (!mesId || mesId === "no-id") return "";
+
+    const speaker = msgEl?.getAttribute?.("ch_name") || "unknown";
+    const scope = getInvestigationScopeKey();
+    if (!scope || scope === "scope:unknown") return "";
+
+    const markerIndex = Number(marker?.index ?? -1);
+    const markerType = String(marker?.type || "UNKNOWN");
+    const textFingerprint = String(rawText || "").slice(0, 140);
+
+    return `MONOKUMA_ANNOUN||${scope}||${mesId}||${speaker}||${markerType}||${markerIndex}||${idx}||${textFingerprint}`;
+}
+
+function hasProcessedMonokumaAnnouncementSignature(signature, persistentSignature = "") {
+    if (!signature) return false;
+    if (processedMonokumaAnnouncementSignatures.has(signature)) return true;
+    if (!persistentSignature) return false;
+    return Boolean(getMonokumaAnnouncementMarkerStore()[persistentSignature]);
+}
+
+function markMonokumaAnnouncementSignatureProcessed(signature, persistentSignature = "") {
+    if (!signature) return;
+
+    processedMonokumaAnnouncementSignatures.add(signature);
+
+    const store = getMonokumaAnnouncementMarkerStore();
+    store[persistentSignature || `RUNTIME||${signature}`] = Date.now();
 
     const keys = Object.keys(store);
     const maxEntries = 1200;
@@ -2569,9 +2618,10 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
 
         monokumaAnnouncementMarkers.forEach((marker, idx) => {
             const signature = `MONOKUMA_ANNOUN||${messageSignature}||${marker.index}||${idx}||${marker.type}`;
-            if (processedMonokumaAnnouncementSignatures.has(signature)) return;
+            const persistentSignature = buildMonokumaAnnouncementPersistentSignature(msgEl, marker, idx, rawText);
+            if (hasProcessedMonokumaAnnouncementSignature(signature, persistentSignature)) return;
 
-            processedMonokumaAnnouncementSignatures.add(signature);
+            markMonokumaAnnouncementSignatureProcessed(signature, persistentSignature);
             monokumaAnnouncementController?.trigger(marker.type);
         });
 
