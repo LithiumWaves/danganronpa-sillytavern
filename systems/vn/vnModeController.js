@@ -3,6 +3,51 @@ function normalizeTextToken(value) {
     return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+const TRIAL_START_PARSE_REGEX = /V3C\s*[|｜]\s*TRIAL(?:\s*[_\-]?\s*)START\b/gi;
+const TRIAL_DISCUSSION_START_PARSE_REGEX = /V3C\s*[|｜]\s*TRIAL(?:\s*[_\-]?\s*)DISCUSSION(?:\s*[_\-]?\s*)START\b/gi;
+const TRIAL_DISCUSSION_END_PARSE_REGEX = /V3C\s*[|｜]\s*TRIAL(?:\s*[_\-]?\s*)DISCUSSION(?:\s*[_\-]?\s*)END\b/gi;
+
+function stripV3CMarkersFromText(value) {
+    const text = String(value || "");
+    if (!text) return text;
+
+    const lines = text.split(/\r?\n/);
+    const kept = lines.filter((line) => {
+        const canonical = line
+            .toUpperCase()
+            .replace(/[|｜]/g, "|")
+            .replace(/[`*_~\s]/g, "");
+
+        if (canonical.startsWith("V3C|TB:")) return false;
+        if (canonical.startsWith("V3C|SOCIAL:")) return false;
+        if (canonical.startsWith("V3C|SOCIAL_UP:")) return false;
+        if (canonical.startsWith("V3C|SOCIAL_DOWN:")) return false;
+        if (canonical.includes("V3C|INVESTIGATIONSTART")) return false;
+        if (canonical.includes("V3C|TRIALSTART")) return false;
+        if (canonical.includes("V3C|DAYANNOUN")) return false;
+        if (canonical.includes("V3C|NIGHTANNOUN")) return false;
+        if (canonical.includes("V3C|BDA")) return false;
+        if (canonical.includes("V3C|BODYDISCOVERY")) return false;
+        return true;
+    });
+
+    return kept.join("\n")
+        .replace(/V3C\s*[|｜]\s*TB:\s*([^|\n\r]+)(?:\|\|\s*([^\n\r]+))?/gi, "")
+        .replace(/V3C\s*[|｜]\s*SOCIAL:\s*([^\n\r]+)/gi, "")
+        .replace(/V3C\s*[|｜]\s*SOCIAL_UP:\s*([^\n\r]+)/gi, "")
+        .replace(/V3C\s*[|｜]\s*SOCIAL_DOWN:\s*([^\n\r]+)/gi, "")
+        .replace(/V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/gi, "")
+        .replace(TRIAL_START_PARSE_REGEX, "")
+        .replace(TRIAL_DISCUSSION_START_PARSE_REGEX, "")
+        .replace(TRIAL_DISCUSSION_END_PARSE_REGEX, "")
+        .replace(/V3C\s*[|｜]\s*DAY(?:\s*[_\-]?\s*)ANNOUN\b/gi, "")
+        .replace(/V3C\s*[|｜]\s*NIGHT(?:\s*[_\-]?\s*)ANNOUN\b/gi, "")
+        .replace(/V3C\s*[|｜]\s*BDA\b/gi, "")
+        .replace(/V3C\s*[|｜]\s*BODY(?:\s*[_\-]?\s*)DISCOVERY\b/gi, "")
+        .replace(/^[ \t]+/gm, "")
+        .trimStart();
+}
+
 function trySetVisualNovelToggleInObject(root, enabled, { maxDepth = 8 } = {}) {
     if (!root || typeof root !== "object") return false;
 
