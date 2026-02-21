@@ -4799,6 +4799,11 @@ body.dangan-trial-vn-chat-hidden #chat {
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(130, 176, 236, 0.12) inset !important;
     backdrop-filter: blur(4px);
     z-index: 2147483646 !important;
+    top: calc(100% + 6px) !important;
+    bottom: auto !important;
+    max-height: min(44vh, 320px) !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
 }
 
 .dangan-vn-compose-docked :is(.dropdown-menu, .options-content, .menu_panel, [role="menu"], .popup, .list-group) :is(button, .menu_button, [role="menuitem"], .list-group-item, a) {
