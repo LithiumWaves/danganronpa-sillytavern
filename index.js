@@ -5280,4 +5280,3 @@ initTruthBullets({
         console.error(`[${extensionName}] ❌ Load failed:`, error);
     }
 });
-}
