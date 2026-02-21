@@ -2095,6 +2095,7 @@ function applyGiftOutcome(characterName, verdict, signatureSeed) {
 
     char.trustHistory ||= new Set();
     char.trustHistory.add(signature);
+    saveCharacters();
 
     if (verdict === "SOCIAL_UP") {
         increaseTrustWithRewards(char);
@@ -2444,6 +2445,7 @@ function startV3CObserver() {
 
 function processAllMessages() {
     const messages = document.querySelectorAll(".mes");
+    let socialHistoryMutated = false;
 
     messages.forEach(msgEl => {
         // 🔑 REGISTER CHARACTER FROM DOM
@@ -2496,6 +2498,7 @@ for (const match of rawText.matchAll(regex)) {
     if (char.trustHistory.has(signature)) continue;
 
     char.trustHistory.add(signature);
+    socialHistoryMutated = true;
     increaseTrustWithRewards(char);
 }
 }
@@ -2515,8 +2518,14 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
     if (char.trustHistory.has(signature)) continue;
 
     char.trustHistory.add(signature);
+    socialHistoryMutated = true;
     decreaseTrust(char);
 }
+
+        if (socialHistoryMutated) {
+            saveCharacters();
+            socialHistoryMutated = false;
+        }
 
         // ---- Investigation Start ----
         const investigationMarkers = parseInvestigationStartMarkers(rawText);
