@@ -1,4 +1,8 @@
 export function createVnSystem({ extensionName, saveSettingsDebounced }) {
+function normalizeTextToken(value) {
+    return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 function trySetVisualNovelToggleInObject(root, enabled, { maxDepth = 8 } = {}) {
     if (!root || typeof root !== "object") return false;
 
