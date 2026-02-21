@@ -1604,7 +1604,7 @@ async function triggerTrialStartFromMapPin() {
     return false;
 }
 
-function createTrialIntroOstController() {
+function createTrialIntroOstController__dedup1() {
     const candidateTracks = buildExtensionPathCandidates()
         .map(basePath => `${basePath}/assets/classtrial/trialunderground.mp3`);
 
@@ -1656,7 +1656,7 @@ function createTrialIntroOstController() {
     };
 }
 
-function ensureTrialIntroOverlay() {
+function ensureTrialIntroOverlay__dedup1() {
     let overlay = document.getElementById("dangan-trial-intro-overlay");
     if (overlay) return overlay;
 
@@ -1719,7 +1719,7 @@ function ensureTrialIntroOverlay() {
     return overlay;
 }
 
-function createTrialDiscussionController() {
+function createTrialDiscussionController__dedup1() {
     const queue = [];
     let lastPhase = null;
     let pollId = null;
@@ -1881,7 +1881,7 @@ function createTrialDiscussionController() {
 }
 
 
-function createNonstopDebateController() {
+function createNonstopDebateController__dedup1() {
     let introTimer = null;
     let phaseTimer = null;
     let roundToken = 0;
@@ -2224,7 +2224,7 @@ Use short analytical output only.`, { allowDialogue: true });
 }
 
 
-function createTrialIntroUiController() {
+function createTrialIntroUiController__dedup1() {
     let isVisible = false;
     let lastPhase = null;
     let pollId = null;
@@ -2351,13 +2351,13 @@ function createTrialIntroUiController() {
 }
 
 
-function syncTrialPhaseControllers() {
+function syncTrialPhaseControllers__dedup1() {
     trialIntroUiController?.sync?.();
     trialDiscussionController?.sync?.();
     nonstopDebateController?.sync?.();
 }
 
-function forceTrialToPhase(targetPhase) {
+function forceTrialToPhase__dedup1(targetPhase) {
     if (!trialController?.phases) {
         return { ok: false, reason: "trial_controller_unavailable" };
     }
@@ -2485,7 +2485,7 @@ function createTrialIntroOstController() {
     };
 }
 
-function ensureTrialIntroOverlay() {
+function ensureTrialIntroOverlay__dedup2() {
     let overlay = document.getElementById("dangan-trial-intro-overlay");
     if (overlay) return overlay;
 
@@ -2548,7 +2548,7 @@ function ensureTrialIntroOverlay() {
     return overlay;
 }
 
-function createTrialDiscussionController() {
+function createTrialDiscussionController__dedup2() {
     const queue = [];
     let lastPhase = null;
     let pollId = null;
@@ -2710,7 +2710,7 @@ function createTrialDiscussionController() {
 }
 
 
-function createNonstopDebateController() {
+function createNonstopDebateController__dedup2() {
     let introTimer = null;
     let phaseTimer = null;
     let roundToken = 0;
@@ -3047,18 +3047,12 @@ Use short analytical output only.`, { allowDialogue: true });
     // Backward compatibility no-op for older hooks.
     window.fireTruthBulletAtPhrase = () => ({ hit: false, reason: 'use_weak_point' });
 
-    try {
-        const result = await trialController.requestStartFromMarker({ markerText });
-        trialIntroUiController?.sync?.();
-        trialDiscussionController?.sync?.();
-        nonstopDebateController?.sync?.();
-        if (result?.started) {
-            console.log("[Dangan][Trial] Class Trial started from marker.");
-            return true;
-        }
+    return {
+        sync,
+    };
+}
 
-
-function createTrialIntroUiController() {
+function createTrialIntroUiController__dedup2() {
     let isVisible = false;
     let lastPhase = null;
     let pollId = null;
@@ -3191,13 +3185,13 @@ function createTrialIntroUiController() {
 }
 
 
-function syncTrialPhaseControllers() {
+function syncTrialPhaseControllers__dedup2() {
     trialIntroUiController?.sync?.();
     trialDiscussionController?.sync?.();
     nonstopDebateController?.sync?.();
 }
 
-function forceTrialToPhase(targetPhase) {
+function forceTrialToPhase__dedup2(targetPhase) {
     if (!trialController?.phases) {
         return { ok: false, reason: "trial_controller_unavailable" };
     }
@@ -3325,7 +3319,7 @@ function buildTrialIntroOstControllerInstance() {
     };
 }
 
-function ensureTrialIntroOverlay() {
+function ensureTrialIntroOverlay__dedup3() {
     let overlay = document.getElementById("dangan-trial-intro-overlay");
     if (overlay) return overlay;
 
@@ -3388,7 +3382,7 @@ function ensureTrialIntroOverlay() {
     return overlay;
 }
 
-function createTrialDiscussionController() {
+function createTrialDiscussionController__dedup3() {
     const queue = [];
     let lastPhase = null;
     let pollId = null;
@@ -3550,7 +3544,7 @@ function createTrialDiscussionController() {
 }
 
 
-function createNonstopDebateController() {
+function createNonstopDebateController__dedup3() {
     let introTimer = null;
     let phaseTimer = null;
     let roundToken = 0;
@@ -3893,7 +3887,7 @@ Use short analytical output only.`, { allowDialogue: true });
 }
 
 
-function createTrialIntroUiController() {
+function createTrialIntroUiController__dedup3() {
     let isVisible = false;
     let lastPhase = null;
     let pollId = null;
@@ -4020,13 +4014,13 @@ function createTrialIntroUiController() {
 }
 
 
-function syncTrialPhaseControllers() {
+function syncTrialPhaseControllers__dedup3() {
     trialIntroUiController?.sync?.();
     trialDiscussionController?.sync?.();
     nonstopDebateController?.sync?.();
 }
 
-function forceTrialToPhase(targetPhase) {
+function forceTrialToPhase__dedup3(targetPhase) {
     if (!trialController?.phases) {
         return { ok: false, reason: "trial_controller_unavailable" };
     }
@@ -4156,7 +4150,7 @@ var buildTrialIntroOstControllerInstance = window.buildTrialIntroOstControllerIn
 
 window.buildTrialIntroOstControllerInstance = buildTrialIntroOstControllerInstance;
 
-function ensureTrialIntroOverlay() {
+function ensureTrialIntroOverlay__dedup4() {
     let overlay = document.getElementById("dangan-trial-intro-overlay");
     if (overlay) return overlay;
 
@@ -4219,7 +4213,7 @@ function ensureTrialIntroOverlay() {
     return overlay;
 }
 
-function createTrialDiscussionController() {
+function createTrialDiscussionController__dedup4() {
     const queue = [];
     let lastPhase = null;
     let pollId = null;
@@ -4381,7 +4375,7 @@ function createTrialDiscussionController() {
 }
 
 
-function createNonstopDebateController() {
+function createNonstopDebateController__dedup4() {
     let introTimer = null;
     let phaseTimer = null;
     let roundToken = 0;
@@ -4724,7 +4718,7 @@ Use short analytical output only.`, { allowDialogue: true });
 }
 
 
-function createTrialIntroUiController() {
+function createTrialIntroUiController__dedup4() {
     let isVisible = false;
     let lastPhase = null;
     let pollId = null;
