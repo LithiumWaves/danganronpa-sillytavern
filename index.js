@@ -8619,8 +8619,6 @@ initTruthBullets({
     monocoinRewards: MONOCOIN_REWARDS,
     xpRewards: XP_REWARDS,
     playSfx,
-    extension_settings,
-    saveSettingsDebounced,
     extensionName,
     getSetting: getMonopadSetting
 });
