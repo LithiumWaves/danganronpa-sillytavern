@@ -1,0 +1,39 @@
+@import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600&family=Rajdhani:wght@400;500;600&display=swap");
+
+body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-frame {
+    border-color: rgba(232, 61, 221, 0.78);
+    background:
+        linear-gradient(120deg, rgba(35, 10, 58, 0.58) 0%, rgba(15, 10, 38, 0.76) 55%, rgba(12, 7, 28, 0.84) 100%),
+        repeating-linear-gradient(-28deg, rgba(198, 58, 255, 0.16) 0 70px, rgba(76, 31, 136, 0.14) 70px 140px);
+    box-shadow: 0 -3px 20px rgba(0, 0, 0, 0.45), 0 0 26px rgba(234, 48, 211, 0.2);
+}
+
+body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-nameplate {
+    background: linear-gradient(90deg, rgba(72, 20, 101, 0.84), rgba(40, 97, 146, 0.84));
+    border-color: rgba(222, 116, 255, 0.54);
+    color: #ffeaff;
+}
+
+body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-text {
+    color: #f8f9ff;
+    text-shadow: 0 0 10px rgba(111, 221, 255, 0.2);
+}
+
+#dangan-trial-discussion-phase-inline {
+    display: none;
+    margin-bottom: 6px;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #76ebff;
+}
+
+@media (max-width: 700px) {
+    #dangan-trial-discussion-phase-inline {
+        font-size: 10px;
+        margin-bottom: 5px;
+    }
+}
+
