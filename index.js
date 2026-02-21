@@ -1935,8 +1935,10 @@ function createTrialIntroUiController() {
         if (!overlay) return;
 
         const shell = overlay.querySelector('.dangan-trial-intro-shell');
-        const viewportHeight = Math.max(320, window.innerHeight || 0);
+        const visualViewport = window.visualViewport;
+        const viewportHeight = Math.max(320, Math.round(visualViewport?.height || window.innerHeight || 0));
         const viewportWidth = Math.max(280, window.innerWidth || 0);
+        const viewportOffsetTop = Math.max(0, Math.round(visualViewport?.offsetTop || 0));
         const isMobile = viewportWidth <= 700;
 
         overlay.style.position = 'fixed';
@@ -1944,17 +1946,32 @@ function createTrialIntroUiController() {
         overlay.style.zIndex = '2147483647';
         overlay.style.justifyContent = 'center';
         overlay.style.alignItems = isMobile ? 'flex-end' : 'center';
+        overlay.style.boxSizing = 'border-box';
 
         if (!shell) return;
 
         shell.style.boxSizing = 'border-box';
-        shell.style.maxHeight = `${Math.max(220, viewportHeight - 16)}px`;
+        shell.style.overflow = 'auto';
 
         if (isMobile) {
+            const topPadding = Math.max(10, viewportOffsetTop + 10);
+            const sidePadding = 8;
+            const bottomPadding = 10;
+
+            overlay.style.padding = `${topPadding}px ${sidePadding}px ${bottomPadding}px`;
+
+            const maxHeight = Math.max(220, viewportHeight - topPadding - bottomPadding);
             shell.style.width = `${Math.max(280, Math.min(540, viewportWidth - 16))}px`;
+            shell.style.minHeight = '0';
+            shell.style.maxHeight = `${maxHeight}px`;
+            shell.style.height = 'auto';
             shell.style.margin = '0 auto';
             shell.style.borderRadius = '12px';
         } else {
+            overlay.style.padding = '';
+            shell.style.minHeight = '';
+            shell.style.maxHeight = `${Math.max(220, viewportHeight - 16)}px`;
+            shell.style.height = '';
             shell.style.width = '';
             shell.style.margin = '';
             shell.style.borderRadius = '';
