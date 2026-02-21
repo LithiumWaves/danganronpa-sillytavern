@@ -4271,6 +4271,10 @@ function ensureGlobalDebugUi() {
                 <button id="truth-debug-open" type="button">NEW TRUTH BULLET</button>
                 <button id="investigation-debug-trigger" type="button">INVESTIGATION START</button>
                 <button id="announcement-debug-open" type="button">MONOKUMA ANNOUNCEMENT</button>
+                <button id="trial-debug-phase-idle" type="button">TRIAL PHASE: IDLE</button>
+                <button id="trial-debug-phase-pre" type="button">TRIAL PHASE: PRE-DEBATE</button>
+                <button id="trial-debug-phase-nonstop" type="button">TRIAL PHASE: NONSTOP DEBATE</button>
+                <button id="trial-debug-phase-post" type="button">TRIAL PHASE: POST-DEBATE</button>
             </div>
         `;
     }
@@ -4532,6 +4536,40 @@ function bindDebugControlEvents() {
         const selectedType = String($("input[name='announcement-debug-type']:checked").val() || "DAY_ANNOUN").trim();
         monokumaAnnouncementController?.trigger(selectedType);
         closeAnnouncementDebugModal();
+    });
+
+    const setTrialDebugPhase = (phase) => {
+        if (!trialController || !phase) return;
+
+        const result = trialController.debugSetPhase?.(phase, { source: "debug_controls" });
+        if (!result?.ok) {
+            console.warn(`[Dangan][Trial][Debug] Could not switch phase to ${phase}: ${result?.reason || "unknown error"}`);
+            return;
+        }
+
+        trialIntroUiController?.sync?.();
+        trialDiscussionController?.sync?.();
+        nonstopDebateController?.sync?.();
+    };
+
+    $(document).on("click.debugControls", "#trial-debug-phase-idle", () => {
+        playDebugClickSfx();
+        setTrialDebugPhase(trialController?.phases?.IDLE);
+    });
+
+    $(document).on("click.debugControls", "#trial-debug-phase-pre", () => {
+        playDebugClickSfx();
+        setTrialDebugPhase(trialController?.phases?.DISCUSSION_PRE_DEBATE);
+    });
+
+    $(document).on("click.debugControls", "#trial-debug-phase-nonstop", () => {
+        playDebugClickSfx();
+        setTrialDebugPhase(trialController?.phases?.NONSTOP_ACTIVE);
+    });
+
+    $(document).on("click.debugControls", "#trial-debug-phase-post", () => {
+        playDebugClickSfx();
+        setTrialDebugPhase(trialController?.phases?.DISCUSSION_POST_DEBATE);
     });
 
     $(document).on("click.debugControls", "#dangan_debug_breach_trigger", () => {

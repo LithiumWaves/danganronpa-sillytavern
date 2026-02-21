@@ -168,6 +168,27 @@ export function createTrialController({
         return { ok: !!result.ok, phase: state.phase };
     }
 
+    function debugSetPhase(toPhase, { source = "debug", markerText = "" } = {}) {
+        if (!Object.values(TRIAL_PHASES).includes(toPhase)) {
+            return { ok: false, reason: `Unknown phase: ${toPhase}` };
+        }
+
+        if (toPhase === TRIAL_PHASES.IDLE) {
+            state.phase = TRIAL_PHASES.IDLE;
+            state.session = null;
+            persistState();
+            return { ok: true, phase: state.phase, session: null };
+        }
+
+        if (!state.session) {
+            state.session = buildSessionSnapshot({ triggerSource: source, markerText });
+        }
+
+        state.phase = toPhase;
+        persistState();
+        return { ok: true, phase: state.phase, session: deepClone(state.session) };
+    }
+
     function getState() {
         return {
             phase: state.phase,
@@ -185,6 +206,7 @@ export function createTrialController({
         requestStartFromMarker,
         requestStartFromUi,
         cancelTrial,
+        debugSetPhase,
         buildSessionSnapshot,
     };
 }
