@@ -1,0 +1,54 @@
+/* =========================
+   Monopad Icon Row
+   ========================= */
+
+.monopad-icon-strip {
+    display: flex;
+    justify-content: center;
+    gap: 14px;
+}
+
+/* Icon button */
+.monopad-icon {
+    width: 56px;
+    height: 56px;
+
+    border-radius: 50%;
+    border: 3px solid #666;
+
+    background: radial-gradient(
+        circle at top left,
+        #3a003f,
+        #140016
+    );
+
+    color: white;
+    font-size: 22px;
+
+    cursor: pointer;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    transition:
+        transform 0.15s ease,
+        box-shadow 0.15s ease,
+        border-color 0.15s ease;
+}
+
+/* Hover glow */
+.monopad-icon:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 12px #ff4fff;
+    border-color: #ff9cff;
+}
+
+/* Active (selected) */
+.monopad-icon.active {
+    border-color: #ffffff;
+    box-shadow:
+        0 0 10px #ffffff,
+        0 0 20px #ff4fff;
+}
+
