@@ -565,9 +565,12 @@ function createVnModeController() {
                 <div class="dangan-vn-nameplate" id="dangan-vn-name">—</div>
                 <div class="dangan-vn-position" id="dangan-vn-position" aria-live="polite">Line 0 / 0</div>
             </div>
-            <div class="dangan-vn-text" id="dangan-vn-text">Visual Novel Mode ready.</div>
+            <div class="dangan-vn-text-wrap">
+                <div class="dangan-vn-text" id="dangan-vn-text">Visual Novel Mode ready.</div>
+            </div>
             <div class="dangan-vn-footer">
-                <div class="dangan-vn-input">Click text, press →, or use Next · Type in SillyTavern input below</div>
+                <div class="dangan-vn-progress" aria-hidden="true"><div class="dangan-vn-progress-fill" id="dangan-vn-progress-fill"></div></div>
+                <div class="dangan-vn-input">Click text, use ←/→, or Space · Type in SillyTavern input below</div>
                 <div class="dangan-vn-nav">
                     <button type="button" class="dangan-vn-control dangan-vn-nav-button" id="dangan-vn-prev" aria-label="Show previous line">◀ Prev</button>
                     <button type="button" class="dangan-vn-control dangan-vn-nav-button" id="dangan-vn-next" aria-label="Show next line">Next ▶</button>
@@ -593,6 +596,7 @@ function createVnModeController() {
     const nameEl = host.querySelector('#dangan-vn-name');
     const positionEl = host.querySelector('#dangan-vn-position');
     const textEl = host.querySelector('#dangan-vn-text');
+    const progressFillEl = host.querySelector('#dangan-vn-progress-fill');
     const prevBtnEl = host.querySelector('#dangan-vn-prev');
     const nextBtnEl = host.querySelector('#dangan-vn-next');
 
@@ -615,6 +619,10 @@ function createVnModeController() {
 
         if (prevBtnEl) prevBtnEl.disabled = !hasPrevious;
         if (nextBtnEl) nextBtnEl.disabled = !hasNext;
+        if (progressFillEl) {
+            const percent = total > 0 ? Math.max(0, Math.min(100, Math.round((current / total) * 100))) : 0;
+            progressFillEl.style.width = `${percent}%`;
+        }
     }
 
     function applyInlineFallbackStyles() {
@@ -969,6 +977,15 @@ function createVnModeController() {
         return chunks;
     }
 
+    function pulseText() {
+        if (!textEl) return;
+        textEl.classList.remove('dangan-vn-text-pulse');
+        requestAnimationFrame(() => {
+            textEl.classList.add('dangan-vn-text-pulse');
+        });
+    }
+
+
     function renderCurrent() {
         const messages = getMessageEntries();
         if (!messages.length) {
@@ -995,6 +1012,7 @@ function createVnModeController() {
         nameEl.textContent = entry.name || 'UNKNOWN';
         textEl.textContent = chunks[chunkIndex];
         updateNavigationState(messages);
+        pulseText();
     }
 
     function advance() {
@@ -1167,15 +1185,42 @@ function createVnModeController() {
 
     window.addEventListener('keydown', (event) => {
         if (!vnEnabled || !host.classList.contains('active')) return;
-        if (event.key === 'ArrowRight') {
+        const target = event.target;
+        const isEditable = target instanceof HTMLElement && (
+            target.matches('input, textarea, select') ||
+            target.isContentEditable ||
+            !!target.closest('[contenteditable="true"]')
+        );
+        if (isEditable) return;
+
+        if (event.key === 'ArrowRight' || event.key === ' ' || event.key === 'Enter') {
             advance();
-        } else if (event.key === 'ArrowLeft') {
+        } else if (event.key === 'ArrowLeft' || event.key === 'Backspace') {
             retreat();
         } else {
             return;
         }
         event.preventDefault();
     });
+
+    let swipeStartX = null;
+
+    frameEl?.addEventListener('touchstart', (event) => {
+        if (!event.touches?.length) return;
+        swipeStartX = event.touches[0].clientX;
+    }, { passive: true });
+
+    frameEl?.addEventListener('touchend', (event) => {
+        if (swipeStartX === null || !event.changedTouches?.length) return;
+        const deltaX = event.changedTouches[0].clientX - swipeStartX;
+        swipeStartX = null;
+        if (Math.abs(deltaX) < 36) return;
+        if (deltaX < 0) {
+            advance();
+        } else {
+            retreat();
+        }
+    }, { passive: true });
 
     window.addEventListener('resize', () => {
         updateBottomOffset();

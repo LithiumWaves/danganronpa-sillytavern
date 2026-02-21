@@ -4784,9 +4784,16 @@ body.dangan-trial-vn-chat-hidden #chat {
     background: rgba(37, 52, 79, 0.96) !important;
 }
 
+.dangan-vn-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
 .dangan-vn-nameplate {
     display: inline-flex;
-    margin-bottom: 8px;
     padding: 3px 9px;
     border-radius: 999px;
     background: linear-gradient(90deg, #272f43, #3e5074);
@@ -4797,6 +4804,22 @@ body.dangan-trial-vn-chat-hidden #chat {
     font-family: "Orbitron", "Rajdhani", monospace;
 }
 
+
+.dangan-vn-position {
+    font-family: "Orbitron", "Rajdhani", monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: rgba(186, 215, 255, 0.86);
+    white-space: nowrap;
+}
+
+.dangan-vn-text-wrap {
+    min-height: 82px;
+    max-height: min(34vh, 280px);
+    overflow: auto;
+    padding-right: 2px;
+}
+
 .dangan-vn-text {
     min-height: 78px;
     font-size: clamp(16px, 2.2vw, 24px);
@@ -4805,14 +4828,66 @@ body.dangan-trial-vn-chat-hidden #chat {
     font-family: "Rajdhani", "Orbitron", monospace;
 }
 
-.dangan-vn-input {
+.dangan-vn-text-pulse {
+    animation: danganVnTextPulse 140ms ease-out;
+}
+
+@keyframes danganVnTextPulse {
+    from { opacity: 0.58; transform: translateY(1px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.dangan-vn-footer {
     margin-top: 10px;
     border-top: 1px solid rgba(176, 211, 255, 0.24);
     padding-top: 9px;
-    font-size: 11px;
-    letter-spacing: 0.1em;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+        "progress progress"
+        "hint nav";
+    align-items: center;
+    gap: 8px 10px;
+}
+
+.dangan-vn-progress {
+    grid-area: progress;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(157, 198, 251, 0.18);
+    overflow: hidden;
+}
+
+.dangan-vn-progress-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, rgba(117, 197, 255, 0.8), rgba(193, 224, 255, 0.92));
+    transition: width 140ms ease;
+}
+
+.dangan-vn-input {
+    grid-area: hint;
+    font-size: 10px;
+    letter-spacing: 0.08em;
     color: rgba(167, 204, 251, 0.92);
     text-transform: uppercase;
+}
+
+.dangan-vn-nav {
+    grid-area: nav;
+    display: inline-flex;
+    gap: 6px;
+}
+
+.dangan-vn-nav-button {
+    min-width: 74px;
+    padding: 0 8px;
+}
+
+.dangan-vn-nav-button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
 }
 
 #chat.dangan-vn-hidden {
@@ -4851,6 +4926,25 @@ body.dangan-trial-vn-chat-hidden #chat {
         inset: max(10px, env(safe-area-inset-top)) 8px calc(var(--dangan-vn-bottom-offset) + 10px + env(safe-area-inset-bottom)) 8px;
     }
 
+
+    .dangan-vn-footer {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+            "progress"
+            "nav"
+            "hint";
+        gap: 6px;
+    }
+
+    .dangan-vn-input {
+        width: 100%;
+    }
+
+    .dangan-vn-nav {
+        width: 100%;
+        justify-content: flex-end;
+    }
+
     .dangan-vn-compose-docked {
         width: 100%;
         min-width: 0;
@@ -4873,6 +4967,11 @@ body.dangan-trial-vn-chat-hidden #chat {
         padding: 5px 8px !important;
     }
 
+    .dangan-vn-text-wrap {
+        min-height: 56px;
+        max-height: 32vh;
+    }
+
     .dangan-vn-text {
         min-height: 56px;
         font-size: clamp(14px, 4.2vw, 18px);
@@ -4880,8 +4979,8 @@ body.dangan-trial-vn-chat-hidden #chat {
     }
 
     .dangan-vn-input {
-        margin-top: 6px;
-        padding-top: 5px;
+        margin-top: 2px;
+        padding-top: 0;
         font-size: 9px;
     }
 }
