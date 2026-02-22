@@ -1,4 +1,6 @@
-export function createClassTrialMenuController({ extensionName, extensionSettings, buildExtensionPathCandidates }) {
+import { extension_settings } from "../../../../extensions.js";
+
+export function createClassTrialMenuController({ extensionName, buildExtensionPathCandidates }) {
     const candidateTracks = buildExtensionPathCandidates()
         .map(basePath => `${basePath}/assets/classtrial/trialunderground.mp3`);
 
@@ -20,7 +22,7 @@ export function createClassTrialMenuController({ extensionName, extensionSetting
     }
 
     function playTrack() {
-        if (!extensionSettings?.[extensionName]?.monopadSounds) return;
+        if (!extension_settings[extensionName]?.monopadSounds) return;
         if (!candidateTracks.length) return;
 
         if (!activeAudio) {
