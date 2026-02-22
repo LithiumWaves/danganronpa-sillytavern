@@ -1,0 +1,247 @@
+/* =========================
+   Truth Bullets UI
+   ========================= */
+
+.truth-container {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    height: 100%;
+    gap: 16px;
+}
+
+/* LEFT PANEL */
+
+.truth-list {
+    border-right: 1px solid rgba(255, 255, 255, 0.15);
+    display: flex;
+    flex-direction: column;
+}
+
+.truth-list-header {
+    padding: 12px;
+    font-size: 14px;
+    letter-spacing: 0.12em;
+    opacity: 0.8;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.truth-list-items {
+    flex: 1;
+    padding: 8px;
+    overflow-y: auto;
+}
+
+/* Empty State */
+
+.truth-empty {
+    opacity: 0.4;
+    font-size: 12px;
+    text-align: center;
+    margin-top: 24px;
+}
+
+/* Truth Bullet Item */
+
+.truth-item {
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    cursor: pointer;
+
+    font-size: 13px;
+    letter-spacing: 0.08em;
+
+    background: rgba(255, 255, 255, 0.05);
+    border-left: 3px solid transparent;
+
+    transition:
+        background 0.12s ease,
+        border-color 0.12s ease,
+        transform 0.12s ease;
+}
+
+.truth-item:hover {
+    background: rgba(255, 255, 255, 0.12);
+    transform: translateX(2px);
+}
+
+.truth-item.active {
+    background: rgba(255, 0, 255, 0.2);
+    border-color: rgba(255, 0, 255, 0.9);
+}
+
+/* RIGHT PANEL */
+
+.truth-details {
+    padding: 16px;
+    position: relative;
+}
+
+.truth-details-placeholder {
+    opacity: 0.35;
+    font-size: 13px;
+    letter-spacing: 0.12em;
+    text-align: center;
+    margin-top: 40px;
+}
+
+/* Detail Content */
+
+.truth-title {
+    font-size: 18px;
+    margin-bottom: 12px;
+}
+
+.truth-description {
+    font-size: 13px;
+    line-height: 1.6;
+    margin-bottom: 16px;
+}
+
+.truth-meta {
+    font-size: 11px;
+    opacity: 0.6;
+    letter-spacing: 0.08em;
+}
+
+#truth-obtained-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.75);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+}
+
+#truth-obtained-overlay.show {
+    opacity: 1;
+}
+
+.truth-obtained-inner {
+    position: relative;
+    text-align: center;
+    font-family: "New Rodin Pro", sans-serif;
+    color: #fff;
+    animation: truth-pop 0.6s ease-out;
+}
+
+.truth-obtained-label {
+    font-size: 22px;
+    letter-spacing: 2px;
+    margin-bottom: 10px;
+    color: #ff3b3b;
+}
+
+.truth-obtained-title {
+    font-size: 34px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+@keyframes truth-pop {
+    from {
+        transform: scale(0.85);
+        opacity: 0;
+    }
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+#truth-bullet-fly {
+    position: absolute;
+    top: 50%;
+    left: -30%;
+    transform: translate(-50%, -50%);
+    height: 120px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* When animation plays */
+#truth-obtained-overlay.show #truth-bullet-fly {
+    animation: bullet-slide 1.8s ease-in-out forwards;
+}
+
+/* KEYFRAMES */
+@keyframes bullet-slide {
+    0% {
+        left: -30%;
+        opacity: 0;
+    }
+
+    15% {
+        opacity: 1;
+    }
+
+    /* Arrive behind title */
+    35% {
+        left: 50%;
+    }
+
+    /* Pause behind title */
+    65% {
+        left: 50%;
+    }
+
+    /* Exit right */
+    100% {
+        left: 110%;
+        opacity: 0;
+    }
+}
+
+.truth-remove-button {
+    background: transparent;
+    border: 1px solid rgba(255, 60, 60, 0.6);
+    color: #ff4a4a;
+
+    font-family: inherit;
+    font-size: 0.85rem;
+    letter-spacing: 0.08em;
+
+    padding: 6px 10px;
+    margin-top: 10px;
+
+    cursor: pointer;
+
+    transition:
+        color 0.15s ease,
+        border-color 0.15s ease,
+        background-color 0.15s ease;
+}
+
+.truth-remove-button:hover {
+    color: #ffffff;
+    background-color: rgba(255, 60, 60, 0.15);
+    border-color: #ff6b6b;
+}
+
+.truth-remove-button:active {
+    background-color: rgba(255, 60, 60, 0.25);
+}
+
+.truth-remove-button:focus {
+    outline: none;
+}
+
+.truth-description {
+    margin-top: 6px;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    color: rgba(255, 255, 255, 0.85);
+    letter-spacing: 0.03em;
+}
+
+.truth-description::before {
+    content: "DETAILS:";
+    display: block;
+    font-size: 0.65rem;
+    opacity: 0.6;
+    margin-bottom: 2px;
+}
+

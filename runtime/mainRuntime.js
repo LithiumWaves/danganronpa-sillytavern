@@ -1,20 +1,24 @@
-import { extension_settings } from "../../../extensions.js";
-import { saveSettingsDebounced } from "../../../../script.js";
-import { initTruthBullets, handleTruthBullet, setNextTruthBulletSfxVariant } from "./truth/truthBullets.js";
-import { buildDecagram, crackShard, shatterShard } from "./trust/trustDecagram.js";
-import { initTrustAnimations, playTrustRankUp, playTrustRankDown, playTrustMaxed, playTrustToDistrustTransition, playDistrustRankDown, playDistrustRankUp, playDistrustToTrustRecovery } from "./trust/trustAnimations.js";
-import { increaseTrust, decreaseTrust } from "./trust/trustAPI.js";
-import { createItemsPanelController } from "./items/itemsPanel.js";
-import { createRewardSystem } from "./items/rewardSystem.js";
-import { createSocialPanelController } from "./social/socialPanel.js";
-import { extractUltimateFromNotes, isIgnoredCharacter, lookupUltimateFromLorebook, normalizeList, normalizeName } from "./social/characterUtils.js";
-import { createMapPanelController } from "./map/mapPanel.js";
-import { getLocationPromptReference, resolveLocationIdFromText } from "./map/locationPresence.js";
-import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, TRIAL_START_REGEX, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
-import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
-import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "./core/monokumaLessonScript.js";
-import { createTrialController } from "./trial/trialController.js";
-import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers } from "./monokuma/announcementController.js";
+import { extension_settings } from "../../../../extensions.js";
+import { saveSettingsDebounced } from "../../../../../script.js";
+import { initTruthBullets, handleTruthBullet, setNextTruthBulletSfxVariant } from "../truth/truthBullets.js";
+import { buildDecagram, crackShard, shatterShard } from "../trust/trustDecagram.js";
+import { initTrustAnimations, playTrustRankUp, playTrustRankDown, playTrustMaxed, playTrustToDistrustTransition, playDistrustRankDown, playDistrustRankUp, playDistrustToTrustRecovery } from "../trust/trustAnimations.js";
+import { increaseTrust, decreaseTrust } from "../trust/trustAPI.js";
+import { createItemsPanelController } from "../items/itemsPanel.js";
+import { createRewardSystem } from "../items/rewardSystem.js";
+import { createSocialPanelController } from "../social/socialPanel.js";
+import { extractUltimateFromNotes, isIgnoredCharacter, lookupUltimateFromLorebook, normalizeList, normalizeName } from "../social/characterUtils.js";
+import { createMapPanelController } from "../map/mapPanel.js";
+import { getLocationPromptReference, resolveLocationIdFromText } from "../map/locationPresence.js";
+import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, TRIAL_START_REGEX, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "../core/constants.js";
+import { createOpenRouterSettingsManager } from "../core/openrouterSettings.js";
+import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "../core/monokumaLessonScript.js";
+import { createRecentLocationTracker } from "../core/locationPresenceHistory.js";
+import { createRewardDifficultyManager } from "../core/rewardDifficulty.js";
+import { openMonopadConfirmDialog } from "../core/confirmDialog.js";
+import { createTrialController } from "../trial/trialController.js";
+import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers } from "../monokuma/announcementController.js";
+import { createVnSystem } from "../systems/vn/vnModeController.js";
 
 window.refreshActiveCharacterUI = function () {
     if (!activeSocialCharacterId || !socialPanelController) return;
@@ -36,10 +40,13 @@ let trialController = null;
 let trialIntroUiController = null;
 let trialIntroOstController = null;
 let trialDiscussionController = null;
+let nonstopDebateController = null;
 let hasSelectedMonopadTab = false;
 let monokumaLessonState = null;
 let vnModeController = null;
 let monokumaAnnouncementController = null;
+
+const { createVnModeController } = createVnSystem({ extensionName, saveSettingsDebounced });
 
 const openRouterSettings = createOpenRouterSettingsManager({
     extensionName,
@@ -61,88 +68,27 @@ const {
 } = openRouterSettings;
 
 let rewards = null;
-let recentLocationMentions = [];
 
-function pushRecentLocationMention(entry) {
-    if (!entry?.locationId || !entry?.messageSignature) return;
-
-    const normalizedSpeaker = normalizeName(entry.speakerName || "");
-    recentLocationMentions = recentLocationMentions.filter(item => {
-        if (item.messageSignature === entry.messageSignature && normalizeName(item.speakerName || "") === normalizedSpeaker) {
-            return false;
-        }
-        return true;
-    });
-
-    recentLocationMentions.push({
-        messageSignature: entry.messageSignature,
-        speakerName: String(entry.speakerName || "").trim(),
-        isUser: Boolean(entry.isUser),
-        locationId: entry.locationId,
-        createdAt: Date.now(),
-    });
-
-    const overflow = recentLocationMentions.length - 5;
-    if (overflow > 0) {
-        recentLocationMentions.splice(0, overflow);
-    }
-}
-
-function buildRecentLocationPresence() {
-    const latestBySpeaker = new Map();
-
-    for (let i = recentLocationMentions.length - 1; i >= 0; i -= 1) {
-        const item = recentLocationMentions[i];
-        const speakerKey = item.isUser
-            ? "__user__"
-            : normalizeName(item.speakerName || `unknown_${i}`);
-
-        if (!speakerKey || latestBySpeaker.has(speakerKey)) continue;
-        latestBySpeaker.set(speakerKey, item);
-    }
-
-    const userEntry = latestBySpeaker.get("__user__") || null;
-    const characters = [];
-
-    latestBySpeaker.forEach((item, key) => {
-        if (key === "__user__") return;
-        if (!item?.speakerName || !item?.locationId) return;
-
-        characters.push({
-            name: item.speakerName,
-            locationId: item.locationId,
-        });
-    });
-
-    return {
-        user: userEntry
-            ? {
-                locationId: userEntry.locationId,
-                label: getActivePersonaName(),
-            }
-            : null,
-        characters,
-    };
-}
+const {
+    pushRecentLocationMention,
+    buildRecentLocationPresence,
+} = createRecentLocationTracker({
+    normalizeName,
+    getActivePersonaName: () => getActivePersonaName(),
+});
 
 window.getMonopadRecentLocationPresence = function () {
     return buildRecentLocationPresence();
 };
 
-
-function clampRewardDifficulty(value) {
-    return Object.prototype.hasOwnProperty.call(REWARD_PROFILES, value) ? value : "normal";
-}
-
-function applyRewardDifficultyProfile(profileKey) {
-    const safeProfileKey = clampRewardDifficulty(profileKey);
-    const profile = REWARD_PROFILES[safeProfileKey] || REWARD_PROFILES.normal;
-
-    Object.assign(MONOCOIN_REWARDS, profile.monocoins || REWARD_PROFILES.normal.monocoins);
-    Object.assign(XP_REWARDS, profile.xp || REWARD_PROFILES.normal.xp);
-
-    return safeProfileKey;
-}
+const {
+    clampRewardDifficulty,
+    applyRewardDifficultyProfile,
+} = createRewardDifficultyManager({
+    rewardProfiles: REWARD_PROFILES,
+    monocoins: MONOCOIN_REWARDS,
+    xp: XP_REWARDS,
+});
 
 function awardMonocoins(amount = 0, reason = "") {
     rewards?.awardMonocoins(amount, reason);
@@ -154,51 +100,6 @@ function increaseTrustWithRewards(char) {
 
 function awardXp(amount = 0, reason = "") {
     rewards?.awardXp(amount, reason);
-}
-
-function openMonopadConfirmDialog({ title = "CONFIRM ACTION", message = "", confirmLabel = "CONFIRM", cancelLabel = "CANCEL" } = {}) {
-    return new Promise((resolve) => {
-        const overlay = document.getElementById("monopad-confirm-overlay");
-        const titleEl = document.getElementById("monopad-confirm-title");
-        const messageEl = document.getElementById("monopad-confirm-message");
-        const confirmBtn = document.getElementById("monopad-confirm-accept");
-        const cancelBtn = document.getElementById("monopad-confirm-cancel");
-
-        if (!overlay || !titleEl || !messageEl || !confirmBtn || !cancelBtn) {
-            resolve(false);
-            return;
-        }
-
-        titleEl.textContent = title;
-        messageEl.textContent = message;
-        confirmBtn.textContent = confirmLabel;
-        cancelBtn.textContent = cancelLabel;
-
-        let settled = false;
-        const finish = (accepted) => {
-            if (settled) return;
-            settled = true;
-            overlay.classList.remove("open");
-            overlay.setAttribute("aria-hidden", "true");
-            overlay.removeEventListener("click", onBackdropClick);
-            confirmBtn.removeEventListener("click", onConfirm);
-            cancelBtn.removeEventListener("click", onCancel);
-            resolve(Boolean(accepted));
-        };
-
-        const onBackdropClick = (event) => {
-            if (event.target === overlay) finish(false);
-        };
-        const onConfirm = () => finish(true);
-        const onCancel = () => finish(false);
-
-        overlay.classList.add("open");
-        overlay.setAttribute("aria-hidden", "false");
-
-        overlay.addEventListener("click", onBackdropClick);
-        confirmBtn.addEventListener("click", onConfirm);
-        cancelBtn.addEventListener("click", onCancel);
-    });
 }
 
 const truthBullets = [];
@@ -220,7 +121,6 @@ const TRIAL_DISCUSSION_START_PARSE_REGEX = /V3C\s*[|｜]\s*TRIAL(?:\s*[_\-]?\s*)
 const TRIAL_DISCUSSION_END_PARSE_REGEX = /V3C\s*[|｜]\s*TRIAL(?:\s*[_\-]?\s*)DISCUSSION(?:\s*[_\-]?\s*)END\b/gi;
 const processedTrialDiscussionSignatures = new Set();
 const processedMonokumaAnnouncementSignatures = new Set();
-const PERSISTENT_MARKER_MAX_ENTRIES = 2400;
 
 function normalizeTextToken(value) {
     return String(value || "")
@@ -228,60 +128,6 @@ function normalizeTextToken(value) {
         .toLowerCase()
         .replace(/[_\-]+/g, " ")
         .replace(/\s+/g, " ");
-}
-
-function getPersistentMarkerRegistry() {
-    extension_settings[extensionName] ||= {};
-    extension_settings[extensionName].markerRegistry ||= {};
-    return extension_settings[extensionName].markerRegistry;
-}
-
-function getPersistentMarkerBucket(bucketKey) {
-    const registry = getPersistentMarkerRegistry();
-    registry[bucketKey] ||= {};
-    return registry[bucketKey];
-}
-
-function cleanupPersistentMarkerBucket(bucket) {
-    const keys = Object.keys(bucket);
-    if (keys.length <= PERSISTENT_MARKER_MAX_ENTRIES) return;
-
-    keys
-        .sort((a, b) => Number(bucket[a] || 0) - Number(bucket[b] || 0))
-        .slice(0, keys.length - PERSISTENT_MARKER_MAX_ENTRIES)
-        .forEach((key) => {
-            delete bucket[key];
-        });
-}
-
-function hasProcessedPersistentMarker(bucketKey, persistentSignature = "") {
-    if (!bucketKey || !persistentSignature) return false;
-    const bucket = getPersistentMarkerBucket(bucketKey);
-    return Boolean(bucket[persistentSignature]);
-}
-
-function markProcessedPersistentMarker(bucketKey, persistentSignature = "") {
-    if (!bucketKey || !persistentSignature) return;
-    const bucket = getPersistentMarkerBucket(bucketKey);
-    bucket[persistentSignature] = Date.now();
-    cleanupPersistentMarkerBucket(bucket);
-    saveSettingsDebounced();
-}
-
-function buildGenericPersistentMarkerSignature(msgEl, markerType, markerIndex, markerOrdinal, rawText = "") {
-    const mesId = msgEl?.getAttribute?.("mesid") || msgEl?.dataset?.mesid || "";
-    if (!mesId || mesId === "no-id") return "";
-
-    const speaker = msgEl?.getAttribute?.("ch_name") || msgEl?.getAttribute?.("name") || "unknown";
-    const scope = getInvestigationScopeKey();
-    if (!scope || scope === "scope:unknown") return "";
-
-    const safeType = String(markerType || "unknown").toUpperCase();
-    const safeIndex = Number.isFinite(Number(markerIndex)) ? Number(markerIndex) : -1;
-    const safeOrdinal = Number.isFinite(Number(markerOrdinal)) ? Number(markerOrdinal) : -1;
-    const textFingerprint = String(rawText || "").slice(0, 140);
-
-    return `${safeType}||${scope}||${mesId}||${speaker}||${safeIndex}||${safeOrdinal}||${textFingerprint}`;
 }
 
 function getInvestigationMarkerStore() {
@@ -336,12 +182,20 @@ function markInvestigationSignatureProcessed(signature, persistentSignature = ""
     if (!signature) return;
 
     processedInvestigationSignatures.add(signature);
-    if (!persistentSignature) return;
 
     const store = getInvestigationMarkerStore();
-    store[persistentSignature] = Date.now();
+    store[persistentSignature || `RUNTIME||${signature}`] = Date.now();
 
-    cleanupPersistentMarkerBucket(store);
+    const keys = Object.keys(store);
+    const maxEntries = 1200;
+    if (keys.length > maxEntries) {
+        keys
+            .sort((a, b) => Number(store[a] || 0) - Number(store[b] || 0))
+            .slice(0, keys.length - maxEntries)
+            .forEach((key) => {
+                delete store[key];
+            });
+    }
 
     saveSettingsDebounced();
 }
@@ -485,7 +339,66 @@ function markTrialStartSignatureProcessed(signature, persistentSignature = "") {
     const store = getTrialStartMarkerStore();
     store[persistentSignature] = Date.now();
 
-    cleanupPersistentMarkerBucket(store);
+    const keys = Object.keys(store);
+    const maxEntries = 1200;
+    if (keys.length > maxEntries) {
+        keys
+            .sort((a, b) => Number(store[a] || 0) - Number(store[b] || 0))
+            .slice(0, keys.length - maxEntries)
+            .forEach((key) => {
+                delete store[key];
+            });
+    }
+
+    saveSettingsDebounced();
+}
+
+function getMonokumaAnnouncementMarkerStore() {
+    extension_settings[extensionName] ||= {};
+    extension_settings[extensionName].monokumaAnnouncementMarkers ||= {};
+    return extension_settings[extensionName].monokumaAnnouncementMarkers;
+}
+
+function buildMonokumaAnnouncementPersistentSignature(msgEl, marker, idx, rawText = "") {
+    const mesId = msgEl?.getAttribute?.("mesid") || msgEl?.dataset?.mesid || "";
+    if (!mesId || mesId === "no-id") return "";
+
+    const speaker = msgEl?.getAttribute?.("ch_name") || "unknown";
+    const scope = getInvestigationScopeKey();
+    if (!scope || scope === "scope:unknown") return "";
+
+    const markerIndex = Number(marker?.index ?? -1);
+    const markerType = String(marker?.type || "UNKNOWN");
+    const textFingerprint = String(rawText || "").slice(0, 140);
+
+    return `MONOKUMA_ANNOUN||${scope}||${mesId}||${speaker}||${markerType}||${markerIndex}||${idx}||${textFingerprint}`;
+}
+
+function hasProcessedMonokumaAnnouncementSignature(signature, persistentSignature = "") {
+    if (!signature) return false;
+    if (processedMonokumaAnnouncementSignatures.has(signature)) return true;
+    if (!persistentSignature) return false;
+    return Boolean(getMonokumaAnnouncementMarkerStore()[persistentSignature]);
+}
+
+function markMonokumaAnnouncementSignatureProcessed(signature, persistentSignature = "") {
+    if (!signature) return;
+
+    processedMonokumaAnnouncementSignatures.add(signature);
+
+    const store = getMonokumaAnnouncementMarkerStore();
+    store[persistentSignature || `RUNTIME||${signature}`] = Date.now();
+
+    const keys = Object.keys(store);
+    const maxEntries = 1200;
+    if (keys.length > maxEntries) {
+        keys
+            .sort((a, b) => Number(store[a] || 0) - Number(store[b] || 0))
+            .slice(0, keys.length - maxEntries)
+            .forEach((key) => {
+                delete store[key];
+            });
+    }
 
     saveSettingsDebounced();
 }
@@ -515,989 +428,6 @@ function buildTrialCaseSummary() {
     return `Current evidence focus: ${line}`;
 }
 
-
-function trySetVisualNovelToggleInObject(root, enabled, { maxDepth = 8 } = {}) {
-    if (!root || typeof root !== "object") return false;
-
-    const queue = [{ node: root, depth: 0 }];
-    const visited = new WeakSet();
-    let touched = false;
-
-    while (queue.length) {
-        const { node, depth } = queue.shift();
-        if (!node || typeof node !== "object" || visited.has(node)) continue;
-        visited.add(node);
-
-        const label = normalizeTextToken(node.name || node.label || node.title || node.id || node.key || "");
-        const isVisualNovelSetting = /visual/.test(label) && /novel|vn/.test(label) && /mode|toggle|enabled|active/.test(label);
-
-        if (isVisualNovelSetting) {
-            if (typeof node.enabled === "boolean") { node.enabled = enabled; touched = true; }
-            if (typeof node.value === "boolean") { node.value = enabled; touched = true; }
-            if (typeof node.active === "boolean") { node.active = enabled; touched = true; }
-            if (typeof node.toggled === "boolean") { node.toggled = enabled; touched = true; }
-            if (typeof node.isEnabled === "boolean") { node.isEnabled = enabled; touched = true; }
-            if (typeof node.isActive === "boolean") { node.isActive = enabled; touched = true; }
-            if (typeof node.setValue === "function") { node.setValue(enabled); touched = true; }
-            if (typeof node.set === "function") { node.set(enabled); touched = true; }
-        }
-
-        if (depth >= maxDepth) continue;
-
-        try {
-            for (const value of Object.values(node)) {
-                if (value && typeof value === "object") queue.push({ node: value, depth: depth + 1 });
-            }
-        } catch {
-            // skip host objects that throw on traversal
-        }
-    }
-
-    return touched;
-}
-
-function trySetSillyTavernVisualNovelMode(enabled) {
-    const ctx = window.SillyTavern?.getContext?.();
-    let touched = false;
-
-    const candidates = [
-        ctx?.chatCompletionSettings,
-        ctx?.chat_completion_settings,
-        ctx?.mainApiSettings,
-        ctx?.main_api_settings,
-        ctx?.settings,
-        ctx,
-        window.SillyTavern,
-    ];
-
-    for (const candidate of candidates) {
-        try {
-            touched = trySetVisualNovelToggleInObject(candidate, enabled) || touched;
-        } catch {
-            // ignore malformed hosts
-        }
-    }
-
-    const domCandidates = Array.from(document.querySelectorAll('label, .menu_button, .inline-drawer-toggle, button, .toggle-item'));
-    for (const el of domCandidates) {
-        const labelText = normalizeTextToken(el.textContent || el.getAttribute('aria-label') || el.getAttribute('title') || '');
-        if (!(/visual/.test(labelText) && /novel|vn/.test(labelText))) continue;
-
-        const host = el.closest('label, .toggle-item, .settings-item, .menu_button, .inline-drawer-toggle') || el;
-        const checkbox = host.querySelector('input[type="checkbox"]') || el.querySelector?.('input[type="checkbox"]');
-
-        if (checkbox) {
-            if (checkbox.checked !== enabled) {
-                checkbox.click();
-                checkbox.dispatchEvent(new Event('input', { bubbles: true }));
-                checkbox.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-            touched = true;
-            break;
-        }
-
-        const isPressed = host.getAttribute('aria-pressed') === 'true';
-        if (isPressed !== enabled && typeof host.click === 'function') {
-            host.click();
-            touched = true;
-            break;
-        }
-
-        if (isPressed === enabled) {
-            touched = true;
-            break;
-        }
-    }
-
-    if (touched) {
-        if (typeof ctx?.saveSettingsDebounced === 'function') {
-            ctx.saveSettingsDebounced();
-        } else {
-            saveSettingsDebounced();
-        }
-    }
-
-    return touched;
-}
-
-function createVnModeController() {
-    const CHUNK_SIZE = 170;
-    const VN_POSITION_KEY = `${extensionName}-vn-box-position`;
-    let chunkIndex = 0;
-    let messageIndex = 0;
-    let monopadOpen = false;
-    let moveUnlocked = false;
-    let isDragging = false;
-    let movedDuringPointer = false;
-    let dragStartX = 0;
-    let dragStartY = 0;
-    let frameStartX = 0;
-    let frameStartY = 0;
-    let framePosX = null;
-    let framePosY = null;
-    let transcriptOpen = false;
-    let vnEnabled = false;
-    let composeCollapsed = false;
-    let lastObservedMessageCount = 0;
-    let lastObservedLastSignature = '';
-    let lastObservedChatScope = '';
-
-    const host = document.createElement('div');
-    host.id = 'dangan-vn-overlay';
-    host.setAttribute('aria-hidden', 'true');
-    host.innerHTML = `
-        <div class="dangan-vn-frame" role="dialog" aria-live="polite" aria-label="Dangan Visual Novel dialogue">
-            <div class="dangan-vn-controls">
-                <button type="button" class="dangan-vn-control dangan-vn-transcript-toggle" id="dangan-vn-transcript-toggle" aria-label="Open transcript" title="Open transcript">TRANSCRIPT</button>
-                <button type="button" class="dangan-vn-control dangan-vn-lock" id="dangan-vn-lock" aria-label="Unlock Visual Novel box movement" title="Unlock Visual Novel box movement">🔒</button>
-            </div>
-            <div class="dangan-vn-header">
-                <div class="dangan-vn-nameplate" id="dangan-vn-name">—</div>
-                <div class="dangan-vn-position" id="dangan-vn-position" aria-live="polite">Line 0 / 0</div>
-            </div>
-            <div class="dangan-vn-text-wrap">
-                <div class="dangan-vn-text" id="dangan-vn-text">Visual Novel Mode ready.</div>
-            </div>
-            <div class="dangan-vn-footer">
-                <div class="dangan-vn-progress" aria-hidden="true"><div class="dangan-vn-progress-fill" id="dangan-vn-progress-fill"></div></div>
-                <div class="dangan-vn-input">Click text / ← → / Space · Type in SillyTavern below</div>
-                <div class="dangan-vn-nav">
-                    <button type="button" class="dangan-vn-control dangan-vn-nav-button" id="dangan-vn-prev" aria-label="Show previous line">◀ Prev</button>
-                    <button type="button" class="dangan-vn-control dangan-vn-nav-button" id="dangan-vn-next" aria-label="Show next line">Next ▶</button>
-                    <button type="button" class="dangan-vn-control dangan-vn-nav-button dangan-vn-latest" id="dangan-vn-latest" aria-label="Jump to latest reply">⤓ Latest</button>
-                    <button type="button" class="dangan-vn-control dangan-vn-nav-button dangan-vn-regenerate" id="dangan-vn-regenerate" aria-label="Regenerate current reply">↻ Regen</button>
-                </div>
-            </div>
-        </div>
-        <div class="dangan-vn-transcript" id="dangan-vn-transcript" aria-hidden="true">
-            <div class="dangan-vn-transcript-header">
-                <div class="dangan-vn-transcript-title">Class Transcript</div>
-                <button type="button" class="dangan-vn-transcript-close" id="dangan-vn-transcript-close" aria-label="Close transcript">✕</button>
-            </div>
-            <div class="dangan-vn-transcript-body" id="dangan-vn-transcript-body"></div>
-        </div>
-    `;
-    document.body.appendChild(host);
-
-    const frameEl = host.querySelector('.dangan-vn-frame');
-    const lockBtnEl = host.querySelector('#dangan-vn-lock');
-    const transcriptToggleEl = host.querySelector('#dangan-vn-transcript-toggle');
-    const transcriptEl = host.querySelector('#dangan-vn-transcript');
-    const transcriptCloseEl = host.querySelector('#dangan-vn-transcript-close');
-    const transcriptBodyEl = host.querySelector('#dangan-vn-transcript-body');
-    const nameEl = host.querySelector('#dangan-vn-name');
-    const positionEl = host.querySelector('#dangan-vn-position');
-    const textEl = host.querySelector('#dangan-vn-text');
-    const progressFillEl = host.querySelector('#dangan-vn-progress-fill');
-    const prevBtnEl = host.querySelector('#dangan-vn-prev');
-    const nextBtnEl = host.querySelector('#dangan-vn-next');
-    const latestBtnEl = host.querySelector('#dangan-vn-latest');
-    const regenerateBtnEl = host.querySelector('#dangan-vn-regenerate');
-    const latestButtonBaseLabel = '⤓ Latest';
-
-
-    function isElementVisible(el) {
-        if (!(el instanceof Element)) return false;
-        const style = window.getComputedStyle(el);
-        if (style.display === 'none' || style.visibility === 'hidden') return false;
-        const rect = el.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0;
-    }
-
-    function getRegenerateControl() {
-        const controls = Array.from(document.querySelectorAll('button, .menu_button, [role="button"], a'));
-        for (const control of controls) {
-            if (!(control instanceof Element)) continue;
-            if (control.closest('#dangan-vn-overlay')) continue;
-            const label = `${control.getAttribute('aria-label') || ''} ${control.getAttribute('title') || ''} ${control.textContent || ''}`.toLowerCase();
-            if (!/\bregenerate\b/.test(label)) continue;
-            if (!isElementVisible(control)) continue;
-            return control;
-        }
-        return null;
-    }
-
-    function triggerRegenerate() {
-        const control = getRegenerateControl();
-        if (!control) return false;
-        if (typeof control.click === 'function') {
-            control.click();
-            return true;
-        }
-        control.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-        return true;
-    }
-
-    function updateNavigationState(messages = getMessageEntries()) {
-        const total = messages.length;
-        const current = total ? Math.min(total, messageIndex + 1) : 0;
-        if (positionEl) {
-            positionEl.textContent = `Line ${current} / ${total}`;
-        }
-
-        const hasPrevious = total > 0 && (chunkIndex > 0 || messageIndex > 0);
-        const hasNext = (() => {
-            if (!total) return false;
-            const currentEntry = messages[Math.min(messageIndex, total - 1)];
-            const chunks = splitIntoChunks(stripV3CMarkersFromText(currentEntry?.text || ''));
-            const canAdvanceWithinCurrent = chunkIndex + 1 < chunks.length;
-            const canAdvanceToNext = messageIndex < total - 1;
-            return canAdvanceWithinCurrent || canAdvanceToNext;
-        })();
-
-        if (prevBtnEl) prevBtnEl.disabled = !hasPrevious;
-        if (nextBtnEl) nextBtnEl.disabled = !hasNext;
-        if (latestBtnEl) {
-            const unreadCount = Math.max(0, total - (messageIndex + 1));
-            latestBtnEl.disabled = total < 2 || unreadCount === 0;
-            latestBtnEl.textContent = unreadCount > 0 ? `${latestButtonBaseLabel} (${unreadCount})` : latestButtonBaseLabel;
-        }
-        if (regenerateBtnEl) regenerateBtnEl.disabled = !getRegenerateControl();
-        if (progressFillEl) {
-            const percent = total > 0 ? Math.max(0, Math.min(100, Math.round((current / total) * 100))) : 0;
-            progressFillEl.style.width = `${percent}%`;
-        }
-    }
-
-    function applyInlineFallbackStyles() {
-        Object.assign(host.style, {
-            position: 'fixed',
-            inset: '0',
-            zIndex: '2147483646',
-            display: 'none',
-            alignItems: 'flex-end',
-            justifyContent: 'center',
-            pointerEvents: 'none',
-            background: 'transparent',
-        });
-
-        if (frameEl) {
-            Object.assign(frameEl.style, {
-                width: 'min(980px, calc(100vw - 18px))',
-                minHeight: '170px',
-                margin: '0 9px 10px',
-                borderRadius: '12px',
-                border: '1px solid rgba(191, 229, 255, 0.45)',
-                background: 'linear-gradient(180deg, rgba(8, 12, 20, 0.96), rgba(6, 9, 14, 0.97))',
-                boxShadow: '0 -3px 20px rgba(0, 0, 0, 0.45)',
-                color: '#f4f8ff',
-                padding: '14px 14px 10px',
-                cursor: 'pointer',
-                pointerEvents: 'auto',
-            });
-        }
-    }
-
-    function ensureHostAttached() {
-        if (host.parentElement !== document.body) {
-            document.body.appendChild(host);
-        }
-    }
-
-    function clampPosition(nextX, nextY) {
-        if (!frameEl) return { x: 0, y: 0 };
-
-        const vw = window.innerWidth || document.documentElement.clientWidth || 0;
-        const vh = window.innerHeight || document.documentElement.clientHeight || 0;
-        const rect = frameEl.getBoundingClientRect();
-        const maxX = Math.max(0, Math.round(vw - rect.width));
-        const maxY = Math.max(0, Math.round(vh - rect.height));
-
-        return {
-            x: Math.max(0, Math.min(maxX, Math.round(nextX))),
-            y: Math.max(0, Math.min(maxY, Math.round(nextY))),
-        };
-    }
-
-    function savePosition() {
-        if (!Number.isFinite(framePosX) || !Number.isFinite(framePosY)) return;
-        try {
-            localStorage.setItem(VN_POSITION_KEY, JSON.stringify({ x: framePosX, y: framePosY }));
-        } catch {
-            // ignore storage failures
-        }
-    }
-
-    function clearSavedPosition() {
-        try {
-            localStorage.removeItem(VN_POSITION_KEY);
-        } catch {
-            // ignore storage failures
-        }
-    }
-
-    function setFramePosition(nextX, nextY) {
-        if (!frameEl) return;
-        const { x, y } = clampPosition(nextX, nextY);
-        framePosX = x;
-        framePosY = y;
-        frameEl.classList.add('dangan-vn-custom-pos');
-        frameEl.style.left = `${x}px`;
-        frameEl.style.top = `${y}px`;
-    }
-
-    function resetFramePosition() {
-        if (!frameEl) return;
-        framePosX = null;
-        framePosY = null;
-        frameEl.classList.remove('dangan-vn-custom-pos');
-        frameEl.style.left = '';
-        frameEl.style.top = '';
-        clearSavedPosition();
-    }
-
-    function restoreSavedPosition() {
-        try {
-            const raw = localStorage.getItem(VN_POSITION_KEY);
-            if (!raw) return;
-            const parsed = JSON.parse(raw);
-            if (!parsed || !Number.isFinite(parsed.x) || !Number.isFinite(parsed.y)) return;
-            setFramePosition(parsed.x, parsed.y);
-        } catch {
-            // ignore storage failures
-        }
-    }
-
-    function setMoveUnlocked(unlocked) {
-        moveUnlocked = !!unlocked;
-        if (!lockBtnEl) return;
-        lockBtnEl.textContent = moveUnlocked ? '🔓' : '🔒';
-        lockBtnEl.setAttribute('aria-label', moveUnlocked ? 'Lock Visual Novel box movement' : 'Unlock Visual Novel box movement');
-        lockBtnEl.setAttribute('title', moveUnlocked ? 'Lock Visual Novel box movement' : 'Unlock Visual Novel box movement');
-        frameEl?.classList.toggle('move-unlocked', moveUnlocked);
-    }
-
-    function setTranscriptOpen(open) {
-        transcriptOpen = !!open;
-        host.classList.toggle('transcript-open', transcriptOpen);
-        transcriptEl?.setAttribute('aria-hidden', transcriptOpen ? 'false' : 'true');
-        transcriptToggleEl?.setAttribute('aria-expanded', transcriptOpen ? 'true' : 'false');
-        if (transcriptOpen) {
-            renderTranscript();
-        }
-    }
-
-    function updateBottomOffset() {
-        if (!frameEl) return;
-
-        if (vnEnabled) {
-            host.style.setProperty('--dangan-vn-bottom-offset', '0px');
-            return;
-        }
-
-        const composeEl = document.querySelector('#send_form, #chat_input_container, #send_textarea, #send_textarea_holder, .send_form');
-        const composeRect = composeEl?.getBoundingClientRect?.();
-        const composeHeight = Number.isFinite(composeRect?.height) ? composeRect.height : 0;
-        const offset = Math.max(0, Math.round(composeHeight + 8));
-        host.style.setProperty('--dangan-vn-bottom-offset', `${offset}px`);
-    }
-
-    function syncMonopadVisibility() {
-        const shouldHideFrame = monopadOpen;
-        if (!frameEl) return;
-        frameEl.style.display = shouldHideFrame ? 'none' : '';
-    }
-
-    function getComposeElement() {
-        return document.querySelector('#send_form, #chat_input_container, #send_textarea_holder, .send_form');
-    }
-
-    function undockTypingSection() {
-        const composeEl = getComposeElement();
-        if (!composeEl) return;
-        const toggleBtn = composeEl.querySelector('.dangan-vn-compose-collapse-toggle');
-        toggleBtn?.remove();
-        composeCollapsed = false;
-        composeEl.classList.remove('dangan-vn-compose-docked');
-        composeEl.classList.remove('dangan-vn-compose-collapsed');
-        composeEl.style.position = '';
-        composeEl.style.left = '';
-        composeEl.style.top = '';
-        composeEl.style.width = '';
-        composeEl.style.maxWidth = '';
-        composeEl.style.margin = '';
-        composeEl.style.transform = '';
-        composeEl.style.zIndex = '';
-        document.body.classList.remove('dangan-vn-compose-docked-active');
-    }
-
-    function ensureComposeCollapseToggle(composeEl) {
-        if (!composeEl) return;
-
-        let toggleBtn = composeEl.querySelector('.dangan-vn-compose-collapse-toggle');
-        if (!toggleBtn) {
-            toggleBtn = document.createElement('button');
-            toggleBtn.type = 'button';
-            toggleBtn.className = 'dangan-vn-compose-collapse-toggle';
-            toggleBtn.textContent = '▾';
-            toggleBtn.title = 'Collapse typing section';
-            toggleBtn.setAttribute('aria-label', 'Collapse typing section');
-            composeEl.prepend(toggleBtn);
-
-            toggleBtn.addEventListener('click', (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                composeCollapsed = !composeCollapsed;
-                composeEl.classList.toggle('dangan-vn-compose-collapsed', composeCollapsed);
-                toggleBtn.textContent = composeCollapsed ? '▸' : '▾';
-                toggleBtn.title = composeCollapsed ? 'Expand typing section' : 'Collapse typing section';
-                toggleBtn.setAttribute('aria-label', composeCollapsed ? 'Expand typing section' : 'Collapse typing section');
-            });
-        }
-    }
-
-    function dockTypingSection() {
-        const composeEl = getComposeElement();
-        if (!composeEl) return;
-
-        if (!vnEnabled || monopadOpen || frameEl?.style.display === 'none') {
-            undockTypingSection();
-            return;
-        }
-
-        const frameRect = frameEl?.getBoundingClientRect?.();
-        if (!frameRect || !Number.isFinite(frameRect.width)) {
-            undockTypingSection();
-            return;
-        }
-
-        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
-        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-        const composeRect = composeEl.getBoundingClientRect();
-        const composeHeight = Number.isFinite(composeRect.height) ? composeRect.height : 52;
-
-        const width = Math.max(220, Math.round(frameRect.width));
-        const maxLeft = Math.max(0, viewportWidth - width);
-        const left = Math.max(0, Math.min(maxLeft, Math.round(frameRect.left)));
-        const maxTop = Math.max(0, viewportHeight - composeHeight - 4);
-        const top = Math.max(0, Math.min(maxTop, Math.round(frameRect.bottom - 1)));
-
-        ensureComposeCollapseToggle(composeEl);
-        composeEl.classList.add('dangan-vn-compose-docked');
-        composeEl.classList.toggle('dangan-vn-compose-collapsed', composeCollapsed);
-        composeEl.style.position = 'fixed';
-        composeEl.style.left = `${left}px`;
-        composeEl.style.top = `${top}px`;
-        composeEl.style.width = `${width}px`;
-        composeEl.style.maxWidth = `${width}px`;
-        composeEl.style.margin = '0';
-        composeEl.style.transform = 'none';
-        composeEl.style.zIndex = '2147483644';
-        document.body.classList.add('dangan-vn-compose-docked-active');
-    }
-
-    applyInlineFallbackStyles();
-    updateBottomOffset();
-    syncMonopadVisibility();
-    restoreSavedPosition();
-    setMoveUnlocked(false);
-
-    const htmlDecodeBuffer = document.createElement('div');
-    const toPlainText = (value) => {
-        const raw = String(value || '').trim();
-        if (!raw) return '';
-        htmlDecodeBuffer.innerHTML = raw;
-        return String(htmlDecodeBuffer.textContent || htmlDecodeBuffer.innerText || '').trim();
-    };
-
-    function getContextMessages() {
-        const ctx = window.SillyTavern?.getContext?.();
-        const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
-
-        return chat.map((msg, idx) => {
-            const isUser = String(msg?.is_user ?? msg?.isUser ?? '').toLowerCase() === 'true' || msg?.is_user === true || msg?.isUser === true;
-            const isSystem = String(msg?.is_system ?? msg?.isSystem ?? msg?.is_system_message ?? '').toLowerCase() === 'true' || msg?.is_system === true || msg?.isSystem === true || msg?.is_system_message === true;
-            const name = String(msg?.name || msg?.ch_name || msg?.character_name || msg?.display_name || '').trim();
-            const textRaw = msg?.mes ?? msg?.message ?? msg?.content ?? msg?.swipe_info?.[msg?.swipe_id || 0]?.mes ?? '';
-            const text = toPlainText(textRaw);
-
-            return {
-                key: `ctx-${idx}`,
-                isUser,
-                isSystem,
-                name,
-                text,
-            };
-        }).filter(msg => !msg.isUser && !msg.isSystem && msg.text);
-    }
-
-    function getDomMessages() {
-        return Array.from(document.querySelectorAll('.mes')).map((msgEl, idx) => {
-            const isUser = msgEl.getAttribute('is_user') === 'true';
-            const isSystem = msgEl.getAttribute('is_system') === 'true';
-            const name = String(msgEl.getAttribute('ch_name') || msgEl.getAttribute('name') || '').trim();
-            const text = toPlainText(msgEl.querySelector('.mes_text')?.innerHTML || msgEl.querySelector('.mes_text')?.textContent || '');
-            return { key: `dom-${idx}`, isUser, isSystem, name, text };
-        }).filter(msg => !msg.isUser && !msg.isSystem && msg.text);
-    }
-
-    function getMessageEntries() {
-        const byContext = getContextMessages();
-        if (byContext.length) return byContext;
-        const byDom = getDomMessages();
-        if (byDom.length) return byDom;
-        return [];
-    }
-
-    function getChatScopeSignature() {
-        const ctx = window.SillyTavern?.getContext?.();
-        const groupId = ctx?.groupId ?? ctx?.group_id ?? '';
-        const characterId = ctx?.characterId ?? ctx?.character_id ?? '';
-        const chatId = ctx?.chatId ?? ctx?.chat_id ?? ctx?.chatFile ?? '';
-
-        if (groupId !== '' && groupId !== null && groupId !== undefined) {
-            return `group:${groupId}`;
-        }
-        if (characterId !== '' && characterId !== null && characterId !== undefined) {
-            return `char:${characterId}`;
-        }
-        if (chatId) {
-            return `chat:${chatId}`;
-        }
-
-        return 'scope:unknown';
-    }
-
-    function getMessageSignature(entry) {
-        if (!entry) return '';
-        return `${entry.key || ''}::${entry.name || ''}::${entry.text || ''}`;
-    }
-
-    function renderTranscript() {
-        if (!transcriptBodyEl) return;
-
-        const entries = getMessageEntries();
-        transcriptBodyEl.innerHTML = '';
-
-        if (!entries.length) {
-            const emptyEl = document.createElement('div');
-            emptyEl.className = 'dangan-vn-transcript-empty';
-            emptyEl.textContent = 'No transcript entries yet.';
-            transcriptBodyEl.appendChild(emptyEl);
-            return;
-        }
-
-        for (const entry of entries) {
-            const row = document.createElement('div');
-            row.className = 'dangan-vn-transcript-entry';
-
-            const speaker = document.createElement('div');
-            speaker.className = 'dangan-vn-transcript-speaker';
-            speaker.textContent = entry.name || 'UNKNOWN';
-
-            const message = document.createElement('div');
-            message.className = 'dangan-vn-transcript-message';
-            message.textContent = stripV3CMarkersFromText(entry.text || '').replace(/\s+/g, ' ').trim() || '...';
-
-            row.appendChild(speaker);
-            row.appendChild(message);
-            transcriptBodyEl.appendChild(row);
-        }
-    }
-
-    function splitIntoChunks(text = '') {
-        const normalized = String(text || '').replace(/\s+/g, ' ').trim();
-        if (!normalized) return [];
-
-        const chunks = [];
-        let remaining = normalized;
-        while (remaining.length > CHUNK_SIZE) {
-            let splitAt = remaining.lastIndexOf('.', CHUNK_SIZE);
-            if (splitAt < CHUNK_SIZE * 0.45) splitAt = remaining.lastIndexOf(' ', CHUNK_SIZE);
-            if (splitAt < 1) splitAt = CHUNK_SIZE;
-            chunks.push(remaining.slice(0, splitAt + 1).trim());
-            remaining = remaining.slice(splitAt + 1).trim();
-        }
-
-        if (remaining) chunks.push(remaining);
-        return chunks;
-    }
-
-    function pulseText() {
-        if (!textEl) return;
-        textEl.classList.remove('dangan-vn-text-pulse');
-        requestAnimationFrame(() => {
-            textEl.classList.add('dangan-vn-text-pulse');
-        });
-    }
-
-
-    function renderCurrent() {
-        const messages = getMessageEntries();
-        if (!messages.length) {
-            nameEl.textContent = 'SYSTEM';
-            textEl.textContent = 'No character replies available yet. Send a message and wait for a character response.';
-            updateNavigationState(messages);
-            return;
-        }
-
-        messageIndex = Math.max(0, Math.min(messageIndex, messages.length - 1));
-
-        const entry = messages[messageIndex];
-        const clean = stripV3CMarkersFromText(entry.text).replace(/\s+/g, ' ').trim();
-        const chunks = splitIntoChunks(clean);
-
-        if (!chunks.length) {
-            nameEl.textContent = entry.name || 'UNKNOWN';
-            textEl.textContent = '...';
-            updateNavigationState(messages);
-            return;
-        }
-
-        chunkIndex = Math.max(0, Math.min(chunkIndex, chunks.length - 1));
-        nameEl.textContent = entry.name || 'UNKNOWN';
-        textEl.textContent = chunks[chunkIndex];
-        updateNavigationState(messages);
-        pulseText();
-    }
-
-    function advance() {
-        const messages = getMessageEntries();
-        if (!messages.length) {
-            renderCurrent();
-            return;
-        }
-
-        if (messageIndex >= messages.length - 1) {
-            const currentEntry = messages[messages.length - 1];
-            const currentChunks = splitIntoChunks(stripV3CMarkersFromText(currentEntry?.text || ''));
-            if (chunkIndex >= Math.max(0, currentChunks.length - 1)) {
-                return;
-            }
-        }
-
-        const entry = messages[Math.min(messageIndex, messages.length - 1)];
-        const chunks = splitIntoChunks(stripV3CMarkersFromText(entry.text));
-
-        if (chunkIndex + 1 < chunks.length) {
-            chunkIndex += 1;
-        } else {
-            messageIndex = Math.min(messages.length - 1, messageIndex + 1);
-            chunkIndex = 0;
-        }
-
-        renderCurrent();
-    }
-
-    function retreat() {
-        const messages = getMessageEntries();
-        if (!messages.length) {
-            renderCurrent();
-            return;
-        }
-
-        const entry = messages[Math.min(messageIndex, messages.length - 1)];
-        const chunks = splitIntoChunks(stripV3CMarkersFromText(entry.text));
-
-        if (chunkIndex > 0) {
-            chunkIndex -= 1;
-        } else if (messageIndex > 0) {
-            messageIndex -= 1;
-            const previousEntry = messages[messageIndex];
-            const previousChunks = splitIntoChunks(stripV3CMarkersFromText(previousEntry.text));
-            chunkIndex = Math.max(0, previousChunks.length - 1);
-        } else if (chunks.length) {
-            chunkIndex = 0;
-        }
-
-        renderCurrent();
-    }
-
-    function jumpToLatest() {
-        const messages = getMessageEntries();
-        messageIndex = Math.max(0, messages.length - 1);
-        const latest = messages[messageIndex];
-        const latestChunks = splitIntoChunks(stripV3CMarkersFromText(latest?.text || ''));
-        chunkIndex = Math.max(0, latestChunks.length - 1);
-        renderCurrent();
-    }
-
-    function jumpToLatestFromStart() {
-        const messages = getMessageEntries();
-        messageIndex = Math.max(0, messages.length - 1);
-        chunkIndex = 0;
-        renderCurrent();
-    }
-
-    lockBtnEl?.addEventListener('click', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (moveUnlocked) {
-            setMoveUnlocked(false);
-            if (Number.isFinite(framePosX) && Number.isFinite(framePosY)) {
-                savePosition();
-            }
-            return;
-        }
-
-        setMoveUnlocked(true);
-    });
-
-    transcriptToggleEl?.addEventListener('click', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        setTranscriptOpen(!transcriptOpen);
-    });
-
-    transcriptCloseEl?.addEventListener('click', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        setTranscriptOpen(false);
-    });
-
-    prevBtnEl?.addEventListener('click', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        retreat();
-    });
-
-    nextBtnEl?.addEventListener('click', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        advance();
-    });
-
-    latestBtnEl?.addEventListener('click', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        jumpToLatest();
-    });
-
-    regenerateBtnEl?.addEventListener('click', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        triggerRegenerate();
-        updateNavigationState();
-    });
-
-    frameEl?.addEventListener('dblclick', (event) => {
-        if (!moveUnlocked) return;
-        event.preventDefault();
-        event.stopPropagation();
-        resetFramePosition();
-    });
-
-    frameEl?.addEventListener('pointerdown', (event) => {
-        if (!moveUnlocked || event.button !== 0 || !frameEl) return;
-        const target = event.target;
-        if (target instanceof Element && target.closest('.dangan-vn-lock')) return;
-
-        isDragging = true;
-        movedDuringPointer = false;
-        dragStartX = event.clientX;
-        dragStartY = event.clientY;
-
-        const rect = frameEl.getBoundingClientRect();
-        frameStartX = Number.isFinite(framePosX) ? framePosX : rect.left;
-        frameStartY = Number.isFinite(framePosY) ? framePosY : rect.top;
-
-        frameEl.setPointerCapture?.(event.pointerId);
-        event.preventDefault();
-    });
-
-    frameEl?.addEventListener('pointermove', (event) => {
-        if (!moveUnlocked || !isDragging || !frameEl) return;
-        const dx = event.clientX - dragStartX;
-        const dy = event.clientY - dragStartY;
-        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
-            movedDuringPointer = true;
-        }
-        setFramePosition(frameStartX + dx, frameStartY + dy);
-        dockTypingSection();
-        event.preventDefault();
-    });
-
-    frameEl?.addEventListener('pointerup', (event) => {
-        if (!isDragging) return;
-        isDragging = false;
-        frameEl?.releasePointerCapture?.(event.pointerId);
-        if (movedDuringPointer) {
-            savePosition();
-        }
-    });
-
-    frameEl?.addEventListener('pointercancel', () => {
-        isDragging = false;
-    });
-
-    frameEl?.addEventListener('click', (event) => {
-        if (isDragging || movedDuringPointer) {
-            movedDuringPointer = false;
-            return;
-        }
-        const target = event.target;
-        if (target instanceof Element && target.closest('.dangan-vn-lock')) return;
-        if (target instanceof Element && target.closest('.dangan-vn-transcript-toggle')) return;
-        if (target instanceof Element && target.closest('.dangan-vn-nav-button')) return;
-        advance();
-    });
-
-    window.addEventListener('keydown', (event) => {
-        if (!vnEnabled || !host.classList.contains('active')) return;
-        const target = event.target;
-        const isEditable = target instanceof HTMLElement && (
-            target.matches('input, textarea, select') ||
-            target.isContentEditable ||
-            !!target.closest('[contenteditable="true"]')
-        );
-        if (isEditable) return;
-
-        if (event.key === 'ArrowRight' || event.key === ' ' || event.key === 'Enter') {
-            advance();
-        } else if (event.key === 'ArrowLeft' || event.key === 'Backspace') {
-            retreat();
-        } else if ((event.key === 'r' || event.key === 'R') && !event.ctrlKey && !event.metaKey && !event.altKey) {
-            triggerRegenerate();
-            updateNavigationState();
-        } else {
-            return;
-        }
-        event.preventDefault();
-    });
-
-    let swipeStartX = null;
-
-    frameEl?.addEventListener('touchstart', (event) => {
-        if (!event.touches?.length) return;
-        swipeStartX = event.touches[0].clientX;
-    }, { passive: true });
-
-    frameEl?.addEventListener('touchend', (event) => {
-        if (swipeStartX === null || !event.changedTouches?.length) return;
-        const deltaX = event.changedTouches[0].clientX - swipeStartX;
-        swipeStartX = null;
-        if (Math.abs(deltaX) < 36) return;
-        if (deltaX < 0) {
-            advance();
-        } else {
-            retreat();
-        }
-    }, { passive: true });
-
-    window.addEventListener('resize', () => {
-        updateBottomOffset();
-        if (Number.isFinite(framePosX) && Number.isFinite(framePosY)) {
-            setFramePosition(framePosX, framePosY);
-        }
-        dockTypingSection();
-    });
-
-    const observer = new MutationObserver(() => {
-        ensureHostAttached();
-        updateBottomOffset();
-        syncMonopadVisibility();
-        dockTypingSection();
-        if (transcriptOpen) {
-            renderTranscript();
-        }
-        if (!host.classList.contains('active')) return;
-        const messages = getMessageEntries();
-        const currentChatScope = getChatScopeSignature();
-        const chatScopeChanged = currentChatScope !== lastObservedChatScope;
-        const previousCount = lastObservedMessageCount;
-        const hadMessageCountChange = messages.length !== previousCount;
-        const previousLastSignature = lastObservedLastSignature;
-        const currentLastSignature = getMessageSignature(messages[messages.length - 1]);
-        const hadLastSignatureChange = currentLastSignature !== previousLastSignature;
-        lastObservedMessageCount = messages.length;
-        lastObservedLastSignature = currentLastSignature;
-        lastObservedChatScope = currentChatScope;
-        if (!messages.length) {
-            renderCurrent();
-            return;
-        }
-
-        const maxIndex = messages.length - 1;
-        const wasAtTailBeforeNewMessage = hadMessageCountChange && messageIndex >= Math.max(0, maxIndex - 1);
-
-        if (chatScopeChanged) {
-            jumpToLatest();
-        } else if (hadMessageCountChange && previousCount === 0 && messages.length > 0) {
-            jumpToLatest();
-        } else if (!hadMessageCountChange && hadLastSignatureChange) {
-            if (messageIndex >= maxIndex) {
-                jumpToLatest();
-            } else {
-                renderCurrent();
-            }
-        } else if (hadMessageCountChange && messages.length > previousCount && wasAtTailBeforeNewMessage) {
-            renderCurrent();
-        } else if (messageIndex >= maxIndex || (wasAtTailBeforeNewMessage && !hadMessageCountChange)) {
-            jumpToLatest();
-        } else {
-            renderCurrent();
-        }
-    });
-
-    const chatEl = document.getElementById('chat');
-    if (chatEl) observer.observe(chatEl, { childList: true, subtree: true });
-
-    const panelEl = document.getElementById('dangan_monopad_panel');
-    if (panelEl) {
-        const panelObserver = new MutationObserver(() => {
-            const panelLooksOpen = panelEl.classList.contains('open') || panelEl.classList.contains('booting') || panelEl.classList.contains('shutting-down');
-            monopadOpen = panelLooksOpen;
-            syncMonopadVisibility();
-        });
-        panelObserver.observe(panelEl, { attributes: true, attributeFilter: ['class'] });
-    }
-
-    return {
-        setEnabled(enabled) {
-            const isEnabled = !!enabled;
-            vnEnabled = isEnabled;
-            ensureHostAttached();
-
-            host.classList.toggle('active', isEnabled);
-            host.setAttribute('aria-hidden', isEnabled ? 'false' : 'true');
-            host.style.display = isEnabled ? 'flex' : 'none';
-            host.style.pointerEvents = 'none';
-            updateBottomOffset();
-            syncMonopadVisibility();
-            dockTypingSection();
-            if (!isEnabled) {
-                setTranscriptOpen(false);
-                undockTypingSection();
-            }
-
-            const chatRoot = document.getElementById('chat');
-            chatRoot?.classList.toggle('dangan-vn-hidden', isEnabled);
-
-            if (isEnabled) {
-                lastObservedMessageCount = getMessageEntries().length;
-                const enabledMessages = getMessageEntries();
-                lastObservedLastSignature = getMessageSignature(enabledMessages[enabledMessages.length - 1]);
-                lastObservedChatScope = getChatScopeSignature();
-                jumpToLatest();
-            }
-
-            trySetSillyTavernVisualNovelMode(isEnabled);
-        },
-        refresh() {
-            ensureHostAttached();
-            updateBottomOffset();
-            syncMonopadVisibility();
-            dockTypingSection();
-            if (transcriptOpen) {
-                renderTranscript();
-            }
-            if (!host.classList.contains('active')) return;
-            const currentChatScope = getChatScopeSignature();
-            const chatScopeChanged = currentChatScope !== lastObservedChatScope;
-            lastObservedChatScope = currentChatScope;
-            if (chatScopeChanged) {
-                jumpToLatest();
-                return;
-            }
-            renderCurrent();
-        },
-        setMonopadOpen(isOpen) {
-            monopadOpen = !!isOpen;
-            syncMonopadVisibility();
-            dockTypingSection();
-        },
-    };
-}
 
 function tryEnableInvestigationToggleInObject(root, { maxDepth = 8 } = {}) {
     if (!root || typeof root !== "object") return false;
@@ -1754,6 +684,7 @@ async function triggerTrialStartFromMarker(markerText = "V3C| TRIAL_START") {
         const result = await trialController.requestStartFromMarker({ markerText });
         trialIntroUiController?.sync?.();
         trialDiscussionController?.sync?.();
+        nonstopDebateController?.sync?.();
         if (result?.started) {
             console.log("[Dangan][Trial] Class Trial started from marker.");
             return true;
@@ -1791,6 +722,7 @@ async function triggerTrialStartFromMapPin() {
     const result = trialController.requestStartFromUi?.({ source: "map_pin" });
     trialIntroUiController?.sync?.();
     trialDiscussionController?.sync?.();
+    nonstopDebateController?.sync?.();
     if (result?.started) {
         console.log("[Dangan][Trial] Class Trial started from map pin.");
         return true;
@@ -2009,7 +941,7 @@ function createTrialDiscussionController() {
         }
     }
 
-    function ingestMessage({ messageSignature = "", rawText = "", speaker = "UNKNOWN", msgEl = null } = {}) {
+    function ingestMessage({ messageSignature = "", rawText = "", speaker = "UNKNOWN" } = {}) {
         if (!trialController) return;
         const phase = trialController.getState?.()?.phase;
         if (!isDiscussionPhase(phase)) return;
@@ -2021,17 +953,8 @@ function createTrialDiscussionController() {
         if (hasStart) markerScopedDiscussionActive = true;
 
         const markerSignature = `TRIAL_DISCUSSION||${messageSignature}||${hasStart}||${hasEnd}`;
-        const persistentSignature = buildGenericPersistentMarkerSignature(
-            msgEl,
-            "TRIAL_DISCUSSION",
-            hasStart ? 1 : hasEnd ? 2 : 0,
-            0,
-            rawText,
-        );
         if (processedTrialDiscussionSignatures.has(markerSignature)) return;
-        if (hasProcessedPersistentMarker("trialDiscussionMarkers", persistentSignature)) return;
         processedTrialDiscussionSignatures.add(markerSignature);
-        markProcessedPersistentMarker("trialDiscussionMarkers", persistentSignature);
 
         const shouldEnqueueFallback = !hasStart && !hasEnd && !markerScopedDiscussionActive;
         const shouldEnqueueScoped = markerScopedDiscussionActive || hasStart;
@@ -2040,7 +963,13 @@ function createTrialDiscussionController() {
             enqueue(extractDiscussionEntries(rawText, speaker), phase);
         }
 
-        if (hasEnd) markerScopedDiscussionActive = false;
+        if (hasEnd) {
+            markerScopedDiscussionActive = false;
+            if (phase === trialController?.phases?.DISCUSSION_PRE_DEBATE) {
+                trialController?.transitionTo?.(trialController.phases.NONSTOP_INTRO_CUTSCENE, 'discussion_segment_complete');
+                nonstopDebateController?.sync?.();
+            }
+        }
     }
 
     function sync() {
@@ -2083,6 +1012,349 @@ function createTrialDiscussionController() {
 }
 
 
+function createNonstopDebateController() {
+    let introTimer = null;
+    let phaseTimer = null;
+    let roundToken = 0;
+    let weakPointCounter = 0;
+    let restoredVnAfterNsd = false;
+    let lastObservedPhase = null;
+
+    function ensureOverlay() {
+        let overlay = document.getElementById('dangan-nsd-overlay');
+        if (overlay) return overlay;
+
+        overlay = document.createElement('section');
+        overlay.id = 'dangan-nsd-overlay';
+        overlay.className = 'dangan-nsd-overlay';
+        overlay.setAttribute('aria-hidden', 'true');
+        overlay.innerHTML = `
+            <div class="dangan-nsd-cutscene" id="dangan-nsd-cutscene">
+                <div class="dangan-nsd-ring"></div>
+                <div class="dangan-nsd-banner">NONSTOP DEBATE</div>
+            </div>
+            <div class="dangan-nsd-active" id="dangan-nsd-active">
+                <div class="dangan-nsd-round-label" id="dangan-nsd-round-label">Round 1 · Replies: 0/0</div>
+                <div class="dangan-nsd-floating-layer" id="dangan-nsd-floating-layer"></div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+        return overlay;
+    }
+
+    function clearTimers() {
+        if (introTimer) {
+            clearTimeout(introTimer);
+            introTimer = null;
+        }
+        if (phaseTimer) {
+            clearTimeout(phaseTimer);
+            phaseTimer = null;
+        }
+    }
+
+    function clearFloating() {
+        const overlay = ensureOverlay();
+        const layer = overlay.querySelector('#dangan-nsd-floating-layer');
+        if (layer) layer.innerHTML = '';
+    }
+
+    function extractQuotedSegments(text) {
+        const raw = String(text || '');
+        const segments = [];
+        let start = -1;
+
+        for (let i = 0; i < raw.length; i += 1) {
+            const ch = raw[i];
+            if (ch !== '"') continue;
+
+            if (start === -1) {
+                start = i + 1;
+                continue;
+            }
+
+            const segment = raw.slice(start, i).trim();
+            if (segment && segment.indexOf('\n') === -1 && segment.indexOf('\r') === -1) {
+                segments.push(segment);
+            }
+            start = -1;
+        }
+
+        return segments;
+    }
+
+    function extractField(text, key) {
+        const escapedKey = String(key || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`^${escapedKey}\\s*:\\s*(.+)$`, 'im');
+        return String(text.match(regex)?.[1] || '').trim();
+    }
+
+    function splitWords(value) {
+        return String(value || '')
+            .replaceAll('\n', ' ')
+            .replaceAll('\r', ' ')
+            .split(' ')
+            .map(word => word.trim())
+            .filter(Boolean);
+    }
+
+    function splitLines(value) {
+        return String(value || '')
+            .replaceAll('\r', '')
+            .split('\n')
+            .map(line => line.trim())
+            .filter(Boolean);
+    }
+
+    function chooseWeakPointRange(dialogue) {
+        const words = splitWords(dialogue);
+        if (!words.length) return { start: 0, end: 0 };
+        const span = Math.max(1, Math.min(3, Math.floor(words.length / 3)));
+        const start = Math.floor(Math.random() * Math.max(1, words.length - span + 1));
+        return { start, end: Math.min(words.length - 1, start + span - 1) };
+    }
+
+    async function generateDebateReply() {
+        const ctx = window.SillyTavern?.getContext?.();
+        const prompt = `
+TASK:
+Write one short Class Trial line from one character.
+Return EXACTLY this format:
+speaker: <name>
+line: "<one dialogue line, max 24 words>"
+
+Rules:
+- One single quoted dialogue line.
+- No narration.
+- No markdown.
+- Keep momentum for Nonstop Debate pressure.
+`.trim();
+
+        if (ctx?.generateRaw) {
+            const result = await ctx.generateRaw({
+                prompt,
+                max_tokens: 90,
+                temperature: 0.8,
+                top_p: 0.95,
+                stop: ['USER:', 'ASSISTANT:']
+            });
+            return String(result || '').trim();
+        }
+
+        const fallback = await generateIsolated(`${prompt}
+Use short analytical output only.`, { allowDialogue: true });
+        return String(fallback || '').trim();
+    }
+
+    function renderFloatingLine({ speaker, dialogue, replyIndex, replyTotal, weakPointId, weakRange }) {
+        const overlay = ensureOverlay();
+        const labelEl = overlay.querySelector('#dangan-nsd-round-label');
+        const layer = overlay.querySelector('#dangan-nsd-floating-layer');
+        if (!layer) return;
+
+        if (labelEl) labelEl.textContent = `Round 1 · Replies: ${replyIndex}/${replyTotal}`;
+
+        const words = splitWords(dialogue);
+        const weakStart = weakRange?.start ?? -1;
+        const weakEnd = weakRange?.end ?? -1;
+
+        const phrase = document.createElement('div');
+        phrase.className = 'dangan-nsd-floating-line';
+
+        const speakerEl = document.createElement('span');
+        speakerEl.className = 'dangan-nsd-floating-speaker';
+        speakerEl.textContent = `${String(speaker || 'UNKNOWN').toUpperCase()}:`;
+        phrase.appendChild(speakerEl);
+
+        const quoteEl = document.createElement('span');
+        quoteEl.className = 'dangan-nsd-floating-quote';
+        quoteEl.append(' "');
+
+        words.forEach((word, idx) => {
+            if (idx > 0) quoteEl.append(' ');
+            if (idx >= weakStart && idx <= weakEnd) {
+                const weak = document.createElement('button');
+                weak.type = 'button';
+                weak.className = 'dangan-nsd-weak-point';
+                weak.textContent = word;
+                weak.dataset.weakPointId = String(weakPointId);
+                weak.addEventListener('click', () => {
+                    window.fireTruthBulletAtWeakPoint?.(weakPointId);
+                });
+                quoteEl.appendChild(weak);
+            } else {
+                quoteEl.append(word);
+            }
+        });
+
+        quoteEl.append('"');
+        phrase.appendChild(quoteEl);
+
+        const driftX = (Math.random() * 38 - 19).toFixed(2);
+        phrase.style.setProperty('--nsd-drift-x', `${driftX}px`);
+        phrase.style.setProperty('--nsd-order', String(replyIndex));
+        layer.appendChild(phrase);
+
+        // Keep only recent floating lines visible.
+        const lines = Array.from(layer.querySelectorAll('.dangan-nsd-floating-line'));
+        if (lines.length > 6) {
+            lines.slice(0, lines.length - 6).forEach(el => el.remove());
+        }
+    }
+
+    function hideOverlay() {
+        const overlay = ensureOverlay();
+        overlay.classList.remove('active', 'phase-cutscene', 'phase-active');
+        overlay.setAttribute('aria-hidden', 'true');
+        clearTimers();
+        clearFloating();
+        roundToken += 1;
+        lastObservedPhase = null;
+
+        document.body.classList.remove('dangan-trial-nsd-active');
+        if (!restoredVnAfterNsd && vnModeController) {
+            vnModeController.setEnabled?.(!!getMonopadSetting('vnModeEnabled'));
+        }
+        restoredVnAfterNsd = false;
+    }
+
+    function startActiveSection(token) {
+        if (token !== roundToken) return;
+        const state = trialController?.getState?.();
+        if (state?.phase !== trialController?.phases?.NONSTOP_ACTIVE) return;
+
+        const overlay = ensureOverlay();
+        overlay.classList.add('active', 'phase-active');
+        overlay.classList.remove('phase-cutscene');
+        overlay.setAttribute('aria-hidden', 'false');
+
+        // During NSD active, hide VN box and use floating text only.
+        document.body.classList.add('dangan-trial-nsd-active');
+        if (vnModeController) {
+            vnModeController.setEnabled?.(false);
+            restoredVnAfterNsd = true;
+        }
+
+        clearFloating();
+
+        const replyTotal = Math.floor(Math.random() * 6) + 3; // 3..8
+        let replyIndex = 0;
+        let stopped = false;
+
+        const runNext = async (currentPromise = null) => {
+            if (stopped || token !== roundToken) return;
+            if (trialController?.getState?.()?.phase !== trialController?.phases?.NONSTOP_ACTIVE) return;
+
+            const replyPromise = currentPromise || generateDebateReply();
+            const nextPromise = generateDebateReply();
+            const rawReply = await replyPromise.catch(() => '');
+
+            if (stopped || token !== roundToken) return;
+
+            const speaker = extractField(rawReply, 'speaker') || 'UNKNOWN';
+            const quotes = extractQuotedSegments(rawReply);
+            const dialogue = quotes[0] || splitLines(rawReply)[0] || '...';
+
+            replyIndex += 1;
+            weakPointCounter += 1;
+            const weakRange = chooseWeakPointRange(dialogue);
+            const weakPointId = `weak_${token}_${weakPointCounter}`;
+
+            renderFloatingLine({
+                speaker,
+                dialogue,
+                replyIndex,
+                replyTotal,
+                weakPointId,
+                weakRange,
+            });
+
+            if (replyIndex >= replyTotal) {
+                // End of this NSD section: interrupt further generation and take a short break, then repeat.
+                phaseTimer = window.setTimeout(() => {
+                    if (token !== roundToken) return;
+                    runSectionLoop(token);
+                }, 1100);
+                return;
+            }
+
+            phaseTimer = window.setTimeout(() => {
+                runNext(nextPromise);
+            }, 950);
+        };
+
+        runNext();
+
+        window.fireTruthBulletAtWeakPoint = (shotWeakPointId) => {
+            if (token !== roundToken) return { hit: false, reason: 'stale' };
+            if (!shotWeakPointId) return { hit: false, reason: 'invalid' };
+            stopped = true;
+            clearTimers();
+            trialController?.transitionTo?.(trialController.phases.DISCUSSION_POST_DEBATE, 'nsd_hit');
+            sync();
+            return { hit: true, weakPointId: shotWeakPointId };
+        };
+    }
+
+    function runSectionLoop(token) {
+        if (token !== roundToken) return;
+        const phase = trialController?.getState?.()?.phase;
+        if (phase !== trialController?.phases?.NONSTOP_ACTIVE) return;
+        startActiveSection(token);
+    }
+
+    function beginCutscene() {
+        const state = trialController?.getState?.();
+        if (state?.phase !== trialController?.phases?.NONSTOP_INTRO_CUTSCENE) return;
+
+        const overlay = ensureOverlay();
+        overlay.classList.add('active', 'phase-cutscene');
+        overlay.classList.remove('phase-active');
+        overlay.setAttribute('aria-hidden', 'false');
+
+        clearTimers();
+        const token = ++roundToken;
+        introTimer = window.setTimeout(() => {
+            const stillCutscene = trialController?.getState?.()?.phase === trialController?.phases?.NONSTOP_INTRO_CUTSCENE;
+            if (!stillCutscene || token !== roundToken) return;
+            trialController?.transitionTo?.(trialController.phases.NONSTOP_ACTIVE, 'nsd_cutscene_complete');
+            sync();
+        }, 2100);
+    }
+
+    function sync() {
+        const phase = trialController?.getState?.()?.phase;
+
+        if (phase === trialController?.phases?.NONSTOP_INTRO_CUTSCENE) {
+            if (lastObservedPhase !== phase) {
+                lastObservedPhase = phase;
+                beginCutscene();
+            }
+            return;
+        }
+
+        if (phase === trialController?.phases?.NONSTOP_ACTIVE) {
+            if (lastObservedPhase !== phase) {
+                lastObservedPhase = phase;
+                const token = ++roundToken;
+                startActiveSection(token);
+            }
+            return;
+        }
+
+        hideOverlay();
+    }
+
+    // Backward compatibility no-op for older hooks.
+    window.fireTruthBulletAtPhrase = () => ({ hit: false, reason: 'use_weak_point' });
+
+    return {
+        sync,
+    };
+}
+
+
 function createTrialIntroUiController() {
     let isVisible = false;
     let lastPhase = null;
@@ -2092,8 +1364,10 @@ function createTrialIntroUiController() {
         if (!overlay) return;
 
         const shell = overlay.querySelector('.dangan-trial-intro-shell');
-        const viewportHeight = Math.max(320, window.innerHeight || 0);
+        const visualViewport = window.visualViewport;
+        const viewportHeight = Math.max(320, Math.round(visualViewport?.height || window.innerHeight || 0));
         const viewportWidth = Math.max(280, window.innerWidth || 0);
+        const viewportOffsetTop = Math.max(0, Math.round(visualViewport?.offsetTop || 0));
         const isMobile = viewportWidth <= 700;
 
         overlay.style.position = 'fixed';
@@ -2101,17 +1375,32 @@ function createTrialIntroUiController() {
         overlay.style.zIndex = '2147483647';
         overlay.style.justifyContent = 'center';
         overlay.style.alignItems = isMobile ? 'flex-end' : 'center';
+        overlay.style.boxSizing = 'border-box';
 
         if (!shell) return;
 
         shell.style.boxSizing = 'border-box';
-        shell.style.maxHeight = `${Math.max(220, viewportHeight - 16)}px`;
+        shell.style.overflow = 'auto';
 
         if (isMobile) {
+            const topPadding = Math.max(10, viewportOffsetTop + 10);
+            const sidePadding = 8;
+            const bottomPadding = 10;
+
+            overlay.style.padding = `${topPadding}px ${sidePadding}px ${bottomPadding}px`;
+
+            const maxHeight = Math.max(220, viewportHeight - topPadding - bottomPadding);
             shell.style.width = `${Math.max(280, Math.min(540, viewportWidth - 16))}px`;
+            shell.style.minHeight = '0';
+            shell.style.maxHeight = `${maxHeight}px`;
+            shell.style.height = 'auto';
             shell.style.margin = '0 auto';
             shell.style.borderRadius = '12px';
         } else {
+            overlay.style.padding = '';
+            shell.style.minHeight = '';
+            shell.style.maxHeight = `${Math.max(220, viewportHeight - 16)}px`;
+            shell.style.height = '';
             shell.style.width = '';
             shell.style.margin = '';
             shell.style.borderRadius = '';
@@ -2338,6 +1627,7 @@ function applyGiftOutcome(characterName, verdict, signatureSeed) {
 
     char.trustHistory ||= new Set();
     char.trustHistory.add(signature);
+    saveCharacters();
 
     if (verdict === "SOCIAL_UP") {
         increaseTrustWithRewards(char);
@@ -2687,6 +1977,7 @@ function startV3CObserver() {
 
 function processAllMessages() {
     const messages = document.querySelectorAll(".mes");
+    let socialHistoryMutated = false;
 
     messages.forEach(msgEl => {
         // 🔑 REGISTER CHARACTER FROM DOM
@@ -2706,7 +1997,6 @@ function processAllMessages() {
             messageSignature,
             rawText,
             speaker: speakerName,
-            msgEl,
         });
         injectPersistedGiftReactionForMessage(msgEl, messageSignature);
         void tryResolvePendingGiftForMessage(msgEl, rawText);
@@ -2740,6 +2030,7 @@ for (const match of rawText.matchAll(regex)) {
     if (char.trustHistory.has(signature)) continue;
 
     char.trustHistory.add(signature);
+    socialHistoryMutated = true;
     increaseTrustWithRewards(char);
 }
 }
@@ -2759,8 +2050,14 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
     if (char.trustHistory.has(signature)) continue;
 
     char.trustHistory.add(signature);
+    socialHistoryMutated = true;
     decreaseTrust(char);
 }
+
+        if (socialHistoryMutated) {
+            saveCharacters();
+            socialHistoryMutated = false;
+        }
 
         // ---- Investigation Start ----
         const investigationMarkers = parseInvestigationStartMarkers(rawText);
@@ -2804,18 +2101,10 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
 
         monokumaAnnouncementMarkers.forEach((marker, idx) => {
             const signature = `MONOKUMA_ANNOUN||${messageSignature}||${marker.index}||${idx}||${marker.type}`;
-            const persistentSignature = buildGenericPersistentMarkerSignature(
-                msgEl,
-                `MONOKUMA_ANNOUN_${marker?.type || "UNKNOWN"}`,
-                marker?.index,
-                idx,
-                rawText,
-            );
-            if (processedMonokumaAnnouncementSignatures.has(signature)) return;
-            if (hasProcessedPersistentMarker("monokumaAnnouncementMarkers", persistentSignature)) return;
+            const persistentSignature = buildMonokumaAnnouncementPersistentSignature(msgEl, marker, idx, rawText);
+            if (hasProcessedMonokumaAnnouncementSignature(signature, persistentSignature)) return;
 
-            processedMonokumaAnnouncementSignatures.add(signature);
-            markProcessedPersistentMarker("monokumaAnnouncementMarkers", persistentSignature);
+            markMonokumaAnnouncementSignatureProcessed(signature, persistentSignature);
             monokumaAnnouncementController?.trigger(marker.type);
         });
 
@@ -3343,6 +2632,7 @@ function applySettingsTabUI() {
     vnModeController?.setEnabled?.(!!tab.vnModeEnabled);
     trialIntroUiController?.sync?.();
     trialDiscussionController?.sync?.();
+    nonstopDebateController?.sync?.();
 }
 
 function saveCharacters() {
@@ -4112,6 +3402,10 @@ function ensureGlobalDebugUi() {
                 <button id="truth-debug-open" type="button">NEW TRUTH BULLET</button>
                 <button id="investigation-debug-trigger" type="button">INVESTIGATION START</button>
                 <button id="announcement-debug-open" type="button">MONOKUMA ANNOUNCEMENT</button>
+                <button id="trial-debug-phase-idle" type="button">TRIAL PHASE: IDLE</button>
+                <button id="trial-debug-phase-pre" type="button">TRIAL PHASE: PRE-DEBATE</button>
+                <button id="trial-debug-phase-nonstop" type="button">TRIAL PHASE: NONSTOP DEBATE</button>
+                <button id="trial-debug-phase-post" type="button">TRIAL PHASE: POST-DEBATE</button>
             </div>
         `;
     }
@@ -4373,6 +3667,40 @@ function bindDebugControlEvents() {
         const selectedType = String($("input[name='announcement-debug-type']:checked").val() || "DAY_ANNOUN").trim();
         monokumaAnnouncementController?.trigger(selectedType);
         closeAnnouncementDebugModal();
+    });
+
+    const setTrialDebugPhase = (phase) => {
+        if (!trialController || !phase) return;
+
+        const result = trialController.debugSetPhase?.(phase, { source: "debug_controls" });
+        if (!result?.ok) {
+            console.warn(`[Dangan][Trial][Debug] Could not switch phase to ${phase}: ${result?.reason || "unknown error"}`);
+            return;
+        }
+
+        trialIntroUiController?.sync?.();
+        trialDiscussionController?.sync?.();
+        nonstopDebateController?.sync?.();
+    };
+
+    $(document).on("click.debugControls", "#trial-debug-phase-idle", () => {
+        playDebugClickSfx();
+        setTrialDebugPhase(trialController?.phases?.IDLE);
+    });
+
+    $(document).on("click.debugControls", "#trial-debug-phase-pre", () => {
+        playDebugClickSfx();
+        setTrialDebugPhase(trialController?.phases?.DISCUSSION_PRE_DEBATE);
+    });
+
+    $(document).on("click.debugControls", "#trial-debug-phase-nonstop", () => {
+        playDebugClickSfx();
+        setTrialDebugPhase(trialController?.phases?.NONSTOP_ACTIVE);
+    });
+
+    $(document).on("click.debugControls", "#trial-debug-phase-post", () => {
+        playDebugClickSfx();
+        setTrialDebugPhase(trialController?.phases?.DISCUSSION_POST_DEBATE);
     });
 
     $(document).on("click.debugControls", "#dangan_debug_breach_trigger", () => {
@@ -5061,21 +4389,25 @@ trialController = createTrialController({
 trialIntroOstController = createTrialIntroOstController();
 trialIntroUiController = createTrialIntroUiController();
 trialDiscussionController = createTrialDiscussionController();
+nonstopDebateController = createNonstopDebateController();
 trialIntroUiController?.startAutoSync?.();
 trialDiscussionController?.startAutoSync?.();
 trialIntroUiController?.sync?.();
 trialDiscussionController?.sync?.();
+nonstopDebateController?.sync?.();
 window.danganTrial = trialController;
 window.startClassTrial = () => {
     const result = trialController?.requestStartFromUi?.({ source: "manual" });
     trialIntroUiController?.sync?.();
     trialDiscussionController?.sync?.();
+    nonstopDebateController?.sync?.();
     return result;
 };
 window.cancelClassTrial = () => {
     const result = trialController?.cancelTrial?.();
     trialIntroUiController?.sync?.();
     trialDiscussionController?.sync?.();
+    nonstopDebateController?.sync?.();
     return result;
 };
 rewards?.renderProgressionUi?.();
@@ -5108,8 +4440,6 @@ initTruthBullets({
     monocoinRewards: MONOCOIN_REWARDS,
     xpRewards: XP_REWARDS,
     playSfx,
-    extension_settings,
-    saveSettingsDebounced,
     extensionName,
     getSetting: getMonopadSetting
 });
