@@ -5,6 +5,15 @@ export function createClassTrialMenuController({ extensionName, extensionSetting
     let activeAudio = null;
     let activeTrackIndex = -1;
 
+    function escapeHtml(value) {
+        return String(value || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    }
+
     function moveToNextTrack() {
         if (!activeAudio) return;
         if (activeTrackIndex >= candidateTracks.length - 1) return;
@@ -67,9 +76,10 @@ export function createClassTrialMenuController({ extensionName, extensionSetting
                         <span id="dangan-trial-skill-points">SP: 0</span>
                     </div>
                     <div id="dangan-trial-skill-list" class="dangan-trial-skill-list"></div>
+                    <div id="dangan-trial-skill-status" class="dangan-trial-skill-status" aria-live="polite"></div>
                 </div>
                 <div class="dangan-trial-intro-actions">
-                    <button type="button" class="dangan-trial-intro-skills" id="dangan-trial-intro-skills">Equip / Unequip Skills</button>
+                    <button type="button" class="dangan-trial-intro-skills" id="dangan-trial-intro-skills" aria-expanded="false">Manage Skill Loadout</button>
                     <button type="button" class="dangan-trial-intro-cancel" id="dangan-trial-intro-cancel">Cancel</button>
                     <button type="button" class="dangan-trial-intro-start" id="dangan-trial-intro-start">Begin Class Trial</button>
                 </div>
@@ -95,17 +105,20 @@ export function createClassTrialMenuController({ extensionName, extensionSetting
         stopTrack();
     }
 
-    function renderTrialSkillManager(overlay) {
+    function renderTrialSkillManager(overlay, statusMessage = "") {
         const manager = overlay.querySelector("#dangan-trial-skill-manager");
         const pointsEl = overlay.querySelector("#dangan-trial-skill-points");
         const listEl = overlay.querySelector("#dangan-trial-skill-list");
-        if (!manager || !pointsEl || !listEl) return;
+        const statusEl = overlay.querySelector("#dangan-trial-skill-status");
+        if (!manager || !pointsEl || !listEl || !statusEl) return;
 
         const snapshot = typeof getTrialSkillEntries === "function"
             ? getTrialSkillEntries()
             : { skillPoints: 0, skills: [] };
 
-        pointsEl.textContent = `SP: ${Number(snapshot?.skillPoints || 0)}`;
+        const availablePoints = Number(snapshot?.skillPoints || 0);
+        pointsEl.textContent = `SP: ${availablePoints}`;
+        statusEl.textContent = String(statusMessage || "");
 
         if (!Array.isArray(snapshot?.skills) || !snapshot.skills.length) {
             listEl.innerHTML = '<div class="dangan-trial-skill-empty">No owned skills available.</div>';
@@ -114,15 +127,18 @@ export function createClassTrialMenuController({ extensionName, extensionSetting
 
         listEl.innerHTML = snapshot.skills.map(skill => {
             const equipped = Boolean(skill?.equipped);
-            const label = equipped ? "UNEQUIP" : "EQUIP";
             const cost = Number(skill?.skillPointCost || 0);
+            const canAfford = equipped || availablePoints >= cost;
+            const label = equipped ? "UNEQUIP" : "EQUIP";
+            const effect = escapeHtml(String(skill?.effect || "No effect description."));
             return `
-                <div class="dangan-trial-skill-row" data-skill-id="${String(skill?.id || "")}">
+                <div class="dangan-trial-skill-row" data-skill-id="${escapeHtml(String(skill?.id || ""))}">
                     <div class="dangan-trial-skill-main">
-                        <div class="dangan-trial-skill-name">${String(skill?.name || "UNKNOWN SKILL").toUpperCase()}</div>
-                        <div class="dangan-trial-skill-meta">${String(skill?.rarity || "N")}&nbsp;·&nbsp;COST ${cost} SP</div>
+                        <div class="dangan-trial-skill-name">${escapeHtml(String(skill?.name || "UNKNOWN SKILL").toUpperCase())}</div>
+                        <div class="dangan-trial-skill-meta">${escapeHtml(String(skill?.rarity || "N"))}&nbsp;·&nbsp;COST ${cost} SP</div>
+                        <div class="dangan-trial-skill-effect">${effect}</div>
                     </div>
-                    <button type="button" class="dangan-trial-skill-toggle ${equipped ? "equipped" : ""}" data-action="toggle">${label}</button>
+                    <button type="button" class="dangan-trial-skill-toggle ${equipped ? "equipped" : ""}" data-action="toggle" ${canAfford ? "" : "disabled"}>${label}</button>
                 </div>
             `;
         }).join("");
@@ -135,7 +151,12 @@ export function createClassTrialMenuController({ extensionName, extensionSetting
                 if (result?.changed) {
                     playSfx?.(getSfx?.().click);
                 }
-                renderTrialSkillManager(overlay);
+
+                const nextMessage = result?.changed
+                    ? (result?.equipped ? "Skill equipped." : "Skill unequipped.")
+                    : "Unable to update skill loadout. Check SP and ownership.";
+
+                renderTrialSkillManager(overlay, nextMessage);
             });
         });
     }
@@ -157,6 +178,8 @@ export function createClassTrialMenuController({ extensionName, extensionSetting
                 cancelBtn?.removeEventListener("click", onCancel);
                 startBtn?.removeEventListener("click", onStart);
                 if (manager) manager.hidden = true;
+                skillsBtn?.setAttribute("aria-expanded", "false");
+                document.removeEventListener("keydown", onKeydown);
                 setVisible(false);
                 resolve(Boolean(accepted));
             };
@@ -164,6 +187,7 @@ export function createClassTrialMenuController({ extensionName, extensionSetting
             const onSkills = () => {
                 if (!manager) return;
                 manager.hidden = !manager.hidden;
+                skillsBtn?.setAttribute("aria-expanded", manager.hidden ? "false" : "true");
                 if (!manager.hidden) {
                     renderTrialSkillManager(overlay);
                 }
@@ -176,9 +200,16 @@ export function createClassTrialMenuController({ extensionName, extensionSetting
                     finish(false);
                 }
             };
+            const onKeydown = (event) => {
+                if (event.key === "Escape") finish(false);
+            };
 
             setVisible(true);
             overlay.addEventListener("click", onOverlayClick);
+            document.addEventListener("keydown", onKeydown);
+            skillsBtn?.setAttribute("aria-expanded", "false");
+            const statusEl = overlay.querySelector("#dangan-trial-skill-status");
+            if (statusEl) statusEl.textContent = "";
             skillsBtn?.addEventListener("click", onSkills);
             cancelBtn?.addEventListener("click", onCancel);
             startBtn?.addEventListener("click", onStart);

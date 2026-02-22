@@ -64,3 +64,25 @@
     color: rgba(220, 236, 255, 0.82);
     font-size: 12px;
 }
+
+
+.dangan-trial-skill-effect {
+    color: rgba(207, 228, 255, 0.9);
+    font-size: 11px;
+    margin-top: 4px;
+    line-height: 1.3;
+}
+
+.dangan-trial-skill-status {
+    min-height: 18px;
+    margin-top: 8px;
+    color: #9fe7ff;
+    font-size: 12px;
+    letter-spacing: 0.02em;
+}
+
+.dangan-trial-skill-toggle:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    filter: grayscale(0.15);
+}
