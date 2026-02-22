@@ -4578,7 +4578,7 @@ body.dangan-trial-vn-chat-hidden #chat {
 .dangan-vn-controls {
     position: absolute;
     top: 8px;
-    right: 44px;
+    right: 56px;
     display: inline-flex;
     gap: 6px;
     z-index: 2;
@@ -4971,7 +4971,7 @@ body.dangan-vn-compose-docked-active :is(.dropdown-menu, .options-content, .menu
 
     .dangan-vn-controls {
         top: 6px;
-        right: 34px;
+        right: 42px;
         gap: 4px;
     }
 
