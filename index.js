@@ -4532,6 +4532,7 @@ if (initialRewardDifficulty !== getMonopadSetting("rewardDifficulty")) {
 ensureGlobalDebugUi();
 classTrialMenuController = createClassTrialMenuController({
     extensionName,
+    extensionSettings: extension_settings,
     buildExtensionPathCandidates,
 });
 window.openClassTrialMenu = () => classTrialMenuController?.open?.();
