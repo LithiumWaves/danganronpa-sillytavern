@@ -5105,10 +5105,10 @@ body.dangan-vn-compose-docked-active :is(.dropdown-menu, .options-content, .menu
     inset: 0;
     z-index: 2147483646;
     display: none;
-    align-items: center;
+    align-items: flex-end;
     justify-content: center;
     pointer-events: none;
-    background: radial-gradient(circle at 50% 40%, rgba(17, 24, 44, 0.28), rgba(0, 0, 0, 0.72));
+    padding: 0 2vw min(30vh, 280px);
 }
 
 .dangan-nsd-overlay.active {
@@ -5161,7 +5161,7 @@ body.dangan-vn-compose-docked-active :is(.dropdown-menu, .options-content, .menu
 }
 
 .dangan-nsd-active {
-    width: min(1180px, 96vw);
+    width: min(1280px, 96vw);
     pointer-events: none;
 }
 
@@ -5177,7 +5177,7 @@ body.dangan-vn-compose-docked-active :is(.dropdown-menu, .options-content, .menu
     display: grid;
     gap: 8px;
     align-content: end;
-    min-height: min(56vh, 520px);
+    min-height: min(42vh, 380px);
 }
 
 .dangan-nsd-floating-line {
@@ -5186,7 +5186,7 @@ body.dangan-vn-compose-docked-active :is(.dropdown-menu, .options-content, .menu
     gap: 6px;
     align-items: baseline;
     align-self: center;
-    max-width: min(1100px, 94vw);
+    max-width: min(1200px, 94vw);
     padding: 8px 12px;
     border-radius: 999px;
     border: 1px solid rgba(233, 89, 223, 0.46);
@@ -5210,23 +5210,9 @@ body.dangan-vn-compose-docked-active :is(.dropdown-menu, .options-content, .menu
 }
 
 .dangan-nsd-weak-point {
-    border: 1px solid rgba(255, 119, 171, 0.85);
-    border-radius: 6px;
-    padding: 0 4px;
-    margin: 0 1px;
-    background: rgba(140, 21, 61, 0.85);
-    color: #fff4f7;
-    cursor: pointer;
-}
-
-.dangan-nsd-weak-point:hover,
-.dangan-nsd-weak-point:focus-visible {
-    outline: none;
-    filter: brightness(1.12);
-}
-
-body.dangan-trial-nsd-active #dangan-vn-overlay {
-    display: none !important;
+    color: #ffe45b;
+    font-weight: 700;
+    text-shadow: 0 0 8px rgba(255, 230, 118, 0.38);
 }
 
 @keyframes dangan-nsd-ring-spin {
