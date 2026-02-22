@@ -13,7 +13,7 @@ export function createClassTrialMenuController({ playSfx, getSfx } = {}) {
             <div class="dangan-class-trial-menu-window" role="dialog" aria-modal="true" aria-labelledby="dangan-class-trial-menu-title">
                 <div class="dangan-class-trial-menu-kicker">CLASS TRIAL</div>
                 <div class="dangan-class-trial-menu-title" id="dangan-class-trial-menu-title">BEGIN CLASS TRIAL?</div>
-                <div class="dangan-class-trial-menu-subtitle">Inspired by Danganronpa V3</div>
+                <div class="dangan-class-trial-menu-subtitle"><span>Inspired by Danganronpa V3</span></div>
                 <div class="dangan-class-trial-menu-actions">
                     <button type="button" class="dangan-class-trial-menu-button cancel" data-action="cancel">CANCEL</button>
                     <button type="button" class="dangan-class-trial-menu-button begin" data-action="begin">BEGIN CLASS TRIAL</button>

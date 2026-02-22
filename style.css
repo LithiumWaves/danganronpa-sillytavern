@@ -45,6 +45,12 @@
     color: #cfb6ff;
 }
 
+.dangan-class-trial-menu-subtitle span {
+    color: #7fcbff;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
 .dangan-class-trial-menu-actions {
     margin-top: 16px;
     display: flex;
