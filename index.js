@@ -4551,6 +4551,10 @@ classTrialMenuController = createClassTrialMenuController({
     extensionName,
     extensionSettings: extension_settings,
     buildExtensionPathCandidates,
+    onManageSkills: () => {
+        setActiveMonopadTab("skills");
+        itemsPanelController?.renderSkillsItemsPanel?.();
+    },
 });
 window.startClassTrial = () => classTrialMenuController?.open?.();
 rewards?.renderProgressionUi?.();

@@ -1,4 +1,4 @@
-export function createClassTrialMenuController({ extensionName, extensionSettings, buildExtensionPathCandidates }) {
+export function createClassTrialMenuController({ extensionName, extensionSettings, buildExtensionPathCandidates, onManageSkills }) {
     const candidateTracks = buildExtensionPathCandidates()
         .map(basePath => `${basePath}/assets/classtrial/trialunderground.mp3`);
 
@@ -62,7 +62,8 @@ export function createClassTrialMenuController({ extensionName, extensionSetting
                     <p>Proceed to the underground courtroom when you're ready.</p>
                 </header>
                 <div class="dangan-trial-intro-actions">
-                    <button type="button" class="dangan-trial-intro-cancel" id="dangan-trial-intro-cancel">Not Yet</button>
+                    <button type="button" class="dangan-trial-intro-skills" id="dangan-trial-intro-skills">Equip / Unequip Skills</button>
+                    <button type="button" class="dangan-trial-intro-cancel" id="dangan-trial-intro-cancel">Cancel</button>
                     <button type="button" class="dangan-trial-intro-start" id="dangan-trial-intro-start">Begin Class Trial</button>
                 </div>
             </div>
@@ -90,6 +91,7 @@ export function createClassTrialMenuController({ extensionName, extensionSetting
     function open() {
         return new Promise((resolve) => {
             const overlay = ensureOverlay();
+            const skillsBtn = overlay.querySelector("#dangan-trial-intro-skills");
             const cancelBtn = overlay.querySelector("#dangan-trial-intro-cancel");
             const startBtn = overlay.querySelector("#dangan-trial-intro-start");
 
@@ -98,12 +100,16 @@ export function createClassTrialMenuController({ extensionName, extensionSetting
                 if (settled) return;
                 settled = true;
                 overlay.removeEventListener("click", onOverlayClick);
+                skillsBtn?.removeEventListener("click", onSkills);
                 cancelBtn?.removeEventListener("click", onCancel);
                 startBtn?.removeEventListener("click", onStart);
                 setVisible(false);
                 resolve(Boolean(accepted));
             };
 
+            const onSkills = () => {
+                if (typeof onManageSkills === "function") onManageSkills();
+            };
             const onCancel = () => finish(false);
             const onStart = () => finish(true);
             const onOverlayClick = (event) => {
@@ -114,6 +120,7 @@ export function createClassTrialMenuController({ extensionName, extensionSetting
 
             setVisible(true);
             overlay.addEventListener("click", onOverlayClick);
+            skillsBtn?.addEventListener("click", onSkills);
             cancelBtn?.addEventListener("click", onCancel);
             startBtn?.addEventListener("click", onStart);
         });
