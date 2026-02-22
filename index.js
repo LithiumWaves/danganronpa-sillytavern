@@ -693,6 +693,7 @@ function createVnModeController() {
     const nextBtnEl = host.querySelector('#dangan-vn-next');
     const latestBtnEl = host.querySelector('#dangan-vn-latest');
     const regenerateBtnEl = host.querySelector('#dangan-vn-regenerate');
+    const latestButtonBaseLabel = '⤓ Latest';
 
 
     function isElementVisible(el) {
@@ -746,7 +747,11 @@ function createVnModeController() {
 
         if (prevBtnEl) prevBtnEl.disabled = !hasPrevious;
         if (nextBtnEl) nextBtnEl.disabled = !hasNext;
-        if (latestBtnEl) latestBtnEl.disabled = total < 2 || messageIndex >= total - 1;
+        if (latestBtnEl) {
+            const unreadCount = Math.max(0, total - (messageIndex + 1));
+            latestBtnEl.disabled = total < 2 || unreadCount === 0;
+            latestBtnEl.textContent = unreadCount > 0 ? `${latestButtonBaseLabel} (${unreadCount})` : latestButtonBaseLabel;
+        }
         if (regenerateBtnEl) regenerateBtnEl.disabled = !getRegenerateControl();
         if (progressFillEl) {
             const percent = total > 0 ? Math.max(0, Math.min(100, Math.round((current / total) * 100))) : 0;
@@ -1341,6 +1346,9 @@ function createVnModeController() {
             advance();
         } else if (event.key === 'ArrowLeft' || event.key === 'Backspace') {
             retreat();
+        } else if ((event.key === 'r' || event.key === 'R') && !event.ctrlKey && !event.metaKey && !event.altKey) {
+            triggerRegenerate();
+            updateNavigationState();
         } else {
             return;
         }
@@ -1407,7 +1415,11 @@ function createVnModeController() {
         } else if (hadMessageCountChange && previousCount === 0 && messages.length > 0) {
             jumpToLatest();
         } else if (!hadMessageCountChange && hadLastSignatureChange) {
-            jumpToLatest();
+            if (messageIndex >= maxIndex) {
+                jumpToLatest();
+            } else {
+                renderCurrent();
+            }
         } else if (hadMessageCountChange && messages.length > previousCount && wasAtTailBeforeNewMessage) {
             renderCurrent();
         } else if (messageIndex >= maxIndex || (wasAtTailBeforeNewMessage && !hadMessageCountChange)) {
