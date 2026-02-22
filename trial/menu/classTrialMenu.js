@@ -1,22 +1,69 @@
-export function createClassTrialMenuController({ playSfx, getSfx } = {}) {
-    const OVERLAY_ID = "dangan-class-trial-menu-overlay";
+export function createClassTrialMenuController({ extensionName, extensionSettings, buildExtensionPathCandidates }) {
+    const candidateTracks = buildExtensionPathCandidates()
+        .map(basePath => `${basePath}/assets/classtrial/trialunderground.mp3`);
+
+    let activeAudio = null;
+    let activeTrackIndex = -1;
+
+    function moveToNextTrack() {
+        if (!activeAudio) return;
+        if (activeTrackIndex >= candidateTracks.length - 1) return;
+        activeTrackIndex += 1;
+        activeAudio.src = candidateTracks[activeTrackIndex];
+        activeAudio.load();
+    }
+
+    function stopTrack() {
+        if (!activeAudio) return;
+        activeAudio.pause();
+        activeAudio.currentTime = 0;
+    }
+
+    function playTrack() {
+        if (!extensionSettings?.[extensionName]?.monopadSounds) return;
+        if (!candidateTracks.length) return;
+
+        if (!activeAudio) {
+            activeTrackIndex = 0;
+            activeAudio = new Audio(candidateTracks[activeTrackIndex]);
+            activeAudio.loop = true;
+            activeAudio.preload = "auto";
+            activeAudio.volume = 0.42;
+            activeAudio.addEventListener("error", () => {
+                const previousIndex = activeTrackIndex;
+                moveToNextTrack();
+                if (previousIndex === activeTrackIndex) return;
+                activeAudio.play().catch(() => {});
+            });
+        }
+
+        activeAudio.play().catch(() => {});
+    }
 
     function ensureOverlay() {
-        let overlay = document.getElementById(OVERLAY_ID);
+        let overlay = document.getElementById("dangan-trial-intro-overlay");
         if (overlay) return overlay;
 
-        overlay = document.createElement("div");
-        overlay.id = OVERLAY_ID;
-        overlay.className = "dangan-class-trial-menu-overlay";
+        overlay = document.createElement("section");
+        overlay.id = "dangan-trial-intro-overlay";
+        overlay.className = "dangan-trial-intro-overlay";
         overlay.setAttribute("aria-hidden", "true");
         overlay.innerHTML = `
-            <div class="dangan-class-trial-menu-window" role="dialog" aria-modal="true" aria-labelledby="dangan-class-trial-menu-title">
-                <div class="dangan-class-trial-menu-kicker">CLASS TRIAL</div>
-                <div class="dangan-class-trial-menu-title" id="dangan-class-trial-menu-title">BEGIN CLASS TRIAL?</div>
-                <div class="dangan-class-trial-menu-subtitle"><span>Inspired by Danganronpa V3</span></div>
-                <div class="dangan-class-trial-menu-actions">
-                    <button type="button" class="dangan-class-trial-menu-button cancel" data-action="cancel">CANCEL</button>
-                    <button type="button" class="dangan-class-trial-menu-button begin" data-action="begin">BEGIN CLASS TRIAL</button>
+            <div class="dangan-trial-backdrop" aria-hidden="true">
+                <div class="dangan-trial-grid"></div>
+                <div class="dangan-trial-cylinder"></div>
+                <div class="dangan-trial-cylinder dangan-trial-cylinder-alt"></div>
+                <div class="dangan-trial-glow-orb"></div>
+            </div>
+            <div class="dangan-trial-intro-shell" role="dialog" aria-modal="false" aria-labelledby="dangan-trial-intro-title">
+                <header class="dangan-trial-intro-header">
+                    <div class="dangan-trial-prep-label">COURT PREPARATION</div>
+                    <h2 id="dangan-trial-intro-title">Class Trial</h2>
+                    <p>Proceed to the underground courtroom when you're ready.</p>
+                </header>
+                <div class="dangan-trial-intro-actions">
+                    <button type="button" class="dangan-trial-intro-cancel" id="dangan-trial-intro-cancel">Not Yet</button>
+                    <button type="button" class="dangan-trial-intro-start" id="dangan-trial-intro-start">Begin Class Trial</button>
                 </div>
             </div>
         `;
@@ -25,44 +72,59 @@ export function createClassTrialMenuController({ playSfx, getSfx } = {}) {
         return overlay;
     }
 
+    function setVisible(visible) {
+        const overlay = ensureOverlay();
+        overlay.classList.toggle("active", visible);
+        overlay.setAttribute("aria-hidden", visible ? "false" : "true");
+        overlay.style.display = visible ? "flex" : "none";
+        overlay.style.pointerEvents = visible ? "auto" : "none";
+
+        if (visible) {
+            playTrack();
+            return;
+        }
+
+        stopTrack();
+    }
+
     function open() {
         return new Promise((resolve) => {
             const overlay = ensureOverlay();
-            const beginButton = overlay.querySelector('[data-action="begin"]');
-            const cancelButton = overlay.querySelector('[data-action="cancel"]');
+            const cancelBtn = overlay.querySelector("#dangan-trial-intro-cancel");
+            const startBtn = overlay.querySelector("#dangan-trial-intro-start");
 
-            const cleanup = (accepted) => {
-                overlay.classList.remove("open");
-                overlay.setAttribute("aria-hidden", "true");
-                overlay.removeEventListener("click", onBackdropClick);
-                beginButton?.removeEventListener("click", onBegin);
-                cancelButton?.removeEventListener("click", onCancel);
+            let settled = false;
+            const finish = (accepted) => {
+                if (settled) return;
+                settled = true;
+                overlay.removeEventListener("click", onOverlayClick);
+                cancelBtn?.removeEventListener("click", onCancel);
+                startBtn?.removeEventListener("click", onStart);
+                setVisible(false);
                 resolve(Boolean(accepted));
             };
 
-            const onBackdropClick = (event) => {
-                if (event.target !== overlay) return;
-                playSfx?.(getSfx?.().click);
-                cleanup(false);
+            const onCancel = () => finish(false);
+            const onStart = () => finish(true);
+            const onOverlayClick = (event) => {
+                if (event.target === overlay || event.target.classList.contains("dangan-trial-backdrop")) {
+                    finish(false);
+                }
             };
 
-            const onBegin = () => {
-                playSfx?.(getSfx?.().click);
-                cleanup(true);
-            };
-
-            const onCancel = () => {
-                playSfx?.(getSfx?.().click);
-                cleanup(false);
-            };
-
-            overlay.classList.add("open");
-            overlay.setAttribute("aria-hidden", "false");
-            overlay.addEventListener("click", onBackdropClick);
-            beginButton?.addEventListener("click", onBegin);
-            cancelButton?.addEventListener("click", onCancel);
+            setVisible(true);
+            overlay.addEventListener("click", onOverlayClick);
+            cancelBtn?.addEventListener("click", onCancel);
+            startBtn?.addEventListener("click", onStart);
         });
     }
 
-    return { open };
+    function close() {
+        setVisible(false);
+    }
+
+    return {
+        open,
+        close,
+    };
 }

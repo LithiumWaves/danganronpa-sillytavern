@@ -4548,8 +4548,9 @@ if (initialRewardDifficulty !== getMonopadSetting("rewardDifficulty")) {
 }
 ensureGlobalDebugUi();
 classTrialMenuController = createClassTrialMenuController({
-    playSfx,
-    getSfx: () => sfx,
+    extensionName,
+    extensionSettings: extension_settings,
+    buildExtensionPathCandidates,
 });
 window.startClassTrial = () => classTrialMenuController?.open?.();
 rewards?.renderProgressionUi?.();
