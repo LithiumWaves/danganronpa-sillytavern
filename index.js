@@ -4551,10 +4551,10 @@ classTrialMenuController = createClassTrialMenuController({
     extensionName,
     extensionSettings: extension_settings,
     buildExtensionPathCandidates,
-    onManageSkills: () => {
-        setActiveMonopadTab("skills");
-        itemsPanelController?.renderSkillsItemsPanel?.();
-    },
+    getTrialSkillEntries: () => itemsPanelController?.getTrialSkillEntries?.() || { skillPoints: 0, skills: [] },
+    toggleTrialSkillEquip: (skillId) => itemsPanelController?.toggleTrialSkillEquip?.(skillId) || { changed: false },
+    playSfx,
+    getSfx: () => sfx,
 });
 window.startClassTrial = () => classTrialMenuController?.open?.();
 rewards?.renderProgressionUi?.();
