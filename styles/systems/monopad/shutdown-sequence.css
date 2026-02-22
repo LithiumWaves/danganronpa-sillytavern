@@ -1,0 +1,37 @@
+/* =========================
+   Monopad Shutdown Sequence
+   ========================= */
+
+#dangan_monopad_panel.shutting-down .monopad-fullscreen-root {
+    animation: monopad-shutdown 0.42s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes monopad-shutdown {
+    0% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        filter: brightness(1) saturate(1);
+    }
+    45% {
+        opacity: 0.86;
+        filter: brightness(1.06) saturate(1.03);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(6px) scale(0.985);
+        filter: brightness(0.78) saturate(0.95);
+    }
+}
+
+/* CRT spike on shutdown */
+#dangan_monopad_panel.shutting-down .monopad-crt-overlay {
+    animation: crt-shutdown-flicker 0.32s ease-out;
+}
+
+@keyframes crt-shutdown-flicker {
+    0% { opacity: 0.3; }
+    35% { opacity: 0.52; }
+    70% { opacity: 0.2; }
+    100% { opacity: 0; }
+}
+

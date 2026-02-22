@@ -1,0 +1,54 @@
+/* =========================
+ Monopad Typography
+ ========================= */
+
+.monopad-fullscreen-root {
+    font-family: "Orbitron", system-ui, sans-serif;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    position: relative;
+}
+
+/* Floating Monopad Button */
+#dangan_monopad_button {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    width: 48px;
+    height: 48px;
+
+    background: #000;
+    border: 2px solid #fff;
+    border-radius: 50%;
+
+    cursor: grab;
+    z-index: 9999;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    box-sizing: border-box;
+}
+
+
+@media (max-width: 700px) {
+    #dangan_monopad_button {
+        top: max(10px, env(safe-area-inset-top, 0px));
+        right: max(10px, env(safe-area-inset-right, 0px));
+        bottom: auto;
+        width: 44px;
+        height: 44px;
+    }
+}
+
+/* Crest Image */
+#dangan_monopad_button img {
+    width: 70%;
+    height: 70%;
+    object-fit: contain;
+
+    pointer-events: none;
+    user-select: none;
+}
+
