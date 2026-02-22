@@ -220,6 +220,7 @@ const TRIAL_DISCUSSION_START_PARSE_REGEX = /V3C\s*[|｜]\s*TRIAL(?:\s*[_\-]?\s*)
 const TRIAL_DISCUSSION_END_PARSE_REGEX = /V3C\s*[|｜]\s*TRIAL(?:\s*[_\-]?\s*)DISCUSSION(?:\s*[_\-]?\s*)END\b/gi;
 const processedTrialDiscussionSignatures = new Set();
 const processedMonokumaAnnouncementSignatures = new Set();
+const PERSISTENT_MARKER_MAX_ENTRIES = 2400;
 
 function normalizeTextToken(value) {
     return String(value || "")
@@ -227,6 +228,60 @@ function normalizeTextToken(value) {
         .toLowerCase()
         .replace(/[_\-]+/g, " ")
         .replace(/\s+/g, " ");
+}
+
+function getPersistentMarkerRegistry() {
+    extension_settings[extensionName] ||= {};
+    extension_settings[extensionName].markerRegistry ||= {};
+    return extension_settings[extensionName].markerRegistry;
+}
+
+function getPersistentMarkerBucket(bucketKey) {
+    const registry = getPersistentMarkerRegistry();
+    registry[bucketKey] ||= {};
+    return registry[bucketKey];
+}
+
+function cleanupPersistentMarkerBucket(bucket) {
+    const keys = Object.keys(bucket);
+    if (keys.length <= PERSISTENT_MARKER_MAX_ENTRIES) return;
+
+    keys
+        .sort((a, b) => Number(bucket[a] || 0) - Number(bucket[b] || 0))
+        .slice(0, keys.length - PERSISTENT_MARKER_MAX_ENTRIES)
+        .forEach((key) => {
+            delete bucket[key];
+        });
+}
+
+function hasProcessedPersistentMarker(bucketKey, persistentSignature = "") {
+    if (!bucketKey || !persistentSignature) return false;
+    const bucket = getPersistentMarkerBucket(bucketKey);
+    return Boolean(bucket[persistentSignature]);
+}
+
+function markProcessedPersistentMarker(bucketKey, persistentSignature = "") {
+    if (!bucketKey || !persistentSignature) return;
+    const bucket = getPersistentMarkerBucket(bucketKey);
+    bucket[persistentSignature] = Date.now();
+    cleanupPersistentMarkerBucket(bucket);
+    saveSettingsDebounced();
+}
+
+function buildGenericPersistentMarkerSignature(msgEl, markerType, markerIndex, markerOrdinal, rawText = "") {
+    const mesId = msgEl?.getAttribute?.("mesid") || msgEl?.dataset?.mesid || "";
+    if (!mesId || mesId === "no-id") return "";
+
+    const speaker = msgEl?.getAttribute?.("ch_name") || msgEl?.getAttribute?.("name") || "unknown";
+    const scope = getInvestigationScopeKey();
+    if (!scope || scope === "scope:unknown") return "";
+
+    const safeType = String(markerType || "unknown").toUpperCase();
+    const safeIndex = Number.isFinite(Number(markerIndex)) ? Number(markerIndex) : -1;
+    const safeOrdinal = Number.isFinite(Number(markerOrdinal)) ? Number(markerOrdinal) : -1;
+    const textFingerprint = String(rawText || "").slice(0, 140);
+
+    return `${safeType}||${scope}||${mesId}||${speaker}||${safeIndex}||${safeOrdinal}||${textFingerprint}`;
 }
 
 function getInvestigationMarkerStore() {
@@ -286,16 +341,7 @@ function markInvestigationSignatureProcessed(signature, persistentSignature = ""
     const store = getInvestigationMarkerStore();
     store[persistentSignature] = Date.now();
 
-    const keys = Object.keys(store);
-    const maxEntries = 1200;
-    if (keys.length > maxEntries) {
-        keys
-            .sort((a, b) => Number(store[a] || 0) - Number(store[b] || 0))
-            .slice(0, keys.length - maxEntries)
-            .forEach((key) => {
-                delete store[key];
-            });
-    }
+    cleanupPersistentMarkerBucket(store);
 
     saveSettingsDebounced();
 }
@@ -439,16 +485,7 @@ function markTrialStartSignatureProcessed(signature, persistentSignature = "") {
     const store = getTrialStartMarkerStore();
     store[persistentSignature] = Date.now();
 
-    const keys = Object.keys(store);
-    const maxEntries = 1200;
-    if (keys.length > maxEntries) {
-        keys
-            .sort((a, b) => Number(store[a] || 0) - Number(store[b] || 0))
-            .slice(0, keys.length - maxEntries)
-            .forEach((key) => {
-                delete store[key];
-            });
-    }
+    cleanupPersistentMarkerBucket(store);
 
     saveSettingsDebounced();
 }
@@ -1960,7 +1997,7 @@ function createTrialDiscussionController() {
         }
     }
 
-    function ingestMessage({ messageSignature = "", rawText = "", speaker = "UNKNOWN" } = {}) {
+    function ingestMessage({ messageSignature = "", rawText = "", speaker = "UNKNOWN", msgEl = null } = {}) {
         if (!trialController) return;
         const phase = trialController.getState?.()?.phase;
         if (!isDiscussionPhase(phase)) return;
@@ -1972,8 +2009,17 @@ function createTrialDiscussionController() {
         if (hasStart) markerScopedDiscussionActive = true;
 
         const markerSignature = `TRIAL_DISCUSSION||${messageSignature}||${hasStart}||${hasEnd}`;
+        const persistentSignature = buildGenericPersistentMarkerSignature(
+            msgEl,
+            "TRIAL_DISCUSSION",
+            hasStart ? 1 : hasEnd ? 2 : 0,
+            0,
+            rawText,
+        );
         if (processedTrialDiscussionSignatures.has(markerSignature)) return;
+        if (hasProcessedPersistentMarker("trialDiscussionMarkers", persistentSignature)) return;
         processedTrialDiscussionSignatures.add(markerSignature);
+        markProcessedPersistentMarker("trialDiscussionMarkers", persistentSignature);
 
         const shouldEnqueueFallback = !hasStart && !hasEnd && !markerScopedDiscussionActive;
         const shouldEnqueueScoped = markerScopedDiscussionActive || hasStart;
@@ -2648,6 +2694,7 @@ function processAllMessages() {
             messageSignature,
             rawText,
             speaker: speakerName,
+            msgEl,
         });
         injectPersistedGiftReactionForMessage(msgEl, messageSignature);
         void tryResolvePendingGiftForMessage(msgEl, rawText);
@@ -2745,9 +2792,18 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
 
         monokumaAnnouncementMarkers.forEach((marker, idx) => {
             const signature = `MONOKUMA_ANNOUN||${messageSignature}||${marker.index}||${idx}||${marker.type}`;
+            const persistentSignature = buildGenericPersistentMarkerSignature(
+                msgEl,
+                `MONOKUMA_ANNOUN_${marker?.type || "UNKNOWN"}`,
+                marker?.index,
+                idx,
+                rawText,
+            );
             if (processedMonokumaAnnouncementSignatures.has(signature)) return;
+            if (hasProcessedPersistentMarker("monokumaAnnouncementMarkers", persistentSignature)) return;
 
             processedMonokumaAnnouncementSignatures.add(signature);
+            markProcessedPersistentMarker("monokumaAnnouncementMarkers", persistentSignature);
             monokumaAnnouncementController?.trigger(marker.type);
         });
 
