@@ -1,3 +1,88 @@
 @import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600&family=Rajdhani:wght@400;500;600&display=swap");
 @import url("./styles/legacy.css");
+
+.dangan-trial-skill-manager {
+    border: 1px solid rgba(80, 224, 255, 0.5);
+    background: linear-gradient(165deg, rgba(10, 18, 38, 0.82), rgba(18, 10, 36, 0.82));
+    border-radius: 10px;
+    padding: 10px;
+}
+
+.dangan-trial-skill-manager-head {
+    display: flex;
+    justify-content: space-between;
+    color: #75ddff;
+    font-size: 13px;
+    margin-bottom: 8px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.dangan-trial-skill-list {
+    display: grid;
+    gap: 6px;
+    max-height: 180px;
+    overflow: auto;
+}
+
+.dangan-trial-skill-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border: 1px solid rgba(255, 91, 213, 0.35);
+    background: rgba(4, 8, 19, 0.62);
+    padding: 8px;
+}
+
+.dangan-trial-skill-name {
+    color: #eff8ff;
+    font-size: 13px;
+}
+
+.dangan-trial-skill-meta {
+    color: rgba(172, 214, 255, 0.9);
+    font-size: 11px;
+}
+
+.dangan-trial-skill-toggle {
+    border: 1px solid rgba(89, 230, 255, 0.6);
+    background: rgba(12, 57, 89, 0.9);
+    color: #f1fbff;
+    padding: 6px 10px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.dangan-trial-skill-toggle.equipped {
+    border-color: rgba(255, 160, 224, 0.7);
+    background: rgba(117, 25, 101, 0.85);
+}
+
+.dangan-trial-skill-empty {
+    color: rgba(220, 236, 255, 0.82);
+    font-size: 12px;
+}
+
+
+.dangan-trial-skill-effect {
+    color: rgba(207, 228, 255, 0.9);
+    font-size: 11px;
+    margin-top: 4px;
+    line-height: 1.3;
+}
+
+.dangan-trial-skill-status {
+    min-height: 18px;
+    margin-top: 8px;
+    color: #9fe7ff;
+    font-size: 12px;
+    letter-spacing: 0.02em;
+}
+
+.dangan-trial-skill-toggle:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    filter: grayscale(0.15);
+}

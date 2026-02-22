@@ -788,6 +788,48 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         });
     }
 
+
+
+    function getTrialSkillEntries() {
+        loadInventoryState();
+        const inventory = extension_settings[extensionName].inventory || {};
+        const skillPoints = Number(inventory.skillPoints || 0);
+
+        const ownedSkills = itemCatalog
+            .filter(item => item.category === "skill" && Number(inventory.skills?.[item.id] || 0) > 0)
+            .map(item => ({
+                id: item.id,
+                name: item.name,
+                rarity: item.rarity,
+                effect: item.effect,
+                equipped: isSkillEquipped(item.id),
+                skillPointCost: getSkillPointCost(item.id),
+            }))
+            .sort((a, b) => Number(b.equipped) - Number(a.equipped) || rarityScore(b.rarity) - rarityScore(a.rarity) || a.name.localeCompare(b.name));
+
+        return { skillPoints, skills: ownedSkills };
+    }
+
+    function toggleTrialSkillEquip(skillId) {
+        if (!skillId) return { changed: false, reason: "invalid_skill" };
+
+        const equipped = isSkillEquipped(skillId);
+        const changed = equipped ? unequipSkill(skillId) : equipSkill(skillId);
+        if (!changed) {
+            return {
+                changed: false,
+                reason: equipped ? "unequip_failed" : "equip_failed",
+                snapshot: getTrialSkillEntries(),
+            };
+        }
+
+        return {
+            changed: true,
+            equipped: !equipped,
+            snapshot: getTrialSkillEntries(),
+        };
+    }
+
     function bindWindowApi() {
         window.danganInventory = {
             addGift(itemId, amount = 1) {
@@ -852,5 +894,7 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         rollMonoMonoMachine,
         getMonoMonoDupeChance,
         spinMonoMonoMachine,
+        getTrialSkillEntries,
+        toggleTrialSkillEquip,
     };
 }
