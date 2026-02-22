@@ -947,7 +947,9 @@ function createTrialDiscussionController() {
 
     function ingestMessage({ messageSignature = "", rawText = "", speaker = "UNKNOWN" } = {}) {
         if (!trialController) return;
-        const phase = trialController.getState?.()?.phase;
+        const trialState = trialController.getState?.() || {};
+        const phase = trialState.phase;
+        const sessionId = String(trialState?.session?.id || "no_session");
         if (!isDiscussionPhase(phase)) return;
 
         const { startMarkers, endMarkers } = parseTrialDiscussionMarkers(rawText);
@@ -956,7 +958,7 @@ function createTrialDiscussionController() {
 
         if (hasStart) markerScopedDiscussionActive = true;
 
-        const markerSignature = `TRIAL_DISCUSSION||${messageSignature}||${hasStart}||${hasEnd}`;
+        const markerSignature = `TRIAL_DISCUSSION||${sessionId}||${messageSignature}||${hasStart}||${hasEnd}`;
         if (processedTrialDiscussionSignatures.has(markerSignature)) return;
         processedTrialDiscussionSignatures.add(markerSignature);
 
