@@ -10,11 +10,11 @@ import { createSocialPanelController } from "./social/socialPanel.js";
 import { extractUltimateFromNotes, isIgnoredCharacter, lookupUltimateFromLorebook, normalizeList, normalizeName } from "./social/characterUtils.js";
 import { createMapPanelController } from "./map/mapPanel.js";
 import { getLocationPromptReference, resolveLocationIdFromText } from "./map/locationPresence.js";
-import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, TRIAL_START_REGEX, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
+import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "./core/monokumaLessonScript.js";
-import { createTrialController } from "./trial/trialController.js";
 import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers } from "./monokuma/announcementController.js";
+import { createClassTrialMenuController } from "./trial/menu/classTrialMenu.js";
 
 window.refreshActiveCharacterUI = function () {
     if (!activeSocialCharacterId || !socialPanelController) return;
@@ -32,14 +32,11 @@ let activeSocialCharacterId = null;
 let socialPanelController = null;
 let itemsPanelController = null;
 let mapPanelController = null;
-let trialController = null;
-let trialIntroUiController = null;
-let trialIntroOstController = null;
-let trialDiscussionController = null;
 let hasSelectedMonopadTab = false;
 let monokumaLessonState = null;
 let vnModeController = null;
 let monokumaAnnouncementController = null;
+let classTrialMenuController = null;
 
 const openRouterSettings = createOpenRouterSettingsManager({
     extensionName,
@@ -214,11 +211,6 @@ const processedTruthSignatures = new Set();
 const processedSocialSignatures = new Set();
 const processedInvestigationSignatures = new Set();
 const INVESTIGATION_START_PARSE_REGEX = /V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/gi;
-const processedTrialStartSignatures = new Set();
-const TRIAL_START_PARSE_REGEX = /V3C\s*[|｜]\s*TRIAL(?:\s*[_\-]?\s*)START\b/gi;
-const TRIAL_DISCUSSION_START_PARSE_REGEX = /V3C\s*[|｜]\s*TRIAL(?:\s*[_\-]?\s*)DISCUSSION(?:\s*[_\-]?\s*)START\b/gi;
-const TRIAL_DISCUSSION_END_PARSE_REGEX = /V3C\s*[|｜]\s*TRIAL(?:\s*[_\-]?\s*)DISCUSSION(?:\s*[_\-]?\s*)END\b/gi;
-const processedTrialDiscussionSignatures = new Set();
 const processedMonokumaAnnouncementSignatures = new Set();
 const PERSISTENT_MARKER_MAX_ENTRIES = 2400;
 
@@ -387,109 +379,6 @@ function parseInvestigationStartMarkers(text) {
     return matches;
 }
 
-function parseTrialStartMarkers(text) {
-    const raw = String(text || "");
-    if (!raw) return [];
-
-    const matches = [];
-    TRIAL_START_PARSE_REGEX.lastIndex = 0;
-
-    let match;
-    while ((match = TRIAL_START_PARSE_REGEX.exec(raw)) !== null) {
-        matches.push({
-            marker: match[0],
-            index: match.index,
-            source: "regex",
-        });
-    }
-
-    if (matches.length) return matches;
-
-    const lines = raw.split(/\r?\n/);
-    let cursor = 0;
-
-    for (const line of lines) {
-        const canonical = line
-            .toUpperCase()
-            .replace(/[|｜]/g, "|")
-            .replace(/[`*_~:;,.!?\-\s]/g, "");
-
-        if (canonical.includes("V3C|TRIALSTART")) {
-            matches.push({
-                marker: line,
-                index: cursor,
-                source: "fallback",
-            });
-        }
-
-        cursor += line.length + 1;
-    }
-
-    return matches;
-}
-
-function parseTrialDiscussionMarkers(text) {
-    const raw = String(text || "");
-    if (!raw) return { startMarkers: [], endMarkers: [] };
-
-    const startMarkers = [];
-    const endMarkers = [];
-
-    TRIAL_DISCUSSION_START_PARSE_REGEX.lastIndex = 0;
-    TRIAL_DISCUSSION_END_PARSE_REGEX.lastIndex = 0;
-
-    let match;
-    while ((match = TRIAL_DISCUSSION_START_PARSE_REGEX.exec(raw)) !== null) {
-        startMarkers.push({ marker: match[0], index: match.index, type: "start" });
-    }
-    while ((match = TRIAL_DISCUSSION_END_PARSE_REGEX.exec(raw)) !== null) {
-        endMarkers.push({ marker: match[0], index: match.index, type: "end" });
-    }
-
-    return { startMarkers, endMarkers };
-}
-
-function buildTrialStartPersistentSignature(msgEl, marker, idx, rawText = "") {
-    const mesId = msgEl?.getAttribute?.("mesid") || msgEl?.dataset?.mesid || "";
-    if (!mesId || mesId === "no-id") return "";
-
-    const speaker = msgEl?.getAttribute?.("ch_name") || "unknown";
-    const scope = getInvestigationScopeKey();
-    if (!scope || scope === "scope:unknown") return "";
-
-    const markerIndex = Number(marker?.index ?? -1);
-    const textFingerprint = String(rawText || "").slice(0, 140);
-
-    return `TRIAL_START||${scope}||${mesId}||${speaker}||${markerIndex}||${idx}||${textFingerprint}`;
-}
-
-function getTrialStartMarkerStore() {
-    extension_settings[extensionName] ||= {};
-    extension_settings[extensionName].trialStartMarkers ||= {};
-    return extension_settings[extensionName].trialStartMarkers;
-}
-
-function hasProcessedTrialStartSignature(signature, persistentSignature = "") {
-    if (!signature) return false;
-    if (processedTrialStartSignatures.has(signature)) return true;
-    if (!persistentSignature) return false;
-    return Boolean(getTrialStartMarkerStore()[persistentSignature]);
-}
-
-function markTrialStartSignatureProcessed(signature, persistentSignature = "") {
-    if (!signature) return;
-
-    processedTrialStartSignatures.add(signature);
-    if (!persistentSignature) return;
-
-    const store = getTrialStartMarkerStore();
-    store[persistentSignature] = Date.now();
-
-    cleanupPersistentMarkerBucket(store);
-
-    saveSettingsDebounced();
-}
-
 function getEquippedSkillsSnapshot() {
     const inventory = extension_settings[extensionName]?.inventory || {};
     const equipped = inventory.equippedSkills || {};
@@ -499,20 +388,6 @@ function getEquippedSkillsSnapshot() {
 function getTruthBulletsSnapshot() {
     const bullets = extension_settings[extensionName]?.truthBullets;
     return Array.isArray(bullets) ? bullets : [];
-}
-
-function buildTrialCaseSummary() {
-    const bullets = getTruthBulletsSnapshot();
-    if (!bullets.length) {
-        return "No Truth Bullets logged yet. Review witness statements before opening arguments.";
-    }
-
-    const line = bullets
-        .slice(-3)
-        .map((bullet, index) => `${index + 1}. ${String(bullet?.title || "Unknown Bullet")}`)
-        .join(" ");
-
-    return `Current evidence focus: ${line}`;
 }
 
 
@@ -1832,452 +1707,15 @@ const investigationStartController = {
     },
 };
 
-async function triggerTrialStartFromMarker(markerText = "V3C| TRIAL_START") {
-    if (!trialController) return false;
-
-    try {
-        const result = await trialController.requestStartFromMarker({ markerText });
-        trialIntroUiController?.sync?.();
-        trialDiscussionController?.sync?.();
-        if (result?.started) {
-            console.log("[Dangan][Trial] Class Trial started from marker.");
-            return true;
-        }
-
-        if (result?.reason) {
-            console.info(`[Dangan][Trial] Trial start not triggered: ${result.reason}`);
-        }
-    } catch (error) {
-        console.warn("[Dangan][Trial] Failed to start trial from marker:", error);
-    }
-
-    return false;
-}
 
 
 async function triggerTrialStartFromMapPin() {
-    if (!trialController) return false;
-
-    const state = trialController.getState?.();
-    if (state?.phase && state.phase !== trialController.phases?.IDLE) {
-        console.info(`[Dangan][Trial] Trial already active (${state.phase}).`);
-        return false;
-    }
-
-    const accepted = await openMonopadConfirmDialog({
-        title: "TRIAL GROUNDS",
-        message: "Start Class Trial from Trial Grounds?",
-        confirmLabel: "START TRIAL",
-        cancelLabel: "CANCEL",
-    });
-
+    const accepted = await classTrialMenuController?.open?.();
     if (!accepted) return false;
 
-    const result = trialController.requestStartFromUi?.({ source: "map_pin" });
-    trialIntroUiController?.sync?.();
-    trialDiscussionController?.sync?.();
-    if (result?.started) {
-        console.log("[Dangan][Trial] Class Trial started from map pin.");
-        return true;
-    }
-
-    if (result?.reason) {
-        console.info(`[Dangan][Trial] Trial start not triggered: ${result.reason}`);
-    }
-
-    return false;
+    console.log("[Dangan][Trial] Begin Class Trial selected from map pin.");
+    return true;
 }
-
-function createTrialIntroOstController() {
-    const candidateTracks = buildExtensionPathCandidates()
-        .map(basePath => `${basePath}/assets/classtrial/trialunderground.mp3`);
-
-    let activeAudio = null;
-    let activeTrackIndex = -1;
-
-    function moveToNextTrack() {
-        if (!activeAudio) return;
-        if (activeTrackIndex >= candidateTracks.length - 1) return;
-        activeTrackIndex += 1;
-        activeAudio.src = candidateTracks[activeTrackIndex];
-        activeAudio.load();
-    }
-
-    function stop() {
-        if (!activeAudio) return;
-        activeAudio.pause();
-        activeAudio.currentTime = 0;
-    }
-
-    function play() {
-        if (!extension_settings[extensionName]?.monopadSounds) return;
-        if (!candidateTracks.length) return;
-
-        if (!activeAudio) {
-            activeTrackIndex = 0;
-            activeAudio = new Audio(candidateTracks[activeTrackIndex]);
-            activeAudio.loop = true;
-            activeAudio.preload = "auto";
-            activeAudio.volume = 0.42;
-
-            activeAudio.addEventListener("error", () => {
-                const previousIndex = activeTrackIndex;
-                moveToNextTrack();
-                if (previousIndex === activeTrackIndex) {
-                    console.warn("[Dangan][Trial] Could not load trialunderground.mp3 from any extension path candidate.");
-                    return;
-                }
-                activeAudio.play().catch(() => {});
-            });
-        }
-
-        activeAudio.play().catch(() => {});
-    }
-
-    return {
-        play,
-        stop,
-    };
-}
-
-function ensureTrialIntroOverlay() {
-    let overlay = document.getElementById("dangan-trial-intro-overlay");
-    if (overlay) return overlay;
-
-    overlay = document.createElement("section");
-    overlay.id = "dangan-trial-intro-overlay";
-    overlay.className = "dangan-trial-intro-overlay";
-    overlay.setAttribute("aria-hidden", "true");
-    overlay.innerHTML = `
-        <div class="dangan-trial-backdrop" aria-hidden="true">
-            <div class="dangan-trial-grid"></div>
-            <div class="dangan-trial-cylinder"></div>
-            <div class="dangan-trial-cylinder dangan-trial-cylinder-alt"></div>
-            <div class="dangan-trial-glow-orb"></div>
-        </div>
-        <div class="dangan-trial-intro-shell" role="dialog" aria-modal="false" aria-labelledby="dangan-trial-intro-title">
-            <header class="dangan-trial-intro-header">
-                <div class="dangan-trial-prep-label">Court Preparation</div>
-                <h2 id="dangan-trial-intro-title">Class Trial</h2>
-                <p>Sharpen your Truth Bullets and ready your opening statement.</p>
-            </header>
-            <section class="dangan-trial-case-summary" aria-live="polite">
-                <div class="dangan-trial-case-summary-label">Case Summary</div>
-                <p id="dangan-trial-case-summary-text">Case summary pending.</p>
-            </section>
-            <div class="dangan-trial-intro-actions">
-                <button type="button" class="dangan-trial-intro-skills" id="dangan-trial-intro-skills">Equip Skills</button>
-                <button type="button" class="dangan-trial-intro-cancel" id="dangan-trial-intro-cancel">Withdraw</button>
-                <button type="button" class="dangan-trial-intro-start" id="dangan-trial-intro-start">Begin Class Trial</button>
-            </div>
-        </div>
-    `;
-
-    const startBtn = overlay.querySelector("#dangan-trial-intro-start");
-    startBtn?.addEventListener("click", () => {
-        if (!trialController) return;
-        const result = trialController.transitionTo?.(trialController.phases.DISCUSSION_PRE_DEBATE, "trial_intro_start");
-        if (!result?.ok) {
-            console.info("[Dangan][Trial] Could not enter discussion_pre_debate from trial_intro.");
-        }
-        trialIntroUiController?.sync?.();
-    });
-
-    const skillsBtn = overlay.querySelector("#dangan-trial-intro-skills");
-    skillsBtn?.addEventListener("click", () => {
-        const panel = document.getElementById("dangan_monopad_panel");
-        if (panel && !panel.classList.contains("open")) {
-            document.getElementById("dangan_monopad_button")?.click();
-        }
-        setActiveMonopadTab("skills");
-        itemsPanelController?.renderSkillsItemsPanel?.();
-    });
-
-    const cancelBtn = overlay.querySelector("#dangan-trial-intro-cancel");
-    cancelBtn?.addEventListener("click", () => {
-        trialController?.cancelTrial?.();
-        trialIntroUiController?.sync?.();
-    });
-
-    document.body.appendChild(overlay);
-    return overlay;
-}
-
-function createTrialDiscussionController() {
-    const queue = [];
-    let lastPhase = null;
-    let pollId = null;
-    let markerScopedDiscussionActive = false;
-    let forcedVnDuringDiscussion = false;
-
-    function clearQueue() {
-        queue.length = 0;
-    }
-
-    function isDiscussionPhase(phase) {
-        return phase === trialController?.phases?.DISCUSSION_PRE_DEBATE || phase === trialController?.phases?.DISCUSSION_POST_DEBATE;
-    }
-
-    function phaseLabel(phase) {
-        if (phase === trialController?.phases?.DISCUSSION_PRE_DEBATE) return "Pre-Debate Discussion";
-        if (phase === trialController?.phases?.DISCUSSION_POST_DEBATE) return "Post-Debate Discussion";
-        return "Discussion";
-    }
-
-    function ensureVnTrialLabel() {
-        const frame = document.querySelector('#dangan-vn-overlay .dangan-vn-frame');
-        if (!frame) return null;
-
-        let phaseEl = frame.querySelector('#dangan-trial-discussion-phase-inline');
-        if (!phaseEl) {
-            phaseEl = document.createElement('div');
-            phaseEl.id = 'dangan-trial-discussion-phase-inline';
-            phaseEl.className = 'dangan-trial-discussion-phase-inline';
-            frame.insertBefore(phaseEl, frame.firstChild);
-        }
-
-        return phaseEl;
-    }
-
-    function renderLine(entry, phase) {
-        const phaseEl = ensureVnTrialLabel();
-        if (phaseEl) phaseEl.textContent = phaseLabel(phase).toUpperCase();
-
-        const nameEl = document.getElementById('dangan-vn-name');
-        const textEl = document.getElementById('dangan-vn-text');
-        if (nameEl) nameEl.textContent = String(entry?.speaker || 'UNKNOWN').toUpperCase();
-        if (textEl) textEl.textContent = String(entry?.line || '...');
-    }
-
-    function enqueue(entries = [], phase = null) {
-        if (!Array.isArray(entries) || !entries.length) return;
-
-        // Do not auto-scroll through queued lines; keep VN behavior stable by showing only the latest line.
-        const latestEntry = entries[entries.length - 1];
-        queue.length = 0;
-        queue.push(latestEntry);
-        renderLine(latestEntry, phase);
-    }
-
-    function extractDiscussionEntries(rawText, fallbackSpeaker = "UNKNOWN") {
-        const text = String(rawText || "");
-        if (!text.trim()) return [];
-
-        const cleaned = stripV3CMarkersFromText(text);
-        if (!cleaned.trim()) return [];
-
-        return cleaned
-            .split(/\r?\n/)
-            .map(line => line.trim())
-            .filter(Boolean)
-            .map(line => ({ speaker: fallbackSpeaker, line }));
-    }
-
-    function setDiscussionVisualState(active, phase = null) {
-        document.body.classList.toggle('dangan-trial-discussion-vn-active', active);
-        const phaseEl = ensureVnTrialLabel();
-        if (phaseEl) {
-            phaseEl.style.display = active ? 'block' : 'none';
-            if (active) phaseEl.textContent = phaseLabel(phase).toUpperCase();
-        }
-
-        if (active) {
-            if (vnModeController) {
-                vnModeController.setEnabled?.(true);
-                forcedVnDuringDiscussion = true;
-            }
-        } else {
-            if (forcedVnDuringDiscussion && vnModeController) {
-                vnModeController.setEnabled?.(!!getMonopadSetting('vnModeEnabled'));
-            }
-            forcedVnDuringDiscussion = false;
-        }
-    }
-
-    function ingestMessage({ messageSignature = "", rawText = "", speaker = "UNKNOWN", msgEl = null } = {}) {
-        if (!trialController) return;
-        const phase = trialController.getState?.()?.phase;
-        if (!isDiscussionPhase(phase)) return;
-
-        const { startMarkers, endMarkers } = parseTrialDiscussionMarkers(rawText);
-        const hasStart = startMarkers.length > 0;
-        const hasEnd = endMarkers.length > 0;
-
-        if (hasStart) markerScopedDiscussionActive = true;
-
-        const markerSignature = `TRIAL_DISCUSSION||${messageSignature}||${hasStart}||${hasEnd}`;
-        const persistentSignature = buildGenericPersistentMarkerSignature(
-            msgEl,
-            "TRIAL_DISCUSSION",
-            hasStart ? 1 : hasEnd ? 2 : 0,
-            0,
-            rawText,
-        );
-        if (processedTrialDiscussionSignatures.has(markerSignature)) return;
-        if (hasProcessedPersistentMarker("trialDiscussionMarkers", persistentSignature)) return;
-        processedTrialDiscussionSignatures.add(markerSignature);
-        markProcessedPersistentMarker("trialDiscussionMarkers", persistentSignature);
-
-        const shouldEnqueueFallback = !hasStart && !hasEnd && !markerScopedDiscussionActive;
-        const shouldEnqueueScoped = markerScopedDiscussionActive || hasStart;
-
-        if (shouldEnqueueFallback || shouldEnqueueScoped) {
-            enqueue(extractDiscussionEntries(rawText, speaker), phase);
-        }
-
-        if (hasEnd) markerScopedDiscussionActive = false;
-    }
-
-    function sync() {
-        if (!trialController) {
-            setDiscussionVisualState(false);
-            clearQueue();
-            lastPhase = null;
-            markerScopedDiscussionActive = false;
-            return;
-        }
-
-        const phase = trialController.getState?.()?.phase;
-        const inDiscussion = isDiscussionPhase(phase);
-        setDiscussionVisualState(inDiscussion, phase);
-
-        if (!inDiscussion) {
-            clearQueue();
-            markerScopedDiscussionActive = false;
-        }
-
-        lastPhase = phase;
-    }
-
-    function startAutoSync() {
-        if (pollId) return;
-        const tick = () => {
-            const phase = trialController?.getState?.()?.phase || null;
-            if (phase !== lastPhase) {
-                sync();
-            }
-        };
-        pollId = window.setInterval(tick, 250);
-    }
-
-    return {
-        sync,
-        startAutoSync,
-        ingestMessage,
-    };
-}
-
-
-function createTrialIntroUiController() {
-    let isVisible = false;
-    let lastPhase = null;
-    let pollId = null;
-
-    function applyViewportSafeLayout(overlay) {
-        if (!overlay) return;
-
-        const shell = overlay.querySelector('.dangan-trial-intro-shell');
-        const viewportHeight = Math.max(320, window.innerHeight || 0);
-        const viewportWidth = Math.max(280, window.innerWidth || 0);
-        const isMobile = viewportWidth <= 700;
-
-        overlay.style.position = 'fixed';
-        overlay.style.inset = '0';
-        overlay.style.zIndex = '2147483647';
-        overlay.style.justifyContent = 'center';
-        overlay.style.alignItems = isMobile ? 'flex-end' : 'center';
-
-        if (!shell) return;
-
-        shell.style.boxSizing = 'border-box';
-        shell.style.maxHeight = `${Math.max(220, viewportHeight - 16)}px`;
-
-        if (isMobile) {
-            shell.style.width = `${Math.max(280, Math.min(540, viewportWidth - 16))}px`;
-            shell.style.margin = '0 auto';
-            shell.style.borderRadius = '12px';
-        } else {
-            shell.style.width = '';
-            shell.style.margin = '';
-            shell.style.borderRadius = '';
-        }
-    }
-
-    function setVisible(nextVisible) {
-        const overlay = ensureTrialIntroOverlay();
-        overlay.classList.toggle("active", nextVisible);
-        overlay.setAttribute("aria-hidden", nextVisible ? "false" : "true");
-        overlay.style.display = nextVisible ? 'flex' : 'none';
-        overlay.style.pointerEvents = nextVisible ? 'auto' : 'none';
-
-        const vnModeOn = !!getMonopadSetting("vnModeEnabled");
-        document.body.classList.toggle("dangan-trial-vn-chat-hidden", nextVisible && vnModeOn);
-
-        if (nextVisible) {
-            applyViewportSafeLayout(overlay);
-        }
-
-        if (nextVisible && !isVisible) {
-            trialIntroOstController?.play?.();
-        } else if (!nextVisible && isVisible) {
-            trialIntroOstController?.stop?.();
-        }
-
-        isVisible = nextVisible;
-    }
-
-    function sync() {
-        if (!trialController) {
-            setVisible(false);
-            lastPhase = null;
-            return;
-        }
-
-        const trialState = trialController.getState?.();
-        const phase = trialState?.phase || null;
-        lastPhase = phase;
-        const isTrialIntro = phase === trialController.phases?.TRIAL_INTRO;
-        const overlay = ensureTrialIntroOverlay();
-        const summaryEl = overlay.querySelector("#dangan-trial-case-summary-text");
-        if (summaryEl) {
-            summaryEl.textContent = String(trialState?.session?.caseSummary || "Case summary pending.");
-        }
-
-        setVisible(isTrialIntro);
-    }
-
-    function startAutoSync() {
-        if (pollId) return;
-
-        const tick = () => {
-            if (!trialController) {
-                if (lastPhase !== null) sync();
-                return;
-            }
-            const phase = trialController.getState?.()?.phase || null;
-            if (phase !== lastPhase) {
-                sync();
-                return;
-            }
-
-            if (isVisible) {
-                applyViewportSafeLayout(document.getElementById('dangan-trial-intro-overlay'));
-            }
-        };
-
-        pollId = window.setInterval(tick, 250);
-        document.addEventListener("visibilitychange", tick);
-        window.addEventListener('resize', tick);
-        window.addEventListener('orientationchange', tick);
-    }
-
-    return {
-        sync,
-        startAutoSync,
-    };
-}
-
-
 
 /* =========================
    SOCIAL / CHARACTER DATA
@@ -2698,7 +2136,6 @@ function stripV3CMarkersFromText(value) {
         if (canonical.startsWith("V3C|SOCIAL_UP:")) return false;
         if (canonical.startsWith("V3C|SOCIAL_DOWN:")) return false;
         if (canonical.includes("V3C|INVESTIGATIONSTART")) return false;
-        if (canonical.includes("V3C|TRIALSTART")) return false;
         if (canonical.includes("V3C|DAYANNOUN")) return false;
         if (canonical.includes("V3C|NIGHTANNOUN")) return false;
         if (canonical.includes("V3C|BDA")) return false;
@@ -2712,9 +2149,6 @@ function stripV3CMarkersFromText(value) {
         .replace(/V3C\s*[|｜]\s*SOCIAL_UP:\s*([^\n\r]+)/gi, "")
         .replace(/V3C\s*[|｜]\s*SOCIAL_DOWN:\s*([^\n\r]+)/gi, "")
         .replace(/V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/gi, "")
-        .replace(TRIAL_START_REGEX, "")
-        .replace(TRIAL_DISCUSSION_START_PARSE_REGEX, "")
-        .replace(TRIAL_DISCUSSION_END_PARSE_REGEX, "")
         .replace(/V3C\s*[|｜]\s*DAY(?:\s*[_\-]?\s*)ANNOUN\b/gi, "")
         .replace(/V3C\s*[|｜]\s*NIGHT(?:\s*[_\-]?\s*)ANNOUN\b/gi, "")
         .replace(/V3C\s*[|｜]\s*BDA\b/gi, "")
@@ -2787,12 +2221,6 @@ function processAllMessages() {
             ? getActivePersonaName()
             : (msgEl.getAttribute("ch_name") || msgEl.getAttribute("name") || "UNKNOWN");
         maybeTrackMessageLocation(msgEl, rawText);
-        trialDiscussionController?.ingestMessage?.({
-            messageSignature,
-            rawText,
-            speaker: speakerName,
-            msgEl,
-        });
         injectPersistedGiftReactionForMessage(msgEl, messageSignature);
         void tryResolvePendingGiftForMessage(msgEl, rawText);
 
@@ -2859,19 +2287,6 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
             if (triggered) {
                 markInvestigationSignatureProcessed(signature, persistentSignature);
             }
-        });
-
-
-        // ---- Trial Start ----
-        const trialStartMarkers = parseTrialStartMarkers(rawText);
-        trialStartMarkers.forEach((marker, idx) => {
-            console.debug("[Dangan][Trial] Start marker detected", marker);
-            const signature = `TRIAL_START||${messageSignature}||${marker.index}||${idx}`;
-            const persistentSignature = buildTrialStartPersistentSignature(msgEl, marker, idx, rawText);
-            if (hasProcessedTrialStartSignature(signature, persistentSignature)) return;
-
-            markTrialStartSignatureProcessed(signature, persistentSignature);
-            void triggerTrialStartFromMarker(String(marker?.marker || "V3C| TRIAL_START"));
         });
 
         // ---- Monokuma Announcements ----
@@ -3426,8 +2841,6 @@ function applySettingsTabUI() {
 
     applyCrtSettings();
     vnModeController?.setEnabled?.(!!tab.vnModeEnabled);
-    trialIntroUiController?.sync?.();
-    trialDiscussionController?.sync?.();
 }
 
 function saveCharacters() {
@@ -5134,35 +4547,16 @@ if (initialRewardDifficulty !== getMonopadSetting("rewardDifficulty")) {
     setMonopadSetting("rewardDifficulty", initialRewardDifficulty);
 }
 ensureGlobalDebugUi();
-trialController = createTrialController({
+classTrialMenuController = createClassTrialMenuController({
     extensionName,
-    extension_settings,
-    saveSettingsDebounced,
-    buildCaseSummary: buildTrialCaseSummary,
-    getEquippedSkills: getEquippedSkillsSnapshot,
-    getTruthBullets: getTruthBulletsSnapshot,
-    openConfirmDialog: openMonopadConfirmDialog,
+    extensionSettings: extension_settings,
+    buildExtensionPathCandidates,
+    onManageSkills: () => {
+        setActiveMonopadTab("skills");
+        itemsPanelController?.renderSkillsItemsPanel?.();
+    },
 });
-trialIntroOstController = createTrialIntroOstController();
-trialIntroUiController = createTrialIntroUiController();
-trialDiscussionController = createTrialDiscussionController();
-trialIntroUiController?.startAutoSync?.();
-trialDiscussionController?.startAutoSync?.();
-trialIntroUiController?.sync?.();
-trialDiscussionController?.sync?.();
-window.danganTrial = trialController;
-window.startClassTrial = () => {
-    const result = trialController?.requestStartFromUi?.({ source: "manual" });
-    trialIntroUiController?.sync?.();
-    trialDiscussionController?.sync?.();
-    return result;
-};
-window.cancelClassTrial = () => {
-    const result = trialController?.cancelTrial?.();
-    trialIntroUiController?.sync?.();
-    trialDiscussionController?.sync?.();
-    return result;
-};
+window.startClassTrial = () => classTrialMenuController?.open?.();
 rewards?.renderProgressionUi?.();
 itemsPanelController.loadInventoryState();
 applySettingsTabUI();
