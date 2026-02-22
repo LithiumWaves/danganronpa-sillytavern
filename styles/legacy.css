@@ -4578,7 +4578,7 @@ body.dangan-trial-vn-chat-hidden #chat {
 .dangan-vn-controls {
     position: absolute;
     top: 8px;
-    right: 8px;
+    right: 56px;
     display: inline-flex;
     gap: 6px;
     z-index: 2;
@@ -4608,6 +4608,25 @@ body.dangan-trial-vn-chat-hidden #chat {
 .dangan-vn-transcript-toggle {
     padding: 0 9px;
     font-family: "Orbitron", "Rajdhani", monospace;
+}
+
+.dangan-vn-stream-toggle {
+    padding: 0 8px;
+    font-family: "Orbitron", "Rajdhani", monospace;
+    min-width: 94px;
+    letter-spacing: 0.06em;
+}
+
+.dangan-vn-text-streaming::after {
+    content: "▌";
+    margin-left: 1px;
+    opacity: 0.8;
+    animation: danganVnCaretBlink 760ms steps(1, end) infinite;
+}
+
+@keyframes danganVnCaretBlink {
+    0%, 45% { opacity: 0.8; }
+    46%, 100% { opacity: 0.05; }
 }
 
 .dangan-vn-frame.move-unlocked {
@@ -4727,6 +4746,7 @@ body.dangan-trial-vn-chat-hidden #chat {
     grid-template-columns: auto 1fr auto;
     align-items: center;
     gap: 6px;
+    overflow: visible !important;
 }
 
 .dangan-vn-compose-collapse-toggle {
@@ -4769,24 +4789,69 @@ body.dangan-trial-vn-chat-hidden #chat {
     width: 100%;
 }
 
-.dangan-vn-compose-docked button,
-.dangan-vn-compose-docked .menu_button,
-.dangan-vn-compose-docked [type="button"] {
+.dangan-vn-compose-docked > button,
+.dangan-vn-compose-docked > .menu_button,
+.dangan-vn-compose-docked > [type="button"],
+.dangan-vn-compose-docked > * > button,
+.dangan-vn-compose-docked > * > .menu_button,
+.dangan-vn-compose-docked > * > [type="button"] {
     border-radius: 8px !important;
     border: 1px solid rgba(146, 183, 236, 0.45) !important;
     background: rgba(21, 31, 49, 0.92) !important;
     color: #edf5ff !important;
 }
 
-.dangan-vn-compose-docked button:hover,
-.dangan-vn-compose-docked .menu_button:hover,
-.dangan-vn-compose-docked [type="button"]:hover {
+.dangan-vn-compose-docked > button:hover,
+.dangan-vn-compose-docked > .menu_button:hover,
+.dangan-vn-compose-docked > [type="button"]:hover,
+.dangan-vn-compose-docked > * > button:hover,
+.dangan-vn-compose-docked > * > .menu_button:hover,
+.dangan-vn-compose-docked > * > [type="button"]:hover {
     background: rgba(37, 52, 79, 0.96) !important;
+}
+
+
+/* Hide compose submenu trigger in VN docked mode; use dedicated VN controls instead. */
+.dangan-vn-compose-docked :is(#options_button, #option_button, [data-testid*="options"], [aria-label*="options" i], [title*="options" i]) {
+    display: none !important;
+}
+
+/* Keep SillyTavern popout/submenu panels readable and independent from docked-control button theming. */
+.dangan-vn-compose-docked :is(.dropdown-menu, .options-content, .menu_panel, [role="menu"], .popup, .list-group) {
+    border: 1px solid rgba(157, 195, 247, 0.32) !important;
+    border-radius: 10px !important;
+    background: linear-gradient(180deg, rgba(16, 22, 34, 0.96), rgba(9, 14, 24, 0.97)) !important;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(130, 176, 236, 0.12) inset !important;
+    backdrop-filter: blur(4px);
+    z-index: 2147483646 !important;
+    top: calc(100% + 6px) !important;
+    bottom: auto !important;
+    max-height: min(44vh, 320px) !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+}
+
+.dangan-vn-compose-docked :is(.dropdown-menu, .options-content, .menu_panel, [role="menu"], .popup, .list-group) :is(button, .menu_button, [role="menuitem"], .list-group-item, a) {
+    border: 0 !important;
+    border-radius: 6px !important;
+    background: transparent !important;
+    color: #d7e7ff !important;
+}
+
+.dangan-vn-compose-docked :is(.dropdown-menu, .options-content, .menu_panel, [role="menu"], .popup, .list-group) :is(button, .menu_button, [role="menuitem"], .list-group-item, a):hover {
+    background: rgba(115, 165, 239, 0.16) !important;
+}
+
+.dangan-vn-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
 }
 
 .dangan-vn-nameplate {
     display: inline-flex;
-    margin-bottom: 8px;
     padding: 3px 9px;
     border-radius: 999px;
     background: linear-gradient(90deg, #272f43, #3e5074);
@@ -4797,6 +4862,22 @@ body.dangan-trial-vn-chat-hidden #chat {
     font-family: "Orbitron", "Rajdhani", monospace;
 }
 
+
+.dangan-vn-position {
+    font-family: "Orbitron", "Rajdhani", monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: rgba(186, 215, 255, 0.86);
+    white-space: nowrap;
+}
+
+.dangan-vn-text-wrap {
+    min-height: 82px;
+    max-height: min(34vh, 280px);
+    overflow: auto;
+    padding-right: 2px;
+}
+
 .dangan-vn-text {
     min-height: 78px;
     font-size: clamp(16px, 2.2vw, 24px);
@@ -4805,14 +4886,85 @@ body.dangan-trial-vn-chat-hidden #chat {
     font-family: "Rajdhani", "Orbitron", monospace;
 }
 
-.dangan-vn-input {
+.dangan-vn-text-pulse {
+    animation: danganVnTextPulse 140ms ease-out;
+}
+
+@keyframes danganVnTextPulse {
+    from { opacity: 0.58; transform: translateY(1px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.dangan-vn-footer {
     margin-top: 10px;
     border-top: 1px solid rgba(176, 211, 255, 0.24);
     padding-top: 9px;
-    font-size: 11px;
-    letter-spacing: 0.1em;
-    color: rgba(167, 204, 251, 0.92);
-    text-transform: uppercase;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+        "progress progress"
+        "hint nav";
+    align-items: center;
+    gap: 8px 10px;
+}
+
+.dangan-vn-progress {
+    grid-area: progress;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(157, 198, 251, 0.18);
+    overflow: hidden;
+}
+
+.dangan-vn-progress-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, rgba(117, 197, 255, 0.8), rgba(193, 224, 255, 0.92));
+    transition: width 140ms ease;
+}
+
+.dangan-vn-input {
+    grid-area: hint;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    color: rgba(167, 204, 251, 0.88);
+    text-transform: none;
+}
+
+.dangan-vn-nav {
+    grid-area: nav;
+    display: inline-flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.dangan-vn-nav-button {
+    min-width: 74px;
+    padding: 0 8px;
+    height: 28px;
+}
+
+.dangan-vn-latest {
+    min-width: 104px;
+    font-variant-numeric: tabular-nums;
+}
+
+.dangan-vn-regenerate {
+    min-width: 96px;
+}
+
+.dangan-vn-nav-button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+
+
+/* When VN compose is docked, keep context submenus above VN layers and visually consistent. */
+body.dangan-vn-compose-docked-active :is(.dropdown-menu, .options-content, .menu_panel, [role="menu"], .popup, .list-group) {
+    z-index: 2147483646 !important;
 }
 
 #chat.dangan-vn-hidden {
@@ -4838,7 +4990,7 @@ body.dangan-trial-vn-chat-hidden #chat {
 
     .dangan-vn-controls {
         top: 6px;
-        right: 6px;
+        right: 42px;
         gap: 4px;
     }
 
@@ -4849,6 +5001,28 @@ body.dangan-trial-vn-chat-hidden #chat {
 
     .dangan-vn-transcript {
         inset: max(10px, env(safe-area-inset-top)) 8px calc(var(--dangan-vn-bottom-offset) + 10px + env(safe-area-inset-bottom)) 8px;
+    }
+
+
+    .dangan-vn-footer {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+            "progress"
+            "nav"
+            "hint";
+        gap: 6px;
+    }
+
+    .dangan-vn-input {
+        width: 100%;
+    }
+
+    .dangan-vn-nav {
+        width: 100%;
+        justify-content: flex-end;
+        overflow-x: auto;
+        scrollbar-width: thin;
+        padding-bottom: 2px;
     }
 
     .dangan-vn-compose-docked {
@@ -4873,6 +5047,11 @@ body.dangan-trial-vn-chat-hidden #chat {
         padding: 5px 8px !important;
     }
 
+    .dangan-vn-text-wrap {
+        min-height: 56px;
+        max-height: 32vh;
+    }
+
     .dangan-vn-text {
         min-height: 56px;
         font-size: clamp(14px, 4.2vw, 18px);
@@ -4880,8 +5059,8 @@ body.dangan-trial-vn-chat-hidden #chat {
     }
 
     .dangan-vn-input {
-        margin-top: 6px;
-        padding-top: 5px;
+        margin-top: 2px;
+        padding-top: 0;
         font-size: 9px;
     }
 }
