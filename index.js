@@ -623,6 +623,7 @@ function trySetSillyTavernVisualNovelMode(enabled) {
 function createVnModeController() {
     const CHUNK_SIZE = 170;
     const VN_POSITION_KEY = `${extensionName}-vn-box-position`;
+    const VN_STREAMING_KEY = `${extensionName}-vn-streaming-enabled`;
     let chunkIndex = 0;
     let messageIndex = 0;
     let monopadOpen = false;
@@ -641,6 +642,9 @@ function createVnModeController() {
     let lastObservedMessageCount = 0;
     let lastObservedLastSignature = '';
     let lastObservedChatScope = '';
+    let streamingEnabled = true;
+    let streamTimerId = null;
+    let streamToken = 0;
 
     const host = document.createElement('div');
     host.id = 'dangan-vn-overlay';
@@ -648,6 +652,7 @@ function createVnModeController() {
     host.innerHTML = `
         <div class="dangan-vn-frame" role="dialog" aria-live="polite" aria-label="Dangan Visual Novel dialogue">
             <div class="dangan-vn-controls">
+                <button type="button" class="dangan-vn-control dangan-vn-stream-toggle" id="dangan-vn-stream-toggle" aria-label="Disable message streaming" title="Disable message streaming">STREAM: ON</button>
                 <button type="button" class="dangan-vn-control dangan-vn-transcript-toggle" id="dangan-vn-transcript-toggle" aria-label="Open transcript" title="Open transcript">TRANSCRIPT</button>
                 <button type="button" class="dangan-vn-control dangan-vn-lock" id="dangan-vn-lock" aria-label="Unlock Visual Novel box movement" title="Unlock Visual Novel box movement">🔒</button>
             </div>
@@ -680,6 +685,7 @@ function createVnModeController() {
     document.body.appendChild(host);
 
     const frameEl = host.querySelector('.dangan-vn-frame');
+    const streamToggleEl = host.querySelector('#dangan-vn-stream-toggle');
     const lockBtnEl = host.querySelector('#dangan-vn-lock');
     const transcriptToggleEl = host.querySelector('#dangan-vn-transcript-toggle');
     const transcriptEl = host.querySelector('#dangan-vn-transcript');
@@ -726,6 +732,72 @@ function createVnModeController() {
         }
         control.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
         return true;
+    }
+
+    function stopTextStreaming() {
+        streamToken += 1;
+        if (streamTimerId !== null) {
+            clearTimeout(streamTimerId);
+            streamTimerId = null;
+        }
+        textEl?.classList.remove('dangan-vn-text-streaming');
+    }
+
+    function loadStreamingPreference() {
+        try {
+            const raw = localStorage.getItem(VN_STREAMING_KEY);
+            if (raw === '0') streamingEnabled = false;
+            else if (raw === '1') streamingEnabled = true;
+        } catch {
+            // ignore storage errors
+        }
+    }
+
+    function persistStreamingPreference() {
+        try {
+            localStorage.setItem(VN_STREAMING_KEY, streamingEnabled ? '1' : '0');
+        } catch {
+            // ignore storage errors
+        }
+    }
+
+    function refreshStreamingToggle() {
+        if (!streamToggleEl) return;
+        streamToggleEl.textContent = streamingEnabled ? 'STREAM: ON' : 'STREAM: OFF';
+        streamToggleEl.setAttribute('aria-pressed', streamingEnabled ? 'true' : 'false');
+        streamToggleEl.setAttribute('aria-label', streamingEnabled ? 'Disable message streaming' : 'Enable message streaming');
+        streamToggleEl.setAttribute('title', streamingEnabled ? 'Disable message streaming' : 'Enable message streaming');
+    }
+
+    function renderDialogueText(text) {
+        const targetText = String(text || '...');
+        stopTextStreaming();
+        if (!textEl) return;
+
+        if (!streamingEnabled || targetText.length < 2) {
+            textEl.textContent = targetText;
+            return;
+        }
+
+        const token = streamToken;
+        const step = () => {
+            if (token != streamToken || !textEl) return;
+            const currentLength = textEl.textContent?.length || 0;
+            if (currentLength >= targetText.length) {
+                textEl.classList.remove('dangan-vn-text-streaming');
+                streamTimerId = null;
+                return;
+            }
+
+            const remaining = targetText.length - currentLength;
+            const delta = remaining > 40 ? 3 : remaining > 18 ? 2 : 1;
+            textEl.textContent = targetText.slice(0, currentLength + delta);
+            textEl.classList.add('dangan-vn-text-streaming');
+            streamTimerId = setTimeout(step, 14);
+        };
+
+        textEl.textContent = '';
+        step();
     }
 
     function updateNavigationState(messages = getMessageEntries()) {
@@ -987,6 +1059,8 @@ function createVnModeController() {
     }
 
     applyInlineFallbackStyles();
+    loadStreamingPreference();
+    refreshStreamingToggle();
     updateBottomOffset();
     syncMonopadVisibility();
     restoreSavedPosition();
@@ -1126,7 +1200,7 @@ function createVnModeController() {
         const messages = getMessageEntries();
         if (!messages.length) {
             nameEl.textContent = 'SYSTEM';
-            textEl.textContent = 'No character replies available yet. Send a message and wait for a character response.';
+            renderDialogueText('No character replies available yet. Send a message and wait for a character response.');
             updateNavigationState(messages);
             return;
         }
@@ -1139,14 +1213,14 @@ function createVnModeController() {
 
         if (!chunks.length) {
             nameEl.textContent = entry.name || 'UNKNOWN';
-            textEl.textContent = '...';
+            renderDialogueText('...');
             updateNavigationState(messages);
             return;
         }
 
         chunkIndex = Math.max(0, Math.min(chunkIndex, chunks.length - 1));
         nameEl.textContent = entry.name || 'UNKNOWN';
-        textEl.textContent = chunks[chunkIndex];
+        renderDialogueText(chunks[chunkIndex]);
         updateNavigationState(messages);
         pulseText();
     }
@@ -1231,6 +1305,15 @@ function createVnModeController() {
         }
 
         setMoveUnlocked(true);
+    });
+
+    streamToggleEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        streamingEnabled = !streamingEnabled;
+        persistStreamingPreference();
+        refreshStreamingToggle();
+        renderCurrent();
     });
 
     transcriptToggleEl?.addEventListener('click', (event) => {
@@ -1328,6 +1411,7 @@ function createVnModeController() {
         const target = event.target;
         if (target instanceof Element && target.closest('.dangan-vn-lock')) return;
         if (target instanceof Element && target.closest('.dangan-vn-transcript-toggle')) return;
+        if (target instanceof Element && target.closest('.dangan-vn-stream-toggle')) return;
         if (target instanceof Element && target.closest('.dangan-vn-nav-button')) return;
         advance();
     });
@@ -1458,6 +1542,7 @@ function createVnModeController() {
             if (!isEnabled) {
                 setTranscriptOpen(false);
                 undockTypingSection();
+                stopTextStreaming();
             }
 
             const chatRoot = document.getElementById('chat');
