@@ -614,9 +614,23 @@ function createVnModeController() {
                 <button type="button" class="dangan-vn-control dangan-vn-transcript-toggle" id="dangan-vn-transcript-toggle" aria-label="Open transcript" title="Open transcript">TRANSCRIPT</button>
                 <button type="button" class="dangan-vn-control dangan-vn-lock" id="dangan-vn-lock" aria-label="Unlock Visual Novel box movement" title="Unlock Visual Novel box movement">🔒</button>
             </div>
-            <div class="dangan-vn-nameplate" id="dangan-vn-name">—</div>
-            <div class="dangan-vn-text" id="dangan-vn-text">Visual Novel Mode ready.</div>
-            <div class="dangan-vn-input">Tap dialogue box to continue · Type in SillyTavern input below</div>
+            <div class="dangan-vn-header">
+                <div class="dangan-vn-nameplate" id="dangan-vn-name">—</div>
+                <div class="dangan-vn-position" id="dangan-vn-position" aria-live="polite">Line 0 / 0</div>
+            </div>
+            <div class="dangan-vn-text-wrap">
+                <div class="dangan-vn-text" id="dangan-vn-text">Visual Novel Mode ready.</div>
+            </div>
+            <div class="dangan-vn-footer">
+                <div class="dangan-vn-progress" aria-hidden="true"><div class="dangan-vn-progress-fill" id="dangan-vn-progress-fill"></div></div>
+                <div class="dangan-vn-input">Click text / ← → / Space · Type in SillyTavern below</div>
+                <div class="dangan-vn-nav">
+                    <button type="button" class="dangan-vn-control dangan-vn-nav-button" id="dangan-vn-prev" aria-label="Show previous line">◀ Prev</button>
+                    <button type="button" class="dangan-vn-control dangan-vn-nav-button" id="dangan-vn-next" aria-label="Show next line">Next ▶</button>
+                    <button type="button" class="dangan-vn-control dangan-vn-nav-button dangan-vn-latest" id="dangan-vn-latest" aria-label="Jump to latest reply">⤓ Latest</button>
+                    <button type="button" class="dangan-vn-control dangan-vn-nav-button dangan-vn-regenerate" id="dangan-vn-regenerate" aria-label="Regenerate current reply">↻ Regen</button>
+                </div>
+            </div>
         </div>
         <div class="dangan-vn-transcript" id="dangan-vn-transcript" aria-hidden="true">
             <div class="dangan-vn-transcript-header">
@@ -635,7 +649,78 @@ function createVnModeController() {
     const transcriptCloseEl = host.querySelector('#dangan-vn-transcript-close');
     const transcriptBodyEl = host.querySelector('#dangan-vn-transcript-body');
     const nameEl = host.querySelector('#dangan-vn-name');
+    const positionEl = host.querySelector('#dangan-vn-position');
     const textEl = host.querySelector('#dangan-vn-text');
+    const progressFillEl = host.querySelector('#dangan-vn-progress-fill');
+    const prevBtnEl = host.querySelector('#dangan-vn-prev');
+    const nextBtnEl = host.querySelector('#dangan-vn-next');
+    const latestBtnEl = host.querySelector('#dangan-vn-latest');
+    const regenerateBtnEl = host.querySelector('#dangan-vn-regenerate');
+    const latestButtonBaseLabel = '⤓ Latest';
+
+
+    function isElementVisible(el) {
+        if (!(el instanceof Element)) return false;
+        const style = window.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+    }
+
+    function getRegenerateControl() {
+        const controls = Array.from(document.querySelectorAll('button, .menu_button, [role="button"], a'));
+        for (const control of controls) {
+            if (!(control instanceof Element)) continue;
+            if (control.closest('#dangan-vn-overlay')) continue;
+            const label = `${control.getAttribute('aria-label') || ''} ${control.getAttribute('title') || ''} ${control.textContent || ''}`.toLowerCase();
+            if (!/\bregenerate\b/.test(label)) continue;
+            if (!isElementVisible(control)) continue;
+            return control;
+        }
+        return null;
+    }
+
+    function triggerRegenerate() {
+        const control = getRegenerateControl();
+        if (!control) return false;
+        if (typeof control.click === 'function') {
+            control.click();
+            return true;
+        }
+        control.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        return true;
+    }
+
+    function updateNavigationState(messages = getMessageEntries()) {
+        const total = messages.length;
+        const current = total ? Math.min(total, messageIndex + 1) : 0;
+        if (positionEl) {
+            positionEl.textContent = `Line ${current} / ${total}`;
+        }
+
+        const hasPrevious = total > 0 && (chunkIndex > 0 || messageIndex > 0);
+        const hasNext = (() => {
+            if (!total) return false;
+            const currentEntry = messages[Math.min(messageIndex, total - 1)];
+            const chunks = splitIntoChunks(stripV3CMarkersFromText(currentEntry?.text || ''));
+            const canAdvanceWithinCurrent = chunkIndex + 1 < chunks.length;
+            const canAdvanceToNext = messageIndex < total - 1;
+            return canAdvanceWithinCurrent || canAdvanceToNext;
+        })();
+
+        if (prevBtnEl) prevBtnEl.disabled = !hasPrevious;
+        if (nextBtnEl) nextBtnEl.disabled = !hasNext;
+        if (latestBtnEl) {
+            const unreadCount = Math.max(0, total - (messageIndex + 1));
+            latestBtnEl.disabled = total < 2 || unreadCount === 0;
+            latestBtnEl.textContent = unreadCount > 0 ? `${latestButtonBaseLabel} (${unreadCount})` : latestButtonBaseLabel;
+        }
+        if (regenerateBtnEl) regenerateBtnEl.disabled = !getRegenerateControl();
+        if (progressFillEl) {
+            const percent = total > 0 ? Math.max(0, Math.min(100, Math.round((current / total) * 100))) : 0;
+            progressFillEl.style.width = `${percent}%`;
+        }
+    }
 
     function applyInlineFallbackStyles() {
         Object.assign(host.style, {
@@ -796,6 +881,7 @@ function createVnModeController() {
         composeEl.style.margin = '';
         composeEl.style.transform = '';
         composeEl.style.zIndex = '';
+        document.body.classList.remove('dangan-vn-compose-docked-active');
     }
 
     function ensureComposeCollapseToggle(composeEl) {
@@ -860,6 +946,7 @@ function createVnModeController() {
         composeEl.style.margin = '0';
         composeEl.style.transform = 'none';
         composeEl.style.zIndex = '2147483644';
+        document.body.classList.add('dangan-vn-compose-docked-active');
     }
 
     applyInlineFallbackStyles();
@@ -989,11 +1076,21 @@ function createVnModeController() {
         return chunks;
     }
 
+    function pulseText() {
+        if (!textEl) return;
+        textEl.classList.remove('dangan-vn-text-pulse');
+        requestAnimationFrame(() => {
+            textEl.classList.add('dangan-vn-text-pulse');
+        });
+    }
+
+
     function renderCurrent() {
         const messages = getMessageEntries();
         if (!messages.length) {
             nameEl.textContent = 'SYSTEM';
             textEl.textContent = 'No character replies available yet. Send a message and wait for a character response.';
+            updateNavigationState(messages);
             return;
         }
 
@@ -1006,12 +1103,15 @@ function createVnModeController() {
         if (!chunks.length) {
             nameEl.textContent = entry.name || 'UNKNOWN';
             textEl.textContent = '...';
+            updateNavigationState(messages);
             return;
         }
 
         chunkIndex = Math.max(0, Math.min(chunkIndex, chunks.length - 1));
         nameEl.textContent = entry.name || 'UNKNOWN';
         textEl.textContent = chunks[chunkIndex];
+        updateNavigationState(messages);
+        pulseText();
     }
 
     function advance() {
@@ -1036,6 +1136,30 @@ function createVnModeController() {
             chunkIndex += 1;
         } else {
             messageIndex = Math.min(messages.length - 1, messageIndex + 1);
+            chunkIndex = 0;
+        }
+
+        renderCurrent();
+    }
+
+    function retreat() {
+        const messages = getMessageEntries();
+        if (!messages.length) {
+            renderCurrent();
+            return;
+        }
+
+        const entry = messages[Math.min(messageIndex, messages.length - 1)];
+        const chunks = splitIntoChunks(stripV3CMarkersFromText(entry.text));
+
+        if (chunkIndex > 0) {
+            chunkIndex -= 1;
+        } else if (messageIndex > 0) {
+            messageIndex -= 1;
+            const previousEntry = messages[messageIndex];
+            const previousChunks = splitIntoChunks(stripV3CMarkersFromText(previousEntry.text));
+            chunkIndex = Math.max(0, previousChunks.length - 1);
+        } else if (chunks.length) {
             chunkIndex = 0;
         }
 
@@ -1082,6 +1206,31 @@ function createVnModeController() {
         event.preventDefault();
         event.stopPropagation();
         setTranscriptOpen(false);
+    });
+
+    prevBtnEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        retreat();
+    });
+
+    nextBtnEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        advance();
+    });
+
+    latestBtnEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        jumpToLatest();
+    });
+
+    regenerateBtnEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        triggerRegenerate();
+        updateNavigationState();
     });
 
     frameEl?.addEventListener('dblclick', (event) => {
@@ -1142,8 +1291,51 @@ function createVnModeController() {
         const target = event.target;
         if (target instanceof Element && target.closest('.dangan-vn-lock')) return;
         if (target instanceof Element && target.closest('.dangan-vn-transcript-toggle')) return;
+        if (target instanceof Element && target.closest('.dangan-vn-nav-button')) return;
         advance();
     });
+
+    window.addEventListener('keydown', (event) => {
+        if (!vnEnabled || !host.classList.contains('active')) return;
+        const target = event.target;
+        const isEditable = target instanceof HTMLElement && (
+            target.matches('input, textarea, select') ||
+            target.isContentEditable ||
+            !!target.closest('[contenteditable="true"]')
+        );
+        if (isEditable) return;
+
+        if (event.key === 'ArrowRight' || event.key === ' ' || event.key === 'Enter') {
+            advance();
+        } else if (event.key === 'ArrowLeft' || event.key === 'Backspace') {
+            retreat();
+        } else if ((event.key === 'r' || event.key === 'R') && !event.ctrlKey && !event.metaKey && !event.altKey) {
+            triggerRegenerate();
+            updateNavigationState();
+        } else {
+            return;
+        }
+        event.preventDefault();
+    });
+
+    let swipeStartX = null;
+
+    frameEl?.addEventListener('touchstart', (event) => {
+        if (!event.touches?.length) return;
+        swipeStartX = event.touches[0].clientX;
+    }, { passive: true });
+
+    frameEl?.addEventListener('touchend', (event) => {
+        if (swipeStartX === null || !event.changedTouches?.length) return;
+        const deltaX = event.changedTouches[0].clientX - swipeStartX;
+        swipeStartX = null;
+        if (Math.abs(deltaX) < 36) return;
+        if (deltaX < 0) {
+            advance();
+        } else {
+            retreat();
+        }
+    }, { passive: true });
 
     window.addEventListener('resize', () => {
         updateBottomOffset();
@@ -1186,7 +1378,11 @@ function createVnModeController() {
         } else if (hadMessageCountChange && previousCount === 0 && messages.length > 0) {
             jumpToLatest();
         } else if (!hadMessageCountChange && hadLastSignatureChange) {
-            jumpToLatest();
+            if (messageIndex >= maxIndex) {
+                jumpToLatest();
+            } else {
+                renderCurrent();
+            }
         } else if (hadMessageCountChange && messages.length > previousCount && wasAtTailBeforeNewMessage) {
             renderCurrent();
         } else if (messageIndex >= maxIndex || (wasAtTailBeforeNewMessage && !hadMessageCountChange)) {
