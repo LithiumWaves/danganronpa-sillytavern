@@ -677,6 +677,19 @@ const investigationStartController = {
     },
 };
 
+function syncTrialForcedVnMode() {
+    if (!trialController || !vnModeController) return;
+    const phase = trialController.getState?.()?.phase;
+    const trialActive = Boolean(phase) && phase !== trialController?.phases?.IDLE;
+
+    if (trialActive) {
+        vnModeController.setEnabled?.(true);
+        return;
+    }
+
+    vnModeController.setEnabled?.(!!getMonopadSetting('vnModeEnabled'));
+}
+
 async function triggerTrialStartFromMarker(markerText = "V3C| TRIAL_START") {
     if (!trialController) return false;
 
@@ -685,6 +698,7 @@ async function triggerTrialStartFromMarker(markerText = "V3C| TRIAL_START") {
         trialIntroUiController?.sync?.();
         trialDiscussionController?.sync?.();
         nonstopDebateController?.sync?.();
+        syncTrialForcedVnMode();
         if (result?.started) {
             console.log("[Dangan][Trial] Class Trial started from marker.");
             return true;
@@ -723,6 +737,7 @@ async function triggerTrialStartFromMapPin() {
     trialIntroUiController?.sync?.();
     trialDiscussionController?.sync?.();
     nonstopDebateController?.sync?.();
+    syncTrialForcedVnMode();
     if (result?.started) {
         console.log("[Dangan][Trial] Class Trial started from map pin.");
         return true;
@@ -828,6 +843,7 @@ function ensureTrialIntroOverlay() {
             console.info("[Dangan][Trial] Could not enter discussion_pre_debate from trial_intro.");
         }
         trialIntroUiController?.sync?.();
+        syncTrialForcedVnMode();
     });
 
     const skillsBtn = overlay.querySelector("#dangan-trial-intro-skills");
@@ -844,6 +860,7 @@ function ensureTrialIntroOverlay() {
     cancelBtn?.addEventListener("click", () => {
         trialController?.cancelTrial?.();
         trialIntroUiController?.sync?.();
+        syncTrialForcedVnMode();
     });
 
     document.body.appendChild(overlay);
@@ -855,7 +872,6 @@ function createTrialDiscussionController() {
     let lastPhase = null;
     let pollId = null;
     let markerScopedDiscussionActive = false;
-    let forcedVnDuringDiscussion = false;
 
     function clearQueue() {
         queue.length = 0;
@@ -926,18 +942,6 @@ function createTrialDiscussionController() {
         if (phaseEl) {
             phaseEl.style.display = active ? 'block' : 'none';
             if (active) phaseEl.textContent = phaseLabel(phase).toUpperCase();
-        }
-
-        if (active) {
-            if (vnModeController) {
-                vnModeController.setEnabled?.(true);
-                forcedVnDuringDiscussion = true;
-            }
-        } else {
-            if (forcedVnDuringDiscussion && vnModeController) {
-                vnModeController.setEnabled?.(!!getMonopadSetting('vnModeEnabled'));
-            }
-            forcedVnDuringDiscussion = false;
         }
     }
 
@@ -1019,6 +1023,7 @@ function createNonstopDebateController() {
     let weakPointCounter = 0;
     let restoredVnAfterNsd = false;
     let lastObservedPhase = null;
+    let activeWeakPointIds = new Set();
 
     function ensureOverlay() {
         let overlay = document.getElementById('dangan-nsd-overlay');
@@ -1062,23 +1067,13 @@ function createNonstopDebateController() {
 
     function extractQuotedSegments(text) {
         const raw = String(text || '');
+        const quoteRegex = /"([^"\n\r]+)"/g;
         const segments = [];
-        let start = -1;
 
-        for (let i = 0; i < raw.length; i += 1) {
-            const ch = raw[i];
-            if (ch !== '"') continue;
-
-            if (start === -1) {
-                start = i + 1;
-                continue;
-            }
-
-            const segment = raw.slice(start, i).trim();
-            if (segment && segment.indexOf('\n') === -1 && segment.indexOf('\r') === -1) {
-                segments.push(segment);
-            }
-            start = -1;
+        let match = null;
+        while ((match = quoteRegex.exec(raw)) !== null) {
+            const segment = String(match?.[1] || '').trim();
+            if (segment) segments.push(segment);
         }
 
         return segments;
@@ -1099,19 +1094,13 @@ function createNonstopDebateController() {
             .filter(Boolean);
     }
 
-    function splitLines(value) {
-        return String(value || '')
-            .replaceAll('\r', '')
-            .split('\n')
-            .map(line => line.trim())
-            .filter(Boolean);
-    }
-
     function chooseWeakPointRange(dialogue) {
         const words = splitWords(dialogue);
         if (!words.length) return { start: 0, end: 0 };
-        const span = Math.max(1, Math.min(3, Math.floor(words.length / 3)));
-        const start = Math.floor(Math.random() * Math.max(1, words.length - span + 1));
+
+        const span = Math.max(1, Math.min(2, Math.floor(words.length / 5)));
+        const maxStart = Math.max(0, words.length - span);
+        const start = Math.floor(Math.random() * (maxStart + 1));
         return { start, end: Math.min(words.length - 1, start + span - 1) };
     }
 
@@ -1142,8 +1131,7 @@ Rules:
             return String(result || '').trim();
         }
 
-        const fallback = await generateIsolated(`${prompt}
-Use short analytical output only.`, { allowDialogue: true });
+        const fallback = await generateIsolated(`${prompt}\nUse short analytical output only.`, { allowDialogue: true });
         return String(fallback || '').trim();
     }
 
@@ -1174,32 +1162,27 @@ Use short analytical output only.`, { allowDialogue: true });
         words.forEach((word, idx) => {
             if (idx > 0) quoteEl.append(' ');
             if (idx >= weakStart && idx <= weakEnd) {
-                const weak = document.createElement('button');
-                weak.type = 'button';
+                const weak = document.createElement('span');
                 weak.className = 'dangan-nsd-weak-point';
                 weak.textContent = word;
                 weak.dataset.weakPointId = String(weakPointId);
-                weak.addEventListener('click', () => {
-                    window.fireTruthBulletAtWeakPoint?.(weakPointId);
-                });
                 quoteEl.appendChild(weak);
-            } else {
-                quoteEl.append(word);
+                return;
             }
+            quoteEl.append(word);
         });
 
         quoteEl.append('"');
         phrase.appendChild(quoteEl);
 
-        const driftX = (Math.random() * 38 - 19).toFixed(2);
+        const driftX = Math.floor(Math.random() * 100) - 50;
         phrase.style.setProperty('--nsd-drift-x', `${driftX}px`);
         phrase.style.setProperty('--nsd-order', String(replyIndex));
         layer.appendChild(phrase);
 
-        // Keep only recent floating lines visible.
         const lines = Array.from(layer.querySelectorAll('.dangan-nsd-floating-line'));
-        if (lines.length > 6) {
-            lines.slice(0, lines.length - 6).forEach(el => el.remove());
+        if (lines.length > 7) {
+            lines.slice(0, lines.length - 7).forEach(el => el.remove());
         }
     }
 
@@ -1209,12 +1192,13 @@ Use short analytical output only.`, { allowDialogue: true });
         overlay.setAttribute('aria-hidden', 'true');
         clearTimers();
         clearFloating();
+        activeWeakPointIds.clear();
         roundToken += 1;
         lastObservedPhase = null;
 
         document.body.classList.remove('dangan-trial-nsd-active');
         if (!restoredVnAfterNsd && vnModeController) {
-            vnModeController.setEnabled?.(!!getMonopadSetting('vnModeEnabled'));
+            vnModeController.setEnabled?.(true);
         }
         restoredVnAfterNsd = false;
     }
@@ -1229,37 +1213,36 @@ Use short analytical output only.`, { allowDialogue: true });
         overlay.classList.remove('phase-cutscene');
         overlay.setAttribute('aria-hidden', 'false');
 
-        // During NSD active, hide VN box and use floating text only.
         document.body.classList.add('dangan-trial-nsd-active');
         if (vnModeController) {
-            vnModeController.setEnabled?.(false);
+            vnModeController.setEnabled?.(true);
             restoredVnAfterNsd = true;
         }
 
         clearFloating();
+        activeWeakPointIds.clear();
 
-        const replyTotal = Math.floor(Math.random() * 6) + 3; // 3..8
+        const replyTotal = Math.floor(Math.random() * 6) + 3;
         let replyIndex = 0;
         let stopped = false;
 
-        const runNext = async (currentPromise = null) => {
+        const runNext = async () => {
             if (stopped || token !== roundToken) return;
             if (trialController?.getState?.()?.phase !== trialController?.phases?.NONSTOP_ACTIVE) return;
 
-            const replyPromise = currentPromise || generateDebateReply();
-            const nextPromise = generateDebateReply();
-            const rawReply = await replyPromise.catch(() => '');
+            const rawReply = await generateDebateReply().catch(() => '');
 
             if (stopped || token !== roundToken) return;
 
             const speaker = extractField(rawReply, 'speaker') || 'UNKNOWN';
             const quotes = extractQuotedSegments(rawReply);
-            const dialogue = quotes[0] || splitLines(rawReply)[0] || '...';
+            const dialogue = quotes[0] || '...';
 
             replyIndex += 1;
             weakPointCounter += 1;
             const weakRange = chooseWeakPointRange(dialogue);
             const weakPointId = `weak_${token}_${weakPointCounter}`;
+            activeWeakPointIds.add(weakPointId);
 
             renderFloatingLine({
                 speaker,
@@ -1271,7 +1254,6 @@ Use short analytical output only.`, { allowDialogue: true });
             });
 
             if (replyIndex >= replyTotal) {
-                // End of this NSD section: interrupt further generation and take a short break, then repeat.
                 phaseTimer = window.setTimeout(() => {
                     if (token !== roundToken) return;
                     runSectionLoop(token);
@@ -1280,7 +1262,7 @@ Use short analytical output only.`, { allowDialogue: true });
             }
 
             phaseTimer = window.setTimeout(() => {
-                runNext(nextPromise);
+                runNext();
             }, 950);
         };
 
@@ -1289,6 +1271,7 @@ Use short analytical output only.`, { allowDialogue: true });
         window.fireTruthBulletAtWeakPoint = (shotWeakPointId) => {
             if (token !== roundToken) return { hit: false, reason: 'stale' };
             if (!shotWeakPointId) return { hit: false, reason: 'invalid' };
+            if (!activeWeakPointIds.has(shotWeakPointId)) return { hit: false, reason: 'miss' };
             stopped = true;
             clearTimers();
             trialController?.transitionTo?.(trialController.phases.DISCUSSION_POST_DEBATE, 'nsd_hit');
@@ -1346,7 +1329,6 @@ Use short analytical output only.`, { allowDialogue: true });
         hideOverlay();
     }
 
-    // Backward compatibility no-op for older hooks.
     window.fireTruthBulletAtPhrase = () => ({ hit: false, reason: 'use_weak_point' });
 
     return {
@@ -3681,6 +3663,7 @@ function bindDebugControlEvents() {
         trialIntroUiController?.sync?.();
         trialDiscussionController?.sync?.();
         nonstopDebateController?.sync?.();
+        syncTrialForcedVnMode();
     };
 
     $(document).on("click.debugControls", "#trial-debug-phase-idle", () => {
@@ -4395,12 +4378,14 @@ trialDiscussionController?.startAutoSync?.();
 trialIntroUiController?.sync?.();
 trialDiscussionController?.sync?.();
 nonstopDebateController?.sync?.();
+syncTrialForcedVnMode();
 window.danganTrial = trialController;
 window.startClassTrial = () => {
     const result = trialController?.requestStartFromUi?.({ source: "manual" });
     trialIntroUiController?.sync?.();
     trialDiscussionController?.sync?.();
     nonstopDebateController?.sync?.();
+    syncTrialForcedVnMode();
     return result;
 };
 window.cancelClassTrial = () => {
@@ -4408,6 +4393,7 @@ window.cancelClassTrial = () => {
     trialIntroUiController?.sync?.();
     trialDiscussionController?.sync?.();
     nonstopDebateController?.sync?.();
+    syncTrialForcedVnMode();
     return result;
 };
 rewards?.renderProgressionUi?.();
