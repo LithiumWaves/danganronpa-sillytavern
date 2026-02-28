@@ -27,6 +27,14 @@
                 </div>
             </div>
 
+            <div class="monopad-time-controls" aria-label="Day and night controls">
+                <div class="monopad-time-readout" id="monopad-time-readout">DAY 1 · DAYTIME</div>
+                <div class="monopad-time-actions">
+                    <button id="monopad-pass-time" class="monopad-time-button" type="button" title="Pass time to nighttime">PASS TIME</button>
+                    <button id="monopad-sleep" class="monopad-time-button" type="button" title="Sleep until morning">SLEEP</button>
+                </div>
+            </div>
+
             <button
                 id="dangan_monopad_close"
                 class="monopad-close"
@@ -318,6 +326,14 @@
                         <span id="dangan_reset_progression_status" class="settings-note"></span>
                     </div>
                     <div class="settings-note">Resets to LV 1, 0 XP, and 10 Skill Points.</div>
+                </div>
+                <div class="settings-item settings-item-stack">
+                    <span class="settings-label">TIME DATA</span>
+                    <div class="settings-ai-actions">
+                        <button id="dangan_reset_day_counter" class="settings-small-button" type="button">RESET DAY COUNTER</button>
+                        <span id="dangan_reset_day_counter_status" class="settings-note"></span>
+                    </div>
+                    <div class="settings-note">Resets time tracker to DAY 1 / DAYTIME.</div>
                 </div>
                 <div class="settings-item settings-item-stack">
                     <label class="settings-label" for="dangan_reward_difficulty">REWARD DIFFICULTY</label>
