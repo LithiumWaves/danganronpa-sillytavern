@@ -207,6 +207,19 @@ function sleepToNextDay({ source = "manual" } = {}) {
     return true;
 }
 
+function resetDayCounter({ source = "manual" } = {}) {
+    const state = ensureTimeTrackerState();
+
+    state.day = 1;
+    state.phase = TIME_PHASE_DAY;
+    state.dayActionUsed = false;
+
+    saveSettingsDebounced();
+    renderTimeTrackerUi();
+    console.log(`[${extensionName}] Time tracker reset to DAY 1 / DAYTIME (source: ${source}).`);
+    return true;
+}
+
 window.getMonopadTimeTracker = function () {
     const state = ensureTimeTrackerState();
     return {
@@ -4645,6 +4658,24 @@ $(".monopad-icon").on("mouseenter", function () {
 
             rewards?.resetProgression?.({ clearEquippedSkills: true });
             if (statusEl) statusEl.textContent = "Progression reset to LV 1.";
+        });
+
+        $("#dangan_reset_day_counter").on("click", async function () {
+            const statusEl = document.getElementById("dangan_reset_day_counter_status");
+            const confirmed = await openMonopadConfirmDialog({
+                title: "RESET DAY COUNTER",
+                message: "Reset time tracker to DAY 1 / DAYTIME?",
+                confirmLabel: "RESET",
+                cancelLabel: "CANCEL",
+            });
+
+            if (!confirmed) {
+                if (statusEl) statusEl.textContent = "Reset cancelled.";
+                return;
+            }
+
+            resetDayCounter({ source: "settings_reset" });
+            if (statusEl) statusEl.textContent = "Time tracker reset to DAY 1.";
         });
 
 loadSettings();
