@@ -74,6 +74,11 @@ export const defaultSettings = {
     openrouterRememberApiKey: false,
     openrouterApiKey: "",
     rewardDifficulty: "normal",
+    timeTracker: {
+        day: 1,
+        phase: "day",
+        dayActionUsed: false,
+    },
 };
 
 export const REWARD_DIFFICULTY_LABELS = {
