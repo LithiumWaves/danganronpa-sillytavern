@@ -86,3 +86,56 @@
     cursor: not-allowed;
     filter: grayscale(0.15);
 }
+
+.monopad-time-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    margin-left: auto;
+    margin-right: 8px;
+}
+
+.monopad-time-readout {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: rgba(226, 248, 255, 0.9);
+    text-shadow: 0 0 10px rgba(101, 220, 255, 0.2);
+}
+
+.monopad-time-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.monopad-time-button {
+    border: 1px solid rgba(166, 237, 255, 0.62);
+    background: linear-gradient(180deg, rgba(13, 43, 64, 0.92), rgba(12, 24, 48, 0.92));
+    color: #eaf9ff;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    padding: 4px 8px;
+    cursor: pointer;
+}
+
+.monopad-time-button:hover,
+.monopad-time-button:focus-visible {
+    border-color: rgba(255, 182, 234, 0.72);
+    color: #fff;
+}
+
+.monopad-time-button:disabled {
+    opacity: 0.42;
+    cursor: not-allowed;
+}
+
+@media (max-width: 700px) {
+    .monopad-time-readout {
+        font-size: 9px;
+    }
+
+    .monopad-time-button {
+        font-size: 9px;
+        padding: 4px 6px;
+    }
+}
