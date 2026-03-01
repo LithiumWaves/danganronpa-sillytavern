@@ -128,7 +128,6 @@ window.getMonopadRecentLocationPresence = function () {
 
 const TIME_PHASE_DAY = "day";
 const TIME_PHASE_NIGHT = "night";
-const TIME_TRACKER_PROMPT_KEY = `${extensionName}_time_tracker`;
 
 function ensureTimeTrackerState() {
     extension_settings[extensionName] ||= {};
@@ -188,7 +187,6 @@ function passTimeToNight({ source = "manual" } = {}) {
 
     saveSettingsDebounced();
     renderTimeTrackerUi();
-    syncTimeTrackerPromptInjection();
     monokumaAnnouncementController?.trigger("NIGHT_ANNOUN");
     console.log(`[${extensionName}] Time advanced to NIGHT (source: ${source}).`);
     return true;
@@ -204,7 +202,6 @@ function sleepToNextDay({ source = "manual" } = {}) {
 
     saveSettingsDebounced();
     renderTimeTrackerUi();
-    syncTimeTrackerPromptInjection();
     monokumaAnnouncementController?.trigger("DAY_ANNOUN");
     console.log(`[${extensionName}] Time advanced to DAY ${state.day} (source: ${source}).`);
     return true;
@@ -219,7 +216,6 @@ function resetDayCounter({ source = "manual" } = {}) {
 
     saveSettingsDebounced();
     renderTimeTrackerUi();
-    syncTimeTrackerPromptInjection();
     console.log(`[${extensionName}] Time tracker reset to DAY 1 / DAYTIME (source: ${source}).`);
     return true;
 }
@@ -233,39 +229,6 @@ window.getMonopadTimeTracker = function () {
         readout: getTimeReadoutLabel(state),
     };
 };
-
-window.getMonopadTimeTrackerPromptBlock = function () {
-    const state = ensureTimeTrackerState();
-    const phaseLabel = state.phase === TIME_PHASE_NIGHT ? "NIGHTTIME" : "DAYTIME";
-    return [
-        "[MONOPAD_TIME]",
-        `day: ${state.day}`,
-        `phase: ${phaseLabel}`,
-        `day_action_used: ${state.dayActionUsed ? "true" : "false"}`,
-        "[/MONOPAD_TIME]",
-    ].join("\n");
-};
-
-function syncTimeTrackerPromptInjection() {
-    const promptBlock = window.getMonopadTimeTrackerPromptBlock?.() || "";
-    const ctx = window.SillyTavern?.getContext?.();
-
-    if (!ctx || typeof ctx.setExtensionPrompt !== "function") {
-        return false;
-    }
-
-    try {
-        ctx.setExtensionPrompt(TIME_TRACKER_PROMPT_KEY, promptBlock, 1, 0, false);
-        return true;
-    } catch {
-        try {
-            ctx.setExtensionPrompt(TIME_TRACKER_PROMPT_KEY, promptBlock);
-            return true;
-        } catch {
-            return false;
-        }
-    }
-}
 
 
 function clampRewardDifficulty(value) {
@@ -2986,7 +2949,6 @@ function applySettingsTabUI() {
 
     applyCrtSettings();
     renderTimeTrackerUi();
-    syncTimeTrackerPromptInjection();
     vnModeController?.setEnabled?.(!!tab.vnModeEnabled);
 }
 
@@ -4716,31 +4678,9 @@ $(".monopad-icon").on("mouseenter", function () {
             if (statusEl) statusEl.textContent = "Time tracker reset to DAY 1.";
         });
 
-        $("#dangan_copy_time_prompt_block").on("click", async function () {
-            const statusEl = document.getElementById("dangan_reset_day_counter_status");
-            const promptBlock = window.getMonopadTimeTrackerPromptBlock?.() || "";
-
-            if (!promptBlock) {
-                if (statusEl) statusEl.textContent = "No time data available.";
-                return;
-            }
-
-            try {
-                if (navigator?.clipboard?.writeText) {
-                    await navigator.clipboard.writeText(promptBlock);
-                } else {
-                    throw new Error("Clipboard API unavailable");
-                }
-                if (statusEl) statusEl.textContent = "AI time block copied.";
-            } catch {
-                if (statusEl) statusEl.textContent = "Copy failed. Open console and run window.getMonopadTimeTrackerPromptBlock().";
-            }
-        });
-
 loadSettings();
 ensureTimeTrackerState();
 renderTimeTrackerUi();
-syncTimeTrackerPromptInjection();
 const initialRewardDifficulty = applyRewardDifficultyProfile(getMonopadSetting("rewardDifficulty") || defaultSettings.rewardDifficulty);
 if (initialRewardDifficulty !== getMonopadSetting("rewardDifficulty")) {
     setMonopadSetting("rewardDifficulty", initialRewardDifficulty);
