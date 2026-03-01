@@ -128,6 +128,38 @@ window.getMonopadRecentLocationPresence = function () {
 
 const TIME_PHASE_DAY = "day";
 const TIME_PHASE_NIGHT = "night";
+const TIME_EXTENSION_PROMPT_KEY = "dangan_time_context";
+
+function buildGenerationTimeContext(state) {
+    const safeState = state || ensureTimeTrackerState();
+    const phaseLabel = safeState.phase === TIME_PHASE_NIGHT ? "NIGHTTIME" : "DAYTIME";
+    const periodHint = safeState.phase === TIME_PHASE_NIGHT
+        ? "Night period: curfew rules and low-visibility assumptions are active."
+        : "Day period: normal campus activity assumptions are active.";
+
+    return [
+        "[DANGANRONPA TIME CONTEXT]",
+        `In-game day: ${safeState.day}`,
+        `In-game phase: ${phaseLabel}`,
+        periodHint,
+        "Use this context when generating your next reply.",
+    ].join("\n");
+}
+
+function applyTimeContextToGeneration() {
+    const state = ensureTimeTrackerState();
+    const contextPrompt = buildGenerationTimeContext(state);
+
+    const setPrompt =
+        window.SillyTavern?.getContext?.()?.setExtensionPrompt
+        || window.setExtensionPrompt
+        || null;
+
+    if (typeof setPrompt !== "function") return false;
+
+    setPrompt(TIME_EXTENSION_PROMPT_KEY, contextPrompt, 0, 0, false, "system");
+    return true;
+}
 
 function ensureTimeTrackerState() {
     extension_settings[extensionName] ||= {};
@@ -187,6 +219,7 @@ function passTimeToNight({ source = "manual" } = {}) {
 
     saveSettingsDebounced();
     renderTimeTrackerUi();
+    applyTimeContextToGeneration();
     monokumaAnnouncementController?.trigger("NIGHT_ANNOUN");
     console.log(`[${extensionName}] Time advanced to NIGHT (source: ${source}).`);
     return true;
@@ -202,6 +235,7 @@ function sleepToNextDay({ source = "manual" } = {}) {
 
     saveSettingsDebounced();
     renderTimeTrackerUi();
+    applyTimeContextToGeneration();
     monokumaAnnouncementController?.trigger("DAY_ANNOUN");
     console.log(`[${extensionName}] Time advanced to DAY ${state.day} (source: ${source}).`);
     return true;
@@ -216,6 +250,7 @@ function resetDayCounter({ source = "manual" } = {}) {
 
     saveSettingsDebounced();
     renderTimeTrackerUi();
+    applyTimeContextToGeneration();
     console.log(`[${extensionName}] Time tracker reset to DAY 1 / DAYTIME (source: ${source}).`);
     return true;
 }
@@ -4681,6 +4716,7 @@ $(".monopad-icon").on("mouseenter", function () {
 loadSettings();
 ensureTimeTrackerState();
 renderTimeTrackerUi();
+applyTimeContextToGeneration();
 const initialRewardDifficulty = applyRewardDifficultyProfile(getMonopadSetting("rewardDifficulty") || defaultSettings.rewardDifficulty);
 if (initialRewardDifficulty !== getMonopadSetting("rewardDifficulty")) {
     setMonopadSetting("rewardDifficulty", initialRewardDifficulty);
