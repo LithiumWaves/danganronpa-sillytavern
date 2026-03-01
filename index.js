@@ -126,6 +126,147 @@ window.getMonopadRecentLocationPresence = function () {
     return buildRecentLocationPresence();
 };
 
+const TIME_PHASE_DAY = "day";
+const TIME_PHASE_NIGHT = "night";
+const TIME_TRACKER_PROMPT_KEY = `${extensionName}_time_tracker`;
+
+function ensureTimeTrackerState() {
+    extension_settings[extensionName] ||= {};
+
+    const fallback = defaultSettings.timeTracker || { day: 1, phase: TIME_PHASE_DAY, dayActionUsed: false };
+    const raw = extension_settings[extensionName].timeTracker;
+
+    const normalized = {
+        day: Math.max(1, Math.floor(Number(raw?.day ?? fallback.day ?? 1) || 1)),
+        phase: raw?.phase === TIME_PHASE_NIGHT ? TIME_PHASE_NIGHT : TIME_PHASE_DAY,
+        dayActionUsed: Boolean(raw?.dayActionUsed ?? fallback.dayActionUsed ?? false),
+    };
+
+    if (normalized.phase === TIME_PHASE_NIGHT) {
+        normalized.dayActionUsed = true;
+    }
+
+    extension_settings[extensionName].timeTracker = normalized;
+    return extension_settings[extensionName].timeTracker;
+}
+
+function getTimeReadoutLabel(state) {
+    if (!state) return "DAY 1 · DAYTIME";
+    return `DAY ${state.day} · ${state.phase === TIME_PHASE_NIGHT ? "NIGHTTIME" : "DAYTIME"}`;
+}
+
+function renderTimeTrackerUi() {
+    const state = ensureTimeTrackerState();
+
+    const readoutEl = document.getElementById("monopad-time-readout");
+    const passTimeBtn = document.getElementById("monopad-pass-time");
+    const sleepBtn = document.getElementById("monopad-sleep");
+
+    if (readoutEl) {
+        readoutEl.textContent = getTimeReadoutLabel(state);
+    }
+
+    if (passTimeBtn) {
+        const isDisabled = state.phase !== TIME_PHASE_DAY || state.dayActionUsed;
+        passTimeBtn.disabled = isDisabled;
+        passTimeBtn.setAttribute("aria-disabled", String(isDisabled));
+    }
+
+    if (sleepBtn) {
+        const isDisabled = state.phase !== TIME_PHASE_NIGHT;
+        sleepBtn.disabled = isDisabled;
+        sleepBtn.setAttribute("aria-disabled", String(isDisabled));
+    }
+}
+
+function passTimeToNight({ source = "manual" } = {}) {
+    const state = ensureTimeTrackerState();
+    if (state.phase !== TIME_PHASE_DAY || state.dayActionUsed) return false;
+
+    state.phase = TIME_PHASE_NIGHT;
+    state.dayActionUsed = true;
+
+    saveSettingsDebounced();
+    renderTimeTrackerUi();
+    syncTimeTrackerPromptInjection();
+    monokumaAnnouncementController?.trigger("NIGHT_ANNOUN");
+    console.log(`[${extensionName}] Time advanced to NIGHT (source: ${source}).`);
+    return true;
+}
+
+function sleepToNextDay({ source = "manual" } = {}) {
+    const state = ensureTimeTrackerState();
+    if (state.phase !== TIME_PHASE_NIGHT) return false;
+
+    state.day = Math.max(1, Number(state.day || 1) + 1);
+    state.phase = TIME_PHASE_DAY;
+    state.dayActionUsed = false;
+
+    saveSettingsDebounced();
+    renderTimeTrackerUi();
+    syncTimeTrackerPromptInjection();
+    monokumaAnnouncementController?.trigger("DAY_ANNOUN");
+    console.log(`[${extensionName}] Time advanced to DAY ${state.day} (source: ${source}).`);
+    return true;
+}
+
+function resetDayCounter({ source = "manual" } = {}) {
+    const state = ensureTimeTrackerState();
+
+    state.day = 1;
+    state.phase = TIME_PHASE_DAY;
+    state.dayActionUsed = false;
+
+    saveSettingsDebounced();
+    renderTimeTrackerUi();
+    syncTimeTrackerPromptInjection();
+    console.log(`[${extensionName}] Time tracker reset to DAY 1 / DAYTIME (source: ${source}).`);
+    return true;
+}
+
+window.getMonopadTimeTracker = function () {
+    const state = ensureTimeTrackerState();
+    return {
+        day: state.day,
+        phase: state.phase,
+        dayActionUsed: state.dayActionUsed,
+        readout: getTimeReadoutLabel(state),
+    };
+};
+
+window.getMonopadTimeTrackerPromptBlock = function () {
+    const state = ensureTimeTrackerState();
+    const phaseLabel = state.phase === TIME_PHASE_NIGHT ? "NIGHTTIME" : "DAYTIME";
+    return [
+        "[MONOPAD_TIME]",
+        `day: ${state.day}`,
+        `phase: ${phaseLabel}`,
+        `day_action_used: ${state.dayActionUsed ? "true" : "false"}`,
+        "[/MONOPAD_TIME]",
+    ].join("\n");
+};
+
+function syncTimeTrackerPromptInjection() {
+    const promptBlock = window.getMonopadTimeTrackerPromptBlock?.() || "";
+    const ctx = window.SillyTavern?.getContext?.();
+
+    if (!ctx || typeof ctx.setExtensionPrompt !== "function") {
+        return false;
+    }
+
+    try {
+        ctx.setExtensionPrompt(TIME_TRACKER_PROMPT_KEY, promptBlock, 1, 0, false);
+        return true;
+    } catch {
+        try {
+            ctx.setExtensionPrompt(TIME_TRACKER_PROMPT_KEY, promptBlock);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+}
+
 
 function clampRewardDifficulty(value) {
     return Object.prototype.hasOwnProperty.call(REWARD_PROFILES, value) ? value : "normal";
@@ -2140,6 +2281,8 @@ function stripV3CMarkersFromText(value) {
         if (canonical.includes("V3C|NIGHTANNOUN")) return false;
         if (canonical.includes("V3C|BDA")) return false;
         if (canonical.includes("V3C|BODYDISCOVERY")) return false;
+        if (canonical.includes("V3C|PASSTIME")) return false;
+        if (canonical.includes("V3C|SLEEP")) return false;
         return true;
     });
 
@@ -2153,6 +2296,8 @@ function stripV3CMarkersFromText(value) {
         .replace(/V3C\s*[|｜]\s*NIGHT(?:\s*[_\-]?\s*)ANNOUN\b/gi, "")
         .replace(/V3C\s*[|｜]\s*BDA\b/gi, "")
         .replace(/V3C\s*[|｜]\s*BODY(?:\s*[_\-]?\s*)DISCOVERY\b/gi, "")
+        .replace(/V3C\s*[|｜]\s*PASS(?:\s*[_\-]?\s*)TIME\b/gi, "")
+        .replace(/V3C\s*[|｜]\s*SLEEP\b/gi, "")
         .replace(/^[ \t]+/gm, "")
         .trimStart();
 }
@@ -2840,6 +2985,8 @@ function applySettingsTabUI() {
     });
 
     applyCrtSettings();
+    renderTimeTrackerUi();
+    syncTimeTrackerPromptInjection();
     vnModeController?.setEnabled?.(!!tab.vnModeEnabled);
 }
 
@@ -4443,6 +4590,16 @@ $(".monopad-icon").on("mouseenter", function () {
             await startMonokumaLesson();
         });
 
+        $("#monopad-pass-time").on("click", () => {
+            playSfx(sfx.click);
+            passTimeToNight({ source: "monopad_button" });
+        });
+
+        $("#monopad-sleep").on("click", () => {
+            playSfx(sfx.click);
+            sleepToNextDay({ source: "monopad_button" });
+        });
+
         $(".settings-toggle").on("click", function () {
             const key = this.dataset.setting;
             if (!key) return;
@@ -4541,7 +4698,49 @@ $(".monopad-icon").on("mouseenter", function () {
             if (statusEl) statusEl.textContent = "Progression reset to LV 1.";
         });
 
+        $("#dangan_reset_day_counter").on("click", async function () {
+            const statusEl = document.getElementById("dangan_reset_day_counter_status");
+            const confirmed = await openMonopadConfirmDialog({
+                title: "RESET DAY COUNTER",
+                message: "Reset time tracker to DAY 1 / DAYTIME?",
+                confirmLabel: "RESET",
+                cancelLabel: "CANCEL",
+            });
+
+            if (!confirmed) {
+                if (statusEl) statusEl.textContent = "Reset cancelled.";
+                return;
+            }
+
+            resetDayCounter({ source: "settings_reset" });
+            if (statusEl) statusEl.textContent = "Time tracker reset to DAY 1.";
+        });
+
+        $("#dangan_copy_time_prompt_block").on("click", async function () {
+            const statusEl = document.getElementById("dangan_reset_day_counter_status");
+            const promptBlock = window.getMonopadTimeTrackerPromptBlock?.() || "";
+
+            if (!promptBlock) {
+                if (statusEl) statusEl.textContent = "No time data available.";
+                return;
+            }
+
+            try {
+                if (navigator?.clipboard?.writeText) {
+                    await navigator.clipboard.writeText(promptBlock);
+                } else {
+                    throw new Error("Clipboard API unavailable");
+                }
+                if (statusEl) statusEl.textContent = "AI time block copied.";
+            } catch {
+                if (statusEl) statusEl.textContent = "Copy failed. Open console and run window.getMonopadTimeTrackerPromptBlock().";
+            }
+        });
+
 loadSettings();
+ensureTimeTrackerState();
+renderTimeTrackerUi();
+syncTimeTrackerPromptInjection();
 const initialRewardDifficulty = applyRewardDifficultyProfile(getMonopadSetting("rewardDifficulty") || defaultSettings.rewardDifficulty);
 if (initialRewardDifficulty !== getMonopadSetting("rewardDifficulty")) {
     setMonopadSetting("rewardDifficulty", initialRewardDifficulty);
