@@ -65,25 +65,6 @@ V3C| BODY_DISCOVERY
 4. Spend rewards in Gifts & Skills and use gifts in conversations.
 5. Partake in Class Trials and advance the story
 
-## Time tracker and AI prompt wiring
-- Use Monopad top bar actions to move time:
-  - `PASS TIME` transitions Day ➜ Night (plays night announcement).
-  - `SLEEP` transitions Night ➜ next Day (plays morning announcement).
-- In Settings ➜ Progression:
-  - `RESET DAY COUNTER` sets time back to Day 1 / Daytime.
-  - `COPY AI TIME BLOCK` copies a ready-to-paste context block to your clipboard (easiest method).
-- To expose time state to your generation prompt:
-  - Manual: paste the copied block (or call `window.getMonopadTimeTrackerPromptBlock()` in tooling/macros).
-  - Automatic: the extension now injects this block into Chat Completion context through SillyTavern's `setExtensionPrompt` when available, and keeps it synced on pass/sleep/reset.
-- Returned format:
-```text
-[MONOPAD_TIME]
-day: 3
-phase: NIGHTTIME
-day_action_used: true
-[/MONOPAD_TIME]
-```
-
 
 ## Settings reference
 - **Monopad Sounds** – UI SFX toggle.
