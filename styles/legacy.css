@@ -4896,13 +4896,19 @@ body.dangan-trial-vn-chat-hidden #chat {
 }
 
 .dangan-vn-segment-action {
-    color: rgba(206, 230, 255, 0.88);
+    color: rgba(176, 214, 246, 0.92);
     font-style: italic;
+    opacity: 0.92;
 }
 
 .dangan-vn-segment-dialogue {
     color: #f8f9ff;
     font-weight: 600;
+    opacity: 1;
+}
+
+.dangan-vn-text.has-action .dangan-vn-segment-action {
+    filter: saturate(0.88);
 }
 
 

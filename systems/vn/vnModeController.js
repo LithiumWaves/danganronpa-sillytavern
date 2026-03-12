@@ -650,32 +650,35 @@ function createVnModeController() {
         if (!source.trim()) return [];
 
         const segments = [];
-        let buffer = '';
-        let inDialogue = false;
+        const quoteRegex = /(["“][^"”]*["”])/g;
+        let lastIndex = 0;
+        let match;
 
-        for (const char of source) {
-            const isQuote = char === '"' || char === '“' || char === '”';
-            if (isQuote) {
-                if (buffer) {
-                    segments.push({
-                        type: inDialogue ? 'dialogue' : 'action',
-                        text: buffer,
-                    });
-                    buffer = '';
-                }
-                inDialogue = !inDialogue;
-                buffer += char;
-                continue;
+        while ((match = quoteRegex.exec(source)) !== null) {
+            if (match.index > lastIndex) {
+                segments.push({
+                    type: 'action',
+                    text: source.slice(lastIndex, match.index),
+                });
             }
 
-            buffer += char;
+            segments.push({
+                type: 'dialogue',
+                text: match[0],
+            });
+
+            lastIndex = quoteRegex.lastIndex;
         }
 
-        if (buffer) {
+        if (lastIndex < source.length) {
             segments.push({
-                type: inDialogue ? 'dialogue' : 'action',
-                text: buffer,
+                type: 'action',
+                text: source.slice(lastIndex),
             });
+        }
+
+        if (!segments.length) {
+            return [{ type: 'action', text: source }];
         }
 
         return segments.filter((segment) => segment.text.trim().length > 0);
@@ -689,8 +692,14 @@ function createVnModeController() {
 
         if (!segments.length) {
             textEl.textContent = chunk;
+            textEl.classList.remove('has-dialogue', 'has-action');
             return;
         }
+
+        const hasDialogue = segments.some((segment) => segment.type === 'dialogue');
+        const hasAction = segments.some((segment) => segment.type === 'action');
+        textEl.classList.toggle('has-dialogue', hasDialogue);
+        textEl.classList.toggle('has-action', hasAction);
 
         for (const segment of segments) {
             const segmentEl = document.createElement('span');
