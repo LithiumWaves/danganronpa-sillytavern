@@ -645,12 +645,68 @@ function createVnModeController() {
         });
     }
 
+    function parsePresentationSegments(text = '') {
+        const source = String(text || '');
+        if (!source.trim()) return [];
+
+        const segments = [];
+        let buffer = '';
+        let inDialogue = false;
+
+        for (const char of source) {
+            const isQuote = char === '"' || char === '“' || char === '”';
+            if (isQuote) {
+                if (buffer) {
+                    segments.push({
+                        type: inDialogue ? 'dialogue' : 'action',
+                        text: buffer,
+                    });
+                    buffer = '';
+                }
+                inDialogue = !inDialogue;
+                buffer += char;
+                continue;
+            }
+
+            buffer += char;
+        }
+
+        if (buffer) {
+            segments.push({
+                type: inDialogue ? 'dialogue' : 'action',
+                text: buffer,
+            });
+        }
+
+        return segments.filter((segment) => segment.text.trim().length > 0);
+    }
+
+    function renderChunkText(chunk = '') {
+        if (!textEl) return;
+
+        const segments = parsePresentationSegments(chunk);
+        textEl.textContent = '';
+
+        if (!segments.length) {
+            textEl.textContent = chunk;
+            return;
+        }
+
+        for (const segment of segments) {
+            const segmentEl = document.createElement('span');
+            segmentEl.className = `dangan-vn-segment dangan-vn-segment-${segment.type}`;
+            segmentEl.textContent = segment.text;
+            textEl.appendChild(segmentEl);
+        }
+    }
+
+
 
     function renderCurrent() {
         const messages = getMessageEntries();
         if (!messages.length) {
             nameEl.textContent = 'SYSTEM';
-            textEl.textContent = 'No character replies available yet. Send a message and wait for a character response.';
+            renderChunkText('No character replies available yet. Send a message and wait for a character response.');
             updateNavigationState(messages);
             return;
         }
@@ -663,14 +719,14 @@ function createVnModeController() {
 
         if (!chunks.length) {
             nameEl.textContent = entry.name || 'UNKNOWN';
-            textEl.textContent = '...';
+            renderChunkText('...');
             updateNavigationState(messages);
             return;
         }
 
         chunkIndex = Math.max(0, Math.min(chunkIndex, chunks.length - 1));
         nameEl.textContent = entry.name || 'UNKNOWN';
-        textEl.textContent = chunks[chunkIndex];
+        renderChunkText(chunks[chunkIndex]);
         updateNavigationState(messages);
         pulseText();
     }
