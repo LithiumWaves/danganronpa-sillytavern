@@ -4878,6 +4878,7 @@ body.dangan-trial-vn-chat-hidden #chat {
     padding-right: 2px;
 }
 
+
 .dangan-vn-text {
     min-height: 78px;
     font-size: clamp(16px, 2.2vw, 24px);
@@ -4885,6 +4886,25 @@ body.dangan-trial-vn-chat-hidden #chat {
     letter-spacing: 0.01em;
     font-family: "Rajdhani", "Orbitron", monospace;
 }
+
+.dangan-vn-segment {
+    display: inline;
+}
+
+.dangan-vn-segment + .dangan-vn-segment {
+    margin-left: 0.35ch;
+}
+
+.dangan-vn-segment-action {
+    color: rgba(206, 230, 255, 0.88);
+    font-style: italic;
+}
+
+.dangan-vn-segment-dialogue {
+    color: #f8f9ff;
+    font-weight: 600;
+}
+
 
 .dangan-vn-text-pulse {
     animation: danganVnTextPulse 140ms ease-out;
