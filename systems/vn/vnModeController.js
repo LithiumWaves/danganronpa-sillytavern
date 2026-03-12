@@ -188,6 +188,7 @@ function createVnModeController() {
                 <div class="dangan-vn-position" id="dangan-vn-position" aria-live="polite">Line 0 / 0</div>
             </div>
             <div class="dangan-vn-text-wrap">
+                <div class="dangan-vn-line-type" id="dangan-vn-line-type" aria-live="polite">SYSTEM</div>
                 <div class="dangan-vn-text" id="dangan-vn-text">Visual Novel Mode ready.</div>
             </div>
             <div class="dangan-vn-footer">
@@ -219,6 +220,7 @@ function createVnModeController() {
     const nameEl = host.querySelector('#dangan-vn-name');
     const positionEl = host.querySelector('#dangan-vn-position');
     const textEl = host.querySelector('#dangan-vn-text');
+    const lineTypeEl = host.querySelector('#dangan-vn-line-type');
     const progressFillEl = host.querySelector('#dangan-vn-progress-fill');
     const prevBtnEl = host.querySelector('#dangan-vn-prev');
     const nextBtnEl = host.querySelector('#dangan-vn-next');
@@ -645,12 +647,86 @@ function createVnModeController() {
         });
     }
 
+    function parsePresentationSegments(text = '') {
+        const source = String(text || '').trim();
+        if (!source) return { mode: 'empty', segments: [] };
+
+        const quotePattern = /(["“][^"”]+["”])/g;
+        const segments = [];
+        let lastIndex = 0;
+        let match;
+
+        while ((match = quotePattern.exec(source)) !== null) {
+            if (match.index > lastIndex) {
+                const actionSlice = source.slice(lastIndex, match.index).trim();
+                if (actionSlice) {
+                    segments.push({ type: 'action', text: actionSlice });
+                }
+            }
+
+            const dialogueSlice = String(match[0] || '').trim();
+            if (dialogueSlice) {
+                segments.push({ type: 'dialogue', text: dialogueSlice });
+            }
+
+            lastIndex = quotePattern.lastIndex;
+        }
+
+        if (lastIndex < source.length) {
+            const tail = source.slice(lastIndex).trim();
+            if (tail) {
+                segments.push({ type: 'action', text: tail });
+            }
+        }
+
+        if (!segments.length) {
+            return { mode: 'action', segments: [{ type: 'action', text: source }] };
+        }
+
+        const hasDialogue = segments.some((segment) => segment.type === 'dialogue');
+        const hasAction = segments.some((segment) => segment.type === 'action');
+        const mode = hasDialogue && hasAction ? 'mixed' : (hasDialogue ? 'dialogue' : 'action');
+        return { mode, segments };
+    }
+
+    function renderChunkText(chunk = '') {
+        if (!textEl) return;
+
+        const { mode, segments } = parsePresentationSegments(chunk);
+        textEl.classList.remove('is-action', 'is-dialogue', 'is-mixed');
+        textEl.classList.add(`is-${mode === 'empty' ? 'action' : mode}`);
+        textEl.textContent = '';
+
+        for (const segment of segments) {
+            const segmentEl = document.createElement('span');
+            segmentEl.className = `dangan-vn-segment dangan-vn-segment-${segment.type}`;
+            segmentEl.textContent = segment.text;
+            textEl.appendChild(segmentEl);
+        }
+
+        if (!segments.length) {
+            textEl.textContent = chunk;
+        }
+
+        if (lineTypeEl) {
+            const label = mode === 'mixed'
+                ? 'MIXED'
+                : mode === 'dialogue'
+                    ? 'DIALOGUE'
+                    : mode === 'action'
+                        ? 'ACTION'
+                        : 'SYSTEM';
+            lineTypeEl.textContent = label;
+            lineTypeEl.dataset.mode = mode;
+        }
+    }
+
 
     function renderCurrent() {
         const messages = getMessageEntries();
         if (!messages.length) {
             nameEl.textContent = 'SYSTEM';
-            textEl.textContent = 'No character replies available yet. Send a message and wait for a character response.';
+            renderChunkText('No character replies available yet. Send a message and wait for a character response.');
             updateNavigationState(messages);
             return;
         }
@@ -663,14 +739,14 @@ function createVnModeController() {
 
         if (!chunks.length) {
             nameEl.textContent = entry.name || 'UNKNOWN';
-            textEl.textContent = '...';
+            renderChunkText('...');
             updateNavigationState(messages);
             return;
         }
 
         chunkIndex = Math.max(0, Math.min(chunkIndex, chunks.length - 1));
         nameEl.textContent = entry.name || 'UNKNOWN';
-        textEl.textContent = chunks[chunkIndex];
+        renderChunkText(chunks[chunkIndex]);
         updateNavigationState(messages);
         pulseText();
     }
