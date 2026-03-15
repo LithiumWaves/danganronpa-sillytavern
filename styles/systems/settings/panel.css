@@ -181,9 +181,16 @@
     gap: 8px;
 }
 
+.settings-select {
+    width: 95%;
+}
+
+.settings-input {
+    width: 95%;
+}
+
 .settings-select,
 .settings-input {
-    width: 100%;
     border: 1px solid rgba(126, 173, 255, 0.35);
     border-radius: 6px;
     background: rgba(5, 13, 23, 0.88);
@@ -214,6 +221,7 @@
     font-size: 10px;
     letter-spacing: 0.05em;
     color: rgba(210, 228, 255, 0.85);
+    margin-left: 12px;
 }
 
 .settings-checkbox-row input {
@@ -264,7 +272,10 @@
     accent-color: #54dfff;
 }
 
-#dangan_crt_value {
+#dangan_crt_value,
+#dangan_sounds_value,
+#dangan_announcement_value,
+#dangan_monomono_value {
     color: #9deeff;
     letter-spacing: 0.08em;
 }

@@ -1,0 +1,794 @@
+/* =============================================================================
+   Expression VFX / SFX System
+   ============================================================================= */
+
+/* ── Modal Overlay ─────────────────────────────────────────────────────────── */
+
+.monopad-vfx-overlay {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: radial-gradient(circle at 50% 22%, rgba(14, 6, 36, 0.7), rgba(3, 2, 10, 0.93));
+    z-index: 2147483599;
+}
+
+.monopad-vfx-overlay.open {
+    display: flex;
+}
+
+.monopad-vfx-window {
+    width: min(560px, 96vw);
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgba(125, 157, 255, 0.38);
+    border-radius: 10px;
+    background: linear-gradient(180deg, rgba(10, 14, 28, 0.98), rgba(6, 9, 18, 1));
+    box-shadow:
+        0 14px 44px rgba(0, 0, 0, 0.6),
+        0 0 0 1px rgba(255, 255, 255, 0.04),
+        inset 0 0 0 1px rgba(121, 170, 255, 0.06);
+    overflow: hidden;
+}
+
+/* ── Header ────────────────────────────────────────────────────────────────── */
+
+.monopad-vfx-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px 12px;
+    border-bottom: 1px solid rgba(121, 170, 255, 0.2);
+    background: linear-gradient(180deg, rgba(18, 22, 44, 0.82), rgba(8, 11, 22, 0.72));
+    flex-shrink: 0;
+}
+
+.monopad-vfx-title {
+    font-family: "Orbitron", monospace;
+    font-size: 13px;
+    letter-spacing: 0.18em;
+    color: #f0f6ff;
+    text-transform: uppercase;
+}
+
+.monopad-vfx-subtitle {
+    font-family: "Rajdhani", monospace;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    color: #7ab8ff;
+    margin-top: 3px;
+    text-transform: uppercase;
+}
+
+.monopad-vfx-header-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.monopad-vfx-master-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: "Rajdhani", monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: rgba(188, 215, 255, 0.8);
+    text-transform: uppercase;
+}
+
+.monopad-vfx-close {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    border: 1px solid rgba(117, 241, 255, 0.5);
+    background: rgba(5, 14, 25, 0.85);
+    color: #c8e8ff;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+
+.monopad-vfx-close:hover,
+.monopad-vfx-close:focus-visible {
+    border-color: rgba(159, 252, 255, 0.9);
+    box-shadow: 0 0 14px rgba(117, 241, 255, 0.3);
+    transform: translateY(-1px);
+    outline: none;
+}
+
+/* ── Body ──────────────────────────────────────────────────────────────────── */
+
+.monopad-vfx-body {
+    padding: 14px 16px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    flex: 1;
+}
+
+.monopad-vfx-body::-webkit-scrollbar { width: 5px; }
+.monopad-vfx-body::-webkit-scrollbar-thumb {
+    background: rgba(102, 172, 255, 0.4);
+    border-radius: 999px;
+}
+
+.monopad-vfx-note {
+    font-family: "Rajdhani", monospace;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: rgba(188, 215, 255, 0.72);
+    margin-bottom: 12px;
+    line-height: 1.4;
+}
+
+/* ── Emotion Grid ──────────────────────────────────────────────────────────── */
+
+.monopad-vfx-emotion-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.dr-vfx-emotion-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid rgba(121, 170, 255, 0.18);
+    border-radius: 6px;
+    background: linear-gradient(180deg, rgba(8, 14, 25, 0.85), rgba(5, 9, 16, 0.8));
+    transition: background 0.12s, border-color 0.12s;
+}
+
+.dr-vfx-emotion-row:hover {
+    background: linear-gradient(180deg, rgba(14, 22, 42, 0.9), rgba(8, 13, 24, 0.88));
+    border-color: rgba(121, 170, 255, 0.3);
+}
+
+.dr-vfx-emotion-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 88px;
+}
+
+.dr-vfx-emotion-name {
+    font-family: "Orbitron", monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: #e4efff;
+    text-transform: uppercase;
+}
+
+.dr-vfx-emotion-type {
+    font-family: "Rajdhani", monospace;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    color: rgba(117, 178, 255, 0.6);
+    text-transform: uppercase;
+}
+
+.dr-vfx-emotion-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+/* ON / OFF toggle */
+.dr-vfx-toggle-btn {
+    min-width: 36px;
+    padding: 4px 7px;
+    border: 1px solid rgba(88, 128, 200, 0.4);
+    border-radius: 4px;
+    background: rgba(6, 12, 22, 0.88);
+    color: rgba(160, 190, 240, 0.6);
+    font-family: "Orbitron", monospace;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: border-color 0.12s, background 0.12s, color 0.12s, box-shadow 0.12s;
+}
+
+.dr-vfx-toggle-btn.on {
+    border-color: rgba(70, 220, 255, 0.7);
+    background: linear-gradient(90deg, rgba(24, 80, 160, 0.6), rgba(24, 120, 200, 0.5));
+    color: #a8f0ff;
+    box-shadow: 0 0 8px rgba(70, 220, 255, 0.18);
+}
+
+.dr-vfx-toggle-btn:hover {
+    border-color: rgba(100, 180, 255, 0.65);
+}
+
+/* Master enable toggle */
+#monopad-vfx-master-toggle {
+    padding: 4px 10px;
+    border: 1px solid rgba(88, 128, 200, 0.4);
+    border-radius: 4px;
+    background: rgba(6, 12, 22, 0.88);
+    color: rgba(160, 190, 240, 0.6);
+    font-family: "Orbitron", monospace;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: border-color 0.12s, background 0.12s, color 0.12s, box-shadow 0.12s;
+}
+
+#monopad-vfx-master-toggle.on {
+    border-color: rgba(70, 220, 255, 0.7);
+    background: linear-gradient(90deg, rgba(24, 80, 160, 0.6), rgba(24, 120, 200, 0.5));
+    color: #a8f0ff;
+    box-shadow: 0 0 8px rgba(70, 220, 255, 0.18);
+}
+
+/* Mute button */
+.dr-vfx-mute-btn {
+    width: 26px;
+    height: 26px;
+    border: 1px solid rgba(88, 128, 200, 0.32);
+    border-radius: 4px;
+    background: rgba(6, 12, 22, 0.7);
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: border-color 0.12s, background 0.12s;
+}
+
+.dr-vfx-mute-btn.on {
+    border-color: rgba(70, 220, 255, 0.5);
+    background: rgba(10, 28, 55, 0.8);
+}
+
+/* Volume slider */
+.dr-vfx-volume-slider {
+    width: 62px;
+    height: 14px;
+    accent-color: #54dfff;
+    cursor: pointer;
+}
+
+/* SFX file select */
+.dr-vfx-sfx-select {
+    border: 1px solid rgba(88, 128, 200, 0.32);
+    border-radius: 4px;
+    background: rgba(5, 10, 20, 0.88);
+    color: rgba(170, 200, 255, 0.85);
+    font-family: "Rajdhani", monospace;
+    font-size: 10px;
+    padding: 3px 5px;
+    max-width: 90px;
+    cursor: pointer;
+}
+
+/* Preview button */
+.dr-vfx-preview-btn {
+    width: 26px;
+    height: 26px;
+    border: 1px solid rgba(88, 128, 200, 0.32);
+    border-radius: 4px;
+    background: rgba(6, 12, 22, 0.7);
+    color: #9be8ff;
+    font-size: 11px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: border-color 0.12s, background 0.12s;
+}
+
+.dr-vfx-preview-btn:hover {
+    border-color: rgba(70, 220, 255, 0.6);
+    background: rgba(10, 28, 55, 0.85);
+}
+
+/* Settings panel "Configure Expressions" button */
+#dangan_configure_vfx {
+    background: linear-gradient(90deg, rgba(16, 30, 58, 0.9), rgba(12, 22, 44, 0.9));
+    border-color: rgba(100, 180, 255, 0.5);
+    color: #c8e8ff;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+#dangan_configure_vfx:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+#dangan_configure_vfx:hover {
+    border-color: rgba(70, 220, 255, 0.85);
+    box-shadow: 0 0 10px rgba(70, 220, 255, 0.2);
+    background: linear-gradient(90deg, rgba(20, 42, 80, 0.92), rgba(14, 32, 60, 0.92));
+}
+
+/* ── CSS VFX Animation Classes ─────────────────────────────────────────────── */
+
+/* Realization — bright flash + upward lurch */
+@keyframes dr-vfx-realization-anim {
+    0%   { filter: brightness(1) contrast(1); transform: translateY(0) scale(1); }
+    12%  { filter: brightness(2.4) contrast(1.3); transform: translateY(-8px) scale(1.04); }
+    28%  { filter: brightness(1.8) contrast(1.1); transform: translateY(-4px) scale(1.02); }
+    55%  { filter: brightness(1); transform: translateY(0) scale(1); }
+    72%  { filter: brightness(1.15); transform: translateY(-3px) scale(1.01); }
+    100% { filter: brightness(1) contrast(1); transform: translateY(0) scale(1); }
+}
+
+.dr-vfx-realization {
+    animation: dr-vfx-realization-anim 1s cubic-bezier(0.22, 0.74, 0.4, 1) forwards;
+}
+
+/* Surprise — quick scale-in bounce */
+@keyframes dr-vfx-surprise-anim {
+    0%   { transform: scale(1) rotate(0deg); }
+    8%   { transform: scale(1.08) rotate(-2deg); }
+    20%  { transform: scale(0.94) rotate(1.5deg); }
+    34%  { transform: scale(1.05) rotate(-1deg); }
+    52%  { transform: scale(0.98) rotate(0.5deg); }
+    72%  { transform: scale(1.02) rotate(0deg); }
+    100% { transform: scale(1) rotate(0deg); }
+}
+
+.dr-vfx-surprise {
+    animation: dr-vfx-surprise-anim 1s cubic-bezier(0.3, 0.8, 0.4, 1) forwards;
+}
+
+/* Fear — rapid horizontal shake */
+@keyframes dr-vfx-fear-anim {
+    0%   { transform: translateX(0); }
+    8%   { transform: translateX(-7px); }
+    16%  { transform: translateX(7px); }
+    24%  { transform: translateX(-6px); }
+    32%  { transform: translateX(6px); }
+    40%  { transform: translateX(-5px); }
+    48%  { transform: translateX(5px); }
+    58%  { transform: translateX(-3px); }
+    68%  { transform: translateX(3px); }
+    80%  { transform: translateX(-1px); }
+    100% { transform: translateX(0); }
+}
+
+.dr-vfx-fear {
+    animation: dr-vfx-fear-anim 1s linear forwards;
+}
+
+/* Anger — shake + red tint */
+@keyframes dr-vfx-anger-anim {
+    0%   { transform: translateX(0) translateY(0); filter: brightness(1); }
+    6%   { transform: translateX(-8px) translateY(-2px); filter: brightness(1.3) sepia(0.4) saturate(2) hue-rotate(-10deg); }
+    14%  { transform: translateX(8px) translateY(1px);   filter: brightness(1.4) sepia(0.5) saturate(2.2) hue-rotate(-12deg); }
+    22%  { transform: translateX(-7px) translateY(-1px); }
+    30%  { transform: translateX(7px) translateY(2px);   filter: brightness(1.3) sepia(0.4) saturate(2) hue-rotate(-10deg); }
+    42%  { transform: translateX(-5px) translateY(0);    filter: brightness(1.15) sepia(0.2); }
+    56%  { transform: translateX(4px);                   filter: brightness(1.05); }
+    70%  { transform: translateX(-2px);                  filter: brightness(1); }
+    100% { transform: translateX(0) translateY(0);       filter: brightness(1); }
+}
+
+.dr-vfx-anger {
+    animation: dr-vfx-anger-anim 1s linear forwards;
+}
+
+/* Excitement — energetic bounce */
+@keyframes dr-vfx-excitement-anim {
+    0%   { transform: translateY(0) scale(1); }
+    15%  { transform: translateY(-14px) scale(1.04, 0.96); }
+    30%  { transform: translateY(0) scale(0.96, 1.04); }
+    45%  { transform: translateY(-8px) scale(1.02, 0.98); }
+    60%  { transform: translateY(0) scale(0.98, 1.02); }
+    75%  { transform: translateY(-4px) scale(1.01, 0.99); }
+    100% { transform: translateY(0) scale(1); }
+}
+
+.dr-vfx-excitement {
+    animation: dr-vfx-excitement-anim 0.7s cubic-bezier(0.4, 0.8, 0.4, 1) forwards;
+}
+
+/* Nervousness — subtle continuous tremor */
+@keyframes dr-vfx-nervousness-anim {
+    0%   { transform: translateX(0) translateY(0); }
+    10%  { transform: translateX(-3px) translateY(1px); }
+    20%  { transform: translateX(2px) translateY(-1px); }
+    30%  { transform: translateX(-2px) translateY(2px); }
+    40%  { transform: translateX(3px) translateY(-1px); }
+    50%  { transform: translateX(-1px) translateY(1px); }
+    60%  { transform: translateX(2px) translateY(0); }
+    70%  { transform: translateX(-2px) translateY(-1px); }
+    80%  { transform: translateX(1px) translateY(1px); }
+    90%  { transform: translateX(-1px) translateY(0); }
+    100% { transform: translateX(0) translateY(0); }
+}
+
+.dr-vfx-nervousness {
+    animation: dr-vfx-nervousness-anim 0.9s linear forwards;
+}
+
+/* Disgust — slow lurch / turn away */
+@keyframes dr-vfx-disgust-anim {
+    0%   { transform: rotate(0deg) translateX(0);   filter: brightness(1) saturate(1); }
+    15%  { transform: rotate(-2deg) translateX(-5px); filter: brightness(0.9) saturate(0.85); }
+    40%  { transform: rotate(-3deg) translateX(-8px); filter: brightness(0.88) saturate(0.8); }
+    65%  { transform: rotate(-2deg) translateX(-5px); filter: brightness(0.92); }
+    85%  { transform: rotate(-1deg) translateX(-2px); filter: brightness(0.96); }
+    100% { transform: rotate(0deg) translateX(0);    filter: brightness(1) saturate(1); }
+}
+
+.dr-vfx-disgust {
+    animation: dr-vfx-disgust-anim 0.8s ease-in-out forwards;
+}
+
+/* ── Particle Overlay Layers ───────────────────────────────────────────────── */
+
+.dr-vfx-stars-layer,
+.dr-vfx-hearts-layer,
+.dr-vfx-drops-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+/* Stars (joy) — element drifts up; ::before handles scale/opacity/rotate */
+.dr-vfx-star {
+    position: absolute;
+    display: block;
+    line-height: 1;
+    transform: translate(-50%, -50%);
+    animation: dr-vfx-star-drift 1s linear forwards;
+}
+
+.dr-vfx-star::before {
+    content: '✦';
+    display: block;
+    color: #FFD700;
+    text-shadow:
+        0 0 6px  #ffffff,
+        0 0 14px #ffffff,
+        0 0 28px #FFD700,
+        0 0 48px #FFD700;
+    opacity: 0;
+    animation: dr-vfx-star-pop 1s ease forwards;
+}
+
+@keyframes dr-vfx-star-drift {
+    from { transform: translate(-50%, -50%) translateY(0px); }
+    to   { transform: translate(-50%, -50%) translateY(-60px); }
+}
+
+@keyframes dr-vfx-star-pop {
+    0%   { opacity: 0;   transform: scale(0.2)  rotate(0deg); }
+    28%  { opacity: 1;   transform: scale(1)    rotate(22deg); }
+    65%  { opacity: 0.9; transform: scale(1.25) rotate(-12deg); }
+    100% { opacity: 0;   transform: scale(1.8)  rotate(10deg); }
+}
+
+/* Hearts (love) — element drifts up; ::before handles scale/opacity/rotate */
+.dr-vfx-heart {
+    position: absolute;
+    display: block;
+    line-height: 1;
+    transform: translate(-50%, -50%);
+    animation: dr-vfx-heart-drift 1s linear forwards;
+}
+
+.dr-vfx-heart::before {
+    content: '❤';
+    display: block;
+    color: #FF2D55;
+    text-shadow:
+        0 0 6px  #FF2D55,
+        0 0 14px #FF2D55,
+        0 0 28px #ff8fab,
+        0 0 48px #FF2D55;
+    opacity: 0;
+    animation: dr-vfx-heart-pop 1s ease forwards;
+}
+
+@keyframes dr-vfx-heart-drift {
+    from { transform: translate(-50%, -50%) translateY(0px); }
+    to   { transform: translate(-50%, -50%) translateY(-60px); }
+}
+
+@keyframes dr-vfx-heart-pop {
+    0%   { opacity: 0;   transform: scale(0.2)  rotate(-10deg); }
+    28%  { opacity: 1;   transform: scale(1)    rotate(8deg); }
+    65%  { opacity: 0.9; transform: scale(1.2)  rotate(-5deg); }
+    100% { opacity: 0;   transform: scale(1.7)  rotate(6deg); }
+}
+
+/* Drops / tears (embarrassment) — element drifts; ::before is the teardrop shape */
+.dr-vfx-drop {
+    position: absolute;
+    display: block;
+    filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.55)) drop-shadow(0 0 10px rgba(255, 255, 255, 0.25));
+    animation: dr-vfx-drop-drift 0.45s linear 0ms 5 forwards;
+}
+
+.dr-vfx-drop::before {
+    content: '';
+    display: block;
+    width:  var(--drop-w, 8px);
+    height: var(--drop-h, 12px);
+    background: linear-gradient(to top, transparent 0%, rgba(255, 255, 255, 0.88) 100%);
+    border-radius: 50% 50% 0 0;
+    rotate: var(--drop-rotate, 0deg);
+    opacity: 0;
+    animation: dr-vfx-drop-fade 0.45s ease 0ms 5 forwards;
+}
+
+@keyframes dr-vfx-drop-drift {
+    from { transform: translate(-50%, -50%) translate(0px, 0px); }
+    to   { transform: translate(-50%, -50%) translate(var(--drift-x, 0px), var(--drift-y, -52px)); }
+}
+
+@keyframes dr-vfx-drop-fade {
+    0%   { opacity: 0; }
+    18%  { opacity: 0.9; }
+    72%  { opacity: 0.75; }
+    100% { opacity: 0; }
+}
+
+/* ── Emotion name as clickable preview trigger ─────────────────────────────── */
+
+.dr-vfx-emotion-preview-trigger {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    text-align: left;
+    font-family: "Orbitron", monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: #e4efff;
+    text-transform: uppercase;
+    transition: color 0.12s;
+}
+
+.dr-vfx-emotion-preview-trigger:hover {
+    color: #7dd4ff;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+/* ── Preview Modal Overlay ─────────────────────────────────────────────────── */
+
+.monopad-vfx-preview-overlay {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.78);
+    z-index: 2147483599;
+}
+
+.monopad-vfx-preview-overlay.open {
+    display: flex;
+}
+
+.monopad-vfx-preview-window {
+    width: min(920px, 95vw);
+    height: min(560px, 84vh);
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgba(125, 157, 255, 0.38);
+    border-radius: 10px;
+    background: linear-gradient(180deg, rgba(10, 14, 28, 0.99), rgba(6, 9, 18, 1));
+    box-shadow:
+        0 18px 50px rgba(0, 0, 0, 0.7),
+        0 0 0 1px rgba(255, 255, 255, 0.04),
+        inset 0 0 0 1px rgba(121, 170, 255, 0.06);
+    overflow: hidden;
+}
+
+/* Header */
+.monopad-vfx-preview-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px 12px;
+    border-bottom: 1px solid rgba(121, 170, 255, 0.2);
+    background: linear-gradient(180deg, rgba(18, 22, 44, 0.82), rgba(8, 11, 22, 0.72));
+    flex-shrink: 0;
+}
+
+.monopad-vfx-preview-emotion {
+    font-family: "Orbitron", monospace;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    color: #7ab8ff;
+    margin-top: 3px;
+    text-transform: uppercase;
+}
+
+/* Body — two-column split */
+.monopad-vfx-preview-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+}
+
+/* Editor column */
+.monopad-vfx-preview-editor-col {
+    width: 42%;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    border-right: 1px solid rgba(121, 170, 255, 0.14);
+}
+
+/* Accordion */
+.monopad-vfx-accordion-section {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgba(88, 128, 200, 0.2);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.monopad-vfx-accordion-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 12px;
+    background: rgba(10, 16, 34, 0.85);
+    border: none;
+    cursor: pointer;
+    font-family: "Orbitron", monospace;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    color: rgba(117, 178, 255, 0.7);
+    text-transform: uppercase;
+    text-align: left;
+    transition: background 0.12s, color 0.12s;
+}
+
+.monopad-vfx-accordion-header:hover {
+    background: rgba(14, 22, 48, 0.95);
+    color: rgba(150, 200, 255, 0.9);
+}
+
+.monopad-vfx-accordion-arrow {
+    font-size: 11px;
+    transition: transform 0.18s;
+    display: inline-block;
+}
+
+.monopad-vfx-accordion-header[aria-expanded="false"] .monopad-vfx-accordion-arrow {
+    transform: rotate(-90deg);
+}
+
+.monopad-vfx-accordion-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.monopad-vfx-accordion-panel.collapsed {
+    display: none;
+}
+
+.monopad-vfx-preview-css-editor {
+    resize: vertical;
+    min-height: 120px;
+    border: 1px solid rgba(88, 128, 200, 0.28);
+    border-radius: 6px;
+    background: rgba(3, 5, 12, 0.97);
+    color: #b8d4ff;
+    font-family: "Courier New", "Consolas", monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    padding: 10px 12px;
+    tab-size: 4;
+    -webkit-tab-size: 4;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.monopad-vfx-preview-css-editor:focus {
+    border-color: rgba(70, 180, 255, 0.5);
+}
+
+.monopad-vfx-preview-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.monopad-vfx-preview-action-btn {
+    padding: 6px 14px;
+    border: 1px solid rgba(88, 128, 200, 0.38);
+    border-radius: 5px;
+    background: rgba(6, 12, 22, 0.9);
+    color: rgba(155, 185, 240, 0.7);
+    font-family: "Orbitron", monospace;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    transition: border-color 0.12s, background 0.12s, color 0.12s;
+}
+
+.monopad-vfx-preview-action-btn.primary {
+    border-color: rgba(70, 180, 255, 0.55);
+    color: #9cd8ff;
+}
+
+.monopad-vfx-preview-action-btn:hover {
+    border-color: rgba(100, 200, 255, 0.75);
+    background: rgba(12, 28, 56, 0.92);
+    color: #c4e8ff;
+}
+
+/* Stage column */
+.monopad-vfx-preview-stage-col {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    background:
+        radial-gradient(ellipse at 50% 80%, rgba(28, 16, 58, 0.55), transparent 60%),
+        linear-gradient(180deg, rgba(4, 6, 14, 0.92), rgba(7, 9, 20, 0.96));
+    overflow: hidden;
+}
+
+.monopad-vfx-preview-stage-col .dr-vfx-html-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.monopad-vfx-preview-img {
+    max-height: 100%;
+    max-width: 100%;
+    object-fit: contain;
+    object-position: bottom center;
+    display: block;
+}
+
+/* ── Responsive ────────────────────────────────────────────────────────────── */
+
+@media (max-width: 520px) {
+    .monopad-vfx-window {
+        max-height: 88vh;
+    }
+
+    .dr-vfx-volume-slider {
+        width: 48px;
+    }
+
+    .dr-vfx-sfx-select {
+        max-width: 72px;
+        font-size: 9px;
+    }
+
+    .dr-vfx-emotion-name {
+        font-size: 9px;
+    }
+
+    .monopad-vfx-header {
+        padding: 10px 12px;
+    }
+
+    .monopad-vfx-body {
+        padding: 10px 12px;
+    }
+}

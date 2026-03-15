@@ -129,7 +129,7 @@ function loadTruthBullets() {
    TRUTH BULLET FUNCTIONS
    ========================= */
 
-function addTruthBullet(title, description = "", { grantMonocoins = true, grantXp = true } = {}) {
+function addTruthBullet(title, description = "", { grantMonocoins = true, grantXp = true, image } = {}) {
     if (!title) return;
     if (truthBullets.some(tb => tb.title === title)) return;
 
@@ -137,7 +137,8 @@ function addTruthBullet(title, description = "", { grantMonocoins = true, grantX
         id: `tb_${Date.now()}`,
         title,
         description,
-        timestamp: new Date().toLocaleString()
+        timestamp: new Date().toLocaleString(),
+        ...(image ? { image } : {}),
     };
 
     truthBullets.push(bullet);
@@ -185,8 +186,10 @@ function showTruthBulletDetails(bullet) {
     const $details = $(".truth-details");
     if (!$details.length) return;
 
+    $details.css({ display: "flex", flexDirection: "row", gap: "16px", alignItems: "flex-start" });
+
     $details.html(`
-        <div class="truth-details-content">
+        <div class="truth-detail-main" style="flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto;">
             <div class="truth-title">${bullet.title}</div>
             <div class="truth-description">
                 ${bullet.description || "No further details recorded."}
@@ -194,15 +197,46 @@ function showTruthBulletDetails(bullet) {
             <div class="truth-meta">
                 OBTAINED: ${bullet.timestamp}
             </div>
-
             <button class="truth-remove-button">
                 DISCARD TRUTH BULLET
             </button>
+        </div>
+        <div class="truth-image-col" style="flex:2;min-width:0;display:flex;flex-direction:column;align-items:center;gap:8px;">
+            <div style="width:100%;background:radial-gradient(ellipse at 50% 60%,rgba(36,10,46,0.97),rgba(8,3,14,1));border:1px solid rgba(200,80,220,0.38);box-shadow:inset 0 0 60px rgba(0,0,0,0.55),0 0 12px rgba(180,60,200,0.12);padding:16px;box-sizing:border-box;position:relative;">
+                <div style="position:absolute;top:6px;left:6px;width:14px;height:14px;border-top:1px solid rgba(220,100,255,0.55);border-left:1px solid rgba(220,100,255,0.55);"></div>
+                <div style="position:absolute;bottom:6px;right:6px;width:14px;height:14px;border-bottom:1px solid rgba(220,100,255,0.55);border-right:1px solid rgba(220,100,255,0.55);"></div>
+                ${bullet.image ? `<img src="${bullet.image}" alt="" style="max-width:95%;height:auto;object-fit:contain;display:block;margin:16px auto;">` : ""}
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
+                <label style="background:transparent;border:1px solid rgba(255,210,60,0.6);color:#ffd43c;font-family:inherit;font-size:0.85rem;letter-spacing:0.08em;padding:6px 16px;cursor:pointer;transition:color 0.15s,border-color 0.15s,background 0.15s;">
+                    ${bullet.image ? "REPLACE" : "UPLOAD IMAGE"}
+                    <input type="file" accept="image/*" class="truth-image-input" style="display:none">
+                </label>
+                ${bullet.image ? `<button type="button" class="truth-image-delete-btn" style="background:transparent;border:1px solid rgba(255,60,60,0.6);color:#ff4a4a;font-family:inherit;font-size:0.85rem;letter-spacing:0.08em;padding:6px 16px;cursor:pointer;transition:color 0.15s,border-color 0.15s,background 0.15s;">DELETE</button>` : ""}
+            </div>
         </div>
     `);
 
     $details.find(".truth-remove-button").on("click", () => {
         removeTruthBullet(bullet.id);
+    });
+
+    $details.find(".truth-image-input").on("change", function () {
+        const file = this.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = e => {
+            bullet.image = e.target.result;
+            saveTruthBullets();
+            showTruthBulletDetails(bullet);
+        };
+        reader.readAsDataURL(file);
+    });
+
+    $details.find(".truth-image-delete-btn").on("click", () => {
+        delete bullet.image;
+        saveTruthBullets();
+        showTruthBulletDetails(bullet);
     });
 }
 
@@ -214,7 +248,7 @@ function removeTruthBullet(id) {
     saveTruthBullets();
 
     $(`.truth-item[data-id="${id}"]`).remove();
-    $(".truth-details").empty();
+    $(".truth-details").removeAttr("style").empty();
 
     if (!truthBullets.length) {
         $(".truth-list-items")

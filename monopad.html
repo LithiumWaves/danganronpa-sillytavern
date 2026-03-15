@@ -32,6 +32,7 @@
                 <div class="monopad-time-actions">
                     <button id="monopad-pass-time" class="monopad-time-button" type="button" title="Pass time to nighttime">PASS TIME</button>
                     <button id="monopad-sleep" class="monopad-time-button" type="button" title="Sleep until morning">SLEEP</button>
+                    <button id="monopad-investigation-underway" class="monopad-time-button monopad-investigation-underway-btn" type="button" disabled hidden>INVESTIGATION UNDERWAY</button>
                 </div>
             </div>
 
@@ -136,56 +137,57 @@
                         <div class="items-subtitle">PERSONAL EFFECTS / BEHAVIORAL MODULES</div>
                     </div>
 
-                    <div class="items-upper-grid">
-                        <aside class="items-filter-panel">
-                            <div class="items-panel-title">FILTER / SORT</div>
+                    <aside class="items-filter-panel">
+                        <div class="items-panel-title">FILTER / SORT</div>
 
-                            <div class="items-filter-group" role="tablist" aria-label="Item filters">
-                                <button class="items-filter-button active" data-filter="all" aria-selected="true">ALL</button>
-                                <button class="items-filter-button" data-filter="gift" aria-selected="false">GIFTS</button>
-                                <button class="items-filter-button" data-filter="skill" aria-selected="false">SKILLS</button>
-                                <button class="items-filter-button" data-filter="key" aria-selected="false">KEY ITEMS</button>
-                            </div>
+                        <div class="items-filter-group" role="tablist" aria-label="Item filters">
+                            <button class="items-filter-button active" data-filter="all" aria-selected="true">ALL</button>
+                            <button class="items-filter-button" data-filter="gift" aria-selected="false">GIFTS</button>
+                            <button class="items-filter-button" data-filter="skill" aria-selected="false">SKILLS</button>
+                            <button class="items-filter-button" data-filter="key" aria-selected="false">KEY ITEMS</button>
+                        </div>
 
-                            <div class="items-sort-group">
-                                <div class="items-sort-label">SORT</div>
-                                <label><input type="radio" name="items-sort" value="recent" checked> RECENT</label>
-                                <label><input type="radio" name="items-sort" value="rarity"> RARITY</label>
-                                <label><input type="radio" name="items-sort" value="category"> CATEGORY</label>
-                            </div>
+                        <div class="items-sort-group">
+                            <div class="items-sort-label">SORT</div>
+                            <label><input type="radio" name="items-sort" value="recent" checked> RECENT</label>
+                            <label><input type="radio" name="items-sort" value="rarity"> RARITY</label>
+                            <label><input type="radio" name="items-sort" value="category"> CATEGORY</label>
+                        </div>
 
-                            <div class="items-skill-shop-row" id="items-skill-shop-row" hidden>
-                                <button class="items-shop-button" id="items-skill-shop-button" type="button">SHOP</button>
-                                <div class="items-shop-hint">SPEND TRUST FRAGMENTS FOR NEW SKILLS</div>
-                            </div>
+                        <div class="items-coin-box" title="Monocoins counter">
+                            <span class="items-coin-label">MONOCOINS</span>
+                            <span class="items-coin-value" id="items-monocoin-value">0</span>
+                        </div>
 
-                            <div class="items-coin-box" title="Monocoins counter">
-                                <span class="items-coin-label">MONOCOINS</span>
-                                <span class="items-coin-value" id="items-monocoin-value">0</span>
-                            </div>
+                        <div class="items-coin-box items-fragment-box" title="Trust Fragments counter">
+                            <span class="items-coin-label">TRUST FRAGMENTS</span>
+                            <span class="items-coin-value" id="items-trust-fragment-value">0</span>
+                        </div>
 
-                            <div class="items-coin-box items-fragment-box" title="Trust Fragments counter">
-                                <span class="items-coin-label">TRUST FRAGMENTS</span>
-                                <span class="items-coin-value" id="items-trust-fragment-value">0</span>
-                            </div>
-
-                            <div class="items-coin-box items-skill-point-box" title="Skill Points counter">
-                                <span class="items-coin-label">SKILL POINTS</span>
-                                <span class="items-coin-value" id="items-skill-point-value">10</span>
-                            </div>
-                        </aside>
-
-                        <section class="items-detail-panel" id="items-detail-panel">
-                            <div class="items-panel-title">SELECTED ITEM</div>
-                            <div class="items-detail-placeholder">SELECT AN ITEM SLOT TO LOAD TERMINAL READOUT</div>
-                        </section>
-                    </div>
+                        <div class="items-coin-box items-skill-point-box" title="Skill Points counter">
+                            <span class="items-coin-label">SKILL POINTS</span>
+                            <span class="items-coin-value" id="items-skill-point-value">10</span>
+                        </div>
+                    </aside>
 
                     <div class="items-grid-panel">
-                        <div class="items-panel-title">INVENTORY GRID</div>
+                        <div class="items-panel-title items-grid-header">
+                            <span>INVENTORY GRID</span>
+                            <div class="items-skill-shop-row" id="items-skill-shop-row" hidden>
+                                <button class="items-shop-button" id="items-skill-shop-button" type="button">SHOP</button>
+                            </div>
+                            <div class="items-skill-shop-row" id="items-create-key-item-row" hidden>
+                                <button class="items-shop-button" id="items-create-key-item-button" type="button">+ CREATE</button>
+                            </div>
+                        </div>
                         <div class="items-grid" id="items-gift-list"></div>
                         <div class="items-grid-hint">HOVER = QUICK PREVIEW / CLICK = LOAD DETAILS</div>
                     </div>
+
+                    <section class="items-detail-panel" id="items-detail-panel">
+                        <div class="items-panel-title">SELECTED ITEM</div>
+                        <div class="items-detail-placeholder">SELECT AN ITEM SLOT TO LOAD TERMINAL READOUT</div>
+                    </section>
                 </div>
             </div>
 
@@ -201,34 +203,62 @@
                     </div>
 
                     <div class="social-report">
+                        <div class="social-no-character">
+                            <div class="social-no-char-grid"></div>
+                            <div class="social-no-char-content"></div>
+                        </div>
                         <div class="report-header">
-                            <div class="report-name">—</div>
-                            <div class="report-ultimate">ULTIMATE: ???</div>
+                            <div class="report-header-identity">
+                                <div class="report-name">—</div>
+                                <div class="report-ultimate">ULTIMATE: ???</div>
+                            </div>
+                            <button id="report-dead-toggle" class="report-dead-btn" type="button">MARK AS DEAD</button>
                         </div>
 
                         <div class="report-divider"></div>
 
-                        <div class="report-trust">
-                            <div class="trust-label">TRUST LEVEL</div>
-                            <div class="trust-bar">
-                                <div class="trust-segment"></div><div class="trust-segment"></div>
-                                <div class="trust-segment"></div><div class="trust-segment"></div>
-                                <div class="trust-segment"></div><div class="trust-segment"></div>
-                                <div class="trust-segment"></div><div class="trust-segment"></div>
-                                <div class="trust-segment"></div><div class="trust-segment"></div>
+                        <div class="report-body">
+                            <div class="report-main">
+                                <div class="report-trust">
+                                    <div class="trust-label">TRUST LEVEL</div>
+                                    <div class="trust-bar">
+                                        <div class="trust-segment"></div><div class="trust-segment"></div>
+                                        <div class="trust-segment"></div><div class="trust-segment"></div>
+                                        <div class="trust-segment"></div><div class="trust-segment"></div>
+                                        <div class="trust-segment"></div><div class="trust-segment"></div>
+                                        <div class="trust-segment"></div><div class="trust-segment"></div>
+                                    </div>
+                                    <div class="trust-value">1 / 10</div>
+                                </div>
+
+                                <div class="character-stats">
+                                    <div class="stat"><span class="label">Height</span><span class="value" id="stat-height">—</span></div>
+                                    <div class="stat"><span class="label">Measurements</span><span class="value" id="stat-measurements">—</span></div>
+                                    <div class="stat stat-wide"><span class="label">Personality</span><span class="value" id="stat-personality">—</span></div>
+                                    <div class="stat stat-wide"><span class="label">Likes</span><span class="value" id="stat-likes">—</span></div>
+                                    <div class="stat stat-wide"><span class="label">Dislikes</span><span class="value" id="stat-dislikes">—</span></div>
+                                </div>
+
+                                <div class="notes-content">SELECT A STUDENT</div>
                             </div>
-                            <div class="trust-value">1 / 10</div>
-                        </div>
 
-                        <div class="character-stats">
-                            <div class="stat"><span class="label">Height</span><span class="value" id="stat-height">—</span></div>
-                            <div class="stat"><span class="label">Measurements</span><span class="value" id="stat-measurements">—</span></div>
-                            <div class="stat stat-wide"><span class="label">Personality</span><span class="value" id="stat-personality">—</span></div>
-                            <div class="stat stat-wide"><span class="label">Likes</span><span class="value" id="stat-likes">—</span></div>
-                            <div class="stat stat-wide"><span class="label">Dislikes</span><span class="value" id="stat-dislikes">—</span></div>
+                            <div class="report-sprite-col">
+                                <img id="report-sprite-img" class="report-sprite-img" alt="" />
+                                <div class="report-dead-overlay" id="report-dead-overlay">
+                                    <svg class="dead-stamp-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" overflow="visible">
+                                        <!-- Crossed bars (behind everything) — parallelogram ends, 45° -->
+                                        <polygon points="91,-20 111,0 111,220 91,200" fill="rgb(185,15,15)" transform="rotate(45,100,100)"/>
+                                        <polygon points="111,-20 91,0 91,220 111,200" fill="rgb(185,15,15)" transform="rotate(-45,100,100)"/>
+                                        <!-- Outer diamond outline -->
+                                        <polygon points="100,6 194,100 100,194 6,100" fill="none" stroke="rgb(210,20,20)" stroke-width="3.5"/>
+                                        <!-- Inner diamond outline -->
+                                        <polygon points="100,21 179,100 100,179 21,100" fill="none" stroke="rgb(210,20,20)" stroke-width="2.5"/>
+<!-- DEAD — large, overflows diamond edges -->
+                                        <text x="100" y="100" text-anchor="middle" dominant-baseline="middle" font-family="Orbitron,monospace" font-size="64" font-weight="900" fill="rgb(130,6,6)" paint-order="stroke" stroke="rgb(220,22,22)" stroke-width="4" letter-spacing="2">DEAD</text>
+                                    </svg>
+                                </div>
+                            </div>
                         </div>
-
-                        <div class="notes-content">SELECT A STUDENT</div>
                     </div>
 
                 </div>
@@ -260,9 +290,33 @@
             <section class="settings-section">
                 <div class="settings-section-title">AUDIO</div>
 
-                <div class="settings-item">
+                <div class="settings-item settings-item-slider">
                     <span class="settings-label">MONOPAD SOUNDS</span>
-                    <button class="settings-toggle on" data-setting="monopadSounds"></button>
+                    <div class="settings-slider-wrap">
+                        <input type="range" id="dangan_sounds_slider" min="0" max="100" value="50">
+                        <span id="dangan_sounds_value">50%</span>
+                    </div>
+                </div>
+
+                <div class="settings-item">
+                    <span class="settings-label">MONOPAD JINGLE</span>
+                    <button class="settings-toggle on" data-setting="monopadJingleEnabled"></button>
+                </div>
+
+                <div class="settings-item settings-item-slider">
+                    <span class="settings-label">ANNOUNCEMENT SOUNDS</span>
+                    <div class="settings-slider-wrap">
+                        <input type="range" id="dangan_announcement_slider" min="0" max="100" value="65">
+                        <span id="dangan_announcement_value">65%</span>
+                    </div>
+                </div>
+
+                <div class="settings-item">
+                    <span class="settings-label">MONOKUMA LANGUAGE</span>
+                    <div class="settings-lang-toggle">
+                        <button class="settings-lang-btn" data-lang="EN" type="button">EN</button>
+                        <button class="settings-lang-btn active" data-lang="JP" type="button">JP</button>
+                    </div>
                 </div>
 
                 <div class="settings-item">
@@ -275,9 +329,23 @@
                     <button class="settings-toggle on" data-setting="truthBulletAnimations"></button>
                 </div>
 
-                <div class="settings-item">
+                <div class="settings-item settings-item-slider">
                     <span class="settings-label">MONOMONO BGM</span>
-                    <button class="settings-toggle on" data-setting="monochineTrackEnabled"></button>
+                    <div class="settings-slider-wrap">
+                        <input type="range" id="dangan_monomono_slider" min="0" max="100" value="40">
+                        <span id="dangan_monomono_value">40%</span>
+                    </div>
+                </div>
+
+                <div class="settings-item settings-item-stack">
+                    <span class="settings-label">INVESTIGATION TRACKS</span>
+                    <div class="settings-note">Select tracks that play after the Investigation SFX ends. A random selection is picked each time.</div>
+                    <div class="investigation-tracks-wrap">
+                        <div id="investigation-tracks-list" class="investigation-tracks-list"></div>
+                        <div id="investigation-selected-list" class="investigation-selected-list">
+                            <div class="investigation-selected-empty">NONE SELECTED</div>
+                        </div>
+                    </div>
                 </div>
             </section>
 
@@ -313,6 +381,24 @@
                     <button class="settings-toggle" data-setting="vnModeEnabled"></button>
                 </div>
 
+                <div class="settings-item">
+                    <span class="settings-label">DAILY / DEADLY LIFE DYNAMIC THEMES</span>
+                    <button class="settings-toggle on" data-setting="dynamicThemes"></button>
+                </div>
+
+            </section>
+
+            <!-- FX -->
+            <section class="settings-section">
+                <div class="settings-section-title">FX</div>
+
+                <div class="settings-item settings-item-stack">
+                    <span class="settings-label">EXPRESSION VFX / SFX</span>
+                    <div class="settings-ai-actions">
+                        <button id="dangan_configure_vfx" class="settings-small-button" type="button">CONFIGURE EXPRESSIONS</button>
+                    </div>
+                    <div class="settings-note">Visual and audio effects on character expressions. Character-specific.</div>
+                </div>
             </section>
 
             <!-- PROGRESSION -->
@@ -434,6 +520,84 @@
                         <button id="monopad-breach-submit" type="button">EXECUTE</button>
                     </div>
                     <div id="monopad-breach-status" class="monopad-breach-status"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="monopad-vfx-overlay" class="monopad-vfx-overlay" aria-hidden="true">
+            <div class="monopad-vfx-window" role="dialog" aria-modal="true" aria-labelledby="monopad-vfx-title">
+                <div class="monopad-vfx-header">
+                    <div>
+                        <div class="monopad-vfx-title" id="monopad-vfx-title">EXPRESSION VFX</div>
+                        <div class="monopad-vfx-subtitle" id="monopad-vfx-char-name">FOR "—"</div>
+                    </div>
+                    <div class="monopad-vfx-header-controls">
+                        <div class="monopad-vfx-master-row">
+                            <span>ALL ANIMATIONS</span>
+                            <button id="monopad-vfx-master-toggle" class="on" type="button">ON</button>
+                        </div>
+                        <button id="monopad-vfx-close" class="monopad-vfx-close" type="button" aria-label="Close VFX settings">✕</button>
+                    </div>
+                </div>
+                <div class="monopad-vfx-body">
+                    <div class="monopad-vfx-note">Visual and audio effects triggered by character expressions. Settings are saved per character.</div>
+                    <div id="monopad-vfx-emotion-grid" class="monopad-vfx-emotion-grid"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="monopad-vfx-preview-overlay" class="monopad-vfx-preview-overlay" aria-hidden="true">
+            <div class="monopad-vfx-preview-window" role="dialog" aria-modal="true" aria-labelledby="monopad-vfx-preview-title">
+                <div class="monopad-vfx-preview-header">
+                    <div>
+                        <div class="monopad-vfx-title" id="monopad-vfx-preview-title">EXPRESSION PREVIEW</div>
+                        <div class="monopad-vfx-preview-emotion" id="monopad-vfx-preview-emotion-label">—</div>
+                    </div>
+                    <button id="monopad-vfx-preview-close" class="monopad-vfx-close" type="button" aria-label="Close preview">✕</button>
+                </div>
+                <div class="monopad-vfx-preview-body">
+                    <div class="monopad-vfx-preview-editor-col">
+                        <div class="monopad-vfx-accordion-section">
+                            <button class="monopad-vfx-accordion-header" type="button" data-accordion="css" aria-expanded="true">
+                                CSS <span class="monopad-vfx-accordion-arrow">▾</span>
+                            </button>
+                            <div class="monopad-vfx-accordion-panel" id="monopad-vfx-accordion-css">
+                                <textarea
+                                    id="monopad-vfx-preview-css-editor"
+                                    class="monopad-vfx-preview-css-editor"
+                                    spellcheck="false"
+                                    autocomplete="off"
+                                    autocorrect="off"
+                                    autocapitalize="off"
+                                ></textarea>
+                            </div>
+                        </div>
+                        <div class="monopad-vfx-accordion-section">
+                            <button class="monopad-vfx-accordion-header" type="button" data-accordion="html" aria-expanded="false">
+                                HTML <span class="monopad-vfx-accordion-arrow">▾</span>
+                            </button>
+                            <div class="monopad-vfx-accordion-panel collapsed" id="monopad-vfx-accordion-html">
+                                <textarea
+                                    id="monopad-vfx-preview-html-editor"
+                                    class="monopad-vfx-preview-css-editor"
+                                    spellcheck="false"
+                                    autocomplete="off"
+                                    autocorrect="off"
+                                    autocapitalize="off"
+                                    placeholder="<!-- HTML injected as overlay on expression trigger -->"
+                                ></textarea>
+                            </div>
+                        </div>
+                        <div class="monopad-vfx-preview-actions">
+                            <button id="monopad-vfx-preview-replay" class="monopad-vfx-preview-action-btn primary" type="button">↺ REPLAY</button>
+                            <button id="monopad-vfx-preview-save" class="monopad-vfx-preview-action-btn" type="button">SAVE</button>
+                            <button id="monopad-vfx-preview-save-all" class="monopad-vfx-preview-action-btn" type="button">SAVE FOR ALL</button>
+                            <button id="monopad-vfx-preview-reset" class="monopad-vfx-preview-action-btn" type="button">RESET</button>
+                        </div>
+                    </div>
+                    <div class="monopad-vfx-preview-stage-col">
+                        <img id="monopad-vfx-preview-img" class="monopad-vfx-preview-img" alt="Character expression" />
+                    </div>
                 </div>
             </div>
         </div>

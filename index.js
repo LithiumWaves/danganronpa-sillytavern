@@ -1,5 +1,5 @@
 import { extension_settings } from "../../../extensions.js";
-import { saveSettingsDebounced } from "../../../../script.js";
+import { saveSettingsDebounced, getRequestHeaders } from "../../../../script.js";
 import { initTruthBullets, handleTruthBullet, setNextTruthBulletSfxVariant } from "./truth/truthBullets.js";
 import { buildDecagram, crackShard, shatterShard } from "./trust/trustDecagram.js";
 import { initTrustAnimations, playTrustRankUp, playTrustRankDown, playTrustMaxed, playTrustToDistrustTransition, playDistrustRankDown, playDistrustRankUp, playDistrustToTrustRecovery } from "./trust/trustAnimations.js";
@@ -15,6 +15,8 @@ import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "./core/monokumaLessonScript.js";
 import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers } from "./monokuma/announcementController.js";
 import { createClassTrialMenuController } from "./trial/menu/classTrialMenu.js";
+import { initVfxSystem, onVfxChatChanged } from "./vfx/vfxSystem.js";
+import { user_avatar } from "../../../personas.js";
 
 window.refreshActiveCharacterUI = function () {
     if (!activeSocialCharacterId || !socialPanelController) return;
@@ -37,6 +39,7 @@ let monokumaLessonState = null;
 let vnModeController = null;
 let monokumaAnnouncementController = null;
 let classTrialMenuController = null;
+let vfxCleanup = null;
 
 const openRouterSettings = createOpenRouterSettingsManager({
     extensionName,
@@ -192,21 +195,32 @@ function renderTimeTrackerUi() {
     const readoutEl = document.getElementById("monopad-time-readout");
     const passTimeBtn = document.getElementById("monopad-pass-time");
     const sleepBtn = document.getElementById("monopad-sleep");
+    const investigationBtn = document.getElementById("monopad-investigation-underway");
 
     if (readoutEl) {
         readoutEl.textContent = getTimeReadoutLabel(state);
     }
 
-    if (passTimeBtn) {
-        const isDisabled = state.phase !== TIME_PHASE_DAY || state.dayActionUsed;
-        passTimeBtn.disabled = isDisabled;
-        passTimeBtn.setAttribute("aria-disabled", String(isDisabled));
-    }
+    if (investigationUnderway) {
+        if (passTimeBtn) passTimeBtn.hidden = true;
+        if (sleepBtn) sleepBtn.hidden = true;
+        if (investigationBtn) investigationBtn.hidden = false;
+    } else {
+        if (investigationBtn) investigationBtn.hidden = true;
 
-    if (sleepBtn) {
-        const isDisabled = state.phase !== TIME_PHASE_NIGHT;
-        sleepBtn.disabled = isDisabled;
-        sleepBtn.setAttribute("aria-disabled", String(isDisabled));
+        if (passTimeBtn) {
+            const isDisabled = state.phase !== TIME_PHASE_DAY || state.dayActionUsed;
+            passTimeBtn.hidden = false;
+            passTimeBtn.disabled = isDisabled;
+            passTimeBtn.setAttribute("aria-disabled", String(isDisabled));
+        }
+
+        if (sleepBtn) {
+            const isDisabled = state.phase !== TIME_PHASE_NIGHT;
+            sleepBtn.hidden = false;
+            sleepBtn.disabled = isDisabled;
+            sleepBtn.setAttribute("aria-disabled", String(isDisabled));
+        }
     }
 }
 
@@ -1765,6 +1779,128 @@ function ensureInvestigationOverlay() {
     return overlay;
 }
 
+let investigationTrackAudio = null;
+let investigationUnderway = false;
+
+function playInvestigationTrack() {
+    const tracks = getMonopadSetting("investigationTracks") || [];
+    if (!tracks.length) return;
+
+    const path = tracks[Math.floor(Math.random() * tracks.length)];
+    if (!path) return;
+
+    // Route through Dynamic Audio extension if available — shows in its UI
+    const $bgmSelect = $("#audio_bgm_select");
+    if ($bgmSelect.length) {
+        if (!$bgmSelect.find(`option[value="${CSS.escape ? path : path}"]`).length) {
+            const name = path.split("/").pop().replace(/\.[^/.]+$/, "");
+            $bgmSelect.append(new Option(`asset: ${name}`, path));
+        }
+        $bgmSelect.val(path).trigger("change");
+        console.log(`[Dangan][Investigation] Handing off to Dynamic Audio: ${path}`);
+        return;
+    }
+
+    // Fallback: direct audio if Dynamic Audio extension not loaded
+    if (investigationTrackAudio) {
+        investigationTrackAudio.pause();
+        investigationTrackAudio = null;
+    }
+
+    investigationTrackAudio = new Audio(path);
+    investigationTrackAudio.loop = true;
+    investigationTrackAudio.volume = Number(getMonopadSetting("monopadVolume") ?? 50) / 100;
+    investigationTrackAudio.play().catch(e =>
+        console.warn("[Dangan][Investigation] Track play failed:", e)
+    );
+    console.log(`[Dangan][Investigation] Playing track (direct): ${path}`);
+}
+
+function stopInvestigationTrack() {
+    // Stop direct audio fallback if it was used
+    if (investigationTrackAudio) {
+        investigationTrackAudio.pause();
+        investigationTrackAudio = null;
+    }
+    // If Dynamic Audio was used, pause its BGM element
+    const bgm = document.getElementById("audio_bgm");
+    if (bgm instanceof HTMLAudioElement && !bgm.paused) {
+        bgm.pause();
+    }
+}
+
+function renderSelectedInvestigationTracks() {
+    const $panel = $("#investigation-selected-list");
+    if (!$panel.length) return;
+
+    const tracks = getMonopadSetting("investigationTracks") || [];
+    $panel.empty();
+
+    if (!tracks.length) {
+        $panel.append('<div class="investigation-selected-empty">NONE SELECTED</div>');
+        return;
+    }
+
+    tracks.forEach(path => {
+        const name = path.split("/").pop().replace(/\.[^/.]+$/, "");
+        $panel.append(`<div class="investigation-selected-item">${name}</div>`);
+    });
+}
+
+async function renderInvestigationTracks() {
+    const $list = $("#investigation-tracks-list");
+    if (!$list.length) return;
+
+    $list.empty().append('<div class="investigation-tracks-loading">LOADING TRACKS...</div>');
+
+    let bgmPaths = [];
+    try {
+        const response = await fetch("/api/assets/get", {
+            method: "POST",
+            headers: getRequestHeaders({ omitContentType: true }),
+        });
+        if (response.ok) {
+            const data = await response.json();
+            bgmPaths = Array.isArray(data.bgm) ? data.bgm.filter(p => p && p.trim()) : [];
+        }
+    } catch (e) {
+        console.warn("[Dangan][Investigation] Failed to fetch BGM list:", e);
+    }
+
+    $list.empty();
+
+    if (!bgmPaths.length) {
+        $list.append('<div class="investigation-tracks-empty">NO BGM TRACKS FOUND</div>');
+        return;
+    }
+
+    const selected = new Set(getMonopadSetting("investigationTracks") || []);
+    const allSelected = bgmPaths.every(p => selected.has(p));
+
+    const $selectAll = $(`
+        <label class="investigation-track-row investigation-track-select-all">
+            <input type="checkbox" class="investigation-track-select-all-checkbox" ${allSelected ? "checked" : ""}>
+            <span class="investigation-track-name">(Select All)</span>
+        </label>
+    `);
+    $list.append($selectAll);
+
+    bgmPaths.forEach(path => {
+        const name = path.split("/").pop().replace(/\.[^/.]+$/, "");
+        if (!name) return;
+        const checked = selected.has(path);
+        const $row = $(`
+            <label class="investigation-track-row">
+                <input type="checkbox" class="investigation-track-checkbox" data-path="${path}" ${checked ? "checked" : ""}>
+                <span class="investigation-track-name">${name}</span>
+            </label>
+        `);
+        $list.append($row);
+    });
+
+    renderSelectedInvestigationTracks();
+}
+
 const investigationStartController = {
     hideTimerId: null,
 
@@ -1836,6 +1972,13 @@ const investigationStartController = {
         const displayDuration = Math.max(1400, (sfxResult?.durationMs || 2200) + 120);
         const bannerShown = this.showBanner(displayDuration);
         const toggled = this.enableToggle();
+
+        const trackDelay = sfxResult?.played ? (sfxResult.durationMs + 120) : 0;
+        setTimeout(() => playInvestigationTrack(), trackDelay);
+
+        investigationUnderway = true;
+        renderTimeTrackerUi();
+        applyDynamicTheme();
 
         const didAnything = Boolean(bannerShown || sfxResult?.played || toggled);
         if (!didAnything) {
@@ -2237,9 +2380,10 @@ return char.social.notes;
 let sfx = {};
 function playSfx(sound) {
     if (!sound) return;
-    if (!extension_settings[extensionName]?.monopadSounds) return;
+    const volume = Number(extension_settings[extensionName]?.monopadVolume ?? 50) / 100;
+    if (volume <= 0) return;
     sound.currentTime = 0;
-    sound.volume = 0.5;
+    sound.volume = volume;
     sound.play().catch(() => {});
 }
 
@@ -2670,6 +2814,22 @@ function getActivePersonaName() {
     return fallback;
 }
 
+function getActiveUserAvatarUrl() {
+    if (!user_avatar) return null;
+    const ctx = window.SillyTavern?.getContext?.();
+    if (ctx?.getThumbnailUrl) return ctx.getThumbnailUrl('persona', user_avatar);
+    return `/thumbnail?type=persona&file=${encodeURIComponent(user_avatar)}`;
+}
+
+function applyDynamicTheme() {
+    const body = document.body;
+    body.classList.remove("dangan-theme-daily", "dangan-theme-investigation");
+
+    if (!getMonopadSetting("dynamicThemes")) return;
+
+    body.classList.add(investigationUnderway ? "dangan-theme-investigation" : "dangan-theme-daily");
+}
+
 function setActiveMonopadTab(tab) {
     if (!tab) return;
 
@@ -2766,7 +2926,7 @@ async function runMonokumaLessonStep(step, state) {
     );
 
     if (step.action === "spawnTruthBullet") {
-        handleTruthBullet("Important Thing!", "Will this show us whodunnit?", { grantMonocoins: false, grantXp: false });
+        handleTruthBullet("Important Thing!", "Will this show us whodunnit?", { grantMonocoins: false, grantXp: false, image: `${extensionFolderPath}/assets/monokuma_kotodama.png` });
         window.renderTruthBullets?.();
     }
 
@@ -2934,6 +3094,36 @@ function applySettingsTabUI() {
         slider.value = String(Number(tab.crtIntensity) || 35);
     }
 
+    const soundsSlider = document.getElementById("dangan_sounds_slider");
+    if (soundsSlider) {
+        const vol = Number(tab.monopadVolume ?? 50);
+        soundsSlider.value = String(vol);
+        const soundsValue = document.getElementById("dangan_sounds_value");
+        if (soundsValue) soundsValue.textContent = `${vol}%`;
+    }
+
+    const announcementSlider = document.getElementById("dangan_announcement_slider");
+    if (announcementSlider) {
+        const vol = Number(tab.announcementVolume ?? 65);
+        announcementSlider.value = String(vol);
+        const announcementValue = document.getElementById("dangan_announcement_value");
+        if (announcementValue) announcementValue.textContent = `${vol}%`;
+    }
+
+    const monomonoSlider = document.getElementById("dangan_monomono_slider");
+    if (monomonoSlider) {
+        const vol = Number(tab.monomonoBgmVolume ?? 40);
+        monomonoSlider.value = String(vol);
+        const monomonoValue = document.getElementById("dangan_monomono_value");
+        if (monomonoValue) monomonoValue.textContent = `${vol}%`;
+    }
+
+    const lang = String(tab.monokumaLanguage ?? "EN");
+    $(".settings-lang-btn").removeClass("active");
+    $(`.settings-lang-btn[data-lang="${lang}"]`).addClass("active");
+
+    renderInvestigationTracks();
+
     const providerSelect = document.getElementById("dangan_generation_provider");
     if (providerSelect) {
         providerSelect.value = tab.generationProvider || defaultSettings.generationProvider;
@@ -2983,6 +3173,7 @@ function applySettingsTabUI() {
     });
 
     applyCrtSettings();
+    applyDynamicTheme();
     renderTimeTrackerUi();
     vnModeController?.setEnabled?.(!!tab.vnModeEnabled);
 }
@@ -3783,6 +3974,17 @@ function ensureGlobalDebugUi() {
                 <label class="truth-debug-label" for="truth-debug-description">DESCRIPTION</label>
                 <textarea id="truth-debug-description" class="truth-debug-textarea" rows="4" maxlength="500" placeholder="Optional description"></textarea>
 
+                <label class="truth-debug-label">IMAGE <span style="opacity:0.5">(OPTIONAL)</span></label>
+                <div class="truth-debug-image-row">
+                    <label class="truth-debug-image-upload-btn">
+                        CHOOSE FILE
+                        <input type="file" accept="image/*" id="truth-debug-image-input" style="display:none">
+                    </label>
+                    <span class="truth-debug-image-name" id="truth-debug-image-name">No file chosen</span>
+                    <button type="button" id="truth-debug-image-clear" class="truth-debug-image-clear" style="display:none" title="Remove image">✕</button>
+                </div>
+                <img id="truth-debug-image-preview" class="truth-debug-image-preview" style="display:none" alt="">
+
                 <div class="truth-debug-choice-group" role="radiogroup" aria-label="Truth bullet SFX">
                     <label class="truth-debug-choice">
                         <input type="radio" name="truth-debug-sfx" value="thh" checked />
@@ -3897,7 +4099,22 @@ function setAnnouncementDebugModalState(isOpen) {
     syncDebugControlsModalVisibility();
 }
 
+let pendingTruthBulletImage = null;
+
+function resetTruthDebugImageUI() {
+    pendingTruthBulletImage = null;
+    const input = document.getElementById("truth-debug-image-input");
+    if (input) input.value = "";
+    const preview = document.getElementById("truth-debug-image-preview");
+    if (preview) { preview.src = ""; preview.style.display = "none"; }
+    const clearBtn = document.getElementById("truth-debug-image-clear");
+    if (clearBtn) clearBtn.style.display = "none";
+    const name = document.getElementById("truth-debug-image-name");
+    if (name) name.textContent = "No file chosen";
+}
+
 function closeTruthDebugModal() {
+    resetTruthDebugImageUI();
     setTruthDebugModalState(false);
 }
 
@@ -3944,6 +4161,26 @@ function bindDebugControlEvents() {
         }
     });
 
+    $(document).on("change.debugControls", "#truth-debug-image-input", function () {
+        const file = this.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = e => {
+            pendingTruthBulletImage = e.target.result;
+            const preview = document.getElementById("truth-debug-image-preview");
+            if (preview) { preview.src = pendingTruthBulletImage; preview.style.display = "block"; }
+            const clearBtn = document.getElementById("truth-debug-image-clear");
+            if (clearBtn) clearBtn.style.display = "inline-block";
+            const name = document.getElementById("truth-debug-image-name");
+            if (name) name.textContent = file.name;
+        };
+        reader.readAsDataURL(file);
+    });
+
+    $(document).on("click.debugControls", "#truth-debug-image-clear", () => {
+        resetTruthDebugImageUI();
+    });
+
     $(document).on("click.debugControls", "#announcement-debug-open", () => {
         playDebugClickSfx();
         ensureGlobalDebugUi();
@@ -3975,7 +4212,7 @@ function bindDebugControlEvents() {
         const selectedSfx = String($("input[name='truth-debug-sfx']:checked").val() || "thh").trim().toLowerCase();
         setNextTruthBulletSfxVariant(selectedSfx === "udg" ? "udg" : "thh");
 
-        handleTruthBullet(title, description);
+        handleTruthBullet(title, description, { image: pendingTruthBulletImage || undefined });
         $("#truth-debug-name").val("");
         $("#truth-debug-description").val("");
         closeTruthDebugModal();
@@ -4268,7 +4505,9 @@ jQuery(async () => {
         vnModeController = createVnModeController();
         monokumaAnnouncementController = createMonokumaAnnouncementController({
             extensionFolderPath,
-            shouldPlayAudio: () => Boolean(extension_settings[extensionName]?.monopadSounds),
+            shouldPlayAudio: () => Number(extension_settings[extensionName]?.announcementVolume ?? 65) > 0,
+            getVolume: () => Number(extension_settings[extensionName]?.announcementVolume ?? 65) / 100,
+            getLanguage: () => String(extension_settings[extensionName]?.monokumaLanguage ?? "EN"),
         });
 
         // SillyTavern may re-mount portions of the DOM after extension load.
@@ -4371,6 +4610,35 @@ jQuery(async () => {
             getActiveSocialCharacterId: () => activeSocialCharacterId,
             setActiveSocialCharacterId: value => {
                 activeSocialCharacterId = value;
+            },
+            getUserName: getActivePersonaName,
+            getUserAvatarUrl: getActiveUserAvatarUrl,
+            getSpriteUrl: async (charName) => {
+                // Determine folder: prefer avatar filename (without ext), fall back to charName itself
+                let folder = charName;
+                const stChars = window.characters;
+                if (Array.isArray(stChars)) {
+                    const stChar = stChars.find(c => c.name === charName);
+                    if (stChar?.avatar) {
+                        folder = stChar.avatar.replace(/\.[^.]+$/, "");
+                    }
+                }
+                console.debug(`[Dangan][Sprite] Looking up neutral for "${charName}", folder="${folder}"`);
+                try {
+                    const resp = await fetch(`/api/sprites/get?name=${encodeURIComponent(folder)}`);
+                    if (!resp.ok) {
+                        console.debug(`[Dangan][Sprite] API error ${resp.status} for folder="${folder}"`);
+                        return null;
+                    }
+                    const sprites = await resp.json();
+                    console.debug(`[Dangan][Sprite] Got ${sprites.length} sprites:`, sprites.map(s => s.label));
+                    const neutral = sprites.find(s => s.label === "neutral");
+                    console.debug(`[Dangan][Sprite] Neutral path:`, neutral?.path);
+                    return neutral?.path ?? null;
+                } catch (e) {
+                    console.debug(`[Dangan][Sprite] Fetch error:`, e);
+                    return null;
+                }
             },
         });
 
@@ -4523,7 +4791,7 @@ $(".monopad-icon").on("mouseenter", function () {
                     $panel.addClass("open");
                     hasBootedThisSession = true;
                 }
-                playSfx(sfx.open);
+                if (getMonopadSetting("monopadJingleEnabled") !== false) playSfx(sfx.open);
             } else {
                 closeMonopadPanel();
             }
@@ -4607,6 +4875,9 @@ $(".monopad-icon").on("mouseenter", function () {
             if (key === "vnModeEnabled" && next) {
                 trySetSillyTavernVisualNovelMode(true);
             }
+            if (key === "dynamicThemes") {
+                applyDynamicTheme();
+            }
             mapPanelController?.handleSettingsChanged?.();
         });
 
@@ -4615,6 +4886,71 @@ $(".monopad-icon").on("mouseenter", function () {
             setMonopadSetting("crtIntensity", Number.isFinite(value) ? value : 35);
             applyCrtSettings();
         });
+
+        $("#dangan_sounds_slider").on("input", e => {
+            const value = Number(e.target.value);
+            const vol = Number.isFinite(value) ? value : 50;
+            setMonopadSetting("monopadVolume", vol);
+            const soundsValue = document.getElementById("dangan_sounds_value");
+            if (soundsValue) soundsValue.textContent = `${vol}%`;
+        });
+
+        $("#dangan_announcement_slider").on("input", e => {
+            const value = Number(e.target.value);
+            const vol = Number.isFinite(value) ? value : 65;
+            setMonopadSetting("announcementVolume", vol);
+            const announcementValue = document.getElementById("dangan_announcement_value");
+            if (announcementValue) announcementValue.textContent = `${vol}%`;
+        });
+
+        $("#dangan_monomono_slider").on("input", e => {
+            const value = Number(e.target.value);
+            const vol = Number.isFinite(value) ? value : 40;
+            setMonopadSetting("monomonoBgmVolume", vol);
+            const monomonoValue = document.getElementById("dangan_monomono_value");
+            if (monomonoValue) monomonoValue.textContent = `${vol}%`;
+            const track = document.getElementById("monopad_sfx_monochine_track");
+            if (track) track.volume = vol / 100;
+        });
+
+        $(document).on("click", ".settings-lang-btn", function () {
+            const lang = String(this.dataset.lang || "EN");
+            setMonopadSetting("monokumaLanguage", lang);
+            $(".settings-lang-btn").removeClass("active");
+            $(`.settings-lang-btn[data-lang="${lang}"]`).addClass("active");
+        });
+
+        $(document).on("change", ".investigation-track-select-all-checkbox", function () {
+            const $list = $("#investigation-tracks-list");
+            const allPaths = $list.find(".investigation-track-checkbox").map(function () {
+                return String($(this).data("path") || "");
+            }).get().filter(Boolean);
+            if (this.checked) {
+                setMonopadSetting("investigationTracks", allPaths);
+                $list.find(".investigation-track-checkbox").prop("checked", true);
+            } else {
+                setMonopadSetting("investigationTracks", []);
+                $list.find(".investigation-track-checkbox").prop("checked", false);
+            }
+            renderSelectedInvestigationTracks();
+        });
+
+        $(document).on("change", ".investigation-track-checkbox", function () {
+            const path = String($(this).data("path") || "");
+            if (!path) return;
+            const tracks = new Set(getMonopadSetting("investigationTracks") || []);
+            if (this.checked) tracks.add(path);
+            else tracks.delete(path);
+            setMonopadSetting("investigationTracks", [...tracks]);
+            // Sync select-all state
+            const $list = $("#investigation-tracks-list");
+            const total = $list.find(".investigation-track-checkbox").length;
+            const checked = $list.find(".investigation-track-checkbox:checked").length;
+            $list.find(".investigation-track-select-all-checkbox").prop("checked", total > 0 && checked === total);
+            renderSelectedInvestigationTracks();
+        });
+
+        renderInvestigationTracks();
 
         $("#dangan_generation_provider").on("change", function () {
             setMonopadSetting("generationProvider", this.value || defaultSettings.generationProvider);
@@ -4767,6 +5103,8 @@ initTruthBullets({
     extensionName,
     getSetting: getMonopadSetting
 });
+
+    vfxCleanup = initVfxSystem();
 
     } catch (error) {
         bootstrapDebugUi();

@@ -191,6 +191,8 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         ext.inventory.keyItems ||= {};
         ext.inventory.skillPoints ??= 10;
         ext.inventory.equippedSkills ||= {};
+        ext.inventory.customKeyItems ||= {};
+        ext.inventory.itemImages ||= {};
 
         delete ext.inventory.skills.s_micro_focus;
         delete ext.inventory.skills.s_false_lead;
@@ -219,7 +221,11 @@ export function createItemsPanelController({ extensionName, extension_settings, 
 
     function sortOwnedItems(items) {
         if (activeItemsSort === "rarity") {
-            return [...items].sort((a, b) => rarityScore(b.rarity) - rarityScore(a.rarity) || a.name.localeCompare(b.name));
+            return [...items].sort((a, b) => {
+                const sA = rarityScore(a.rarity) + (a.category === "skill" ? -10 : 0);
+                const sB = rarityScore(b.rarity) + (b.category === "skill" ? -10 : 0);
+                return sB - sA || a.name.localeCompare(b.name);
+            });
         }
 
         if (activeItemsSort === "category") {
@@ -232,13 +238,27 @@ export function createItemsPanelController({ extensionName, extension_settings, 
     function getOwnedItems() {
         const inv = extension_settings[extensionName].inventory || {};
 
-        const items = itemCatalog
+        const catalogItems = itemCatalog
             .map((item, idx) => {
                 const bucket = getInventoryBucket(item.category);
                 const quantity = Number(inv[bucket]?.[item.id] || 0);
                 return { ...item, quantity, catalogIndex: idx };
             })
             .filter(item => item.quantity > 0);
+
+        const customKeyItems = Object.entries(inv.customKeyItems || {}).map(([id, data]) => ({
+            id,
+            name: data.name,
+            description: data.description || "",
+            category: "key",
+            rarity: "KEY",
+            effect: "",
+            quantity: 1,
+            catalogIndex: -1,
+            custom: true,
+        }));
+
+        const items = [...catalogItems, ...customKeyItems];
 
         if (activeItemsFilter !== "all") {
             return sortOwnedItems(items.filter(item => item.category === activeItemsFilter));
@@ -288,6 +308,21 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         const cost = getSkillPointCost(skillId);
         inventory.skillPoints = Number(inventory.skillPoints || 0) + cost;
         delete inventory.equippedSkills[skillId];
+        saveSettingsDebounced();
+        return true;
+    }
+
+    function forgetSkill(skillId) {
+        loadInventoryState();
+        const inventory = extension_settings[extensionName].inventory;
+        if (Number(inventory.skills?.[skillId] || 0) <= 0) return false;
+
+        // Unequip first if equipped (refunds skill points)
+        if (isSkillEquipped(skillId)) {
+            unequipSkill(skillId);
+        }
+
+        delete inventory.skills[skillId];
         saveSettingsDebounced();
         return true;
     }
@@ -514,6 +549,7 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         if (!$detail.length) return;
 
         if (!item) {
+            $detail.removeAttr("data-rarity");
             $detail.html(`
                 <div class="items-panel-title">SELECTED ITEM</div>
                 <div class="items-detail-placeholder">SELECT AN ITEM SLOT TO LOAD TERMINAL READOUT</div>
@@ -523,6 +559,10 @@ export function createItemsPanelController({ extensionName, extension_settings, 
 
         const showDiscardGift = item.category === "gift";
         const isSkill = item.category === "skill";
+        const isCustomKey = item.custom === true;
+        const showImage = !isSkill;
+
+        $detail.attr("data-rarity", isSkill ? "skill" : (item.rarity || ""));
         const skillPointCost = isSkill ? getSkillPointCost(item.id) : 0;
         const skillPoints = Number(extension_settings[extensionName].inventory?.skillPoints || 0);
         const equipped = isSkill ? isSkillEquipped(item.id) : false;
@@ -531,9 +571,28 @@ export function createItemsPanelController({ extensionName, extension_settings, 
             ? `CATEGORY: ${formatCategoryLabel(item.category)} · COST: ${skillPointCost} SP · AVAILABLE: ${skillPoints} SP`
             : `CATEGORY: ${formatCategoryLabel(item.category)} · RARITY: ${item.rarity}`;
 
+        const itemImage = showImage
+            ? (extension_settings[extensionName].inventory?.itemImages?.[item.id] || null)
+            : null;
+
+        const imageBlockHtml = showImage ? `
+            <div class="items-detail-img-wrap">
+                ${itemImage
+                    ? `<img class="items-detail-img" src="${itemImage}" alt="">`
+                    : `<span class="items-detail-img-placeholder">◉</span>`}
+            </div>
+            <div class="items-detail-img-actions">
+                <label class="items-detail-img-upload-btn">
+                    ${itemImage ? "REPLACE IMAGE" : "ADD IMAGE"}
+                    <input type="file" accept="image/*" class="items-detail-img-input" style="display:none">
+                </label>
+                ${itemImage ? `<button type="button" class="items-detail-img-remove-btn">REMOVE IMAGE</button>` : ""}
+            </div>
+        ` : ``;
+
         $detail.html(`
             <div class="items-panel-title">SELECTED ITEM</div>
-            <div class="items-detail-icon">◉</div>
+            ${imageBlockHtml}
             <div class="items-detail-name">${item.name.toUpperCase()}</div>
             <div class="items-detail-category">${categoryLine}</div>
 
@@ -542,10 +601,11 @@ export function createItemsPanelController({ extensionName, extension_settings, 
 
             <div class="items-detail-actions">
                 ${isSkill
-                    ? `<button class="items-detail-action" data-action="equip-skill" ${equipped || canEquip ? '' : 'disabled'}>${equipped ? 'UNEQUIP' : 'EQUIP'}</button>`
-                    : '<button class="items-detail-action" data-action="use-item" ' + (showDiscardGift ? '' : 'disabled') + '>USE</button><button class="items-detail-action" disabled>INSPECT</button>'}
-                ${showDiscardGift ? '<button class="items-detail-action discard" data-action="discard-gift">DISCARD GIFT</button>' : ""}
-                ${showDiscardGift ? `<button class="items-detail-action discard" data-action="discard-rarity">MASS DISCARD ${item.rarity}</button>` : ""}
+                    ? `<div class="items-detail-actions-row"><button class="items-detail-action" data-action="equip-skill" ${equipped || canEquip ? '' : 'disabled'}>${equipped ? 'UNEQUIP' : 'EQUIP'}</button><button class="items-detail-action discard" data-action="forget-skill">FORGET</button></div>`
+                    : isCustomKey
+                        ? `<div class="items-detail-actions-row"><button class="items-detail-action discard" data-action="remove-key-item">REMOVE</button></div>`
+                        : `<div class="items-detail-actions-row"><button class="items-detail-action" data-action="use-item" ${showDiscardGift ? '' : 'disabled'}>USE</button><button class="items-detail-action" disabled>INSPECT</button></div>`}
+                ${showDiscardGift ? `<div class="items-detail-actions-row"><button class="items-detail-action discard" data-action="discard-gift">DISCARD GIFT</button><button class="items-detail-action discard" data-action="discard-rarity">MASS DISCARD ${item.rarity}</button></div>` : ""}
             </div>
         `);
 
@@ -582,7 +642,122 @@ export function createItemsPanelController({ extensionName, extension_settings, 
                 if (!changed) return;
                 renderSkillsItemsPanel();
             });
+
+            $detail.find('[data-action="forget-skill"]').on("click", () => {
+                playSfx(getSfx().click);
+                const forgotten = forgetSkill(item.id);
+                if (!forgotten) return;
+                selectedItemId = null;
+                renderSkillsItemsPanel();
+            });
         }
+
+        if (isCustomKey) {
+            $detail.find('[data-action="remove-key-item"]').on("click", () => {
+                playSfx(getSfx().click);
+                removeCustomKeyItem(item.id);
+                selectedItemId = null;
+                renderSkillsItemsPanel();
+            });
+        }
+
+        if (showImage) {
+            $detail.find(".items-detail-img-input").on("change", function () {
+                const file = this.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = e => {
+                    saveItemImage(item.id, e.target.result);
+                    renderItemDetails(item);
+                };
+                reader.readAsDataURL(file);
+            });
+
+            $detail.find(".items-detail-img-remove-btn").on("click", () => {
+                removeItemImage(item.id);
+                renderItemDetails(item);
+            });
+        }
+    }
+
+    function createKeyItem(name, description) {
+        loadInventoryState();
+        const inv = extension_settings[extensionName].inventory;
+        const id = "custom_key_" + Date.now();
+        inv.customKeyItems[id] = { name: name.trim(), description: description.trim() };
+        saveSettingsDebounced();
+        return id;
+    }
+
+    function removeCustomKeyItem(id) {
+        loadInventoryState();
+        const inv = extension_settings[extensionName].inventory;
+        if (!inv.customKeyItems?.[id]) return false;
+        delete inv.customKeyItems[id];
+        delete inv.itemImages?.[id];
+        saveSettingsDebounced();
+        return true;
+    }
+
+    function saveItemImage(itemId, base64) {
+        loadInventoryState();
+        const inv = extension_settings[extensionName].inventory;
+        inv.itemImages ||= {};
+        inv.itemImages[itemId] = base64;
+        saveSettingsDebounced();
+    }
+
+    function removeItemImage(itemId) {
+        loadInventoryState();
+        const inv = extension_settings[extensionName].inventory;
+        if (inv.itemImages) delete inv.itemImages[itemId];
+        saveSettingsDebounced();
+    }
+
+    function renderCreateKeyItemForm() {
+        const $detail = $("#items-detail-panel");
+        if (!$detail.length) return;
+
+        $detail.html(`
+            <div class="items-panel-title">CREATE KEY ITEM</div>
+            <div class="items-detail-section-label">NAME</div>
+            <input class="items-create-input" type="text" id="items-create-key-name" placeholder="ITEM NAME" maxlength="60" autocomplete="off" />
+            <div class="items-detail-section-label">DESCRIPTION</div>
+            <textarea class="items-create-input items-create-textarea" id="items-create-key-desc" placeholder="ITEM DESCRIPTION" maxlength="280" rows="4"></textarea>
+            <div class="items-detail-actions">
+                <button class="items-detail-action" id="items-create-key-submit" type="button">CREATE</button>
+                <button class="items-detail-action discard" id="items-create-key-cancel" type="button">CANCEL</button>
+            </div>
+            <div class="items-create-key-status" id="items-create-key-status"></div>
+        `);
+
+        $detail.find("#items-create-key-submit").on("click", () => {
+            const name = $detail.find("#items-create-key-name").val().trim();
+            const desc = $detail.find("#items-create-key-desc").val().trim();
+            if (!name) {
+                $detail.find("#items-create-key-status").text("NAME IS REQUIRED.");
+                return;
+            }
+            playSfx(getSfx().click);
+            const id = createKeyItem(name, desc);
+            selectedItemId = id;
+            renderSkillsItemsPanel();
+        });
+
+        $detail.find("#items-create-key-cancel").on("click", () => {
+            playSfx(getSfx().click);
+            renderItemDetails(null);
+        });
+    }
+
+    function bindCreateKeyItemButton() {
+        const $button = $("#items-create-key-item-button");
+        if (!$button.length) return;
+
+        $button.off("click").on("click", () => {
+            playSfx(getSfx().click);
+            renderCreateKeyItemForm();
+        });
     }
 
     function renderInventoryGrid() {
@@ -605,7 +780,7 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         const appendSlot = (item) => {
             const active = item.id === selectedItemId ? "active" : "";
             const $slot = $(`
-                <button class="items-slot ${active}" data-item-id="${item.id}" data-item-category="${item.category}" title="${item.name}">
+                <button class="items-slot ${active}" data-item-id="${item.id}" data-item-category="${item.category}" data-item-rarity="${item.rarity}" title="${item.name}">
                     <span class="items-slot-icon">■</span>
                     <span class="items-slot-name">${item.name.toUpperCase()}</span>
                     <span class="items-slot-qty">x${item.quantity}</span>
@@ -672,15 +847,22 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         const trustFragments = Number(extension_settings[extensionName].inventory?.trustFragments || 0);
         const skillPoints = Number(extension_settings[extensionName].inventory?.skillPoints || 0);
         const showSkillShop = activeItemsFilter === "skill";
+        const showCreateKeyItem = activeItemsFilter === "key";
 
         $("#items-monocoin-value").text(monocoins.toLocaleString());
         $("#items-trust-fragment-value").text(trustFragments.toLocaleString());
         $("#items-skill-point-value").text(skillPoints.toLocaleString());
         bindSkillShopButton();
+        bindCreateKeyItemButton();
 
         const $skillShopRow = $panel.find("#items-skill-shop-row");
         if ($skillShopRow.length) {
             $skillShopRow.prop("hidden", !showSkillShop);
+        }
+
+        const $createKeyItemRow = $panel.find("#items-create-key-item-row");
+        if ($createKeyItemRow.length) {
+            $createKeyItemRow.prop("hidden", !showCreateKeyItem);
         }
 
         $panel.find(".items-filter-button").each((_, el) => {

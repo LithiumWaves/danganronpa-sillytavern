@@ -6,18 +6,30 @@ const MARKER_TYPES = {
         voice: "daytime_announ.mp3",
         label: "DAYTIME ANNOUNCEMENT",
         transcript: "Good morning, everyone! It is now 7 a.m. and nighttime is officialy over! Time to rise and shine! Get ready to greet another beee-yutiful day!",
+        transcriptByLang: {
+            EN: "Good morning, everyone! It is now 7 a.m. and nighttime is officially over! Time to rise and shine! Get ready to greet another beee-autiful day you reprobates!",
+            JP: "Good morning, everyone! It is now 7 a.m. and nighttime is officialy over! Time to rise and shine! Get ready to greet another beee-yutiful day!",
+        },
     },
     NIGHT_ANNOUN: {
         chime: "dingdongbingbong.mp3",
         voice: "nighttime_announ.mp3",
         label: "NIGHTTIME ANNOUNCEMENT",
         transcript: "Mm, ahem, this is a school announcement. It is now 10 p.m. As such, it is officially nighttime. Soon the doors to the dining hall will be locked, and entry at that point is strictly prohibited. Okay then... sweet dreams, everyone! Good night, sleep tight, don't let the bed bugs bite...",
+        transcriptByLang: {
+            EN: "Mm, ahem, this is a school announcement. It is now 10 p.m. As such, it is officially nighttime. Soon the doors to the dining hall will be locked, and entry at that point is strictly prohibited. Okay then... sweet dreams, everyone! Good night, sleep tight, don't let the bed bugs bite... much..!",
+            JP: "Mm, ahem, this is a school announcement. It is now 10 p.m. As such, it is officially nighttime. Soon the doors to the dining hall will be locked, and entry at that point is strictly prohibited. Okay then... sweet dreams, everyone! Good night, sleep tight, don't let the bed bugs bite...",
+        },
     },
     BDA: {
         chime: "bda_bell.mp3",
         voice: "bda_announ.mp3",
         label: "BODY DISCOVERY ANNOUNCEMENT",
         transcript: "A body has been discovered! Now then, after a certain amount of time has passed, the class trial will begin!",
+        transcriptByLang: {
+            EN: "A body has been discovered! After a certain amount of time, a class trial will be held! Ahahahahahaha..!! The killing game just keeps going and going!",
+            JP: "A body has been discovered! Now then, after a certain amount of time has passed, the class trial will begin!",
+        },
     },
     BODY_DISCOVERY: {
         voice: "despairnoise.mp3",
@@ -56,23 +68,46 @@ export function parseMonokumaAnnouncementMarkers(rawText = "") {
     return markers;
 }
 
-export function createMonokumaAnnouncementController({ extensionFolderPath, shouldPlayAudio = () => true } = {}) {
+export function createMonokumaAnnouncementController({ extensionFolderPath, shouldPlayAudio = () => true, getVolume = () => 0.65, getLanguage = () => "EN" } = {}) {
     let uiMounted = false;
     let queue = Promise.resolve();
 
-    const audio = {
-        DAY_ANNOUN_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/dingdongbingbong.mp3`),
-        NIGHT_ANNOUN_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/dingdongbingbong.mp3`),
-        BDA_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/bda_bell.mp3`),
-        DAY_ANNOUN_VOICE: new Audio(`${extensionFolderPath}/assets/monokuma/daytime_announ.mp3`),
-        NIGHT_ANNOUN_VOICE: new Audio(`${extensionFolderPath}/assets/monokuma/nighttime_announ.mp3`),
-        BDA_VOICE: new Audio(`${extensionFolderPath}/assets/monokuma/bda_announ.mp3`),
-        BODY_DISCOVERY_VOICE: new Audio(`${extensionFolderPath}/assets/sfx/etc/despairnoise.mp3`),
+    const audioByLang = {
+        EN: {
+            DAY_ANNOUN_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/dingdongbingbong.mp3`),
+            NIGHT_ANNOUN_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/dingdongbingbong.mp3`),
+            BDA_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/bda_bell.mp3`),
+            DAY_ANNOUN_VOICE: new Audio(`${extensionFolderPath}/assets/monokuma/daytime_announ.mp3`),
+            NIGHT_ANNOUN_VOICE: new Audio(`${extensionFolderPath}/assets/monokuma/nighttime_announ.mp3`),
+            BDA_VOICE: [
+                new Audio(`${extensionFolderPath}/assets/monokuma/vic_Monok_01_022.wav`),
+                new Audio(`${extensionFolderPath}/assets/monokuma/vic_Monok_80_023.wav`),
+                new Audio(`${extensionFolderPath}/assets/monokuma/vic_Monok_01_024.wav`),
+            ],
+            BODY_DISCOVERY_VOICE: new Audio(`${extensionFolderPath}/assets/sfx/etc/despairnoise.mp3`),
+        },
+        JP: {
+            DAY_ANNOUN_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/dingdongbingbong.mp3`),
+            NIGHT_ANNOUN_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/dingdongbingbong.mp3`),
+            BDA_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/bda_bell.mp3`),
+            DAY_ANNOUN_VOICE: new Audio(`${extensionFolderPath}/assets/monokuma/daytime_announ.mp3`),
+            NIGHT_ANNOUN_VOICE: new Audio(`${extensionFolderPath}/assets/monokuma/nighttime_announ.mp3`),
+            BDA_VOICE: new Audio(`${extensionFolderPath}/assets/monokuma/bda_announ.mp3`),
+            BODY_DISCOVERY_VOICE: new Audio(`${extensionFolderPath}/assets/sfx/etc/despairnoise.mp3`),
+        },
     };
 
-    Object.values(audio).forEach(track => {
-        track.preload = "auto";
-    });
+    Object.values(audioByLang).forEach(set =>
+        Object.values(set).forEach(entry => {
+            const tracks = Array.isArray(entry) ? entry : [entry];
+            tracks.forEach(track => { track.preload = "auto"; });
+        })
+    );
+
+    function getAudio() {
+        const lang = String(getLanguage() || "EN").toUpperCase();
+        return audioByLang[lang] ?? audioByLang.EN;
+    }
 
     function getRoot() {
         return document.getElementById("monokuma-announcement-root");
@@ -428,7 +463,7 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         if (!track || !shouldPlayAudio()) return Promise.resolve();
 
         track.currentTime = 0;
-        track.volume = 0.65;
+        track.volume = Math.min(1, Math.max(0, getVolume()));
 
         return new Promise(resolve => {
             let done = false;
@@ -539,7 +574,7 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         overlay.classList.add("active");
         overlay.setAttribute("aria-hidden", "false");
 
-        const voiceTrack = audio.BODY_DISCOVERY_VOICE;
+        const voiceTrack = getAudio().BODY_DISCOVERY_VOICE;
         const fallbackMs = Number.isFinite(voiceTrack?.duration)
             ? Math.max(2500, Math.round(voiceTrack.duration * 1000) + 600)
             : 30000;
@@ -553,6 +588,9 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
     async function runAnnouncement(type) {
         const config = MARKER_TYPES[type];
         if (!config) return;
+
+        const lang = String(getLanguage() || "JP").toUpperCase();
+        const resolvedTranscript = config.transcriptByLang?.[lang] ?? config.transcript;
 
         mountUi();
         const root = getRoot();
@@ -580,7 +618,7 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         void sting.offsetWidth;
         sting.classList.add("active");
 
-        await playTrack(audio[`${type}_CHIME`]);
+        await playTrack(getAudio()[`${type}_CHIME`]);
         await delay(140);
 
         monitor.classList.add("on");
@@ -590,15 +628,27 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         await delay(180);
         screen.classList.add("ready");
 
-        const voiceTrack = audio[`${type}_VOICE`];
-        const voiceDurationMs = Number.isFinite(voiceTrack?.duration)
-            ? Math.max(2200, Math.round(voiceTrack.duration * 1000))
-            : Math.max(2200, Math.round((config.transcript?.length || 60) * 45));
+        const voiceEntry = getAudio()[`${type}_VOICE`];
+        const voiceTracks = Array.isArray(voiceEntry) ? voiceEntry : [voiceEntry];
+        const totalVoiceDurationMs = voiceTracks.reduce((sum, t) => {
+            return sum + (Number.isFinite(t?.duration) ? Math.round(t.duration * 1000) : 0);
+        }, 0);
+        const voiceDurationMs = totalVoiceDurationMs > 0
+            ? Math.max(2200, totalVoiceDurationMs)
+            : Math.max(2200, Math.round((resolvedTranscript?.length || 60) * 45));
+
+        async function playVoiceTracks() {
+            for (const track of voiceTracks) {
+                await playTrack(track);
+            }
+        }
+
+        const dialogueDurationMs = lang === "EN" ? Math.round(voiceDurationMs * 0.75) : voiceDurationMs;
 
         screen.classList.add("speaking");
         await Promise.all([
-            playTrack(voiceTrack),
-            revealDialogue(dialogue, config.transcript, voiceDurationMs),
+            playVoiceTracks(),
+            revealDialogue(dialogue, resolvedTranscript, dialogueDurationMs),
         ]);
 
         await delay(220);

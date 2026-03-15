@@ -503,9 +503,14 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
     }
 
 
+    function getMachineTrackVolume() {
+        if (typeof getSetting !== "function") return 0.4;
+        const vol = Number(getSetting("monomonoBgmVolume") ?? 40);
+        return Number.isFinite(vol) ? Math.min(1, Math.max(0, vol / 100)) : 0.4;
+    }
+
     function isMachineTrackEnabled() {
-        if (typeof getSetting !== "function") return true;
-        return !!getSetting("monochineTrackEnabled");
+        return getMachineTrackVolume() > 0;
     }
 
     function syncMachineTrack($panel) {
@@ -515,9 +520,9 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         const shouldPlay = isMachineTrackEnabled() && $(selectors.machineOverlay).hasClass("open");
         if (shouldPlay) {
             track.loop = true;
+            track.volume = getMachineTrackVolume();
             if (state.machineTrackStarted) return;
             track.currentTime = 0;
-            track.volume = 0.4;
             track.play().then(() => {
                 state.machineTrackStarted = true;
             }).catch(() => {

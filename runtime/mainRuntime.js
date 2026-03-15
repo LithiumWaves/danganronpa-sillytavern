@@ -2396,7 +2396,7 @@ async function runMonokumaLessonStep(step, state) {
     );
 
     if (step.action === "spawnTruthBullet") {
-        handleTruthBullet("Important Thing!", "Will this show us whodunnit?", { grantMonocoins: false, grantXp: false });
+        handleTruthBullet("Important Thing!", "Will this show us whodunnit?", { grantMonocoins: false, grantXp: false, image: `${extensionFolderPath}/assets/monokuma_kotodama.png` });
         window.renderTruthBullets?.();
     }
 
