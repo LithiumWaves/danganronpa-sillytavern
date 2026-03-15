@@ -66,7 +66,7 @@
             <div class="monopad-panel-content" data-panel="truth">
                 <div class="truth-container">
                     <div class="truth-list">
-                        <div class="truth-list-header">TRUTH BULLETS</div>
+                        <div class="truth-list-header"><img src="scripts/extensions/third-party/danganronpa-extension/assets/bullets.svg" alt="" class="truth-header-icon">TRUTH BULLETS</div>
                         <div class="truth-list-items"></div>
                     </div>
 
@@ -133,7 +133,7 @@
             <div class="monopad-panel-content items-panel" data-panel="skills">
                 <div class="items-shell">
                     <div class="items-headline">
-                        <div class="items-title-row">▣ GIFTS & SKILLS</div>
+                        <div class="items-title-row"><img src="scripts/extensions/third-party/danganronpa-extension/assets/present.svg" alt="" class="items-title-icon">GIFTS &amp; SKILLS</div>
                         <div class="items-subtitle">PERSONAL EFFECTS / BEHAVIORAL MODULES</div>
                     </div>
 
@@ -155,18 +155,27 @@
                         </div>
 
                         <div class="items-coin-box" title="Monocoins counter">
-                            <span class="items-coin-label">MONOCOINS</span>
-                            <span class="items-coin-value" id="items-monocoin-value">0</span>
+                            <img src="scripts/extensions/third-party/danganronpa-extension/assets/metal-disc.svg" alt="" class="items-coin-icon">
+                            <div class="items-coin-text">
+                                <span class="items-coin-label">MONOCOINS</span>
+                                <span class="items-coin-value" id="items-monocoin-value">0</span>
+                            </div>
                         </div>
 
                         <div class="items-coin-box items-fragment-box" title="Trust Fragments counter">
-                            <span class="items-coin-label">TRUST FRAGMENTS</span>
-                            <span class="items-coin-value" id="items-trust-fragment-value">0</span>
+                            <img src="scripts/extensions/third-party/danganronpa-extension/assets/mineral-heart.svg" alt="" class="items-coin-icon">
+                            <div class="items-coin-text">
+                                <span class="items-coin-label">TRUST FRAGMENTS</span>
+                                <span class="items-coin-value" id="items-trust-fragment-value">0</span>
+                            </div>
                         </div>
 
                         <div class="items-coin-box items-skill-point-box" title="Skill Points counter">
-                            <span class="items-coin-label">SKILL POINTS</span>
-                            <span class="items-coin-value" id="items-skill-point-value">10</span>
+                            <img src="scripts/extensions/third-party/danganronpa-extension/assets/chaingun.svg" alt="" class="items-coin-icon">
+                            <div class="items-coin-text">
+                                <span class="items-coin-label">SKILL POINTS</span>
+                                <span class="items-coin-value" id="items-skill-point-value">10</span>
+                            </div>
                         </div>
                     </aside>
 
@@ -179,9 +188,10 @@
                             <div class="items-skill-shop-row" id="items-create-key-item-row" hidden>
                                 <button class="items-shop-button" id="items-create-key-item-button" type="button">+ CREATE</button>
                             </div>
+                            <input type="text" id="items-search-input" class="items-search-input" placeholder="SEARCH..." autocomplete="off" spellcheck="false">
                         </div>
                         <div class="items-grid" id="items-gift-list"></div>
-                        <div class="items-grid-hint">HOVER = QUICK PREVIEW / CLICK = LOAD DETAILS</div>
+                        <div class="items-grid-hint">CLICK SLOT TO LOAD DETAILS</div>
                     </div>
 
                     <section class="items-detail-panel" id="items-detail-panel">
@@ -212,7 +222,11 @@
                                 <div class="report-name">—</div>
                                 <div class="report-ultimate">ULTIMATE: ???</div>
                             </div>
-                            <button id="report-dead-toggle" class="report-dead-btn" type="button">MARK AS DEAD</button>
+                            <div class="report-status-btns">
+                                <button id="report-dead-toggle" class="report-dead-btn" type="button">MARK AS DEAD</button>
+                                <button id="report-missing-toggle" class="report-missing-btn" type="button">MARK AS MISSING</button>
+                                <button id="report-mastermind-toggle" class="report-mastermind-btn" type="button">MARK AS MASTERMIND</button>
+                            </div>
                         </div>
 
                         <div class="report-divider"></div>
@@ -255,6 +269,29 @@
                                         <polygon points="100,21 179,100 100,179 21,100" fill="none" stroke="rgb(210,20,20)" stroke-width="2.5"/>
 <!-- DEAD — large, overflows diamond edges -->
                                         <text x="100" y="100" text-anchor="middle" dominant-baseline="middle" font-family="Orbitron,monospace" font-size="64" font-weight="900" fill="rgb(130,6,6)" paint-order="stroke" stroke="rgb(220,22,22)" stroke-width="4" letter-spacing="2">DEAD</text>
+                                    </svg>
+                                </div>
+                                <div class="report-mastermind-overlay" id="report-mastermind-overlay">
+                                    <svg class="mastermind-stamp-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" overflow="visible">
+                                        <!-- Outer diamond outline -->
+                                        <polygon points="100,6 194,100 100,194 6,100" fill="none" stroke="rgb(255,20,180)" stroke-width="3.5"/>
+                                        <!-- Inner diamond outline -->
+                                        <polygon points="100,21 179,100 100,179 21,100" fill="none" stroke="rgb(255,20,180)" stroke-width="2.5"/>
+                                        <!-- Monokuma eye -->
+                                        <image class="mono-eye-img" href="scripts/extensions/third-party/danganronpa-extension/assets/eye.png" x="35" y="59" width="130" height="83"/>
+                                    </svg>
+                                </div>
+                                <div class="report-missing-overlay" id="report-missing-overlay">
+                                    <svg class="missing-stamp-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" overflow="visible">
+                                        <!-- Crossed bars -->
+                                        <polygon points="91,-20 111,0 111,220 91,200" fill="rgb(185,155,15)" transform="rotate(45,100,100)"/>
+                                        <polygon points="111,-20 91,0 91,220 111,200" fill="rgb(185,155,15)" transform="rotate(-45,100,100)"/>
+                                        <!-- Outer diamond outline -->
+                                        <polygon points="100,6 194,100 100,194 6,100" fill="none" stroke="rgb(210,180,20)" stroke-width="3.5"/>
+                                        <!-- Inner diamond outline -->
+                                        <polygon points="100,21 179,100 100,179 21,100" fill="none" stroke="rgb(210,180,20)" stroke-width="2.5"/>
+                                        <!-- ??? — large, overflows diamond edges -->
+                                        <text x="100" y="100" text-anchor="middle" dominant-baseline="middle" font-family="Orbitron,monospace" font-size="64" font-weight="900" fill="rgb(130,110,6)" paint-order="stroke" stroke="rgb(220,190,22)" stroke-width="4" letter-spacing="2">???</text>
                                     </svg>
                                 </div>
                             </div>
@@ -386,6 +423,16 @@
                     <button class="settings-toggle on" data-setting="dynamicThemes"></button>
                 </div>
 
+                <div class="settings-item">
+                    <span class="settings-label">HIDE TRUTH BULLET IMAGES</span>
+                    <button class="settings-toggle" data-setting="hideTruthBulletImages"></button>
+                </div>
+
+                <div class="settings-item">
+                    <span class="settings-label">HIDE GIFT IMAGES</span>
+                    <button class="settings-toggle" data-setting="hideGiftImages"></button>
+                </div>
+
             </section>
 
             <!-- FX -->
@@ -487,11 +534,11 @@
         <!-- Bottom Icon Strip -->
         <div class="monopad-bottom">
             <div class="monopad-icon-strip">
-                <button class="monopad-icon" data-tab="truth">🧠</button>
-                <button class="monopad-icon" data-tab="map">🌐</button>
-                <button class="monopad-icon" data-tab="skills">🎁</button>
-                <button class="monopad-icon" data-tab="social">👥</button>
-                <button class="monopad-icon" data-tab="settings">⚙️</button>
+                <button class="monopad-icon" data-tab="truth"><img src="scripts/extensions/third-party/danganronpa-extension/assets/bullets.svg" alt="Truth" class="monopad-tab-icon"></button>
+                <button class="monopad-icon" data-tab="map"><img src="scripts/extensions/third-party/danganronpa-extension/assets/compass.svg" alt="Map" class="monopad-tab-icon"></button>
+                <button class="monopad-icon" data-tab="skills"><img src="scripts/extensions/third-party/danganronpa-extension/assets/present.svg" alt="Items" class="monopad-tab-icon"></button>
+                <button class="monopad-icon" data-tab="social"><img src="scripts/extensions/third-party/danganronpa-extension/assets/character.svg" alt="Social" class="monopad-tab-icon"></button>
+                <button class="monopad-icon" data-tab="settings"><img src="scripts/extensions/third-party/danganronpa-extension/assets/cog.svg" alt="Settings" class="monopad-tab-icon"></button>
             </div>
         </div>
 
@@ -618,6 +665,8 @@
                     <button id="monopad-payload-max-active-trust" class="monopad-payload-action" type="button">MAX ACTIVE SOCIAL LINK</button>
                     <button id="monopad-payload-max-all-trust" class="monopad-payload-action" type="button">MAX ALL SOCIAL LINKS</button>
                     <button id="monopad-payload-rescan-characters" class="monopad-payload-action" type="button">RESCAN CHARACTERS</button>
+                    <button id="monopad-payload-reset-gifts" class="monopad-payload-action" type="button">RESET ALL GIFTS</button>
+                    <button id="monopad-payload-give-all-gifts" class="monopad-payload-action" type="button">GIVE ALL GIFTS</button>
                     <button id="monopad-payload-open-breach" class="monopad-payload-action" type="button">REOPEN BREACH TERMINAL</button>
                     <button id="monopad-payload-toggle-debug-controls" class="monopad-payload-action" type="button">HIDE DEBUG BUTTONS</button>
                 </div>

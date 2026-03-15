@@ -3140,6 +3140,32 @@ function runPayloadActionAnimation(actionLabel, onComplete) {
     }, 80);
 }
 
+function payloadResetGifts() {
+    const ext = extension_settings[extensionName] ||= {};
+    ext.inventory ||= {};
+    ext.inventory.gifts = {};
+    saveSettingsDebounced();
+    itemsPanelController?.renderSkillsItemsPanel?.();
+    appendPayloadStreamLine("[FF-INJECT] Gift inventory cleared.");
+}
+
+function payloadGiveAllGifts() {
+    const ext = extension_settings[extensionName] ||= {};
+    ext.inventory ||= {};
+    ext.inventory.gifts ||= {};
+    const pool = itemsPanelController?.getGiftPoolWithCounts?.() ?? [];
+    let count = 0;
+    for (const item of pool) {
+        if (!item.owned) {
+            ext.inventory.gifts[item.id] = 1;
+            count += 1;
+        }
+    }
+    saveSettingsDebounced();
+    itemsPanelController?.renderSkillsItemsPanel?.();
+    appendPayloadStreamLine(`[FF-INJECT] Granted ${count} gift(s).`);
+}
+
 function applyPayloadInventoryValue(key, value) {
     const ext = extension_settings[extensionName] ||= {};
     ext.inventory ||= {};
@@ -3791,6 +3817,16 @@ function bindDebugControlEvents() {
             const added = rescanCharactersFromContext();
             appendPayloadStreamLine(`[FF-INJECT] Character scan complete. Added ${added} profile(s).`);
         });
+    });
+
+    $(document).on("click.debugControls", "#monopad-payload-reset-gifts", () => {
+        playDebugClickSfx();
+        runPayloadActionAnimation("GIFT INVENTORY WIPE", payloadResetGifts);
+    });
+
+    $(document).on("click.debugControls", "#monopad-payload-give-all-gifts", () => {
+        playDebugClickSfx();
+        runPayloadActionAnimation("GIFT UNLOCK SEQUENCE", payloadGiveAllGifts);
     });
 
     $(document).on("click.debugControls", "#monopad-payload-toggle-debug-controls", () => {

@@ -234,6 +234,7 @@ function passTimeToNight({ source = "manual" } = {}) {
     saveSettingsDebounced();
     renderTimeTrackerUi();
     applyTimeContextToGeneration();
+    applyDynamicTheme();
     monokumaAnnouncementController?.trigger("NIGHT_ANNOUN");
     console.log(`[${extensionName}] Time advanced to NIGHT (source: ${source}).`);
     return true;
@@ -250,6 +251,7 @@ function sleepToNextDay({ source = "manual" } = {}) {
     saveSettingsDebounced();
     renderTimeTrackerUi();
     applyTimeContextToGeneration();
+    applyDynamicTheme();
     monokumaAnnouncementController?.trigger("DAY_ANNOUN");
     console.log(`[${extensionName}] Time advanced to DAY ${state.day} (source: ${source}).`);
     return true;
@@ -2821,13 +2823,24 @@ function getActiveUserAvatarUrl() {
     return `/thumbnail?type=persona&file=${encodeURIComponent(user_avatar)}`;
 }
 
+function applyImageVisibilitySettings() {
+    document.body.classList.toggle("dangan-hide-truth-images", !!getMonopadSetting("hideTruthBulletImages"));
+    document.body.classList.toggle("dangan-hide-gift-images", !!getMonopadSetting("hideGiftImages"));
+}
+
 function applyDynamicTheme() {
     const body = document.body;
-    body.classList.remove("dangan-theme-daily", "dangan-theme-investigation");
+    body.classList.remove("dangan-theme-daily", "dangan-theme-night", "dangan-theme-investigation");
 
     if (!getMonopadSetting("dynamicThemes")) return;
 
-    body.classList.add(investigationUnderway ? "dangan-theme-investigation" : "dangan-theme-daily");
+    if (investigationUnderway) {
+        body.classList.add("dangan-theme-investigation");
+    } else if (ensureTimeTrackerState().phase === TIME_PHASE_NIGHT) {
+        body.classList.add("dangan-theme-night");
+    } else {
+        body.classList.add("dangan-theme-daily");
+    }
 }
 
 function setActiveMonopadTab(tab) {
@@ -4359,6 +4372,38 @@ function bindDebugControlEvents() {
         });
     });
 
+    $(document).on("click.debugControls", "#monopad-payload-reset-gifts", () => {
+        playDebugClickSfx();
+        runPayloadActionAnimation("GIFT INVENTORY WIPE", () => {
+            const ext = extension_settings[extensionName] ||= {};
+            ext.inventory ||= {};
+            ext.inventory.gifts = {};
+            saveSettingsDebounced();
+            itemsPanelController?.renderSkillsItemsPanel?.();
+            appendPayloadStreamLine("[FF-INJECT] Gift inventory cleared.");
+        });
+    });
+
+    $(document).on("click.debugControls", "#monopad-payload-give-all-gifts", () => {
+        playDebugClickSfx();
+        runPayloadActionAnimation("GIFT UNLOCK SEQUENCE", () => {
+            const ext = extension_settings[extensionName] ||= {};
+            ext.inventory ||= {};
+            ext.inventory.gifts ||= {};
+            const pool = itemsPanelController?.getGiftPoolWithCounts?.() ?? [];
+            let count = 0;
+            for (const item of pool) {
+                if (!item.owned) {
+                    ext.inventory.gifts[item.id] = 1;
+                    count += 1;
+                }
+            }
+            saveSettingsDebounced();
+            itemsPanelController?.renderSkillsItemsPanel?.();
+            appendPayloadStreamLine(`[FF-INJECT] Granted ${count} gift(s).`);
+        });
+    });
+
     $(document).on("click.debugControls", "#monopad-payload-toggle-debug-controls", () => {
         playDebugClickSfx();
         setDebugControlsHidden(!isDebugControlsHidden());
@@ -4846,6 +4891,11 @@ $(".monopad-icon").on("mouseenter", function () {
             itemsPanelController.renderSkillsItemsPanel();
         });
 
+        $("#items-search-input").on("input", function () {
+            itemsPanelController.setItemSearch(this.value);
+            itemsPanelController.renderInventoryGrid();
+        });
+
         $(document).on("mouseenter", ".items-filter-button, .items-slot, .items-sort-group label, .items-detail-action", function () {
             playHoverWithCooldown();
         });
@@ -4877,6 +4927,9 @@ $(".monopad-icon").on("mouseenter", function () {
             }
             if (key === "dynamicThemes") {
                 applyDynamicTheme();
+            }
+            if (key === "hideTruthBulletImages" || key === "hideGiftImages") {
+                applyImageVisibilitySettings();
             }
             mapPanelController?.handleSettingsChanged?.();
         });
@@ -5071,6 +5124,7 @@ window.startClassTrial = () => classTrialMenuController?.open?.();
 rewards?.renderProgressionUi?.();
 itemsPanelController.loadInventoryState();
 applySettingsTabUI();
+applyImageVisibilitySettings();
 applyMonopadLaunchControlState(monopadButtonEl, $panel.get(0));
 loadCharacters();
 itemsPanelController.renderSkillsItemsPanel();

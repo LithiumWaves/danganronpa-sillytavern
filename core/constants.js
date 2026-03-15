@@ -68,6 +68,8 @@ export const defaultSettings = {
     crtIntensity: 35,
     bootAnimations: true,
     dynamicThemes: true,
+    hideTruthBulletImages: false,
+    hideGiftImages: false,
     monopadButtonEnabled: true,
     welcomeSeen: false,
     monokumaLessonRewardClaimed: false,

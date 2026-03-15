@@ -172,6 +172,7 @@ export function createItemsPanelController({ extensionName, extension_settings, 
     let activeItemsFilter = "all";
     let activeItemsSort = "recent";
     let selectedItemId = null;
+    let itemSearchQuery = "";
 
     const placeholderSkillShopCatalog = [
         { id: "shop_skill_lie_detector_earring", name: "Lie Detector Earring", cost: 1, skillPointCost: 8, teaserEffect: "Highlights suspicious dialogue beats." },
@@ -192,6 +193,7 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         ext.inventory.skillPoints ??= 10;
         ext.inventory.equippedSkills ||= {};
         ext.inventory.customKeyItems ||= {};
+        ext.inventory.customGifts ||= {};
         ext.inventory.itemImages ||= {};
 
         delete ext.inventory.skills.s_micro_focus;
@@ -258,7 +260,21 @@ export function createItemsPanelController({ extensionName, extension_settings, 
             custom: true,
         }));
 
-        const items = [...catalogItems, ...customKeyItems];
+        const customGifts = Object.entries(inv.customGifts || {})
+            .map(([id, data]) => ({
+                id,
+                name: data.name,
+                description: data.description || "",
+                category: "gift",
+                rarity: data.rarity || "N",
+                effect: "",
+                quantity: Number(inv.gifts?.[id] || 0),
+                catalogIndex: -1,
+                isCustom: true,
+            }))
+            .filter(item => item.quantity > 0);
+
+        const items = [...catalogItems, ...customKeyItems, ...customGifts];
 
         if (activeItemsFilter !== "all") {
             return sortOwnedItems(items.filter(item => item.category === activeItemsFilter));
@@ -407,7 +423,28 @@ export function createItemsPanelController({ extensionName, extension_settings, 
     }
 
     function getGiftPool() {
-        return itemCatalog.filter(item => item.category === "gift");
+        loadInventoryState();
+        const inv = extension_settings[extensionName].inventory;
+        const catalog = itemCatalog.filter(item => item.category === "gift");
+        const custom = Object.entries(inv.customGifts || {}).map(([id, data]) => ({
+            id,
+            name: data.name,
+            category: "gift",
+            rarity: data.rarity || "N",
+            description: data.description || "",
+            effect: "",
+            isCustom: true,
+        }));
+        return [...catalog, ...custom];
+    }
+
+    function getGiftPoolWithCounts() {
+        loadInventoryState();
+        const gifts = extension_settings[extensionName].inventory?.gifts || {};
+        return getGiftPool().map(item => ({
+            ...item,
+            owned: Number(gifts[item.id] || 0),
+        }));
     }
 
     function weightedPick(candidates) {
@@ -577,9 +614,11 @@ export function createItemsPanelController({ extensionName, extension_settings, 
 
         const imageBlockHtml = showImage ? `
             <div class="items-detail-img-wrap">
-                ${itemImage
-                    ? `<img class="items-detail-img" src="${itemImage}" alt="">`
-                    : `<span class="items-detail-img-placeholder">◉</span>`}
+                <div class="items-detail-img-inner">
+                    ${itemImage
+                        ? `<img class="items-detail-img" src="${itemImage}" alt="">`
+                        : ``}
+                </div>
             </div>
             <div class="items-detail-img-actions">
                 <label class="items-detail-img-upload-btn">
@@ -699,6 +738,27 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         return true;
     }
 
+    function removeCustomGift(id) {
+        loadInventoryState();
+        const inv = extension_settings[extensionName].inventory;
+        if (!inv.customGifts?.[id]) return false;
+        delete inv.customGifts[id];
+        delete inv.gifts?.[id];
+        delete inv.itemImages?.[id];
+        saveSettingsDebounced();
+        return true;
+    }
+
+    function createCustomGift(name, rarity, description, imageBase64) {
+        loadInventoryState();
+        const inv = extension_settings[extensionName].inventory;
+        const id = "custom_gift_" + Date.now();
+        inv.customGifts[id] = { name: name.trim(), rarity: rarity || "N", description: description?.trim() || "" };
+        if (imageBase64) inv.itemImages[id] = imageBase64;
+        saveSettingsDebounced();
+        return id;
+    }
+
     function saveItemImage(itemId, base64) {
         loadInventoryState();
         const inv = extension_settings[extensionName].inventory;
@@ -764,7 +824,11 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         const $grid = $("#items-gift-list");
         if (!$grid.length) return;
 
-        const items = getOwnedItems();
+        let items = getOwnedItems();
+        if (itemSearchQuery) {
+            const q = itemSearchQuery.toLowerCase();
+            items = items.filter(i => i.name.toLowerCase().includes(q));
+        }
         $grid.empty();
 
         if (!items.length) {
@@ -787,7 +851,6 @@ export function createItemsPanelController({ extensionName, extension_settings, 
                 </button>
             `);
 
-            $slot.on("mouseenter", () => renderItemDetails(item));
             $slot.on("click", () => {
                 playSfx(getSfx().click);
                 selectedItemId = item.id;
@@ -880,6 +943,13 @@ export function createItemsPanelController({ extensionName, extension_settings, 
 
     function setFilter(filter = "all") {
         activeItemsFilter = filter;
+        itemSearchQuery = "";
+        $("#items-search-input").val("");
+    }
+
+    function setItemSearch(query = "") {
+        itemSearchQuery = query.trim();
+        selectedItemId = null;
     }
 
     function setSort(sort = "recent") {
@@ -1043,6 +1113,24 @@ export function createItemsPanelController({ extensionName, extension_settings, 
                 extension_settings[extensionName].inventory.skillPoints = Math.max(0, Number(value || 0));
                 saveSettingsDebounced();
                 renderSkillsItemsPanel();
+            },
+            resetGifts() {
+                loadInventoryState();
+                extension_settings[extensionName].inventory.gifts = {};
+                saveSettingsDebounced();
+                renderSkillsItemsPanel();
+                return true;
+            },
+            giveAllGifts() {
+                loadInventoryState();
+                const inv = extension_settings[extensionName].inventory;
+                const pool = getGiftPool();
+                for (const item of pool) {
+                    if (!Number(inv.gifts[item.id] || 0)) inv.gifts[item.id] = 1;
+                }
+                saveSettingsDebounced();
+                renderSkillsItemsPanel();
+                return pool.length;
             }
         };
     }
@@ -1073,10 +1161,15 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         renderSkillsItemsPanel,
         setFilter,
         setSort,
+        setItemSearch,
+        renderInventoryGrid,
         rollMonoMonoMachine,
         getMonoMonoDupeChance,
         spinMonoMonoMachine,
         getTrialSkillEntries,
         toggleTrialSkillEquip,
+        getGiftPoolWithCounts,
+        createCustomGift,
+        removeCustomGift,
     };
 }

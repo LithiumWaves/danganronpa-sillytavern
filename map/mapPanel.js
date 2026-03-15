@@ -538,6 +538,131 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         state.machineTrackStarted = false;
     }
 
+    function openMachineItemList() {
+        const items = getItemsController();
+        if (!items?.getGiftPoolWithCounts) return;
+
+        const rarityOrder = { SR: 0, R: 1, N: 2 };
+        let showCustomNames = false;
+
+        function updateEyeBtn() {
+            $(".mml-eye-btn").attr("title", showCustomNames ? "Hide custom item names" : "Show custom item names");
+            $(".mml-eye-btn").html(showCustomNames ? "&#x1F441;" : "&#x1F648;");
+        }
+
+        function buildRows() {
+            const pool = items.getGiftPoolWithCounts();
+            const sorted = pool.slice().sort((a, b) => {
+                const rd = (rarityOrder[a.rarity] ?? 9) - (rarityOrder[b.rarity] ?? 9);
+                return rd !== 0 ? rd : a.name.localeCompare(b.name);
+            });
+            return sorted.map(item => {
+                const revealName = item.owned > 0 || (item.isCustom && showCustomNames);
+                return `
+                <div class="mml-row" data-rarity="${item.rarity}" data-id="${item.id}" data-custom="${item.isCustom ? "1" : "0"}">
+                    <span class="mml-rarity">${item.rarity}</span>
+                    <span class="mml-name">${revealName ? item.name.toUpperCase() : "???"}</span>
+                    <span class="mml-owned">${item.owned > 0 ? `x${item.owned}` : "—"}</span>
+                    ${item.isCustom ? `<button type="button" class="mml-delete-btn" title="Delete item">✕</button>` : `<span></span>`}
+                </div>`;
+            }).join("");
+        }
+
+        $(".map-machine-item-list-modal").remove();
+        $(document.body).append(`
+            <div class="map-machine-item-list-modal">
+                <div class="mml-window">
+                    <div class="mml-header">
+                        <span class="mml-title">ITEM POOL</span>
+                        <div class="mml-header-actions">
+                            <button type="button" class="mml-eye-btn" title="Show custom item names">&#x1F648;</button>
+                            <button type="button" class="mml-add-btn" title="Add custom item">+</button>
+                            <button type="button" class="mml-close">✕</button>
+                        </div>
+                    </div>
+                    <div class="mml-create-panel">
+                        <input type="text" class="mml-input mml-name-input" placeholder="ITEM NAME..." autocomplete="off" spellcheck="false" maxlength="60">
+                        <textarea class="mml-input mml-desc-input" placeholder="DESCRIPTION..." autocomplete="off" spellcheck="false" maxlength="300" rows="2"></textarea>
+                        <select class="mml-input mml-rarity-select">
+                            <option value="N">N — COMMON</option>
+                            <option value="R">R — RARE</option>
+                            <option value="SR">SR — SUPER RARE</option>
+                        </select>
+                        <label class="mml-image-label">
+                            <span class="mml-image-label-text">NO IMAGE SELECTED</span>
+                            <input type="file" class="mml-image-input" accept="image/*">
+                        </label>
+                        <div class="mml-create-actions">
+                            <button type="button" class="mml-create-cancel">CANCEL</button>
+                            <button type="button" class="mml-create-submit">CREATE</button>
+                        </div>
+                    </div>
+                    <div class="mml-list">${buildRows()}</div>
+                </div>
+            </div>
+        `);
+
+        let pendingImageBase64 = null;
+
+        function resetForm() {
+            $(".mml-name-input").val("");
+            $(".mml-desc-input").val("");
+            $(".mml-rarity-select").val("N");
+            $(".mml-image-label-text").text("NO IMAGE SELECTED");
+            $(".mml-image-input").val("");
+            pendingImageBase64 = null;
+            $(".mml-create-panel").removeClass("mml-create-panel--open");
+        }
+
+        $(".mml-eye-btn").on("click", function () {
+            showCustomNames = !showCustomNames;
+            updateEyeBtn();
+            $(".mml-list").html(buildRows());
+        });
+
+        $(".mml-add-btn").on("click", function () {
+            $(".mml-create-panel").toggleClass("mml-create-panel--open");
+            if ($(".mml-create-panel").hasClass("mml-create-panel--open")) {
+                $(".mml-name-input").focus();
+            }
+        });
+
+        $(".mml-image-input").on("change", function () {
+            const file = this.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                pendingImageBase64 = e.target.result;
+                $(".mml-image-label-text").text(file.name);
+            };
+            reader.readAsDataURL(file);
+        });
+
+        $(".mml-create-cancel").on("click", () => resetForm());
+
+        $(".mml-create-submit").on("click", function () {
+            const name = $(".mml-name-input").val().trim();
+            if (!name) { $(".mml-name-input").focus(); return; }
+            if (!items.createCustomGift) return;
+            const desc = $(".mml-desc-input").val().trim();
+            const rarity = $(".mml-rarity-select").val();
+            items.createCustomGift(name, rarity, desc, pendingImageBase64);
+            $(".mml-list").html(buildRows());
+            resetForm();
+        });
+
+        $(".mml-list").on("click", ".mml-delete-btn", function () {
+            const id = $(this).closest(".mml-row").data("id");
+            if (!id || !items.removeCustomGift) return;
+            items.removeCustomGift(String(id));
+            $(".mml-list").html(buildRows());
+        });
+
+        $(".mml-close, .map-machine-item-list-modal").on("click", function (e) {
+            if (e.target === this) $(".map-machine-item-list-modal").remove();
+        });
+    }
+
     function ensureMachineOverlay($panel) {
         if ($(selectors.machineOverlay).length) return;
 
@@ -557,6 +682,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                         <button type="button" class="map-machine-button add" title="Add one coin to dupe protection load">+C</button>
                         <button type="button" class="map-machine-button add-roll" title="Add one extra roll">+R</button>
                         <button type="button" class="map-machine-button roll" title="Roll">▶</button>
+                        <button type="button" class="map-machine-button map-machine-list-btn" title="View item pool">≡</button>
                     </div>
 
                     <div class="map-machine-info">
@@ -572,6 +698,11 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
 
         $(selectors.machineClose).off("click").on("click", () => {
             closeMachineOverlay($panel);
+        });
+
+        $(".map-machine-list-btn").off("click").on("click", () => {
+            playSfx?.(getSfx?.().click);
+            openMachineItemList();
         });
 
         $(selectors.machineOverlay).off("click").on("click", function (event) {
@@ -792,7 +923,6 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             $button.on("click", () => {
                 if (state.floor === floor.key) return;
                 state.floor = floor.key;
-                onWalkStep?.();
                 renderMapPanel();
             });
 
@@ -955,7 +1085,6 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
 
             state.area = nextArea;
             ensureValidFloorSelection();
-            onWalkStep?.();
             renderMapPanel();
         });
     }
