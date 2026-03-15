@@ -12,7 +12,8 @@
 .items-shell {
     height: 100%;
     display: grid;
-    grid-template-rows: auto 1fr auto;
+    grid-template-columns: 220px 1fr 280px;
+    grid-template-rows: auto 1fr;
     gap: 12px;
     border: 2px solid rgba(255, 223, 231, 0.28);
     border-radius: 10px;
@@ -39,11 +40,24 @@
     color: rgba(255, 215, 226, 0.8);
 }
 
-.items-upper-grid {
-    min-height: 0;
-    display: grid;
-    grid-template-columns: 250px 1fr;
-    gap: 12px;
+.items-headline {
+    grid-column: 1 / -1;
+    grid-row: 1;
+}
+
+.items-filter-panel {
+    grid-column: 1;
+    grid-row: 2;
+}
+
+.items-grid-panel {
+    grid-column: 2;
+    grid-row: 2;
+}
+
+.items-detail-panel {
+    grid-column: 3;
+    grid-row: 2;
 }
 
 .items-filter-panel,
@@ -413,6 +427,36 @@
     flex-direction: column;
 }
 
+.items-grid-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.items-search-input {
+    margin-left: auto;
+    background: linear-gradient(180deg, rgba(169, 46, 79, 0.85), rgba(92, 20, 40, 0.85)) !important;
+    border: 1px solid rgba(255, 226, 234, 0.8) !important;
+    border-radius: 4px !important;
+    color: #fff !important;
+    font-family: inherit !important;
+    font-size: 11px !important;
+    letter-spacing: 0.07em !important;
+    padding: 7px 8px !important;
+    width: 120px;
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+.items-search-input::placeholder {
+    color: rgba(255, 210, 225, 0.55) !important;
+}
+
+.items-search-input:focus {
+    border-color: rgba(255, 240, 245, 0.95) !important;
+    box-shadow: 0 0 12px rgba(255, 108, 154, 0.24) !important;
+}
+
 .items-grid {
     padding: 12px;
     display: grid;
@@ -544,8 +588,14 @@
         gap: 12px;
     }
 
-    .items-upper-grid {
-        grid-template-columns: 1fr;
+    .items-shell {
+        grid-template-columns: 200px 1fr;
+        grid-template-rows: auto 1fr auto;
+    }
+
+    .items-detail-panel {
+        grid-column: 1 / -1;
+        grid-row: 3;
     }
 
     .items-grid {
@@ -792,13 +842,25 @@
         letter-spacing: 0.05em;
     }
 
-    .items-upper-grid {
-        min-height: auto;
-        gap: 8px;
+    .items-shell {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto auto auto;
+    }
+
+    .items-filter-panel {
+        grid-column: 1;
+        grid-row: 2;
     }
 
     .items-grid-panel {
+        grid-column: 1;
+        grid-row: 3;
         min-height: auto;
+    }
+
+    .items-detail-panel {
+        grid-column: 1;
+        grid-row: 4;
     }
 
     .items-filter-group {

@@ -833,6 +833,106 @@ body.dangan-trial-vn-chat-hidden #chat {
     transform: translate(-50%, -50%) scale(1);
 }
 
+/* Item Pool Modal */
+
+.map-machine-item-list-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483599;
+    background: rgba(2, 8, 20, 0.88);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+
+.mml-window {
+    width: min(520px, 92%);
+    max-height: calc(100dvh - 64px);
+    border: 1px solid rgba(153, 210, 255, 0.42);
+    border-radius: 12px;
+    background: linear-gradient(160deg, rgba(5, 18, 43, 0.98), rgba(11, 32, 68, 0.96));
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.mml-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(153, 210, 255, 0.2);
+    flex-shrink: 0;
+}
+
+.mml-title {
+    font-size: 13px;
+    letter-spacing: 0.14em;
+    color: rgba(228, 243, 255, 0.92);
+}
+
+.mml-close {
+    border: 1px solid rgba(166, 213, 255, 0.5);
+    border-radius: 4px;
+    background: rgba(12, 33, 66, 0.9);
+    color: #e7f5ff;
+    width: 26px;
+    height: 26px;
+    cursor: pointer;
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.mml-list {
+    overflow-y: auto;
+    padding: 8px 0;
+    flex: 1;
+}
+
+.mml-row {
+    display: grid;
+    grid-template-columns: 32px 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    border-bottom: 1px solid rgba(153, 210, 255, 0.08);
+    font-size: 11px;
+    letter-spacing: 0.07em;
+}
+
+.mml-row:last-child {
+    border-bottom: none;
+}
+
+.mml-rarity {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-align: center;
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+
+.mml-row[data-rarity="N"] .mml-rarity { color: rgba(190, 185, 190, 0.9); border: 1px solid rgba(160,160,160,0.4); }
+.mml-row[data-rarity="R"] .mml-rarity  { color: rgba(120, 175, 255, 0.95); border: 1px solid rgba(100,160,255,0.4); }
+.mml-row[data-rarity="SR"] .mml-rarity { color: rgba(255, 210, 60, 0.95); border: 1px solid rgba(220,175,40,0.5); }
+
+.mml-name {
+    color: rgba(228, 243, 255, 0.88);
+}
+
+.mml-owned {
+    font-size: 11px;
+    color: rgba(180, 220, 255, 0.6);
+    min-width: 28px;
+    text-align: right;
+}
+
+.mml-row[data-rarity="SR"] .mml-name { color: rgba(255, 230, 140, 0.92); }
+.mml-row[data-rarity="R"] .mml-name  { color: rgba(180, 215, 255, 0.92); }
+
 .map-image {
     width: 100%;
     height: 100%;

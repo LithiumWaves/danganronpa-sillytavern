@@ -52,11 +52,12 @@ export function initTruthBullets(providedDeps) {
 
     // Render them ASAP
     window.renderTruthBullets = renderTruthBullets;
-    
+
     startV3CObserver();
 }
 
 const truthBullets = [];
+const archivedTruthBullets = [];
 const truthBulletQueue = [];
 let truthBulletAnimating = false;
 let forcedTruthBulletSfxVariant = null;
@@ -106,30 +107,34 @@ const TB_REGEX = /V3C\|\s*TB:\s*([^|\n\r]+)(?:\|\|\s*([^\n\r]+))?/g;
 
 function saveTruthBullets() {
     deps.extension_settings[deps.extensionName].truthBullets = truthBullets;
+    deps.extension_settings[deps.extensionName].archivedTruthBullets = archivedTruthBullets;
     deps.saveSettingsDebounced();
 }
 
 function loadTruthBullets() {
     const saved = extension_settings[extensionName].truthBullets;
-    if (!Array.isArray(saved)) return;
+    if (Array.isArray(saved)) {
+        truthBullets.length = 0;
+        processedTruthSignatures.clear();
+        saved.forEach(tb => {
+            truthBullets.push(tb);
+            const sig = `${tb.title}||${tb.description || ""}`;
+            processedTruthSignatures.add(sig);
+        });
+    }
 
-    truthBullets.length = 0;
-    processedTruthSignatures.clear();
-
-    saved.forEach(tb => {
-        truthBullets.push(tb);
-
-        // Prevent re-adding from chat scan
-        const sig = `${tb.title}||${tb.description || ""}`;
-        processedTruthSignatures.add(sig);
-    });
+    const savedArchived = extension_settings[extensionName].archivedTruthBullets;
+    if (Array.isArray(savedArchived)) {
+        archivedTruthBullets.length = 0;
+        savedArchived.forEach(tb => archivedTruthBullets.push(tb));
+    }
 }
 
 /* =========================
    TRUTH BULLET FUNCTIONS
    ========================= */
 
-function addTruthBullet(title, description = "", { grantMonocoins = true, grantXp = true } = {}) {
+function addTruthBullet(title, description = "", { grantMonocoins = true, grantXp = true, image } = {}) {
     if (!title) return;
     if (truthBullets.some(tb => tb.title === title)) return;
 
@@ -137,7 +142,8 @@ function addTruthBullet(title, description = "", { grantMonocoins = true, grantX
         id: `tb_${Date.now()}`,
         title,
         description,
-        timestamp: new Date().toLocaleString()
+        timestamp: new Date().toLocaleString(),
+        ...(image ? { image } : {}),
     };
 
     truthBullets.push(bullet);
@@ -168,6 +174,40 @@ function insertTruthBulletUI(bullet) {
 
     const $item = $(`
         <div class="truth-item" data-id="${bullet.id}">
+            <img src="scripts/extensions/third-party/danganronpa-extension/assets/artillery-shell.svg" alt="" class="truth-bullet-icon">
+            ${bullet.title.toUpperCase()}
+        </div>
+    `);
+
+    // Insert before the archive divider if it exists, otherwise append
+    const $divider = $list.find(".truth-archive-divider");
+    if ($divider.length) {
+        $divider.before($item);
+    } else {
+        $list.append($item);
+    }
+
+    $item.on("click", () => {
+        $(".truth-item, .truth-archived-item").removeClass("active");
+        $item.addClass("active");
+        showTruthBulletDetails(bullet, false);
+    });
+}
+
+function insertArchivedTruthBulletUI(bullet) {
+    const $list = $(".truth-list-items");
+    if (!$list.length) return;
+
+    if ($list.find(`[data-id="${bullet.id}"]`).length) return;
+
+    // Ensure the archive divider exists
+    if (!$list.find(".truth-archive-divider").length) {
+        $list.append(`<div class="truth-archive-divider">ARCHIVED</div>`);
+    }
+
+    const $item = $(`
+        <div class="truth-archived-item" data-id="${bullet.id}">
+            <img src="scripts/extensions/third-party/danganronpa-extension/assets/artillery-shell.svg" alt="" class="truth-bullet-icon truth-bullet-icon--archived">
             ${bullet.title.toUpperCase()}
         </div>
     `);
@@ -175,18 +215,27 @@ function insertTruthBulletUI(bullet) {
     $list.append($item);
 
     $item.on("click", () => {
-        $(".truth-item").removeClass("active");
+        $(".truth-item, .truth-archived-item").removeClass("active");
         $item.addClass("active");
-        showTruthBulletDetails(bullet);
+        showTruthBulletDetails(bullet, true);
     });
 }
 
-function showTruthBulletDetails(bullet) {
+function showTruthBulletDetails(bullet, isArchived) {
     const $details = $(".truth-details");
     if (!$details.length) return;
 
+    $details.removeAttr("style");
+
+    const actionButton = isArchived
+        ? `<div class="truth-archived-actions">
+               <button class="truth-reload-button">RELOAD TRUTH BULLET</button>
+               <button class="truth-remove-button truth-delete-button">DELETE TRUTH BULLET</button>
+           </div>`
+        : `<button class="truth-remove-button">ARCHIVE TRUTH BULLET</button>`;
+
     $details.html(`
-        <div class="truth-details-content">
+        <div class="truth-detail-main">
             <div class="truth-title">${bullet.title}</div>
             <div class="truth-description">
                 ${bullet.description || "No further details recorded."}
@@ -194,34 +243,183 @@ function showTruthBulletDetails(bullet) {
             <div class="truth-meta">
                 OBTAINED: ${bullet.timestamp}
             </div>
-
-            <button class="truth-remove-button">
-                DISCARD TRUTH BULLET
-            </button>
+            ${actionButton}
+        </div>
+        <div class="truth-image-col">
+            <div style="width:100%;background:radial-gradient(ellipse at 50% 60%,rgba(36,10,46,0.97),rgba(8,3,14,1));border:1px solid rgba(200,80,220,0.38);box-shadow:inset 0 0 60px rgba(0,0,0,0.55),0 0 12px rgba(180,60,200,0.12);padding:16px;box-sizing:border-box;position:relative;">
+                <div style="position:absolute;top:6px;left:6px;width:14px;height:14px;border-top:1px solid rgba(220,100,255,0.55);border-left:1px solid rgba(220,100,255,0.55);"></div>
+                <div style="position:absolute;bottom:6px;right:6px;width:14px;height:14px;border-bottom:1px solid rgba(220,100,255,0.55);border-right:1px solid rgba(220,100,255,0.55);"></div>
+                ${bullet.image ? `<img src="${bullet.image}" alt="" style="max-width:95%;height:auto;object-fit:contain;display:block;margin:16px auto;">` : ""}
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:12px;">
+                ${!isArchived ? `<label style="background:transparent;border:1px solid rgba(255,210,60,0.6);color:#ffd43c;font-family:inherit;font-size:0.85rem;letter-spacing:0.08em;padding:6px 16px;cursor:pointer;transition:color 0.15s,border-color 0.15s,background 0.15s;">
+                    ${bullet.image ? "REPLACE IMAGE" : "UPLOAD IMAGE"}
+                    <input type="file" accept="image/*" class="truth-image-input" style="display:none">
+                </label>
+                ${bullet.image ? `<button type="button" class="truth-image-delete-btn" style="background:transparent;border:1px solid rgba(255,60,60,0.6);color:#ff4a4a;font-family:inherit;font-size:0.85rem;letter-spacing:0.08em;padding:6px 16px;cursor:pointer;transition:color 0.15s,border-color 0.15s,background 0.15s;">DELETE IMAGE</button>` : ""}` : ""}
+            </div>
         </div>
     `);
 
-    $details.find(".truth-remove-button").on("click", () => {
-        removeTruthBullet(bullet.id);
+    if (isArchived) {
+        $details.find(".truth-reload-button").on("click", () => {
+            reloadArchivedBullet(bullet.id);
+        });
+
+        $details.find(".truth-remove-button").on("click", () => {
+            showDeleteArchivedConfirm(bullet.id);
+        });
+    } else {
+        $details.find(".truth-remove-button").on("click", () => {
+            showArchiveConfirm(bullet.id);
+        });
+
+        $details.find(".truth-image-input").on("change", function () {
+            const file = this.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = e => {
+                bullet.image = e.target.result;
+                saveTruthBullets();
+                showTruthBulletDetails(bullet, false);
+            };
+            reader.readAsDataURL(file);
+        });
+
+        $details.find(".truth-image-delete-btn").on("click", () => {
+            delete bullet.image;
+            saveTruthBullets();
+            showTruthBulletDetails(bullet, false);
+        });
+    }
+}
+
+function showArchiveConfirm(id) {
+    $(".truth-discard-modal").remove();
+
+    const $modal = $(`
+        <div class="truth-discard-modal">
+            <div class="truth-discard-box">
+                <div class="truth-discard-warning">&#9888;</div>
+                <div class="truth-discard-message">Are you sure? Archiving a Truth Bullet may make Class Trials more difficult, or impossible to solve.</div>
+                <div class="truth-discard-actions">
+                    <button class="truth-discard-confirm">ARCHIVE</button>
+                    <button class="truth-discard-cancel">CANCEL</button>
+                </div>
+            </div>
+        </div>
+    `);
+
+    $("body").append($modal);
+
+    $modal.find(".truth-discard-confirm").on("click", () => {
+        $modal.remove();
+        archiveTruthBullet(id);
+    });
+
+    $modal.find(".truth-discard-cancel").on("click", () => {
+        $modal.remove();
+    });
+
+    $modal.on("click", function (e) {
+        if (e.target === this) $modal.remove();
     });
 }
 
-function removeTruthBullet(id) {
+function showDeleteArchivedConfirm(id) {
+    $(".truth-discard-modal").remove();
+
+    const $modal = $(`
+        <div class="truth-discard-modal">
+            <div class="truth-discard-box">
+                <div class="truth-discard-warning">&#9888;</div>
+                <div class="truth-discard-message">Are you sure? Deleting an archived Truth Bullet is permanent and cannot be undone.</div>
+                <div class="truth-discard-actions">
+                    <button class="truth-discard-confirm">DELETE</button>
+                    <button class="truth-discard-cancel">CANCEL</button>
+                </div>
+            </div>
+        </div>
+    `);
+
+    $("body").append($modal);
+
+    $modal.find(".truth-discard-confirm").on("click", () => {
+        $modal.remove();
+        permanentlyDeleteArchivedBullet(id);
+    });
+
+    $modal.find(".truth-discard-cancel").on("click", () => {
+        $modal.remove();
+    });
+
+    $modal.on("click", function (e) {
+        if (e.target === this) $modal.remove();
+    });
+}
+
+function archiveTruthBullet(id) {
     const index = truthBullets.findIndex(tb => tb.id === id);
     if (index === -1) return;
 
-    truthBullets.splice(index, 1);
+    const [bullet] = truthBullets.splice(index, 1);
+    archivedTruthBullets.push(bullet);
     saveTruthBullets();
 
     $(`.truth-item[data-id="${id}"]`).remove();
-    $(".truth-details").empty();
+    $(".truth-details").removeAttr("style").empty();
 
     if (!truthBullets.length) {
-        $(".truth-list-items")
-            .append(`<div class="truth-empty">NO TRUTH BULLETS FOUND</div>`);
+        const $list = $(".truth-list-items");
+        if (!$list.find(".truth-archive-divider").length) {
+            $list.prepend(`<div class="truth-empty">NO TRUTH BULLETS FOUND</div>`);
+        }
     }
 
-    console.log(`[${extensionName}] Truth Bullet removed`);
+    insertArchivedTruthBulletUI(bullet);
+
+    console.log(`[${extensionName}] Truth Bullet archived: ${bullet.title}`);
+}
+
+function reloadArchivedBullet(id) {
+    const index = archivedTruthBullets.findIndex(tb => tb.id === id);
+    if (index === -1) return;
+
+    const [bullet] = archivedTruthBullets.splice(index, 1);
+    truthBullets.push(bullet);
+    saveTruthBullets();
+
+    $(`.truth-archived-item[data-id="${id}"]`).remove();
+    $(".truth-details").removeAttr("style").empty();
+
+    if (!archivedTruthBullets.length) {
+        $(".truth-archive-divider").remove();
+    }
+
+    // Remove "no bullets" placeholder if present
+    $(".truth-list-items .truth-empty").remove();
+
+    insertTruthBulletUI(bullet);
+
+    console.log(`[${extensionName}] Truth Bullet reloaded from archive: ${bullet.title}`);
+}
+
+function permanentlyDeleteArchivedBullet(id) {
+    const index = archivedTruthBullets.findIndex(tb => tb.id === id);
+    if (index === -1) return;
+
+    archivedTruthBullets.splice(index, 1);
+    saveTruthBullets();
+
+    $(`.truth-archived-item[data-id="${id}"]`).remove();
+    $(".truth-details").removeAttr("style").empty();
+
+    // Remove divider if no archived bullets remain
+    if (!archivedTruthBullets.length) {
+        $(".truth-archive-divider").remove();
+    }
+
+    console.log(`[${extensionName}] Archived Truth Bullet permanently deleted`);
 }
 
 function renderTruthBullets() {
@@ -230,14 +428,21 @@ function renderTruthBullets() {
 
     $list.empty();
 
-    if (!truthBullets.length) {
+    if (!truthBullets.length && !archivedTruthBullets.length) {
         $list.append(`<div class="truth-empty">NO TRUTH BULLETS FOUND</div>`);
         return;
     }
 
-    truthBullets.forEach(bullet => {
-        insertTruthBulletUI(bullet);
-    });
+    if (!truthBullets.length) {
+        $list.append(`<div class="truth-empty">NO TRUTH BULLETS FOUND</div>`);
+    } else {
+        truthBullets.forEach(bullet => insertTruthBulletUI(bullet));
+    }
+
+    if (archivedTruthBullets.length) {
+        $list.append(`<div class="truth-archive-divider">ARCHIVED</div>`);
+        archivedTruthBullets.forEach(bullet => insertArchivedTruthBulletUI(bullet));
+    }
 }
 
 function queueTruthBulletAnimation(title) {

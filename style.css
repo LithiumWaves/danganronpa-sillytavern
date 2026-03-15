@@ -1,6 +1,7 @@
 @import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600&family=Rajdhani:wght@400;500;600&display=swap");
 @import url("./styles/legacy.css");
+@import url("./styles/systems/vfx/vfx.css");
 
 .dangan-trial-skill-manager {
     border: 1px solid rgba(80, 224, 255, 0.5);
@@ -127,6 +128,15 @@
 .monopad-time-button:disabled {
     opacity: 0.42;
     cursor: not-allowed;
+}
+
+.monopad-investigation-underway-btn {
+    border-color: rgba(255, 200, 60, 0.65);
+    background: linear-gradient(180deg, rgba(48, 32, 4, 0.92), rgba(28, 18, 2, 0.92));
+    color: #ffd04a;
+    cursor: default;
+    opacity: 1;
+    letter-spacing: 0.1em;
 }
 
 @media (max-width: 700px) {

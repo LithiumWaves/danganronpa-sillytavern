@@ -74,6 +74,11 @@
 .truth-details {
     padding: 16px;
     position: relative;
+    display: flex;
+    flex-direction: row;
+    gap: 16px;
+    align-items: stretch;
+    min-height: 0;
 }
 
 .truth-details-placeholder {
@@ -229,6 +234,116 @@
     outline: none;
 }
 
+/* Detail layout — main content + image column */
+
+.truth-detail-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+}
+
+.truth-image-col {
+    flex-shrink: 0;
+    width: 220px;
+    position: relative;
+    background: radial-gradient(ellipse at 50% 60%, rgba(36,10,46,0.97), rgba(8,3,14,1));
+    border: 1px solid rgba(200,80,220,0.38);
+    box-shadow: inset 0 0 60px rgba(0,0,0,0.55), 0 0 12px rgba(180,60,200,0.12);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.truth-image-col::before,
+.truth-image-col::after {
+    content: '';
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border-style: solid;
+}
+
+.truth-image-col::before {
+    top: 6px;
+    left: 6px;
+    border-width: 1px 0 0 1px;
+    border-color: rgba(220,100,255,0.55);
+}
+
+.truth-image-col::after {
+    bottom: 6px;
+    right: 6px;
+    border-width: 0 1px 1px 0;
+    border-color: rgba(220,100,255,0.55);
+}
+
+.truth-bullet-img {
+    max-width: 100%;
+    max-height: calc(100% - 36px);
+    object-fit: contain;
+    object-position: center;
+    display: block;
+}
+
+.truth-image-frame::before,
+.truth-image-frame::after {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border-style: solid;
+    border-color: rgba(220, 100, 255, 0.55);
+}
+
+.truth-image-frame::before {
+    top: 6px;
+    left: 6px;
+    border-width: 1px 0 0 1px;
+}
+
+.truth-image-frame::after {
+    bottom: 6px;
+    right: 6px;
+    border-width: 0 1px 1px 0;
+}
+
+.truth-image-upload-btn,
+.truth-image-delete-btn {
+    background: transparent;
+    font-family: inherit;
+    font-size: 0.85rem;
+    letter-spacing: 0.08em;
+    padding: 6px 16px;
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.truth-image-upload-btn {
+    border: 1px solid rgba(255, 210, 60, 0.6);
+    color: #ffd43c;
+}
+
+.truth-image-upload-btn:hover {
+    color: #fff;
+    border-color: #ffe066;
+    background-color: rgba(255, 210, 60, 0.12);
+}
+
+.truth-image-delete-btn {
+    border: 1px solid rgba(255, 60, 60, 0.6);
+    color: #ff4a4a;
+}
+
+.truth-image-delete-btn:hover {
+    color: #fff;
+    border-color: #ff6b6b;
+    background-color: rgba(255, 60, 60, 0.12);
+}
+
 .truth-description {
     margin-top: 6px;
     font-size: 0.85rem;
@@ -244,4 +359,5 @@
     opacity: 0.6;
     margin-bottom: 2px;
 }
+
 

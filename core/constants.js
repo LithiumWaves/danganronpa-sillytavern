@@ -55,15 +55,21 @@ function resolveExtensionFolderPath() {
 export const extensionFolderPath = resolveExtensionFolderPath();
 
 export const defaultSettings = {
-    monopadSounds: true,
+    monopadVolume: 50,
+    monopadJingleEnabled: true,
+    announcementVolume: 65,
+    monokumaLanguage: "JP",
     trustCeremonies: true,
     truthBulletAnimations: true,
-    monochineTrackEnabled: true,
+    monomonoBgmVolume: 40,
     mapPresencePinsEnabled: true,
     vnModeEnabled: false,
     crtEffects: true,
     crtIntensity: 35,
     bootAnimations: true,
+    dynamicThemes: true,
+    hideTruthBulletImages: false,
+    hideGiftImages: false,
     monopadButtonEnabled: true,
     welcomeSeen: false,
     monokumaLessonRewardClaimed: false,
@@ -73,6 +79,7 @@ export const defaultSettings = {
     openrouterModel: "google/gemini-2.5-flash",
     openrouterRememberApiKey: false,
     openrouterApiKey: "",
+    investigationTracks: [],
     rewardDifficulty: "normal",
     timeTracker: {
         day: 1,
