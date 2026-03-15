@@ -292,6 +292,18 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
                 transform: translateX(30px) scale(0.94);
                 border: 2px solid #fff;
                 box-shadow: 0 0 22px rgba(255, 65, 65, 0.5);
+                color: #fff;
+                padding: 12px 14px;
+                letter-spacing: 1px;
+                position: relative;
+                overflow: hidden;
+            }
+
+            .mono-announ-sting::before {
+                content: '';
+                position: absolute;
+                inset: 0;
+                right: -30px;
                 background: repeating-linear-gradient(
                     45deg,
                     #000 0,
@@ -299,9 +311,12 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
                     #9b0909 10px,
                     #9b0909 20px
                 );
-                color: #fff;
-                padding: 12px 14px;
-                letter-spacing: 1px;
+                animation: monoStingScroll 1.4s linear infinite;
+            }
+
+            .mono-announ-sting-text {
+                position: relative;
+                z-index: 1;
             }
 
             .mono-announ-sting.active {
@@ -424,6 +439,11 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
                 50% { filter: brightness(1.35); }
             }
 
+            @keyframes monoStingScroll {
+                from { transform: translateX(0); }
+                to   { transform: translateX(-28.28px); }
+            }
+
             @keyframes monoTvGlow {
                 from { opacity: 0.9; }
                 to { opacity: 0; }
@@ -439,7 +459,7 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         const root = document.createElement("div");
         root.id = "monokuma-announcement-root";
         root.innerHTML = `
-            <div class="mono-announ-sting">♪ DING DONG, BING BONG ♪</div>
+            <div class="mono-announ-sting"><span class="mono-announ-sting-text">♪ DING DONG, BING BONG ♪</span></div>
             <div class="mono-announ-monitor" role="status" aria-live="polite">
                 <div class="mono-announ-screen">
                     <div class="mono-announ-tv-glow"></div>
