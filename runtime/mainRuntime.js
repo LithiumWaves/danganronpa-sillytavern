@@ -1020,12 +1020,19 @@ function createTrialDiscussionController() {
 
 function createNonstopDebateController() {
     let introTimer = null;
-    let phaseTimer = null;
-    let roundToken = 0;
+    let breakTimer = null;
+    let runToken = 0;
     let weakPointCounter = 0;
-    let restoredVnAfterNsd = false;
-    let lastObservedPhase = null;
     let activeWeakPointIds = new Set();
+
+    const runtime = {
+        sectionReplyTotal: 0,
+        sectionReplyIndex: 0,
+        currentSection: 0,
+        generating: false,
+        nextReplyPromise: null,
+        nextReplySpeaker: "UNKNOWN",
+    };
 
     function ensureOverlay() {
         let overlay = document.getElementById('dangan-nsd-overlay');
@@ -1041,12 +1048,20 @@ function createNonstopDebateController() {
                 <div class="dangan-nsd-banner">NONSTOP DEBATE</div>
             </div>
             <div class="dangan-nsd-active" id="dangan-nsd-active">
-                <div class="dangan-nsd-round-label" id="dangan-nsd-round-label">Round 1 · Replies: 0/0</div>
+                <div class="dangan-nsd-round-label" id="dangan-nsd-round-label">Section 1 · Replies: 0/0</div>
                 <div class="dangan-nsd-floating-layer" id="dangan-nsd-floating-layer"></div>
+                <div class="dangan-nsd-controls">
+                    <button type="button" class="dangan-nsd-next-btn" id="dangan-nsd-next-btn">Generate Next Statement</button>
+                    <div class="dangan-nsd-status" id="dangan-nsd-status" aria-live="polite">Ready.</div>
+                </div>
             </div>
         `;
 
         document.body.appendChild(overlay);
+        const nextBtn = overlay.querySelector('#dangan-nsd-next-btn');
+        nextBtn?.addEventListener('click', () => {
+            void stepNextLine();
+        });
         return overlay;
     }
 
@@ -1055,10 +1070,28 @@ function createNonstopDebateController() {
             clearTimeout(introTimer);
             introTimer = null;
         }
-        if (phaseTimer) {
-            clearTimeout(phaseTimer);
-            phaseTimer = null;
+        if (breakTimer) {
+            clearTimeout(breakTimer);
+            breakTimer = null;
         }
+    }
+
+    function setStatus(text) {
+        const statusEl = ensureOverlay().querySelector('#dangan-nsd-status');
+        if (statusEl) statusEl.textContent = String(text || '');
+    }
+
+    function setGenerateButtonState({ enabled = true, label = "Generate Next Statement" } = {}) {
+        const button = ensureOverlay().querySelector('#dangan-nsd-next-btn');
+        if (!button) return;
+        button.disabled = !enabled;
+        button.textContent = label;
+    }
+
+    function updateRoundLabel() {
+        const labelEl = ensureOverlay().querySelector('#dangan-nsd-round-label');
+        if (!labelEl) return;
+        labelEl.textContent = `Section ${runtime.currentSection} · Replies: ${runtime.sectionReplyIndex}/${runtime.sectionReplyTotal}`;
     }
 
     function clearFloating() {
@@ -1087,6 +1120,18 @@ function createNonstopDebateController() {
         return String(text.match(regex)?.[1] || '').trim();
     }
 
+    function pickDebateDialogue(rawReply) {
+        const quotes = extractQuotedSegments(rawReply);
+        if (quotes.length) return quotes[0];
+
+        const lineField = extractField(rawReply, 'line');
+        if (!lineField) return '...';
+
+        return String(lineField)
+            .replace(/^"+|"+$/g, '')
+            .trim() || '...';
+    }
+
     function splitWords(value) {
         return String(value || '')
             .replaceAll('\n', ' ')
@@ -1106,7 +1151,17 @@ function createNonstopDebateController() {
         return { start, end: Math.min(words.length - 1, start + span - 1) };
     }
 
-    async function generateDebateReply() {
+    function getRandomSpeaker() {
+        const source = Array.from(characters.values())
+            .map(char => String(char?.name || '').trim())
+            .filter(Boolean);
+        if (!source.length) {
+            return ['Makoto', 'Kyoko', 'Byakuya', 'Aoi', 'Toko', 'Yasuhiro'][Math.floor(Math.random() * 6)];
+        }
+        return source[Math.floor(Math.random() * source.length)];
+    }
+
+    async function generateDebateReply({ seedSpeaker = "UNKNOWN" } = {}) {
         const ctx = window.SillyTavern?.getContext?.();
         const prompt = `
 TASK:
@@ -1120,30 +1175,36 @@ Rules:
 - No narration.
 - No markdown.
 - Keep momentum for Nonstop Debate pressure.
+- Prefer this speaker: ${seedSpeaker}
 `.trim();
 
-        if (ctx?.generateRaw) {
-            const result = await ctx.generateRaw({
-                prompt,
-                max_tokens: 90,
-                temperature: 0.8,
-                top_p: 0.95,
-                stop: ['USER:', 'ASSISTANT:']
-            });
-            return String(result || '').trim();
+        try {
+            if (ctx?.generateRaw) {
+                const result = await ctx.generateRaw({
+                    prompt,
+                    max_tokens: 90,
+                    temperature: 0.8,
+                    top_p: 0.95,
+                    stop: ['USER:', 'ASSISTANT:']
+                });
+                return String(result || '').trim();
+            }
+        } catch {
+            // fallback below
         }
 
-        const fallback = await generateIsolated(`${prompt}\nUse short analytical output only.`, { allowDialogue: true });
-        return String(fallback || '').trim();
+        try {
+            const fallback = await generateIsolated(`${prompt}\nUse short analytical output only.`, { allowDialogue: true });
+            return String(fallback || '').trim();
+        } catch {
+            return `speaker: ${seedSpeaker}\nline: "You're overlooking the decisive contradiction!"`;
+        }
     }
 
-    function renderFloatingLine({ speaker, dialogue, replyIndex, replyTotal, weakPointId, weakRange }) {
+    function renderFloatingLine({ speaker, dialogue, weakPointId, weakRange }) {
         const overlay = ensureOverlay();
-        const labelEl = overlay.querySelector('#dangan-nsd-round-label');
         const layer = overlay.querySelector('#dangan-nsd-floating-layer');
         if (!layer) return;
-
-        if (labelEl) labelEl.textContent = `Round 1 · Replies: ${replyIndex}/${replyTotal}`;
 
         const words = splitWords(dialogue);
         const weakStart = weakRange?.start ?? -1;
@@ -1177,163 +1238,156 @@ Rules:
         quoteEl.append('"');
         phrase.appendChild(quoteEl);
 
-        const driftX = Math.floor(Math.random() * 100) - 50;
-        phrase.style.setProperty('--nsd-drift-x', `${driftX}px`);
-        phrase.style.setProperty('--nsd-order', String(replyIndex));
+        const lane = Math.floor(Math.random() * 7);
+        phrase.style.setProperty('--nsd-lane', String(lane));
+        phrase.style.setProperty('--nsd-delay', `${Math.floor(Math.random() * 180)}ms`);
+        phrase.style.setProperty('--nsd-scale', `${(0.88 + Math.random() * 0.28).toFixed(2)}`);
+
         layer.appendChild(phrase);
 
-        const lines = Array.from(layer.querySelectorAll('.dangan-nsd-floating-line'));
-        if (lines.length > 7) {
-            lines.slice(0, lines.length - 7).forEach(el => el.remove());
+        const activeLines = Array.from(layer.querySelectorAll('.dangan-nsd-floating-line'));
+        if (activeLines.length > 18) {
+            activeLines.slice(0, activeLines.length - 18).forEach(el => el.remove());
         }
+
+        window.setTimeout(() => {
+            phrase.remove();
+        }, 9800);
     }
 
     function hideOverlay() {
         const overlay = ensureOverlay();
-        overlay.classList.remove('active', 'phase-cutscene', 'phase-active');
-        overlay.setAttribute('aria-hidden', 'true');
         clearTimers();
         clearFloating();
         activeWeakPointIds.clear();
-        roundToken += 1;
-        lastObservedPhase = null;
-
+        runToken += 1;
+        runtime.sectionReplyTotal = 0;
+        runtime.sectionReplyIndex = 0;
+        runtime.currentSection = 0;
+        runtime.generating = false;
+        runtime.nextReplyPromise = null;
+        overlay.classList.remove('active', 'phase-cutscene', 'phase-active');
+        overlay.setAttribute('aria-hidden', 'true');
         document.body.classList.remove('dangan-trial-nsd-active');
-        if (!restoredVnAfterNsd && vnModeController) {
-            vnModeController.setEnabled?.(true);
-        }
-        restoredVnAfterNsd = false;
     }
 
-    function startActiveSection(token) {
-        if (token !== roundToken) return;
-        const state = trialController?.getState?.();
-        if (state?.phase !== trialController?.phases?.NONSTOP_ACTIVE) return;
-
-        const overlay = ensureOverlay();
-        overlay.classList.add('active', 'phase-active');
-        overlay.classList.remove('phase-cutscene');
-        overlay.setAttribute('aria-hidden', 'false');
-
-        document.body.classList.add('dangan-trial-nsd-active');
-        if (vnModeController) {
-            vnModeController.setEnabled?.(true);
-            restoredVnAfterNsd = true;
-        }
-
-        clearFloating();
-        activeWeakPointIds.clear();
-
-        const replyTotal = Math.floor(Math.random() * 6) + 3;
-        let replyIndex = 0;
-        let stopped = false;
-
-        const runNext = async () => {
-            if (stopped || token !== roundToken) return;
-            if (trialController?.getState?.()?.phase !== trialController?.phases?.NONSTOP_ACTIVE) return;
-
-            const rawReply = await generateDebateReply().catch(() => '');
-
-            if (stopped || token !== roundToken) return;
-
-            const speaker = extractField(rawReply, 'speaker') || 'UNKNOWN';
-            const quotes = extractQuotedSegments(rawReply);
-            const dialogue = quotes[0] || '...';
-
-            replyIndex += 1;
-            weakPointCounter += 1;
-            const weakRange = chooseWeakPointRange(dialogue);
-            const weakPointId = `weak_${token}_${weakPointCounter}`;
-            activeWeakPointIds.add(weakPointId);
-
-            renderFloatingLine({
-                speaker,
-                dialogue,
-                replyIndex,
-                replyTotal,
-                weakPointId,
-                weakRange,
-            });
-
-            if (replyIndex >= replyTotal) {
-                phaseTimer = window.setTimeout(() => {
-                    if (token !== roundToken) return;
-                    runSectionLoop(token);
-                }, 1100);
-                return;
-            }
-
-            phaseTimer = window.setTimeout(() => {
-                runNext();
-            }, 950);
-        };
-
-        runNext();
-
-        window.fireTruthBulletAtWeakPoint = (shotWeakPointId) => {
-            if (token !== roundToken) return { hit: false, reason: 'stale' };
-            if (!shotWeakPointId) return { hit: false, reason: 'invalid' };
-            if (!activeWeakPointIds.has(shotWeakPointId)) return { hit: false, reason: 'miss' };
-            stopped = true;
-            clearTimers();
-            trialController?.transitionTo?.(trialController.phases.DISCUSSION_POST_DEBATE, 'nsd_hit');
-            sync();
-            return { hit: true, weakPointId: shotWeakPointId };
-        };
-    }
-
-    function runSectionLoop(token) {
-        if (token !== roundToken) return;
-        const phase = trialController?.getState?.()?.phase;
-        if (phase !== trialController?.phases?.NONSTOP_ACTIVE) return;
-        startActiveSection(token);
-    }
-
-    function beginCutscene() {
-        const state = trialController?.getState?.();
-        if (state?.phase !== trialController?.phases?.NONSTOP_INTRO_CUTSCENE) return;
-
+    function showCutscene() {
         const overlay = ensureOverlay();
         overlay.classList.add('active', 'phase-cutscene');
         overlay.classList.remove('phase-active');
         overlay.setAttribute('aria-hidden', 'false');
+        setGenerateButtonState({ enabled: false, label: 'Cutscene...' });
+        setStatus('Nonstop Debate opening...');
+    }
 
-        clearTimers();
-        const token = ++roundToken;
+    function showActive() {
+        const overlay = ensureOverlay();
+        overlay.classList.add('active', 'phase-active');
+        overlay.classList.remove('phase-cutscene');
+        overlay.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('dangan-trial-nsd-active');
+    }
+
+    function startNewSection(token) {
+        if (token !== runToken) return;
+
+        runtime.currentSection += 1;
+        runtime.sectionReplyTotal = Math.floor(Math.random() * 6) + 3;
+        runtime.sectionReplyIndex = 0;
+        runtime.generating = false;
+        runtime.nextReplySpeaker = getRandomSpeaker();
+        runtime.nextReplyPromise = generateDebateReply({ seedSpeaker: runtime.nextReplySpeaker });
+
+        clearFloating();
+        activeWeakPointIds.clear();
+        updateRoundLabel();
+        setGenerateButtonState({ enabled: true, label: 'Generate Next Statement' });
+        setStatus('Section started. Click to generate the next line.');
+    }
+
+    async function stepNextLine() {
+        const token = runToken;
+        if (!runtime.sectionReplyTotal) return;
+        if (runtime.sectionReplyIndex >= runtime.sectionReplyTotal) return;
+        if (runtime.generating) return;
+
+        runtime.generating = true;
+        setGenerateButtonState({ enabled: false, label: 'Generating...' });
+        setStatus('Generating statement...');
+
+        const rawReply = await (runtime.nextReplyPromise || generateDebateReply({ seedSpeaker: getRandomSpeaker() })).catch(() => '');
+        if (token !== runToken) return;
+
+        const speaker = extractField(rawReply, 'speaker') || runtime.nextReplySpeaker || 'UNKNOWN';
+        const dialogue = pickDebateDialogue(rawReply);
+
+        weakPointCounter += 1;
+        const weakRange = chooseWeakPointRange(dialogue);
+        const weakPointId = `weak_${token}_${weakPointCounter}`;
+        activeWeakPointIds.add(weakPointId);
+
+        runtime.sectionReplyIndex += 1;
+        updateRoundLabel();
+        renderFloatingLine({ speaker, dialogue, weakPointId, weakRange });
+
+        if (runtime.sectionReplyIndex < runtime.sectionReplyTotal) {
+            runtime.nextReplySpeaker = getRandomSpeaker();
+            runtime.nextReplyPromise = generateDebateReply({ seedSpeaker: runtime.nextReplySpeaker });
+            runtime.generating = false;
+            setGenerateButtonState({ enabled: true, label: 'Generate Next Statement' });
+            setStatus('Statement ready. Click to generate the next line.');
+            return;
+        }
+
+        runtime.nextReplyPromise = null;
+        runtime.generating = false;
+        activeWeakPointIds.clear();
+        setGenerateButtonState({ enabled: false, label: 'Section Complete' });
+        setStatus('Section complete. Short break...');
+
+        breakTimer = window.setTimeout(() => {
+            if (token !== runToken) return;
+            startNewSection(token);
+        }, 1250);
+    }
+
+    function startFromIntroCutscene() {
+        hideOverlay();
+        const token = runToken;
+        showCutscene();
+
         introTimer = window.setTimeout(() => {
-            const stillCutscene = trialController?.getState?.()?.phase === trialController?.phases?.NONSTOP_INTRO_CUTSCENE;
-            if (!stillCutscene || token !== roundToken) return;
-            trialController?.transitionTo?.(trialController.phases.NONSTOP_ACTIVE, 'nsd_cutscene_complete');
-            sync();
+            if (token !== runToken) return;
+            showActive();
+            startNewSection(token);
         }, 2100);
+
+        return { started: true };
     }
 
     function sync() {
-        const phase = trialController?.getState?.()?.phase;
+        // Phase-driven sync intentionally disabled while focusing on manual Nonstop Debate testing.
+    }
 
-        if (phase === trialController?.phases?.NONSTOP_INTRO_CUTSCENE) {
-            if (lastObservedPhase !== phase) {
-                lastObservedPhase = phase;
-                beginCutscene();
-            }
-            return;
-        }
-
-        if (phase === trialController?.phases?.NONSTOP_ACTIVE) {
-            if (lastObservedPhase !== phase) {
-                lastObservedPhase = phase;
-                const token = ++roundToken;
-                startActiveSection(token);
-            }
-            return;
-        }
-
+    function stop() {
         hideOverlay();
     }
 
+    function resolveTruthBulletShot(shotWeakPointId) {
+        if (!shotWeakPointId) return { hit: false, reason: 'invalid' };
+        if (!activeWeakPointIds.has(String(shotWeakPointId))) return { hit: false, reason: 'miss' };
+
+        setStatus('Truth Bullet HIT! Nonstop Debate ended.');
+        hideOverlay();
+        return { hit: true, weakPointId: String(shotWeakPointId) };
+    }
+
+    window.fireTruthBulletAtWeakPoint = resolveTruthBulletShot;
     window.fireTruthBulletAtPhrase = () => ({ hit: false, reason: 'use_weak_point' });
 
     return {
+        startFromIntroCutscene,
+        stop,
         sync,
     };
 }
