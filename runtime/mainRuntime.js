@@ -1021,15 +1021,18 @@ function createTrialDiscussionController() {
 function createNonstopDebateController() {
     let introTimer = null;
     let breakTimer = null;
+    let autoStepTimer = null;
     let runToken = 0;
     let weakPointCounter = 0;
     let activeWeakPointIds = new Set();
+    let lastPhase = null;
 
     const runtime = {
         sectionReplyTotal: 0,
         sectionReplyIndex: 0,
         currentSection: 0,
         generating: false,
+        autoRunning: false,
         nextReplyPromise: null,
         nextReplySpeaker: "UNKNOWN",
     };
@@ -1073,6 +1076,10 @@ function createNonstopDebateController() {
         if (breakTimer) {
             clearTimeout(breakTimer);
             breakTimer = null;
+        }
+        if (autoStepTimer) {
+            clearTimeout(autoStepTimer);
+            autoStepTimer = null;
         }
     }
 
@@ -1295,14 +1302,27 @@ Rules:
         runtime.sectionReplyTotal = Math.floor(Math.random() * 6) + 3;
         runtime.sectionReplyIndex = 0;
         runtime.generating = false;
+        runtime.autoRunning = true;
         runtime.nextReplySpeaker = getRandomSpeaker();
         runtime.nextReplyPromise = generateDebateReply({ seedSpeaker: runtime.nextReplySpeaker });
 
         clearFloating();
         activeWeakPointIds.clear();
         updateRoundLabel();
-        setGenerateButtonState({ enabled: true, label: 'Generate Next Statement' });
-        setStatus('Section started. Click to generate the next line.');
+        setGenerateButtonState({ enabled: false, label: 'Auto Debate Running' });
+        setStatus('Section started. Statements are now auto-generated.');
+        queueAutoStep(450);
+    }
+
+    function queueAutoStep(delayMs = 900) {
+        if (autoStepTimer) {
+            clearTimeout(autoStepTimer);
+            autoStepTimer = null;
+        }
+        autoStepTimer = window.setTimeout(() => {
+            autoStepTimer = null;
+            void stepNextLine();
+        }, Math.max(100, Number(delayMs) || 100));
     }
 
     async function stepNextLine() {
@@ -1334,14 +1354,16 @@ Rules:
             runtime.nextReplySpeaker = getRandomSpeaker();
             runtime.nextReplyPromise = generateDebateReply({ seedSpeaker: runtime.nextReplySpeaker });
             runtime.generating = false;
-            setGenerateButtonState({ enabled: true, label: 'Generate Next Statement' });
-            setStatus('Statement ready. Click to generate the next line.');
+            setGenerateButtonState({ enabled: false, label: 'Auto Debate Running' });
+            setStatus('Statement deployed. Generating the next statement...');
+            if (runtime.autoRunning) queueAutoStep(1100);
             return;
         }
 
         runtime.nextReplyPromise = null;
         runtime.generating = false;
         activeWeakPointIds.clear();
+        runtime.autoRunning = false;
         setGenerateButtonState({ enabled: false, label: 'Section Complete' });
         setStatus('Section complete. Short break...');
 
@@ -1359,6 +1381,7 @@ Rules:
         introTimer = window.setTimeout(() => {
             if (token !== runToken) return;
             showActive();
+            trialController?.transitionTo?.(trialController?.phases?.NONSTOP_ACTIVE, 'nonstop_cutscene_complete');
             startNewSection(token);
         }, 2100);
 
@@ -1366,7 +1389,27 @@ Rules:
     }
 
     function sync() {
-        // Phase-driven sync intentionally disabled while focusing on manual Nonstop Debate testing.
+        if (!trialController) {
+            hideOverlay();
+            lastPhase = null;
+            return;
+        }
+
+        const phase = trialController.getState?.()?.phase || null;
+        if (phase === lastPhase) return;
+        lastPhase = phase;
+
+        if (phase === trialController?.phases?.NONSTOP_INTRO_CUTSCENE) {
+            startFromIntroCutscene();
+            return;
+        }
+
+        if (phase === trialController?.phases?.NONSTOP_ACTIVE) {
+            showActive();
+            return;
+        }
+
+        stop();
     }
 
     function stop() {
@@ -1378,6 +1421,7 @@ Rules:
         if (!activeWeakPointIds.has(String(shotWeakPointId))) return { hit: false, reason: 'miss' };
 
         setStatus('Truth Bullet HIT! Nonstop Debate ended.');
+        trialController?.transitionTo?.(trialController?.phases?.DISCUSSION_POST_DEBATE, 'truth_bullet_hit');
         hideOverlay();
         return { hit: true, weakPointId: String(shotWeakPointId) };
     }
