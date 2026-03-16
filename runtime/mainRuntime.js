@@ -1120,6 +1120,18 @@ function createNonstopDebateController() {
         return String(text.match(regex)?.[1] || '').trim();
     }
 
+    function pickDebateDialogue(rawReply) {
+        const quotes = extractQuotedSegments(rawReply);
+        if (quotes.length) return quotes[0];
+
+        const lineField = extractField(rawReply, 'line');
+        if (!lineField) return '...';
+
+        return String(lineField)
+            .replace(/^"+|"+$/g, '')
+            .trim() || '...';
+    }
+
     function splitWords(value) {
         return String(value || '')
             .replaceAll('\n', ' ')
@@ -1307,8 +1319,7 @@ Rules:
         if (token !== runToken) return;
 
         const speaker = extractField(rawReply, 'speaker') || runtime.nextReplySpeaker || 'UNKNOWN';
-            const quotes = extractQuotedSegments(rawReply);
-            const dialogue = quotes[0] || '...';
+        const dialogue = pickDebateDialogue(rawReply);
 
         weakPointCounter += 1;
         const weakRange = chooseWeakPointRange(dialogue);
