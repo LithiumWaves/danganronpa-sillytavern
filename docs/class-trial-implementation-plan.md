@@ -189,3 +189,7 @@ Use optional markers when available; otherwise fallback to robust quote extracti
 7. Phase 7 (persistence + polish)
 
 Reason: this yields a playable vertical slice early while preserving architecture quality.
+
+## Nonstop Debate redesign reference
+
+For a concrete runtime design (session model, cancellation, generation pipeline, module split, and pseudocode), see `docs/nonstop-debate-redesign.md`.
