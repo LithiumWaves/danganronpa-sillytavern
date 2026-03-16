@@ -1,6 +1,8 @@
 export function createClassTrialMenuController({ extensionName, extensionSettings, buildExtensionPathCandidates, getTrialSkillEntries, toggleTrialSkillEquip, playSfx, getSfx }) {
     const candidateTracks = buildExtensionPathCandidates()
         .map(basePath => `${basePath}/assets/classtrial/trialunderground.mp3`);
+    const candidateStartVideos = buildExtensionPathCandidates()
+        .map(basePath => `${basePath}/assets/classtrial/classtrialstart.mp4`);
 
     let activeAudio = null;
     let activeTrackIndex = -1;
@@ -47,6 +49,64 @@ export function createClassTrialMenuController({ extensionName, extensionSetting
         }
 
         activeAudio.play().catch(() => {});
+    }
+
+    function playClassTrialStartVideo() {
+        if (!candidateStartVideos.length) return Promise.resolve();
+
+        return new Promise((resolve) => {
+            const overlay = document.createElement("div");
+            overlay.style.position = "fixed";
+            overlay.style.inset = "0";
+            overlay.style.background = "#000";
+            overlay.style.zIndex = "100000";
+            overlay.style.display = "grid";
+            overlay.style.placeItems = "center";
+
+            const video = document.createElement("video");
+            video.autoplay = true;
+            video.controls = false;
+            video.playsInline = true;
+            video.preload = "auto";
+            video.style.width = "100%";
+            video.style.height = "100%";
+            video.style.objectFit = "cover";
+
+            let sourceIndex = 0;
+            let settled = false;
+
+            const finish = () => {
+                if (settled) return;
+                settled = true;
+                video.pause();
+                overlay.remove();
+                resolve();
+            };
+
+            const tryPlayCurrentSource = () => {
+                if (sourceIndex >= candidateStartVideos.length) {
+                    finish();
+                    return;
+                }
+
+                video.src = candidateStartVideos[sourceIndex];
+                video.load();
+                video.play().catch(() => {
+                    sourceIndex += 1;
+                    tryPlayCurrentSource();
+                });
+            };
+
+            video.addEventListener("ended", finish, { once: true });
+            video.addEventListener("error", () => {
+                sourceIndex += 1;
+                tryPlayCurrentSource();
+            });
+
+            overlay.appendChild(video);
+            document.body.appendChild(overlay);
+            tryPlayCurrentSource();
+        });
     }
 
     function ensureOverlay() {
@@ -194,7 +254,11 @@ export function createClassTrialMenuController({ extensionName, extensionSetting
                 playSfx?.(getSfx?.().click);
             };
             const onCancel = () => finish(false);
-            const onStart = () => finish(true);
+            const onStart = async () => {
+                startBtn.disabled = true;
+                await playClassTrialStartVideo();
+                finish(true);
+            };
             const onOverlayClick = (event) => {
                 if (event.target === overlay || event.target.classList.contains("dangan-trial-backdrop")) {
                     finish(false);
