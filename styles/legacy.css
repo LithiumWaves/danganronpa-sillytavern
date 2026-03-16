@@ -2,8 +2,11 @@
 
 @import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600&family=Rajdhani:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Boldonse&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600&display=swap");
 
 body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-frame {
+    --dangan-nameplate-glow-rgb: 222, 116, 255;
     border-color: rgba(232, 61, 221, 0.78);
     background:
         linear-gradient(120deg, rgba(35, 10, 58, 0.58) 0%, rgba(15, 10, 38, 0.76) 55%, rgba(12, 7, 28, 0.84) 100%),
@@ -12,9 +15,11 @@ body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-frame {
 }
 
 body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-nameplate {
+    --dangan-nameplate-glow-rgb: 222, 116, 255;
+    --dangan-nameplate-text-color: #0c071c;
     background: linear-gradient(90deg, rgba(72, 20, 101, 0.84), rgba(40, 97, 146, 0.84));
     border-color: rgba(222, 116, 255, 0.54);
-    color: #ffeaff;
+    color: var(--dangan-nameplate-text-color);
 }
 
 body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-text {
@@ -954,7 +959,7 @@ body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-text {
     font-size: 13px;
     line-height: 1.6;
     margin-bottom: 16px;
-    font-family: "Noto Sans", "Rajdhani", "Orbitron", monospace;
+    font-family: "Noto Sans JP", "Rajdhani", "Orbitron", monospace;
     font-weight: 700;
 }
 
@@ -1094,11 +1099,48 @@ body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-text {
     border-color: rgba(255, 60, 60, 0.8) !important;
 }
 
+.truth-active-actions,
 .truth-archived-actions {
     display: flex;
     flex-direction: column;
     gap: 8px;
     margin-top: 12px;
+}
+
+.truth-show-on-map-button {
+    background: transparent;
+    border: 1px solid rgba(73, 192, 255, 0.55);
+    color: rgba(130, 215, 255, 0.9);
+    font-family: inherit;
+    font-size: 0.8rem;
+    letter-spacing: 0.1em;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    width: 100%;
+}
+.truth-show-on-map-button:hover {
+    background: rgba(73, 192, 255, 0.12);
+    border-color: rgba(130, 215, 255, 0.85);
+    color: #fff;
+}
+
+.truth-place-on-map-button {
+    background: transparent;
+    border: 1px solid rgba(30, 200, 100, 0.55);
+    color: rgba(80, 220, 140, 0.9);
+    font-family: inherit;
+    font-size: 0.8rem;
+    letter-spacing: 0.1em;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    width: 100%;
+}
+.truth-place-on-map-button:hover {
+    background: rgba(30, 200, 100, 0.12);
+    border-color: rgba(80, 220, 140, 0.85);
+    color: #fff;
 }
 
 .truth-reload-button {
@@ -1239,12 +1281,110 @@ body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-text {
     color: #fff;
 }
 
+.map-pin-edit-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 999999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(2px);
+}
+.map-pin-edit-box {
+    background: #050e1e;
+    border: 1px solid rgba(100, 180, 255, 0.35);
+    box-shadow: 0 0 32px rgba(50, 130, 255, 0.15), inset 0 0 20px rgba(0, 0, 0, 0.5);
+    padding: 24px 28px;
+    max-width: 440px;
+    width: 90%;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    font-family: inherit;
+}
+.map-pin-edit-title {
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    color: rgba(149, 206, 255, 0.9);
+    text-align: center;
+}
+.map-pin-edit-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.map-pin-edit-label {
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    color: rgba(140, 190, 255, 0.6);
+    text-transform: uppercase;
+}
+.map-pin-edit-input {
+    background: rgba(5, 15, 40, 0.8);
+    border: 1px solid rgba(100, 160, 255, 0.3);
+    color: rgba(200, 230, 255, 0.9);
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    padding: 6px 8px;
+    border-radius: 4px;
+    outline: none;
+    transition: border-color 0.12s;
+}
+.map-pin-edit-input:focus {
+    border-color: rgba(100, 180, 255, 0.7);
+}
+.map-pin-edit-icon-grid {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 3px;
+    max-height: 80px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+}
+.map-pin-edit-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 4px;
+}
+.map-pin-edit-save,
+.map-pin-edit-cancel {
+    background: transparent;
+    border: 1px solid;
+    font-family: inherit;
+    font-size: 0.8rem;
+    letter-spacing: 0.1em;
+    padding: 8px 22px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.map-pin-edit-save {
+    border-color: rgba(80, 180, 255, 0.6);
+    color: rgba(130, 210, 255, 0.9);
+}
+.map-pin-edit-save:hover {
+    background: rgba(80, 180, 255, 0.15);
+    border-color: rgba(130, 210, 255, 0.9);
+    color: #fff;
+}
+.map-pin-edit-cancel {
+    border-color: rgba(255, 255, 255, 0.2);
+    color: rgba(255, 255, 255, 0.6);
+}
+.map-pin-edit-cancel:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.45);
+    color: #fff;
+}
+
 .truth-description {
     margin-top: 6px;
     font-size: 0.85rem;
     line-height: 1.4;
     color: rgba(255, 255, 255, 0.85);
-    font-family: "Noto Sans", "Rajdhani", "Orbitron", monospace;
+    font-family: "Noto Sans JP", "Rajdhani", "Orbitron", monospace;
     font-weight: 500;
     text-transform: none;
     letter-spacing: 0.03em;
@@ -1911,16 +2051,19 @@ body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-text {
     font-size: 12px;
     cursor: pointer;
     letter-spacing: 1px;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 #trust-debug-controls button:hover {
-    background: #222;
+    background: rgba(173, 205, 255, 0.12) !important;
+    border-color: rgba(173, 205, 255, 0.5) !important;
+    color: #c8dfff !important;
 }
 
 .truth-debug-modal {
     position: fixed;
     inset: 0;
-    z-index: 100010;
+    z-index: 2147483648;
     background: rgba(8, 2, 8, 0.72);
     display: flex;
     align-items: center;
@@ -1971,9 +2114,14 @@ body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-text {
 
 .truth-debug-choice-group {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     align-items: center;
     margin-top: 2px;
+}
+
+#announcement-debug-modal .truth-debug-card {
+    width: min(600px, 96vw);
 }
 
 .truth-debug-choice {
@@ -2332,6 +2480,44 @@ body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-text {
     padding: 14px 16px;
     border-bottom: 1px solid rgba(121, 170, 255, 0.2);
     background: linear-gradient(180deg, rgba(18, 28, 43, 0.75), rgba(7, 11, 18, 0.6));
+}
+
+.settings-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.settings-header-logo {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.settings-header-crest {
+    width: 36px;
+    height: 36px;
+    object-fit: contain;
+}
+
+.settings-header-cog {
+    display: none;
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+    opacity: 0.75;
+    filter: brightness(0) invert(1);
+}
+
+body.dangan-hide-hopes-peak-branding .settings-header-crest {
+    display: none !important;
+}
+
+body.dangan-hide-hopes-peak-branding .settings-header-cog {
+    display: block !important;
 }
 
 .settings-header {
@@ -3167,7 +3353,7 @@ body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-text {
     letter-spacing: 0.04em;
     color: rgba(255, 219, 229, 0.82);
     line-height: 1.5;
-    font-family: "Noto Sans", "Rajdhani", "Orbitron", monospace;
+    font-family: "Noto Sans JP", "Rajdhani", "Orbitron", monospace;
     font-weight: 500;
 }
 
@@ -3200,7 +3386,7 @@ body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-text {
     font-size: 9px;
     letter-spacing: 0.05em;
     color: rgba(255, 210, 223, 0.76);
-    font-family: "Noto Sans", "Rajdhani", "Orbitron", monospace;
+    font-family: "Noto Sans JP", "Rajdhani", "Orbitron", monospace;
     font-weight: 500;
 }
 
@@ -3252,7 +3438,6 @@ body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-text {
     width: 28px;
     height: 28px;
     object-fit: contain;
-    filter: brightness(0) invert(1) opacity(0.75);
     flex-shrink: 0;
 }
 
@@ -3390,7 +3575,7 @@ body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-text {
 }
 
 .items-detail-description {
-    font-family: "Noto Sans", "Rajdhani", "Orbitron", monospace;
+    font-family: "Noto Sans JP", "Rajdhani", "Orbitron", monospace;
     font-weight: 500;
 }
 
@@ -3686,7 +3871,7 @@ body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-text {
 .items-slot-name {
     font-size: 10px;
     letter-spacing: 0.06em;
-    font-family: "Noto Sans", "Rajdhani", "Orbitron", monospace;
+    font-family: "Noto Sans JP", "Rajdhani", "Orbitron", monospace;
     font-weight: 500;
 }
 
@@ -3699,7 +3884,7 @@ body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-text {
     grid-column: 1 / -1;
     font-size: 12px;
     color: rgba(255, 214, 225, 0.78);
-    font-family: "Noto Sans", "Rajdhani", "Orbitron", monospace;
+    font-family: "Noto Sans JP", "Rajdhani", "Orbitron", monospace;
     font-weight: 500;
 }
 
@@ -3726,6 +3911,12 @@ body.dangan-hide-truth-images .truth-image-col {
 
 body.dangan-hide-gift-images .items-detail-img-wrap,
 body.dangan-hide-gift-images .items-detail-img-actions {
+    display: none !important;
+}
+
+body.dangan-hide-hopes-peak-branding .monopad-welcome-crest,
+body.dangan-hide-hopes-peak-branding .social-no-char-crest,
+body.dangan-hide-hopes-peak-branding .monopad-welcome-kicker {
     display: none !important;
 }
 
@@ -4286,7 +4477,8 @@ body.dangan-hide-gift-images .items-detail-img-actions {
     position: relative;
     height: 100%;
     display: grid;
-    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    grid-template-rows: auto minmax(0, 1fr);
     gap: 16px;
     z-index: 1;
 }
@@ -4310,7 +4502,26 @@ body.dangan-hide-gift-images .items-detail-img-actions {
     z-index: 1;
 }
 
-.map-presence-tools {
+.map-panel-header {
+    grid-column: 1;
+    grid-row: 1;
+}
+
+.map-controls {
+    grid-column: 1;
+    grid-row: 2;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+}
+
+.map-image-wrap {
+    grid-column: 2;
+    grid-row: 1 / -1;
+}
+
+.map-presence-tools,
+.map-location-pins-tools {
     grid-column: 1 / -1;
 }
 
@@ -4320,43 +4531,9 @@ body.dangan-hide-gift-images .items-detail-img-actions {
     gap: 8px;
 }
 
-.map-presence-clear-all,
-.map-presence-restore-all {
-    font-size: 10px;
-    padding: 6px 10px;
-}
-
-.map-presence-calibration-controls {
-    margin-top: 10px;
-    display: grid;
-    gap: 8px;
-}
-
-.map-presence-calibration-label {
-    font-size: 10px;
-    letter-spacing: 0.12em;
-    color: rgba(190, 232, 255, 0.82);
-}
-
-.map-presence-location-select {
-    width: 100%;
-    border: 1px solid rgba(138, 197, 255, 0.42);
-    border-radius: 8px;
-    background: rgba(8, 28, 57, 0.88);
-    color: rgba(219, 241, 255, 0.94);
-    padding: 6px 8px;
-    font-size: 11px;
-}
-
 .map-presence-tool-row.compact .map-floor-button {
     font-size: 10px;
     padding: 6px 10px;
-}
-
-.map-presence-calibration-hint {
-    font-size: 10px;
-    color: rgba(172, 220, 255, 0.76);
-    line-height: 1.35;
 }
 
 .map-panel-kicker {
@@ -4433,6 +4610,254 @@ body.dangan-hide-gift-images .items-detail-img-actions {
     box-shadow: 0 0 12px rgba(102, 180, 255, 0.35);
 }
 
+.map-add-area-button {
+    border: 1px dashed rgba(138, 197, 255, 0.4);
+    border-radius: 999px;
+    background: transparent;
+    color: rgba(138, 197, 255, 0.6);
+    padding: 7px 12px;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.map-add-area-button:hover {
+    border-color: rgba(138, 197, 255, 0.9);
+    color: rgba(213, 238, 255, 0.9);
+    transform: translateY(-1px);
+}
+
+/* ── Area / Floor entry wrappers with controls ─────────── */
+.map-area-entry,
+.map-floor-entry {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.map-area-entry-controls,
+.map-floor-entry-controls {
+    display: flex;
+    gap: 1px;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.map-area-entry:hover .map-area-entry-controls,
+.map-floor-entry:hover .map-floor-entry-controls {
+    opacity: 1;
+}
+
+.map-area-entry-rename,
+.map-area-entry-delete,
+.map-floor-entry-rename,
+.map-floor-entry-delete {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    padding: 0;
+    color: rgba(150, 200, 255, 0.7);
+    transition: color 0.15s, background 0.15s;
+    line-height: 1;
+}
+
+.map-area-entry-rename:hover,
+.map-floor-entry-rename:hover {
+    color: rgba(180, 220, 255, 1);
+    background: rgba(150, 200, 255, 0.15) !important;
+}
+
+.map-area-entry-delete:hover,
+.map-floor-entry-delete:hover {
+    color: rgba(255, 110, 110, 0.95);
+    background: rgba(255, 80, 80, 0.15) !important;
+}
+
+.map-add-floor-button {
+    border: 1px dashed rgba(138, 197, 255, 0.4) !important;
+    border-radius: 999px !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: rgba(138, 197, 255, 0.6);
+    padding: 7px 12px;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.map-add-floor-button:hover {
+    border-color: rgba(138, 197, 255, 0.9) !important;
+    color: rgba(213, 238, 255, 0.9);
+    transform: translateY(-1px);
+}
+
+.map-create-area-danger {
+    background: linear-gradient(135deg, rgba(200, 50, 50, 0.25), rgba(160, 20, 20, 0.4)) !important;
+    border-color: rgba(255, 120, 120, 0.7) !important;
+}
+.map-create-area-danger:hover {
+    background: linear-gradient(135deg, rgba(220, 60, 60, 0.4), rgba(180, 30, 30, 0.55)) !important;
+}
+
+.map-create-area-confirm-text {
+    font-size: 11px;
+    color: rgba(213, 238, 255, 0.8);
+    line-height: 1.5;
+}
+.map-create-area-confirm-text strong {
+    color: rgba(213, 238, 255, 1);
+}
+
+/* ── Create Area Modal ─────────────────────────────────── */
+.map-create-area-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2147483647;
+}
+
+.map-create-area-box {
+    background: linear-gradient(160deg, rgba(10, 22, 48, 0.98), rgba(6, 14, 32, 0.98));
+    border: 1px solid rgba(138, 197, 255, 0.35);
+    border-radius: 14px;
+    padding: 24px 28px;
+    width: 360px;
+    max-width: 90vw;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+}
+
+.map-create-area-title {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    color: rgba(213, 238, 255, 0.95);
+    margin-bottom: 4px;
+}
+
+.map-create-area-field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.map-create-area-label {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    color: rgba(170, 210, 255, 0.7);
+}
+
+.map-create-area-required {
+    color: rgba(255, 100, 100, 0.8);
+}
+
+.map-create-area-optional {
+    color: rgba(170, 210, 255, 0.45);
+    font-size: 9px;
+}
+
+.map-create-area-input {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(138, 197, 255, 0.3);
+    border-radius: 6px;
+    color: rgba(213, 238, 255, 0.95);
+    font-size: 11px;
+    padding: 7px 10px;
+    outline: none;
+    transition: border-color 0.15s;
+}
+.map-create-area-input:focus {
+    border-color: rgba(138, 197, 255, 0.8);
+}
+
+.map-create-area-id-input {
+    font-family: monospace;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: rgba(180, 220, 255, 0.85);
+}
+
+.map-create-area-upload-label {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.map-create-area-upload-text {
+    border: 1px solid rgba(138, 197, 255, 0.4);
+    border-radius: 999px;
+    background: rgba(14, 40, 80, 0.7);
+    color: rgba(213, 238, 255, 0.85);
+    padding: 6px 14px;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    transition: all 0.15s;
+}
+.map-create-area-upload-label:hover .map-create-area-upload-text {
+    border-color: rgba(170, 226, 255, 0.9);
+    color: #f3fbff;
+}
+
+.map-create-area-filename {
+    font-size: 10px;
+    color: rgba(138, 197, 255, 0.6);
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.map-create-area-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 4px;
+}
+
+.map-create-area-save {
+    flex: 1;
+    background: linear-gradient(135deg, rgba(122, 196, 255, 0.2), rgba(48, 118, 230, 0.35));
+    border: 1px solid rgba(177, 230, 255, 0.7);
+    border-radius: 999px;
+    color: #f3fbff;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    padding: 8px 0;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.map-create-area-save:hover {
+    background: linear-gradient(135deg, rgba(122, 196, 255, 0.35), rgba(48, 118, 230, 0.55));
+}
+
+.map-create-area-cancel {
+    border: 1px solid rgba(138, 197, 255, 0.3);
+    border-radius: 999px;
+    background: transparent;
+    color: rgba(213, 238, 255, 0.6);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    padding: 8px 18px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.map-create-area-cancel:hover {
+    border-color: rgba(213, 238, 255, 0.6);
+    color: rgba(213, 238, 255, 0.9);
+}
+
 .map-image-wrap {
     border: 1px solid rgba(150, 208, 255, 0.34);
     border-radius: 14px;
@@ -4443,63 +4868,78 @@ body.dangan-hide-gift-images .items-detail-img-actions {
     display: flex;
     align-items: center;
     justify-content: center;
+    user-select: none;
 }
 
+.map-scroll-area {
+    flex: 1 1 0;
+    align-self: stretch;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+}
 
-.map-machine-pin {
+.map-image-wrap:has(.map-scroll-area.map-zoomed) {
+    cursor: grab;
+}
+
+.map-image-wrap.map-panning {
+    cursor: grabbing;
+}
+
+.map-zoom-controls {
     position: absolute;
+    top: 10px;
     left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    width: 30px;
-    height: 30px;
-    border-radius: 999px;
-    border: 1px solid rgba(255, 198, 78, 0.9);
-    background: radial-gradient(circle at 35% 30%, rgba(255, 238, 176, 0.95), rgba(206, 126, 8, 0.92));
-    color: #3b2000;
-    font-weight: 800;
+    transform: translateX(-50%);
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    pointer-events: auto;
+}
+
+.map-zoom-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid rgba(138, 197, 255, 0.45);
+    background: rgba(5, 16, 40, 0.82);
+    color: rgba(210, 238, 255, 0.95);
     font-size: 15px;
     line-height: 1;
     cursor: pointer;
-    box-shadow: 0 0 16px rgba(255, 189, 59, 0.42);
-    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.15s, background 0.15s;
+    backdrop-filter: blur(6px);
 }
 
-.map-machine-pin:hover,
-.map-machine-pin:focus-visible {
-    transform: translate(-50%, -52%);
-    filter: brightness(1.08);
-    box-shadow: 0 0 20px rgba(255, 211, 95, 0.56);
-    outline: none;
+.map-zoom-btn:hover {
+    border-color: rgba(170, 220, 255, 0.85);
+    background: rgba(18, 48, 96, 0.88);
 }
 
-
-.map-trial-pin {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    width: 32px;
-    height: 32px;
-    border-radius: 999px;
-    border: 1px solid rgba(160, 229, 255, 0.95);
-    background: radial-gradient(circle at 30% 25%, rgba(233, 251, 255, 0.95), rgba(33, 132, 186, 0.9));
-    color: #01253a;
-    font-weight: 800;
-    font-size: 14px;
-    line-height: 1;
-    cursor: pointer;
-    box-shadow: 0 0 16px rgba(73, 192, 255, 0.42);
-    z-index: 2;
+.map-zoom-level {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: rgba(190, 230, 255, 0.88);
+    min-width: 36px;
+    text-align: center;
+    background: rgba(5, 16, 40, 0.72);
+    border: 1px solid rgba(138, 197, 255, 0.3);
+    border-radius: 4px;
+    padding: 4px;
+    backdrop-filter: blur(6px);
 }
 
-.map-trial-pin:hover,
-.map-trial-pin:focus-visible {
-    transform: translate(-50%, -52%);
-    filter: brightness(1.08);
-    box-shadow: 0 0 20px rgba(132, 221, 255, 0.58);
-    outline: none;
+.map-image {
+    -webkit-user-drag: none;
+    user-select: none;
+    pointer-events: none;
 }
+
 
 
 .dangan-trial-intro-overlay {
@@ -4802,154 +5242,6 @@ body.dangan-trial-vn-chat-hidden #chat {
     }
 }
 
-.map-presence-pin {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    width: 22px;
-    height: 22px;
-    border-radius: 999px;
-    border: 1px solid transparent;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 11px;
-    line-height: 1;
-    font-weight: 800;
-    z-index: 2;
-    cursor: pointer;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.45);
-    transition: transform 120ms ease, filter 120ms ease, box-shadow 120ms ease;
-}
-
-.map-presence-pin .map-presence-symbol {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 100%;
-}
-
-.map-presence-pin .map-presence-count {
-    position: absolute;
-    top: -6px;
-    right: -7px;
-    min-width: 14px;
-    height: 14px;
-    border-radius: 999px;
-    padding: 0 3px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 9px;
-    font-weight: 900;
-    background: rgba(16, 21, 36, 0.96);
-    border: 1px solid rgba(255, 255, 255, 0.7);
-    color: #f4f8ff;
-}
-
-.map-presence-pin.user {
-    background: rgba(103, 209, 255, 0.95);
-    border-color: rgba(202, 242, 255, 0.96);
-    color: #062739;
-}
-
-.map-presence-pin.character {
-    background: rgba(255, 106, 133, 0.95);
-    border-color: rgba(255, 224, 231, 0.96);
-    color: #390612;
-}
-
-.map-presence-pin.mixed {
-    background: linear-gradient(135deg, rgba(103, 209, 255, 0.95) 0%, rgba(255, 106, 133, 0.95) 100%);
-    border-color: rgba(255, 245, 251, 0.96);
-    color: #07182f;
-}
-
-.map-presence-pin:hover,
-.map-presence-pin:focus-visible,
-.map-presence-pin.active {
-    transform: translate(-50%, -52%);
-    filter: brightness(1.08);
-    box-shadow: 0 0 18px rgba(255, 255, 255, 0.3);
-    outline: none;
-}
-
-.map-calibration-pin {
-    position: absolute;
-    transform: translate(-50%, -50%);
-    width: 18px;
-    height: 18px;
-    border-radius: 999px;
-    border: 1px solid rgba(130, 234, 255, 0.72);
-    background: rgba(6, 40, 66, 0.72);
-    color: rgba(187, 248, 255, 0.95);
-    font-size: 10px;
-    line-height: 1;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    z-index: 3;
-}
-
-.map-calibration-pin.active {
-    border-color: rgba(255, 230, 152, 0.96);
-    background: rgba(84, 51, 8, 0.8);
-    color: #fff4c5;
-    box-shadow: 0 0 16px rgba(255, 219, 125, 0.38);
-}
-
-.map-presence-tooltip {
-    position: absolute;
-    transform: translate(-50%, calc(-100% - 14px));
-    width: min(200px, 62vw);
-    border: 1px solid rgba(175, 228, 255, 0.5);
-    border-radius: 10px;
-    background: rgba(4, 11, 25, 0.95);
-    color: #e8f2ff;
-    padding: 8px 10px;
-    z-index: 4;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-}
-
-.map-presence-tooltip-title {
-    font-size: 11px;
-    font-weight: 800;
-    letter-spacing: 0.06em;
-    margin-bottom: 4px;
-}
-
-.map-presence-tooltip ul {
-    margin: 0;
-    padding-left: 16px;
-    font-size: 11px;
-}
-
-.map-presence-tooltip li {
-    margin: 0;
-}
-
-.map-presence-remove-pin {
-    margin-top: 8px;
-    border: 1px solid rgba(255, 180, 180, 0.48);
-    border-radius: 999px;
-    background: rgba(80, 16, 24, 0.7);
-    color: rgba(255, 220, 225, 0.95);
-    padding: 5px 10px;
-    font-size: 10px;
-    letter-spacing: 0.08em;
-    cursor: pointer;
-}
-
-.map-presence-remove-pin:hover,
-.map-presence-remove-pin:focus-visible {
-    border-color: rgba(255, 205, 205, 0.95);
-    filter: brightness(1.1);
-    outline: none;
-}
-
 .map-machine-overlay {
     position: fixed;
     top: 0;
@@ -4988,6 +5280,7 @@ body.dangan-trial-vn-chat-hidden #chat {
     grid-template-rows: auto minmax(0, 1fr) auto;
     column-gap: 16px;
     margin: auto;
+    overflow: visible;
 }
 
 .map-machine-close {
@@ -5026,14 +5319,21 @@ body.dangan-trial-vn-chat-hidden #chat {
     color: rgba(228, 243, 255, 0.92);
 }
 
-.map-machine-image {
+.map-machine-image-wrap {
     grid-column: 1;
     grid-row: 2;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.map-machine-image {
     width: min(100%, 520px);
     height: 260px;
     object-fit: contain;
-    justify-self: center;
-    align-self: center;
+    position: relative;
+    z-index: 2;
 }
 
 .map-machine-controls {
@@ -5091,7 +5391,7 @@ body.dangan-trial-vn-chat-hidden #chat {
     opacity: 0;
     pointer-events: none;
     transition: opacity 140ms ease, transform 140ms ease;
-    z-index: 8;
+    z-index: 3;
     text-align: center;
     max-width: min(90%, 500px);
 }
@@ -5369,11 +5669,651 @@ body.dangan-trial-vn-chat-hidden #chat {
     transform: translate(-50%, -50%) scale(1);
 }
 
+@keyframes machine-banner-spin {
+    from { transform: translate(-50%, -50%) rotate(0deg); }
+    to   { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+.map-machine-sunburst {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 280px;
+    height: 280px;
+    transform: translate(-50%, -50%);
+    background:
+        radial-gradient(circle, rgba(255, 220, 70, 0.35) 0%, rgba(255, 170, 10, 0.15) 38%, transparent 65%),
+        conic-gradient(
+            from 0deg,
+            rgba(255,215,50,0.4)   0deg   3deg, transparent   3deg  10deg,
+            rgba(255,215,50,0.4)  10deg  13deg, transparent  13deg  20deg,
+            rgba(255,215,50,0.4)  20deg  23deg, transparent  23deg  30deg,
+            rgba(255,215,50,0.4)  30deg  33deg, transparent  33deg  40deg,
+            rgba(255,215,50,0.4)  40deg  43deg, transparent  43deg  50deg,
+            rgba(255,215,50,0.4)  50deg  53deg, transparent  53deg  60deg,
+            rgba(255,215,50,0.4)  60deg  63deg, transparent  63deg  70deg,
+            rgba(255,215,50,0.4)  70deg  73deg, transparent  73deg  80deg,
+            rgba(255,215,50,0.4)  80deg  83deg, transparent  83deg  90deg,
+            rgba(255,215,50,0.4)  90deg  93deg, transparent  93deg 100deg,
+            rgba(255,215,50,0.4) 100deg 103deg, transparent 103deg 110deg,
+            rgba(255,215,50,0.4) 110deg 113deg, transparent 113deg 120deg,
+            rgba(255,215,50,0.4) 120deg 123deg, transparent 123deg 130deg,
+            rgba(255,215,50,0.4) 130deg 133deg, transparent 133deg 140deg,
+            rgba(255,215,50,0.4) 140deg 143deg, transparent 143deg 150deg,
+            rgba(255,215,50,0.4) 150deg 153deg, transparent 153deg 160deg,
+            rgba(255,215,50,0.4) 160deg 163deg, transparent 163deg 170deg,
+            rgba(255,215,50,0.4) 170deg 173deg, transparent 173deg 180deg,
+            rgba(255,215,50,0.4) 180deg 183deg, transparent 183deg 190deg,
+            rgba(255,215,50,0.4) 190deg 193deg, transparent 193deg 200deg,
+            rgba(255,215,50,0.4) 200deg 203deg, transparent 203deg 210deg,
+            rgba(255,215,50,0.4) 210deg 213deg, transparent 213deg 220deg,
+            rgba(255,215,50,0.4) 220deg 223deg, transparent 223deg 230deg,
+            rgba(255,215,50,0.4) 230deg 233deg, transparent 233deg 240deg,
+            rgba(255,215,50,0.4) 240deg 243deg, transparent 243deg 250deg,
+            rgba(255,215,50,0.4) 250deg 253deg, transparent 253deg 260deg,
+            rgba(255,215,50,0.4) 260deg 263deg, transparent 263deg 270deg,
+            rgba(255,215,50,0.4) 270deg 273deg, transparent 273deg 280deg,
+            rgba(255,215,50,0.4) 280deg 283deg, transparent 283deg 290deg,
+            rgba(255,215,50,0.4) 290deg 293deg, transparent 293deg 300deg,
+            rgba(255,215,50,0.4) 300deg 303deg, transparent 303deg 310deg,
+            rgba(255,215,50,0.4) 310deg 313deg, transparent 313deg 320deg,
+            rgba(255,215,50,0.4) 320deg 323deg, transparent 323deg 330deg,
+            rgba(255,215,50,0.4) 330deg 333deg, transparent 333deg 340deg,
+            rgba(255,215,50,0.4) 340deg 343deg, transparent 343deg 350deg,
+            rgba(255,215,50,0.4) 350deg 353deg, transparent 353deg 360deg
+        );
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 1;
+    filter: blur(3px);
+    opacity: 0;
+    transition: opacity 300ms ease;
+}
+
+.map-machine-sunburst.show {
+    opacity: 1;
+    animation: machine-banner-spin 6s linear infinite;
+}
+
+/* ── Pin layer ─────────────────────────────────────── */
+.map-pin-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    transform-origin: center center;
+}
+
+.map-pin-layer > * {
+    pointer-events: auto;
+}
+
+/* ── Custom location pins ───────────────────────────── */
+.map-custom-pin {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    background: none;
+    padding: 0;
+    cursor: grab;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 14px rgba(0, 0, 0, 0.4);
+    z-index: 3;
+    transition: transform 120ms ease, filter 120ms ease, box-shadow 120ms ease;
+}
+
+.map-custom-pin:hover,
+.map-custom-pin:focus-visible,
+.map-custom-pin.highlighted {
+    transform: translate(-50%, -52%);
+    filter: brightness(1.1);
+    outline: none;
+    z-index: 2147483647;
+}
+
+.map-custom-pin-dragging {
+    cursor: grabbing !important;
+    transform: translate(-50%, -50%) scale(1.15) !important;
+    filter: brightness(1.2);
+    transition: none !important;
+    z-index: 10;
+}
+.map-custom-pin-dragging .map-custom-pin-tooltip {
+    opacity: 0 !important;
+    transition: none;
+}
+
+.map-custom-pin-icon {
+    width: 55%;
+    height: 55%;
+    object-fit: contain;
+    filter: brightness(0);
+    pointer-events: none;
+}
+
+
+/* ── Pin tooltip ─────────────────────────────────────── */
+.map-custom-pin-tooltip {
+    position: absolute;
+    bottom: calc(100% + 9px);
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 5px 9px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.12s;
+    z-index: 2147483647;
+    color: rgba(15, 15, 20, 0.9);
+}
+
+.map-custom-pin-tooltip-icon {
+    width: 18px;
+    height: 18px;
+    object-fit: contain;
+    margin-bottom: 2px;
+    filter: brightness(0) saturate(100%);
+}
+
+.map-custom-pin-bullet-overlay {
+    position: absolute;
+    inset: 3px;
+    width: calc(100% - 6px);
+    height: calc(100% - 6px);
+    object-fit: cover;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.map-custom-pin-tooltip-bullet-image {
+    max-width: 120px;
+    height: auto;
+    object-fit: contain;
+    border-radius: 6px;
+    border: 1px solid rgba(0, 0, 0, 0.85);
+    margin-bottom: 4px;
+    display: block;
+}
+
+.map-custom-pin-tooltip::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+}
+
+.map-custom-pin:hover .map-custom-pin-tooltip,
+.map-custom-pin:focus-visible .map-custom-pin-tooltip {
+    opacity: 1;
+}
+
+.map-custom-pin.room-view-hidden {
+    background: none !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+}
+.map-custom-pin.room-view-hidden .map-custom-pin-icon {
+    opacity: 0;
+}
+.map-custom-pin.room-view-hidden:hover,
+.map-custom-pin.room-view-hidden:focus-visible {
+    transform: translate(-50%, -50%);
+    filter: none;
+}
+
+.map-pins-toggle-room-view.active {
+    border-color: rgba(255, 180, 80, 0.7);
+    color: rgba(255, 200, 120, 0.9);
+    background: rgba(60, 35, 5, 0.7);
+}
+
+.map-custom-pin-tooltip-name {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+
+.map-custom-pin-tooltip-id {
+    font-size: 9px;
+    font-family: monospace;
+    opacity: 0.65;
+}
+
+/* Tooltip backgrounds + arrow colours — one per type */
+.map-custom-pin.type-room .map-custom-pin-tooltip {
+    background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.98), rgba(200, 215, 235, 0.95));
+    border-color: rgba(230, 240, 255, 0.9);
+}
+.map-custom-pin.type-room .map-custom-pin-tooltip::after {
+    border-top-color: rgba(200, 215, 235, 0.95);
+}
+
+.map-custom-pin.type-body .map-custom-pin-tooltip {
+    background: radial-gradient(circle at 35% 30%, rgba(255, 220, 235, 0.98), rgba(230, 100, 160, 0.95));
+    border-color: rgba(255, 160, 200, 0.9);
+}
+.map-custom-pin.type-body .map-custom-pin-tooltip::after {
+    border-top-color: rgba(230, 100, 160, 0.95);
+}
+
+.map-custom-pin.type-truth-bullet .map-custom-pin-tooltip {
+    background: radial-gradient(circle at 35% 30%, rgba(150, 255, 195, 0.98), rgba(20, 160, 80, 0.95));
+    border-color: rgba(50, 220, 120, 0.9);
+}
+.map-custom-pin.type-truth-bullet .map-custom-pin-tooltip::after {
+    border-top-color: rgba(20, 160, 80, 0.95);
+}
+
+.map-custom-pin.type-monomachine .map-custom-pin-tooltip {
+    background: radial-gradient(circle at 35% 30%, rgba(255, 238, 176, 0.98), rgba(206, 126, 8, 0.95));
+    border-color: rgba(255, 198, 78, 0.9);
+}
+.map-custom-pin.type-monomachine .map-custom-pin-tooltip::after {
+    border-top-color: rgba(206, 126, 8, 0.95);
+}
+
+.map-custom-pin.type-trial .map-custom-pin-tooltip {
+    background: radial-gradient(circle at 30% 25%, rgba(233, 251, 255, 0.98), rgba(33, 132, 186, 0.95));
+    border-color: rgba(160, 229, 255, 0.9);
+}
+.map-custom-pin.type-trial .map-custom-pin-tooltip::after {
+    border-top-color: rgba(33, 132, 186, 0.95);
+}
+
+/* Pin type colours — match existing coin style */
+.map-custom-pin.type-room {
+    background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.97), rgba(200, 215, 235, 0.93));
+    border-color: rgba(230, 240, 255, 0.9);
+    box-shadow: 0 0 14px rgba(200, 220, 255, 0.4);
+}
+.map-custom-pin.type-body {
+    background: radial-gradient(circle at 35% 30%, rgba(255, 220, 235, 0.97), rgba(230, 100, 160, 0.92));
+    border-color: rgba(255, 160, 200, 0.9);
+    box-shadow: 0 0 14px rgba(230, 100, 160, 0.45);
+}
+.map-custom-pin.type-truth-bullet {
+    background: radial-gradient(circle at 35% 30%, rgba(150, 255, 195, 0.97), rgba(20, 160, 80, 0.92));
+    border-color: rgba(50, 220, 120, 0.9);
+    box-shadow: 0 0 14px rgba(30, 200, 110, 0.45);
+}
+.map-custom-pin.type-monomachine {
+    background: radial-gradient(circle at 35% 30%, rgba(255, 238, 176, 0.95), rgba(206, 126, 8, 0.92));
+    border-color: rgba(255, 198, 78, 0.9);
+    box-shadow: 0 0 16px rgba(255, 189, 59, 0.42);
+}
+.map-custom-pin.type-trial {
+    background: radial-gradient(circle at 30% 25%, rgba(233, 251, 255, 0.95), rgba(33, 132, 186, 0.9));
+    border-color: rgba(160, 229, 255, 0.95);
+    box-shadow: 0 0 16px rgba(73, 192, 255, 0.42);
+}
+
+.map-custom-pin.type-room:hover,
+.map-custom-pin.type-room:focus-visible {
+    box-shadow: 0 0 20px rgba(220, 235, 255, 0.55);
+}
+.map-custom-pin.type-body:hover,
+.map-custom-pin.type-body:focus-visible {
+    box-shadow: 0 0 20px rgba(240, 130, 180, 0.58);
+}
+.map-custom-pin.type-truth-bullet:hover,
+.map-custom-pin.type-truth-bullet:focus-visible {
+    box-shadow: 0 0 20px rgba(50, 220, 120, 0.55);
+}
+.map-custom-pin.type-monomachine:hover,
+.map-custom-pin.type-monomachine:focus-visible {
+    box-shadow: 0 0 20px rgba(255, 211, 95, 0.56);
+}
+.map-custom-pin.type-trial:hover,
+.map-custom-pin.type-trial:focus-visible {
+    box-shadow: 0 0 20px rgba(132, 221, 255, 0.58);
+}
+
+/* ── Simple pin mode ─────────────────────────────────── */
+.map-custom-pin.simple-pin {
+    width: 6px;
+    height: 6px;
+    border: none !important;
+    transition: box-shadow 120ms ease;
+}
+.map-custom-pin.simple-pin:hover,
+.map-custom-pin.simple-pin:focus-visible {
+    transform: translate(-50%, -50%);
+    filter: none;
+}
+.map-custom-pin.simple-pin .map-custom-pin-icon {
+    display: none;
+}
+
+.map-custom-pin.type-truth-bullet.simple-pin {
+    background: rgba(30, 200, 100, 1);
+    box-shadow: 0 0 0 2px rgba(10, 40, 20, 0.9), 0 0 0 4px rgba(30, 200, 100, 0.75);
+}
+.map-custom-pin.type-truth-bullet.simple-pin:hover,
+.map-custom-pin.type-truth-bullet.simple-pin:focus-visible {
+    box-shadow: 0 0 0 2px rgba(10, 40, 20, 0.9), 0 0 0 4px rgba(30, 200, 100, 0.95);
+}
+
+.map-custom-pin.type-body.simple-pin {
+    background: rgba(240, 110, 165, 1);
+    box-shadow: 0 0 0 2px rgba(40, 10, 25, 0.9), 0 0 0 4px rgba(240, 110, 165, 0.75);
+}
+.map-custom-pin.type-body.simple-pin:hover,
+.map-custom-pin.type-body.simple-pin:focus-visible {
+    box-shadow: 0 0 0 2px rgba(40, 10, 25, 0.9), 0 0 0 4px rgba(240, 110, 165, 0.95);
+}
+
+.map-custom-pin.type-room.simple-pin {
+    background: rgba(220, 230, 245, 1);
+    box-shadow: 0 0 0 2px rgba(15, 25, 50, 0.9), 0 0 0 4px rgba(220, 230, 245, 0.75);
+}
+.map-custom-pin.type-room.simple-pin:hover,
+.map-custom-pin.type-room.simple-pin:focus-visible {
+    box-shadow: 0 0 0 2px rgba(15, 25, 50, 0.9), 0 0 0 4px rgba(220, 230, 245, 0.95);
+}
+
+/* ── Pin creation panel ─────────────────────────────── */
+.map-pins-create-panel {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.map-pins-create-section-label {
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    color: rgba(140, 190, 255, 0.6);
+    text-transform: uppercase;
+}
+
+.map-pins-icon-grid {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 3px;
+    max-height: 80px;
+    overflow-y: auto;
+    padding: 2px;
+    scrollbar-width: thin;
+}
+
+.map-pins-icon-btn {
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: 3px;
+    border: 1px solid rgba(100, 160, 255, 0.2);
+    background: rgba(8, 20, 48, 0.6);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    transition: border-color 0.12s, background 0.12s;
+}
+
+.map-pins-icon-btn img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    filter: invert(0.7) sepia(1) hue-rotate(180deg) brightness(1.3);
+    pointer-events: none;
+}
+
+.map-pins-icon-btn:hover {
+    border-color: rgba(140, 200, 255, 0.55);
+    background: rgba(18, 48, 96, 0.7);
+}
+
+.map-pins-icon-btn.selected {
+    border-color: rgba(100, 200, 255, 0.9);
+    background: rgba(20, 60, 120, 0.8);
+}
+
+.map-pins-type-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 4px;
+}
+
+.map-pins-type-btn {
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    padding: 4px 2px;
+    border-radius: 4px;
+    border: 1px solid rgba(100, 160, 255, 0.25);
+    background: rgba(8, 20, 48, 0.6);
+    color: rgba(170, 215, 255, 0.75);
+    cursor: pointer;
+    text-align: center;
+    transition: border-color 0.12s, background 0.12s, color 0.12s;
+}
+
+.map-pins-type-btn:hover {
+    border-color: rgba(140, 200, 255, 0.5);
+    color: rgba(210, 238, 255, 0.95);
+}
+
+.map-pins-type-btn.active { border-color: rgba(100, 200, 255, 0.9); background: rgba(20, 60, 120, 0.8); color: rgba(210, 238, 255, 0.95); }
+.map-pins-type-btn[data-type="room"]        { border-color: rgba(160, 170, 190, 0.35); color: rgba(190, 200, 215, 0.8); }
+.map-pins-type-btn[data-type="room"]:hover  { border-color: rgba(180, 190, 210, 0.6); }
+.map-pins-type-btn[data-type="room"].active { border-color: rgba(180, 190, 210, 0.9); background: rgba(40, 45, 60, 0.85); color: rgba(220, 225, 235, 0.95); }
+.map-pins-type-btn[data-type="body"].active          { border-color: rgba(255, 160, 200, 0.9); background: rgba(80, 20, 50, 0.8); color: rgba(255, 210, 235, 0.95); }
+.map-pins-type-btn[data-type="truth-bullet"].active  { border-color: rgba(30, 200, 110, 0.9);  background: rgba(10, 60, 30, 0.8); }
+.map-pins-type-btn[data-type="monomachine"].active   { border-color: rgba(255, 195, 50, 0.9);  background: rgba(60, 40, 0, 0.8);  color: rgba(255, 230, 150, 0.95); }
+.map-pins-type-btn[data-type="trial"].active         { border-color: rgba(73, 192, 255, 0.9);  background: rgba(10, 50, 90, 0.8); }
+
+.map-pins-list {
+    overflow-y: auto;
+    scrollbar-width: thin;
+    display: flex;
+    flex-direction: column;
+    align-content: flex-start;
+    gap: 3px;
+    max-height: 70px;
+    margin-top: 12px;
+}
+
+.map-pins-list-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: 5px;
+    padding: 3px 4px;
+    background: rgba(8, 20, 50, 0.4);
+    border: 1px solid rgba(100, 160, 255, 0.15);
+    transition: border-color 0.1s, background 0.1s;
+}
+
+.map-pins-list-item.active {
+    background: rgba(20, 50, 110, 0.6);
+    border-color: rgba(100, 200, 255, 0.5);
+}
+
+.map-pins-list-name {
+    flex: 1 1 0;
+    min-width: 0;
+    background: none;
+    border: none;
+    color: rgba(190, 225, 255, 0.88);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    text-align: left;
+    cursor: pointer;
+    padding: 2px 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: color 0.1s;
+}
+
+.map-pins-list-name:hover {
+    color: rgba(230, 245, 255, 1);
+}
+
+.map-pins-list-item.active .map-pins-list-name {
+    color: rgba(220, 240, 255, 1);
+    font-weight: 600;
+}
+
+.map-pins-list-item.type-room         .map-pins-list-name { color: rgba(210, 220, 235, 0.9); }
+.map-pins-list-item.type-body         .map-pins-list-name { color: rgba(240, 110, 165, 0.9); }
+.map-pins-list-item.type-truth-bullet .map-pins-list-name { color: rgba(30,  200, 100, 0.9); }
+.map-pins-list-item.type-monomachine  .map-pins-list-name { color: rgba(255, 195,  50, 0.9); }
+.map-pins-list-item.type-trial        .map-pins-list-name { color: rgba(73,  192, 255, 0.9); }
+
+.map-pins-list-item.type-room         .map-pins-list-name:hover { color: rgba(235, 242, 255, 1); }
+.map-pins-list-item.type-body         .map-pins-list-name:hover { color: rgba(255, 150, 195, 1); }
+.map-pins-list-item.type-truth-bullet .map-pins-list-name:hover { color: rgba(80,  220, 130, 1); }
+.map-pins-list-item.type-monomachine  .map-pins-list-name:hover { color: rgba(255, 215, 100, 1); }
+.map-pins-list-item.type-trial        .map-pins-list-name:hover { color: rgba(130, 215, 255, 1); }
+
+.map-pins-list-edit {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    border: none;
+    background: rgba(100, 160, 255, 0.12);
+    color: rgba(140, 200, 255, 0.75);
+    font-size: 9px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: background 0.1s, color 0.1s;
+}
+.map-pins-list-edit:hover {
+    background: rgba(100, 160, 255, 0.3);
+    color: rgba(200, 230, 255, 1);
+}
+
+.map-pins-list-delete {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    border: none;
+    background: rgba(200, 40, 50, 0.2);
+    color: rgba(255, 110, 110, 0.8);
+    font-size: 9px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: background 0.1s, color 0.1s;
+}
+
+.map-pins-list-delete:hover {
+    background: rgba(220, 50, 60, 0.55);
+    color: #fff;
+}
+
+/* Keep tooltip visible when pin is highlighted from list */
+.map-custom-pin.highlighted .map-custom-pin-tooltip {
+    opacity: 1;
+}
+
+.map-custom-pin.highlighted {
+    filter: brightness(1.15);
+}
+
+.map-pins-name-id-row {
+    display: flex;
+    gap: 8px;
+}
+
+.map-pins-name-id-field {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.map-pins-label-input {
+    width: 100%;
+    box-sizing: border-box;
+    background: rgba(5, 14, 36, 0.72);
+    border: 1px solid rgba(100, 160, 255, 0.3);
+    border-radius: 4px;
+    color: rgba(200, 230, 255, 0.92);
+    font-size: 11px;
+    padding: 5px 7px;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.map-pins-label-input:focus {
+    border-color: rgba(100, 200, 255, 0.7);
+}
+
+.map-pins-id-input {
+    width: 100%;
+    box-sizing: border-box;
+    background: rgba(5, 14, 36, 0.72);
+    border: 1px solid rgba(100, 160, 255, 0.2);
+    border-radius: 4px;
+    color: rgba(160, 200, 245, 0.75);
+    font-size: 10px;
+    font-family: monospace;
+    padding: 5px 7px;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.map-pins-id-input:focus {
+    border-color: rgba(100, 200, 255, 0.5);
+}
+
+.map-pins-id-input.map-pins-input-error {
+    border-color: rgba(255, 100, 110, 0.8);
+    background: rgba(60, 5, 10, 0.72);
+}
+
+.map-pins-place-hint {
+    font-size: 10px;
+    color: rgba(140, 220, 255, 0.75);
+    text-align: center;
+    padding: 3px 0;
+    letter-spacing: 0.04em;
+}
+
+/* Ensure hidden attribute works on elements that also have display rules */
+.map-pins-create-panel[hidden],
+.map-pins-icon-section[hidden],
+.map-pins-place-hint[hidden] {
+    display: none;
+}
+
+/* Placement mode cursor on map */
+.map-image-wrap.map-placement-mode,
+.map-image-wrap.map-placement-mode * {
+    cursor: crosshair !important;
+}
+
 .map-image {
     width: 100%;
     height: 100%;
     object-fit: contain;
     image-rendering: auto;
+    transform-origin: center center;
 }
 
 
@@ -5614,12 +6554,25 @@ body.dangan-trial-vn-chat-hidden #chat {
     .map-panel-shell {
         height: auto;
         min-height: 100%;
+        grid-template-columns: 1fr;
         grid-template-rows: auto auto auto;
         gap: 12px;
         padding-bottom: 8px;
     }
 
+    .map-panel-header {
+        grid-column: auto;
+        grid-row: auto;
+    }
+
+    .map-controls {
+        grid-column: auto;
+        grid-row: auto;
+    }
+
     .map-image-wrap {
+        grid-column: auto;
+        grid-row: auto;
         width: 100%;
         aspect-ratio: 480 / 272;
         min-height: 180px;
@@ -5666,7 +6619,7 @@ body.dangan-trial-vn-chat-hidden #chat {
     justify-content: center;
     pointer-events: none;
     opacity: 0;
-    z-index: 2147483601;
+    z-index: 2147483648;
 }
 
 #dangan-investigation-overlay.show {
@@ -5698,16 +6651,15 @@ body.dangan-trial-vn-chat-hidden #chat {
 .dangan-investigation-banner {
     position: absolute;
     top: 50%;
-    left: 50%;
-    width: min(96vw, 1580px);
-    max-width: 100%;
+    left: 0;
+    width: 100vw;
     min-height: clamp(82px, 10.5vw, 132px);
     box-sizing: border-box;
     border-top: 2px solid rgba(255, 171, 224, 0.9);
     border-bottom: 2px solid rgba(140, 33, 117, 0.95);
     border-left: none;
     border-right: none;
-    border-radius: 2px;
+    border-radius: 0;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -5727,7 +6679,7 @@ body.dangan-trial-vn-chat-hidden #chat {
         0 0 0 2px rgba(112, 19, 89, 0.36) inset,
         0 12px 36px rgba(0, 0, 0, 0.52),
         0 0 30px rgba(255, 59, 196, 0.32);
-    transform: translate3d(-50%, -50%, 0) scale(0.965);
+    transform: translate3d(0, -50%, 0) scale(0.965);
     opacity: 0;
 }
 
@@ -5835,24 +6787,418 @@ body.dangan-trial-vn-chat-hidden #chat {
 @keyframes dangan-investigation-banner {
     0% {
         opacity: 0;
-        transform: translate3d(-50%, calc(-50% + 10px), 0) scale(0.965);
+        transform: translate3d(0, calc(-50% + 10px), 0) scale(0.965);
         filter: blur(2px);
     }
     9% {
         opacity: 1;
-        transform: translate3d(-50%, -50%, 0) scale(1.012);
+        transform: translate3d(0, -50%, 0) scale(1.012);
         filter: blur(0);
     }
     82% {
         opacity: 1;
-        transform: translate3d(-50%, -50%, 0) scale(1);
+        transform: translate3d(0, -50%, 0) scale(1);
     }
     100% {
         opacity: 0;
-        transform: translate3d(-50%, calc(-50% - 6px), 0) scale(0.988);
+        transform: translate3d(0, calc(-50% - 6px), 0) scale(0.988);
     }
 }
 
+
+/* ── Free Time Start Banner ────────────────────────────── */
+
+#dangan-freetime-overlay {
+    --freetime-banner-duration: 2200ms;
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    opacity: 0;
+    z-index: 2147483648;
+}
+
+#dangan-freetime-overlay.show {
+    animation: dangan-freetime-overlay var(--freetime-banner-duration) linear forwards;
+}
+
+.dangan-freetime-backdrop {
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(circle at 50% 50%, rgba(64, 181, 255, 0.18), rgba(2, 11, 20, 0) 56%),
+        linear-gradient(180deg, rgba(3, 15, 24, 0.18), rgba(3, 15, 24, 0));
+}
+
+.dangan-freetime-scanlines {
+    position: absolute;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+        to bottom,
+        rgba(225, 247, 255, 0.04) 0px,
+        rgba(225, 247, 255, 0.04) 1px,
+        transparent 1px,
+        transparent 3px
+    );
+    opacity: 0.4;
+    mix-blend-mode: screen;
+}
+
+.dangan-freetime-banner {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 100vw;
+    min-height: clamp(82px, 10.5vw, 132px);
+    box-sizing: border-box;
+    border-top: 2px solid rgba(171, 224, 255, 0.9);
+    border-bottom: 2px solid rgba(33, 117, 140, 0.95);
+    border-left: none;
+    border-right: none;
+    border-radius: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(8px, 1.5vw, 14px) clamp(14px, 2.5vw, 30px);
+    text-align: center;
+    overflow: visible;
+    background:
+        repeating-linear-gradient(
+            -9deg,
+            rgba(202, 240, 255, 0.14) 0px,
+            rgba(202, 240, 255, 0.14) 3px,
+            rgba(0, 181, 255, 0) 3px,
+            rgba(0, 181, 255, 0) 20px
+        ),
+        linear-gradient(180deg, rgba(34, 139, 201, 0.94), rgba(18, 106, 137, 0.96) 52%, rgba(22, 128, 182, 0.94));
+    box-shadow:
+        0 0 0 2px rgba(19, 89, 112, 0.36) inset,
+        0 12px 36px rgba(0, 0, 0, 0.52),
+        0 0 30px rgba(59, 196, 255, 0.32);
+    transform: translate3d(0, -50%, 0) scale(0.965);
+    opacity: 0;
+}
+
+.dangan-freetime-banner::before,
+.dangan-freetime-banner::after {
+    content: "";
+    position: absolute;
+    width: clamp(88px, 14vw, 200px);
+    aspect-ratio: 1 / 1;
+    background: radial-gradient(circle, rgba(4, 19, 24, 0.92) 0 44%, rgba(4, 19, 24, 0) 72%);
+    filter: blur(0.8px);
+    opacity: 0.88;
+}
+
+.dangan-freetime-banner::before {
+    left: 44%;
+    transform: translateX(-50%) rotate(15deg) scale(1.08, 0.8);
+}
+
+.dangan-freetime-banner::after {
+    left: 56%;
+    transform: translateX(-50%) rotate(-14deg) scale(1.05, 0.78);
+}
+
+#dangan-freetime-overlay.show .dangan-freetime-banner {
+    animation: dangan-freetime-banner var(--freetime-banner-duration) cubic-bezier(0.16, 0.83, 0.24, 0.99) forwards;
+}
+
+.dangan-freetime-title {
+    position: relative;
+    z-index: 2;
+    margin: 0;
+    font-family: "Orbitron", "Rajdhani", sans-serif;
+    font-size: clamp(45px, 5.1vw, 92px);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 0.84;
+    color: #e7f4ff;
+    text-transform: uppercase;
+    text-shadow:
+        0 0 2px rgba(239, 251, 255, 0.95),
+        0 0 12px rgba(95, 212, 255, 0.85),
+        0 0 30px rgba(34, 170, 225, 0.52);
+}
+
+.dangan-freetime-word {
+    display: inline-block;
+    margin: 0 0.05em;
+}
+
+.dangan-freetime-word.free {
+    transform: rotate(-6deg) translateY(-0.02em);
+}
+
+.dangan-freetime-word.start {
+    transform: rotate(6deg) translateY(-0.08em);
+    letter-spacing: 0.08em;
+}
+
+@media (max-width: 520px) {
+    #dangan-freetime-overlay {
+        padding: 0 8px;
+        height: 100svh;
+    }
+
+    .dangan-freetime-banner {
+        width: min(95vw, 440px);
+        min-height: clamp(92px, 21vw, 116px);
+        padding: 10px 12px;
+        transform: translate3d(-50%, -50%, 0) scale(1);
+    }
+
+    .dangan-freetime-title {
+        font-size: clamp(34px, 9.2vw, 48px);
+        letter-spacing: 0.03em;
+    }
+
+    .dangan-freetime-word {
+        margin: 0 0.02em;
+    }
+
+    .dangan-freetime-word.free {
+        transform: rotate(-4deg) translateY(-0.01em);
+    }
+
+    .dangan-freetime-word.start {
+        transform: rotate(4deg) translateY(-0.05em);
+        letter-spacing: 0.05em;
+    }
+}
+
+@keyframes dangan-freetime-overlay {
+    0% { opacity: 0; }
+    8% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+@keyframes dangan-freetime-banner {
+    0% {
+        opacity: 0;
+        transform: translate3d(0, calc(-50% + 10px), 0) scale(0.965);
+        filter: blur(2px);
+    }
+    9% {
+        opacity: 1;
+        transform: translate3d(0, -50%, 0) scale(1.012);
+        filter: blur(0);
+    }
+    82% {
+        opacity: 1;
+        transform: translate3d(0, -50%, 0) scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: translate3d(0, calc(-50% - 6px), 0) scale(0.988);
+    }
+}
+
+/* ── Night Time Start Banner ───────────────────────────── */
+
+#dangan-nighttime-overlay {
+    --nighttime-banner-duration: 2200ms;
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    opacity: 0;
+    z-index: 2147483648;
+}
+
+#dangan-nighttime-overlay.show {
+    animation: dangan-nighttime-overlay var(--nighttime-banner-duration) linear forwards;
+}
+
+.dangan-nighttime-backdrop {
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(circle at 50% 50%, rgba(160, 160, 180, 0.18), rgba(8, 8, 14, 0) 56%),
+        linear-gradient(180deg, rgba(10, 10, 16, 0.18), rgba(10, 10, 16, 0));
+}
+
+.dangan-nighttime-scanlines {
+    position: absolute;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+        to bottom,
+        rgba(220, 220, 235, 0.04) 0px,
+        rgba(220, 220, 235, 0.04) 1px,
+        transparent 1px,
+        transparent 3px
+    );
+    opacity: 0.4;
+    mix-blend-mode: screen;
+}
+
+.dangan-nighttime-banner {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 100vw;
+    min-height: clamp(82px, 10.5vw, 132px);
+    box-sizing: border-box;
+    border-top: 2px solid rgba(210, 210, 230, 0.9);
+    border-bottom: 2px solid rgba(80, 80, 100, 0.95);
+    border-left: none;
+    border-right: none;
+    border-radius: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(8px, 1.5vw, 14px) clamp(14px, 2.5vw, 30px);
+    text-align: center;
+    overflow: visible;
+    background:
+        repeating-linear-gradient(
+            -9deg,
+            rgba(220, 220, 240, 0.10) 0px,
+            rgba(220, 220, 240, 0.10) 3px,
+            rgba(120, 120, 160, 0) 3px,
+            rgba(120, 120, 160, 0) 20px
+        ),
+        linear-gradient(180deg, rgba(70, 70, 95, 0.94), rgba(45, 45, 65, 0.96) 52%, rgba(60, 60, 85, 0.94));
+    box-shadow:
+        0 0 0 2px rgba(40, 40, 60, 0.36) inset,
+        0 12px 36px rgba(0, 0, 0, 0.60),
+        0 0 30px rgba(140, 140, 200, 0.28);
+    transform: translate3d(0, -50%, 0) scale(0.965);
+    opacity: 0;
+}
+
+.dangan-nighttime-banner::before,
+.dangan-nighttime-banner::after {
+    content: "";
+    position: absolute;
+    width: clamp(88px, 14vw, 200px);
+    aspect-ratio: 1 / 1;
+    background: radial-gradient(circle, rgba(8, 8, 16, 0.92) 0 44%, rgba(8, 8, 16, 0) 72%);
+    filter: blur(0.8px);
+    opacity: 0.88;
+}
+
+.dangan-nighttime-banner::before {
+    left: 44%;
+    transform: translateX(-50%) rotate(15deg) scale(1.08, 0.8);
+}
+
+.dangan-nighttime-banner::after {
+    left: 56%;
+    transform: translateX(-50%) rotate(-14deg) scale(1.05, 0.78);
+}
+
+#dangan-nighttime-overlay.show .dangan-nighttime-banner {
+    animation: dangan-nighttime-banner var(--nighttime-banner-duration) cubic-bezier(0.16, 0.83, 0.24, 0.99) forwards;
+}
+
+.dangan-nighttime-title {
+    position: relative;
+    z-index: 2;
+    margin: 0;
+    font-family: "Orbitron", "Rajdhani", sans-serif;
+    font-size: clamp(45px, 5.1vw, 92px);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 0.84;
+    color: #eeeef8;
+    text-transform: uppercase;
+    text-shadow:
+        0 0 2px rgba(245, 245, 255, 0.95),
+        0 0 12px rgba(180, 180, 220, 0.80),
+        0 0 30px rgba(100, 100, 160, 0.50);
+}
+
+.dangan-nighttime-word {
+    display: inline-block;
+    margin: 0 0.05em;
+}
+
+.dangan-nighttime-word.night {
+    transform: rotate(-6deg) translateY(-0.02em);
+}
+
+.dangan-nighttime-word.start {
+    transform: rotate(6deg) translateY(-0.08em);
+    letter-spacing: 0.08em;
+}
+
+@media (max-width: 520px) {
+    #dangan-nighttime-overlay {
+        padding: 0 8px;
+        height: 100svh;
+    }
+
+    .dangan-nighttime-banner {
+        width: min(95vw, 440px);
+        min-height: clamp(92px, 21vw, 116px);
+        padding: 10px 12px;
+        transform: translate3d(-50%, -50%, 0) scale(1);
+    }
+
+    .dangan-nighttime-title {
+        font-size: clamp(34px, 9.2vw, 48px);
+        letter-spacing: 0.03em;
+    }
+
+    .dangan-nighttime-word {
+        margin: 0 0.02em;
+    }
+
+    .dangan-nighttime-word.night {
+        transform: rotate(-4deg) translateY(-0.01em);
+    }
+
+    .dangan-nighttime-word.start {
+        transform: rotate(4deg) translateY(-0.05em);
+        letter-spacing: 0.05em;
+    }
+}
+
+@keyframes dangan-nighttime-overlay {
+    0% { opacity: 0; }
+    8% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+@keyframes dangan-nighttime-banner {
+    0% {
+        opacity: 0;
+        transform: translate3d(0, calc(-50% + 10px), 0) scale(0.965);
+        filter: blur(2px);
+    }
+    9% {
+        opacity: 1;
+        transform: translate3d(0, -50%, 0) scale(1.012);
+        filter: blur(0);
+    }
+    82% {
+        opacity: 1;
+        transform: translate3d(0, -50%, 0) scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: translate3d(0, calc(-50% - 6px), 0) scale(0.988);
+    }
+}
 
 .monopad-confirm-overlay {
     position: fixed;
@@ -5924,7 +7270,7 @@ body.dangan-trial-vn-chat-hidden #chat {
 #dangan-vn-overlay {
     position: fixed;
     inset: 0;
-    z-index: 2147483000;
+    z-index: 2500;
     display: none;
     align-items: end;
     justify-content: center;
@@ -5938,12 +7284,35 @@ body.dangan-trial-vn-chat-hidden #chat {
     pointer-events: none;
 }
 
+@keyframes dangan-frame-glow-pulse {
+    0%, 100% {
+        filter: drop-shadow(0 0 6px rgba(var(--dangan-nameplate-glow-rgb), 0.3));
+    }
+    50% {
+        filter:
+            drop-shadow(0 0 18px rgba(var(--dangan-nameplate-glow-rgb), 0.75))
+            drop-shadow(0 0 40px rgba(var(--dangan-nameplate-glow-rgb), 0.35));
+    }
+}
+
+@keyframes dangan-compose-glow-pulse {
+    0%, 100% {
+        box-shadow: 0 0 6px rgba(var(--dangan-nameplate-glow-rgb), 0.3);
+    }
+    50% {
+        box-shadow:
+            0 0 18px rgba(var(--dangan-nameplate-glow-rgb), 0.75),
+            0 0 40px rgba(var(--dangan-nameplate-glow-rgb), 0.35);
+    }
+}
+
 .dangan-vn-frame {
+    --dangan-nameplate-glow-rgb: 173, 205, 255;
     position: relative;
     width: min(980px, calc(100vw - 18px));
     min-height: 170px;
     margin: 0 9px calc(var(--dangan-vn-bottom-offset) + 10px);
-    border-radius: 12px;
+    border-radius: 12px 12px 0 0 !important;
     border: 1px solid rgba(191, 229, 255, 0.45);
     background: linear-gradient(180deg, rgba(8, 12, 20, 0.96), rgba(6, 9, 14, 0.97));
     box-shadow: 0 -3px 20px rgba(0, 0, 0, 0.45);
@@ -5951,6 +7320,8 @@ body.dangan-trial-vn-chat-hidden #chat {
     padding: 14px 14px 10px;
     cursor: pointer;
     pointer-events: auto;
+    animation: dangan-frame-glow-pulse 2.8s ease-in-out infinite;
+    clip-path: inset(-80px -80px 0 -80px);
 }
 
 .dangan-vn-controls {
@@ -6021,6 +7392,100 @@ body.dangan-trial-vn-chat-hidden #chat {
     width: 26px;
     padding: 0;
     font-size: 13px;
+}
+/* VN inline edit mode */
+.dangan-vn-inline-edit {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 4px 0 6px;
+}
+
+.dangan-vn-inline-edit-textarea {
+    width: 100%;
+    min-height: 90px;
+    resize: vertical;
+    background: rgba(8, 14, 26, 0.92);
+    border: 1px solid rgba(138, 197, 255, 0.35);
+    border-radius: 6px;
+    color: #e8f0ff;
+    font-family: "Noto Sans JP", sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    padding: 8px 10px;
+    box-sizing: border-box;
+    outline: none;
+}
+
+.dangan-vn-inline-edit-textarea:focus {
+    border-color: rgba(138, 197, 255, 0.65);
+}
+
+.dangan-vn-inline-edit-buttons {
+    display: flex;
+    gap: 4px;
+    justify-content: flex-end;
+}
+
+.dangan-vn-edit-ctrl {
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: 1px solid rgba(138, 197, 255, 0.3);
+    background: rgba(22, 31, 47, 0.9);
+    color: rgba(200, 220, 255, 0.8);
+    font-size: 13px;
+    cursor: pointer;
+    transition: color 0.1s, background 0.1s, border-color 0.1s;
+}
+
+.dangan-vn-edit-ctrl:hover {
+    color: #ffffff;
+    background: rgba(45, 63, 95, 0.95);
+    border-color: rgba(138, 197, 255, 0.6);
+}
+
+.dangan-vn-edit-ctrl.danger {
+    border-color: rgba(255, 80, 80, 0.3);
+    color: rgba(255, 140, 140, 0.8);
+}
+
+.dangan-vn-edit-ctrl.danger:hover {
+    background: rgba(80, 20, 20, 0.9);
+    border-color: rgba(255, 80, 80, 0.7);
+    color: #ffaaaa;
+}
+
+/* VN actions panel — inside the frame, not below it */
+.dangan-vn-actions-panel {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    right: 8px;
+    display: flex;
+    gap: 6px;
+    padding: 7px 10px;
+    background: linear-gradient(180deg, rgba(16, 22, 38, 0.97), rgba(8, 12, 24, 0.98));
+    border: 1px solid rgba(138, 197, 255, 0.25);
+    border-radius: 8px;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.45);
+    z-index: 10;
+}
+
+.dangan-vn-action-btn {
+    font-size: 15px;
+    cursor: pointer;
+    color: rgba(200, 220, 255, 0.75);
+    padding: 5px 7px;
+    border-radius: 5px;
+    transition: color 0.1s, background 0.1s;
+}
+
+.dangan-vn-action-btn:hover {
+    color: #ffffff;
+    background: rgba(138, 197, 255, 0.12);
 }
 
 .dangan-vn-transcript {
@@ -6113,6 +7578,7 @@ body.dangan-trial-vn-chat-hidden #chat {
 }
 
 .dangan-vn-compose-docked {
+    --dangan-nameplate-glow-rgb: 173, 205, 255;
     border: 1px solid rgba(173, 205, 255, 0.45) !important;
     border-radius: 0 0 12px 12px !important;
     border-top: 0 !important;
@@ -6125,6 +7591,17 @@ body.dangan-trial-vn-chat-hidden #chat {
     align-items: center;
     gap: 6px;
     overflow: visible !important;
+    position: relative;
+}
+
+.dangan-vn-compose-docked::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    animation: dangan-compose-glow-pulse 2.8s ease-in-out infinite;
+    z-index: -1;
 }
 
 .dangan-vn-compose-collapse-toggle {
@@ -6160,7 +7637,8 @@ body.dangan-trial-vn-chat-hidden #chat {
     border: 1px solid rgba(146, 183, 236, 0.4) !important;
     background: rgba(14, 20, 32, 0.9) !important;
     color: #f2f7ff !important;
-    font-family: "Rajdhani", "Orbitron", monospace;
+    font-family: "Noto Sans JP", "Rajdhani", "Orbitron", monospace;
+    font-weight: 700;
     font-size: 14px;
     line-height: 1.25;
     padding: 6px 10px !important;
@@ -6228,16 +7706,47 @@ body.dangan-trial-vn-chat-hidden #chat {
     margin-bottom: 8px;
 }
 
+@keyframes dangan-nameplate-glow-pulse {
+    0%, 100% {
+        text-shadow:
+            2px 0 0 rgba(var(--dangan-nameplate-glow-rgb), 0.65),
+            -2px 0 0 rgba(var(--dangan-nameplate-glow-rgb), 0.65),
+            0 2px 0 rgba(var(--dangan-nameplate-glow-rgb), 0.65),
+            0 -2px 0 rgba(var(--dangan-nameplate-glow-rgb), 0.65),
+            2px 2px 0 rgba(var(--dangan-nameplate-glow-rgb), 0.65),
+            -2px 2px 0 rgba(var(--dangan-nameplate-glow-rgb), 0.65),
+            2px -2px 0 rgba(var(--dangan-nameplate-glow-rgb), 0.65),
+            -2px -2px 0 rgba(var(--dangan-nameplate-glow-rgb), 0.65),
+            0 0 12px rgba(var(--dangan-nameplate-glow-rgb), 0.5);
+    }
+    50% {
+        text-shadow:
+            2px 0 0 rgba(var(--dangan-nameplate-glow-rgb), 0.95),
+            -2px 0 0 rgba(var(--dangan-nameplate-glow-rgb), 0.95),
+            0 2px 0 rgba(var(--dangan-nameplate-glow-rgb), 0.95),
+            0 -2px 0 rgba(var(--dangan-nameplate-glow-rgb), 0.95),
+            2px 2px 0 rgba(var(--dangan-nameplate-glow-rgb), 0.95),
+            -2px 2px 0 rgba(var(--dangan-nameplate-glow-rgb), 0.95),
+            2px -2px 0 rgba(var(--dangan-nameplate-glow-rgb), 0.95),
+            -2px -2px 0 rgba(var(--dangan-nameplate-glow-rgb), 0.95),
+            0 0 24px rgba(var(--dangan-nameplate-glow-rgb), 0.9),
+            0 0 42px rgba(var(--dangan-nameplate-glow-rgb), 0.5);
+    }
+}
+
 .dangan-vn-nameplate {
+    --dangan-nameplate-glow-rgb: 173, 205, 255;
+    --dangan-nameplate-text-color: #080c14;
     display: inline-flex;
     padding: 3px 9px;
     border-radius: 999px;
-    background: linear-gradient(90deg, #272f43, #3e5074);
-    border: 1px solid rgba(173, 205, 255, 0.5);
-    font-size: 10px;
-    letter-spacing: 0.14em;
-    color: #f2f8ff;
-    font-family: "Orbitron", "Rajdhani", monospace;
+    font-size: 25px;
+    letter-spacing: 0.08em;
+    color: var(--dangan-nameplate-text-color);
+    font-family: "Boldonse", "Orbitron", "Rajdhani", monospace;
+    position: absolute;
+    top: -45px;
+    animation: dangan-nameplate-glow-pulse 2.8s ease-in-out infinite;
 }
 
 
@@ -6259,31 +7768,37 @@ body.dangan-trial-vn-chat-hidden #chat {
 
 .dangan-vn-text {
     min-height: 78px;
-    font-size: clamp(16px, 2.2vw, 24px);
+    padding-top: 12px;
+    font-size: clamp(9px, 1.24vw, 13.5px);
     line-height: 1.35;
     letter-spacing: 0.01em;
-    font-family: "Noto Sans", "Rajdhani", "Orbitron", monospace;
-    font-weight: 500;
+    font-family: "Noto Sans JP", "Rajdhani", "Orbitron", monospace;
+    font-weight: 700;
 }
 
 .dangan-vn-segment {
     display: inline;
 }
 
-.dangan-vn-segment + .dangan-vn-segment {
-    margin-left: 0.35ch;
-}
 
-.dangan-vn-segment-action {
-    color: rgba(176, 214, 246, 0.92);
-    font-style: italic;
-    opacity: 0.92;
+.dangan-vn-segment-narrator {
+    color: #00d51c;
+    text-shadow: -1px -1px 0 #005b09, 1px -1px 0 #005b09, -1px 1px 0 #005b09, 1px 1px 0 #005b09;
 }
 
 .dangan-vn-segment-dialogue {
-    color: #f8f9ff;
-    font-weight: 600;
+    color: #ffffff;
     opacity: 1;
+}
+
+.dangan-vn-segment-action {
+    color: #88f3fd;
+    text-shadow: -1px -1px 0 #141f1b, 1px -1px 0 #141f1b, -1px 1px 0 #141f1b, 1px 1px 0 #141f1b;
+}
+
+.dangan-vn-segment-bold {
+    color: #fbd217;
+    text-shadow: -1px -1px 0 #a35909, 1px -1px 0 #a35909, -1px 1px 0 #a35909, 1px 1px 0 #a35909;
 }
 
 .dangan-vn-text.has-action .dangan-vn-segment-action {
@@ -6370,6 +7885,12 @@ body.dangan-trial-vn-chat-hidden #chat {
 /* When VN compose is docked, keep context submenus above VN layers and visually consistent. */
 body.dangan-vn-compose-docked-active :is(.dropdown-menu, .options-content, .menu_panel, [role="menu"], .popup, .list-group) {
     z-index: 2147483646 !important;
+}
+
+/* Keep slash command autocomplete above VN overlay layers. */
+body.dangan-vn-compose-docked-active .autoComplete-wrap,
+body.dangan-vn-compose-docked-active .autoComplete-detailsWrap {
+    z-index: 2147483647 !important;
 }
 
 #chat.dangan-vn-hidden {
@@ -6480,7 +8001,7 @@ body.dangan-vn-compose-docked-active :is(.dropdown-menu, .options-content, .menu
         width: calc(100vw - 10px);
         margin: 0 5px calc(6px + env(safe-area-inset-bottom));
         min-height: 150px;
-        border-radius: 10px;
+        border-radius: 10px 10px 0 0;
         padding: 10px 10px 8px;
     }
 
@@ -7118,30 +8639,42 @@ body.dangan-theme-daily #send_textarea {
 }
 
 body.dangan-theme-daily .dangan-vn-frame {
+    --dangan-nameplate-glow-rgb: 60, 130, 230;
     background: linear-gradient(180deg, rgba(8, 16, 44, 0.97), rgba(6, 12, 36, 0.98)) !important;
     border-color: rgba(60, 130, 230, 0.50) !important;
     box-shadow: 0 -3px 20px rgba(0, 20, 80, 0.5) !important;
 }
 
-/* Investigation — vivid pink */
+body.dangan-theme-daily .dangan-vn-nameplate {
+    --dangan-nameplate-glow-rgb: 60, 130, 230;
+    --dangan-nameplate-text-color: #08102c;
+}
+
+/* Investigation — #F0509A */
 body.dangan-theme-investigation {
-    --SmartThemeChatTintColor: rgba(52, 8, 20, 0.94);
-    --SmartThemeBlurTintColor: rgba(44, 6, 16, 0.90);
-    --SmartThemeBorderColor: rgba(230, 60, 110, 0.45);
-    --SmartThemeUserMesBlurTintColor: rgba(70, 10, 26, 0.88);
-    --SmartThemeBotMesBlurTintColor: rgba(58, 8, 20, 0.88);
+    --SmartThemeChatTintColor: rgba(48, 8, 30, 0.94);
+    --SmartThemeBlurTintColor: rgba(40, 6, 26, 0.90);
+    --SmartThemeBorderColor: rgba(240, 80, 154, 0.45);
+    --SmartThemeUserMesBlurTintColor: rgba(62, 10, 40, 0.88);
+    --SmartThemeBotMesBlurTintColor: rgba(50, 8, 32, 0.88);
 }
 
 body.dangan-theme-investigation #send_textarea {
-    background: rgba(46, 8, 18, 0.92) !important;
-    color: rgba(255, 200, 220, 0.95) !important;
-    border-color: rgba(230, 60, 110, 0.45) !important;
+    background: rgba(42, 8, 28, 0.92) !important;
+    color: rgba(255, 200, 230, 0.95) !important;
+    border-color: rgba(240, 80, 154, 0.45) !important;
 }
 
 body.dangan-theme-investigation .dangan-vn-frame {
-    background: linear-gradient(180deg, rgba(44, 8, 16, 0.97), rgba(36, 6, 12, 0.98)) !important;
-    border-color: rgba(230, 60, 110, 0.55) !important;
-    box-shadow: 0 -3px 20px rgba(120, 10, 40, 0.5) !important;
+    --dangan-nameplate-glow-rgb: 240, 80, 154;
+    background: linear-gradient(180deg, rgba(40, 8, 24, 0.97), rgba(32, 6, 18, 0.98)) !important;
+    border-color: rgba(240, 80, 154, 0.55) !important;
+    box-shadow: 0 -3px 20px rgba(120, 10, 60, 0.5) !important;
+}
+
+body.dangan-theme-investigation .dangan-vn-nameplate {
+    --dangan-nameplate-glow-rgb: 240, 80, 154;
+    --dangan-nameplate-text-color: #28061a;
 }
 
 /* Night — muted gray */
@@ -7160,13 +8693,20 @@ body.dangan-theme-night #send_textarea {
 }
 
 body.dangan-theme-night .dangan-vn-frame {
+    --dangan-nameplate-glow-rgb: 140, 140, 160;
     background: linear-gradient(180deg, rgba(14, 14, 20, 0.97), rgba(10, 10, 16, 0.98)) !important;
     border-color: rgba(140, 140, 160, 0.35) !important;
     box-shadow: 0 -3px 20px rgba(0, 0, 10, 0.6) !important;
 }
 
+body.dangan-theme-night .dangan-vn-nameplate {
+    --dangan-nameplate-glow-rgb: 140, 140, 160;
+    --dangan-nameplate-text-color: #0e0e14;
+}
+
 /* Night — compose dock */
 body.dangan-theme-night .dangan-vn-compose-docked {
+    --dangan-nameplate-glow-rgb: 140, 140, 160;
     background: linear-gradient(180deg, rgba(14, 14, 20, 0.97), rgba(10, 10, 16, 0.98)) !important;
     border-color: rgba(140, 140, 160, 0.30) !important;
     box-shadow: 0 8px 24px rgba(0, 0, 10, 0.50) !important;
@@ -7184,6 +8724,7 @@ body.dangan-theme-night .dangan-vn-compose-collapse-toggle:hover {
 
 /* Daily Life — compose dock */
 body.dangan-theme-daily .dangan-vn-compose-docked {
+    --dangan-nameplate-glow-rgb: 60, 130, 230;
     background: linear-gradient(180deg, rgba(8, 16, 44, 0.97), rgba(6, 12, 36, 0.98)) !important;
     border-color: rgba(60, 130, 230, 0.45) !important;
     box-shadow: 0 8px 24px rgba(0, 10, 50, 0.42) !important;
@@ -7201,6 +8742,7 @@ body.dangan-theme-daily .dangan-vn-compose-collapse-toggle:hover {
 
 /* Investigation — compose dock */
 body.dangan-theme-investigation .dangan-vn-compose-docked {
+    --dangan-nameplate-glow-rgb: 230, 60, 110;
     background: linear-gradient(180deg, rgba(44, 8, 16, 0.97), rgba(36, 6, 12, 0.98)) !important;
     border-color: rgba(230, 60, 110, 0.45) !important;
     box-shadow: 0 8px 24px rgba(80, 5, 25, 0.42) !important;
@@ -7214,4 +8756,205 @@ body.dangan-theme-investigation .dangan-vn-compose-collapse-toggle {
 
 body.dangan-theme-investigation .dangan-vn-compose-collapse-toggle:hover {
     background: rgba(88, 16, 32, 0.96) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   BGM DISPLAY WIDGET
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════
+   BGM Display — layer stack (back → front):
+   1. time-cradle          z-index 1
+   2. backing-wisps        z-index 2
+   3. canvas (audio bars)  z-index 3
+   4. daily/deadly morning z-index 4  (rocks)
+   5. wings                z-index 5
+   6. clock                z-index 6
+   7. text-scroller        z-index 7
+   ═══════════════════════════════════════════════ */
+
+@keyframes dbgm-marquee {
+    0%   { transform: translateX(190px); }
+    100% { transform: translateX(-100%); }
+}
+
+@keyframes dbgm-rock {
+    0%   { transform: rotate(-20deg); }
+    50%  { transform: rotate(20deg);  }
+    100% { transform: rotate(-20deg); }
+}
+
+@keyframes dbgm-slide-in {
+    from { transform: translateX(-110%); opacity: 0; }
+    to   { transform: translateX(0);     opacity: 1; }
+}
+
+@keyframes dbgm-slide-out {
+    from { transform: translateX(0);     opacity: 1; }
+    to   { transform: translateX(-110%); opacity: 0; }
+}
+
+
+#dangan-bgm-display {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 240px;
+    height: 150px;
+    z-index: 50;
+    pointer-events: none;
+    overflow: visible;
+
+    /* Hidden by default */
+    transform: translateX(-110%);
+    opacity: 0;
+}
+
+#dangan-bgm-display.dbgm-active {
+    animation: dbgm-slide-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+#dangan-bgm-display.dbgm-hiding {
+    animation: dbgm-slide-out 0.35s ease-in forwards;
+}
+
+/* All layers are absolutely positioned inside the display */
+#dangan-bgm-display > * {
+    position: absolute;
+}
+
+/* ── Shared layer image sizing ── */
+.dbgm-layer {
+    inset: 0;
+}
+
+.dbgm-layer img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    object-position: center bottom;
+    display: block;
+}
+
+/* ── Layer 6 (back): time-cradle ── */
+.dbgm-cradle {
+    z-index: 1;
+}
+
+/* ── Layer 5: backing-wisps ── */
+.dbgm-wisps {
+    z-index: 2;
+}
+
+body.dangan-theme-investigation .dbgm-cradle img,
+body.dangan-theme-investigation .dbgm-wisps img {
+    filter: hue-rotate(480deg);
+}
+
+body.dangan-theme-investigation .dbgm-scroller img {
+    filter: hue-rotate(180deg);
+}
+
+body.dangan-theme-night .dbgm-morning img {
+    filter: hue-rotate(30deg);
+}
+
+body.dangan-theme-daily .dbgm-morning img {
+    filter: hue-rotate(190deg);
+}
+
+body.dangan-theme-daily .dbgm-clock img,
+body.dangan-theme-daily .dbgm-wings img {
+    filter: hue-rotate(-80deg);
+}
+
+body.dangan-theme-daily .dbgm-scroller img {
+    filter: hue-rotate(100deg);
+}
+
+body.dangan-theme-night .dbgm-clock img,
+body.dangan-theme-night .dbgm-wings img {
+    filter: hue-rotate(150deg);
+}
+
+body.dangan-theme-night .dbgm-cradle img,
+body.dangan-theme-night .dbgm-wisps img {
+    filter: hue-rotate(-80deg);
+}
+
+/* ── Canvas sits on layer 5 alongside wisps, bars behind layers 1-4 ── */
+.dbgm-canvas {
+    top: -30px;
+    left: 0;
+    z-index: 3;
+    mix-blend-mode: screen;
+    /* pixel dimensions are set by JS — do not override here */
+}
+
+/* ── Layer 4: morning / night icon ── */
+.dbgm-morning {
+    z-index: 4;
+    left: 91px;
+    top: 2px;
+    padding: 30px;
+}
+
+.dbgm-morning img {
+    transform-origin: center center;
+    animation: dbgm-rock 5s ease-in-out infinite;
+    width: 75% !important;
+    height: 75% !important;
+    object-position: center bottom;
+}
+
+/* ── Layer 3: wings ── */
+.dbgm-wings {
+    z-index: 5;
+    padding-bottom: 1.5rem;
+    width: 100%;
+}
+
+/* ── Layer 2: clock ── */
+.dbgm-clock {
+    z-index: 6;
+    width: 75%;
+    padding-bottom: 1.5rem;
+    padding-left: 3.75rem;
+}
+
+/* ── Layer 1 (front): text-scroller + song title ── */
+.dbgm-scroller {
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    top: auto;
+    height: 32px;
+    z-index: 7;
+    overflow: hidden;
+}
+
+.dbgm-scroller img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+}
+
+.dbgm-titlebar-text {
+    position: absolute;
+    z-index: 1;
+    top: 0;
+    left: 0;
+    height: 100%;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 8px;
+    font-family: "Work Sans", sans-serif;
+    font-size: 16px;
+    font-weight: 600;
+    color: #000;
+    white-space: nowrap;
+    text-shadow: none;
+    animation: dbgm-marquee 10s linear infinite;
 }

@@ -93,38 +93,69 @@
                         <div class="map-control-group">
                             <div class="map-control-label">AREA</div>
                             <div class="map-area-list">
-                                <button class="map-area-button active" type="button" data-area="hopes_peak" aria-pressed="true">HOPE'S PEAK</button>
-                                <button class="map-area-button" type="button" data-area="hotel_despair" aria-pressed="false">HOTEL DESPAIR</button>
+                                <button class="map-add-area-button" type="button">+ ADD AREA</button>
                             </div>
                         </div>
 
                         <div class="map-control-group">
-                            <div class="map-control-label">FLOOR</div>
+                            <div class="map-control-label">SUB-AREA</div>
                             <div class="map-floor-list"></div>
                         </div>
 
-                        <div class="map-control-group map-presence-tools">
-                            <div class="map-control-label">PRESENCE</div>
-                            <div class="map-presence-tool-row">
-                                <button class="map-floor-button map-presence-clear-all" type="button">CLEAR PINS</button>
-                                <button class="map-floor-button map-presence-restore-all" type="button">RESTORE PINS</button>
-                                <button class="map-floor-button map-presence-calibrate-toggle" type="button">CALIBRATE</button>
-                            </div>
-
-                            <div class="map-presence-calibration-controls" hidden>
-                                <label class="map-presence-calibration-label" for="map-presence-location-select">PIN TARGET</label>
-                                <select id="map-presence-location-select" class="map-presence-location-select"></select>
-                                <div class="map-presence-tool-row compact">
-                                    <button class="map-floor-button map-presence-calibration-reset-floor" type="button">RESET FLOOR</button>
-                                    <button class="map-floor-button map-presence-calibration-export" type="button">COPY PIN JSON</button>
+                        <div class="map-control-group map-location-pins-tools">
+                            <div class="map-control-label">LOCATION PINS</div>
+                            <div class="map-pins-layout">
+                                <div class="map-presence-tool-row">
+                                    <button class="map-floor-button map-pins-add" type="button">ADD PIN</button>
+                                    <button class="map-floor-button map-pins-clear-floor" type="button">CLEAR FLOOR</button>
+                                    <button class="map-floor-button map-pins-toggle-room-view" type="button">ROOM VIEW: ON</button>
+                                    <button class="map-floor-button map-pins-toggle-simple-evidence" type="button">TOGGLE SIMPLE EVIDENCE ON</button>
+                                    <button class="map-floor-button map-pins-toggle-simple-body" type="button">TOGGLE SIMPLE BODY ON</button>
                                 </div>
-                                <div class="map-presence-calibration-hint">Calibration mode: select a location, then tap/click the map to reposition that pin.</div>
-                            </div>
+                            </div><!-- /.map-pins-layout -->
+                            <div class="map-pins-list"></div>
+                            <div class="map-pins-create-panel" hidden>
+                                <div class="map-pins-create-section-label">LOCATION TYPE</div>
+                                <div class="map-pins-type-row">
+                                    <button class="map-pins-type-btn active" data-type="room" type="button">ROOM</button>
+                                    <button class="map-pins-type-btn" data-type="body" type="button">BODY</button>
+                                    <button class="map-pins-type-btn" data-type="truth-bullet" type="button">EVIDENCE</button>
+                                    <button class="map-pins-type-btn" data-type="monomachine" type="button">SHOP</button>
+                                    <button class="map-pins-type-btn" data-type="trial" type="button">TRIAL</button>
+                                </div>
+                                <div class="map-pins-icon-section">
+                                    <div class="map-pins-create-section-label">LOCATION ICON</div>
+                                    <div class="map-pins-icon-grid"></div>
+                                </div>
+                                <div class="map-pins-name-id-row">
+                                    <div class="map-pins-name-id-field">
+                                        <div class="map-pins-create-section-label">LOCATION NAME</div>
+                                        <input type="text" class="map-pins-label-input" placeholder="Pin label..." maxlength="40" />
+                                    </div>
+                                    <div class="map-pins-name-id-field">
+                                        <div class="map-pins-create-section-label">LOCATION ID</div>
+                                        <input type="text" class="map-pins-id-input" placeholder="e.g. academy_av_room" maxlength="80" />
+                                    </div>
+                                </div>
+                                <div class="map-pins-place-hint" hidden>Click on the map to place the pin.</div>
+                                <div class="map-presence-tool-row compact">
+                                    <button class="map-floor-button map-pins-place-btn" type="button">PLACE ON MAP</button>
+                                    <button class="map-floor-button map-pins-cancel-btn" type="button">CANCEL</button>
+                                </div>
+                            </div><!-- /.map-pins-create-panel -->
                         </div>
                     </div>
 
                     <div class="map-image-wrap">
-                        <img class="map-image" alt="Hope's Peak floor map" />
+                        <div class="map-scroll-area">
+                            <img class="map-image" alt="Hope's Peak floor map" />
+                            <div class="map-pin-layer"></div>
+                        </div>
+                        <div class="map-zoom-controls" aria-label="Zoom controls">
+                            <button class="map-zoom-btn map-zoom-in" type="button" aria-label="Zoom in">+</button>
+                            <span class="map-zoom-level">100%</span>
+                            <button class="map-zoom-btn map-zoom-out" type="button" aria-label="Zoom out">−</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -155,7 +186,7 @@
                         </div>
 
                         <div class="items-coin-box" title="Monocoins counter">
-                            <img src="scripts/extensions/third-party/danganronpa-extension/assets/metal-disc.svg" alt="" class="items-coin-icon">
+                            <img src="scripts/extensions/third-party/danganronpa-extension/assets/monocoin.png" alt="" class="items-coin-icon">
                             <div class="items-coin-text">
                                 <span class="items-coin-label">MONOCOINS</span>
                                 <span class="items-coin-value" id="items-monocoin-value">0</span>
@@ -305,9 +336,15 @@
 <div class="monopad-panel-content settings-panel" data-panel="settings">
     <div class="settings-shell">
         <div class="settings-header-row">
-            <div>
-                <div class="settings-header">SYSTEM SETTINGS</div>
-                <div class="settings-subheader">MONOPAD CONTROL SURFACE</div>
+            <div class="settings-header-left">
+                <div class="settings-header-logo">
+                    <img class="settings-header-crest" src="scripts/extensions/third-party/danganronpa-extension/assets/hopes-peak-crest.png" alt="Hope's Peak Academy">
+                    <img class="settings-header-cog" src="scripts/extensions/third-party/danganronpa-extension/assets/cog.svg" alt="Settings">
+                </div>
+                <div>
+                    <div class="settings-header">SYSTEM SETTINGS</div>
+                    <div class="settings-subheader">MONOPAD CONTROL SURFACE</div>
+                </div>
             </div>
             <div class="settings-header-actions">
                 <button id="dangan_debug_breach_trigger" class="settings-breach-button" type="button" aria-label="Future Foundation uplink" title="Future Foundation uplink">
@@ -408,10 +445,6 @@
                     <button class="settings-toggle on" data-setting="bootAnimations"></button>
                 </div>
 
-                <div class="settings-item">
-                    <span class="settings-label">MAP PRESENCE PINS</span>
-                    <button class="settings-toggle on" data-setting="mapPresencePinsEnabled"></button>
-                </div>
 
                 <div class="settings-item">
                     <span class="settings-label">VISUAL NOVEL MODE</span>
@@ -431,6 +464,11 @@
                 <div class="settings-item">
                     <span class="settings-label">HIDE GIFT IMAGES</span>
                     <button class="settings-toggle" data-setting="hideGiftImages"></button>
+                </div>
+
+                <div class="settings-item">
+                    <span class="settings-label">HIDE HOPE'S PEAK BRANDING</span>
+                    <button class="settings-toggle" data-setting="hideHopesPeakBranding"></button>
                 </div>
 
             </section>

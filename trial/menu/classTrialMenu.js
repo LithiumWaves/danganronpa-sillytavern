@@ -1,4 +1,4 @@
-export function createClassTrialMenuController({ extensionName, extensionSettings, buildExtensionPathCandidates, getTrialSkillEntries, toggleTrialSkillEquip, playSfx, getSfx }) {
+export function createClassTrialMenuController({ extensionName, extensionSettings, buildExtensionPathCandidates, getTrialSkillEntries, toggleTrialSkillEquip, playSfx, getSfx, onOpen, onClose }) {
     const candidateTracks = buildExtensionPathCandidates()
         .map(basePath => `${basePath}/assets/classtrial/trialunderground.mp3`);
 
@@ -99,10 +99,12 @@ export function createClassTrialMenuController({ extensionName, extensionSetting
 
         if (visible) {
             playTrack();
+            onOpen?.();
             return;
         }
 
         stopTrack();
+        onClose?.();
     }
 
     function renderTrialSkillManager(overlay, statusMessage = "") {

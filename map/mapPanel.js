@@ -1,32 +1,41 @@
-import { LOCATION_PINPOINTS } from "./locationPresence.js";
-
-const FLOOR_ONE_MACHINE_PIN = {
-    x: LOCATION_PINPOINTS.academy_store?.x || 407,
-    y: LOCATION_PINPOINTS.academy_store?.y || 200,
-    width: LOCATION_PINPOINTS.academy_store?.width || 480,
-    height: LOCATION_PINPOINTS.academy_store?.height || 272,
-};
-
-const FLOOR_ONE_TRIAL_PIN = {
-    x: LOCATION_PINPOINTS.academy_trial_grounds?.x || 279,
-    y: LOCATION_PINPOINTS.academy_trial_grounds?.y || 86,
-    width: LOCATION_PINPOINTS.academy_trial_grounds?.width || 480,
-    height: LOCATION_PINPOINTS.academy_trial_grounds?.height || 272,
-};
-
 const MACHINE_ROLL_DURATION_MS = 2000;
 const MACHINE_JINGLE_FRAME = 50;
 const MACHINE_GIF_TOTAL_FRAMES = 100;
 const MACHINE_JINGLE_DELAY_MS = Math.round((MACHINE_JINGLE_FRAME / MACHINE_GIF_TOTAL_FRAMES) * MACHINE_ROLL_DURATION_MS);
 const MACHINE_BANNER_DELAY_MS = 500;
+const CUSTOM_PINS_STORAGE_KEY = "dangan_map_custom_pins_v1";
+const ROOM_VIEW_STORAGE_KEY        = "dangan_map_room_view_mode_v1";
+const ROOM_VIEW_CYCLE              = ["on", "simple", "off"];
+const SIMPLE_EVIDENCE_STORAGE_KEY  = "dangan_map_simple_evidence_v1";
+const SIMPLE_BODY_STORAGE_KEY      = "dangan_map_simple_body_v1";
+const CUSTOM_AREAS_STORAGE_KEY     = "dangan_map_custom_areas_v1";
+const AREA_OVERRIDES_STORAGE_KEY   = "dangan_map_area_overrides_v1";
 
-const PIN_OVERRIDE_STORAGE_KEY = "dangan_map_pinpoint_overrides_v1";
+const ROOM_SVG_FILES = [
+    "art-room.svg", "bar.svg", "bedroom.svg", "biology-room.svg", "cafe.svg",
+    "cafeteria.svg", "changing-room.svg", "chemistry-room.svg", "classroom.svg",
+    "computer-room.svg", "dojo.svg", "execution-grounds.svg", "football-field.svg",
+    "freezer.svg", "furnace.svg", "gallery.svg", "garden.svg", "generator-room.svg",
+    "greenhouse.svg", "gym.svg", "headmasters-office.svg", "infirmary.svg",
+    "jail.svg", "library.svg", "locked-room.svg", "mens-bathroom.svg",
+    "monokuma-eye.svg", "morgue.svg", "music-room.svg", "physics-room.svg",
+    "pool.svg", "reactor.svg", "rec-room.svg", "ring.svg", "sauna.svg",
+    "shrine.svg", "stairs.svg", "steam-room.svg", "storage.svg", "tennis-court.svg",
+    "trash-room.svg", "trophy.svg", "video-room.svg", "washroom.svg", "womens-bathroom.svg",
+];
+
+const TYPE_DEFAULT_ICONS = {
+    "truth-bullet": "truth-bullet-location.svg",
+    "monomachine":  "monomachine-store.svg",
+    "trial":        "trial-room.svg",
+    "body":         "body-discovery-location.svg",
+};
 const MAP_POINT_WIDTH = 480;
 const MAP_POINT_HEIGHT = 272;
 
 const MAP_AREAS = {
     hopes_peak: {
-        label: "HOPE'S PEAK",
+        label: "HOPE'S PEAK ACADEMY",
         floors: [
             { key: "floor_1", label: "FLOOR 1", image: "floor_one.png", description: "Main academy first floor." },
             { key: "floor_2", label: "FLOOR 2", image: "floor_two.png", description: "Main academy second floor." },
@@ -36,7 +45,7 @@ const MAP_AREAS = {
         ],
     },
     hotel_despair: {
-        label: "HOTEL DESPAIR",
+        label: "HOPE'S PEAK ACADEMY DORMS",
         floors: [
             { key: "floor_1", label: "FLOOR 1", image: "hotel_despair.png", description: "Accessible by corridor from academy floor 1." },
             { key: "hidden_floor", label: "HIDDEN FLOOR", image: "hidden_floor.png", description: "Secret second floor above Hotel Despair." },
@@ -50,7 +59,7 @@ function getFloorByKey(areaKey, floorKey) {
     return area.floors.find(floor => floor.key === floorKey) || null;
 }
 
-export function createMapPanelController({ extensionFolderPath, getItemsPanelController, playSfx, getSfx, getSetting, onWalkStep, onTrialStartRequest }) {
+export function createMapPanelController({ extensionFolderPath, getItemsPanelController, playSfx, getSfx, getSetting, onWalkStep, onTrialStartRequest, getTruthBulletByLocationId, navigateToTruth, onMachineOpen, onMachineClose }) {
     const state = {
         area: "hopes_peak",
         floor: "floor_1",
@@ -62,11 +71,19 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         machineBannerTimeout: null,
         machineBannerDelayTimeout: null,
         machineTrackStarted: false,
-        clearedPresencePins: false,
-        dismissedPresencePins: new Set(),
-        calibrationMode: false,
-        selectedCalibrationLocationId: null,
-        pinOverrides: {},
+        mapZoom: 1.0,
+        mapPanX: 0,
+        mapPanY: 0,
+        customPins: [],
+        pinPlacementMode: false,
+        pendingCustomPin: null,
+        highlightedPinId: null,
+        roomViewMode:         ROOM_VIEW_CYCLE.includes(window.localStorage?.getItem(ROOM_VIEW_STORAGE_KEY))
+                                  ? window.localStorage.getItem(ROOM_VIEW_STORAGE_KEY) : "on",
+        simpleEvidencePins:   window.localStorage?.getItem(SIMPLE_EVIDENCE_STORAGE_KEY) === "true",
+        simpleBodyPins:       window.localStorage?.getItem(SIMPLE_BODY_STORAGE_KEY)     === "true",
+        customAreas: [],
+        areaOverrides: {},
     };
 
     const selectors = {
@@ -84,37 +101,37 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         machineDisplayDupe: ".map-machine-dupe",
         machineDisplayRolls: ".map-machine-rolls",
         machineBanner: ".map-machine-banner",
+        machineSunburst: ".map-machine-sunburst",
         machineImage: ".map-machine-image",
         machineAdd: ".map-machine-button.add",
         machineAddRoll: ".map-machine-button.add-roll",
         machineRoll: ".map-machine-button.roll",
         machineClose: ".map-machine-close",
-        presencePin: ".map-presence-pin",
-        presenceTooltip: ".map-presence-tooltip",
-        presenceClearAll: ".map-presence-clear-all",
-        presenceRestoreAll: ".map-presence-restore-all",
-        presenceRemovePin: ".map-presence-remove-pin",
-        calibrationToggle: ".map-presence-calibrate-toggle",
-        calibrationControls: ".map-presence-calibration-controls",
-        calibrationSelect: ".map-presence-location-select",
-        calibrationResetFloor: ".map-presence-calibration-reset-floor",
-        calibrationExport: ".map-presence-calibration-export",
-        calibrationPin: ".map-calibration-pin",
+        zoomIn: ".map-zoom-in",
+        zoomOut: ".map-zoom-out",
+        zoomLevel: ".map-zoom-level",
+        scrollArea: ".map-scroll-area",
+        pinLayer: ".map-pin-layer",
+        pinsAdd: ".map-pins-add",
+        pinsClearFloor: ".map-pins-clear-floor",
+        pinsToggleRoomView:       ".map-pins-toggle-room-view",
+        pinsToggleSimpleEvidence: ".map-pins-toggle-simple-evidence",
+        pinsToggleSimpleBody:     ".map-pins-toggle-simple-body",
+        pinsList: ".map-pins-list",
+        pinsCreatePanel: ".map-pins-create-panel",
+        pinsIconGrid: ".map-pins-icon-grid",
+        pinsTypeBtn: ".map-pins-type-btn",
+        pinsLabelInput: ".map-pins-label-input",
+        pinsIdInput: ".map-pins-id-input",
+        pinsPlaceBtn: ".map-pins-place-btn",
+        pinsCancelBtn: ".map-pins-cancel-btn",
+        pinsPlaceHint: ".map-pins-place-hint",
+        customPin: ".map-custom-pin",
+        addAreaBtn: ".map-add-area-button",
     };
 
-    function isMapPresenceEnabled() {
-        if (typeof getSetting !== "function") return true;
-        return !!getSetting("mapPresencePinsEnabled");
-    }
-
-    function getLocationPresence() {
-        const payload = typeof window.getMonopadRecentLocationPresence === "function"
-            ? window.getMonopadRecentLocationPresence()
-            : null;
-
-        return payload && typeof payload === "object"
-            ? payload
-            : { user: null, characters: [] };
+    function toAreaSlug(str) {
+        return str.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
     }
 
     function escapeHtml(value) {
@@ -126,375 +143,163 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             .replace(/'/g, "&#39;");
     }
 
-    function loadPinOverrides() {
+    function loadCustomPins() {
         try {
-            const raw = window.localStorage?.getItem(PIN_OVERRIDE_STORAGE_KEY);
+            const raw = window.localStorage?.getItem(CUSTOM_PINS_STORAGE_KEY);
+            if (!raw) return [];
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    }
+
+    function saveCustomPins() {
+        try {
+            window.localStorage?.setItem(CUSTOM_PINS_STORAGE_KEY, JSON.stringify(state.customPins || []));
+        } catch {
+            // no-op
+        }
+    }
+
+    function loadCustomAreas() {
+        try {
+            const raw = window.localStorage?.getItem(CUSTOM_AREAS_STORAGE_KEY);
+            if (!raw) return [];
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    }
+
+    function saveCustomAreas() {
+        try {
+            window.localStorage?.setItem(CUSTOM_AREAS_STORAGE_KEY, JSON.stringify(state.customAreas || []));
+        } catch {
+            // no-op
+        }
+    }
+
+    function loadAreaOverrides() {
+        try {
+            const raw = window.localStorage?.getItem(AREA_OVERRIDES_STORAGE_KEY);
             if (!raw) return {};
             const parsed = JSON.parse(raw);
-            return parsed && typeof parsed === "object" ? parsed : {};
-        } catch {
-            return {};
-        }
+            return (parsed && typeof parsed === "object" && !Array.isArray(parsed)) ? parsed : {};
+        } catch { return {}; }
     }
 
-    state.pinOverrides = loadPinOverrides();
-
-    function savePinOverrides() {
+    function saveAreaOverrides() {
         try {
-            window.localStorage?.setItem(PIN_OVERRIDE_STORAGE_KEY, JSON.stringify(state.pinOverrides || {}));
-        } catch {
-            // no-op for environments where storage is blocked
+            window.localStorage?.setItem(AREA_OVERRIDES_STORAGE_KEY, JSON.stringify(state.areaOverrides || {}));
+        } catch {}
+    }
+
+    function isBuiltInArea(areaKey) {
+        return areaKey in MAP_AREAS;
+    }
+
+    function getAllAreas() {
+        const combined = {};
+        for (const [key, area] of Object.entries(MAP_AREAS)) {
+            const ov = state.areaOverrides[key] || {};
+            if (ov.deleted) continue;
+            const deletedFloors = new Set(ov.deletedFloors || []);
+            const floors = area.floors
+                .filter(f => !deletedFloors.has(f.key))
+                .map(f => ({
+                    ...f,
+                    label: ov.floorRenames?.[f.key] ?? f.label,
+                    description: ov.floorDescs?.[f.key] ?? f.description,
+                    id: ov.floorIds?.[f.key] ?? f.id ?? "",
+                }));
+            combined[key] = {
+                ...area,
+                label: ov.label ?? area.label,
+                id: ov.id ?? area.id ?? "",
+                floors: [...floors, ...(ov.extraFloors || [])],
+            };
         }
-    }
-
-    function getPinpoint(locationId) {
-        const base = LOCATION_PINPOINTS[locationId];
-        if (!base) return null;
-
-        const override = state.pinOverrides?.[locationId];
-        if (!override || typeof override !== "object") return base;
-
-        const x = Number(override.x);
-        const y = Number(override.y);
-        if (!Number.isFinite(x) || !Number.isFinite(y)) return base;
-
-        return {
-            ...base,
-            x: Math.max(0, Math.min(MAP_POINT_WIDTH, Math.round(x))),
-            y: Math.max(0, Math.min(MAP_POINT_HEIGHT, Math.round(y))),
-        };
-    }
-
-    function getCalibratableLocationEntries() {
-        return Object.entries(LOCATION_PINPOINTS)
-            .filter(([, point]) => point?.area === state.area && point?.floor === state.floor)
-            .sort((a, b) => String(a[1]?.label || a[0]).localeCompare(String(b[1]?.label || b[0])));
-    }
-
-    function ensureCalibrationTarget() {
-        const entries = getCalibratableLocationEntries();
-        if (!entries.length) {
-            state.selectedCalibrationLocationId = null;
-            return;
+        for (const ca of state.customAreas) {
+            combined[ca.key] = ca;
         }
-
-        const hasCurrent = entries.some(([locationId]) => locationId === state.selectedCalibrationLocationId);
-        if (!hasCurrent) {
-            state.selectedCalibrationLocationId = entries[0][0];
-        }
+        return combined;
     }
 
-    function upsertPinOverride(locationId, x, y) {
-        if (!locationId || !LOCATION_PINPOINTS[locationId]) return;
-        state.pinOverrides ||= {};
-        state.pinOverrides[locationId] = { x, y };
-        savePinOverrides();
+    function getAreaFloor(areaKey, floorKey) {
+        const area = getAllAreas()[areaKey];
+        if (!area) return null;
+        return area.floors.find(f => f.key === floorKey) || null;
     }
 
-    function resetFloorPinOverrides() {
-        const entries = getCalibratableLocationEntries();
-        if (!entries.length) return;
+    state.customAreas = loadCustomAreas();
+    state.areaOverrides = loadAreaOverrides();
+    state.customPins = loadCustomPins();
 
-        for (const [locationId] of entries) {
-            delete state.pinOverrides[locationId];
-        }
+    function renderCustomPins($pinLayer) {
+        $pinLayer.find(selectors.customPin).remove();
+        const floorPins = state.customPins.filter(
+            p => p.areaKey === state.area && p.floorKey === state.floor && !p.hidden
+        );
+        for (const pin of floorPins) {
+            const leftPercent = (pin.x / MAP_POINT_WIDTH) * 100;
+            const topPercent = (pin.y / MAP_POINT_HEIGHT) * 100;
+            const matchedBullet = (pin.type === "truth-bullet" || pin.type === "body")
+                ? getTruthBulletByLocationId?.(pin.locationId) : null;
+            const iconSrc = `${extensionFolderPath}/assets/rooms/${escapeHtml(pin.icon)}`;
+            const pinBulletOverlayHtml = matchedBullet?.image
+                ? `<img class="map-custom-pin-bullet-overlay" src="${matchedBullet.image}" alt="" />`
+                : "";
 
-        savePinOverrides();
-    }
-
-    function exportPinOverrides() {
-        const pretty = JSON.stringify(state.pinOverrides || {}, null, 2);
-        if (!pretty) return;
-
-        if (navigator?.clipboard?.writeText) {
-            navigator.clipboard.writeText(pretty).catch(() => {
-                window.prompt("Copy calibrated pin JSON", pretty);
-            });
-            return;
-        }
-
-        window.prompt("Copy calibrated pin JSON", pretty);
-    }
-
-    function applyTooltipViewportClamp($imageWrap, $tooltip, point) {
-        if (!$tooltip?.length || !$imageWrap?.length) return;
-
-        const wrapEl = $imageWrap.get(0);
-        const tipEl = $tooltip.get(0);
-        if (!wrapEl || !tipEl) return;
-
-        const wrapRect = wrapEl.getBoundingClientRect();
-        const tipRect = tipEl.getBoundingClientRect();
-
-        const pointX = (point.x / point.width) * wrapRect.width;
-        const pointY = (point.y / point.height) * wrapRect.height;
-
-        let leftPx = pointX - (tipRect.width / 2);
-        const minLeft = 6;
-        const maxLeft = Math.max(minLeft, wrapRect.width - tipRect.width - 6);
-        leftPx = Math.max(minLeft, Math.min(maxLeft, leftPx));
-
-        const preferredTop = pointY - tipRect.height - 14;
-        const fallbackTop = pointY + 14;
-        const topPx = preferredTop < 4 ? fallbackTop : preferredTop;
-
-        const leftPercent = (leftPx / wrapRect.width) * 100;
-        const topPercent = (topPx / wrapRect.height) * 100;
-
-        $tooltip.css({ left: `${leftPercent}%`, top: `${topPercent}%`, transform: "translate(0, 0)" });
-    }
-
-    function buildPresencePinId(pin) {
-        if (!pin || !pin.locationId) return null;
-        if (pin.type === "user") return `user::${pin.locationId}`;
-        return `character::${String(pin.label || "unknown").toLowerCase()}::${pin.locationId}`;
-    }
-
-    function buildPresencePinsForFloor() {
-        if (!isMapPresenceEnabled() || state.clearedPresencePins) return [];
-
-        const payload = getLocationPresence();
-        const pins = [];
-
-        const userLocation = payload?.user?.locationId;
-        if (userLocation && getPinpoint(userLocation)) {
-            pins.push({
-                type: "user",
-                label: payload.user.label || "You",
-                locationId: userLocation,
-            });
-        }
-
-        const characters = Array.isArray(payload?.characters) ? payload.characters : [];
-        for (const entry of characters) {
-            const locationId = entry?.locationId;
-            if (!locationId || !getPinpoint(locationId)) continue;
-
-            pins.push({
-                type: "character",
-                label: entry.name || "Unknown",
-                locationId,
-            });
-        }
-
-        const dedupedPins = [];
-        const dedupe = new Set();
-        for (const pin of pins) {
-            const id = buildPresencePinId(pin);
-            if (!id || dedupe.has(id) || state.dismissedPresencePins.has(id)) continue;
-            dedupe.add(id);
-            dedupedPins.push({ ...pin, id });
-        }
-
-        return dedupedPins.filter(pin => {
-            const point = getPinpoint(pin.locationId);
-            return point?.area === state.area && point?.floor === state.floor;
-        });
-    }
-
-    function buildOccupantsForLocation(locationId) {
-        const payload = getLocationPresence();
-        const occupants = [];
-
-        if (payload?.user?.locationId === locationId) {
-            occupants.push({
-                type: "user",
-                label: payload.user.label || "You",
-            });
-        }
-
-        const characters = Array.isArray(payload?.characters) ? payload.characters : [];
-        for (const entry of characters) {
-            if (entry?.locationId !== locationId) continue;
-            occupants.push({
-                type: "character",
-                label: entry.name || "Unknown",
-            });
-        }
-
-        return occupants;
-    }
-
-    function clearAllPresencePins() {
-        state.clearedPresencePins = true;
-    }
-
-    function restoreAllPresencePins() {
-        state.clearedPresencePins = false;
-        state.dismissedPresencePins.clear();
-    }
-
-    function closePresenceTooltip($imageWrap) {
-        $imageWrap.find(selectors.presenceTooltip).remove();
-        $imageWrap.find(`${selectors.presencePin}.active`).removeClass("active");
-    }
-
-    function openPresenceTooltip($imageWrap, pin, point, $pin) {
-        closePresenceTooltip($imageWrap);
-
-        const occupants = buildOccupantsForLocation(pin.locationId);
-        const whoMarkup = occupants.length
-            ? occupants.map(item => item.type === "user"
-                ? `<li><strong>YOU</strong> (${escapeHtml(item.label)})</li>`
-                : `<li>${escapeHtml(item.label)}</li>`).join("")
-            : "<li>Unknown presence</li>";
-        const leftPercent = (point.x / point.width) * 100;
-        const topPercent = (point.y / point.height) * 100;
-
-        $imageWrap.append(`
-            <div class="map-presence-tooltip" role="status" style="left:${leftPercent}%; top:${topPercent}%;">
-                <div class="map-presence-tooltip-title">${escapeHtml(point.label)}</div>
-                <ul>${whoMarkup}</ul>
-                <button type="button" class="map-presence-remove-pin" data-pin-id="${escapeHtml(pin.id)}">REMOVE THIS PIN</button>
-            </div>
-        `);
-
-        const $tooltip = $imageWrap.find(selectors.presenceTooltip).last();
-        applyTooltipViewportClamp($imageWrap, $tooltip, point);
-        $pin.addClass("active");
-    }
-
-    function renderPresencePins($imageWrap) {
-        closePresenceTooltip($imageWrap);
-        $imageWrap.find(selectors.presencePin).remove();
-        const pins = buildPresencePinsForFloor();
-        if (!pins.length) return;
-
-        for (const pin of pins) {
-            const point = getPinpoint(pin.locationId);
-            if (!point) continue;
-
-            const pinLeftPercent = (point.x / point.width) * 100;
-            const pinTopPercent = (point.y / point.height) * 100;
-            const pinTypeClass = pin.type === "user" ? "user" : "character";
-            const pinSymbol = pin.type === "user" ? "▲" : "◆";
-            const title = `${point.label} · ${pin.label}`;
-
+            const isHighlighted = pin.id === state.highlightedPinId;
+            const isRoomHidden  = pin.type === "room"         && state.roomViewMode === "off";
+            const isRoomSimple  = pin.type === "room"         && state.roomViewMode === "simple";
+            const isSimple      = isRoomSimple
+                               || (pin.type === "truth-bullet" && state.simpleEvidencePins)
+                               || (pin.type === "body"         && state.simpleBodyPins);
+            const showTooltipIcon = pin.type === "room" || pin.type === "monomachine" || pin.type === "trial";
+            const tooltipIconHtml = showTooltipIcon
+                ? `<img class="map-custom-pin-tooltip-icon" src="${iconSrc}" alt="" />`
+                : "";
+            const tooltipBulletImageHtml = matchedBullet?.image
+                ? `<img class="map-custom-pin-tooltip-bullet-image" src="${matchedBullet.image}" alt="" />`
+                : "";
             const $pin = $(`
                 <button
                     type="button"
-                    class="map-presence-pin ${pinTypeClass}"
-                    data-pin-id="${escapeHtml(pin.id)}"
-                    aria-label="${escapeHtml(title)}"
-                    title="${escapeHtml(title)}"
-                    style="left:${pinLeftPercent}%; top:${pinTopPercent}%;"
-                >
-                    <span class="map-presence-symbol">${pinSymbol}</span>
-                </button>
-            `);
-
-            $pin.on("click", (event) => {
-                event.stopPropagation();
-                const isActive = $pin.hasClass("active");
-                if (isActive) {
-                    closePresenceTooltip($imageWrap);
-                    return;
-                }
-
-                playSfx?.(getSfx?.().click);
-                openPresenceTooltip($imageWrap, pin, point, $pin);
-            });
-
-            $imageWrap.append($pin);
-        }
-
-        $imageWrap.off("click.presenceTooltip").on("click.presenceTooltip", () => {
-            closePresenceTooltip($imageWrap);
-        });
-    }
-
-    function renderCalibrationPins($imageWrap) {
-        if (!state.calibrationMode) return;
-
-        ensureCalibrationTarget();
-        const entries = getCalibratableLocationEntries();
-        for (const [locationId, basePoint] of entries) {
-            const point = getPinpoint(locationId) || basePoint;
-            if (!point) continue;
-
-            const leftPercent = (point.x / point.width) * 100;
-            const topPercent = (point.y / point.height) * 100;
-            const isSelected = locationId === state.selectedCalibrationLocationId;
-
-            $imageWrap.append(`
-                <button
-                    type="button"
-                    class="map-calibration-pin${isSelected ? " active" : ""}"
-                    data-location-id="${escapeHtml(locationId)}"
-                    title="Calibrate ${escapeHtml(point.label)}"
+                    class="map-custom-pin type-${escapeHtml(pin.type)}${isHighlighted ? " highlighted" : ""}${isRoomHidden ? " room-view-hidden" : ""}${isSimple ? " simple-pin" : ""}"
+                    data-custom-pin-id="${escapeHtml(pin.id)}"
+                    aria-label="${escapeHtml(pin.label)}"
                     style="left:${leftPercent}%; top:${topPercent}%;"
                 >
-                    ✛
+                    <img class="map-custom-pin-icon" src="${iconSrc}" alt="" />
+                    ${pinBulletOverlayHtml}
+                    <span class="map-custom-pin-tooltip" aria-hidden="true">
+                        ${tooltipIconHtml}
+                        ${tooltipBulletImageHtml}
+                        <span class="map-custom-pin-tooltip-name">${escapeHtml(pin.label)}</span>
+                        <span class="map-custom-pin-tooltip-id">${escapeHtml(pin.locationId || '')}</span>
+                    </span>
                 </button>
             `);
+
+            $pinLayer.append($pin);
         }
     }
 
-    function syncCalibrationControls($panel) {
-        const $controls = $panel.find(selectors.calibrationControls);
-        const $select = $panel.find(selectors.calibrationSelect);
-        const $toggle = $panel.find(selectors.calibrationToggle);
-
-        ensureCalibrationTarget();
-
-        $controls.prop("hidden", !state.calibrationMode);
-        $toggle.toggleClass("active", state.calibrationMode).attr("aria-pressed", String(state.calibrationMode));
-        $toggle.text(state.calibrationMode ? "CALIBRATING" : "CALIBRATE");
-
-        if (!$select.length) return;
-        const entries = getCalibratableLocationEntries();
-        $select.empty();
-        if (!entries.length) {
-            $select.append('<option value="">No floor locations</option>');
-            return;
-        }
-
-        for (const [locationId, point] of entries) {
-            const selected = locationId === state.selectedCalibrationLocationId ? 'selected="selected"' : "";
-            $select.append(`<option value="${escapeHtml(locationId)}" ${selected}>${escapeHtml(point.label)} (${escapeHtml(locationId)})</option>`);
-        }
-    }
-
-    function syncCalibrationControls($panel) {
-        const $controls = $panel.find(selectors.calibrationControls);
-        const $select = $panel.find(selectors.calibrationSelect);
-        const $toggle = $panel.find(selectors.calibrationToggle);
-
-        ensureCalibrationTarget();
-
-        $controls.prop("hidden", !state.calibrationMode);
-        $toggle.toggleClass("active", state.calibrationMode).attr("aria-pressed", String(state.calibrationMode));
-        $toggle.text(state.calibrationMode ? "CALIBRATING" : "CALIBRATE");
-
-        if (!$select.length) return;
-        const entries = getCalibratableLocationEntries();
-        $select.empty();
-        if (!entries.length) {
-            $select.append('<option value="">No floor locations</option>');
-            return;
-        }
-
-        for (const [locationId, point] of entries) {
-            const selected = locationId === state.selectedCalibrationLocationId ? 'selected="selected"' : "";
-            $select.append(`<option value="${escapeHtml(locationId)}" ${selected}>${escapeHtml(point.label)} (${escapeHtml(locationId)})</option>`);
-        }
-
-        $imageWrap.off("click.presenceTooltip").on("click.presenceTooltip", () => {
-            closePresenceTooltip($imageWrap);
-        });
-    }
 
     function ensureValidFloorSelection() {
-        const area = MAP_AREAS[state.area];
-        if (!area) {
-            state.area = "hopes_peak";
-            state.floor = "floor_1";
+        const allAreas = getAllAreas();
+        if (!allAreas[state.area]) {
+            const firstKey = Object.keys(allAreas)[0];
+            state.area = firstKey || "hopes_peak";
+            state.floor = allAreas[state.area]?.floors[0]?.key || "floor_1";
             return;
         }
-
-        const floorExists = area.floors.some(floor => floor.key === state.floor);
+        const floorExists = allAreas[state.area].floors.some(f => f.key === state.floor);
         if (!floorExists) {
-            state.floor = area.floors[0]?.key || "floor_1";
+            state.floor = allAreas[state.area].floors[0]?.key || "floor_1";
         }
     }
 
@@ -676,7 +481,11 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                         <div class="map-machine-coins">x 0</div>
                     </div>
 
-                    <img class="map-machine-image" src="${extensionFolderPath}/assets/monochine_idle.png" alt="MonoMono Machine" />
+                    <div class="map-machine-image-wrap">
+                        <div class="map-machine-sunburst" aria-hidden="true"></div>
+                        <img class="map-machine-image" src="${extensionFolderPath}/assets/monochine_idle.png" alt="MonoMono Machine" />
+                        <div class="map-machine-banner" aria-live="polite"></div>
+                    </div>
 
                     <div class="map-machine-controls">
                         <button type="button" class="map-machine-button add" title="Add one coin to dupe protection load">+C</button>
@@ -691,7 +500,6 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                         <div class="map-machine-dupe">DUPE CHANCE: 0%</div>
                     </div>
 
-                    <div class="map-machine-banner" aria-live="polite"></div>
                 </div>
             </div>
         `);
@@ -824,9 +632,11 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             state.machineBannerTimeout = null;
         }
 
+        $(selectors.machineSunburst).addClass("show");
         $banner.text(text).addClass("show");
         state.machineBannerTimeout = setTimeout(() => {
             $banner.removeClass("show").text("");
+            $(selectors.machineSunburst).removeClass("show");
             state.machineBannerTimeout = null;
         }, 1700);
     }
@@ -855,9 +665,11 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         $(selectors.machineAdd).prop("disabled", false);
         $(selectors.machineAddRoll).prop("disabled", false);
         $(selectors.machineBanner).removeClass("show").text("");
+        $(selectors.machineSunburst).removeClass("show");
         $panel.removeClass("machine-overlay-open");
         $(selectors.machineOverlay).removeClass("open").attr("aria-hidden", "true");
         syncMachineTrack($panel);
+        onMachineClose?.();
     }
 
     function updateMachineOverlay($panel) {
@@ -888,51 +700,51 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         $panel.addClass("machine-overlay-open");
         $(selectors.machineOverlay).addClass("open").attr("aria-hidden", "false");
         syncMachineTrack($panel);
-    }
-
-    function updateAreaButtons($panel) {
-        $panel.find(selectors.areaButtons).each((_, button) => {
-            const isActive = button.dataset.area === state.area;
-            button.classList.toggle("active", isActive);
-            button.setAttribute("aria-pressed", String(isActive));
-        });
+        onMachineOpen?.();
     }
 
     function renderFloorButtons($panel) {
         const $floorList = $panel.find(selectors.floorList);
         if (!$floorList.length) return;
 
-        const area = MAP_AREAS[state.area];
+        const area = getAllAreas()[state.area];
         if (!area) return;
 
         $floorList.empty();
 
         for (const floor of area.floors) {
             const isActive = floor.key === state.floor;
-            const $button = $(`
-                <button
-                    class="map-floor-button${isActive ? " active" : ""}"
-                    type="button"
-                    data-floor="${floor.key}"
-                    aria-pressed="${String(isActive)}"
-                >
-                    ${floor.label}
-                </button>
+            const $entry = $(`
+                <div class="map-floor-entry">
+                    <button class="map-floor-button${isActive ? " active" : ""}" type="button" data-floor="${escapeHtml(floor.key)}" aria-pressed="${String(isActive)}">${escapeHtml(floor.label)}</button>
+                    <div class="map-floor-entry-controls">
+                        <button class="map-floor-entry-rename" type="button" title="Rename">&#x270F;</button>
+                        <button class="map-floor-entry-delete" type="button" title="Delete">&#x2715;</button>
+                    </div>
+                </div>
             `);
-
-            $button.on("click", () => {
+            $entry.find(".map-floor-button").on("click", () => {
                 if (state.floor === floor.key) return;
                 state.floor = floor.key;
                 renderMapPanel();
             });
-
-            $floorList.append($button);
+            $entry.find(".map-floor-entry-rename").on("click", (e) => { e.stopPropagation(); openRenameFloorModal(state.area, floor.key); });
+            $entry.find(".map-floor-entry-delete").on("click", (e) => {
+                e.stopPropagation();
+                if (area.floors.length <= 1) return; // can't delete last floor
+                confirmDeleteFloor(state.area, floor.key);
+            });
+            $floorList.append($entry);
         }
+
+        const $addFloor = $(`<button class="map-add-floor-button" type="button">+ ADD FLOOR</button>`);
+        $addFloor.on("click", () => openAddFloorModal(state.area));
+        $floorList.append($addFloor);
     }
 
     function renderMapImage($panel) {
-        const area = MAP_AREAS[state.area];
-        const floor = getFloorByKey(state.area, state.floor);
+        const area = getAllAreas()[state.area];
+        const floor = getAreaFloor(state.area, state.floor);
 
         if (!area || !floor) return;
 
@@ -940,10 +752,15 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         const $title = $panel.find(selectors.title);
         const $subtitle = $panel.find(selectors.subtitle);
         const $imageWrap = $panel.find(".map-image-wrap");
+        const $pinLayer = $panel.find(selectors.pinLayer);
 
         if ($image.length) {
-            $image.attr("src", `${extensionFolderPath}/assets/${floor.image}`);
+            const imageSrc = floor.image?.startsWith("data:")
+                ? floor.image
+                : floor.image ? `${extensionFolderPath}/assets/${floor.image}` : "";
+            $image.attr("src", imageSrc);
             $image.attr("alt", `${area.label} ${floor.label} map`);
+            $image.toggle(!!imageSrc);
         }
 
         if ($title.length) {
@@ -954,157 +771,945 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             $subtitle.text(floor.description);
         }
 
-        $imageWrap.find(`${selectors.machinePin}, ${selectors.trialPin}, ${selectors.presencePin}, ${selectors.calibrationPin}`).remove();
+        $pinLayer.find(selectors.customPin).remove();
 
-        const showMachinePin = state.area === "hopes_peak" && state.floor === "floor_1";
-        if (showMachinePin && $imageWrap.length) {
-            const pinLeftPercent = (FLOOR_ONE_MACHINE_PIN.x / FLOOR_ONE_MACHINE_PIN.width) * 100;
-            const pinTopPercent = (FLOOR_ONE_MACHINE_PIN.y / FLOOR_ONE_MACHINE_PIN.height) * 100;
-
-            $imageWrap.append(`
-                <button
-                    class="map-machine-pin"
-                    type="button"
-                    aria-label="MonoMono Machine"
-                    title="MonoMono Machine"
-                    style="left:${pinLeftPercent}%; top:${pinTopPercent}%;"
-                >
-                    ¥
-                </button>
-            `);
-        }
-
-
-        const showTrialPin = state.area === "hopes_peak" && state.floor === "floor_1";
-        if (showTrialPin && $imageWrap.length) {
-            const pinLeftPercent = (FLOOR_ONE_TRIAL_PIN.x / FLOOR_ONE_TRIAL_PIN.width) * 100;
-            const pinTopPercent = (FLOOR_ONE_TRIAL_PIN.y / FLOOR_ONE_TRIAL_PIN.height) * 100;
-
-            $imageWrap.append(`
-                <button
-                    class="map-trial-pin"
-                    type="button"
-                    aria-label="Trial Grounds"
-                    title="Trial Grounds"
-                    style="left:${pinLeftPercent}%; top:${pinTopPercent}%;"
-                >
-                    ⚖
-                </button>
-            `);
-        }
-
-        if ($imageWrap.length) {
-            renderPresencePins($imageWrap);
-            renderCalibrationPins($imageWrap);
+        if ($pinLayer.length) {
+            renderCustomPins($pinLayer);
         }
     }
 
-    function bindPresenceManagementButtons($panel) {
-        $panel.find(selectors.presenceClearAll).off("click").on("click", () => {
-            playSfx?.(getSfx?.().click);
-            clearAllPresencePins();
+    function openRenameAreaModal(areaKey) {
+        $(".map-create-area-modal").remove();
+        const area = getAllAreas()[areaKey];
+        if (!area) return;
+
+        const $modal = $(`
+            <div class="map-create-area-modal">
+                <div class="map-create-area-box">
+                    <div class="map-create-area-title">EDIT AREA</div>
+                    <div class="map-create-area-field">
+                        <div class="map-create-area-label">AREA NAME <span class="map-create-area-required">*</span></div>
+                        <input type="text" class="map-create-area-input" id="mra-name" maxlength="60" value="${escapeHtml(area.label)}" />
+                    </div>
+                    <div class="map-create-area-field">
+                        <div class="map-create-area-label">AREA ID <span class="map-create-area-required">*</span></div>
+                        <input type="text" class="map-create-area-input map-create-area-id-input" id="mra-id" maxlength="80" value="${escapeHtml(area.id || '')}" placeholder="e.g. hopes_peak" />
+                    </div>
+                    <div class="map-create-area-actions">
+                        <button class="map-create-area-save" type="button">SAVE</button>
+                        <button class="map-create-area-cancel" type="button">CANCEL</button>
+                    </div>
+                </div>
+            </div>
+        `);
+        $("body").append($modal);
+        $modal.find("#mra-name").trigger("focus").trigger("select");
+
+        $modal.find("#mra-id").on("input", function () {
+            const el = this;
+            const start = el.selectionStart, end = el.selectionEnd;
+            const cleaned = el.value.replace(/ /g, "_");
+            if (cleaned !== el.value) { el.value = cleaned; el.setSelectionRange(start, end); }
+        });
+
+        $modal.find(".map-create-area-save").on("click", () => {
+            const newLabel = $modal.find("#mra-name").val().trim();
+            const newId    = $modal.find("#mra-id").val().trim();
+            if (!newLabel) { $modal.find("#mra-name").css("border-color", "rgba(255,80,80,0.8)").trigger("focus"); return; }
+            if (!newId)    { $modal.find("#mra-id").css("border-color", "rgba(255,80,80,0.8)").trigger("focus"); return; }
+            if (isBuiltInArea(areaKey)) {
+                if (!state.areaOverrides[areaKey]) state.areaOverrides[areaKey] = {};
+                state.areaOverrides[areaKey].label = newLabel.toUpperCase();
+                state.areaOverrides[areaKey].id    = newId;
+                saveAreaOverrides();
+            } else {
+                const ca = state.customAreas.find(a => a.key === areaKey);
+                if (ca) { ca.label = newLabel.toUpperCase(); ca.id = newId; saveCustomAreas(); }
+            }
+            $modal.remove();
+            renderMapPanel();
+        });
+        $modal.find(".map-create-area-cancel").on("click", () => $modal.remove());
+        $modal.on("click", function (e) { if (e.target === this) $modal.remove(); });
+    }
+
+    function confirmDeleteArea(areaKey) {
+        $(".map-create-area-modal").remove();
+        const area = getAllAreas()[areaKey];
+        if (!area) return;
+
+        const $modal = $(`
+            <div class="map-create-area-modal">
+                <div class="map-create-area-box">
+                    <div class="map-create-area-title">DELETE AREA</div>
+                    <div class="map-create-area-confirm-text">Delete "<strong>${escapeHtml(area.label)}</strong>"? All location pins in this area will be removed. This cannot be undone.</div>
+                    <div class="map-create-area-actions">
+                        <button class="map-create-area-save map-create-area-danger" type="button">DELETE</button>
+                        <button class="map-create-area-cancel" type="button">CANCEL</button>
+                    </div>
+                </div>
+            </div>
+        `);
+        $("body").append($modal);
+
+        $modal.find(".map-create-area-danger").on("click", () => {
+            if (isBuiltInArea(areaKey)) {
+                if (!state.areaOverrides[areaKey]) state.areaOverrides[areaKey] = {};
+                state.areaOverrides[areaKey].deleted = true;
+                saveAreaOverrides();
+            } else {
+                state.customAreas = state.customAreas.filter(a => a.key !== areaKey);
+                saveCustomAreas();
+            }
+            state.customPins = state.customPins.filter(p => p.areaKey !== areaKey);
+            saveCustomPins();
+            if (state.area === areaKey) {
+                const firstKey = Object.keys(getAllAreas())[0];
+                state.area = firstKey || "hopes_peak";
+                state.floor = getAllAreas()[state.area]?.floors[0]?.key || "floor_1";
+            }
+            $modal.remove();
+            renderMapPanel();
+        });
+        $modal.find(".map-create-area-cancel").on("click", () => $modal.remove());
+        $modal.on("click", function (e) { if (e.target === this) $modal.remove(); });
+    }
+
+    function openRenameFloorModal(areaKey, floorKey) {
+        $(".map-create-area-modal").remove();
+        const floor = getAreaFloor(areaKey, floorKey);
+        if (!floor) return;
+
+        const $modal = $(`
+            <div class="map-create-area-modal">
+                <div class="map-create-area-box">
+                    <div class="map-create-area-title">EDIT FLOOR</div>
+                    <div class="map-create-area-field">
+                        <div class="map-create-area-label">FLOOR NAME <span class="map-create-area-required">*</span></div>
+                        <input type="text" class="map-create-area-input" id="mrf-name" maxlength="60" value="${escapeHtml(floor.label)}" />
+                    </div>
+                    <div class="map-create-area-field">
+                        <div class="map-create-area-label">FLOOR ID <span class="map-create-area-required">*</span></div>
+                        <input type="text" class="map-create-area-input map-create-area-id-input" id="mrf-id" maxlength="80" value="${escapeHtml(floor.id || '')}" placeholder="e.g. floor_1" />
+                    </div>
+                    <div class="map-create-area-field">
+                        <div class="map-create-area-label">DESCRIPTION</div>
+                        <input type="text" class="map-create-area-input" id="mrf-desc" maxlength="120" value="${escapeHtml(floor.description || '')}" />
+                    </div>
+                    <div class="map-create-area-actions">
+                        <button class="map-create-area-save" type="button">SAVE</button>
+                        <button class="map-create-area-cancel" type="button">CANCEL</button>
+                    </div>
+                </div>
+            </div>
+        `);
+        $("body").append($modal);
+        $modal.find("#mrf-name").trigger("focus").trigger("select");
+
+        $modal.find("#mrf-id").on("input", function () {
+            const el = this;
+            const start = el.selectionStart, end = el.selectionEnd;
+            const cleaned = el.value.replace(/ /g, "_");
+            if (cleaned !== el.value) { el.value = cleaned; el.setSelectionRange(start, end); }
+        });
+
+        $modal.find(".map-create-area-save").on("click", () => {
+            const newLabel = $modal.find("#mrf-name").val().trim();
+            const newId    = $modal.find("#mrf-id").val().trim();
+            const newDesc  = $modal.find("#mrf-desc").val().trim();
+            if (!newLabel) { $modal.find("#mrf-name").css("border-color", "rgba(255,80,80,0.8)").trigger("focus"); return; }
+            if (!newId)    { $modal.find("#mrf-id").css("border-color", "rgba(255,80,80,0.8)").trigger("focus"); return; }
+
+            if (isBuiltInArea(areaKey)) {
+                const ov = state.areaOverrides[areaKey] || {};
+                const extra = (ov.extraFloors || []).find(f => f.key === floorKey);
+                if (extra) {
+                    extra.label = newLabel.toUpperCase();
+                    extra.description = newDesc;
+                    extra.id = newId;
+                } else {
+                    if (!ov.floorRenames) ov.floorRenames = {};
+                    if (!ov.floorDescs)   ov.floorDescs   = {};
+                    if (!ov.floorIds)     ov.floorIds     = {};
+                    ov.floorRenames[floorKey] = newLabel.toUpperCase();
+                    ov.floorDescs[floorKey]   = newDesc;
+                    ov.floorIds[floorKey]     = newId;
+                }
+                state.areaOverrides[areaKey] = ov;
+                saveAreaOverrides();
+            } else {
+                const ca = state.customAreas.find(a => a.key === areaKey);
+                const f = ca?.floors.find(f => f.key === floorKey);
+                if (f) { f.label = newLabel.toUpperCase(); f.description = newDesc; f.id = newId; saveCustomAreas(); }
+            }
+            $modal.remove();
+            renderMapPanel();
+        });
+        $modal.find(".map-create-area-cancel").on("click", () => $modal.remove());
+        $modal.on("click", function (e) { if (e.target === this) $modal.remove(); });
+    }
+
+    function confirmDeleteFloor(areaKey, floorKey) {
+        $(".map-create-area-modal").remove();
+        const floor = getAreaFloor(areaKey, floorKey);
+        if (!floor) return;
+
+        const $modal = $(`
+            <div class="map-create-area-modal">
+                <div class="map-create-area-box">
+                    <div class="map-create-area-title">DELETE FLOOR</div>
+                    <div class="map-create-area-confirm-text">Delete "<strong>${escapeHtml(floor.label)}</strong>"? All location pins on this floor will be removed. This cannot be undone.</div>
+                    <div class="map-create-area-actions">
+                        <button class="map-create-area-save map-create-area-danger" type="button">DELETE</button>
+                        <button class="map-create-area-cancel" type="button">CANCEL</button>
+                    </div>
+                </div>
+            </div>
+        `);
+        $("body").append($modal);
+
+        $modal.find(".map-create-area-danger").on("click", () => {
+            if (isBuiltInArea(areaKey)) {
+                const ov = state.areaOverrides[areaKey] || {};
+                const extraIdx = (ov.extraFloors || []).findIndex(f => f.key === floorKey);
+                if (extraIdx >= 0) {
+                    ov.extraFloors.splice(extraIdx, 1);
+                } else {
+                    if (!ov.deletedFloors) ov.deletedFloors = [];
+                    ov.deletedFloors.push(floorKey);
+                }
+                state.areaOverrides[areaKey] = ov;
+                saveAreaOverrides();
+            } else {
+                const ca = state.customAreas.find(a => a.key === areaKey);
+                if (ca) { ca.floors = ca.floors.filter(f => f.key !== floorKey); saveCustomAreas(); }
+            }
+            state.customPins = state.customPins.filter(p => !(p.areaKey === areaKey && p.floorKey === floorKey));
+            saveCustomPins();
+            if (state.floor === floorKey) {
+                ensureValidFloorSelection();
+            }
+            $modal.remove();
+            renderMapPanel();
+        });
+        $modal.find(".map-create-area-cancel").on("click", () => $modal.remove());
+        $modal.on("click", function (e) { if (e.target === this) $modal.remove(); });
+    }
+
+    function openAddFloorModal(areaKey) {
+        $(".map-create-area-modal").remove();
+
+        const $modal = $(`
+            <div class="map-create-area-modal">
+                <div class="map-create-area-box">
+                    <div class="map-create-area-title">ADD FLOOR</div>
+                    <div class="map-create-area-field">
+                        <div class="map-create-area-label">FLOOR NAME <span class="map-create-area-required">*</span></div>
+                        <input type="text" class="map-create-area-input" id="maf-name" maxlength="60" placeholder="e.g. Basement" />
+                    </div>
+                    <div class="map-create-area-field">
+                        <div class="map-create-area-label">FLOOR ID <span class="map-create-area-required">*</span></div>
+                        <input type="text" class="map-create-area-input map-create-area-id-input" id="maf-id" maxlength="80" placeholder="e.g. basement" />
+                    </div>
+                    <div class="map-create-area-field">
+                        <div class="map-create-area-label">DESCRIPTION <span class="map-create-area-required">*</span></div>
+                        <input type="text" class="map-create-area-input" id="maf-desc" maxlength="120" placeholder="e.g. Underground storage level." />
+                    </div>
+                    <div class="map-create-area-field">
+                        <div class="map-create-area-label">MAP IMAGE <span class="map-create-area-optional">(optional)</span></div>
+                        <label class="map-create-area-upload-label">
+                            <span class="map-create-area-upload-text">UPLOAD IMAGE</span>
+                            <input type="file" class="map-create-area-file" accept="image/*" style="display:none" />
+                        </label>
+                        <div class="map-create-area-filename"></div>
+                    </div>
+                    <div class="map-create-area-actions">
+                        <button class="map-create-area-save" type="button">ADD</button>
+                        <button class="map-create-area-cancel" type="button">CANCEL</button>
+                    </div>
+                </div>
+            </div>
+        `);
+        $("body").append($modal);
+        $modal.find("#maf-name").trigger("focus");
+
+        $modal.find("#maf-name").on("input", function () {
+            const $idInput = $modal.find("#maf-id");
+            if ($idInput.data("user-edited")) return;
+            $idInput.val(toAreaSlug($(this).val()));
+        });
+
+        $modal.find("#maf-id").on("input", function () {
+            $(this).data("user-edited", true);
+            const el = this;
+            const start = el.selectionStart, end = el.selectionEnd;
+            const cleaned = el.value.replace(/ /g, "_");
+            if (cleaned !== el.value) { el.value = cleaned; el.setSelectionRange(start, end); }
+        });
+
+        let pendingImageDataUrl = "";
+        $modal.find(".map-create-area-file").on("change", function () {
+            const file = this.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                pendingImageDataUrl = e.target.result;
+                $modal.find(".map-create-area-filename").text(file.name);
+                $modal.find(".map-create-area-upload-text").text("CHANGE IMAGE");
+            };
+            reader.readAsDataURL(file);
+        });
+
+        $modal.find(".map-create-area-save").on("click", () => {
+            const name = $modal.find("#maf-name").val().trim();
+            const id   = $modal.find("#maf-id").val().trim();
+            const desc = $modal.find("#maf-desc").val().trim();
+            let valid = true;
+            [[$modal.find("#maf-name"), name], [$modal.find("#maf-id"), id], [$modal.find("#maf-desc"), desc]].forEach(([$el, val]) => {
+                $el.css("border-color", val ? "" : "rgba(255,80,80,0.8)");
+                if (!val) { if (valid) $el.trigger("focus"); valid = false; }
+            });
+            if (!valid) return;
+
+            const floorKey = "floor_" + Date.now();
+            const newFloor = { key: floorKey, label: name.toUpperCase(), id, description: desc, image: pendingImageDataUrl };
+
+            if (isBuiltInArea(areaKey)) {
+                if (!state.areaOverrides[areaKey]) state.areaOverrides[areaKey] = {};
+                if (!state.areaOverrides[areaKey].extraFloors) state.areaOverrides[areaKey].extraFloors = [];
+                state.areaOverrides[areaKey].extraFloors.push(newFloor);
+                saveAreaOverrides();
+            } else {
+                const ca = state.customAreas.find(a => a.key === areaKey);
+                if (ca) { ca.floors.push(newFloor); saveCustomAreas(); }
+            }
+            state.floor = floorKey;
+            $modal.remove();
+            renderMapPanel();
+        });
+        $modal.find(".map-create-area-cancel").on("click", () => $modal.remove());
+        $modal.on("click", function (e) { if (e.target === this) $modal.remove(); });
+    }
+
+    function renderAreaButtons($panel) {
+        const $areaList = $panel.find(".map-area-list");
+        $areaList.find(".map-area-entry").remove();
+
+        for (const [key, area] of Object.entries(getAllAreas())) {
+            const isActive = key === state.area;
+            const $entry = $(`
+                <div class="map-area-entry">
+                    <button class="map-area-button${isActive ? " active" : ""}" type="button" data-area="${escapeHtml(key)}" aria-pressed="${String(isActive)}">${escapeHtml(area.label)}</button>
+                    <div class="map-area-entry-controls">
+                        <button class="map-area-entry-rename" type="button" title="Rename">&#x270F;</button>
+                        <button class="map-area-entry-delete" type="button" title="Delete">&#x2715;</button>
+                    </div>
+                </div>
+            `);
+            $entry.find(".map-area-button").on("click", () => {
+                if (state.area === key) return;
+                state.area = key;
+                ensureValidFloorSelection();
+                renderMapPanel();
+            });
+            $entry.find(".map-area-entry-rename").on("click", (e) => { e.stopPropagation(); openRenameAreaModal(key); });
+            $entry.find(".map-area-entry-delete").on("click", (e) => { e.stopPropagation(); confirmDeleteArea(key); });
+            $areaList.find(selectors.addAreaBtn).before($entry);
+        }
+    }
+
+    function openCreateAreaModal() {
+        $(".map-create-area-modal").remove();
+
+        const $modal = $(`
+            <div class="map-create-area-modal">
+                <div class="map-create-area-box">
+                    <div class="map-create-area-title">CREATE AREA</div>
+                    <div class="map-create-area-field">
+                        <div class="map-create-area-label">AREA NAME <span class="map-create-area-required">*</span></div>
+                        <input type="text" class="map-create-area-input" id="mca-name" maxlength="60" placeholder="e.g. Jabberwock Island" />
+                    </div>
+                    <div class="map-create-area-field">
+                        <div class="map-create-area-label">AREA ID <span class="map-create-area-required">*</span></div>
+                        <input type="text" class="map-create-area-input map-create-area-id-input" id="mca-id" maxlength="80" placeholder="e.g. jabberwock_island" />
+                    </div>
+                    <div class="map-create-area-field">
+                        <div class="map-create-area-label">FLOOR NAME <span class="map-create-area-required">*</span></div>
+                        <input type="text" class="map-create-area-input" id="mca-floor" maxlength="60" placeholder="e.g. Main Island" />
+                    </div>
+                    <div class="map-create-area-field">
+                        <div class="map-create-area-label">FLOOR ID <span class="map-create-area-required">*</span></div>
+                        <input type="text" class="map-create-area-input map-create-area-id-input" id="mca-floor-id" maxlength="80" placeholder="e.g. main_island" />
+                    </div>
+                    <div class="map-create-area-field">
+                        <div class="map-create-area-label">DESCRIPTION <span class="map-create-area-required">*</span></div>
+                        <input type="text" class="map-create-area-input" id="mca-desc" maxlength="120" placeholder="e.g. The central island area." />
+                    </div>
+                    <div class="map-create-area-field">
+                        <div class="map-create-area-label">MAP IMAGE <span class="map-create-area-optional">(optional)</span></div>
+                        <label class="map-create-area-upload-label">
+                            <span class="map-create-area-upload-text">UPLOAD IMAGE</span>
+                            <input type="file" class="map-create-area-file" accept="image/*" style="display:none" />
+                        </label>
+                        <div class="map-create-area-filename"></div>
+                    </div>
+                    <div class="map-create-area-actions">
+                        <button class="map-create-area-save" type="button">CREATE</button>
+                        <button class="map-create-area-cancel" type="button">CANCEL</button>
+                    </div>
+                </div>
+            </div>
+        `);
+
+        $("body").append($modal);
+
+        $modal.find("#mca-name").on("input", function () {
+            const $idInput = $modal.find("#mca-id");
+            if ($idInput.data("user-edited")) return;
+            $idInput.val(toAreaSlug($(this).val()));
+        });
+
+        $modal.find("#mca-floor").on("input", function () {
+            const $idInput = $modal.find("#mca-floor-id");
+            if ($idInput.data("user-edited")) return;
+            $idInput.val(toAreaSlug($(this).val()));
+        });
+
+        $modal.find("#mca-id, #mca-floor-id").on("input", function () {
+            $(this).data("user-edited", true);
+            const el = this;
+            const start = el.selectionStart, end = el.selectionEnd;
+            const cleaned = el.value.replace(/ /g, "_");
+            if (cleaned !== el.value) { el.value = cleaned; el.setSelectionRange(start, end); }
+        });
+
+        let pendingImageDataUrl = "";
+
+        $modal.find(".map-create-area-file").on("change", function () {
+            const file = this.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                pendingImageDataUrl = e.target.result;
+                $modal.find(".map-create-area-filename").text(file.name);
+                $modal.find(".map-create-area-upload-text").text("CHANGE IMAGE");
+            };
+            reader.readAsDataURL(file);
+        });
+
+        $modal.find(".map-create-area-save").on("click", () => {
+            const name    = $modal.find("#mca-name").val().trim();
+            const areaId  = $modal.find("#mca-id").val().trim();
+            const floor   = $modal.find("#mca-floor").val().trim();
+            const floorId = $modal.find("#mca-floor-id").val().trim();
+            const desc    = $modal.find("#mca-desc").val().trim();
+
+            let valid = true;
+            [[$modal.find("#mca-name"), name], [$modal.find("#mca-id"), areaId], [$modal.find("#mca-floor"), floor], [$modal.find("#mca-floor-id"), floorId], [$modal.find("#mca-desc"), desc]].forEach(([$el, val]) => {
+                $el.css("border-color", val ? "" : "rgba(255,80,80,0.8)");
+                if (!val) { if (valid) $el.trigger("focus"); valid = false; }
+            });
+            if (!valid) return;
+
+            const key = "custom_" + Date.now();
+            const newArea = {
+                key,
+                label: name.toUpperCase(),
+                id: areaId,
+                custom: true,
+                floors: [{ key: "floor_1", label: floor.toUpperCase(), id: floorId, description: desc, image: pendingImageDataUrl }],
+            };
+
+            state.customAreas.push(newArea);
+            saveCustomAreas();
+            state.area  = key;
+            state.floor = "floor_1";
+            $modal.remove();
             renderMapPanel();
         });
 
-        $panel.find(selectors.presenceRestoreAll).off("click").on("click", () => {
-            playSfx?.(getSfx?.().click);
-            restoreAllPresencePins();
-            renderMapPanel();
+        $modal.find(".map-create-area-cancel").on("click", () => $modal.remove());
+        $modal.on("click", function (e) { if (e.target === this) $modal.remove(); });
+    }
+
+    function applyMapTransform($panel) {
+        const zoom = state.mapZoom;
+        const t = `translate(${state.mapPanX}px, ${state.mapPanY}px) scale(${zoom})`;
+        $panel.find(selectors.image).css({ transform: t });
+        $panel.find(selectors.pinLayer).css({ transform: t });
+    }
+
+    function applyMapZoom($panel) {
+        const zoom = state.mapZoom;
+        const pct = Math.round(zoom * 100);
+        if (zoom <= 1.0) {
+            state.mapPanX = 0;
+            state.mapPanY = 0;
+        }
+        $panel.find(selectors.scrollArea).toggleClass("map-zoomed", zoom > 1.0);
+        applyMapTransform($panel);
+        $panel.find(selectors.zoomLevel).text(`${pct}%`);
+    }
+
+    function bindMapPan($panel) {
+        const $scrollArea = $panel.find(selectors.scrollArea);
+        const $wrap = $panel.find(".map-image-wrap");
+        if (!$scrollArea.length || !$wrap.length) return;
+
+        let isPanning = false;
+        let startX = 0;
+        let startY = 0;
+        let startPanX = 0;
+        let startPanY = 0;
+
+        $wrap.off("mousedown.mappan");
+        $(document).off("mousemove.mappan mouseup.mappan");
+
+        $wrap.on("mousedown.mappan", (e) => {
+            if (!$scrollArea.hasClass("map-zoomed")) return;
+            if ($(e.target).closest("button, select").length) return;
+            isPanning = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            startPanX = state.mapPanX;
+            startPanY = state.mapPanY;
+            $wrap.addClass("map-panning");
+            e.preventDefault();
         });
 
-        $panel.off("click.removePin").on("click.removePin", selectors.presenceRemovePin, function (event) {
-            event.stopPropagation();
-            const pinId = this.dataset.pinId;
-            if (!pinId) return;
-            state.dismissedPresencePins.add(pinId);
-            playSfx?.(getSfx?.().click);
-            renderMapPanel();
+        $(document).on("mousemove.mappan", (e) => {
+            if (!isPanning) return;
+            const zoom = state.mapZoom;
+            const el = $scrollArea.get(0);
+            const maxX = (el.clientWidth * (zoom - 1)) / 2;
+            const maxY = (el.clientHeight * (zoom - 1)) / 2;
+            state.mapPanX = Math.max(-maxX, Math.min(maxX, startPanX + (e.clientX - startX)));
+            state.mapPanY = Math.max(-maxY, Math.min(maxY, startPanY + (e.clientY - startY)));
+            applyMapTransform($panel);
         });
 
-        $panel.find(selectors.calibrationToggle).off("click").on("click", () => {
-            state.calibrationMode = !state.calibrationMode;
-            ensureCalibrationTarget();
-            playSfx?.(getSfx?.().click);
-            renderMapPanel();
+        $(document).on("mouseup.mappan", () => {
+            if (!isPanning) return;
+            isPanning = false;
+            $wrap.removeClass("map-panning");
         });
+    }
 
-        $panel.find(selectors.calibrationSelect).off("change").on("change", function () {
-            state.selectedCalibrationLocationId = this.value || null;
-            renderMapPanel();
+    function bindMapZoomControls($panel) {
+        $panel.find(selectors.zoomIn).off("click.mapzoom").on("click.mapzoom", () => {
+            if (state.mapZoom >= 2.5) return;
+            state.mapZoom = Math.min(2.5, Math.round((state.mapZoom + 0.25) * 100) / 100);
+            applyMapZoom($panel);
         });
-
-        $panel.find(selectors.calibrationResetFloor).off("click").on("click", () => {
-            resetFloorPinOverrides();
-            playSfx?.(getSfx?.().click);
-            renderMapPanel();
+        $panel.find(selectors.zoomOut).off("click.mapzoom").on("click.mapzoom", () => {
+            if (state.mapZoom <= 1.0) return;
+            state.mapZoom = Math.max(1.0, Math.round((state.mapZoom - 0.25) * 100) / 100);
+            applyMapZoom($panel);
         });
+    }
 
-        $panel.find(selectors.calibrationExport).off("click").on("click", () => {
-            exportPinOverrides();
-            playSfx?.(getSfx?.().click);
-        });
-
+    function bindCustomPinsControls($panel) {
         const $imageWrap = $panel.find(".map-image-wrap");
-        $imageWrap.off("click.calibration").on("click.calibration", (event) => {
-            if (!state.calibrationMode) return;
-            if ($(event.target).closest("button").length) return;
-            if (!state.selectedCalibrationLocationId) return;
 
-            const wrapEl = $imageWrap.get(0);
-            if (!wrapEl) return;
+        // Populate icon grid once
+        const $grid = $panel.find(selectors.pinsIconGrid);
+        if ($grid.length && !$grid.children().length) {
+            for (const file of ROOM_SVG_FILES) {
+                const src = `${extensionFolderPath}/assets/rooms/${file}`;
+                const $btn = $(`
+                    <button type="button" class="map-pins-icon-btn" data-icon="${escapeHtml(file)}" title="${escapeHtml(file.replace(".svg", "").replace(/-/g, " "))}">
+                        <img src="${src}" alt="" />
+                    </button>
+                `);
+                $grid.append($btn);
+            }
+            // Select first by default
+            $grid.find(".map-pins-icon-btn").first().addClass("selected");
+        }
 
-            const rect = wrapEl.getBoundingClientRect();
-            const localX = event.clientX - rect.left;
-            const localY = event.clientY - rect.top;
-            if (rect.width <= 0 || rect.height <= 0) return;
-
-            const normalizedX = Math.round((localX / rect.width) * MAP_POINT_WIDTH);
-            const normalizedY = Math.round((localY / rect.height) * MAP_POINT_HEIGHT);
-            upsertPinOverride(state.selectedCalibrationLocationId, normalizedX, normalizedY);
-
-            playSfx?.(getSfx?.().click);
-            renderMapPanel();
+        $panel.off("click.pinsIconBtn").on("click.pinsIconBtn", ".map-pins-icon-btn", function () {
+            $panel.find(".map-pins-icon-btn.selected").removeClass("selected");
+            $(this).addClass("selected");
         });
 
-        $panel.off("click.calibrationPin").on("click.calibrationPin", selectors.calibrationPin, function (event) {
-            event.stopPropagation();
-            const locationId = this.dataset.locationId;
-            if (!locationId) return;
-            state.selectedCalibrationLocationId = locationId;
-            if (!state.calibrationMode) state.calibrationMode = true;
-            playSfx?.(getSfx?.().click);
-            renderMapPanel();
+        $panel.off("click.pinsTypeBtn").on("click.pinsTypeBtn", selectors.pinsTypeBtn, function () {
+            $panel.find(`${selectors.pinsTypeBtn}.active`).removeClass("active");
+            $(this).addClass("active");
+            const isRoom = $(this).data("type") === "room";
+            $panel.find(".map-pins-icon-section").prop("hidden", !isRoom);
         });
-    }
 
-    function bindAreaButtons($panel) {
-        $panel.find(selectors.areaButtons).off("click").on("click", function () {
-            const nextArea = this.dataset.area;
-            if (!MAP_AREAS[nextArea]) return;
-            if (state.area === nextArea) return;
-
-            state.area = nextArea;
-            ensureValidFloorSelection();
-            renderMapPanel();
-        });
-    }
-
-    function bindMachinePin($panel) {
-        $panel.find(selectors.machinePin).off("click").on("click", () => {
+        // Custom pin click — monomachine opens machine overlay, trial opens trial screen
+        $panel.off("click.customPin").on("click.customPin", selectors.customPin, function () {
+            if (state.pinPlacementMode) return;
+            if ($(this).data("drag-moved")) { $(this).removeData("drag-moved"); return; }
+            const pinId = $(this).data("custom-pin-id");
+            const pin = state.customPins.find(p => p.id === pinId);
+            if (!pin) return;
             playSfx?.(getSfx?.().click);
-            openMachineOverlay($panel);
-        });
-    }
-
-    function bindTrialPin($panel) {
-        $panel.find(selectors.trialPin).off("click").on("click", async () => {
-            playSfx?.(getSfx?.().click);
-            try {
-                await onTrialStartRequest?.({ source: "map_pin", area: state.area, floor: state.floor });
-            } catch (error) {
-                console.warn("[Dangan][Trial] Map trial pin failed to start trial:", error);
+            if (pin.type === "monomachine") {
+                openMachineOverlay($panel);
+            } else if (pin.type === "trial") {
+                onTrialStartRequest?.({ source: "map_pin", area: state.area, floor: state.floor });
+            } else if (pin.type === "truth-bullet" || pin.type === "body") {
+                const bullet = getTruthBulletByLocationId?.(pin.locationId);
+                if (bullet) navigateToTruth?.(bullet.id);
             }
         });
+
+        // ADD PIN — show creation panel
+        $panel.find(selectors.pinsAdd).off("click.pinsAdd").on("click.pinsAdd", () => {
+            $panel.find(selectors.pinsCreatePanel).prop("hidden", false);
+            $panel.find(selectors.pinsAdd).prop("disabled", true);
+        });
+
+        // TOGGLE ROOM VIEW (cycles: on → simple → off → on)
+        $panel.find(selectors.pinsToggleRoomView).off("click.pinsToggleRoomView").on("click.pinsToggleRoomView", function () {
+            const next = ROOM_VIEW_CYCLE[(ROOM_VIEW_CYCLE.indexOf(state.roomViewMode) + 1) % ROOM_VIEW_CYCLE.length];
+            state.roomViewMode = next;
+            window.localStorage?.setItem(ROOM_VIEW_STORAGE_KEY, next);
+            const roomViewLabels = { on: "ROOM VIEW: ON", simple: "ROOM VIEW: SIMPLE", off: "ROOM VIEW: OFF" };
+            $(this).toggleClass("active", next !== "on").text(roomViewLabels[next]);
+            const $roomPins = $panel.find(selectors.pinLayer).find(".map-custom-pin.type-room");
+            $roomPins.toggleClass("room-view-hidden", next === "off")
+                     .toggleClass("simple-pin",       next === "simple");
+        });
+
+        // TOGGLE SIMPLE EVIDENCE
+        $panel.find(selectors.pinsToggleSimpleEvidence).off("click.pinsToggleSimpleEvidence").on("click.pinsToggleSimpleEvidence", function () {
+            state.simpleEvidencePins = !state.simpleEvidencePins;
+            window.localStorage?.setItem(SIMPLE_EVIDENCE_STORAGE_KEY, String(state.simpleEvidencePins));
+            $(this).toggleClass("active", state.simpleEvidencePins)
+                   .text(state.simpleEvidencePins ? "TOGGLE SIMPLE EVIDENCE OFF" : "TOGGLE SIMPLE EVIDENCE ON");
+            $panel.find(selectors.pinLayer).find(".map-custom-pin.type-truth-bullet").toggleClass("simple-pin", state.simpleEvidencePins);
+        });
+
+        // TOGGLE SIMPLE BODY
+        $panel.find(selectors.pinsToggleSimpleBody).off("click.pinsToggleSimpleBody").on("click.pinsToggleSimpleBody", function () {
+            state.simpleBodyPins = !state.simpleBodyPins;
+            window.localStorage?.setItem(SIMPLE_BODY_STORAGE_KEY, String(state.simpleBodyPins));
+            $(this).toggleClass("active", state.simpleBodyPins)
+                   .text(state.simpleBodyPins ? "TOGGLE SIMPLE BODY OFF" : "TOGGLE SIMPLE BODY ON");
+            $panel.find(selectors.pinLayer).find(".map-custom-pin.type-body").toggleClass("simple-pin", state.simpleBodyPins);
+        });
+
+        $panel.find(selectors.pinsLabelInput).off("input.pinsLabel").on("input.pinsLabel", function () {
+            const $idInput = $panel.find(selectors.pinsIdInput);
+            if ($idInput.data("user-edited")) return;
+            $idInput.val($(this).val().trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, ""));
+        });
+
+        $panel.find(selectors.pinsIdInput).off("input.pinsId").on("input.pinsId", function () {
+            $(this).removeClass("map-pins-input-error").data("user-edited", true);
+            const el = this;
+            const start = el.selectionStart;
+            const end = el.selectionEnd;
+            const replaced = el.value.replace(/ /g, "_");
+            if (replaced !== el.value) {
+                el.value = replaced;
+                el.setSelectionRange(start, end);
+            }
+        });
+
+        // CANCEL
+        $panel.find(selectors.pinsCancelBtn).off("click.pinsCancel").on("click.pinsCancel", () => {
+            exitPinPlacementMode($panel);
+        });
+
+        // PLACE ON MAP
+        $panel.find(selectors.pinsPlaceBtn).off("click.pinsPlace").on("click.pinsPlace", () => {
+            const type = $panel.find(`${selectors.pinsTypeBtn}.active`).data("type") || "room";
+            const icon = TYPE_DEFAULT_ICONS[type] ?? ($panel.find(".map-pins-icon-btn.selected").data("icon") || ROOM_SVG_FILES[0]);
+            const label = ($panel.find(selectors.pinsLabelInput).val() || "").trim() || icon.replace(".svg", "").replace(/-/g, " ");
+            const locationId = ($panel.find(selectors.pinsIdInput).val() || "").trim();
+            if (!locationId) {
+                $panel.find(selectors.pinsIdInput).addClass("map-pins-input-error").trigger("focus");
+                return;
+            }
+            state.pendingCustomPin = { icon, type, label, locationId };
+            state.pinPlacementMode = true;
+            $panel.find(selectors.pinsPlaceBtn).prop("disabled", true);
+            $panel.find(selectors.pinsPlaceHint).prop("hidden", false);
+            $imageWrap.addClass("map-placement-mode");
+        });
+
+        // Click on map to place pin
+        $imageWrap.off("click.pinPlace").on("click.pinPlace", (e) => {
+            if (!state.pinPlacementMode || !state.pendingCustomPin) return;
+            if ($(e.target).closest("button").length && !$(e.target).closest(".map-image-wrap").is(e.target)) return;
+            const wrapEl = $imageWrap.get(0);
+            const rect = wrapEl.getBoundingClientRect();
+            const localX = e.clientX - rect.left;
+            const localY = e.clientY - rect.top;
+            const centerX = rect.width / 2;
+            const centerY = rect.height / 2;
+            const imageX = (localX - centerX - state.mapPanX) / state.mapZoom + centerX;
+            const imageY = (localY - centerY - state.mapPanY) / state.mapZoom + centerY;
+            const x = Math.round(Math.max(0, Math.min(imageX / rect.width, 1)) * MAP_POINT_WIDTH);
+            const y = Math.round(Math.max(0, Math.min(imageY / rect.height, 1)) * MAP_POINT_HEIGHT);
+
+            const newPin = {
+                id: `custom_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                ...state.pendingCustomPin,
+                areaKey: state.area,
+                floorKey: state.floor,
+                x,
+                y,
+            };
+            state.customPins.push(newPin);
+            saveCustomPins();
+            exitPinPlacementMode($panel);
+            renderMapPanel();
+        });
+
+        // PIN LIST — click name to highlight, click X to delete
+        // Click off a pin — clear highlight / collapse tooltip
+        $panel.off("click.pinDeselect").on("click.pinDeselect", function (e) {
+            if (!state.highlightedPinId) return;
+            if ($(e.target).closest(selectors.customPin).length) return;
+            if ($(e.target).closest(".map-pins-list-item").length) return;
+            state.highlightedPinId = null;
+            $panel.find(selectors.customPin).removeClass("highlighted");
+            $panel.find(".map-pins-list-item").removeClass("active");
+        });
+
+        $panel.off("click.pinListHighlight").on("click.pinListHighlight", ".map-pins-list-name", function () {
+            const pinId = $(this).closest(".map-pins-list-item").data("pin-id");
+            state.highlightedPinId = state.highlightedPinId === pinId ? null : pinId;
+            $panel.find(selectors.customPin).removeClass("highlighted");
+            $panel.find(".map-pins-list-item").removeClass("active");
+            if (state.highlightedPinId) {
+                $panel.find(`[data-custom-pin-id="${state.highlightedPinId}"]`).addClass("highlighted");
+                $(this).closest(".map-pins-list-item").addClass("active");
+            }
+        });
+
+        // DRAG PIN to reposition
+        $panel.off("mousedown.pinDrag").on("mousedown.pinDrag", selectors.customPin, function (e) {
+            if (state.pinPlacementMode) return;
+            if (e.button !== 0) return;
+
+            const pinId = $(this).data("custom-pin-id");
+            const pin = state.customPins.find(p => p.id === pinId);
+            if (!pin) return;
+
+            const $pin = $(this);
+            const wrapEl = $imageWrap.get(0);
+            let dragged = false;
+
+            function toMapCoords(clientX, clientY) {
+                const rect = wrapEl.getBoundingClientRect();
+                const localX = clientX - rect.left;
+                const localY = clientY - rect.top;
+                const centerX = rect.width / 2;
+                const centerY = rect.height / 2;
+                const imageX = (localX - centerX - state.mapPanX) / state.mapZoom + centerX;
+                const imageY = (localY - centerY - state.mapPanY) / state.mapZoom + centerY;
+                return {
+                    x: Math.round(Math.max(0, Math.min(imageX / rect.width,  1)) * MAP_POINT_WIDTH),
+                    y: Math.round(Math.max(0, Math.min(imageY / rect.height, 1)) * MAP_POINT_HEIGHT),
+                };
+            }
+
+            function onMouseMove(ev) {
+                dragged = true;
+                $pin.addClass("map-custom-pin-dragging");
+                const { x, y } = toMapCoords(ev.clientX, ev.clientY);
+                $pin.css({
+                    left: `${(x / MAP_POINT_WIDTH) * 100}%`,
+                    top:  `${(y / MAP_POINT_HEIGHT) * 100}%`,
+                });
+            }
+
+            function onMouseUp(ev) {
+                $(document).off("mousemove.pinDrag mouseup.pinDrag");
+                $pin.removeClass("map-custom-pin-dragging");
+                if (!dragged) return;
+                $pin.data("drag-moved", true);
+                const { x, y } = toMapCoords(ev.clientX, ev.clientY);
+                pin.x = x;
+                pin.y = y;
+                saveCustomPins();
+            }
+
+            $(document).off("mousemove.pinDrag mouseup.pinDrag")
+                .on("mousemove.pinDrag", onMouseMove)
+                .on("mouseup.pinDrag", onMouseUp);
+
+            e.preventDefault();
+        });
+
+        // Block click after drag so the pin action doesn't fire
+        $panel.off("click.pinDragGuard").on("click.pinDragGuard", selectors.customPin, function (e) {
+            if ($(this).data("drag-moved")) {
+                $(this).removeData("drag-moved");
+                e.stopImmediatePropagation();
+            }
+        });
+
+        $panel.off("click.pinListEdit").on("click.pinListEdit", ".map-pins-list-edit", function () {
+            const pinId = $(this).closest(".map-pins-list-item").data("pin-id");
+            const pin = state.customPins.find(p => p.id === pinId);
+            if (!pin) return;
+
+            $(".map-pin-edit-modal").remove();
+
+            const isRoom = pin.type === "room";
+            const iconGridHtml = isRoom ? `
+                <div class="map-pin-edit-field">
+                    <div class="map-pin-edit-label">LOCATION ICON</div>
+                    <div class="map-pin-edit-icon-grid">
+                        ${ROOM_SVG_FILES.map(file => {
+                            const src = `${extensionFolderPath}/assets/rooms/${escapeHtml(file)}`;
+                            const label = file.replace(".svg", "").replace(/-/g, " ");
+                            const sel = file === pin.icon ? " selected" : "";
+                            return `<button type="button" class="map-pins-icon-btn${sel}" data-icon="${escapeHtml(file)}" title="${escapeHtml(label)}"><img src="${src}" alt="" /></button>`;
+                        }).join("")}
+                    </div>
+                </div>` : "";
+
+            const $modal = $(`
+                <div class="map-pin-edit-modal">
+                    <div class="map-pin-edit-box">
+                        <div class="map-pin-edit-title">EDIT LOCATION</div>
+                        ${iconGridHtml}
+                        <div class="map-pin-edit-field">
+                            <div class="map-pin-edit-label">LOCATION NAME</div>
+                            <input type="text" class="map-pin-edit-input map-pin-edit-name" value="${escapeHtml(pin.label)}" maxlength="40" />
+                        </div>
+                        <div class="map-pin-edit-field">
+                            <div class="map-pin-edit-label">LOCATION ID</div>
+                            <input type="text" class="map-pin-edit-input map-pin-edit-id" value="${escapeHtml(pin.locationId || '')}" maxlength="80" />
+                        </div>
+                        <div class="map-pin-edit-actions">
+                            <button class="map-pin-edit-save" type="button">SAVE</button>
+                            <button class="map-pin-edit-cancel" type="button">CANCEL</button>
+                        </div>
+                    </div>
+                </div>
+            `);
+
+            $("body").append($modal);
+
+            // spaces → underscores on ID input
+            $modal.find(".map-pin-edit-id").on("input", function () {
+                const el = this;
+                const start = el.selectionStart;
+                const end = el.selectionEnd;
+                const replaced = el.value.replace(/ /g, "_");
+                if (replaced !== el.value) {
+                    el.value = replaced;
+                    el.setSelectionRange(start, end);
+                }
+            });
+
+            $modal.find(".map-pin-edit-save").on("click", () => {
+                const newLabel = $modal.find(".map-pin-edit-name").val().trim();
+                const newId    = $modal.find(".map-pin-edit-id").val().trim();
+                if (!newId) {
+                    $modal.find(".map-pin-edit-id").css("border-color", "rgba(255,80,80,0.8)").trigger("focus");
+                    return;
+                }
+                pin.label = newLabel || pin.label;
+                pin.locationId = newId;
+                if (isRoom) {
+                    const selectedIcon = $modal.find(".map-pins-icon-btn.selected").data("icon");
+                    if (selectedIcon) pin.icon = selectedIcon;
+                }
+                saveCustomPins();
+                $modal.remove();
+                renderMapPanel();
+            });
+
+            $modal.find(".map-pin-edit-cancel").on("click", () => $modal.remove());
+            $modal.on("click", function (e) { if (e.target === this) $modal.remove(); });
+
+            // icon grid selection inside modal
+            $modal.on("click", ".map-pins-icon-btn", function () {
+                $modal.find(".map-pins-icon-btn.selected").removeClass("selected");
+                $(this).addClass("selected");
+            });
+        });
+
+        $panel.off("click.pinListDelete").on("click.pinListDelete", ".map-pins-list-delete", function () {
+            const pinId = $(this).closest(".map-pins-list-item").data("pin-id");
+            state.customPins = state.customPins.filter(p => p.id !== pinId);
+            if (state.highlightedPinId === pinId) state.highlightedPinId = null;
+            saveCustomPins();
+            renderMapPanel();
+        });
+
+        // CLEAR FLOOR — modal confirmation
+        $panel.find(selectors.pinsClearFloor).off("click.pinsClear").on("click.pinsClear", function () {
+            $(".truth-discard-modal").remove();
+
+            const $modal = $(`
+                <div class="truth-discard-modal">
+                    <div class="truth-discard-box">
+                        <div class="truth-discard-warning">&#9888;</div>
+                        <div class="truth-discard-message">Are you sure? This will remove all pins on the current floor.</div>
+                        <div class="truth-discard-actions">
+                            <button class="truth-discard-confirm">CLEAR FLOOR</button>
+                            <button class="truth-discard-cancel">CANCEL</button>
+                        </div>
+                    </div>
+                </div>
+            `);
+
+            $("body").append($modal);
+
+            $modal.find(".truth-discard-confirm").on("click", () => {
+                $modal.remove();
+                state.customPins = state.customPins.filter(
+                    p => !(p.areaKey === state.area && p.floorKey === state.floor)
+                );
+                saveCustomPins();
+                renderMapPanel();
+            });
+
+            $modal.find(".truth-discard-cancel").on("click", () => {
+                $modal.remove();
+            });
+
+            $modal.on("click", function (e) {
+                if (e.target === this) $modal.remove();
+            });
+        });
+
+    }
+
+    function renderPinList($panel) {
+        const $list = $panel.find(selectors.pinsList);
+        if (!$list.length) return;
+        $list.empty();
+        const floorPins = state.customPins.filter(
+            p => p.areaKey === state.area && p.floorKey === state.floor && !p.hidden
+        );
+        for (const pin of floorPins) {
+            const isActive = pin.id === state.highlightedPinId;
+            $list.append(`
+                <div class="map-pins-list-item type-${escapeHtml(pin.type)}${isActive ? " active" : ""}" data-pin-id="${escapeHtml(pin.id)}">
+                    <button type="button" class="map-pins-list-name" title="${escapeHtml(pin.locationId || '')}">${escapeHtml(pin.label)}</button>
+                    <button type="button" class="map-pins-list-edit" aria-label="Edit ${escapeHtml(pin.label)}">✏</button>
+                    <button type="button" class="map-pins-list-delete" aria-label="Delete ${escapeHtml(pin.label)}">✕</button>
+                </div>
+            `);
+        }
+    }
+
+    function exitPinPlacementMode($panel) {
+        state.pinPlacementMode = false;
+        state.pendingCustomPin = null;
+        $panel.find(".map-image-wrap").removeClass("map-placement-mode");
+        $panel.find(selectors.pinsCreatePanel).prop("hidden", true);
+        $panel.find(selectors.pinsAdd).prop("disabled", false);
+        $panel.find(selectors.pinsPlaceBtn).prop("disabled", false);
+        $panel.find(selectors.pinsPlaceHint).prop("hidden", true);
+        $panel.find(selectors.pinsLabelInput).val("");
+        $panel.find(selectors.pinsIdInput).val("").removeData("user-edited");
+        $panel.find(`${selectors.pinsTypeBtn}.active`).removeClass("active");
+        $panel.find(`${selectors.pinsTypeBtn}[data-type="room"]`).addClass("active");
+        $panel.find(".map-pins-icon-section").prop("hidden", false);
     }
 
     function renderMapPanel() {
@@ -1112,17 +1717,26 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         if (!$panel.length) return;
 
         ensureValidFloorSelection();
-        bindAreaButtons($panel);
-        updateAreaButtons($panel);
+        renderAreaButtons($panel);
+        $panel.find(selectors.addAreaBtn).off("click.addArea").on("click.addArea", openCreateAreaModal);
         renderFloorButtons($panel);
         renderMapImage($panel);
-        bindMachinePin($panel);
-        bindTrialPin($panel);
-        bindPresenceManagementButtons($panel);
-        syncCalibrationControls($panel);
+        bindMapZoomControls($panel);
+        bindMapPan($panel);
+        bindCustomPinsControls($panel);
+        const roomViewLabels = { on: "ROOM VIEW: ON", simple: "ROOM VIEW: SIMPLE", off: "ROOM VIEW: OFF" };
+        $panel.find(selectors.pinsToggleRoomView)
+            .toggleClass("active", state.roomViewMode !== "on")
+            .text(roomViewLabels[state.roomViewMode]);
+        $panel.find(selectors.pinsToggleSimpleEvidence)
+            .toggleClass("active", state.simpleEvidencePins)
+            .text(state.simpleEvidencePins ? "TOGGLE SIMPLE EVIDENCE OFF" : "TOGGLE SIMPLE EVIDENCE ON");
+        $panel.find(selectors.pinsToggleSimpleBody)
+            .toggleClass("active", state.simpleBodyPins)
+            .text(state.simpleBodyPins ? "TOGGLE SIMPLE BODY OFF" : "TOGGLE SIMPLE BODY ON");
+        renderPinList($panel);
+        applyMapZoom($panel);
 
-        const clearedLabel = state.clearedPresencePins ? "PINS CLEARED" : "CLEAR PINS";
-        $panel.find(selectors.presenceClearAll).text(clearedLabel);
         ensureMachineOverlay($panel);
 
         if (!(state.area === "hopes_peak" && state.floor === "floor_1")) {
@@ -1138,8 +1752,73 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         syncMachineTrack($panel);
     }
 
+    function hasPinForLocationId(locationId) {
+        return locationId ? state.customPins.some(p => p.locationId === locationId && !p.hidden) : false;
+    }
+
+    function openPinCreatorWithPrefill(label, locationId) {
+        const $panel = $(selectors.panel);
+        if (!$panel.length) return;
+
+        // Show panel, disable ADD PIN
+        $panel.find(selectors.pinsCreatePanel).prop("hidden", false);
+        $panel.find(selectors.pinsAdd).prop("disabled", true);
+
+        // Pre-select Evidence type
+        $panel.find(`${selectors.pinsTypeBtn}.active`).removeClass("active");
+        $panel.find(`${selectors.pinsTypeBtn}[data-type="truth-bullet"]`).addClass("active");
+        $panel.find(".map-pins-icon-section").prop("hidden", true);
+
+        // Prefill name and ID
+        $panel.find(selectors.pinsLabelInput).val(label);
+        $panel.find(selectors.pinsIdInput).val(locationId).data("user-edited", true);
+
+        // Enter placement mode immediately
+        const icon = TYPE_DEFAULT_ICONS["truth-bullet"];
+        state.pendingCustomPin = { icon, type: "truth-bullet", label, locationId };
+        state.pinPlacementMode = true;
+        $panel.find(selectors.pinsPlaceBtn).prop("disabled", true);
+        $panel.find(selectors.pinsPlaceHint).prop("hidden", false);
+        $panel.find(".map-image-wrap").addClass("map-placement-mode");
+    }
+
+    function highlightPinByLocationId(locationId) {
+        const pin = state.customPins.find(p => p.locationId === locationId);
+        if (!pin) return;
+        state.area  = pin.areaKey;
+        state.floor = pin.floorKey;
+        state.highlightedPinId = pin.id;
+        renderMapPanel();
+        const $panel = $(selectors.panel);
+        $panel.find(`[data-custom-pin-id="${pin.id}"]`).trigger("focus");
+    }
+
+    function removePinByLocationId(locationId) {
+        if (!locationId) return;
+        const before = state.customPins.length;
+        state.customPins = state.customPins.filter(p => p.locationId !== locationId);
+        if (state.customPins.length !== before) {
+            saveCustomPins();
+            renderMapPanel();
+        }
+    }
+
+    function setPinHidden(locationId, hidden) {
+        if (!locationId) return;
+        const pin = state.customPins.find(p => p.locationId === locationId);
+        if (!pin) return;
+        pin.hidden = hidden;
+        saveCustomPins();
+        renderMapPanel();
+    }
+
     return {
         renderMapPanel,
         handleSettingsChanged,
+        highlightPinByLocationId,
+        hasPinForLocationId,
+        openPinCreatorWithPrefill,
+        removePinByLocationId,
+        setPinHidden,
     };
 }

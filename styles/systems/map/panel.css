@@ -18,7 +18,8 @@
     position: relative;
     height: 100%;
     display: grid;
-    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    grid-template-rows: auto minmax(0, 1fr);
     gap: 16px;
     z-index: 1;
 }
@@ -40,6 +41,22 @@
 .map-image-wrap {
     position: relative;
     z-index: 1;
+}
+
+.map-panel-header {
+    grid-column: 1;
+    grid-row: 1;
+}
+
+.map-controls {
+    grid-column: 1;
+    grid-row: 2;
+    align-self: start;
+}
+
+.map-image-wrap {
+    grid-column: 2;
+    grid-row: 1 / -1;
 }
 
 .map-presence-tools {
@@ -165,6 +182,103 @@
     box-shadow: 0 0 12px rgba(102, 180, 255, 0.35);
 }
 
+/* Area entries with controls */
+.map-area-entry {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.map-area-entry-controls,
+.map-floor-entry-controls {
+    display: flex;
+    gap: 1px;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.map-area-entry:hover .map-area-entry-controls,
+.map-floor-entry:hover .map-floor-entry-controls {
+    opacity: 1;
+}
+
+.map-area-entry-rename,
+.map-area-entry-delete,
+.map-floor-entry-rename,
+.map-floor-entry-delete {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    padding: 0;
+    color: rgba(150, 200, 255, 0.7);
+    transition: color 0.15s, background 0.15s;
+    line-height: 1;
+}
+
+.map-area-entry-rename:hover,
+.map-floor-entry-rename:hover {
+    color: rgba(180, 220, 255, 1);
+    background: rgba(150, 200, 255, 0.15) !important;
+}
+
+.map-area-entry-delete:hover,
+.map-floor-entry-delete:hover {
+    color: rgba(255, 110, 110, 0.95);
+    background: rgba(255, 80, 80, 0.15) !important;
+}
+
+/* Floor entries with controls */
+.map-floor-entry {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+/* Add Floor button */
+.map-add-floor-button {
+    border: 1px dashed rgba(138, 197, 255, 0.4);
+    border-radius: 999px;
+    background: transparent;
+    color: rgba(138, 197, 255, 0.6);
+    padding: 7px 12px;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.map-add-floor-button:hover {
+    border-color: rgba(138, 197, 255, 0.9);
+    color: rgba(213, 238, 255, 0.9);
+    transform: translateY(-1px);
+}
+
+/* Danger button in modals */
+.map-create-area-danger {
+    background: linear-gradient(135deg, rgba(200, 50, 50, 0.25), rgba(160, 20, 20, 0.4)) !important;
+    border-color: rgba(255, 120, 120, 0.7) !important;
+}
+.map-create-area-danger:hover {
+    background: linear-gradient(135deg, rgba(220, 60, 60, 0.4), rgba(180, 30, 30, 0.55)) !important;
+}
+
+/* Confirm text in delete modals */
+.map-create-area-confirm-text {
+    font-size: 11px;
+    color: rgba(213, 238, 255, 0.8);
+    line-height: 1.5;
+}
+.map-create-area-confirm-text strong {
+    color: rgba(213, 238, 255, 1);
+}
+
 .map-image-wrap {
     border: 1px solid rgba(150, 208, 255, 0.34);
     border-radius: 14px;
@@ -175,6 +289,70 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    user-select: none;
+}
+
+.map-scroll-area {
+    flex: 1 1 0;
+    align-self: stretch;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+}
+
+.map-image-wrap:has(.map-scroll-area.map-zoomed) {
+    cursor: grab;
+}
+
+.map-image-wrap.map-panning {
+    cursor: grabbing;
+}
+
+.map-zoom-controls {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    pointer-events: auto;
+}
+
+.map-zoom-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid rgba(138, 197, 255, 0.45);
+    background: rgba(5, 16, 40, 0.82);
+    color: rgba(210, 238, 255, 0.95);
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.15s, background 0.15s;
+    backdrop-filter: blur(6px);
+}
+
+.map-zoom-btn:hover {
+    border-color: rgba(170, 220, 255, 0.85);
+    background: rgba(18, 48, 96, 0.88);
+}
+
+.map-zoom-level {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: rgba(190, 230, 255, 0.88);
+    min-width: 36px;
+    text-align: center;
+    background: rgba(5, 16, 40, 0.72);
+    border: 1px solid rgba(138, 197, 255, 0.3);
+    border-radius: 4px;
+    padding: 4px 4px;
+    backdrop-filter: blur(6px);
 }
 
 
@@ -805,6 +983,47 @@ body.dangan-trial-vn-chat-hidden #chat {
 }
 
 
+@keyframes machine-banner-spin {
+    from { transform: translate(-50%, -50%) rotate(0deg); }
+    to   { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+.map-machine-sunburst {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 500px;
+    height: 500px;
+    transform: translate(-50%, -50%);
+    background:
+        radial-gradient(circle, rgba(255, 230, 80, 0.7) 0%, rgba(255, 170, 10, 0.4) 28%, transparent 60%),
+        conic-gradient(
+            from 0deg,
+            rgba(255, 220, 60, 1)   0deg 11deg,    transparent 11deg 30deg,
+            rgba(255, 200, 30, 0.9) 30deg 39deg,   transparent 39deg 60deg,
+            rgba(255, 220, 60, 1)   60deg 71deg,   transparent 71deg 90deg,
+            rgba(255, 200, 30, 0.9) 90deg 99deg,   transparent 99deg 120deg,
+            rgba(255, 220, 60, 1)   120deg 131deg, transparent 131deg 150deg,
+            rgba(255, 200, 30, 0.9) 150deg 159deg, transparent 159deg 180deg,
+            rgba(255, 220, 60, 1)   180deg 191deg, transparent 191deg 210deg,
+            rgba(255, 200, 30, 0.9) 210deg 219deg, transparent 219deg 240deg,
+            rgba(255, 220, 60, 1)   240deg 251deg, transparent 251deg 270deg,
+            rgba(255, 200, 30, 0.9) 270deg 279deg, transparent 279deg 300deg,
+            rgba(255, 220, 60, 1)   300deg 311deg, transparent 311deg 330deg,
+            rgba(255, 200, 30, 0.9) 330deg 339deg, transparent 339deg 360deg
+        );
+    border-radius: 50%;
+    pointer-events: none;
+    mix-blend-mode: screen;
+    opacity: 0;
+    transition: opacity 300ms ease;
+}
+
+.map-machine-sunburst.show {
+    opacity: 1;
+    animation: machine-banner-spin 6s linear infinite;
+}
+
 .map-machine-banner {
     position: absolute;
     left: 50%;
@@ -938,6 +1157,7 @@ body.dangan-trial-vn-chat-hidden #chat {
     height: 100%;
     object-fit: contain;
     image-rendering: auto;
+    transform-origin: center center;
 }
 
 
@@ -1178,12 +1398,25 @@ body.dangan-trial-vn-chat-hidden #chat {
     .map-panel-shell {
         height: auto;
         min-height: 100%;
+        grid-template-columns: 1fr;
         grid-template-rows: auto auto auto;
         gap: 12px;
         padding-bottom: 8px;
     }
 
+    .map-panel-header {
+        grid-column: auto;
+        grid-row: auto;
+    }
+
+    .map-controls {
+        grid-column: auto;
+        grid-row: auto;
+    }
+
     .map-image-wrap {
+        grid-column: auto;
+        grid-row: auto;
         width: 100%;
         aspect-ratio: 480 / 272;
         min-height: 180px;
@@ -1230,7 +1463,7 @@ body.dangan-trial-vn-chat-hidden #chat {
     justify-content: center;
     pointer-events: none;
     opacity: 0;
-    z-index: 2147483601;
+    z-index: 2147483648;
 }
 
 #dangan-investigation-overlay.show {
@@ -1262,16 +1495,15 @@ body.dangan-trial-vn-chat-hidden #chat {
 .dangan-investigation-banner {
     position: absolute;
     top: 50%;
-    left: 50%;
-    width: min(96vw, 1580px);
-    max-width: 100%;
+    left: 0;
+    width: 100vw;
     min-height: clamp(82px, 10.5vw, 132px);
     box-sizing: border-box;
     border-top: 2px solid rgba(255, 171, 224, 0.9);
     border-bottom: 2px solid rgba(140, 33, 117, 0.95);
     border-left: none;
     border-right: none;
-    border-radius: 2px;
+    border-radius: 0;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1291,7 +1523,7 @@ body.dangan-trial-vn-chat-hidden #chat {
         0 0 0 2px rgba(112, 19, 89, 0.36) inset,
         0 12px 36px rgba(0, 0, 0, 0.52),
         0 0 30px rgba(255, 59, 196, 0.32);
-    transform: translate3d(-50%, -50%, 0) scale(0.965);
+    transform: translate3d(0, -50%, 0) scale(0.965);
     opacity: 0;
 }
 
@@ -1399,21 +1631,21 @@ body.dangan-trial-vn-chat-hidden #chat {
 @keyframes dangan-investigation-banner {
     0% {
         opacity: 0;
-        transform: translate3d(-50%, calc(-50% + 10px), 0) scale(0.965);
+        transform: translate3d(0, calc(-50% + 10px), 0) scale(0.965);
         filter: blur(2px);
     }
     9% {
         opacity: 1;
-        transform: translate3d(-50%, -50%, 0) scale(1.012);
+        transform: translate3d(0, -50%, 0) scale(1.012);
         filter: blur(0);
     }
     82% {
         opacity: 1;
-        transform: translate3d(-50%, -50%, 0) scale(1);
+        transform: translate3d(0, -50%, 0) scale(1);
     }
     100% {
         opacity: 0;
-        transform: translate3d(-50%, calc(-50% - 6px), 0) scale(0.988);
+        transform: translate3d(0, calc(-50% - 6px), 0) scale(0.988);
     }
 }
 
@@ -1507,7 +1739,7 @@ body.dangan-trial-vn-chat-hidden #chat {
     width: min(980px, calc(100vw - 18px));
     min-height: 170px;
     margin: 0 9px calc(var(--dangan-vn-bottom-offset) + 10px);
-    border-radius: 12px;
+    border-radius: 12px 12px 0 0;
     border: 1px solid rgba(191, 229, 255, 0.45);
     background: linear-gradient(180deg, rgba(8, 12, 20, 0.96), rgba(6, 9, 14, 0.97));
     box-shadow: 0 -3px 20px rgba(0, 0, 0, 0.45);
@@ -1734,7 +1966,37 @@ body.dangan-trial-vn-chat-hidden #chat {
     margin-bottom: 8px;
 }
 
+@keyframes dangan-nameplate-glow-pulse {
+    0%, 100% {
+        text-shadow:
+            2px 0 0 rgba(var(--dangan-nameplate-glow-rgb), 0.65),
+            -2px 0 0 rgba(var(--dangan-nameplate-glow-rgb), 0.65),
+            0 2px 0 rgba(var(--dangan-nameplate-glow-rgb), 0.65),
+            0 -2px 0 rgba(var(--dangan-nameplate-glow-rgb), 0.65),
+            2px 2px 0 rgba(var(--dangan-nameplate-glow-rgb), 0.65),
+            -2px 2px 0 rgba(var(--dangan-nameplate-glow-rgb), 0.65),
+            2px -2px 0 rgba(var(--dangan-nameplate-glow-rgb), 0.65),
+            -2px -2px 0 rgba(var(--dangan-nameplate-glow-rgb), 0.65),
+            0 0 12px rgba(var(--dangan-nameplate-glow-rgb), 0.5);
+    }
+    50% {
+        text-shadow:
+            2px 0 0 rgba(var(--dangan-nameplate-glow-rgb), 0.95),
+            -2px 0 0 rgba(var(--dangan-nameplate-glow-rgb), 0.95),
+            0 2px 0 rgba(var(--dangan-nameplate-glow-rgb), 0.95),
+            0 -2px 0 rgba(var(--dangan-nameplate-glow-rgb), 0.95),
+            2px 2px 0 rgba(var(--dangan-nameplate-glow-rgb), 0.95),
+            -2px 2px 0 rgba(var(--dangan-nameplate-glow-rgb), 0.95),
+            2px -2px 0 rgba(var(--dangan-nameplate-glow-rgb), 0.95),
+            -2px -2px 0 rgba(var(--dangan-nameplate-glow-rgb), 0.95),
+            0 0 24px rgba(var(--dangan-nameplate-glow-rgb), 0.9),
+            0 0 42px rgba(var(--dangan-nameplate-glow-rgb), 0.5);
+    }
+}
+
 .dangan-vn-nameplate {
+    --dangan-nameplate-glow-rgb: 173, 205, 255;
+    --dangan-nameplate-text-color: #080c14;
     display: inline-flex;
     padding: 3px 9px;
     border-radius: 999px;
@@ -1742,8 +2004,31 @@ body.dangan-trial-vn-chat-hidden #chat {
     border: 1px solid rgba(173, 205, 255, 0.5);
     font-size: 10px;
     letter-spacing: 0.14em;
-    color: #f2f8ff;
-    font-family: "Orbitron", "Rajdhani", monospace;
+    color: var(--dangan-nameplate-text-color);
+    font-family: "Boldonse", "Orbitron", "Rajdhani", monospace;
+    position: absolute;
+    top: -30px;
+    animation: dangan-nameplate-glow-pulse 2.8s ease-in-out infinite;
+}
+
+body.dangan-theme-daily .dangan-vn-nameplate {
+    --dangan-nameplate-glow-rgb: 60, 130, 230;
+    --dangan-nameplate-text-color: #08102c;
+}
+
+body.dangan-theme-investigation .dangan-vn-nameplate {
+    --dangan-nameplate-glow-rgb: 230, 60, 110;
+    --dangan-nameplate-text-color: #2c0810;
+}
+
+body.dangan-theme-night .dangan-vn-nameplate {
+    --dangan-nameplate-glow-rgb: 140, 140, 160;
+    --dangan-nameplate-text-color: #0e0e14;
+}
+
+body.dangan-trial-discussion-vn-active .dangan-vn-nameplate {
+    --dangan-nameplate-glow-rgb: 222, 116, 255;
+    --dangan-nameplate-text-color: #0c071c;
 }
 
 
@@ -1902,6 +2187,8 @@ body.dangan-trial-vn-chat-hidden #chat {
         font-size: 10px;
         letter-spacing: 0.1em;
         margin-bottom: 8px;
+        position: absolute;
+        top: -30px;
     }
 
     .dangan-vn-text {
