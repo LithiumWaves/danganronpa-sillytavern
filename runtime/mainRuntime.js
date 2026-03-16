@@ -4393,6 +4393,9 @@ $(".monopad-icon").on("mouseenter", function () {
         });
 
 loadSettings();
+if (!isDebugAccessGranted()) {
+    setDebugAccessGranted(true);
+}
 const initialRewardDifficulty = applyRewardDifficultyProfile(getMonopadSetting("rewardDifficulty") || defaultSettings.rewardDifficulty);
 if (initialRewardDifficulty !== getMonopadSetting("rewardDifficulty")) {
     setMonopadSetting("rewardDifficulty", initialRewardDifficulty);
