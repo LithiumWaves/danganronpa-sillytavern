@@ -19,12 +19,27 @@ function raceAbort(signal) {
     });
 }
 
+function waitTimeout(ms = 6000) {
+    return new Promise((_, reject) => {
+        window.setTimeout(() => {
+            reject(new Error(`generation_timeout_${ms}`));
+        }, ms);
+    });
+}
+
+function pickFallbackLine(speakerHint = 'UNKNOWN') {
+    const seeded = String(speakerHint || '').trim();
+    if (seeded) {
+        return `${seeded}: "I won't accept that claim unless the evidence proves it."`;
+    }
+    return FALLBACK_LINES[Math.floor(Math.random() * FALLBACK_LINES.length)];
+}
+
 export function createNonstopGenerator({ getContext, getSpeakers } = {}) {
     async function requestModelLine({ signal, speakerHint }) {
         const ctx = getContext?.();
         if (!ctx?.generateRaw) {
-            const fallback = FALLBACK_LINES[Math.floor(Math.random() * FALLBACK_LINES.length)];
-            return fallback;
+            return pickFallbackLine(speakerHint);
         }
 
         const speaker = String(speakerHint || 'UNKNOWN');
@@ -38,7 +53,7 @@ export function createNonstopGenerator({ getContext, getSpeakers } = {}) {
             stop: ['\n\n', 'USER:', 'ASSISTANT:'],
         });
 
-        const result = await Promise.race([generationPromise, raceAbort(signal)]);
+        const result = await Promise.race([generationPromise, raceAbort(signal), waitTimeout(6000)]);
         return String(result || '').trim();
     }
 
@@ -48,7 +63,7 @@ export function createNonstopGenerator({ getContext, getSpeakers } = {}) {
 
         for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
             if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-            const raw = await requestModelLine({ signal, speakerHint: currentHint });
+            const raw = await requestModelLine({ signal, speakerHint: currentHint }).catch(() => pickFallbackLine(currentHint));
             const parsed = parseNonstopLine(raw);
             metrics.generatedTurns += 1;
             if (parsed.ok) return parsed.value;
@@ -57,7 +72,7 @@ export function createNonstopGenerator({ getContext, getSpeakers } = {}) {
             currentHint = speakers[Math.floor(Math.random() * Math.max(1, speakers.length))] || 'UNKNOWN';
         }
 
-        const raw = FALLBACK_LINES[Math.floor(Math.random() * FALLBACK_LINES.length)];
+        const raw = pickFallbackLine(currentHint);
         return parseNonstopLine(raw).value;
     }
 

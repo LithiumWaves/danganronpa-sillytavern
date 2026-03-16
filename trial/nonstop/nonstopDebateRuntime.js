@@ -110,6 +110,7 @@ export function createNonstopDebateRuntime({ getContext, getSpeakers, onTransiti
         onTransitionPhase?.('nonstop_active', 'nsd_intro_complete');
         eventBus.emit(NSD_EVENTS.STAGE_CHANGED, { phase: 'active', debateId: localSession.debateId });
         renderer.setStage('active');
+        renderer.setStatus('Nonstop Debate active. Generating statements...');
 
         while (!signal.aborted && !localSession.hitConfirmed && localSession.turnIndex < localSession.targetTurns) {
             if (Date.now() - localSession.startedAt > MAX_ROUND_MS) {
@@ -122,6 +123,7 @@ export function createNonstopDebateRuntime({ getContext, getSpeakers, onTransiti
                 prefetch(signal).catch(() => {});
             }
 
+            renderer.setStatus(`Generating statement ${localSession.turnIndex + 1}/${localSession.targetTurns}...`);
             const line = await nextLine(signal);
             localSession.turnIndex += 1;
             renderer.setRoundLabel(sectionIndex, localSession.turnIndex, localSession.targetTurns);
@@ -154,8 +156,13 @@ export function createNonstopDebateRuntime({ getContext, getSpeakers, onTransiti
                 weakPoint: localSession.weakPoint?.tokenId === tokenId ? { ...weakFragment, id: localSession.weakPoint.id } : null,
             });
 
+            if (!token) {
+                continue;
+            }
+
             localSession.queue.visibleLines.push(token);
             eventBus.emit(NSD_EVENTS.TOKEN_SPAWNED, { tokenId, debateId: localSession.debateId });
+            renderer.setStatus('Statement deployed.');
             await token.waitWindow(signal);
             localSession.queue.visibleLines = localSession.queue.visibleLines.filter(item => item?.tokenId !== tokenId);
         }
