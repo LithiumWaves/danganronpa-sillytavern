@@ -272,6 +272,7 @@ export function createClassTrialMenuController({ extensionName, extensionSetting
             overlay.addEventListener("click", onOverlayClick);
             document.addEventListener("keydown", onKeydown);
             skillsBtn?.setAttribute("aria-expanded", "false");
+            if (startBtn) startBtn.disabled = false;
             const statusEl = overlay.querySelector("#dangan-trial-skill-status");
             if (statusEl) statusEl.textContent = "";
             skillsBtn?.addEventListener("click", onSkills);

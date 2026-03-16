@@ -6510,10 +6510,17 @@ body.dangan-vn-compose-docked-active :is(.dropdown-menu, .options-content, .menu
     inset: 0;
     z-index: 2147483646;
     display: none;
-    align-items: flex-end;
+    align-items: stretch;
     justify-content: center;
     pointer-events: none;
-    padding: 0 2vw min(30vh, 280px);
+    overflow: hidden;
+}
+
+.dangan-nsd-overlay::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 50% 50%, rgba(75, 16, 99, 0.14), rgba(0, 0, 0, 0.52));
 }
 
 .dangan-nsd-overlay.active {
@@ -6530,24 +6537,25 @@ body.dangan-vn-compose-docked-active :is(.dropdown-menu, .options-content, .menu
 }
 
 .dangan-nsd-overlay.phase-active .dangan-nsd-active {
-    display: block;
+    display: flex;
 }
 
 .dangan-nsd-cutscene {
-    width: min(940px, 92vw);
-    height: min(560px, 80vh);
+    width: min(1120px, 96vw);
+    height: min(680px, 90vh);
     align-items: center;
     justify-content: center;
     position: relative;
+    z-index: 2;
 }
 
 .dangan-nsd-ring {
-    width: min(72vw, 540px);
-    height: min(72vw, 540px);
+    width: min(72vw, 560px);
+    height: min(72vw, 560px);
     border-radius: 50%;
     border: 6px solid rgba(81, 220, 255, 0.72);
     box-shadow: 0 0 46px rgba(81, 220, 255, 0.4), inset 0 0 30px rgba(116, 114, 255, 0.35);
-    transform: perspective(700px) rotateX(70deg);
+    transform: perspective(700px) rotateX(72deg);
     animation: dangan-nsd-ring-spin 1.8s linear infinite;
 }
 
@@ -6555,79 +6563,140 @@ body.dangan-vn-compose-docked-active :is(.dropdown-menu, .options-content, .menu
     position: absolute;
     left: 50%;
     transform: translateX(-50%);
-    bottom: 14%;
-    padding: 10px 18px;
-    border: 1px solid rgba(244, 88, 224, 0.72);
-    background: rgba(16, 10, 35, 0.88);
+    bottom: 18%;
+    padding: 12px 26px;
+    border: 2px solid rgba(244, 88, 224, 0.72);
+    background: rgba(16, 10, 35, 0.9);
     color: #f3f8ff;
-    font-size: 28px;
-    letter-spacing: 0.1em;
+    font-size: clamp(24px, 4.2vw, 44px);
+    font-weight: 700;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
+    text-shadow: 0 0 16px rgba(241, 116, 255, 0.58);
 }
 
 .dangan-nsd-active {
-    width: min(1280px, 96vw);
+    width: min(1480px, 100vw);
+    height: 100vh;
+    position: relative;
+    z-index: 2;
+    flex-direction: column;
+    justify-content: flex-end;
     pointer-events: none;
 }
 
 .dangan-nsd-round-label {
-    color: #75e8ff;
+    position: absolute;
+    top: max(24px, env(safe-area-inset-top, 0px) + 16px);
+    right: max(26px, env(safe-area-inset-right, 0px) + 20px);
+    color: #d9f7ff;
     font-size: 13px;
-    letter-spacing: 0.14em;
+    letter-spacing: 0.16em;
     text-transform: uppercase;
-    margin-bottom: 10px;
+    padding: 7px 10px;
+    border: 1px solid rgba(120, 231, 255, 0.4);
+    background: rgba(4, 12, 28, 0.72);
 }
 
 .dangan-nsd-floating-layer {
-    display: grid;
-    gap: 8px;
-    align-content: end;
-    min-height: min(42vh, 380px);
+    position: absolute;
+    inset: max(60px, env(safe-area-inset-top, 0px) + 40px) 0 130px 0;
+    overflow: hidden;
 }
 
 .dangan-nsd-floating-line {
+    position: absolute;
+    right: -45vw;
+    top: calc(8% + (var(--nsd-lane, 0) * 11.5%));
     display: inline-flex;
-    flex-wrap: wrap;
-    gap: 6px;
     align-items: baseline;
-    align-self: center;
-    max-width: min(1200px, 94vw);
-    padding: 8px 12px;
+    gap: 10px;
+    padding: 8px 14px;
     border-radius: 999px;
-    border: 1px solid rgba(233, 89, 223, 0.46);
-    background: rgba(15, 19, 34, 0.72);
-    color: #eef8ff;
-    font-size: 22px;
-    line-height: 1.2;
+    border: 2px solid rgba(255, 255, 255, 0.82);
+    background: rgba(8, 10, 20, 0.78);
+    color: #ffffff;
+    font-size: clamp(22px, 2.9vw, 46px);
+    font-weight: 800;
+    line-height: 1.12;
     letter-spacing: 0.01em;
-    transform: translateX(var(--nsd-drift-x, 0px));
-    animation: dangan-nsd-float-in 240ms ease-out;
+    white-space: nowrap;
+    text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, 0 0 12px rgba(0, 0, 0, 0.65);
+    transform: scale(var(--nsd-scale, 1));
+    animation: dangan-nsd-float-across 9.2s linear var(--nsd-delay, 0ms) forwards;
 }
 
 .dangan-nsd-floating-speaker {
-    color: rgba(123, 234, 255, 0.96);
-    font-size: 14px;
+    color: #7ce8ff;
+    font-size: clamp(12px, 1.05vw, 17px);
     letter-spacing: 0.08em;
+    text-transform: uppercase;
+    align-self: center;
 }
 
 .dangan-nsd-floating-quote {
-    color: #f4f9ff;
+    color: #ffffff;
 }
 
 .dangan-nsd-weak-point {
     color: #ffe45b;
+    font-weight: 900;
+    text-shadow: 0 0 8px rgba(255, 230, 118, 0.9), 0 0 22px rgba(255, 191, 0, 0.6);
+    cursor: pointer;
+}
+
+.dangan-nsd-controls {
+    position: absolute;
+    left: 50%;
+    bottom: max(18px, env(safe-area-inset-bottom, 0px) + 12px);
+    transform: translateX(-50%);
+    width: min(850px, 94vw);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    pointer-events: auto;
+}
+
+.dangan-nsd-next-btn {
+    border: 2px solid rgba(122, 238, 255, 0.85);
+    background: linear-gradient(180deg, rgba(16, 84, 128, 0.95), rgba(10, 41, 70, 0.95));
+    color: #f1fbff;
+    font-size: 14px;
     font-weight: 700;
-    text-shadow: 0 0 8px rgba(255, 230, 118, 0.38);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 10px 18px;
+    border-radius: 999px;
+    cursor: pointer;
+}
+
+.dangan-nsd-next-btn:disabled {
+    opacity: 0.58;
+    cursor: default;
+}
+
+.dangan-nsd-status {
+    color: #bdeeff;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: rgba(3, 10, 24, 0.72);
+    border: 1px solid rgba(111, 223, 255, 0.3);
+    border-radius: 999px;
+    padding: 6px 12px;
 }
 
 @keyframes dangan-nsd-ring-spin {
-    from { transform: perspective(700px) rotateX(70deg) rotate(0deg); }
-    to { transform: perspective(700px) rotateX(70deg) rotate(360deg); }
+    from { transform: perspective(700px) rotateX(72deg) rotate(0deg); }
+    to { transform: perspective(700px) rotateX(72deg) rotate(360deg); }
 }
 
-@keyframes dangan-nsd-float-in {
-    from { opacity: 0; transform: translateY(8px) scale(0.98) translateX(var(--nsd-drift-x, 0px)); }
-    to { opacity: 1; transform: translateY(0) scale(1) translateX(var(--nsd-drift-x, 0px)); }
+@keyframes dangan-nsd-float-across {
+    0% { transform: translateX(0) scale(var(--nsd-scale, 1)); opacity: 0; }
+    6% { opacity: 1; }
+    92% { opacity: 1; }
+    100% { transform: translateX(-170vw) scale(var(--nsd-scale, 1)); opacity: 0; }
 }
 
 /* =========================
