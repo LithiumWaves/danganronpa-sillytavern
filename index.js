@@ -3958,6 +3958,7 @@ function ensureGlobalDebugUi() {
                 <button id="trust-debug-down" type="button">TRUST -</button>
                 <button id="truth-debug-open" type="button">NEW TRUTH BULLET</button>
                 <button id="investigation-debug-trigger" type="button">INVESTIGATION START</button>
+                <button id="nsd-debug-start" type="button">START NSD</button>
                 <button id="announcement-debug-open" type="button">MONOKUMA ANNOUNCEMENT</button>
             </div>
         `;
