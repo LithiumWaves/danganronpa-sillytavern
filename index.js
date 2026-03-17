@@ -15,6 +15,7 @@ import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "./core/monokumaLessonScript.js";
 import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers } from "./monokuma/announcementController.js";
 import { createClassTrialMenuController } from "./trial/menu/classTrialMenu.js";
+import { createNonstopDebateDebugStarter } from "./trial/nonstop/nonstopDebateDebugStarter.js";
 import { initVfxSystem, onVfxChatChanged } from "./vfx/vfxSystem.js";
 import { user_avatar } from "../../../personas.js";
 
@@ -39,6 +40,7 @@ let monokumaLessonState = null;
 let vnModeController = null;
 let monokumaAnnouncementController = null;
 let classTrialMenuController = null;
+let nsdDebugStarter = null;
 let vfxCleanup = null;
 
 const openRouterSettings = createOpenRouterSettingsManager({
@@ -3958,6 +3960,7 @@ function ensureGlobalDebugUi() {
                 <button id="trust-debug-down" type="button">TRUST -</button>
                 <button id="truth-debug-open" type="button">NEW TRUTH BULLET</button>
                 <button id="investigation-debug-trigger" type="button">INVESTIGATION START</button>
+                <button id="nsd-debug-start" type="button">START NSD</button>
                 <button id="announcement-debug-open" type="button">MONOKUMA ANNOUNCEMENT</button>
             </div>
         `;
@@ -4140,6 +4143,16 @@ function playDebugClickSfx() {
     if (sfx?.click) playSfx(sfx.click);
 }
 
+function startNsdDebugSession() {
+    if (!nsdDebugStarter) {
+        nsdDebugStarter = createNonstopDebateDebugStarter({
+            setVnEnabled: enabled => vnModeController?.setEnabled?.(enabled),
+        });
+    }
+
+    return nsdDebugStarter.start({ source: "debug_button" });
+}
+
 function bindDebugControlEvents() {
     $(document).off("click.debugControls");
     $(document).off("click.debugModal");
@@ -4259,6 +4272,11 @@ function bindDebugControlEvents() {
     $(document).on("click.debugControls", "#investigation-debug-trigger", () => {
         playDebugClickSfx();
         investigationStartController.trigger();
+    });
+
+    $(document).on("click.debugControls", "#nsd-debug-start", () => {
+        playDebugClickSfx();
+        startNsdDebugSession();
     });
 
     $(document).on("click.debugControls", "#announcement-debug-trigger", () => {
