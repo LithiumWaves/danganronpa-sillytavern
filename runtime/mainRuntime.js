@@ -2854,6 +2854,14 @@ function ensureDebugControlsStyleTag() {
     display: flex !important;
     pointer-events: auto !important;
 }
+#trust-debug-controls button {
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease !important;
+}
+#trust-debug-controls button:hover {
+    background: rgba(173, 205, 255, 0.12) !important;
+    border-color: rgba(173, 205, 255, 0.5) !important;
+    color: #c8dfff !important;
+}
 @media (max-width: 700px) {
     #trust-debug-controls {
         left: max(10px, env(safe-area-inset-left, 0px)) !important;
@@ -3476,15 +3484,15 @@ function ensureGlobalDebugUi() {
                 <div class="truth-debug-choice-group" role="radiogroup" aria-label="Announcement type">
                     <label class="truth-debug-choice">
                         <input type="radio" name="announcement-debug-type" value="DAY_ANNOUN" checked />
-                        <span>DAY_ANNOUN</span>
+                        <span>Daytime Announcement</span>
                     </label>
                     <label class="truth-debug-choice">
                         <input type="radio" name="announcement-debug-type" value="NIGHT_ANNOUN" />
-                        <span>NIGHT_ANNOUN</span>
+                        <span>Nighttime Announcement</span>
                     </label>
                     <label class="truth-debug-choice">
                         <input type="radio" name="announcement-debug-type" value="BDA" />
-                        <span>BDA</span>
+                        <span>Body Discovery Announcement</span>
                     </label>
                 </div>
 
@@ -4107,7 +4115,12 @@ jQuery(async () => {
             const now = Date.now();
             if (now - lastHoverTime < HOVER_COOLDOWN) return;
             lastHoverTime = now;
-            playSfx(sfx.hover);
+            if (!sfx.hover) return;
+            const volume = Number(extension_settings[extensionName]?.monopadVolume ?? 50) / 100;
+            if (volume <= 0) return;
+            const instance = sfx.hover.cloneNode(true);
+            instance.volume = volume;
+            instance.play().catch(() => {});
         }
 
         let monopadSpamCount = 0;
@@ -4287,6 +4300,45 @@ $(".monopad-icon").on("mouseenter", function () {
 
         $(document).on("mouseenter", ".items-filter-button, .items-slot, .items-sort-group label, .items-detail-action", function () {
             playHoverWithCooldown();
+        });
+
+        $(document).on("mouseenter", "#monopad-pass-time, #monopad-sleep, #dangan_monopad_close, .truth-item, .truth-archived-item, .truth-remove-button, .truth-reload-button, .truth-delete-button, .truth-image-delete-btn, .truth-image-upload-label", function () {
+            if (!this.disabled) playHoverWithCooldown();
+        });
+
+        $(document).on("click", ".truth-item, .truth-archived-item, .truth-remove-button, .truth-reload-button, .truth-delete-button, .truth-image-delete-btn, .truth-image-upload-label", function () {
+            playSfx(sfx.click);
+        });
+
+        $(document).on("mouseenter", "#trust-debug-controls button", function () {
+            playHoverWithCooldown();
+            this.style.setProperty("background", "rgba(173, 205, 255, 0.12)", "important");
+            this.style.setProperty("border-color", "rgba(173, 205, 255, 0.5)", "important");
+            this.style.setProperty("color", "#c8dfff", "important");
+        }).on("mouseleave", "#trust-debug-controls button", function () {
+            this.style.removeProperty("background");
+            this.style.removeProperty("border-color");
+            this.style.removeProperty("color");
+        });
+
+        $(document).on("mouseenter", ".truth-image-upload-label", function () {
+            this.style.background = "rgba(255, 210, 60, 0.15)";
+            this.style.borderColor = "rgba(255, 210, 60, 0.9)";
+            this.style.color = "#ffe566";
+        }).on("mouseleave", ".truth-image-upload-label", function () {
+            this.style.background = "transparent";
+            this.style.borderColor = "rgba(255, 210, 60, 0.6)";
+            this.style.color = "#ffd43c";
+        });
+
+        $(document).on("mouseenter", ".truth-image-delete-btn", function () {
+            this.style.background = "rgba(255, 60, 60, 0.15)";
+            this.style.borderColor = "rgba(255, 60, 60, 0.9)";
+            this.style.color = "#ffffff";
+        }).on("mouseleave", ".truth-image-delete-btn", function () {
+            this.style.background = "transparent";
+            this.style.borderColor = "rgba(255, 60, 60, 0.6)";
+            this.style.color = "#ff4a4a";
         });
 
         $("#dangan_monokuma_lesson_button").on("click", async () => {

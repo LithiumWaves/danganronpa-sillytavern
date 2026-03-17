@@ -1,5 +1,6 @@
 @import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600&family=Rajdhani:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Boldonse&display=swap");
 
 body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-frame {
     border-color: rgba(232, 61, 221, 0.78);
@@ -10,9 +11,11 @@ body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-frame {
 }
 
 body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-nameplate {
+    --dangan-nameplate-glow-rgb: 222, 116, 255;
+    --dangan-nameplate-text-color: #0c071c;
     background: linear-gradient(90deg, rgba(72, 20, 101, 0.84), rgba(40, 97, 146, 0.84));
     border-color: rgba(222, 116, 255, 0.54);
-    color: #ffeaff;
+    color: var(--dangan-nameplate-text-color);
 }
 
 body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-text {

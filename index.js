@@ -1,6 +1,9 @@
 import { extension_settings } from "../../../extensions.js";
 import { saveSettingsDebounced, getRequestHeaders } from "../../../../script.js";
-import { initTruthBullets, handleTruthBullet, setNextTruthBulletSfxVariant } from "./truth/truthBullets.js";
+import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
+import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
+import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../../slash-commands/SlashCommandArgument.js';
+import { initTruthBullets, handleTruthBullet, setNextTruthBulletSfxVariant, getTruthBulletByLocationId, showTruthBulletByLocationId, showTruthBulletById } from "./truth/truthBullets.js";
 import { buildDecagram, crackShard, shatterShard } from "./trust/trustDecagram.js";
 import { initTrustAnimations, playTrustRankUp, playTrustRankDown, playTrustMaxed, playTrustToDistrustTransition, playDistrustRankDown, playDistrustRankUp, playDistrustToTrustRecovery } from "./trust/trustAnimations.js";
 import { increaseTrust, decreaseTrust } from "./trust/trustAPI.js";
@@ -16,6 +19,7 @@ import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "./core/monokumaLes
 import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers } from "./monokuma/announcementController.js";
 import { createClassTrialMenuController } from "./trial/menu/classTrialMenu.js";
 import { initVfxSystem, onVfxChatChanged } from "./vfx/vfxSystem.js";
+import { createAudioVisualizerController } from "./audio/audioVisualizer.js";
 import { user_avatar } from "../../../personas.js";
 
 window.refreshActiveCharacterUI = function () {
@@ -651,7 +655,7 @@ function trySetSillyTavernVisualNovelMode(enabled) {
 }
 
 function createVnModeController() {
-    const CHUNK_SIZE = 170;
+    const CHUNK_SIZE = 300;
     const VN_POSITION_KEY = `${extensionName}-vn-box-position`;
     const VN_STREAMING_KEY = `${extensionName}-vn-streaming-enabled`;
     let chunkIndex = 0;
@@ -684,6 +688,8 @@ function createVnModeController() {
             <div class="dangan-vn-controls">
                 <button type="button" class="dangan-vn-control dangan-vn-stream-toggle" id="dangan-vn-stream-toggle" aria-label="Disable message streaming" title="Disable message streaming">STREAM: ON</button>
                 <button type="button" class="dangan-vn-control dangan-vn-transcript-toggle" id="dangan-vn-transcript-toggle" aria-label="Open transcript" title="Open transcript">TRANSCRIPT</button>
+                <button type="button" class="dangan-vn-control dangan-vn-extra-actions" id="dangan-vn-extra-actions" aria-label="Message actions" title="Message actions">···</button>
+                <button type="button" class="dangan-vn-control dangan-vn-edit-message" id="dangan-vn-edit-message" aria-label="Edit current message" title="Edit current message">✏</button>
                 <button type="button" class="dangan-vn-control dangan-vn-lock" id="dangan-vn-lock" aria-label="Unlock Visual Novel box movement" title="Unlock Visual Novel box movement">🔒</button>
             </div>
             <div class="dangan-vn-header">
@@ -729,6 +735,8 @@ function createVnModeController() {
     const nextBtnEl = host.querySelector('#dangan-vn-next');
     const latestBtnEl = host.querySelector('#dangan-vn-latest');
     const regenerateBtnEl = host.querySelector('#dangan-vn-regenerate');
+    const extraActionsBtnEl = host.querySelector('#dangan-vn-extra-actions');
+    const editMessageBtnEl = host.querySelector('#dangan-vn-edit-message');
     const latestButtonBaseLabel = '⤓ Latest';
 
 
@@ -799,13 +807,79 @@ function createVnModeController() {
         streamToggleEl.setAttribute('title', streamingEnabled ? 'Disable message streaming' : 'Enable message streaming');
     }
 
+    function parseVnMarkup(text) {
+        const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+        // Process bold/italic within a string, wrapping plain runs in `baseClass`
+        const processSpans = (str, baseClass) => {
+            const inner = /(\*\*[\s\S]+?\*\*|\*[\s\S]+?\*)/g;
+            let out = '';
+            let last = 0;
+            let m;
+            while ((m = inner.exec(str)) !== null) {
+                if (m.index > last) {
+                    out += `<span class="${baseClass}">${esc(str.slice(last, m.index))}</span>`;
+                }
+                const r = m[0];
+                if (r.startsWith('**')) {
+                    out += `<span class="dangan-vn-segment dangan-vn-segment-bold">${esc(r.slice(2, -2))}</span>`;
+                } else {
+                    out += `<span class="dangan-vn-segment dangan-vn-segment-action">${esc(r.slice(1, -1))}</span>`;
+                }
+                last = m.index + r.length;
+            }
+            if (last < str.length) out += `<span class="${baseClass}">${esc(str.slice(last))}</span>`;
+            return out || `<span class="${baseClass}">${esc(str)}</span>`;
+        };
+
+        const pattern = /(\*\*[\s\S]+?\*\*|\*[\s\S]+?\*|"[^"]*")/g;
+        let html = '';
+        let lastIndex = 0;
+        let hasAction = false;
+        let match;
+
+        while ((match = pattern.exec(text)) !== null) {
+            if (match.index > lastIndex) {
+                html += processSpans(
+                    text.slice(lastIndex, match.index),
+                    'dangan-vn-segment dangan-vn-segment-narrator'
+                );
+            }
+            const raw = match[0];
+            if (raw.startsWith('**')) {
+                html += `<span class="dangan-vn-segment dangan-vn-segment-bold">${esc(raw.slice(2, -2))}</span>`;
+            } else if (raw.startsWith('*')) {
+                hasAction = true;
+                html += `<span class="dangan-vn-segment dangan-vn-segment-action">${esc(raw.slice(1, -1))}</span>`;
+            } else {
+                // Dialogue — process nested bold/italic inside the quotes
+                html += processSpans(raw, 'dangan-vn-segment dangan-vn-segment-dialogue');
+            }
+            lastIndex = match.index + raw.length;
+        }
+        if (lastIndex < text.length) {
+            html += processSpans(
+                text.slice(lastIndex),
+                'dangan-vn-segment dangan-vn-segment-narrator'
+            );
+        }
+        return { html: html || esc(text), hasAction };
+    }
+
+    function applyVnMarkup(targetText) {
+        if (!textEl) return;
+        const { html, hasAction } = parseVnMarkup(targetText);
+        textEl.innerHTML = html;
+        textEl.classList.toggle('has-action', hasAction);
+    }
+
     function renderDialogueText(text) {
         const targetText = String(text || '...');
         stopTextStreaming();
         if (!textEl) return;
 
         if (!streamingEnabled || targetText.length < 2) {
-            textEl.textContent = targetText;
+            applyVnMarkup(targetText);
             return;
         }
 
@@ -816,6 +890,7 @@ function createVnModeController() {
             if (currentLength >= targetText.length) {
                 textEl.classList.remove('dangan-vn-text-streaming');
                 streamTimerId = null;
+                applyVnMarkup(targetText);
                 return;
             }
 
@@ -865,7 +940,7 @@ function createVnModeController() {
         Object.assign(host.style, {
             position: 'fixed',
             inset: '0',
-            zIndex: '2147483646',
+            zIndex: '2500',
             display: 'none',
             alignItems: 'flex-end',
             justifyContent: 'center',
@@ -1205,10 +1280,30 @@ function createVnModeController() {
 
         const chunks = [];
         let remaining = normalized;
+        const min = CHUNK_SIZE * 0.4;
+
         while (remaining.length > CHUNK_SIZE) {
-            let splitAt = remaining.lastIndexOf('.', CHUNK_SIZE);
-            if (splitAt < CHUNK_SIZE * 0.45) splitAt = remaining.lastIndexOf(' ', CHUNK_SIZE);
+            let splitAt = -1;
+
+            // 1. Prefer splitting after a closing " (end of a dialogue line)
+            const quoteAt = remaining.lastIndexOf('"', CHUNK_SIZE);
+            if (quoteAt >= min) splitAt = quoteAt;
+
+            // 2. Fall back to sentence end (.)
+            if (splitAt < min) {
+                const dotAt = remaining.lastIndexOf('.', CHUNK_SIZE);
+                if (dotAt >= min) splitAt = dotAt;
+            }
+
+            // 3. Fall back to last space
+            if (splitAt < min) {
+                const spaceAt = remaining.lastIndexOf(' ', CHUNK_SIZE);
+                if (spaceAt >= 1) splitAt = spaceAt;
+            }
+
+            // 4. Hard cut
             if (splitAt < 1) splitAt = CHUNK_SIZE;
+
             chunks.push(remaining.slice(0, splitAt + 1).trim());
             remaining = remaining.slice(splitAt + 1).trim();
         }
@@ -1381,6 +1476,177 @@ function createVnModeController() {
         event.stopPropagation();
         triggerRegenerate();
         updateNavigationState();
+    });
+
+    function getVnMesIdx() {
+        const messages = getMessageEntries();
+        if (!messages.length) return null;
+        const entry = messages[Math.min(messageIndex, messages.length - 1)];
+        if (!entry?.key) return null;
+        if (entry.key.startsWith('ctx-')) return parseInt(entry.key.slice(4), 10);
+        return null;
+    }
+
+    function openVnEditMode() {
+        if (host.querySelector('.dangan-vn-inline-edit')) return;
+        const ctx = window.SillyTavern?.getContext?.();
+        const idx = getVnMesIdx();
+        if (idx == null || !ctx?.chat?.[idx]) return;
+
+        const mesEl = document.querySelector(`#chat .mes[mesid="${idx}"]`);
+        if (!mesEl) return;
+
+        // Activate ST's native edit mode to set up this_edit_mes_id state
+        if (window.$) $(mesEl).find('.mes_edit').trigger('click');
+
+        const originalText = ctx.chat[idx].mes ?? '';
+        const wrap = host.querySelector('.dangan-vn-text-wrap');
+        if (!wrap) return;
+        wrap.style.display = 'none';
+
+        const editWrap = document.createElement('div');
+        editWrap.className = 'dangan-vn-inline-edit';
+
+        const textarea = document.createElement('textarea');
+        textarea.className = 'dangan-vn-inline-edit-textarea';
+        textarea.value = originalText;
+
+        // Control panel mirroring ST's mes_edit_buttons
+        const ctrlRow = document.createElement('div');
+        ctrlRow.className = 'dangan-vn-inline-edit-buttons';
+
+        const mkBtn = (icon, title, danger = false) => {
+            const b = document.createElement('div');
+            b.className = `dangan-vn-edit-ctrl fa-solid ${icon}${danger ? ' danger' : ''}`;
+            b.title = title;
+            return b;
+        };
+
+        const confirmBtn  = mkBtn('fa-check',        'Confirm');
+        const copyBtn     = mkBtn('fa-copy',          'Copy');
+        const deleteBtn   = mkBtn('fa-trash-can',     'Delete', true);
+        const upBtn       = mkBtn('fa-chevron-up',    'Move Up');
+        const downBtn     = mkBtn('fa-chevron-down',  'Move Down');
+        const cancelBtn   = mkBtn('fa-xmark',         'Cancel');
+
+        ctrlRow.append(confirmBtn, copyBtn, deleteBtn, upBtn, downBtn, cancelBtn);
+        editWrap.append(textarea, ctrlRow);
+        frameEl.appendChild(editWrap);
+        textarea.focus();
+
+        const closeEdit = () => {
+            editWrap.remove();
+            wrap.style.display = '';
+        };
+
+        // Sync our textarea into ST's hidden #curEditTextarea, then confirm
+        confirmBtn.addEventListener('click', () => {
+            const stTextarea = document.querySelector('#curEditTextarea');
+            if (stTextarea) {
+                stTextarea.value = textarea.value;
+                // Trigger input so ST's internal state updates
+                stTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            if (window.$) $(mesEl).find('.mes_edit_done').trigger('click');
+            closeEdit();
+            setTimeout(() => renderDialogueText(), 100);
+        });
+
+        copyBtn.addEventListener('click', () => {
+            navigator.clipboard?.writeText(textarea.value);
+        });
+
+        deleteBtn.addEventListener('click', () => {
+            closeEdit();
+            if (window.$) $(mesEl).find('.mes_edit_delete').trigger('click');
+        });
+
+        upBtn.addEventListener('click', () => {
+            if (window.$) $(mesEl).find('.mes_edit_up').trigger('click');
+        });
+
+        downBtn.addEventListener('click', () => {
+            if (window.$) $(mesEl).find('.mes_edit_down').trigger('click');
+        });
+
+        cancelBtn.addEventListener('click', () => {
+            if (window.$) $(mesEl).find('.mes_edit_cancel').trigger('click');
+            closeEdit();
+        });
+    }
+
+    function openVnActionsPanel() {
+        if (host.querySelector('.dangan-vn-actions-panel')) return;
+        const mesEl = (() => {
+            const messages = getMessageEntries();
+            if (!messages.length) return null;
+            const entry = messages[Math.min(messageIndex, messages.length - 1)];
+            if (!entry?.key) return null;
+            if (entry.key.startsWith('ctx-')) return document.querySelector(`#chat .mes[mesid="${entry.key.slice(4)}"]`) ?? null;
+            if (entry.key.startsWith('dom-')) return document.querySelectorAll('#chat .mes')[parseInt(entry.key.slice(4), 10)] ?? null;
+            return null;
+        })();
+        if (!mesEl) return;
+
+        const panel = document.createElement('div');
+        panel.className = 'dangan-vn-actions-panel';
+
+        const actionDefs = [
+            { cls: 'mes_edit',            icon: 'fa-pencil',           title: 'Edit' },
+            { cls: 'mes_translate',       icon: 'fa-language',         title: 'Translate' },
+            { cls: 'mes_narrate',         icon: 'fa-bullhorn',         title: 'Narrate' },
+            { cls: 'mes_hide',            icon: 'fa-eye',              title: 'Exclude from prompts' },
+            { cls: 'mes_create_bookmark', icon: 'fa-flag-checkered',   title: 'Checkpoint' },
+            { cls: 'mes_create_branch',   icon: 'fa-code-branch',      title: 'Branch' },
+            { cls: 'mes_copy',            icon: 'fa-copy',             title: 'Copy' },
+        ];
+
+        actionDefs.forEach(({ cls, icon, title }) => {
+            const originalBtn = mesEl.querySelector(`.${cls}`);
+            if (!originalBtn) return;
+            const btn = document.createElement('div');
+            btn.className = `dangan-vn-action-btn fa-solid ${icon}`;
+            btn.title = title;
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                panel.remove();
+                if (cls === 'mes_edit') {
+                    openVnEditMode();
+                } else if (window.$) {
+                    $(originalBtn).trigger('click');
+                } else {
+                    originalBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                }
+            });
+            panel.appendChild(btn);
+        });
+
+        if (!panel.children.length) return;
+        frameEl.appendChild(panel);
+
+        const close = (e) => {
+            if (!panel.contains(e.target) && e.target !== extraActionsBtnEl) {
+                panel.remove();
+                document.removeEventListener('click', close, true);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', close, true), 0);
+    }
+
+    extraActionsBtnEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const existing = host.querySelector('.dangan-vn-actions-panel');
+        if (existing) { existing.remove(); return; }
+        openVnActionsPanel();
+    });
+
+    editMessageBtnEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const existing = host.querySelector('.dangan-vn-inline-edit');
+        if (existing) { existing.remove(); host.querySelector('.dangan-vn-text-wrap').style.display = ''; return; }
+        openVnEditMode();
     });
 
     frameEl?.addEventListener('dblclick', (event) => {
@@ -1780,6 +2046,140 @@ function ensureInvestigationOverlay() {
 
     return overlay;
 }
+
+function ensureFreeTimeOverlay() {
+    let overlay = document.getElementById("dangan-freetime-overlay");
+    if (overlay && overlay.parentElement !== document.body) {
+        document.body.appendChild(overlay);
+    }
+    if (!overlay) {
+        overlay = document.createElement("div");
+        overlay.id = "dangan-freetime-overlay";
+        overlay.setAttribute("aria-hidden", "true");
+        overlay.innerHTML = `
+            <div class="dangan-freetime-backdrop"></div>
+            <div class="dangan-freetime-scanlines"></div>
+            <div class="dangan-freetime-banner" role="status" aria-live="polite" aria-label="Free time start banner">
+                <div class="dangan-freetime-title"><span class="dangan-freetime-word free">Free Time</span> <span class="dangan-freetime-word start">START!</span></div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+    }
+    return overlay;
+}
+
+const freeTimeStartController = {
+    hideTimerId: null,
+
+    clearBanner() {
+        const overlay = document.getElementById("dangan-freetime-overlay");
+        if (!overlay) return;
+        overlay.classList.remove("show");
+        overlay.setAttribute("aria-hidden", "true");
+        if (this.hideTimerId) {
+            clearTimeout(this.hideTimerId);
+            this.hideTimerId = null;
+        }
+    },
+
+    showBanner(durationMs = 2200) {
+        const overlay = ensureFreeTimeOverlay();
+        if (!overlay) return false;
+        overlay.style.setProperty("--freetime-banner-duration", `${Math.max(900, Math.round(durationMs))}ms`);
+        overlay.setAttribute("aria-hidden", "false");
+        overlay.classList.remove("show");
+        void overlay.offsetWidth;
+        overlay.classList.add("show");
+        if (this.hideTimerId) {
+            clearTimeout(this.hideTimerId);
+            this.hideTimerId = null;
+        }
+        this.hideTimerId = window.setTimeout(() => this.clearBanner(), Math.max(900, Math.round(durationMs)));
+        return true;
+    },
+
+    triggerAsync() {
+        if (!sfx?.investigation_start) {
+            this.showBanner(2200);
+            return new Promise(resolve => setTimeout(resolve, 2200));
+        }
+        playSfx(sfx.investigation_start);
+        const durationSec = Number(sfx.investigation_start.duration);
+        const durationMs = Number.isFinite(durationSec) && durationSec > 0
+            ? Math.round(durationSec * 1000)
+            : 2200;
+        const displayDuration = Math.max(1400, durationMs + 120);
+        this.showBanner(displayDuration);
+        return new Promise(resolve => setTimeout(resolve, displayDuration));
+    },
+};
+
+function ensureNightTimeOverlay() {
+    let overlay = document.getElementById("dangan-nighttime-overlay");
+    if (overlay && overlay.parentElement !== document.body) {
+        document.body.appendChild(overlay);
+    }
+    if (!overlay) {
+        overlay = document.createElement("div");
+        overlay.id = "dangan-nighttime-overlay";
+        overlay.setAttribute("aria-hidden", "true");
+        overlay.innerHTML = `
+            <div class="dangan-nighttime-backdrop"></div>
+            <div class="dangan-nighttime-scanlines"></div>
+            <div class="dangan-nighttime-banner" role="status" aria-live="polite" aria-label="Night time start banner">
+                <div class="dangan-nighttime-title"><span class="dangan-nighttime-word night">Night Time</span> <span class="dangan-nighttime-word start">START!</span></div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+    }
+    return overlay;
+}
+
+const nightTimeStartController = {
+    hideTimerId: null,
+
+    clearBanner() {
+        const overlay = document.getElementById("dangan-nighttime-overlay");
+        if (!overlay) return;
+        overlay.classList.remove("show");
+        overlay.setAttribute("aria-hidden", "true");
+        if (this.hideTimerId) {
+            clearTimeout(this.hideTimerId);
+            this.hideTimerId = null;
+        }
+    },
+
+    showBanner(durationMs = 2200) {
+        const overlay = ensureNightTimeOverlay();
+        if (!overlay) return false;
+        overlay.style.setProperty("--nighttime-banner-duration", `${Math.max(900, Math.round(durationMs))}ms`);
+        overlay.setAttribute("aria-hidden", "false");
+        overlay.classList.remove("show");
+        void overlay.offsetWidth;
+        overlay.classList.add("show");
+        if (this.hideTimerId) {
+            clearTimeout(this.hideTimerId);
+            this.hideTimerId = null;
+        }
+        this.hideTimerId = window.setTimeout(() => this.clearBanner(), Math.max(900, Math.round(durationMs)));
+        return true;
+    },
+
+    triggerAsync() {
+        if (!sfx?.investigation_start) {
+            this.showBanner(2200);
+            return new Promise(resolve => setTimeout(resolve, 2200));
+        }
+        playSfx(sfx.investigation_start);
+        const durationSec = Number(sfx.investigation_start.duration);
+        const durationMs = Number.isFinite(durationSec) && durationSec > 0
+            ? Math.round(durationSec * 1000)
+            : 2200;
+        const displayDuration = Math.max(1400, durationMs + 120);
+        this.showBanner(displayDuration);
+        return new Promise(resolve => setTimeout(resolve, displayDuration));
+    },
+};
 
 let investigationTrackAudio = null;
 let investigationUnderway = false;
@@ -2826,6 +3226,7 @@ function getActiveUserAvatarUrl() {
 function applyImageVisibilitySettings() {
     document.body.classList.toggle("dangan-hide-truth-images", !!getMonopadSetting("hideTruthBulletImages"));
     document.body.classList.toggle("dangan-hide-gift-images", !!getMonopadSetting("hideGiftImages"));
+    document.body.classList.toggle("dangan-hide-hopes-peak-branding", !!getMonopadSetting("hideHopesPeakBranding"));
 }
 
 function applyDynamicTheme() {
@@ -2881,6 +3282,52 @@ async function fadeOutAudio(audioEl, durationMs = 520) {
     audioEl.pause();
     audioEl.currentTime = 0;
     audioEl.volume = originalVolume;
+}
+
+
+function _getActiveBgmElement() {
+    // Direct investigation track takes priority
+    if (investigationTrackAudio && !investigationTrackAudio.paused) return investigationTrackAudio;
+    // Fall back to Dynamic Audio extension element
+    const bgm = document.getElementById('audio_bgm');
+    if (bgm instanceof HTMLAudioElement && !bgm.paused) return bgm;
+    return null;
+}
+
+async function fadeOutAndPauseBgm(durationMs = 600) {
+    const el = _getActiveBgmElement();
+    if (!el) return false;
+
+    const originalVolume = Number.isFinite(el.volume) ? el.volume : 1;
+    const steps = 10;
+    const stepDelay = Math.max(30, Math.round(durationMs / steps));
+
+    for (let i = steps - 1; i >= 0; i--) {
+        el.volume = Math.max(0, (originalVolume * i) / steps);
+        await new Promise(resolve => setTimeout(resolve, stepDelay));
+    }
+
+    el.pause();
+    el.volume = originalVolume;
+    return true;
+}
+
+async function fadeInAndResumeBgm(durationMs = 600) {
+    // Resume whichever element we paused — prefer investigationTrackAudio if it exists
+    const el = investigationTrackAudio ?? document.getElementById('audio_bgm');
+    if (!el || !el.paused) return;
+
+    const targetVolume = Number.isFinite(el.volume) ? el.volume : 1;
+    el.volume = 0;
+    el.play().catch(() => {});
+
+    const steps = 10;
+    const stepDelay = Math.max(30, Math.round(durationMs / steps));
+
+    for (let i = 1; i <= steps; i++) {
+        el.volume = Math.min(targetVolume, (targetVolume * i) / steps);
+        await new Promise(resolve => setTimeout(resolve, stepDelay));
+    }
 }
 
 async function runMonokumaLessonStep(step, state) {
@@ -3425,6 +3872,14 @@ function ensureDebugControlsStyleTag() {
     z-index: 2147483000 !important;
     display: flex !important;
     pointer-events: auto !important;
+}
+#trust-debug-controls button {
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease !important;
+}
+#trust-debug-controls button:hover {
+    background: rgba(173, 205, 255, 0.12) !important;
+    border-color: rgba(173, 205, 255, 0.5) !important;
+    color: #c8dfff !important;
 }
 @media (max-width: 700px) {
     #trust-debug-controls {
@@ -4029,15 +4484,23 @@ function ensureGlobalDebugUi() {
                 <div class="truth-debug-choice-group" role="radiogroup" aria-label="Announcement type">
                     <label class="truth-debug-choice">
                         <input type="radio" name="announcement-debug-type" value="DAY_ANNOUN" checked />
-                        <span>DAY_ANNOUN</span>
+                        <span>Daytime Announcement</span>
                     </label>
                     <label class="truth-debug-choice">
                         <input type="radio" name="announcement-debug-type" value="NIGHT_ANNOUN" />
-                        <span>NIGHT_ANNOUN</span>
+                        <span>Nighttime Announcement</span>
                     </label>
                     <label class="truth-debug-choice">
                         <input type="radio" name="announcement-debug-type" value="BDA" />
-                        <span>BDA</span>
+                        <span>Body Discovery Announcement</span>
+                    </label>
+                    <label class="truth-debug-choice">
+                        <input type="radio" name="announcement-debug-type" value="ERROR" />
+                        <span>Error</span>
+                    </label>
+                    <label class="truth-debug-choice">
+                        <input type="radio" name="announcement-debug-type" value="NO_INPUT" />
+                        <span>No Input</span>
                     </label>
                 </div>
 
@@ -4696,6 +5159,13 @@ jQuery(async () => {
                 getSetting: getMonopadSetting,
                 onWalkStep: () => awardXp(XP_REWARDS.walkStep, "walked"),
                 onTrialStartRequest: () => triggerTrialStartFromMapPin(),
+                getTruthBulletByLocationId: (locationId) => getTruthBulletByLocationId(locationId),
+                navigateToTruth: (bulletId) => {
+                    setActiveMonopadTab("truth");
+                    showTruthBulletById(bulletId);
+                },
+                onMachineOpen: () => fadeOutAndPauseBgm(),
+                onMachineClose: () => fadeInAndResumeBgm(),
             });
             mapPanelController?.renderMapPanel?.();
         } catch (error) {
@@ -4713,7 +5183,12 @@ jQuery(async () => {
             const now = Date.now();
             if (now - lastHoverTime < HOVER_COOLDOWN) return;
             lastHoverTime = now;
-            playSfx(sfx.hover);
+            if (!sfx.hover) return;
+            const volume = Number(extension_settings[extensionName]?.monopadVolume ?? 50) / 100;
+            if (volume <= 0) return;
+            const instance = sfx.hover.cloneNode(true);
+            instance.volume = volume;
+            instance.play().catch(() => {});
         }
 
         let monopadSpamCount = 0;
@@ -4900,6 +5375,45 @@ $(".monopad-icon").on("mouseenter", function () {
             playHoverWithCooldown();
         });
 
+        $(document).on("mouseenter", "#monopad-pass-time, #monopad-sleep, #dangan_monopad_close, .truth-item, .truth-archived-item, .truth-remove-button, .truth-reload-button, .truth-delete-button, .truth-image-delete-btn, .truth-image-upload-label", function () {
+            if (!this.disabled) playHoverWithCooldown();
+        });
+
+        $(document).on("click", ".truth-item, .truth-archived-item, .truth-remove-button, .truth-reload-button, .truth-delete-button, .truth-image-delete-btn, .truth-image-upload-label", function () {
+            playSfx(sfx.click);
+        });
+
+        $(document).on("mouseenter", "#trust-debug-controls button", function () {
+            playHoverWithCooldown();
+            this.style.setProperty("background", "rgba(173, 205, 255, 0.12)", "important");
+            this.style.setProperty("border-color", "rgba(173, 205, 255, 0.5)", "important");
+            this.style.setProperty("color", "#c8dfff", "important");
+        }).on("mouseleave", "#trust-debug-controls button", function () {
+            this.style.removeProperty("background");
+            this.style.removeProperty("border-color");
+            this.style.removeProperty("color");
+        });
+
+        $(document).on("mouseenter", ".truth-image-upload-label", function () {
+            this.style.background = "rgba(255, 210, 60, 0.15)";
+            this.style.borderColor = "rgba(255, 210, 60, 0.9)";
+            this.style.color = "#ffe566";
+        }).on("mouseleave", ".truth-image-upload-label", function () {
+            this.style.background = "transparent";
+            this.style.borderColor = "rgba(255, 210, 60, 0.6)";
+            this.style.color = "#ffd43c";
+        });
+
+        $(document).on("mouseenter", ".truth-image-delete-btn", function () {
+            this.style.background = "rgba(255, 60, 60, 0.15)";
+            this.style.borderColor = "rgba(255, 60, 60, 0.9)";
+            this.style.color = "#ffffff";
+        }).on("mouseleave", ".truth-image-delete-btn", function () {
+            this.style.background = "transparent";
+            this.style.borderColor = "rgba(255, 60, 60, 0.6)";
+            this.style.color = "#ff4a4a";
+        });
+
         $("#dangan_monokuma_lesson_button").on("click", async () => {
             playSfx(sfx.click);
             await startMonokumaLesson();
@@ -4928,7 +5442,7 @@ $(".monopad-icon").on("mouseenter", function () {
             if (key === "dynamicThemes") {
                 applyDynamicTheme();
             }
-            if (key === "hideTruthBulletImages" || key === "hideGiftImages") {
+            if (key === "hideTruthBulletImages" || key === "hideGiftImages" || key === "hideHopesPeakBranding") {
                 applyImageVisibilitySettings();
             }
             mapPanelController?.handleSettingsChanged?.();
@@ -5119,8 +5633,25 @@ classTrialMenuController = createClassTrialMenuController({
     toggleTrialSkillEquip: (skillId) => itemsPanelController?.toggleTrialSkillEquip?.(skillId) || { changed: false },
     playSfx,
     getSfx: () => sfx,
+    onOpen: () => fadeOutAndPauseBgm(),
+    onClose: () => fadeInAndResumeBgm(),
 });
 window.startClassTrial = () => classTrialMenuController?.open?.();
+
+const audioVisualizer = createAudioVisualizerController({
+    getAudioElement: () => {
+        if (investigationTrackAudio && !investigationTrackAudio.paused) return investigationTrackAudio;
+        const bgm = document.getElementById('audio_bgm');
+        if (bgm instanceof HTMLAudioElement) return bgm;
+        return investigationTrackAudio ?? null;
+    },
+    assetsBasePath: extensionFolderPath,
+    getGameState: () => ({
+        isInvestigation: investigationUnderway,
+        isNight: ensureTimeTrackerState().phase === TIME_PHASE_NIGHT,
+    }),
+});
+audioVisualizer.init();
 rewards?.renderProgressionUi?.();
 itemsPanelController.loadInventoryState();
 applySettingsTabUI();
@@ -5155,7 +5686,18 @@ initTruthBullets({
     extension_settings,
     saveSettingsDebounced,
     extensionName,
-    getSetting: getMonopadSetting
+    getSetting: getMonopadSetting,
+    navigateToMapPin: (locationId) => {
+        setActiveMonopadTab("map");
+        mapPanelController?.highlightPinByLocationId?.(locationId);
+    },
+    hasMapPin: (locationId) => mapPanelController?.hasPinForLocationId?.(locationId) ?? false,
+    placeOnMap: (label, locationId) => {
+        setActiveMonopadTab("map");
+        mapPanelController?.openPinCreatorWithPrefill?.(label, locationId);
+    },
+    removePin: (locationId) => mapPanelController?.removePinByLocationId?.(locationId),
+    setPinHidden: (locationId, hidden) => mapPanelController?.setPinHidden?.(locationId, hidden),
 });
 
     vfxCleanup = initVfxSystem();
@@ -5165,3 +5707,112 @@ initTruthBullets({
         console.error(`[${extensionName}] ❌ Load failed:`, error);
     }
 });
+
+// ── Slash Commands ──────────────────────────────────────────────────────────
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'body-discovered',
+    callback: async (args) => {
+        const bgName = String(args.bg || '').trim();
+
+        // Switch the background underneath the static overlay so the transition is hidden
+        const switchBackground = () => {
+            if (!bgName) return;
+            const bgElements = Array.from(document.querySelectorAll('.bg_example'));
+            const lower = bgName.toLowerCase();
+            const match = bgElements.find(el => el.getAttribute('bgfile')?.toLowerCase().includes(lower));
+            if (match instanceof HTMLElement) match.click();
+        };
+
+        // 1. Static + vignette overlay (despair noise) — swap BG at peak while hidden
+        const overlayPromise = monokumaAnnouncementController?.triggerAsync('BODY_DISCOVERY');
+        setTimeout(switchBackground, 220);
+        await overlayPromise;
+
+        // 2. Body Discovery Announcement (BDA)
+        await monokumaAnnouncementController?.triggerAsync('BDA');
+
+        // 3. Investigation banner + SFX + dynamic theme
+        investigationStartController.trigger();
+        applyDynamicTheme();
+        return '';
+    },
+    helpString: 'Plays the body discovery vignette, then the BDA, then triggers Investigation. Optional: bg=&lt;name&gt; to transition to a background under the static.',
+    namedArgumentList: [
+        SlashCommandNamedArgument.fromProps({
+            name: 'bg',
+            description: 'Background image to switch to under the static effect (partial name match)',
+            typeList: [ARGUMENT_TYPE.STRING],
+            isRequired: false,
+        }),
+    ],
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'pass-time',
+    callback: async () => {
+        const state = ensureTimeTrackerState();
+        state.phase = TIME_PHASE_NIGHT;
+        state.dayActionUsed = true;
+        saveSettingsDebounced();
+        renderTimeTrackerUi();
+        applyTimeContextToGeneration();
+        // Keep current (day) theme during the announcement
+        await monokumaAnnouncementController?.triggerAsync('NIGHT_ANNOUN');
+        // Show "Night Time START!" banner + SFX, wait for both to finish
+        await nightTimeStartController.triggerAsync();
+        // Now switch to the night theme
+        applyDynamicTheme();
+        return '';
+    },
+    helpString: 'Triggers the nighttime announcement, shows a Night Time Start banner, then switches to the Night theme.',
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'go-to-sleep',
+    callback: async () => {
+        const state = ensureTimeTrackerState();
+        state.day = Math.max(1, Number(state.day || 1) + 1);
+        state.phase = TIME_PHASE_DAY;
+        state.dayActionUsed = false;
+        saveSettingsDebounced();
+        renderTimeTrackerUi();
+        applyTimeContextToGeneration();
+        // Keep current (night) theme during the announcement
+        await monokumaAnnouncementController?.triggerAsync('DAY_ANNOUN');
+        // Show "Free Time START!" banner + SFX, wait for both to finish
+        await freeTimeStartController.triggerAsync();
+        // Now switch to the day theme
+        applyDynamicTheme();
+        return '';
+    },
+    helpString: 'Advances to the next day, plays the daytime announcement, shows a Free Time Start banner, then switches to the Day theme.',
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'give-truth-bullet',
+    callback: (args, description) => {
+        const name = String(args.name || '').trim();
+        const desc = String(description || '').trim();
+        if (!name) return 'Error: name is required.';
+        const added = handleTruthBullet(name, desc);
+        if (!added) return `Truth Bullet "${name}" already exists.`;
+        return '';
+    },
+    helpString: 'Creates a Truth Bullet. Use quotes around the name if it contains spaces: name="Bloody Knife". The description is everything after the named args.',
+    namedArgumentList: [
+        SlashCommandNamedArgument.fromProps({
+            name: 'name',
+            description: 'The name of the Truth Bullet (quote if it contains spaces)',
+            typeList: [ARGUMENT_TYPE.STRING],
+            isRequired: true,
+        }),
+    ],
+    unnamedArgumentList: [
+        SlashCommandArgument.fromProps({
+            description: 'The description of the Truth Bullet',
+            typeList: [ARGUMENT_TYPE.STRING],
+            isRequired: true,
+        }),
+    ],
+}));

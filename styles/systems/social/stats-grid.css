@@ -213,7 +213,7 @@
 .truth-debug-modal {
     position: fixed;
     inset: 0;
-    z-index: 100010;
+    z-index: 2147483648;
     background: rgba(8, 2, 8, 0.72);
     display: flex;
     align-items: center;

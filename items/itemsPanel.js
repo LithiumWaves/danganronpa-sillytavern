@@ -900,6 +900,25 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         }
 
         renderItemDetails(items.find(i => i.id === selectedItemId) || items[0]);
+
+        $(document).off("keydown.itemsNav").on("keydown.itemsNav", (e) => {
+            if (!$(`.monopad-panel-content[data-panel="skills"]`).is(":visible")) return;
+            if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+            e.preventDefault();
+            let navItems = getOwnedItems();
+            if (itemSearchQuery) {
+                const q = itemSearchQuery.toLowerCase();
+                navItems = navItems.filter(i => i.name.toLowerCase().includes(q));
+            }
+            if (!navItems.length) return;
+            const idx = navItems.findIndex(i => i.id === selectedItemId);
+            if (idx === -1) return;
+            const newIdx = e.key === "ArrowRight"
+                ? (idx + 1) % navItems.length
+                : (idx - 1 + navItems.length) % navItems.length;
+            selectedItemId = navItems[newIdx].id;
+            renderInventoryGrid();
+        });
     }
 
     function renderSkillsItemsPanel() {

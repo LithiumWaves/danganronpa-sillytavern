@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Bullet nose (pointed) -->
+  <path d="M256 48 C295 48 318 110 318 200 L194 200 C194 110 217 48 256 48 Z" fill="#fff"/>
+  <!-- Bullet body -->
+  <rect x="194" y="200" width="124" height="188" fill="#fff"/>
+  <!-- Base rim (wider) -->
+  <rect x="174" y="370" width="164" height="52" rx="10" fill="#fff"/>
+  <!-- Bottom cap -->
+  <rect x="186" y="408" width="140" height="36" rx="6" fill="#fff"/>
+</svg>

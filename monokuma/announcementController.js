@@ -7,7 +7,7 @@ const MARKER_TYPES = {
         label: "DAYTIME ANNOUNCEMENT",
         transcript: "Good morning, everyone! It is now 7 a.m. and nighttime is officialy over! Time to rise and shine! Get ready to greet another beee-yutiful day!",
         transcriptByLang: {
-            EN: "Good morning, everyone! It is now 7 a.m. and nighttime is officially over! Time to rise and shine! Get ready to greet another beee-autiful day you reprobates!",
+            EN: "Ahem! This is an announcement from the Ultimate Academy! Rise and shine, kiddos! It's another gorgeous day for a killing game! So get out there, embrace your homicidal urges, and have a fabulous day!",
             JP: "Good morning, everyone! It is now 7 a.m. and nighttime is officialy over! Time to rise and shine! Get ready to greet another beee-yutiful day!",
         },
     },
@@ -17,7 +17,7 @@ const MARKER_TYPES = {
         label: "NIGHTTIME ANNOUNCEMENT",
         transcript: "Mm, ahem, this is a school announcement. It is now 10 p.m. As such, it is officially nighttime. Soon the doors to the dining hall will be locked, and entry at that point is strictly prohibited. Okay then... sweet dreams, everyone! Good night, sleep tight, don't let the bed bugs bite...",
         transcriptByLang: {
-            EN: "Mm, ahem, this is a school announcement. It is now 10 p.m. As such, it is officially nighttime. Soon the doors to the dining hall will be locked, and entry at that point is strictly prohibited. Okay then... sweet dreams, everyone! Good night, sleep tight, don't let the bed bugs bite... much..!",
+            EN: "Ahem! This is an announcement from the Ultimate Academy! The time is now 10:00 p.m. Nighttime has officially begun. Killers, this is your chance to strike! Victims, you have my condolences! Will you sleep like a baby tonight? Or sleep with the fishes? Either way, sweet dreams!",
             JP: "Mm, ahem, this is a school announcement. It is now 10 p.m. As such, it is officially nighttime. Soon the doors to the dining hall will be locked, and entry at that point is strictly prohibited. Okay then... sweet dreams, everyone! Good night, sleep tight, don't let the bed bugs bite...",
         },
     },
@@ -35,6 +35,20 @@ const MARKER_TYPES = {
         voice: "despairnoise.mp3",
         label: "BODY DISCOVERY",
         transcript: "A body has been discovered...",
+    },
+    ERROR: {
+        chime: "dingdongbingbong.mp3",
+        voice: "error.mp3",
+        gif: "error.gif",
+        label: "SYSTEM ERROR",
+        transcript: "ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR",
+    },
+    NO_INPUT: {
+        chime: "dingdongbingbong.mp3",
+        voice: "static.mp3",
+        gif: "static.gif",
+        label: "NO INPUT",
+        transcript: "No Input Detected - Please contact your systems administrator.",
     },
 };
 
@@ -77,14 +91,28 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
             DAY_ANNOUN_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/dingdongbingbong.mp3`),
             NIGHT_ANNOUN_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/dingdongbingbong.mp3`),
             BDA_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/bda_bell.mp3`),
-            DAY_ANNOUN_VOICE: new Audio(`${extensionFolderPath}/assets/monokuma/daytime_announ.mp3`),
-            NIGHT_ANNOUN_VOICE: new Audio(`${extensionFolderPath}/assets/monokuma/nighttime_announ.mp3`),
+            DAY_ANNOUN_VOICE: [
+                new Audio(`${extensionFolderPath}/assets/monokuma/morn1.wav`),
+                new Audio(`${extensionFolderPath}/assets/monokuma/morn2.wav`),
+                new Audio(`${extensionFolderPath}/assets/monokuma/morn3.wav`),
+            ],
+            NIGHT_ANNOUN_VOICE: [
+                new Audio(`${extensionFolderPath}/assets/monokuma/night1.wav`),
+                new Audio(`${extensionFolderPath}/assets/monokuma/night2.wav`),
+                new Audio(`${extensionFolderPath}/assets/monokuma/night3.wav`),
+                new Audio(`${extensionFolderPath}/assets/monokuma/night4.wav`),
+                new Audio(`${extensionFolderPath}/assets/monokuma/night5.wav`),
+            ],
             BDA_VOICE: [
                 new Audio(`${extensionFolderPath}/assets/monokuma/vic_Monok_01_022.wav`),
                 new Audio(`${extensionFolderPath}/assets/monokuma/vic_Monok_80_023.wav`),
                 new Audio(`${extensionFolderPath}/assets/monokuma/vic_Monok_01_024.wav`),
             ],
             BODY_DISCOVERY_VOICE: new Audio(`${extensionFolderPath}/assets/sfx/etc/despairnoise.mp3`),
+            ERROR_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/dingdongbingbong.mp3`),
+            ERROR_VOICE: new Audio(`${extensionFolderPath}/assets/monokuma/error.mp3`),
+            NO_INPUT_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/dingdongbingbong.mp3`),
+            NO_INPUT_VOICE: new Audio(`${extensionFolderPath}/assets/monokuma/static.mp3`),
         },
         JP: {
             DAY_ANNOUN_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/dingdongbingbong.mp3`),
@@ -94,6 +122,10 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
             NIGHT_ANNOUN_VOICE: new Audio(`${extensionFolderPath}/assets/monokuma/nighttime_announ.mp3`),
             BDA_VOICE: new Audio(`${extensionFolderPath}/assets/monokuma/bda_announ.mp3`),
             BODY_DISCOVERY_VOICE: new Audio(`${extensionFolderPath}/assets/sfx/etc/despairnoise.mp3`),
+            ERROR_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/dingdongbingbong.mp3`),
+            ERROR_VOICE: new Audio(`${extensionFolderPath}/assets/monokuma/error.mp3`),
+            NO_INPUT_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/dingdongbingbong.mp3`),
+            NO_INPUT_VOICE: new Audio(`${extensionFolderPath}/assets/monokuma/static.mp3`),
         },
     };
 
@@ -127,11 +159,18 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
             #dangan-body-discovery-overlay {
                 position: fixed;
                 inset: 0;
-                z-index: 24000;
+                z-index: 2147483648;
                 pointer-events: none;
                 opacity: 0;
-                background: radial-gradient(circle at center, rgba(38, 38, 38, 0.95) 0%, rgba(0, 0, 0, 0.98) 72%);
-                transition: opacity 120ms linear;
+                /* Horizontal oval vignette — solid black edges, fully transparent centre */
+                background: radial-gradient(ellipse 65% 50% at 50% 50%,
+                    transparent 0%,
+                    transparent 35%,
+                    rgba(0,0,0,0.60) 60%,
+                    rgba(0,0,0,0.88) 78%,
+                    #000 100%
+                );
+                transition: opacity 180ms linear;
             }
 
             #dangan-body-discovery-overlay.active {
@@ -146,74 +185,39 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
                     radial-gradient(circle at 74% 61%, rgba(255,255,255,0.24) 0 1px, transparent 1px),
                     radial-gradient(circle at 49% 77%, rgba(255,255,255,0.34) 0 1px, transparent 1px);
                 background-size: 5px 5px, 6px 6px, 4px 4px;
-                opacity: 0.78;
+                opacity: 0.55;
                 mix-blend-mode: screen;
                 animation: danganBodyStatic 90ms steps(3, end) infinite;
             }
 
-            .dangan-body-discovery-shake {
+            .dangan-body-discovery-vignette {
                 position: absolute;
                 inset: 0;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                animation: danganBodyShake 120ms steps(2, end) infinite;
-            }
-
-            .dangan-body-discovery-card {
-                padding: 16px 20px;
-                border: 2px solid rgba(255,255,255,0.75);
-                background: rgba(0,0,0,0.58);
-                color: #fff;
-                letter-spacing: 0.2em;
-                font-family: "Orbitron", "Rajdhani", sans-serif;
-                font-size: clamp(18px, 2.2vw, 34px);
-                text-transform: uppercase;
-                text-shadow: 0 2px 18px rgba(255,255,255,0.35);
+                background: radial-gradient(ellipse 65% 50% at 50% 50%,
+                    transparent 0%,
+                    transparent 35%,
+                    rgba(0,0,0,0.60) 60%,
+                    rgba(0,0,0,0.88) 78%,
+                    #000 100%
+                );
+                pointer-events: none;
             }
 
             @keyframes danganBodyStatic {
-                0% { transform: translate3d(-2%, 1%, 0) rotate(0deg); }
-                25% { transform: translate3d(1%, -2%, 0) rotate(0.3deg); }
-                50% { transform: translate3d(2%, 2%, 0) rotate(-0.25deg); }
-                75% { transform: translate3d(-1%, -1%, 0) rotate(0.25deg); }
-                100% { transform: translate3d(1%, 0%, 0) rotate(-0.2deg); }
+                0%   { transform: translate3d(-2%, 1%, 0)  rotate(0deg); }
+                25%  { transform: translate3d(1%, -2%, 0)  rotate(0.3deg); }
+                50%  { transform: translate3d(2%, 2%, 0)   rotate(-0.25deg); }
+                75%  { transform: translate3d(-1%, -1%, 0) rotate(0.25deg); }
+                100% { transform: translate3d(1%, 0%, 0)   rotate(-0.2deg); }
             }
 
-            @keyframes danganBodyShake {
-                0% { transform: translate(0, 0); }
-                25% { transform: translate(-8px, 4px); }
-                50% { transform: translate(8px, -5px); }
-                75% { transform: translate(-7px, -3px); }
-                100% { transform: translate(6px, 4px); }
-            }
-
-            @media (max-width: 900px) and (orientation: portrait) {
-                .dangan-body-discovery-static {
-                    inset: -18%;
-                }
-
-                .dangan-body-discovery-shake {
-                    padding: max(8px, env(safe-area-inset-top)) 12px max(8px, env(safe-area-inset-bottom));
-                    box-sizing: border-box;
-                    animation: danganBodyShakeMobile 120ms steps(2, end) infinite;
-                }
-
-                .dangan-body-discovery-card {
-                    width: min(100%, 420px);
-                    padding: 12px 14px;
-                    letter-spacing: 0.12em;
-                    font-size: clamp(16px, 5.5vw, 24px);
-                    text-align: center;
-                }
-            }
-
-            @keyframes danganBodyShakeMobile {
-                0% { transform: translate(0, 0); }
-                25% { transform: translate(-4px, 2px); }
-                50% { transform: translate(4px, -3px); }
-                75% { transform: translate(-3px, -2px); }
-                100% { transform: translate(3px, 2px); }
+            @keyframes danganBgJitter {
+                0%   { translate: 0px    0px; }
+                20%  { translate: -2px   1px; }
+                40%  { translate:  1.5px -1.5px; }
+                60%  { translate: -1px  -1px; }
+                80%  { translate:  2px   1.5px; }
+                100% { translate:  0px   0px; }
             }
         `;
 
@@ -222,9 +226,7 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         overlay.setAttribute("aria-hidden", "true");
         overlay.innerHTML = `
             <div class="dangan-body-discovery-static"></div>
-            <div class="dangan-body-discovery-shake">
-                <div class="dangan-body-discovery-card" role="status" aria-live="polite">BODY DISCOVERED</div>
-            </div>
+            <div class="dangan-body-discovery-vignette"></div>
         `;
 
         document.head.appendChild(style);
@@ -243,7 +245,7 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
                 position: fixed;
                 right: 24px;
                 bottom: 20px;
-                z-index: 23000;
+                z-index: 2147483648;
                 pointer-events: none;
                 width: min(320px, 42vw);
                 font-family: "Orbitron", "Rajdhani", sans-serif;
@@ -595,11 +597,70 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         overlay.setAttribute("aria-hidden", "false");
 
         const voiceTrack = getAudio().BODY_DISCOVERY_VOICE;
-        const fallbackMs = Number.isFinite(voiceTrack?.duration)
-            ? Math.max(2500, Math.round(voiceTrack.duration * 1000) + 600)
-            : 30000;
+        const trackDurationMs = Number.isFinite(voiceTrack?.duration) && voiceTrack.duration > 0
+            ? Math.round(voiceTrack.duration * 1000)
+            : 8000;
+        const fallbackMs = Math.max(2500, trackDurationMs + 600);
+
+        // ── Background zoom effect ──────────────────────────────
+        const bg1 = document.getElementById('bg1');
+        const savedTransition = bg1 ? bg1.style.transition : '';
+        const savedTransform  = bg1 ? bg1.style.transform  : '';
+        const savedAnimation  = bg1 ? bg1.style.animation  : '';
+        const rand = (lo, hi) => lo + Math.random() * (hi - lo);
+        const zoomTimers = [];
+
+        if (bg1) {
+            const ease       = '0.42, 0, 0.58, 1';
+            const dur        = '0.5s';
+            const panWindow  = Math.max(500, trackDurationMs - 2000);
+            const count      = 6 + Math.floor(Math.random() * 7); // 6–12 base slots
+
+            // Start jitter immediately (from first point)
+            bg1.style.animation = 'danganBgJitter 75ms steps(3, end) infinite';
+
+            // Stop jitter at panWindow ms (when last zoom point fires, before zoom-out)
+            zoomTimers.push(setTimeout(() => {
+                bg1.style.animation = savedAnimation;
+            }, panWindow));
+
+            const schedulePan = (timeMs) => {
+                const x = rand(-18, 18).toFixed(1);
+                const y = rand(-14, 14).toFixed(1);
+                zoomTimers.push(setTimeout(() => {
+                    bg1.style.transition = `transform ${dur} cubic-bezier(${ease})`;
+                    bg1.style.transform  = `scale(1.3) translate(${x}%, ${y}%)`;
+                }, timeMs));
+            };
+
+            for (let i = 0; i < count; i++) {
+                const baseMs = i === 0 ? 0 : Math.round((i / (count - 1)) * panWindow);
+
+                // ~35% of slots (never the first) become a quick cluster
+                if (i > 0 && Math.random() < 0.35) {
+                    const clusterSize = 2 + Math.floor(Math.random() * 2); // 2–3 rapid pans
+                    for (let c = 0; c < clusterSize; c++) {
+                        schedulePan(baseMs + c * (60 + Math.floor(Math.random() * 120)));
+                    }
+                } else {
+                    schedulePan(baseMs);
+                }
+            }
+        }
 
         await playTrack(voiceTrack, { fallbackMs });
+
+        // Zoom out to centre, then restore
+        if (bg1) {
+            bg1.style.animation  = savedAnimation;
+            bg1.style.transition = 'transform 1.1s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+            bg1.style.transform  = 'scale(1) translate(0%, 0%)';
+            await delay(1200);
+            bg1.style.transition = savedTransition;
+            bg1.style.transform  = savedTransform;
+        }
+
+        zoomTimers.forEach(id => clearTimeout(id));
 
         overlay.classList.remove("active");
         overlay.setAttribute("aria-hidden", "true");
@@ -627,6 +688,13 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         if (type === "BODY_DISCOVERY") {
             await runBodyDiscoverySequence();
             return;
+        }
+
+        const screenImg = screen.querySelector("img");
+        if (screenImg) {
+            screenImg.src = config.gif
+                ? `${extensionFolderPath}/assets/monokuma/${config.gif}`
+                : `${extensionFolderPath}/assets/monokuma/mono_announ.png`;
         }
 
         label.textContent = config.label;
@@ -687,6 +755,13 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
             const safeType = normalizeMarkerType(type);
             if (!MARKER_TYPES[safeType]) return;
             queue = queue.then(() => runAnnouncement(safeType)).catch(() => {});
+        },
+        triggerAsync(type) {
+            const safeType = normalizeMarkerType(type);
+            if (!MARKER_TYPES[safeType]) return Promise.resolve();
+            const p = queue.then(() => runAnnouncement(safeType)).catch(() => {});
+            queue = p;
+            return p;
         },
     };
 }

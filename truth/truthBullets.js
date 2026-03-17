@@ -44,7 +44,7 @@ export function initTruthBullets(providedDeps) {
         awardMonocoins,
         monocoinRewards,
         awardXp,
-        xpRewards
+        xpRewards,
     } = deps);
 
     // Loads saved bullets
@@ -105,6 +105,38 @@ const processedTruthSignatures = new Set();
 
 const TB_REGEX = /V3C\|\s*TB:\s*([^|\n\r]+)(?:\|\|\s*([^\n\r]+))?/g;
 
+function toLocationId(title) {
+    return title.trim().toLowerCase()
+        .replace(/[''`']/g, "")
+        .replace(/\s+/g, "_")
+        .replace(/[^a-z0-9_]/g, "")
+        .replace(/_+/g, "_")
+        .replace(/^_|_$/g, "");
+}
+
+export function getTruthBulletByLocationId(locationId) {
+    if (!locationId) return null;
+    return [...truthBullets, ...archivedTruthBullets].find(tb => tb.locationId === locationId) || null;
+}
+
+export function showTruthBulletByLocationId(locationId) {
+    const bullet = getTruthBulletByLocationId(locationId);
+    if (!bullet) return;
+    const isArchived = archivedTruthBullets.includes(bullet);
+    $(".truth-item, .truth-archived-item").removeClass("active");
+    $(`[data-id="${bullet.id}"]`).addClass("active");
+    showTruthBulletDetails(bullet, isArchived);
+}
+
+export function showTruthBulletById(id) {
+    const bullet = [...truthBullets, ...archivedTruthBullets].find(tb => tb.id === id);
+    if (!bullet) return;
+    const isArchived = archivedTruthBullets.includes(bullet);
+    $(".truth-item, .truth-archived-item").removeClass("active");
+    $(`[data-id="${bullet.id}"]`).addClass("active");
+    showTruthBulletDetails(bullet, isArchived);
+}
+
 function saveTruthBullets() {
     deps.extension_settings[deps.extensionName].truthBullets = truthBullets;
     deps.extension_settings[deps.extensionName].archivedTruthBullets = archivedTruthBullets;
@@ -128,6 +160,16 @@ function loadTruthBullets() {
         archivedTruthBullets.length = 0;
         savedArchived.forEach(tb => archivedTruthBullets.push(tb));
     }
+
+    // Backfill locationId for bullets created before this feature
+    let needsSave = false;
+    for (const tb of [...truthBullets, ...archivedTruthBullets]) {
+        if (!tb.locationId) {
+            tb.locationId = toLocationId(tb.title);
+            needsSave = true;
+        }
+    }
+    if (needsSave) saveTruthBullets();
 }
 
 /* =========================
@@ -135,12 +177,13 @@ function loadTruthBullets() {
    ========================= */
 
 function addTruthBullet(title, description = "", { grantMonocoins = true, grantXp = true, image } = {}) {
-    if (!title) return;
-    if (truthBullets.some(tb => tb.title === title)) return;
+    if (!title) return false;
+    if (truthBullets.some(tb => tb.title === title)) return false;
 
     const bullet = {
         id: `tb_${Date.now()}`,
         title,
+        locationId: toLocationId(title),
         description,
         timestamp: new Date().toLocaleString(),
         ...(image ? { image } : {}),
@@ -162,6 +205,7 @@ function addTruthBullet(title, description = "", { grantMonocoins = true, grantX
     }
 
     console.log(`[${deps.extensionName}] Truth Bullet added: ${title}`);
+    return true;
 }
 
 function insertTruthBulletUI(bullet) {
@@ -227,12 +271,21 @@ function showTruthBulletDetails(bullet, isArchived) {
 
     $details.removeAttr("style");
 
+    const hasPin = bullet.locationId && deps.hasMapPin?.(bullet.locationId);
+    const mapBtn = !bullet.locationId ? ""
+        : hasPin
+            ? `<button class="truth-show-on-map-button">SHOW ON MAP</button>`
+            : `<button class="truth-place-on-map-button">PLACE ON MAP</button>`;
     const actionButton = isArchived
         ? `<div class="truth-archived-actions">
                <button class="truth-reload-button">RELOAD TRUTH BULLET</button>
                <button class="truth-remove-button truth-delete-button">DELETE TRUTH BULLET</button>
+               ${mapBtn}
            </div>`
-        : `<button class="truth-remove-button">ARCHIVE TRUTH BULLET</button>`;
+        : `<div class="truth-active-actions">
+               <button class="truth-remove-button">ARCHIVE TRUTH BULLET</button>
+               ${mapBtn}
+           </div>`;
 
     $details.html(`
         <div class="truth-detail-main">
@@ -252,7 +305,7 @@ function showTruthBulletDetails(bullet, isArchived) {
                 ${bullet.image ? `<img src="${bullet.image}" alt="" style="max-width:95%;height:auto;object-fit:contain;display:block;margin:16px auto;">` : ""}
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:12px;">
-                ${!isArchived ? `<label style="background:transparent;border:1px solid rgba(255,210,60,0.6);color:#ffd43c;font-family:inherit;font-size:0.85rem;letter-spacing:0.08em;padding:6px 16px;cursor:pointer;transition:color 0.15s,border-color 0.15s,background 0.15s;">
+                ${!isArchived ? `<label class="truth-image-upload-label" style="background:transparent;border:1px solid rgba(255,210,60,0.6);color:#ffd43c;font-family:inherit;font-size:0.85rem;letter-spacing:0.08em;padding:6px 16px;cursor:pointer;transition:color 0.15s,border-color 0.15s,background 0.15s;">
                     ${bullet.image ? "REPLACE IMAGE" : "UPLOAD IMAGE"}
                     <input type="file" accept="image/*" class="truth-image-input" style="display:none">
                 </label>
@@ -292,6 +345,14 @@ function showTruthBulletDetails(bullet, isArchived) {
             showTruthBulletDetails(bullet, false);
         });
     }
+
+    $details.find(".truth-show-on-map-button").on("click", () => {
+        deps.navigateToMapPin?.(bullet.locationId);
+    });
+
+    $details.find(".truth-place-on-map-button").on("click", () => {
+        deps.placeOnMap?.(bullet.title, bullet.locationId);
+    });
 }
 
 function showArchiveConfirm(id) {
@@ -365,6 +426,7 @@ function archiveTruthBullet(id) {
     const [bullet] = truthBullets.splice(index, 1);
     archivedTruthBullets.push(bullet);
     saveTruthBullets();
+    deps.setPinHidden?.(bullet.locationId, true);
 
     $(`.truth-item[data-id="${id}"]`).remove();
     $(".truth-details").removeAttr("style").empty();
@@ -388,6 +450,7 @@ function reloadArchivedBullet(id) {
     const [bullet] = archivedTruthBullets.splice(index, 1);
     truthBullets.push(bullet);
     saveTruthBullets();
+    deps.setPinHidden?.(bullet.locationId, false);
 
     $(`.truth-archived-item[data-id="${id}"]`).remove();
     $(".truth-details").removeAttr("style").empty();
@@ -408,8 +471,9 @@ function permanentlyDeleteArchivedBullet(id) {
     const index = archivedTruthBullets.findIndex(tb => tb.id === id);
     if (index === -1) return;
 
-    archivedTruthBullets.splice(index, 1);
+    const [bullet] = archivedTruthBullets.splice(index, 1);
     saveTruthBullets();
+    deps.removePin?.(bullet.locationId);
 
     $(`.truth-archived-item[data-id="${id}"]`).remove();
     $(".truth-details").removeAttr("style").empty();
@@ -446,7 +510,7 @@ function renderTruthBullets() {
 }
 
 function queueTruthBulletAnimation(title) {
-    if (getSetting && !getSetting("truthBulletAnimations")) return;
+    if (getSetting && getSetting("truthBulletAnimations") === false) return;
 
     truthBulletQueue.push(title);
     runTruthBulletQueue();
@@ -511,7 +575,7 @@ function playTruthBulletSfx() {
 }
 
 export function handleTruthBullet(title, description, options = {}) {
-    addTruthBullet(title, description, options);
+    return addTruthBullet(title, description, options);
 }
 
 
