@@ -7284,3 +7284,49 @@ body.dangan-theme-investigation .dangan-vn-compose-collapse-toggle {
 body.dangan-theme-investigation .dangan-vn-compose-collapse-toggle:hover {
     background: rgba(88, 16, 32, 0.96) !important;
 }
+
+.dangan-nsd-debug-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483200;
+    display: none;
+    place-items: center;
+    background: radial-gradient(circle at center, rgba(80, 0, 0, 0.35), rgba(0, 0, 0, 0.9));
+}
+
+.dangan-nsd-debug-overlay.active {
+    display: grid;
+}
+
+.dangan-nsd-debug-card {
+    width: min(92vw, 560px);
+    border: 2px solid rgba(255, 255, 255, 0.8);
+    background: rgba(8, 8, 12, 0.95);
+    box-shadow: 0 0 30px rgba(255, 0, 0, 0.35);
+    padding: 22px;
+    text-align: center;
+}
+
+.dangan-nsd-debug-title {
+    font-size: 26px;
+    letter-spacing: 0.08em;
+    font-weight: 800;
+}
+
+.dangan-nsd-debug-subtitle {
+    margin-top: 8px;
+    opacity: 0.82;
+}
+
+#dangan-nsd-debug-exit {
+    margin-top: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    cursor: pointer;
+}
+
+#chat.dangan-nsd-chat-hidden {
+    visibility: hidden !important;
+}
