@@ -17,7 +17,6 @@ import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers 
 import { createClassTrialMenuController } from "./trial/menu/classTrialMenu.js";
 import { initVfxSystem, onVfxChatChanged } from "./vfx/vfxSystem.js";
 import { user_avatar } from "../../../personas.js";
-import { createNonstopDebateRuntime } from "./trial/nonstop/nonstopDebateRuntime.js";
 
 window.refreshActiveCharacterUI = function () {
     if (!activeSocialCharacterId || !socialPanelController) return;
@@ -40,7 +39,6 @@ let monokumaLessonState = null;
 let vnModeController = null;
 let monokumaAnnouncementController = null;
 let classTrialMenuController = null;
-let nonstopDebateController = null;
 let vfxCleanup = null;
 
 const openRouterSettings = createOpenRouterSettingsManager({
@@ -1999,23 +1997,8 @@ async function triggerTrialStartFromMapPin() {
     const accepted = await classTrialMenuController?.open?.();
     if (!accepted) return false;
 
-    console.log("[Dangan][Trial] Begin Class Trial selected from map pin.");
-    nonstopDebateController?.startFromIntroCutscene?.({ source: "map_pin" });
+    console.log("[Dangan][Trial] Trial menu opened from map pin.");
     return true;
-}
-
-function createNonstopDebateController() {
-    const runtime = createNonstopDebateRuntime({
-        getContext: () => window.SillyTavern?.getContext?.(),
-        getSpeakers: () => Array.from(characters.values()).map(char => String(char?.name || '').trim()).filter(Boolean),
-    });
-
-    window.fireTruthBulletAtWeakPoint = ({ weakPointId, tokenId, debateId, bulletText } = {}) => runtime.resolveTruthBulletShot({ weakPointId, tokenId, debateId, bulletText });
-
-    return {
-        startFromIntroCutscene: () => runtime.startFromIntroCutscene(),
-        stop: () => runtime.stop(),
-    };
 }
 
 
@@ -5138,12 +5121,9 @@ classTrialMenuController = createClassTrialMenuController({
     playSfx,
     getSfx: () => sfx,
 });
-nonstopDebateController = createNonstopDebateController();
 window.startClassTrial = async () => {
     const accepted = await classTrialMenuController?.open?.();
-    if (!accepted) return false;
-    nonstopDebateController?.startFromIntroCutscene?.({ source: "manual" });
-    return true;
+    return Boolean(accepted);
 };
 rewards?.renderProgressionUi?.();
 itemsPanelController.loadInventoryState();
