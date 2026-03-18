@@ -1,3 +1,5 @@
+import { createNonstopDebateDebugRuntime } from './nonstopDebateDebugRuntime.js';
+
 function ensureOverlay() {
     let overlay = document.getElementById('dangan-nsd-debug-overlay');
     if (overlay) return overlay;
@@ -18,13 +20,22 @@ function ensureOverlay() {
     return overlay;
 }
 
-export function createNonstopDebateDebugStarter({ setVnEnabled } = {}) {
+export function createNonstopDebateDebugStarter({ setVnEnabled, getContext } = {}) {
     let active = false;
+    const runtime = createNonstopDebateDebugRuntime({ getContext });
 
-    function applyUiState() {
+    function applyUiState(snapshot) {
         const overlay = ensureOverlay();
         overlay.classList.add('active');
         overlay.setAttribute('aria-hidden', 'false');
+
+        const subtitle = overlay.querySelector('.dangan-nsd-debug-subtitle');
+        if (subtitle) {
+            const names = snapshot.eligibleSpeakers.join(', ');
+            subtitle.textContent = names
+                ? `Eligible speakers (${snapshot.eligibleSpeakers.length}): ${names}`
+                : 'No eligible unmuted speakers in this chat.';
+        }
 
         document.body.classList.add('dangan-nsd-debug-active');
 
@@ -45,9 +56,14 @@ export function createNonstopDebateDebugStarter({ setVnEnabled } = {}) {
     }
 
     function start({ source = 'debug_button' } = {}) {
+        const snapshot = runtime.buildStartSnapshot();
+        if (!snapshot.eligibleSpeakers.length) {
+            return { started: false, reason: 'no_eligible_speakers', source };
+        }
+
         active = true;
-        applyUiState();
-        return { started: true, source };
+        applyUiState(snapshot);
+        return { started: true, source, eligibleSpeakers: snapshot.eligibleSpeakers };
     }
 
     function stop({ reason = 'manual_stop' } = {}) {

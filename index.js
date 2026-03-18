@@ -4147,10 +4147,17 @@ function startNsdDebugSession() {
     if (!nsdDebugStarter) {
         nsdDebugStarter = createNonstopDebateDebugStarter({
             setVnEnabled: enabled => vnModeController?.setEnabled?.(enabled),
+            getContext: () => window.SillyTavern?.getContext?.() || null,
         });
     }
 
-    return nsdDebugStarter.start({ source: "debug_button" });
+    const result = nsdDebugStarter.start({ source: "debug_button" });
+
+    if (!result?.started && result?.reason === "no_eligible_speakers") {
+        console.warn("[Dangan][NSD] No eligible unmuted speakers in current chat.");
+    }
+
+    return result;
 }
 
 function bindDebugControlEvents() {
