@@ -7284,3 +7284,65 @@ body.dangan-theme-investigation .dangan-vn-compose-collapse-toggle {
 body.dangan-theme-investigation .dangan-vn-compose-collapse-toggle:hover {
     background: rgba(88, 16, 32, 0.96) !important;
 }
+
+body.dangan-nsd-debug-active {
+    background: #000 !important;
+}
+
+body.dangan-nsd-debug-active > *:not(#dangan-nsd-debug-stage) {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+.dangan-nsd-debug-stage {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483646;
+    display: none;
+    overflow: hidden;
+    pointer-events: none;
+    background: transparent;
+}
+
+.dangan-nsd-debug-stage.active {
+    display: block;
+}
+
+.dangan-nsd-debug-chunk {
+    position: absolute;
+    top: var(--nsd-top, 50vh);
+    left: 100vw;
+    max-width: min(52vw, 760px);
+    color: #fff;
+    font-family: Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif;
+    font-size: clamp(24px, 3vw, 48px);
+    line-height: 1.04;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    text-shadow:
+        0 0 6px rgba(255, 255, 255, 0.75),
+        0 0 14px rgba(255, 60, 60, 0.45),
+        3px 3px 0 rgba(0, 0, 0, 0.92);
+    opacity: 0;
+    transform: translate3d(0, 0, 0) scale(var(--nsd-scale, 1));
+    animation: dangan-nsd-debug-fly var(--nsd-duration, 6.8s) linear var(--nsd-delay, 0ms) forwards;
+    will-change: transform, opacity;
+}
+
+@keyframes dangan-nsd-debug-fly {
+    0% {
+        opacity: 0;
+        transform: translate3d(0, 0, 0) scale(var(--nsd-scale, 1));
+    }
+    8% {
+        opacity: 1;
+    }
+    84% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+        transform: translate3d(-165vw, 0, 0) scale(var(--nsd-scale, 1));
+    }
+}
