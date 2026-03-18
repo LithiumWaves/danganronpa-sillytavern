@@ -1,10 +1,10 @@
 import { createNonstopDebateDebugRuntime } from './nonstopDebateDebugRuntime.js';
 import { createNonstopDebateDebugStage } from './nonstopDebateDebugStage.js';
 
-export function createNonstopDebateDebugStarter({ setVnEnabled, getContext } = {}) {
+export function createNonstopDebateDebugStarter({ setVnEnabled, getContext, triggerRegularGeneration } = {}) {
     let active = false;
     let advancing = false;
-    const runtime = createNonstopDebateDebugRuntime({ getContext });
+    const runtime = createNonstopDebateDebugRuntime({ getContext, triggerRegularGeneration });
     const stage = createNonstopDebateDebugStage();
 
     function applyUiState() {

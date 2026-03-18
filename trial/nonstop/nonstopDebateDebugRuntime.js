@@ -9,9 +9,9 @@ function pickRandom(list) {
     return list[Math.floor(Math.random() * list.length)];
 }
 
-export function createNonstopDebateDebugRuntime({ getContext } = {}) {
+export function createNonstopDebateDebugRuntime({ getContext, triggerRegularGeneration } = {}) {
     const speakerPool = createNonstopSpeakerPool({ getContext });
-    const generator = createNonstopDebateDebugGenerator({ getContext });
+    const generator = createNonstopDebateDebugGenerator({ getContext, triggerRegularGeneration });
     let session = null;
 
     function startSession() {
