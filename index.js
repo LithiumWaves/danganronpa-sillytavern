@@ -4143,11 +4143,63 @@ function playDebugClickSfx() {
     if (sfx?.click) playSfx(sfx.click);
 }
 
+function isUiControlVisiblyInteractive(el) {
+    if (!(el instanceof Element)) return false;
+    const style = window.getComputedStyle(el);
+    if (style.display === "none" || style.visibility === "hidden") return false;
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+}
+
+function findRegularGenerationControl() {
+    const controls = Array.from(document.querySelectorAll('button, .menu_button, [role="button"], a'));
+    const preferredMatchers = [
+        /\bgenerate\b/,
+        /\bcontinue\b/,
+        /\bauto-?continue\b/,
+    ];
+
+    for (const matcher of preferredMatchers) {
+        let fallbackMatch = null;
+        for (const control of controls) {
+            if (!(control instanceof Element)) continue;
+            if (control.closest('#dangan-vn-overlay, #trust-debug-controls, #truth-debug-modal, #announcement-debug-modal')) continue;
+            const label = `${control.getAttribute('aria-label') || ''} ${control.getAttribute('title') || ''} ${control.textContent || ''}`.toLowerCase();
+            if (!matcher.test(label)) continue;
+            fallbackMatch ||= control;
+            if (isUiControlVisiblyInteractive(control)) return control;
+        }
+        if (fallbackMatch) return fallbackMatch;
+    }
+
+    return null;
+}
+
+function triggerRegularChatGeneration() {
+    const ctx = window.SillyTavern?.getContext?.() || null;
+    if (typeof ctx?.generate === 'function') {
+        const result = ctx.generate();
+        return result === undefined ? true : result;
+    }
+
+    const control = findRegularGenerationControl();
+    if (!control) return false;
+
+    if (typeof control.click === 'function') {
+        control.click();
+        return true;
+    }
+
+    control.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    return true;
+}
+
 function startNsdDebugSession() {
     if (!nsdDebugStarter) {
         nsdDebugStarter = createNonstopDebateDebugStarter({
             setVnEnabled: enabled => vnModeController?.setEnabled?.(enabled),
             getContext: () => window.SillyTavern?.getContext?.() || null,
+            triggerRegularGeneration: () => triggerRegularChatGeneration(),
         });
     }
 
