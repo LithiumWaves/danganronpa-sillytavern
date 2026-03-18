@@ -24,6 +24,7 @@ function getCharacterDirectory(ctx) {
 
     for (const ch of chars) {
         if (!ch) continue;
+
         const name = String(ch.name ?? ch.ch_name ?? '').trim();
         const avatar = String(ch.avatar ?? ch.avatar_url ?? ch.avatarUrl ?? '').trim();
         const id = String(ch.id ?? ch.character_id ?? ch.characterId ?? '').trim();
@@ -46,62 +47,73 @@ function getCharacterDirectory(ctx) {
     return directory;
 }
 
-function collectGroupMembers(ctx, participants, directory) {
+function upsertParticipant(participants, name, { aliasTokens = [], muted = false } = {}) {
+    const displayName = String(name || '').trim();
+    if (!displayName) return;
+
+    const key = normalizeToken(displayName);
+    if (!key) return;
+
+    if (!participants.has(key)) {
+        participants.set(key, {
+            name: displayName,
+            aliases: new Set([key]),
+            muted: Boolean(muted),
+        });
+    }
+
+    const participant = participants.get(key);
+    if (muted) participant.muted = true;
+    for (const alias of aliasTokens) addToken(participant.aliases, alias);
+}
+
+function collectGroupParticipants(ctx, participants, directory) {
     const activeGroupId = String(getActiveGroupId(ctx) ?? '').trim();
-    if (!activeGroupId) return;
+    if (!activeGroupId) return false;
 
     const groups = Array.isArray(ctx?.groups) ? ctx.groups : [];
     const activeGroup = groups.find(group => String(group?.id ?? group?.group_id ?? '').trim() === activeGroupId);
     const rawMembers = activeGroup?.members;
-    if (!Array.isArray(rawMembers)) return;
+    if (!Array.isArray(rawMembers)) return false;
 
     for (const rawMember of rawMembers) {
-        const token = normalizeToken(rawMember);
+        const memberToken = normalizeToken(rawMember);
+        if (!memberToken) continue;
+
+        const linked = directory.get(memberToken);
+        if (linked?.isUser) continue;
+
+        const displayName = linked?.name || String(rawMember || '').trim();
+        upsertParticipant(participants, displayName, {
+            muted: Boolean(linked?.muted),
+            aliasTokens: [memberToken, linked?.avatar, linked?.id, linked?.name],
+        });
+    }
+
+    return true;
+}
+
+function collectDirectChatParticipant(ctx, participants, directory) {
+    const directTokens = [
+        ctx?.characterId,
+        ctx?.character_id,
+        ctx?.name2,
+        ctx?.characterName,
+        ctx?.character_name,
+    ];
+
+    for (const raw of directTokens) {
+        const token = normalizeToken(raw);
         if (!token) continue;
 
         const linked = directory.get(token);
         if (linked?.isUser) continue;
 
-        const displayName = linked?.name || String(rawMember || '').trim();
-        if (!displayName) continue;
-
-        const key = normalizeToken(displayName);
-        if (!participants.has(key)) {
-            participants.set(key, {
-                name: displayName,
-                aliases: new Set([key, token]),
-                muted: Boolean(linked?.muted),
-            });
-        } else {
-            participants.get(key)?.aliases?.add(token);
-            if (linked?.muted) participants.get(key).muted = true;
-        }
-    }
-}
-
-function collectParticipantsFromCharacters(ctx, participants) {
-    const chars = Array.isArray(ctx?.characters) ? ctx.characters : [];
-    for (const ch of chars) {
-        if (!ch) continue;
-        if (isTruthy(ch.is_user ?? ch.isUser)) continue;
-
-        const displayName = String(ch.name ?? ch.ch_name ?? '').trim();
-        if (!displayName) continue;
-
-        const key = normalizeToken(displayName);
-        if (!participants.has(key)) {
-            participants.set(key, {
-                name: displayName,
-                aliases: new Set([key]),
-                muted: isTruthy(ch.muted ?? ch.is_muted ?? ch.isMuted ?? ch.disabled ?? ch.is_disabled),
-            });
-        } else if (isTruthy(ch.muted ?? ch.is_muted ?? ch.isMuted ?? ch.disabled ?? ch.is_disabled)) {
-            participants.get(key).muted = true;
-        }
-
-        addToken(participants.get(key).aliases, ch.avatar);
-        addToken(participants.get(key).aliases, ch.id);
-        addToken(participants.get(key).aliases, ch.character_id);
+        const displayName = linked?.name || String(raw || '').trim();
+        upsertParticipant(participants, displayName, {
+            muted: Boolean(linked?.muted),
+            aliasTokens: [token, linked?.avatar, linked?.id, linked?.name],
+        });
     }
 }
 
@@ -115,19 +127,15 @@ function collectParticipantsFromChat(ctx, participants) {
         const speaker = String(msg.ch_name ?? msg.name ?? '').trim();
         if (!speaker) continue;
 
-        const key = normalizeToken(speaker);
-        if (!participants.has(key)) {
-            participants.set(key, {
-                name: speaker,
-                aliases: new Set([key]),
-                muted: false,
-            });
-        }
+        upsertParticipant(participants, speaker, {
+            aliasTokens: [msg.original_avatar, msg.avatar, msg.ch_name, msg.name, msg.character_id, msg.id],
+        });
     }
 }
 
 function collectMutedTokensFromArray(raw, mutedTokens) {
     if (!Array.isArray(raw)) return;
+
     for (const item of raw) {
         if (!item) continue;
 
@@ -165,19 +173,22 @@ export function createNonstopSpeakerPool({ getContext } = {}) {
     function getEligibleSpeakers() {
         const ctx = getContext?.() || {};
         const participants = new Map();
-
-        collectParticipantsFromChat(ctx, participants);
-        collectParticipantsFromCharacters(ctx, participants);
-
         const directory = getCharacterDirectory(ctx);
-        collectGroupMembers(ctx, participants, directory);
+
+        const hasGroupMembers = collectGroupParticipants(ctx, participants, directory);
+        if (!hasGroupMembers) {
+            collectDirectChatParticipant(ctx, participants, directory);
+        }
+
+        if (!participants.size) {
+            collectParticipantsFromChat(ctx, participants);
+        }
 
         const mutedTokens = collectMutedTokens(ctx);
         const speakers = [];
 
         participants.forEach(participant => {
-            if (!participant?.name) return;
-            if (participant.muted) return;
+            if (!participant?.name || participant.muted) return;
 
             for (const alias of participant.aliases || []) {
                 if (mutedTokens.has(alias)) return;
