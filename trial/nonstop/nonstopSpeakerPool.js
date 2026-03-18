@@ -9,6 +9,13 @@ function isTruthy(value) {
     return false;
 }
 
+function isFalsy(value) {
+    if (value === false) return true;
+    if (typeof value === 'number') return value === 0;
+    if (typeof value === 'string') return ['false', '0', 'no', 'off'].includes(value.trim().toLowerCase());
+    return false;
+}
+
 function addToken(set, value) {
     const token = normalizeToken(value);
     if (token) set.add(token);
@@ -16,6 +23,75 @@ function addToken(set, value) {
 
 function getActiveGroupId(ctx) {
     return ctx?.groupId ?? ctx?.group_id ?? null;
+}
+
+function getActiveGroup(ctx) {
+    const activeGroupId = String(getActiveGroupId(ctx) ?? '').trim();
+    if (!activeGroupId) return null;
+
+    const groups = Array.isArray(ctx?.groups) ? ctx.groups : [];
+    return groups.find(group => String(group?.id ?? group?.group_id ?? '').trim() === activeGroupId) || null;
+}
+
+function isMutedFlag(value) {
+    return isTruthy(value);
+}
+
+function hasDisabledSpeechFlag(record) {
+    if (!record || typeof record !== 'object') return false;
+
+    const directMuteKeys = [
+        'muted', 'is_muted', 'isMuted',
+        'disabled', 'is_disabled', 'isDisabled',
+        'chat_disabled', 'chatDisabled',
+        'talk_disabled', 'talkDisabled',
+        'speech_disabled', 'speechDisabled',
+        'message_disabled', 'messageDisabled',
+        'group_disabled', 'groupDisabled',
+    ];
+
+    for (const key of directMuteKeys) {
+        if (key in record && isMutedFlag(record[key])) return true;
+    }
+
+    const inverseKeys = [
+        'enabled', 'is_enabled', 'isEnabled',
+        'can_reply', 'canReply',
+        'allow_reply', 'allowReply',
+        'allow_replies', 'allowReplies',
+        'can_talk', 'canTalk',
+        'can_speak', 'canSpeak',
+    ];
+
+    for (const key of inverseKeys) {
+        if (key in record && isFalsy(record[key])) return true;
+    }
+
+    return false;
+}
+
+function getMemberTokens(record) {
+    const tokens = new Set();
+    if (record == null) return tokens;
+
+    if (typeof record === 'string' || typeof record === 'number') {
+        addToken(tokens, record);
+        return tokens;
+    }
+
+    addToken(tokens, record.name);
+    addToken(tokens, record.ch_name);
+    addToken(tokens, record.character_name);
+    addToken(tokens, record.avatar);
+    addToken(tokens, record.avatar_url);
+    addToken(tokens, record.avatarUrl);
+    addToken(tokens, record.id);
+    addToken(tokens, record.character_id);
+    addToken(tokens, record.characterId);
+    addToken(tokens, record.member_id);
+    addToken(tokens, record.memberId);
+
+    return tokens;
 }
 
 function getCharacterDirectory(ctx) {
@@ -36,7 +112,7 @@ function getCharacterDirectory(ctx) {
             avatar,
             id,
             isUser: isTruthy(ch.is_user ?? ch.isUser),
-            muted: isTruthy(ch.muted ?? ch.is_muted ?? ch.isMuted ?? ch.disabled ?? ch.is_disabled),
+            muted: hasDisabledSpeechFlag(ch),
         };
 
         if (name) directory.set(normalizeToken(name), row);
@@ -68,25 +144,24 @@ function upsertParticipant(participants, name, { aliasTokens = [], muted = false
 }
 
 function collectGroupParticipants(ctx, participants, directory) {
-    const activeGroupId = String(getActiveGroupId(ctx) ?? '').trim();
-    if (!activeGroupId) return false;
-
-    const groups = Array.isArray(ctx?.groups) ? ctx.groups : [];
-    const activeGroup = groups.find(group => String(group?.id ?? group?.group_id ?? '').trim() === activeGroupId);
+    const activeGroup = getActiveGroup(ctx);
     const rawMembers = activeGroup?.members;
     if (!Array.isArray(rawMembers)) return false;
 
     for (const rawMember of rawMembers) {
-        const memberToken = normalizeToken(rawMember);
-        if (!memberToken) continue;
-
-        const linked = directory.get(memberToken);
+        const aliasTokens = Array.from(getMemberTokens(rawMember));
+        const linked = aliasTokens.map(token => directory.get(token)).find(Boolean) || null;
         if (linked?.isUser) continue;
 
-        const displayName = linked?.name || String(rawMember || '').trim();
+        const displayName = typeof rawMember === 'object' && rawMember !== null
+            ? String(rawMember.name ?? rawMember.ch_name ?? linked?.name ?? '').trim()
+            : String(linked?.name ?? rawMember ?? '').trim();
+
+        if (!displayName) continue;
+
         upsertParticipant(participants, displayName, {
-            muted: Boolean(linked?.muted),
-            aliasTokens: [memberToken, linked?.avatar, linked?.id, linked?.name],
+            muted: hasDisabledSpeechFlag(rawMember) || Boolean(linked?.muted),
+            aliasTokens: [...aliasTokens, linked?.avatar, linked?.id, linked?.name],
         });
     }
 
@@ -144,20 +219,19 @@ function collectMutedTokensFromArray(raw, mutedTokens) {
             continue;
         }
 
-        const maybeMuted = item.muted ?? item.is_muted ?? item.isMuted ?? item.disabled ?? item.is_disabled;
-        if (maybeMuted != null && !isTruthy(maybeMuted)) continue;
+        if (!hasDisabledSpeechFlag(item)) {
+            const hasExplicitFlag = ['muted', 'is_muted', 'isMuted', 'disabled', 'is_disabled', 'isDisabled', 'enabled', 'is_enabled', 'isEnabled', 'can_reply', 'canReply', 'allow_reply', 'allowReply', 'allow_replies', 'allowReplies', 'can_talk', 'canTalk', 'can_speak', 'canSpeak'].some(key => key in item);
+            if (hasExplicitFlag) continue;
+        }
 
-        addToken(mutedTokens, item.name);
-        addToken(mutedTokens, item.ch_name);
-        addToken(mutedTokens, item.character_name);
-        addToken(mutedTokens, item.id);
-        addToken(mutedTokens, item.avatar);
+        for (const token of getMemberTokens(item)) mutedTokens.add(token);
     }
 }
 
 function collectMutedTokens(ctx) {
     const mutedTokens = new Set();
     const metadata = ctx?.chat_metadata ?? ctx?.chatMetadata ?? {};
+    const activeGroup = getActiveGroup(ctx);
 
     collectMutedTokensFromArray(metadata?.muted_members, mutedTokens);
     collectMutedTokensFromArray(metadata?.mutedMembers, mutedTokens);
@@ -165,6 +239,16 @@ function collectMutedTokens(ctx) {
     collectMutedTokensFromArray(metadata?.mutedCharacters, mutedTokens);
     collectMutedTokensFromArray(metadata?.disabled_members, mutedTokens);
     collectMutedTokensFromArray(metadata?.disabledMembers, mutedTokens);
+    collectMutedTokensFromArray(activeGroup?.muted_members, mutedTokens);
+    collectMutedTokensFromArray(activeGroup?.mutedMembers, mutedTokens);
+    collectMutedTokensFromArray(activeGroup?.disabled_members, mutedTokens);
+    collectMutedTokensFromArray(activeGroup?.disabledMembers, mutedTokens);
+
+    const rawMembers = Array.isArray(activeGroup?.members) ? activeGroup.members : [];
+    for (const member of rawMembers) {
+        if (!hasDisabledSpeechFlag(member)) continue;
+        for (const token of getMemberTokens(member)) mutedTokens.add(token);
+    }
 
     return mutedTokens;
 }
