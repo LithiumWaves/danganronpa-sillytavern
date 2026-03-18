@@ -1,84 +1,107 @@
 import { createNonstopDebateDebugRuntime } from './nonstopDebateDebugRuntime.js';
-
-function ensureOverlay() {
-    let overlay = document.getElementById('dangan-nsd-debug-overlay');
-    if (overlay) return overlay;
-
-    overlay = document.createElement('section');
-    overlay.id = 'dangan-nsd-debug-overlay';
-    overlay.className = 'dangan-nsd-debug-overlay';
-    overlay.setAttribute('aria-hidden', 'true');
-    overlay.innerHTML = `
-        <div class="dangan-nsd-debug-card" role="status" aria-live="polite">
-            <div class="dangan-nsd-debug-title">NONSTOP DEBATE (DEBUG)</div>
-            <div class="dangan-nsd-debug-subtitle">New runtime path is now wired.</div>
-            <button id="dangan-nsd-debug-exit" type="button">EXIT NSD DEBUG</button>
-        </div>
-    `;
-
-    document.body.appendChild(overlay);
-    return overlay;
-}
+import { createNonstopDebateDebugStage } from './nonstopDebateDebugStage.js';
 
 export function createNonstopDebateDebugStarter({ setVnEnabled, getContext } = {}) {
     let active = false;
+    let advancing = false;
     const runtime = createNonstopDebateDebugRuntime({ getContext });
+    const stage = createNonstopDebateDebugStage();
 
-    function applyUiState(snapshot) {
-        const overlay = ensureOverlay();
-        overlay.classList.add('active');
-        overlay.setAttribute('aria-hidden', 'false');
-
-        const subtitle = overlay.querySelector('.dangan-nsd-debug-subtitle');
-        if (subtitle) {
-            const names = snapshot.eligibleSpeakers.join(', ');
-            subtitle.textContent = names
-                ? `Eligible speakers (${snapshot.eligibleSpeakers.length}): ${names}`
-                : 'No eligible unmuted speakers in this chat.';
-        }
-
+    function applyUiState() {
         document.body.classList.add('dangan-nsd-debug-active');
-
-        const chat = document.getElementById('chat');
-        chat?.classList.add('dangan-nsd-chat-hidden');
-
+        stage.show();
         setVnEnabled?.(false);
     }
 
     function clearUiState() {
-        const overlay = document.getElementById('dangan-nsd-debug-overlay');
-        overlay?.classList.remove('active');
-        overlay?.setAttribute('aria-hidden', 'true');
-
         document.body.classList.remove('dangan-nsd-debug-active');
-        const chat = document.getElementById('chat');
-        chat?.classList.remove('dangan-nsd-chat-hidden');
+        stage.clear();
+        stage.hide();
+    }
+
+    async function next({ source = 'manual_advance' } = {}) {
+        if (!active) return { advanced: false, reason: 'not_active', source };
+        if (advancing) return { advanced: false, reason: 'advance_in_progress', source };
+
+        advancing = true;
+        try {
+            const result = await runtime.advance();
+            if (result?.advanced && result?.line) {
+                stage.spawnLine({
+                    speaker: result.line.speaker,
+                    quote: result.line.quote,
+                    turnIndex: result.progress || 0,
+                    loopCycle: result.replayCycle || 0,
+                });
+            }
+            return { ...result, source };
+        } finally {
+            advancing = false;
+        }
     }
 
     function start({ source = 'debug_button' } = {}) {
-        const snapshot = runtime.buildStartSnapshot();
-        if (!snapshot.eligibleSpeakers.length) {
-            return { started: false, reason: 'no_eligible_speakers', source };
+        if (active) {
+            return { started: false, reason: 'already_active', source, session: runtime.getSession() };
         }
 
+        const result = runtime.startSession();
+        if (!result.started) return { ...result, source };
+
         active = true;
-        applyUiState(snapshot);
-        return { started: true, source, eligibleSpeakers: snapshot.eligibleSpeakers };
+        applyUiState();
+
+        window.danganNsdDebug = {
+            next: () => next({ source: 'window_api' }),
+            stop: () => stop({ reason: 'window_api' }),
+            getState: () => runtime.getSession(),
+        };
+
+        console.info('[Dangan][NSD] Started simplified NSD debug session.', {
+            targetTurns: result.targetTurns,
+            eligibleSpeakers: result.eligibleSpeakers,
+            controls: {
+                advanceKeys: ['Space', 'Enter', 'N'],
+                stopKey: 'Escape',
+                windowApi: 'window.danganNsdDebug.next() / stop() / getState()',
+            },
+        });
+
+        return { ...result, source };
     }
 
     function stop({ reason = 'manual_stop' } = {}) {
         if (!active) return { stopped: false, reason: 'not_active' };
         active = false;
+        runtime.stopSession(reason);
         clearUiState();
+        delete window.danganNsdDebug;
         return { stopped: true, reason };
     }
 
     function bindEvents() {
-        document.addEventListener('click', event => {
+        document.addEventListener('keydown', event => {
+            if (!active) return;
             const target = event.target;
-            if (!(target instanceof Element)) return;
-            if (!target.closest('#dangan-nsd-debug-exit')) return;
-            stop({ reason: 'exit_button' });
+            const isTypingTarget = target instanceof HTMLElement && (
+                target.tagName === 'INPUT'
+                || target.tagName === 'TEXTAREA'
+                || target.isContentEditable
+            );
+            if (isTypingTarget) return;
+
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                stop({ reason: 'escape_key' });
+                return;
+            }
+
+            if (event.key === ' ' || event.key === 'Enter' || event.key.toLowerCase() === 'n') {
+                event.preventDefault();
+                next({ source: 'keyboard' }).catch(err => {
+                    console.warn('[Dangan][NSD] Failed to advance simplified NSD session.', err);
+                });
+            }
         });
     }
 
@@ -87,6 +110,8 @@ export function createNonstopDebateDebugStarter({ setVnEnabled, getContext } = {
     return {
         start,
         stop,
+        next,
         isActive: () => active,
+        getState: () => runtime.getSession(),
     };
 }
