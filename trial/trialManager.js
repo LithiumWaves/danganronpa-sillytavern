@@ -15,6 +15,8 @@ export function createTrialManager(deps) {
         vnModeController,
         getTruthBullets,
         generateTrialDialogue,
+        getCharacterSourceText,
+        getSpriteUrl,
         playSfx,
         getSfx,
         characters,
@@ -26,12 +28,18 @@ export function createTrialManager(deps) {
     let debateOverlay = null;
     let reticleEl = null;
     let cutsceneOverlay = null;
-    let floatingStatements = [];
-    let animationFrameId = null;
-    let sectionTimerId = null;
+    let statementEl = null;
+    let statementAnimation = null;
+    let playbackTimerId = null;
     let currentSpeaker = null;
     let currentWeakPointInfo = null;
     let preparedDebateSections = null;
+    let debateSectionsActive = null;
+    let debateSectionIndex = 0;
+    let debatePartIndex = 0;
+    let portraitImgEl = null;
+    let portraitToken = 0;
+    let portraitSpeaker = null;
 
     function setState(newState) {
         console.log(`[Dangan][Trial] State change: ${currentState} -> ${newState}`);
@@ -129,10 +137,14 @@ export function createTrialManager(deps) {
                 <div id="dangan-speaker-name">...</div>
                 <div id="dangan-section-count">SECTION 1 / ${currentDebateSections}</div>
             </div>
+            <div class="dangan-trial-portrait">
+                <img id="dangan-trial-portrait-img" alt="" />
+            </div>
             <div class="dangan-trial-bottom-left" id="dangan-truth-bullet-cylinder"></div>
         `;
 
         document.body.appendChild(debateOverlay);
+        portraitImgEl = debateOverlay.querySelector('#dangan-trial-portrait-img');
 
         debateOverlay.onmousemove = (e) => {
             reticleEl.style.left = `${e.clientX}px`;
@@ -155,7 +167,7 @@ export function createTrialManager(deps) {
         };
 
         renderCylinder();
-        startFloatingTextLoop(preparedDebateSections);
+        startDebatePlayback(preparedDebateSections);
     }
 
     function renderCylinder() {
@@ -172,103 +184,158 @@ export function createTrialManager(deps) {
         `;
     }
 
-    function startFloatingTextLoop(debateSections) {
-        const fallbackMessages = getRecentMessages();
-        const sections =
-            Array.isArray(debateSections) && debateSections.length
-                ? debateSections
-                : null;
+    function startDebatePlayback(prepared) {
+        debateSectionsActive = buildFallbackSectionsIfNeeded(prepared);
+        if (!debateSectionsActive?.length) return;
 
-        let currentSectionIndex = 0;
-
-        const tick = () => {
-            if (currentState !== TrialPhases.NON_STOP_DEBATE) return;
-
-            if (sections) {
-                const section = sections[currentSectionIndex % sections.length];
-                const speakerName = section.speakerName || '???';
-                document.getElementById('dangan-speaker-name').textContent = String(speakerName).toUpperCase();
-                document.getElementById('dangan-section-count').textContent = `SECTION ${(currentSectionIndex % currentDebateSections) + 1} / ${currentDebateSections}`;
-
-                section.parts.forEach(part => {
-                    createFloatingStatement(part.text, Boolean(part.isWeakPoint), currentSectionIndex);
-                });
-
-                currentSectionIndex = (currentSectionIndex + 1) % currentDebateSections;
-            } else if (fallbackMessages.length) {
-                const msg = fallbackMessages[Math.floor(Math.random() * fallbackMessages.length)];
-                const speakerName = msg.name || '???';
-                document.getElementById('dangan-speaker-name').textContent = speakerName.toUpperCase();
-                document.getElementById('dangan-section-count').textContent = `SECTION ${(currentSectionIndex % currentDebateSections) + 1} / ${currentDebateSections}`;
-
-                const chunks = splitIntoChunks(String(msg.text || ''));
-                const weakPointIndex = Math.floor(Math.random() * chunks.length);
-
-                chunks.forEach((chunk, i) => {
-                    createFloatingStatement(chunk, i === weakPointIndex, currentSectionIndex);
-                });
-
-                currentSectionIndex = (currentSectionIndex + 1) % currentDebateSections;
-            } else {
-                const fallback = sanitizeDebateLine(buildFallbackStatement({ speakerName: '???', context: [] }));
-                const parts = splitStatementIntoParts(fallback);
-                document.getElementById('dangan-speaker-name').textContent = '...';
-                document.getElementById('dangan-section-count').textContent = `SECTION ${(currentSectionIndex % currentDebateSections) + 1} / ${currentDebateSections}`;
-                parts.forEach(part => {
-                    createFloatingStatement(part.text, Boolean(part.isWeakPoint), currentSectionIndex);
-                });
-                currentSectionIndex = (currentSectionIndex + 1) % currentDebateSections;
-            }
-
-            sectionTimerId = window.setTimeout(tick, 4000);
-        };
-
-        tick();
-        animateFloatingText();
+        debateSectionIndex = 0;
+        debatePartIndex = 0;
+        playNextChunk();
     }
 
-    function createFloatingStatement(text, isWeakPoint, sectionIndex) {
+    function buildFallbackSectionsIfNeeded(prepared) {
+        if (Array.isArray(prepared) && prepared.length) return prepared;
+
+        const messages = getRecentMessages();
+        if (!messages.length) return null;
+
+        const sections = [];
+        for (let i = 0; i < currentDebateSections; i++) {
+            const msg = messages[i % messages.length];
+            const speakerName = msg.name || '???';
+            const chunks = splitIntoChunks(String(msg.text || ''));
+            const weakPointIndex = chunks.length ? Math.floor(Math.random() * chunks.length) : 0;
+            const parts = chunks.map((t, idx) => ({ text: t, isWeakPoint: idx === weakPointIndex }));
+            sections.push({ speakerName, statement: msg.text, parts });
+        }
+        return sections;
+    }
+
+    function getLaneY(partIndex) {
+        const base = Math.round((window.innerHeight || 800) * 0.58);
+        const offsets = [-70, 0, 70];
+        return base + offsets[Math.abs(partIndex) % offsets.length];
+    }
+
+    function playNextChunk() {
+        if (currentState !== TrialPhases.NON_STOP_DEBATE) return;
+        if (!debateSectionsActive?.length) return;
+
+        const section = debateSectionsActive[debateSectionIndex % debateSectionsActive.length];
+        const speakerName = section?.speakerName || '???';
+        const parts = Array.isArray(section?.parts) ? section.parts : [];
+        if (!parts.length) return;
+
+        const part = parts[debatePartIndex % parts.length];
+
+        const speakerEl = document.getElementById('dangan-speaker-name');
+        const countEl = document.getElementById('dangan-section-count');
+        if (speakerEl) speakerEl.textContent = String(speakerName).toUpperCase();
+        if (countEl) countEl.textContent = `SECTION ${(debateSectionIndex % currentDebateSections) + 1} / ${currentDebateSections}`;
+
+        void updateSpeakerPortrait(speakerName);
+
+        showStatementChunk({
+            text: part.text,
+            isWeakPoint: Boolean(part.isWeakPoint),
+            laneY: getLaneY(debatePartIndex),
+        }).then(() => {
+            if (currentState !== TrialPhases.NON_STOP_DEBATE) return;
+            debatePartIndex++;
+            if (debatePartIndex >= parts.length) {
+                debatePartIndex = 0;
+                debateSectionIndex = (debateSectionIndex + 1) % currentDebateSections;
+            }
+            playbackTimerId = window.setTimeout(playNextChunk, 120);
+        });
+    }
+
+    async function updateSpeakerPortrait(speakerName) {
+        if (!portraitImgEl) return;
+        const name = String(speakerName || '').trim();
+        if (!name) return;
+        if (portraitSpeaker === name) return;
+        portraitSpeaker = name;
+
+        const token = ++portraitToken;
+
+        if (typeof getSpriteUrl !== 'function') {
+            portraitImgEl.style.display = 'none';
+            return;
+        }
+
+        try {
+            const url = await getSpriteUrl(name);
+            if (token !== portraitToken) return;
+            if (!url) {
+                portraitImgEl.style.display = 'none';
+                return;
+            }
+            portraitImgEl.src = url;
+            portraitImgEl.style.display = 'block';
+        } catch {
+            if (token !== portraitToken) return;
+            portraitImgEl.style.display = 'none';
+        }
+    }
+
+    function showStatementChunk({ text, isWeakPoint, laneY }) {
+        if (!debateOverlay) return Promise.resolve();
+
+        if (playbackTimerId) window.clearTimeout(playbackTimerId);
+        playbackTimerId = null;
+
+        if (statementAnimation) {
+            try { statementAnimation.cancel(); } catch {}
+            statementAnimation = null;
+        }
+        if (statementEl) {
+            statementEl.remove();
+            statementEl = null;
+        }
+        currentWeakPointInfo = null;
+
         const el = document.createElement('div');
-        el.className = 'dangan-floating-statement';
+        el.className = 'dangan-floating-statement dangan-statement-single';
         if (isWeakPoint) {
             el.classList.add('dangan-weak-point');
-            currentWeakPointInfo = { text, element: el };
         }
         el.textContent = stripSurroundingQuotes(String(text || ''));
-        
-        // Random start position
-        const startX = window.innerWidth + 100;
-        const startY = 100 + Math.random() * (window.innerHeight - 300);
-        
-        el.style.left = `${startX}px`;
-        el.style.top = `${startY}px`;
-        
+        el.style.top = `${laneY}px`;
+        el.style.left = `0px`;
         debateOverlay.appendChild(el);
-        
-        floatingStatements.push({
-            element: el,
-            x: startX,
-            y: startY,
-            speed: 2 + Math.random() * 2,
-            isWeakPoint
+
+        if (isWeakPoint) {
+            currentWeakPointInfo = { text: el.textContent, element: el };
+        }
+
+        const startX = (window.innerWidth || 1200) + 220;
+        const endX = -(el.getBoundingClientRect().width + 240);
+        const distance = Math.abs(startX - endX);
+        const duration = Math.round(Math.max(1800, Math.min(3800, (distance / 0.7))));
+
+        statementEl = el;
+        statementAnimation = el.animate(
+            [
+                { transform: `translateX(${startX}px) skewX(-12deg)`, opacity: 0 },
+                { transform: `translateX(${startX - 120}px) skewX(-12deg)`, opacity: 1, offset: 0.08 },
+                { transform: `translateX(${endX}px) skewX(-12deg)`, opacity: 1 },
+            ],
+            { duration, easing: 'linear', fill: 'forwards' }
+        );
+
+        return new Promise(resolve => {
+            statementAnimation.onfinish = () => {
+                if (statementEl === el) {
+                    el.remove();
+                    statementEl = null;
+                    statementAnimation = null;
+                    if (currentWeakPointInfo?.element === el) currentWeakPointInfo = null;
+                }
+                resolve();
+            };
+            statementAnimation.oncancel = () => resolve();
         });
-    }
-
-    function animateFloatingText() {
-        if (currentState !== TrialPhases.NON_STOP_DEBATE) return;
-
-        floatingStatements.forEach((stmt, index) => {
-            stmt.x -= stmt.speed;
-            stmt.element.style.left = `${stmt.x}px`;
-            
-            // Remove if off screen
-            if (stmt.x < -1000) {
-                stmt.element.remove();
-                floatingStatements.splice(index, 1);
-            }
-        });
-
-        animationFrameId = requestAnimationFrame(animateFloatingText);
     }
 
     function handleShoot(e) {
@@ -276,36 +343,37 @@ export function createTrialManager(deps) {
         const currentBullet = bullets[selectedTruthBulletIndex];
         if (!currentBullet) return;
 
-        // Check if we hit a weak point
-        const hitWeakPoint = floatingStatements.find(stmt => {
-            if (!stmt.isWeakPoint) return false;
-            const rect = stmt.element.getBoundingClientRect();
-            const padding = 20; // Extra hit area
-            return (
+        const wp = currentWeakPointInfo?.element;
+        if (wp instanceof HTMLElement) {
+            const rect = wp.getBoundingClientRect();
+            const padding = 26;
+            const hit = (
                 e.clientX >= rect.left - padding &&
                 e.clientX <= rect.right + padding &&
                 e.clientY >= rect.top - padding &&
                 e.clientY <= rect.bottom + padding
             );
-        });
+            if (!hit) {
+                playSfx?.(getSfx?.().miss || 'miss');
+                return;
+            }
 
-        if (hitWeakPoint) {
             console.log('[Dangan][Trial] CRITICAL HIT!');
             playSfx?.(getSfx?.().hit || 'hit'); 
             
             // Highlight the hit weak point
-            hitWeakPoint.element.style.color = '#ff0000';
-            hitWeakPoint.element.style.fontSize = '48px';
-            hitWeakPoint.element.style.fontWeight = 'bold';
+            wp.style.color = '#ff0000';
+            wp.style.fontSize = '48px';
+            wp.style.fontWeight = 'bold';
             
             setTimeout(() => {
                 setState(TrialPhases.TRUTH_BULLET_EXPLANATION);
-                showExplanationUI(currentBullet, hitWeakPoint.element.textContent);
+                showExplanationUI(currentBullet, wp.textContent);
             }, 1000);
-        } else {
-            console.log('[Dangan][Trial] Miss...');
-            playSfx?.(getSfx?.().miss || 'miss');
+            return;
         }
+
+        playSfx?.(getSfx?.().miss || 'miss');
     }
 
     function showExplanationUI(bullet, refutedText) {
@@ -374,16 +442,23 @@ export function createTrialManager(deps) {
     }
 
     function cleanupDebateUI() {
-        if (animationFrameId) cancelAnimationFrame(animationFrameId);
-        animationFrameId = null;
-        if (sectionTimerId) window.clearTimeout(sectionTimerId);
-        sectionTimerId = null;
-        floatingStatements.forEach(s => s.element.remove());
-        floatingStatements = [];
+        if (playbackTimerId) window.clearTimeout(playbackTimerId);
+        playbackTimerId = null;
+        if (statementAnimation) {
+            try { statementAnimation.cancel(); } catch {}
+            statementAnimation = null;
+        }
+        if (statementEl) {
+            statementEl.remove();
+            statementEl = null;
+        }
         if (debateOverlay) {
             debateOverlay.remove();
             debateOverlay = null;
         }
+        portraitImgEl = null;
+        portraitSpeaker = null;
+        portraitToken++;
         if (cutsceneOverlay) {
             cutsceneOverlay.remove();
             cutsceneOverlay = null;
@@ -464,7 +539,6 @@ export function createTrialManager(deps) {
     }
 
     function pickSpeakersFromContext(context) {
-        const groupMembers = getGroupMemberNames();
         const counts = new Map();
         for (const m of context) {
             if (m.isUser) continue;
@@ -473,19 +547,9 @@ export function createTrialManager(deps) {
             counts.set(name, (counts.get(name) || 0) + 1);
         }
 
-        const fromContext = Array.from(counts.entries())
+        return Array.from(counts.entries())
             .sort((a, b) => b[1] - a[1])
             .map(([name, count]) => ({ name, weight: count }));
-
-        if (!groupMembers.length) {
-            return fromContext.slice(0, 8);
-        }
-
-        const memberSet = new Set(groupMembers.map(n => String(n).trim()).filter(Boolean));
-        const inGroup = fromContext.filter(s => memberSet.has(s.name));
-        if (inGroup.length) return inGroup.slice(0, 10);
-
-        return Array.from(memberSet).slice(0, 10).map(name => ({ name, weight: 1 }));
     }
 
     function pickSpeakerWeighted(speakers) {
@@ -504,20 +568,30 @@ export function createTrialManager(deps) {
             .map(m => `${m.isUser ? 'YOU' : m.name}: ${m.text}`)
             .join('\n');
 
+        const sourceText = typeof getCharacterSourceText === 'function'
+            ? String(getCharacterSourceText(speakerName) || '').trim()
+            : '';
+
         const prompt = `
-You are writing a Danganronpa-style Non-stop Debate statement.
+You are ${speakerName}.
+
+Write the next spoken line for a Danganronpa-style Non-stop Debate.
 
 Rules:
-- Output ONLY one line of dialogue wrapped in double quotes.
-- 1–2 sentences, assertive, courtroom tone.
+- Stay fully in character.
+- Output ONLY spoken dialogue in double quotes.
+- No narration, no actions, no inner thoughts.
+- 1–2 sentences, assertive courtroom tone.
 - Use facts and implications from the context.
 - Inside the quotes, mark EXACTLY ONE clause as a possible weak point using [[WEAK]]...[[/WEAK]].
-- No other markup, no speaker labels.
+- No other markup and no speaker labels.
 
-CONTEXT:
+CHARACTER DATA:
+${sourceText || 'NO CHARACTER DATA AVAILABLE.'}
+
+RECENT CONTEXT:
 ${contextLines}
 
-SPEAKER: ${speakerName}
 SECTION: ${sectionIndex + 1} / ${sectionsCount}
 `.trim();
 
@@ -650,27 +724,6 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
                 text,
             };
         });
-    }
-
-    function getGroupMemberNames() {
-        const ctx = window.SillyTavern?.getContext?.();
-        if (!ctx) return [];
-        const groupId = ctx.groupId ?? ctx.group_id;
-        if (groupId == null || groupId === '') return [];
-
-        const chars = Array.isArray(ctx.characters) ? ctx.characters : [];
-        const fromCharacters = chars
-            .filter(c => !(c?.is_user || c?.isUser))
-            .map(c => String(c?.name || '').trim())
-            .filter(Boolean);
-        if (fromCharacters.length) return Array.from(new Set(fromCharacters));
-
-        const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
-        const fromChat = chat
-            .filter(m => !(m?.is_user || m?.isUser) && !(m?.is_system || m?.isSystem))
-            .map(m => String(m?.ch_name || m?.name || '').trim())
-            .filter(Boolean);
-        return Array.from(new Set(fromChat));
     }
 
     function sampleWeightedWithoutReplacement(items, count) {

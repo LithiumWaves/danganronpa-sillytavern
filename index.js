@@ -5761,6 +5761,8 @@ debugSTGlobals();
             vnModeController,
             getTruthBullets,
             generateTrialDialogue,
+            getCharacterSourceText,
+            getSpriteUrl,
             playSfx,
             getSfx: () => sfx,
             characters,
