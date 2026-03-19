@@ -647,7 +647,7 @@ export function createTrialManager(deps) {
     }
 
     function pickSpeakersFromContext(context) {
-        const members = getGroupChatMembers(context);
+        const members = getChatCardMembers();
         if (members.length) {
             const counts = new Map();
             for (const m of context) {
@@ -989,28 +989,16 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
         return false;
     }
 
-    function getGroupChatMembers(context) {
+    function getChatCardMembers() {
         const ctx = window.SillyTavern?.getContext?.();
         if (!ctx) return [];
-        const groupId = ctx.groupId ?? ctx.group_id;
-        if (groupId == null || groupId === '') return [];
-
-        const activeKeys = new Set(
-            (Array.isArray(context) ? context : [])
-                .filter(m => m && !m.isUser)
-                .map(m => normalizeLooseName(m.name))
-                .filter(Boolean)
-        );
 
         const chars = Array.isArray(ctx.characters) ? ctx.characters : [];
         const members = chars
             .filter(c => !(c?.is_user || c?.isUser))
             .map(c => String(c?.name || '').trim())
             .filter(Boolean)
-            .filter(name => {
-                if (!activeKeys.size) return false;
-                return activeKeys.has(normalizeLooseName(name));
-            });
+            .filter(name => !isGroupMemberMuted(name));
 
         return Array.from(new Set(members)).map(name => ({ name }));
     }
