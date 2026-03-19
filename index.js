@@ -5014,16 +5014,6 @@ jQuery(async () => {
         normalizeSettingsHeaderActionButtons();
         ensureGlobalDebugUi();
         vnModeController = createVnModeController();
-        trialManager = createTrialManager({
-            extensionName,
-            extensionSettings: extension_settings,
-            saveSettingsDebounced,
-            vnModeController,
-            getTruthBullets,
-            playSfx,
-            getSfx: () => sfx,
-            characters,
-        });
         monokumaAnnouncementController = createMonokumaAnnouncementController({
             extensionFolderPath,
             shouldPlayAudio: () => Number(extension_settings[extensionName]?.announcementVolume ?? 65) > 0,
@@ -5680,20 +5670,25 @@ itemsPanelController.renderSkillsItemsPanel();
     //socialPanelController.renderSocialPanel();
 //});
 
-$("#send_button").on("click", function () {
-            const text = $("#send_textarea").val();
-            trialManager?.onMessageSent(text);
-        });
-
-        $("#send_textarea").on("keydown", function (e) {
-            if (e.key === "Enter" && !e.shiftKey) {
-                const text = $(this).val();
+debugSTGlobals();
+        
+        try {
+            $("#send_button").on("click", function () {
+                const text = $("#send_textarea").val();
                 trialManager?.onMessageSent(text);
-            }
-        });
+            });
 
-        debugSTGlobals();
-initTruthBullets({
+            $("#send_textarea").on("keydown", function (e) {
+                if (e.key === "Enter" && !e.shiftKey) {
+                    const text = $(this).val();
+                    trialManager?.onMessageSent(text);
+                }
+            });
+        } catch (e) {
+            console.error(`[${extensionName}] ❌ Chat hooks failed:`, e);
+        }
+
+        initTruthBullets({
     extension_settings,
     saveSettingsDebounced,
     sfx,
@@ -5726,6 +5721,21 @@ initTruthBullets({
 });
 
     vfxCleanup = initVfxSystem();
+
+    try {
+        trialManager = createTrialManager({
+            extensionName,
+            extensionSettings: extension_settings,
+            saveSettingsDebounced,
+            vnModeController,
+            getTruthBullets,
+            playSfx,
+            getSfx: () => sfx,
+            characters,
+        });
+    } catch (e) {
+        console.error(`[${extensionName}] ❌ Trial Manager init failed:`, e);
+    }
 
     } catch (error) {
         bootstrapDebugUi();
