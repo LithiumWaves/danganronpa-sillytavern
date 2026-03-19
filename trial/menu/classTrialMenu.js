@@ -1,9 +1,5 @@
-export function createClassTrialMenuController({ extensionName, extensionSettings, buildExtensionPathCandidates, getTrialSkillEntries, toggleTrialSkillEquip, playSfx, getSfx, onOpen, onClose }) {
-    const candidateTracks = buildExtensionPathCandidates()
-        .map(basePath => `${basePath}/assets/classtrial/trialunderground.mp3`);
-
+export function createClassTrialMenuController({ extensionName, extensionSettings, buildExtensionPathCandidates, getTrialSkillEntries, toggleTrialSkillEquip, playSfx, getSfx, onOpen, onClose, getPreparationTracks }) {
     let activeAudio = null;
-    let activeTrackIndex = -1;
 
     function escapeHtml(value) {
         return String(value || "")
@@ -14,38 +10,28 @@ export function createClassTrialMenuController({ extensionName, extensionSetting
             .replace(/'/g, "&#39;");
     }
 
-    function moveToNextTrack() {
-        if (!activeAudio) return;
-        if (activeTrackIndex >= candidateTracks.length - 1) return;
-        activeTrackIndex += 1;
-        activeAudio.src = candidateTracks[activeTrackIndex];
-        activeAudio.load();
-    }
-
     function stopTrack() {
         if (!activeAudio) return;
         activeAudio.pause();
         activeAudio.currentTime = 0;
+        activeAudio = null;
     }
 
     function playTrack() {
-        if (!extensionSettings?.[extensionName]?.monopadSounds) return;
-        if (!candidateTracks.length) return;
+        const tracks = typeof getPreparationTracks === "function" ? getPreparationTracks() : [];
+        if (!tracks.length) return;
 
-        if (!activeAudio) {
-            activeTrackIndex = 0;
-            activeAudio = new Audio(candidateTracks[activeTrackIndex]);
-            activeAudio.loop = true;
-            activeAudio.preload = "auto";
-            activeAudio.volume = 0.42;
-            activeAudio.addEventListener("error", () => {
-                const previousIndex = activeTrackIndex;
-                moveToNextTrack();
-                if (previousIndex === activeTrackIndex) return;
-                activeAudio.play().catch(() => {});
-            });
+        const path = tracks[Math.floor(Math.random() * tracks.length)];
+        if (!path) return;
+
+        if (activeAudio) {
+            activeAudio.pause();
+            activeAudio = null;
         }
 
+        activeAudio = new Audio(path);
+        activeAudio.loop = true;
+        activeAudio.volume = 0.42;
         activeAudio.play().catch(() => {});
     }
 

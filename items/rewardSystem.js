@@ -114,6 +114,32 @@ export function createRewardSystem({ extensionName, extensionFolderPath, extensi
         }
     }
 
+    function deductMonocoins(amount = 0, reason = "") {
+        const penalty = Math.max(0, Number(amount || 0));
+        if (!penalty) return;
+
+        const ext = ensureExtensionState();
+        const current = Number(ext.inventory.monocoins || 0);
+        ext.inventory.monocoins = Math.max(0, current - penalty);
+
+        saveSettingsDebounced();
+        getItemsPanelController()?.renderSkillsItemsPanel();
+
+        // Show toast with negative prefix and red styling
+        const toast = ensureMonocoinToast();
+        const text = toast.querySelector(".monocoin-toast-text");
+        if (text) text.textContent = `-${penalty} MONOCOINS`;
+        toast.classList.remove("show");
+        void toast.offsetWidth;
+        toast.classList.add("show");
+        clearTimeout(monocoinToastTimeout);
+        monocoinToastTimeout = setTimeout(() => toast.classList.remove("show"), 1400);
+
+        if (reason) {
+            console.log(`[${extensionName}] Deducted ${penalty} Monocoins (${reason}).`);
+        }
+    }
+
     function awardXp(amount = 0, reason = "") {
         const reward = Math.max(0, Number(amount || 0));
         if (!reward) return;
@@ -209,6 +235,7 @@ export function createRewardSystem({ extensionName, extensionFolderPath, extensi
 
     return {
         awardMonocoins,
+        deductMonocoins,
         awardTrustFragments,
         awardXp,
         increaseTrustWithRewards,
