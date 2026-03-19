@@ -415,21 +415,22 @@ export function createTrialManager(deps) {
         const ctx = window.SillyTavern?.getContext?.();
         const chat = Array.isArray(ctx?.chat) ? ctx.chat : null;
 
-        const mapped = (chat || readDomChatMessages(30))
-            .map(m => ({
-                isUser: Boolean(m?.is_user ?? m?.isUser),
-                isSystem: Boolean(m?.is_system ?? m?.isSystem),
-                name: String(m?.name || m?.ch_name || m?.character_name || m?.sender || (m?.is_user ? 'You' : '???')),
-                text: String(m?.mes || m?.text || m?.message || '').trim(),
-            }))
-            .filter(m => !m.isUser && !m.isSystem)
-            .map(m => ({
-                name: m.name,
-                text: extractDialogueOnly(m.text),
-            }))
-            .filter(m => m.text);
+        const ctxMessages = chat ? mapContextChatMessages(chat) : [];
+        const domMessages = ctxMessages.length ? [] : mapDomMessages(readDomChatMessages(30));
+        const source = (ctxMessages.length ? ctxMessages : domMessages)
+            .filter(m => !m.isUser && !m.isSystem && m.text);
 
-        return mapped.slice(-10);
+        const mapped = source
+            .map(m => {
+                const dialogueOnly = extractDialogueOnly(m.text);
+                return {
+                    name: m.name,
+                    text: dialogueOnly || m.text,
+                };
+            })
+            .filter(m => m.name && m.text);
+
+        return mapped.slice(-12);
     }
 
     function splitIntoChunks(text) {
@@ -526,19 +527,49 @@ export function createTrialManager(deps) {
     function getContextMessagesForTrial() {
         const ctx = window.SillyTavern?.getContext?.();
         const chat = Array.isArray(ctx?.chat) ? ctx.chat : null;
-        const source = chat || readDomChatMessages(40);
+        const ctxMessages = chat ? mapContextChatMessages(chat) : [];
+        const domMessages = ctxMessages.length ? [] : mapDomMessages(readDomChatMessages(40));
+        const source = (ctxMessages.length ? ctxMessages : domMessages)
+            .filter(m => !m.isSystem && m.text)
+            .slice(-30);
+
         return source
-            .filter(m => !m?.is_system && !m?.isSystem)
-            .slice(-30)
             .map(m => ({
-                isUser: Boolean(m?.is_user ?? m?.isUser),
-                name: String(m?.name || m?.ch_name || m?.character_name || m?.sender || (m?.is_user ? 'You' : '???')),
-                text: String(m?.mes || m?.text || m?.message || '').trim(),
+                isUser: m.isUser,
+                name: m.name,
+                text: m.text,
             }))
             .filter(m => m.text);
     }
 
     function pickSpeakersFromContext(context) {
+        const members = getGroupChatMembers();
+        if (members.length) {
+            const counts = new Map();
+            for (const m of context) {
+                if (m.isUser) continue;
+                const rawName = String(m.name || '').trim();
+                if (!rawName) continue;
+                const key = normalizeLooseName(rawName);
+                counts.set(key, (counts.get(key) || 0) + 1);
+            }
+
+            const weighted = members.map(member => {
+                const key = normalizeLooseName(member.name);
+                const count = counts.get(key) || 0;
+                return { name: member.name, weight: Math.max(1, count) };
+            });
+
+            const hasRealCounts = weighted.some(s => (counts.get(normalizeLooseName(s.name)) || 0) > 0);
+            const pool = hasRealCounts
+                ? weighted.filter(s => (counts.get(normalizeLooseName(s.name)) || 0) > 0)
+                : weighted;
+
+            return pool
+                .filter(s => !isGroupMemberMuted(s.name))
+                .sort((a, b) => b.weight - a.weight);
+        }
+
         const counts = new Map();
         for (const m of context) {
             if (m.isUser) continue;
@@ -549,8 +580,7 @@ export function createTrialManager(deps) {
 
         return Array.from(counts.entries())
             .sort((a, b) => b[1] - a[1])
-            .map(([name, count]) => ({ name, weight: count }))
-            .filter(s => !isGroupMemberMuted(s.name));
+            .map(([name, count]) => ({ name, weight: count }));
     }
 
     function pickSpeakerWeighted(speakers) {
@@ -740,7 +770,7 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
             const chName = node.getAttribute('ch_name') || node.getAttribute('name') || '';
             const isUser = node.getAttribute('is_user') === 'true';
             const isSystem = node.getAttribute('is_system') === 'true';
-            const text = String(textEl?.innerText || '').trim();
+            const text = String(textEl?.innerHTML || textEl?.textContent || '').trim();
             return {
                 isUser,
                 isSystem,
@@ -748,6 +778,41 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
                 text,
             };
         });
+    }
+
+    const htmlDecodeBuffer = document.createElement('div');
+    function toPlainText(value) {
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+        htmlDecodeBuffer.innerHTML = raw;
+        return String(htmlDecodeBuffer.textContent || htmlDecodeBuffer.innerText || '').trim();
+    }
+
+    function mapContextChatMessages(chat) {
+        return chat.map((msg) => {
+            const isUser =
+                String(msg?.is_user ?? msg?.isUser ?? '').toLowerCase() === 'true' ||
+                msg?.is_user === true ||
+                msg?.isUser === true;
+            const isSystem =
+                String(msg?.is_system ?? msg?.isSystem ?? msg?.is_system_message ?? '').toLowerCase() === 'true' ||
+                msg?.is_system === true ||
+                msg?.isSystem === true ||
+                msg?.is_system_message === true;
+            const name = String(msg?.name || msg?.ch_name || msg?.character_name || msg?.display_name || '').trim();
+            const textRaw = msg?.mes ?? msg?.message ?? msg?.content ?? msg?.swipe_info?.[msg?.swipe_id || 0]?.mes ?? '';
+            const text = toPlainText(textRaw);
+            return { isUser, isSystem, name, text };
+        }).filter(m => m.text);
+    }
+
+    function mapDomMessages(domMessages) {
+        return domMessages.map(m => ({
+            isUser: Boolean(m?.isUser),
+            isSystem: Boolean(m?.isSystem),
+            name: String(m?.ch_name || '').trim(),
+            text: toPlainText(m?.text || ''),
+        })).filter(m => m.text);
     }
 
     function normalizeLooseName(name) {
@@ -775,6 +840,21 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
         if (ch.isEnabled === false) return true;
 
         return false;
+    }
+
+    function getGroupChatMembers() {
+        const ctx = window.SillyTavern?.getContext?.();
+        if (!ctx) return [];
+        const groupId = ctx.groupId ?? ctx.group_id;
+        if (groupId == null || groupId === '') return [];
+
+        const chars = Array.isArray(ctx.characters) ? ctx.characters : [];
+        const members = chars
+            .filter(c => !(c?.is_user || c?.isUser))
+            .map(c => String(c?.name || '').trim())
+            .filter(Boolean);
+
+        return Array.from(new Set(members)).map(name => ({ name }));
     }
 
     function sampleWeightedWithoutReplacement(items, count) {
