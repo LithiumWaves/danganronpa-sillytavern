@@ -648,6 +648,124 @@ function buildStyles() {
     text-shadow: 0 0 30px rgba(255,34,68,0.8), 0 0 60px rgba(255,34,68,0.4);
 }
 
+/* ─── Tutorial prompt bar ────────────────────────────── */
+#pta-tutorial-prompt {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    z-index: 2147483646;
+    background: rgba(10, 0, 24, 0.97);
+    border-top: 2px solid rgba(200, 80, 255, 0.5);
+    box-shadow: 0 -12px 40px rgba(160, 50, 255, 0.25), 0 -4px 14px rgba(160, 50, 255, 0.15);
+    padding: 20px 32px 24px;
+    font-family: "Noto Sans JP", "Noto Sans", sans-serif;
+    text-align: center;
+    opacity: 0; transform: translateY(12px);
+    transition: opacity 280ms ease, transform 280ms ease;
+}
+#pta-tutorial-prompt.pta-tp-on { opacity: 1; transform: translateY(0); }
+.pta-tp-text {
+    color: rgba(220, 200, 235, 0.92);
+    font-size: clamp(13px, 2vw, 17px);
+    line-height: 1.6;
+    margin-bottom: 18px;
+}
+.pta-tp-buttons {
+    display: flex; justify-content: center; gap: 16px;
+}
+.pta-tp-btn {
+    padding: 9px 28px;
+    border-radius: 4px;
+    border: 1.5px solid rgba(200, 80, 255, 0.55);
+    background: rgba(40, 0, 70, 0.85);
+    color: rgba(220, 190, 255, 0.95);
+    font-family: inherit;
+    font-size: 14px; letter-spacing: 1px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.pta-tp-btn:hover {
+    background: rgba(120, 30, 200, 0.6);
+    border-color: rgba(220, 120, 255, 0.85);
+    color: #fff;
+}
+.pta-tp-btn.pta-tp-no {
+    background: rgba(20, 0, 36, 0.7);
+    border-color: rgba(140, 60, 180, 0.4);
+    color: rgba(200, 170, 230, 0.9);
+    box-shadow: none;
+}
+
+/* ─── Tutorial modal ─────────────────────────────────── */
+#pta-tutorial-modal {
+    position: fixed; inset: 0;
+    z-index: 2147483647;
+    background: rgba(4, 0, 18, 0.88);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; transition: opacity 260ms ease;
+    font-family: "Noto Sans JP", "Noto Sans", sans-serif;
+    padding: 20px;
+    box-sizing: border-box;
+}
+#pta-tutorial-modal.pta-tm-on { opacity: 1; }
+.pta-tm-inner {
+    background: rgba(8, 0, 24, 0.98);
+    border: 2px solid rgba(180, 60, 255, 0.45);
+    box-shadow: 0 0 40px rgba(150, 40, 220, 0.2), 0 0 80px rgba(80, 0, 200, 0.12);
+    border-radius: 6px;
+    max-width: 700px; width: 100%;
+    max-height: 90vh;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+}
+.pta-tm-header {
+    padding: 16px 22px 12px;
+    border-bottom: 1px solid rgba(180, 60, 255, 0.25);
+    flex-shrink: 0;
+}
+.pta-tm-title {
+    font-family: "Orbitron", "Impact", monospace;
+    font-size: clamp(16px, 3vw, 22px);
+    font-weight: 900; letter-spacing: 0.06em;
+    color: rgba(220, 160, 255, 0.95);
+    text-shadow: 0 0 14px rgba(180, 80, 255, 0.6);
+}
+.pta-tm-img {
+    width: 100%; display: block;
+    flex-shrink: 0;
+    height: auto;
+    border-radius: 0;
+}
+.pta-tm-body {
+    padding: 20px 24px;
+    color: rgba(220, 200, 240, 0.88);
+    font-size: clamp(12px, 1.8vw, 14px);
+    line-height: 1.75;
+    overflow-y: auto;
+    flex: 1;
+}
+.pta-tm-body strong { color: rgba(220, 160, 255, 0.95); }
+.pta-tm-footer {
+    padding: 14px 24px 18px;
+    border-top: 1px solid rgba(180, 60, 255, 0.2);
+    display: flex; justify-content: flex-end;
+    flex-shrink: 0;
+}
+.pta-tm-close {
+    font-family: "Noto Sans JP", "Noto Sans", sans-serif;
+    font-size: 14px; font-weight: 700;
+    padding: 9px 30px;
+    border-radius: 4px;
+    border: 2px solid rgba(180, 60, 255, 0.6);
+    background: rgba(24, 0, 48, 0.85);
+    color: rgba(220, 160, 255, 0.95);
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    transition: background 140ms, box-shadow 140ms;
+}
+.pta-tm-close:hover {
+    background: rgba(60, 10, 100, 0.95);
+    box-shadow: 0 0 12px rgba(180, 60, 255, 0.4);
+}
+
 /* ─── Custom background image ────────────────────────── */
 #pta-bg {
     position: absolute; inset: 0;
@@ -714,6 +832,8 @@ export function createPanicTalkActionController({
         document.getElementById('pta-got-it-prefill')?.remove();
         document.getElementById('pta-final-blow-banner')?.remove();
         document.getElementById('pta-final-blow-prefill')?.remove();
+        document.getElementById('pta-tutorial-prompt')?.remove();
+        document.getElementById('pta-tutorial-modal')?.remove();
         const s = document.getElementById(PTA_STYLE);
         if (s) s.remove();
     }
@@ -747,6 +867,7 @@ export function createPanicTalkActionController({
         let ammo            = AMMO_MAX;
         let isReloading     = false;
         let isResolved      = false;
+        let tutorialActive  = true;
         let cursorCell      = 4;
         let transitionLock      = false;
         let finalInputSeq       = [];
@@ -1592,6 +1713,7 @@ export function createPanicTalkActionController({
             // ── Mouse: hover moves cursor, click fires ────────────
             cells.forEach((cell, i) => {
                 cell.addEventListener('mouseenter', () => {
+                    if (tutorialActive) return;
                     if (i !== cursorCell) {
                         cursorCell = i;
                         updateCursor();
@@ -1599,6 +1721,7 @@ export function createPanicTalkActionController({
                     }
                 });
                 cell.addEventListener('click', () => {
+                    if (tutorialActive) return;
                     cursorCell = i;
                     updateCursor();
                     fireAtCell(i);
@@ -1612,14 +1735,14 @@ export function createPanicTalkActionController({
             });
 
             ammoPanelEl.style.cursor = 'pointer';
-            ammoPanelEl.addEventListener('click', () => startManualReload());
+            ammoPanelEl.addEventListener('click', () => { if (!tutorialActive) startManualReload(); });
 
             // ── Keyboard controls ─────────────────────────────────
             const ac = new AbortController();
             const { signal } = ac;
 
             document.addEventListener('keydown', (e) => {
-                if (isResolved) return;
+                if (isResolved || tutorialActive) return;
 
                 if (finalOverlay.classList.contains('active')) {
                     // Final phase arrow keys
@@ -1662,6 +1785,62 @@ export function createPanicTalkActionController({
                 }
             }, { signal, capture: true });
 
+            // ── Tutorial prompt / modal ───────────────────────────
+            function showTutorialPrompt() {
+                return new Promise(resolve => {
+                    const el = document.createElement('div');
+                    el.id = 'pta-tutorial-prompt';
+                    el.innerHTML = `
+                        <div class="pta-tp-text">
+                            The minigame <strong>Panic Talk Action</strong> is about to begin. Would you like to hear an explanation?
+                        </div>
+                        <div class="pta-tp-buttons">
+                            <button class="pta-tp-btn pta-tp-yes">Yes, please!</button>
+                            <button class="pta-tp-btn pta-tp-no">No, let's go!</button>
+                        </div>
+                    `;
+                    document.body.appendChild(el);
+                    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('pta-tp-on')));
+
+                    el.querySelector('.pta-tp-yes').addEventListener('click', () => {
+                        el.classList.remove('pta-tp-on');
+                        setTimeout(() => { el.remove(); resolve(true); }, 300);
+                    });
+                    el.querySelector('.pta-tp-no').addEventListener('click', () => {
+                        el.classList.remove('pta-tp-on');
+                        setTimeout(() => { el.remove(); resolve(false); }, 300);
+                    });
+                });
+            }
+
+            function showTutorialModal() {
+                return new Promise(resolve => {
+                    const modal = document.createElement('div');
+                    modal.id = 'pta-tutorial-modal';
+                    modal.innerHTML = `
+                        <div class="pta-tm-inner">
+                            <div class="pta-tm-header">
+                                <div class="pta-tm-title">Panic Talk Action</div>
+                            </div>
+                            <img class="pta-tm-img" src="${extensionFolderPath}/assets/pta-tutorial.png" alt=""/>
+                            <div class="pta-tm-body">
+                                <strong>Panic Talk Action</strong> is a minigame where you are tasked with combating your opponent's <strong>Statements</strong>. <strong>Statements</strong> will fill the 3×3 grid at random, and zoom closer to the camera, making the grid cell glow red gradually. After a small amount of time glowing red, you will take damage to your <strong>Health</strong>. Running out of <strong>Health</strong>, visible in the bottom-right. Run out of health and it's game over! To combat a <strong>Statement</strong>, simply click the grid cell you wish to <strong>Shoot</strong>, or use the Arrow Keys and the Space bar to <strong>Shoot</strong>. <strong>Shooting</strong> consumes 1 <strong>Ammo</strong>; you can reload <strong>Ammo</strong> by pressing the R key, or clicking the <strong>Ammo</strong> icon, or by running out of <strong>Ammo</strong>. Shooting a <strong>White Statement</strong> prevents you from taking damage. Shooting a <strong>Yellow Statement</strong> prevents you from taking damage and deals damage to your opponent. Shooting a <strong>Blue Statement</strong> will deal damage to your opponent and turn the <strong>Blue Statement</strong> into a <strong>Yellow Statement</strong>. Shooting a <strong>Pink Statement</strong> will deal damage to yourself, so watch out! But don't worry! Letting a <strong>Pink Statement</strong> turn red won't deal damage to you! After enough damage is dealt, your opponent — and their <strong>Statements</strong> — will speed up. Damage your opponent enough and you'll enter the <strong>Final Question</strong>! During the <strong>Final Question</strong>, you'll need to make a <strong>Final Answer</strong> that answers the opponent's <strong>Final Question</strong> by using the Arrow Keys; there are four options, so think quickly and with confidence! Getting the <strong>Final Answer</strong> wrong or running out of time will give the opponent some <strong>Health</strong> back, and deal some damage to you, so try not to mess up! It's all or nothing now..!
+                            </div>
+                            <div class="pta-tm-footer">
+                                <button class="pta-tm-close">OK, let's go!</button>
+                            </div>
+                        </div>
+                    `;
+                    document.body.appendChild(modal);
+                    requestAnimationFrame(() => requestAnimationFrame(() => modal.classList.add('pta-tm-on')));
+
+                    modal.querySelector('.pta-tm-close').addEventListener('click', () => {
+                        modal.classList.remove('pta-tm-on');
+                        setTimeout(() => { modal.remove(); resolve(); }, 280);
+                    });
+                });
+            }
+
             // ── Begin Phase 1 — chain BGM off intro WAV for autoplay ──
             function beginGame() {
                 playPhaseMusic(1);
@@ -1669,10 +1848,15 @@ export function createPanicTalkActionController({
                 scheduleSpriteMoveStep();
             }
 
-            const introAudio = new Audio(`${extensionFolderPath}/assets/minigame-start.wav`);
-            introAudio.addEventListener('ended', beginGame, { once: true });
-            introAudio.addEventListener('error', beginGame, { once: true });
-            introAudio.play().catch(() => beginGame());
+            (async () => {
+                const wantsTutorial = await showTutorialPrompt();
+                if (wantsTutorial) await showTutorialModal();
+                tutorialActive = false;
+                const introAudio = new Audio(`${extensionFolderPath}/assets/minigame-start.wav`);
+                introAudio.addEventListener('ended', beginGame, { once: true });
+                introAudio.addEventListener('error', beginGame, { once: true });
+                introAudio.play().catch(() => beginGame());
+            })();
         });
     }
 
