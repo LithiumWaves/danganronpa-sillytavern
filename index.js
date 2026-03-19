@@ -2477,6 +2477,7 @@ async function triggerTrialStartFromMapPin() {
 
     console.log("[Dangan][Trial] Begin Class Trial selected from map pin.");
     playTrialTrack();
+    trialManager?.start();
     return true;
 }
 
@@ -5834,9 +5835,7 @@ classTrialMenuController = createClassTrialMenuController({
     getPreparationTracks: () => getMonopadSetting("trialPreparationTracks") || [],
 });
 window.startClassTrial = async () => {
-    const accepted = await classTrialMenuController?.open?.();
-    if (accepted) playTrialTrack();
-    return accepted;
+    return triggerTrialStartFromMapPin();
 };
 
 const audioVisualizer = createAudioVisualizerController({
