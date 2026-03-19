@@ -53,6 +53,27 @@ export function initTruthBullets(providedDeps) {
     // Render them ASAP
     window.renderTruthBullets = renderTruthBullets;
 
+    // Arrow key navigation for the truth bullet list
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+        const $panel = $('.monopad-panel-content[data-panel="truth"]');
+        if (!$panel.is(':visible')) return;
+
+        const $items = $panel.find('.truth-item, .truth-archived-item');
+        if (!$items.length) return;
+
+        e.preventDefault();
+
+        const $active = $items.filter('.active');
+        let idx = $active.length ? $items.index($active) : -1;
+        idx = e.key === 'ArrowDown'
+            ? Math.min(idx + 1, $items.length - 1)
+            : Math.max(idx - 1, 0);
+
+        $items.eq(idx).trigger('click');
+        $items.eq(idx)[0].scrollIntoView({ block: 'nearest' });
+    });
+
     startV3CObserver();
 }
 

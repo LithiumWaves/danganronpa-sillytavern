@@ -82,7 +82,7 @@ export function parseMonokumaAnnouncementMarkers(rawText = "") {
     return markers;
 }
 
-export function createMonokumaAnnouncementController({ extensionFolderPath, shouldPlayAudio = () => true, getVolume = () => 0.65, getLanguage = () => "EN" } = {}) {
+export function createMonokumaAnnouncementController({ extensionFolderPath, shouldPlayAudio = () => true, getVolume = () => 0.65, getLanguage = () => "EN", onBefore = null } = {}) {
     let uiMounted = false;
     let queue = Promise.resolve();
 
@@ -589,7 +589,243 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         });
     }
 
-    async function runBodyDiscoverySequence() {
+    async function runCinematicBodyDiscovery(cinematic) {
+        const overlay = mountBodyDiscoveryOverlay();
+        if (!overlay) return;
+
+        overlay.classList.add("active");
+        overlay.setAttribute("aria-hidden", "false");
+
+        const voiceTrack = getAudio().BODY_DISCOVERY_VOICE;
+        const trackDurationMs = Number.isFinite(voiceTrack?.duration) && voiceTrack.duration > 0
+            ? Math.round(voiceTrack.duration * 1000)
+            : 10000;
+
+        const bg1 = document.getElementById("bg1");
+        const savedTransition = bg1 ? bg1.style.transition : "";
+        const savedTransform  = bg1 ? bg1.style.transform  : "";
+        const savedAnimation  = bg1 ? bg1.style.animation  : "";
+        const savedFilter     = bg1 ? bg1.style.filter     : "";
+        const staticEl = overlay.querySelector(".dangan-body-discovery-static");
+        const timers = [];
+
+        // Black mask — covers bg1 during BG switches to hide ST's transition frames
+        let bgMaskEl = document.getElementById("bda-bg-switch-mask");
+        if (!bgMaskEl) {
+            bgMaskEl = document.createElement("div");
+            bgMaskEl.id = "bda-bg-switch-mask";
+            bgMaskEl.style.cssText = "position:fixed;inset:0;pointer-events:none;opacity:0;z-index:2147483630;background:#000";
+            document.body.appendChild(bgMaskEl);
+        }
+
+        // Colorize overlay — sits between bg1 and the vignette overlay
+        let colorizeEl = document.getElementById("bda-playback-colorize");
+        if (!colorizeEl) {
+            colorizeEl = document.createElement("div");
+            colorizeEl.id = "bda-playback-colorize";
+            colorizeEl.style.cssText = "position:fixed;inset:0;pointer-events:none;opacity:0;z-index:2147483640;transition:opacity 200ms";
+            document.body.appendChild(colorizeEl);
+        }
+
+        function applySegEffects(seg) {
+            if (!bg1) return;
+            const filters = [];
+            const hue = seg?.hueShift ?? 0;
+            if (hue !== 0) filters.push(`hue-rotate(${hue}deg)`);
+            if (seg?.imgFilter === "grayscale") filters.push("grayscale(1)");
+            else if (seg?.imgFilter === "sepia") filters.push("sepia(1)");
+            bg1.style.filter = filters.join(" ");
+            const color = seg?.colorize || "";
+            const opacity = seg?.colorizeOpacity ?? 0.4;
+            if (color) {
+                colorizeEl.style.background = color;
+                colorizeEl.style.opacity = String(opacity);
+            } else {
+                colorizeEl.style.opacity = "0";
+            }
+        }
+
+        const sortedSegs = [...(cinematic.bgSegments || [])].sort((a, b) => a.startFrac - b.startFrac);
+        const sortedPins = [...(cinematic.pins || [])].sort((a, b) => a.timeFrac - b.timeFrac);
+
+        // ── BG switching via setTimeout (fade handled per-frame in RAF) ─────────
+        for (const seg of sortedSegs) {
+            const startMs = Math.round(seg.startFrac * trackDurationMs);
+
+            if (seg.bgFile) {
+                timers.push(setTimeout(() => {
+                    const lower = seg.bgFile.toLowerCase();
+                    const els = Array.from(document.querySelectorAll(".bg_example"));
+                    const match = els.find(el => el.getAttribute("bgfile")?.toLowerCase().includes(lower));
+                    if (match instanceof HTMLElement) {
+                        // Instantly show black mask so ST's cross-fade frames are hidden
+                        bgMaskEl.style.transition = "none";
+                        bgMaskEl.style.opacity = "1";
+                        match.click();
+                        applySegEffects(seg);
+                        // After two paint frames (bg swap is rendered under the mask),
+                        // fade the mask out — the RAF then handles bg1 opacity from here
+                        requestAnimationFrame(() => requestAnimationFrame(() => {
+                            bgMaskEl.style.transition = "opacity 150ms linear";
+                            bgMaskEl.style.opacity = "0";
+                        }));
+                    }
+                }, startMs));
+            }
+        }
+
+        // ── Helpers: identical logic to the editor's applyPinAnimation ────────
+
+        function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+
+        function pinAtElapsed(ms) {
+            for (const pin of sortedPins) {
+                const start = (pin.timeFrac ?? 0) * trackDurationMs;
+                const end   = start + Math.max(100, pin.focusDurationMs ?? 800);
+                if (ms >= start && ms <= end) return pin;
+            }
+            return null;
+        }
+
+        function segAtElapsed(ms) {
+            return sortedSegs.filter(s => s.startFrac * trackDurationMs <= ms).at(-1) ?? null;
+        }
+
+        function applyTransform(pin, t) {
+            if (!bg1) return;
+            const pinB = pin.connectTo ? sortedPins.find(p => p.id === pin.connectTo) ?? null : null;
+
+            if (pinB) {
+                // Connected: interpolate position A → B, zoom A.baseZoom → A.zoom
+                let ix, iy;
+                if ((pin.pathType ?? "direct") === "smooth") {
+                    const mx = (pin.xFrac + pinB.xFrac) / 2;
+                    const my = (pin.yFrac + pinB.yFrac) / 2;
+                    const dx = pinB.xFrac - pin.xFrac, dy = pinB.yFrac - pin.yFrac;
+                    const len = Math.sqrt(dx * dx + dy * dy) || 0.001;
+                    const cpx = mx + (-dy / len) * len * 0.35;
+                    const cpy = my + ( dx / len) * len * 0.35;
+                    ix = (1-t)*(1-t)*pin.xFrac + 2*(1-t)*t*cpx + t*t*pinB.xFrac;
+                    iy = (1-t)*(1-t)*pin.yFrac + 2*(1-t)*t*cpy + t*t*pinB.yFrac;
+                } else {
+                    ix = pin.xFrac + (pinB.xFrac - pin.xFrac) * t;
+                    iy = pin.yFrac + (pinB.yFrac - pin.yFrac) * t;
+                }
+                const scale = (pin.baseZoom ?? 1.0) + ((pin.zoom ?? 1.3) - (pin.baseZoom ?? 1.0)) * t;
+                bg1.style.transition = "none";
+                bg1.style.transform  = `scale(${scale.toFixed(3)}) translate(${((0.5 - ix) * 100).toFixed(2)}%, ${((0.5 - iy) * 100).toFixed(2)}%)`;
+            } else {
+                // Unconnected: hold at pin position, zoom only
+                const scale = (pin.baseZoom ?? 1.0) + ((pin.zoom ?? 1.3) - (pin.baseZoom ?? 1.0)) * t;
+                bg1.style.transition = "none";
+                bg1.style.transform  = `scale(${scale.toFixed(3)}) translate(${((0.5 - pin.xFrac) * 100).toFixed(2)}%, ${((0.5 - pin.yFrac) * 100).toFixed(2)}%)`;
+            }
+        }
+
+        // ── Single RAF loop drives camera + shake + static ────────────────────
+        let rafId = null;
+        let lastPinId  = undefined; // undefined = never applied
+        let lastSegId  = undefined;
+
+        function tick() {
+            if (!voiceTrack || voiceTrack.paused || voiceTrack.ended) return;
+
+            const elapsed = Number.isFinite(voiceTrack.duration) && voiceTrack.duration > 0
+                ? voiceTrack.currentTime * 1000
+                : 0;
+
+            const activeSeg = segAtElapsed(elapsed);
+            const activePin = pinAtElapsed(elapsed);
+
+            // Update effects when active seg changes
+            if (activeSeg?.id !== lastSegId) {
+                applySegEffects(activeSeg);
+            }
+
+            if (activePin?.id !== lastPinId || activeSeg?.id !== lastSegId) {
+                lastPinId = activePin?.id ?? null;
+                lastSegId = activeSeg?.id ?? null;
+            }
+
+            // Per-frame fade opacity (mirrors CG preview logic)
+            if (bg1 && activeSeg) {
+                const segStartMs = activeSeg.startFrac * trackDurationMs;
+                const segEndMs   = activeSeg.endFrac   * trackDurationMs;
+                const segElapsed = elapsed - segStartMs;
+                const segRemain  = segEndMs - elapsed;
+                const fadeInMs   = activeSeg.fadeIn  ?? 0;
+                const fadeOutMs  = activeSeg.fadeOut ?? 0;
+                let opacity = 1;
+                if (fadeInMs  > 0 && segElapsed < fadeInMs)  opacity = Math.min(opacity, segElapsed / fadeInMs);
+                if (fadeOutMs > 0 && segRemain  < fadeOutMs) opacity = Math.min(opacity, segRemain  / fadeOutMs);
+                bg1.style.opacity = String(clamp01(opacity));
+            } else if (bg1) {
+                bg1.style.opacity = "";
+            }
+
+            // Camera transform
+            if (activePin) {
+                const startMs = (activePin.timeFrac ?? 0) * trackDurationMs;
+                const durMs   = Math.max(1, activePin.focusDurationMs ?? 800);
+                applyTransform(activePin, clamp01((elapsed - startMs) / durMs));
+            } else if (bg1 && lastPinId !== undefined && lastPinId !== null) {
+                // Just left a pin — reset smoothly
+                lastPinId = null;
+                bg1.style.transition = "transform 0.4s ease-out";
+                bg1.style.transform  = "scale(1) translate(0%, 0%)";
+            }
+
+            // Shake
+            if (bg1) {
+                const shakeAmt = activePin?.shake ?? 0;
+                if (shakeAmt > 0) {
+                    const speed = Math.round(40 + (1 - shakeAmt) * 60);
+                    bg1.style.animation = `danganBgJitter ${speed}ms steps(3, end) infinite`;
+                } else {
+                    bg1.style.animation = savedAnimation;
+                }
+            }
+
+            // Static opacity
+            if (staticEl) {
+                staticEl.style.opacity = String(activePin?.staticOpacity ?? 0);
+            }
+
+            rafId = requestAnimationFrame(tick);
+        }
+
+        voiceTrack.addEventListener("play", () => { rafId = requestAnimationFrame(tick); }, { once: true });
+
+        await playTrack(voiceTrack, { fallbackMs: trackDurationMs + 600 });
+
+        if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+        timers.forEach(id => clearTimeout(id));
+
+        bgMaskEl.style.transition = "none";
+        bgMaskEl.style.opacity = "0";
+        colorizeEl.style.opacity = "0";
+        if (bg1) {
+            bg1.style.opacity    = "";
+            bg1.style.animation  = savedAnimation;
+            bg1.style.filter     = savedFilter;
+            bg1.style.transition = "transform 1.1s cubic-bezier(0.25, 0.46, 0.45, 0.94)";
+            bg1.style.transform  = "scale(1) translate(0%, 0%)";
+            await delay(1200);
+            bg1.style.transition = savedTransition;
+            bg1.style.transform  = savedTransform;
+        }
+
+        if (staticEl) staticEl.style.opacity = "";
+        overlay.classList.remove("active");
+        overlay.setAttribute("aria-hidden", "true");
+    }
+
+    async function runBodyDiscoverySequence({ cinematic = null } = {}) {
+        if (cinematic) {
+            await runCinematicBodyDiscovery(cinematic);
+            return;
+        }
+
         const overlay = mountBodyDiscoveryOverlay();
         if (!overlay) return;
 
@@ -624,26 +860,34 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
                 bg1.style.animation = savedAnimation;
             }, panWindow));
 
-            const schedulePan = (timeMs) => {
+            // Build a small pool of cluster zoom levels (1.05–1.25) so points can share depths
+            const zoomClusterCount = 3 + Math.floor(Math.random() * 3); // 3–5 clusters
+            const zoomPool = Array.from({ length: zoomClusterCount }, () =>
+                (1.05 + Math.random() * 0.95).toFixed(3) // 1.050–2.000
+            );
+            const pickZoom = () => zoomPool[Math.floor(Math.random() * zoomPool.length)];
+
+            const schedulePan = (timeMs, zoom) => {
                 const x = rand(-18, 18).toFixed(1);
                 const y = rand(-14, 14).toFixed(1);
                 zoomTimers.push(setTimeout(() => {
                     bg1.style.transition = `transform ${dur} cubic-bezier(${ease})`;
-                    bg1.style.transform  = `scale(1.3) translate(${x}%, ${y}%)`;
+                    bg1.style.transform  = `scale(${zoom}) translate(${x}%, ${y}%)`;
                 }, timeMs));
             };
 
             for (let i = 0; i < count; i++) {
                 const baseMs = i === 0 ? 0 : Math.round((i / (count - 1)) * panWindow);
 
-                // ~35% of slots (never the first) become a quick cluster
+                // ~35% of slots (never the first) become a quick cluster — all share one zoom level
                 if (i > 0 && Math.random() < 0.35) {
+                    const clusterZoom = pickZoom();
                     const clusterSize = 2 + Math.floor(Math.random() * 2); // 2–3 rapid pans
                     for (let c = 0; c < clusterSize; c++) {
-                        schedulePan(baseMs + c * (60 + Math.floor(Math.random() * 120)));
+                        schedulePan(baseMs + c * (60 + Math.floor(Math.random() * 120)), clusterZoom);
                     }
                 } else {
-                    schedulePan(baseMs);
+                    schedulePan(baseMs, pickZoom());
                 }
             }
         }
@@ -666,9 +910,11 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         overlay.setAttribute("aria-hidden", "true");
     }
 
-    async function runAnnouncement(type) {
+    async function runAnnouncement(type, options = {}) {
         const config = MARKER_TYPES[type];
         if (!config) return;
+
+        if (typeof onBefore === "function") await onBefore();
 
         const lang = String(getLanguage() || "JP").toUpperCase();
         const resolvedTranscript = config.transcriptByLang?.[lang] ?? config.transcript;
@@ -686,7 +932,7 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         if (!sting || !monitor || !screen || !label || !dialogue) return;
 
         if (type === "BODY_DISCOVERY") {
-            await runBodyDiscoverySequence();
+            await runBodyDiscoverySequence({ cinematic: options.cinematic ?? null });
             return;
         }
 
@@ -751,15 +997,15 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
     }
 
     return {
-        trigger(type) {
+        trigger(type, options = {}) {
             const safeType = normalizeMarkerType(type);
             if (!MARKER_TYPES[safeType]) return;
-            queue = queue.then(() => runAnnouncement(safeType)).catch(() => {});
+            queue = queue.then(() => runAnnouncement(safeType, options)).catch(() => {});
         },
-        triggerAsync(type) {
+        triggerAsync(type, options = {}) {
             const safeType = normalizeMarkerType(type);
             if (!MARKER_TYPES[safeType]) return Promise.resolve();
-            const p = queue.then(() => runAnnouncement(safeType)).catch(() => {});
+            const p = queue.then(() => runAnnouncement(safeType, options)).catch(() => {});
             queue = p;
             return p;
         },

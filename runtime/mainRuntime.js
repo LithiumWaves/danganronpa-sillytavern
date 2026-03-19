@@ -4231,6 +4231,7 @@ $(".monopad-icon").on("mouseenter", function () {
                     $(`.monopad-panel-content[data-panel="welcome"]`).addClass("active");
                 } else {
                     setActiveMonopadTab("truth");
+                    window.renderTruthBullets?.();
                 }
 
                 if (getMonopadSetting("bootAnimations")) {

@@ -270,5 +270,7 @@ export function createAudioVisualizerController({ getAudioElement, assetsBasePat
         audioCtx = null;
     }
 
-    return { init, destroy };
+    function hide() { setVisible(false); }
+
+    return { init, destroy, hide };
 }
