@@ -3,7 +3,7 @@ import { saveSettingsDebounced, getRequestHeaders } from "../../../../script.js"
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../../slash-commands/SlashCommandArgument.js';
-import { initTruthBullets, handleTruthBullet, setNextTruthBulletSfxVariant, getTruthBulletByLocationId, showTruthBulletByLocationId, showTruthBulletById } from "./truth/truthBullets.js";
+import { initTruthBullets, handleTruthBullet, setNextTruthBulletSfxVariant, getTruthBulletByLocationId, showTruthBulletByLocationId, showTruthBulletById, getTruthBullets } from "./truth/truthBullets.js";
 import { buildDecagram, crackShard, shatterShard } from "./trust/trustDecagram.js";
 import { initTrustAnimations, playTrustRankUp, playTrustRankDown, playTrustMaxed, playTrustToDistrustTransition, playDistrustRankDown, playDistrustRankUp, playDistrustToTrustRecovery } from "./trust/trustAnimations.js";
 import { increaseTrust, decreaseTrust } from "./trust/trustAPI.js";
@@ -18,6 +18,7 @@ import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "./core/monokumaLessonScript.js";
 import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers } from "./monokuma/announcementController.js";
 import { createClassTrialMenuController } from "./trial/menu/classTrialMenu.js";
+import { createTrialManager, TrialPhases } from "./trial/trialManager.js";
 import { initVfxSystem, onVfxChatChanged } from "./vfx/vfxSystem.js";
 import { createAudioVisualizerController } from "./audio/audioVisualizer.js";
 import { user_avatar } from "../../../personas.js";
@@ -43,6 +44,7 @@ let monokumaLessonState = null;
 let vnModeController = null;
 let monokumaAnnouncementController = null;
 let classTrialMenuController = null;
+let trialManager = null;
 let vfxCleanup = null;
 
 const openRouterSettings = createOpenRouterSettingsManager({
@@ -2398,6 +2400,7 @@ async function triggerTrialStartFromMapPin() {
     if (!accepted) return false;
 
     console.log("[Dangan][Trial] Begin Class Trial selected from map pin.");
+    trialManager?.start();
     return true;
 }
 
@@ -5011,6 +5014,16 @@ jQuery(async () => {
         normalizeSettingsHeaderActionButtons();
         ensureGlobalDebugUi();
         vnModeController = createVnModeController();
+        trialManager = createTrialManager({
+            extensionName,
+            extensionSettings: extension_settings,
+            saveSettingsDebounced,
+            vnModeController,
+            getTruthBullets,
+            playSfx,
+            getSfx: () => sfx,
+            characters,
+        });
         monokumaAnnouncementController = createMonokumaAnnouncementController({
             extensionFolderPath,
             shouldPlayAudio: () => Number(extension_settings[extensionName]?.announcementVolume ?? 65) > 0,
@@ -5667,7 +5680,19 @@ itemsPanelController.renderSkillsItemsPanel();
     //socialPanelController.renderSocialPanel();
 //});
 
-debugSTGlobals();
+$("#send_button").on("click", function () {
+            const text = $("#send_textarea").val();
+            trialManager?.onMessageSent(text);
+        });
+
+        $("#send_textarea").on("keydown", function (e) {
+            if (e.key === "Enter" && !e.shiftKey) {
+                const text = $(this).val();
+                trialManager?.onMessageSent(text);
+            }
+        });
+
+        debugSTGlobals();
 initTruthBullets({
     extension_settings,
     saveSettingsDebounced,

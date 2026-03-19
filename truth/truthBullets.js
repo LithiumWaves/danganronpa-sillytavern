@@ -56,6 +56,10 @@ export function initTruthBullets(providedDeps) {
     startV3CObserver();
 }
 
+export function getTruthBullets() {
+    return truthBullets;
+}
+
 const truthBullets = [];
 const archivedTruthBullets = [];
 const truthBulletQueue = [];

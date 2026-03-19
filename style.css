@@ -3,6 +3,7 @@
 @import url("https://fonts.googleapis.com/css2?family=Boldonse&display=swap");
 @import url("./styles/legacy.css");
 @import url("./styles/systems/vfx/vfx.css");
+@import url("./styles/systems/trial/trial.css");
 
 .dangan-trial-skill-manager {
     border: 1px solid rgba(80, 224, 255, 0.5);
