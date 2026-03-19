@@ -499,14 +499,14 @@ export function createTrialManager(deps) {
     async function buildDebateSections({ sectionsCount }) {
         const context = getContextMessagesForTrial();
         const speakers = pickSpeakersFromContext(context);
-        if (!speakers.length) return null;
+        const usableSpeakers = speakers.length ? speakers : [{ name: '???', weight: 1 }];
 
         const poolSize = Math.min(
-            speakers.length,
+            usableSpeakers.length,
             Math.max(2, Math.min(5, Math.round(sectionsCount / 2)))
         );
-        const selectedSpeakers = sampleWeightedWithoutReplacement(speakers, poolSize);
-        if (!selectedSpeakers.length) return null
+        const selectedSpeakers = sampleWeightedWithoutReplacement(usableSpeakers, poolSize);
+        if (!selectedSpeakers.length) return null;
 
         const sections = [];
         for (let i = 0; i < sectionsCount; i++) {
@@ -549,7 +549,8 @@ export function createTrialManager(deps) {
 
         return Array.from(counts.entries())
             .sort((a, b) => b[1] - a[1])
-            .map(([name, count]) => ({ name, weight: count }));
+            .map(([name, count]) => ({ name, weight: count }))
+            .filter(s => !isGroupMemberMuted(s.name));
     }
 
     function pickSpeakerWeighted(speakers) {
@@ -608,9 +609,10 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
             ).trim();
 
             const dialogueOnly = extractDialogueOnly(out);
-            if (!dialogueOnly) continue;
+            const candidate = dialogueOnly || sanitizeDialogueFallback(out);
+            if (!candidate) continue;
 
-            const normalized = sanitizeDebateLine(`"${dialogueOnly}"`);
+            const normalized = sanitizeDebateLine(`"${candidate}"`);
             const withWeak = ensureSingleWeakPointMarker(normalized);
             if (withWeak && withWeak !== '...') return withWeak;
             if (withWeak) return withWeak;
@@ -701,6 +703,28 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
         return combined.trim();
     }
 
+    function sanitizeDialogueFallback(text) {
+        const raw = String(text || '').trim();
+        if (!raw) return '';
+
+        const firstLine = raw.split(/\r?\n/).map(l => l.trim()).find(Boolean) || '';
+        if (!firstLine) return '';
+
+        const stripped = firstLine
+            .replace(/^[A-Za-z0-9 _-]{1,32}:\s*/, '')
+            .replace(/^\*+|\*+$/g, '')
+            .replace(/^\(+|\)+$/g, '')
+            .replace(/^\[+|\]+$/g, '')
+            .trim();
+
+        if (!stripped) return '';
+
+        const maybeNarration = /^(narration|thoughts?|action|inner|system)\b/i.test(stripped);
+        if (maybeNarration) return '';
+
+        return stripped;
+    }
+
     function stripSurroundingQuotes(text) {
         const t = String(text || '').trim();
         return t
@@ -724,6 +748,33 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
                 text,
             };
         });
+    }
+
+    function normalizeLooseName(name) {
+        return String(name || '').trim().toLowerCase();
+    }
+
+    function isGroupMemberMuted(name) {
+        const ctx = window.SillyTavern?.getContext?.();
+        if (!ctx) return false;
+        const groupId = ctx.groupId ?? ctx.group_id;
+        if (groupId == null || groupId === '') return false;
+
+        const chars = Array.isArray(ctx.characters) ? ctx.characters : [];
+        const target = normalizeLooseName(name);
+        const ch = chars.find(c => normalizeLooseName(c?.name) === target);
+        if (!ch) return false;
+
+        if (ch.muted === true) return true;
+        if (ch.is_muted === true) return true;
+        if (ch.isMuted === true) return true;
+        if (ch.mute === true) return true;
+        if (ch.disabled === true) return true;
+        if (ch.is_disabled === true) return true;
+        if (ch.enabled === false) return true;
+        if (ch.isEnabled === false) return true;
+
+        return false;
     }
 
     function sampleWeightedWithoutReplacement(items, count) {
