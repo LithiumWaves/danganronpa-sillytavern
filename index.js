@@ -2696,16 +2696,15 @@ ${prompt}
 async function generateTrialDialogue(prompt, { maxTokens = 140, temperature = 0.7, topP = 0.9, stop = ["USER:", "ASSISTANT:", "###"] } = {}) {
     const fullPrompt = String(prompt || "").trim();
 
-    if (isOpenRouterGenerationEnabled()) {
-        return generateWithOpenRouter(fullPrompt, {
-            maxTokens,
-            temperature,
-            topP,
-            stop,
-        });
-    }
-
     if (!window.SillyTavern?.getContext) {
+        if (isOpenRouterGenerationEnabled()) {
+            return generateWithOpenRouter(fullPrompt, {
+                maxTokens,
+                temperature,
+                topP,
+                stop,
+            });
+        }
         throw new Error("SillyTavern context unavailable");
     }
 

@@ -201,13 +201,22 @@ export function createTrialManager(deps) {
                 document.getElementById('dangan-speaker-name').textContent = speakerName.toUpperCase();
                 document.getElementById('dangan-section-count').textContent = `SECTION ${(currentSectionIndex % currentDebateSections) + 1} / ${currentDebateSections}`;
 
-                const chunks = splitIntoChunks(msg.text);
+                const chunks = splitIntoChunks(String(msg.text || ''));
                 const weakPointIndex = Math.floor(Math.random() * chunks.length);
 
                 chunks.forEach((chunk, i) => {
                     createFloatingStatement(chunk, i === weakPointIndex, currentSectionIndex);
                 });
 
+                currentSectionIndex = (currentSectionIndex + 1) % currentDebateSections;
+            } else {
+                const fallback = sanitizeDebateLine(buildFallbackStatement({ speakerName: '???', context: [] }));
+                const parts = splitStatementIntoParts(fallback);
+                document.getElementById('dangan-speaker-name').textContent = '...';
+                document.getElementById('dangan-section-count').textContent = `SECTION ${(currentSectionIndex % currentDebateSections) + 1} / ${currentDebateSections}`;
+                parts.forEach(part => {
+                    createFloatingStatement(part.text, Boolean(part.isWeakPoint), currentSectionIndex);
+                });
                 currentSectionIndex = (currentSectionIndex + 1) % currentDebateSections;
             }
 
@@ -225,7 +234,7 @@ export function createTrialManager(deps) {
             el.classList.add('dangan-weak-point');
             currentWeakPointInfo = { text, element: el };
         }
-        el.textContent = text;
+        el.textContent = stripSurroundingQuotes(String(text || ''));
         
         // Random start position
         const startX = window.innerWidth + 100;
@@ -336,8 +345,23 @@ export function createTrialManager(deps) {
 
     function getRecentMessages() {
         const ctx = window.SillyTavern?.getContext?.();
-        const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
-        return chat.filter(m => !m.is_user && !m.is_system).slice(-10);
+        const chat = Array.isArray(ctx?.chat) ? ctx.chat : null;
+
+        const mapped = (chat || readDomChatMessages(30))
+            .map(m => ({
+                isUser: Boolean(m?.is_user ?? m?.isUser),
+                isSystem: Boolean(m?.is_system ?? m?.isSystem),
+                name: String(m?.name || m?.ch_name || m?.character_name || m?.sender || (m?.is_user ? 'You' : '???')),
+                text: String(m?.mes || m?.text || m?.message || '').trim(),
+            }))
+            .filter(m => !m.isUser && !m.isSystem)
+            .map(m => ({
+                name: m.name,
+                text: extractDialogueOnly(m.text),
+            }))
+            .filter(m => m.text);
+
+        return mapped.slice(-10);
     }
 
     function splitIntoChunks(text) {
@@ -419,12 +443,13 @@ export function createTrialManager(deps) {
 
     function getContextMessagesForTrial() {
         const ctx = window.SillyTavern?.getContext?.();
-        const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
-        return chat
-            .filter(m => !m?.is_system)
+        const chat = Array.isArray(ctx?.chat) ? ctx.chat : null;
+        const source = chat || readDomChatMessages(40);
+        return source
+            .filter(m => !m?.is_system && !m?.isSystem)
             .slice(-30)
             .map(m => ({
-                isUser: Boolean(m?.is_user),
+                isUser: Boolean(m?.is_user ?? m?.isUser),
                 name: String(m?.name || m?.ch_name || m?.character_name || m?.sender || (m?.is_user ? 'You' : '???')),
                 text: String(m?.mes || m?.text || m?.message || '').trim(),
             }))
@@ -464,10 +489,10 @@ export function createTrialManager(deps) {
 You are writing a Danganronpa-style Non-stop Debate statement.
 
 Rules:
-- Output ONLY the statement text.
+- Output ONLY one line of dialogue wrapped in double quotes.
 - 1–2 sentences, assertive, courtroom tone.
 - Use facts and implications from the context.
-- Mark EXACTLY ONE clause as a possible weak point using [[WEAK]]...[[/WEAK]].
+- Inside the quotes, mark EXACTLY ONE clause as a possible weak point using [[WEAK]]...[[/WEAK]].
 - No other markup, no speaker labels.
 
 CONTEXT:
@@ -489,7 +514,8 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
     function sanitizeDebateLine(text) {
         let t = String(text || '').replace(/\r?\n+/g, ' ').trim();
         t = t.replace(/^[^a-zA-Z0-9]*[A-Za-z0-9 _-]{1,32}:\s*/, '');
-        return t;
+        t = extractDialogueOnly(t) || t;
+        return stripSurroundingQuotes(t);
     }
 
     function buildFallbackStatement({ speakerName, context }) {
@@ -504,7 +530,7 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
             .join(' ');
 
         const core = hints || 'The timeline does not match what we established.';
-        return `Listen up—${core}. [[WEAK]]That still doesn’t prove your alibi holds up.[[/WEAK]]`;
+        return `"Listen up—${core}. [[WEAK]]That still doesn’t prove your alibi holds up.[[/WEAK]]"`;
     }
 
     function splitStatementIntoParts(statement) {
@@ -530,6 +556,49 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
         const chunks = splitIntoChunks(clean);
         const weakPointIndex = chunks.length ? Math.floor(Math.random() * chunks.length) : 0;
         return chunks.map((t, i) => ({ text: t, isWeakPoint: i === weakPointIndex }));
+    }
+
+    function extractDialogueOnly(text) {
+        const raw = String(text || '');
+        const matches = [];
+
+        const pushMatches = (re) => {
+            let m;
+            while ((m = re.exec(raw)) !== null) {
+                if (m[1]) matches.push(m[1]);
+            }
+        };
+
+        pushMatches(/"([^"]+)"/g);
+        pushMatches(/“([^”]+)”/g);
+
+        const combined = matches.map(s => s.trim()).filter(Boolean).join(' ');
+        return combined.trim();
+    }
+
+    function stripSurroundingQuotes(text) {
+        const t = String(text || '').trim();
+        return t
+            .replace(/^["“]+/, '')
+            .replace(/["”]+$/, '')
+            .trim();
+    }
+
+    function readDomChatMessages(limit = 30) {
+        const nodes = Array.from(document.querySelectorAll('.mes')).slice(-limit);
+        return nodes.map(node => {
+            const textEl = node.querySelector('.mes_text');
+            const chName = node.getAttribute('ch_name') || node.getAttribute('name') || '';
+            const isUser = node.getAttribute('is_user') === 'true';
+            const isSystem = node.getAttribute('is_system') === 'true';
+            const text = String(textEl?.innerText || '').trim();
+            return {
+                isUser,
+                isSystem,
+                ch_name: chName,
+                text,
+            };
+        });
     }
 
     return {
