@@ -510,16 +510,22 @@ export function createTrialManager(deps) {
         if (!selectedSpeakers.length) return null;
 
         const sections = [];
+        let previousSpeakerName = '';
+        let previousStatement = '';
         for (let i = 0; i < sectionsCount; i++) {
             const speakerName = pickSpeakerWeighted(selectedSpeakers);
             const statement = await generateSectionStatement({
                 speakerName,
+                previousSpeakerName,
+                previousStatement,
                 context,
                 sectionIndex: i,
                 sectionsCount,
             });
             const parts = splitStatementIntoParts(statement);
             sections.push({ speakerName, statement, parts });
+            previousSpeakerName = speakerName;
+            previousStatement = statement;
         }
         return sections;
     }
@@ -593,7 +599,7 @@ export function createTrialManager(deps) {
         return speakers[0]?.name || '???';
     }
 
-    async function generateSectionStatement({ speakerName, context, sectionIndex, sectionsCount }) {
+    async function generateSectionStatement({ speakerName, previousSpeakerName, previousStatement, context, sectionIndex, sectionsCount }) {
         const contextLines = context
             .slice(-14)
             .map(m => `${m.isUser ? 'YOU' : m.name}: ${m.text}`)
@@ -601,6 +607,11 @@ export function createTrialManager(deps) {
 
         const sourceText = typeof getCharacterSourceText === 'function'
             ? String(getCharacterSourceText(speakerName) || '').trim()
+            : '';
+
+        const previousLine = String(previousStatement || '').trim();
+        const previousLineText = previousLine
+            ? stripSurroundingQuotes(extractDialogueOnly(previousLine) || previousLine)
             : '';
 
         const prompt = `
@@ -612,13 +623,16 @@ Rules:
 - Stay fully in character.
 - Output ONLY spoken dialogue in double quotes.
 - No narration, no actions, no inner thoughts.
-- 1–2 sentences, assertive courtroom tone.
+- 1–2 sentences.
 - Use facts and implications from the context.
 - Inside the quotes, mark EXACTLY ONE clause as a possible weak point using [[WEAK]]...[[/WEAK]].
 - No other markup and no speaker labels.
 
 CHARACTER DATA:
 ${sourceText || 'NO CHARACTER DATA AVAILABLE.'}
+
+PREVIOUS LINE (what was just said):
+${previousLineText ? `${String(previousSpeakerName || '???')}: ${previousLineText}` : 'NONE'}
 
 RECENT CONTEXT:
 ${contextLines}
