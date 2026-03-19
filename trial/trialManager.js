@@ -321,12 +321,15 @@ export function createTrialManager(deps) {
         const startX = centerX + Math.round(Math.random() * 40 - 20);
         const startY = centerY + Math.round(Math.random() * 36 - 18) + Math.round((baseY - centerY) * 0.15);
 
+        const motionMode = Math.random() < 0.18 ? 'pov' : 'drift';
         const dir = Math.random() < 0.5 ? -1 : 1;
-        const driftX = dir * Math.round(w * 0.10);
+        const driftX = dir * Math.round(w * 0.11);
         const endX = startX + driftX;
-        const endY = startY + Math.round(Math.random() * 18 - 9);
+        const endY = startY + (motionMode === 'drift' ? Math.round(Math.random() * 16 - 8) : Math.round(Math.random() * 10 - 5));
 
-        const duration = 6200 + Math.floor(Math.random() * 1200);
+        const duration = motionMode === 'drift'
+            ? (6600 + Math.floor(Math.random() * 1500))
+            : (1800 + Math.floor(Math.random() * 450));
         let rafId = 0;
         let cancelled = false;
         const startTime = performance.now();
@@ -352,9 +355,12 @@ export function createTrialManager(deps) {
                 const y = startY + (endY - startY) * p;
 
                 const peak = 1 - Math.abs(p - 0.5) * 2;
-                const scale = 0.92 + 0.20 * peak;
                 const rot = -10 + dir * 4;
                 const skew = dir * -10;
+
+                const scale = motionMode === 'pov'
+                    ? (0.92 + 0.28 * peak)
+                    : 1;
 
                 let opacity = 1;
                 if (p < 0.12) opacity = p / 0.12;
@@ -530,9 +536,9 @@ export function createTrialManager(deps) {
         tokens = merged;
 
         const chunks = [];
-        const targetWords = 3;
-        const maxWords = 5;
-        const maxChars = 28;
+        const targetWords = 9;
+        const maxWords = 14;
+        const maxChars = 72;
 
         let i = 0;
         while (i < tokens.length) {
