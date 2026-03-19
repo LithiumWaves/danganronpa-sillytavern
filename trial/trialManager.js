@@ -14,6 +14,7 @@ export function createTrialManager(deps) {
         saveSettingsDebounced,
         vnModeController,
         getTruthBullets,
+        generateTrialDialogue,
         playSfx,
         getSfx,
         characters,
@@ -24,10 +25,13 @@ export function createTrialManager(deps) {
     let selectedTruthBulletIndex = 0;
     let debateOverlay = null;
     let reticleEl = null;
+    let cutsceneOverlay = null;
     let floatingStatements = [];
     let animationFrameId = null;
+    let sectionTimerId = null;
     let currentSpeaker = null;
     let currentWeakPointInfo = null;
+    let preparedDebateSections = null;
 
     function setState(newState) {
         console.log(`[Dangan][Trial] State change: ${currentState} -> ${newState}`);
@@ -91,12 +95,22 @@ export function createTrialManager(deps) {
 
         notification.querySelector('#dangan-start-nonstop-btn').onclick = () => {
             notification.remove();
-            startNonStopDebate();
+            void startNonStopDebate();
         };
     }
 
-    function startNonStopDebate() {
+    async function startNonStopDebate() {
         currentDebateSections = Math.floor(Math.random() * (8 - 3 + 1)) + 3;
+        showNonStopDebateCutscene();
+        try {
+            preparedDebateSections = await buildDebateSections({
+                sectionsCount: currentDebateSections,
+            });
+        } catch (e) {
+            console.warn('[Dangan][Trial] Debate section generation failed, falling back:', e);
+            preparedDebateSections = null;
+        }
+        await endNonStopDebateCutscene();
         setState(TrialPhases.NON_STOP_DEBATE);
     }
 
@@ -141,7 +155,7 @@ export function createTrialManager(deps) {
         };
 
         renderCylinder();
-        startFloatingTextLoop();
+        startFloatingTextLoop(preparedDebateSections);
     }
 
     function renderCylinder() {
@@ -158,35 +172,49 @@ export function createTrialManager(deps) {
         `;
     }
 
-    function startFloatingTextLoop() {
-        const messages = getRecentMessages();
-        if (messages.length === 0) return;
+    function startFloatingTextLoop(debateSections) {
+        const fallbackMessages = getRecentMessages();
+        const sections =
+            Array.isArray(debateSections) && debateSections.length
+                ? debateSections
+                : null;
 
-        let currentSection = 0;
-        
-        function nextSection() {
+        let currentSectionIndex = 0;
+
+        const tick = () => {
             if (currentState !== TrialPhases.NON_STOP_DEBATE) return;
 
-            const msg = messages[Math.floor(Math.random() * messages.length)];
-            const speakerName = msg.name || '???';
-            document.getElementById('dangan-speaker-name').textContent = speakerName.toUpperCase();
-            document.getElementById('dangan-section-count').textContent = `SECTION ${currentSection + 1} / ${currentDebateSections}`;
+            if (sections) {
+                const section = sections[currentSectionIndex % sections.length];
+                const speakerName = section.speakerName || '???';
+                document.getElementById('dangan-speaker-name').textContent = String(speakerName).toUpperCase();
+                document.getElementById('dangan-section-count').textContent = `SECTION ${(currentSectionIndex % currentDebateSections) + 1} / ${currentDebateSections}`;
 
-            const chunks = splitIntoChunks(msg.text);
-            const weakPointIndex = Math.floor(Math.random() * chunks.length);
-            
-            chunks.forEach((chunk, i) => {
-                const isWeakPoint = i === weakPointIndex;
-                createFloatingStatement(chunk, isWeakPoint, currentSection);
-            });
+                section.parts.forEach(part => {
+                    createFloatingStatement(part.text, Boolean(part.isWeakPoint), currentSectionIndex);
+                });
 
-            currentSection = (currentSection + 1) % currentDebateSections;
-            
-            // Loop back if all sections shown
-            setTimeout(nextSection, 4000); 
-        }
+                currentSectionIndex = (currentSectionIndex + 1) % currentDebateSections;
+            } else if (fallbackMessages.length) {
+                const msg = fallbackMessages[Math.floor(Math.random() * fallbackMessages.length)];
+                const speakerName = msg.name || '???';
+                document.getElementById('dangan-speaker-name').textContent = speakerName.toUpperCase();
+                document.getElementById('dangan-section-count').textContent = `SECTION ${(currentSectionIndex % currentDebateSections) + 1} / ${currentDebateSections}`;
 
-        nextSection();
+                const chunks = splitIntoChunks(msg.text);
+                const weakPointIndex = Math.floor(Math.random() * chunks.length);
+
+                chunks.forEach((chunk, i) => {
+                    createFloatingStatement(chunk, i === weakPointIndex, currentSectionIndex);
+                });
+
+                currentSectionIndex = (currentSectionIndex + 1) % currentDebateSections;
+            }
+
+            sectionTimerId = window.setTimeout(tick, 4000);
+        };
+
+        tick();
         animateFloatingText();
     }
 
@@ -324,14 +352,184 @@ export function createTrialManager(deps) {
     function cleanupDebateUI() {
         if (animationFrameId) cancelAnimationFrame(animationFrameId);
         animationFrameId = null;
+        if (sectionTimerId) window.clearTimeout(sectionTimerId);
+        sectionTimerId = null;
         floatingStatements.forEach(s => s.element.remove());
         floatingStatements = [];
         if (debateOverlay) {
             debateOverlay.remove();
             debateOverlay = null;
         }
+        if (cutsceneOverlay) {
+            cutsceneOverlay.remove();
+            cutsceneOverlay = null;
+        }
         const notif = document.getElementById('dangan-trial-pre-debate-notif');
         if (notif) notif.remove();
+    }
+
+    function showNonStopDebateCutscene() {
+        if (cutsceneOverlay) return;
+        cutsceneOverlay = document.createElement('div');
+        cutsceneOverlay.id = 'dangan-nonstop-cutscene';
+        cutsceneOverlay.innerHTML = `
+            <div class="dangan-cutscene-camera">
+                <div class="dangan-cutscene-bg"></div>
+            </div>
+            <div class="dangan-cutscene-banner">
+                <div class="dangan-cutscene-banner-inner">NON-STOP DEBATE</div>
+            </div>
+        `;
+        document.body.appendChild(cutsceneOverlay);
+    }
+
+    function endNonStopDebateCutscene() {
+        if (!cutsceneOverlay) return Promise.resolve();
+        return new Promise(resolve => {
+            cutsceneOverlay.classList.add('dangan-cutscene-end');
+            window.setTimeout(() => {
+                if (cutsceneOverlay) {
+                    cutsceneOverlay.remove();
+                    cutsceneOverlay = null;
+                }
+                resolve();
+            }, 520);
+        });
+    }
+
+    async function buildDebateSections({ sectionsCount }) {
+        const context = getContextMessagesForTrial();
+        const speakers = pickSpeakersFromContext(context);
+        if (!speakers.length) return null;
+
+        const sections = [];
+        for (let i = 0; i < sectionsCount; i++) {
+            const speakerName = pickSpeakerWeighted(speakers);
+            const statement = await generateSectionStatement({
+                speakerName,
+                context,
+                sectionIndex: i,
+                sectionsCount,
+            });
+            const parts = splitStatementIntoParts(statement);
+            sections.push({ speakerName, statement, parts });
+        }
+        return sections;
+    }
+
+    function getContextMessagesForTrial() {
+        const ctx = window.SillyTavern?.getContext?.();
+        const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+        return chat
+            .filter(m => !m?.is_system)
+            .slice(-30)
+            .map(m => ({
+                isUser: Boolean(m?.is_user),
+                name: String(m?.name || m?.ch_name || m?.character_name || m?.sender || (m?.is_user ? 'You' : '???')),
+                text: String(m?.mes || m?.text || m?.message || '').trim(),
+            }))
+            .filter(m => m.text);
+    }
+
+    function pickSpeakersFromContext(context) {
+        const counts = new Map();
+        for (const m of context) {
+            if (m.isUser) continue;
+            const name = String(m.name || '').trim();
+            if (!name) continue;
+            counts.set(name, (counts.get(name) || 0) + 1);
+        }
+        const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+        const picked = sorted.slice(0, 4).map(([name, count]) => ({ name, weight: count }));
+        return picked;
+    }
+
+    function pickSpeakerWeighted(speakers) {
+        const total = speakers.reduce((sum, s) => sum + (s.weight || 1), 0);
+        let r = Math.random() * total;
+        for (const s of speakers) {
+            r -= (s.weight || 1);
+            if (r <= 0) return s.name;
+        }
+        return speakers[0]?.name || '???';
+    }
+
+    async function generateSectionStatement({ speakerName, context, sectionIndex, sectionsCount }) {
+        const contextLines = context
+            .slice(-14)
+            .map(m => `${m.isUser ? 'YOU' : m.name}: ${m.text}`)
+            .join('\n');
+
+        const prompt = `
+You are writing a Danganronpa-style Non-stop Debate statement.
+
+Rules:
+- Output ONLY the statement text.
+- 1–2 sentences, assertive, courtroom tone.
+- Use facts and implications from the context.
+- Mark EXACTLY ONE clause as a possible weak point using [[WEAK]]...[[/WEAK]].
+- No other markup, no speaker labels.
+
+CONTEXT:
+${contextLines}
+
+SPEAKER: ${speakerName}
+SECTION: ${sectionIndex + 1} / ${sectionsCount}
+`.trim();
+
+        if (typeof generateTrialDialogue === 'function') {
+            const out = String(await generateTrialDialogue(prompt, { maxTokens: 140, temperature: 0.7 }) || '').trim();
+            if (out) return sanitizeDebateLine(out);
+        }
+
+        const fallback = buildFallbackStatement({ speakerName, context });
+        return fallback;
+    }
+
+    function sanitizeDebateLine(text) {
+        let t = String(text || '').replace(/\r?\n+/g, ' ').trim();
+        t = t.replace(/^[^a-zA-Z0-9]*[A-Za-z0-9 _-]{1,32}:\s*/, '');
+        return t;
+    }
+
+    function buildFallbackStatement({ speakerName, context }) {
+        const hints = context
+            .filter(m => !m.isUser)
+            .slice(-6)
+            .map(m => m.text)
+            .join(' ')
+            .split(/\s+/)
+            .filter(w => w.length >= 6)
+            .slice(0, 18)
+            .join(' ');
+
+        const core = hints || 'The timeline does not match what we established.';
+        return `Listen up—${core}. [[WEAK]]That still doesn’t prove your alibi holds up.[[/WEAK]]`;
+    }
+
+    function splitStatementIntoParts(statement) {
+        const raw = String(statement || '').trim();
+        const weakMatch = raw.match(/\[\[WEAK\]\]([\s\S]*?)\[\[\/WEAK\]\]/i);
+        let clean = raw.replace(/\[\[WEAK\]\]|\[\[\/WEAK\]\]/gi, '').trim();
+        clean = clean.replace(/\s+/g, ' ');
+
+        if (weakMatch && weakMatch[1]) {
+            const weakText = weakMatch[1].trim().replace(/\s+/g, ' ');
+            const beforeAfter = clean.split(weakText);
+            if (beforeAfter.length >= 2) {
+                const before = beforeAfter[0].trim();
+                const after = beforeAfter.slice(1).join(weakText).trim();
+                const parts = [];
+                if (before) parts.push(...splitIntoChunks(before).map(t => ({ text: t, isWeakPoint: false })));
+                parts.push({ text: weakText, isWeakPoint: true });
+                if (after) parts.push(...splitIntoChunks(after).map(t => ({ text: t, isWeakPoint: false })));
+                return parts.filter(p => p.text);
+            }
+        }
+
+        const chunks = splitIntoChunks(clean);
+        const weakPointIndex = chunks.length ? Math.floor(Math.random() * chunks.length) : 0;
+        return chunks.map((t, i) => ({ text: t, isWeakPoint: i === weakPointIndex }));
     }
 
     return {

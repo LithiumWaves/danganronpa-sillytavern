@@ -2693,6 +2693,38 @@ ${prompt}
     return (result || "").trim();
 }
 
+async function generateTrialDialogue(prompt, { maxTokens = 140, temperature = 0.7, topP = 0.9, stop = ["USER:", "ASSISTANT:", "###"] } = {}) {
+    const fullPrompt = String(prompt || "").trim();
+
+    if (isOpenRouterGenerationEnabled()) {
+        return generateWithOpenRouter(fullPrompt, {
+            maxTokens,
+            temperature,
+            topP,
+            stop,
+        });
+    }
+
+    if (!window.SillyTavern?.getContext) {
+        throw new Error("SillyTavern context unavailable");
+    }
+
+    const ctx = SillyTavern.getContext();
+    if (!ctx.generateRaw) {
+        throw new Error("generateRaw not available");
+    }
+
+    const result = await ctx.generateRaw({
+        prompt: fullPrompt,
+        max_tokens: maxTokens,
+        temperature,
+        top_p: topP,
+        stop,
+    });
+
+    return (result || "").trim();
+}
+
 
 async function generateCharacterNotes(char) {
 const profile = char.social?.profile;
@@ -5729,6 +5761,7 @@ debugSTGlobals();
             saveSettingsDebounced,
             vnModeController,
             getTruthBullets,
+            generateTrialDialogue,
             playSfx,
             getSfx: () => sfx,
             characters,
