@@ -241,6 +241,7 @@ export function createTrialManager(deps) {
             text: part.text,
             isWeakPoint: Boolean(part.isWeakPoint),
             laneY: getLaneY(debatePartIndex),
+            weakMarkup: part.weakMarkup,
         }).then(() => {
             if (currentState !== TrialPhases.NON_STOP_DEBATE) return;
             debatePartIndex++;
@@ -283,7 +284,7 @@ export function createTrialManager(deps) {
         }
     }
 
-    function showStatementChunk({ text, isWeakPoint, laneY }) {
+    function showStatementChunk({ text, isWeakPoint, laneY, weakMarkup }) {
         if (!debateOverlay) return Promise.resolve();
 
         if (playbackTimerId) window.clearTimeout(playbackTimerId);
@@ -301,14 +302,25 @@ export function createTrialManager(deps) {
 
         const el = document.createElement('div');
         el.className = 'dangan-floating-statement dangan-statement-single';
-        if (isWeakPoint) {
-            el.classList.add('dangan-weak-point');
+        const rawText = stripSurroundingQuotes(String(text || ''));
+        const wm = String(weakMarkup || '').trim();
+        if (wm && rawText.includes(wm)) {
+            const escapedText = escapeHtml(rawText);
+            const escapedWm = escapeHtml(wm);
+            el.innerHTML = escapedText.replace(
+                new RegExp(escapeRegExp(escapedWm), 'g'),
+                `<span class="dangan-weak-point">${escapedWm}</span>`
+            );
+        } else {
+            el.textContent = rawText;
         }
-        el.textContent = stripSurroundingQuotes(String(text || ''));
         debateOverlay.appendChild(el);
 
         if (isWeakPoint) {
-            currentWeakPointInfo = { text: el.textContent, element: el };
+            const wp = el.querySelector('.dangan-weak-point');
+            currentWeakPointInfo = wp
+                ? { text: wp.textContent, element: wp }
+                : { text: el.textContent, element: el };
         }
 
         statementEl = el;
@@ -406,6 +418,19 @@ export function createTrialManager(deps) {
         if (letters.length < 6) return false;
         const upper = letters.replace(/[^A-Z]/g, '').length;
         return upper / letters.length >= 0.85;
+    }
+
+    function escapeHtml(str) {
+        return String(str || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function escapeRegExp(str) {
+        return String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
     function inferEmotionFromText(text) {
@@ -520,56 +545,46 @@ export function createTrialManager(deps) {
         const raw = String(text || '').replace(/\s+/g, ' ').trim();
         if (!raw) return [];
 
-        let tokens = raw.split(' ').filter(Boolean);
-
-        const merged = [];
-        for (const tok of tokens) {
-            if (/^[,.;:!?]+$/.test(tok) && !merged.length) {
-                continue;
+        const soft = /([,;:]\s+|\.\.\.\s+|\.\s+|\?\s+|!\s+|\)\s+|\]\]\s+|\bbut\s+|\bhowever\s+|\bthough\s+|\byet\s+|\bso\s+|\bbecause\s+)/i;
+        const parts = raw.split(soft).filter(Boolean);
+        const normalized = [];
+        for (let i = 0; i < parts.length; i++) {
+            const part = parts[i];
+            if (soft.test(part) && normalized.length) {
+                normalized[normalized.length - 1] += part;
+            } else {
+                normalized.push(part);
             }
-            if (/^[,.;:!?]+$/.test(tok) && merged.length) {
-                merged[merged.length - 1] = `${merged[merged.length - 1]}${tok}`;
-                continue;
-            }
-            merged.push(tok);
         }
-        tokens = merged;
+        const text2 = normalized.join('').replace(/\s+/g, ' ').trim();
 
-        const chunks = [];
-        const targetWords = 9;
-        const maxWords = 14;
-        const maxChars = 72;
-
-        let i = 0;
-        while (i < tokens.length) {
-            let current = '';
-            let words = 0;
-
-            while (i < tokens.length) {
-                const next = tokens[i];
-                const tentative = current ? `${current} ${next}` : next;
-
-                const wouldExceedWords = words >= maxWords;
-                const wouldExceedChars = tentative.length > maxChars && words >= 1;
-                const wouldHitTarget = words >= targetWords && tentative.length > maxChars;
-
-                if (wouldExceedWords || wouldExceedChars || wouldHitTarget) break;
-
-                current = tentative;
-                words += 1;
-                i += 1;
-            }
-
-            if (!current && i < tokens.length) {
-                current = tokens[i];
-                i += 1;
-            }
-
-            current = current.trim();
-            if (current) chunks.push(current);
+        const candidates = [];
+        const re = /,\s+|;\s+|:\s+|\.\.\.\s+|\.\s+|\?\s+|!\s+|\bbut\s+|\bhowever\s+|\bthough\s+|\byet\s+|\bso\s+|\bbecause\s+/gi;
+        let m;
+        while ((m = re.exec(text2)) !== null) {
+            const idx = m.index + m[0].length;
+            if (idx > 10 && idx < text2.length - 10) candidates.push(idx);
         }
 
-        return chunks;
+        const target = Math.round(text2.length * 0.62);
+        let splitAt = -1;
+        let bestDist = Infinity;
+        for (const idx of candidates) {
+            const dist = Math.abs(idx - target);
+            if (dist < bestDist) {
+                bestDist = dist;
+                splitAt = idx;
+            }
+        }
+
+        if (splitAt === -1 || text2.length < 80) {
+            return [text2];
+        }
+
+        const a = text2.slice(0, splitAt).trim();
+        const b = text2.slice(splitAt).trim();
+        if (!a || !b) return [text2];
+        return [a, b];
     }
 
     function cleanupDebateUI() {
@@ -867,27 +882,24 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
     }
 
     function splitStatementIntoParts(statement) {
-        const raw = String(statement || '').trim();
+        const raw = String(statement || '').trim().replace(/\s+/g, ' ');
         const weakMatch = raw.match(/\[\[([^\]]+)\]\]/);
-        const weakText = weakMatch ? String(weakMatch[1] || '').trim().replace(/\s+/g, ' ') : '';
-        let clean = raw.replace(/\[\[[^\]]+\]\]/g, '').trim().replace(/\s+/g, ' ');
+        const weakToken = weakMatch ? String(weakMatch[1] || '').trim().replace(/\s+/g, ' ') : '';
+        const weakMarkup = weakToken ? `[[${weakToken}]]` : '';
 
-        if (weakText) {
-            const beforeAfter = clean.split(weakText);
-            if (beforeAfter.length >= 2) {
-                const before = beforeAfter[0].trim();
-                const after = beforeAfter.slice(1).join(weakText).trim();
-                const parts = [];
-                if (before) parts.push(...splitIntoChunks(before).map(t => ({ text: t, isWeakPoint: false })));
-                parts.push({ text: weakText, isWeakPoint: true });
-                if (after) parts.push(...splitIntoChunks(after).map(t => ({ text: t, isWeakPoint: false })));
-                return parts.filter(p => p.text);
-            }
+        const chunks = splitIntoChunks(raw);
+        if (!chunks.length) return [];
+
+        if (!weakMarkup) {
+            const weakPointIndex = chunks.length ? Math.floor(Math.random() * chunks.length) : 0;
+            return chunks.map((t, i) => ({ text: t, isWeakPoint: i === weakPointIndex, weakMarkup: '' }));
         }
 
-        const chunks = splitIntoChunks(clean);
-        const weakPointIndex = chunks.length ? Math.floor(Math.random() * chunks.length) : 0;
-        return chunks.map((t, i) => ({ text: t, isWeakPoint: i === weakPointIndex }));
+        return chunks.map((t) => ({
+            text: t,
+            isWeakPoint: t.includes(weakMarkup),
+            weakMarkup: t.includes(weakMarkup) ? weakMarkup : '',
+        }));
     }
 
     function extractDialogueOnly(text) {
@@ -1021,14 +1033,91 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
         const ctx = window.SillyTavern?.getContext?.();
         if (!ctx) return [];
 
-        const chars = Array.isArray(ctx.characters) ? ctx.characters : [];
-        const members = chars
-            .filter(c => !(c?.is_user || c?.isUser))
-            .map(c => String(c?.name || '').trim())
-            .filter(Boolean)
-            .filter(name => !isGroupMemberMuted(name));
+        const groupId = ctx.groupId ?? ctx.group_id;
+        const groupNames = getActiveGroupMemberNames(ctx);
+        if (groupId != null && groupId !== '' && groupNames.length) {
+            return groupNames
+                .filter(name => !isGroupMemberMuted(name))
+                .map(name => ({ name }));
+        }
 
-        return Array.from(new Set(members)).map(name => ({ name }));
+        const chars = Array.isArray(ctx.characters) ? ctx.characters : [];
+        if (chars.length && chars.length <= 20) {
+            const members = chars
+                .filter(c => !(c?.is_user || c?.isUser))
+                .map(c => String(c?.name || '').trim())
+                .filter(Boolean)
+                .filter(name => !isGroupMemberMuted(name));
+
+            return Array.from(new Set(members)).map(name => ({ name }));
+        }
+
+        return [];
+    }
+
+    function getActiveGroupMemberNames(ctx) {
+        const names = new Set();
+        const groupId = ctx.groupId ?? ctx.group_id;
+        if (groupId == null || groupId === '') return [];
+
+        const meta = window.chat_metadata || ctx.chat_metadata || ctx.chatMetadata || null;
+        const sources = [
+            ctx.group,
+            ctx.groupChat,
+            ctx.group_chat,
+            meta?.group_chat,
+            meta?.groupChat,
+            window.groupChat,
+            window.group_chat,
+            window.group,
+            window.groups,
+            window.group_chats,
+            window.groupChats,
+        ];
+
+        const allChars = [
+            ...(Array.isArray(ctx.characters) ? ctx.characters : []),
+            ...(Array.isArray(window.characters) ? window.characters : []),
+        ];
+
+        const addName = (n) => {
+            const name = String(n || '').trim();
+            if (name) names.add(name);
+        };
+
+        const resolveFromId = (id) => {
+            const sid = String(id || '').trim();
+            if (!sid) return;
+            const found = allChars.find(c =>
+                String(c?.id ?? c?.characterId ?? c?.char_id ?? '').trim() === sid
+            );
+            if (found?.name) addName(found.name);
+        };
+
+        const pullFromAny = (obj) => {
+            if (!obj) return;
+
+            if (Array.isArray(obj)) {
+                for (const item of obj) pullFromAny(item);
+                return;
+            }
+
+            const maybeMembers = obj.members || obj.member_list || obj.characters || obj.participants || obj.group_members;
+            if (Array.isArray(maybeMembers)) {
+                for (const item of maybeMembers) pullFromAny(item);
+                return;
+            }
+
+            const id = obj.id ?? obj.characterId ?? obj.char_id ?? obj.member_id;
+            const name = obj.name ?? obj.ch_name ?? obj.character_name ?? obj.display_name;
+            if (name) addName(name);
+            else if (id != null) resolveFromId(id);
+            else if (typeof obj === 'string') addName(obj);
+        };
+
+        for (const s of sources) pullFromAny(s);
+
+        return Array.from(names);
     }
 
     function sampleWeightedWithoutReplacement(items, count) {
