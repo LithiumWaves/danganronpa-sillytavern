@@ -426,9 +426,16 @@ export function createTrialManager(deps) {
         const speakers = pickSpeakersFromContext(context);
         if (!speakers.length) return null;
 
+        const poolSize = Math.min(
+            speakers.length,
+            Math.max(2, Math.min(5, Math.round(sectionsCount / 2)))
+        );
+        const selectedSpeakers = sampleWeightedWithoutReplacement(speakers, poolSize);
+        if (!selectedSpeakers.length) return null
+
         const sections = [];
         for (let i = 0; i < sectionsCount; i++) {
-            const speakerName = pickSpeakerWeighted(speakers);
+            const speakerName = pickSpeakerWeighted(selectedSpeakers);
             const statement = await generateSectionStatement({
                 speakerName,
                 context,
@@ -457,6 +464,7 @@ export function createTrialManager(deps) {
     }
 
     function pickSpeakersFromContext(context) {
+        const groupMembers = getGroupMemberNames();
         const counts = new Map();
         for (const m of context) {
             if (m.isUser) continue;
@@ -464,9 +472,20 @@ export function createTrialManager(deps) {
             if (!name) continue;
             counts.set(name, (counts.get(name) || 0) + 1);
         }
-        const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
-        const picked = sorted.slice(0, 4).map(([name, count]) => ({ name, weight: count }));
-        return picked;
+
+        const fromContext = Array.from(counts.entries())
+            .sort((a, b) => b[1] - a[1])
+            .map(([name, count]) => ({ name, weight: count }));
+
+        if (!groupMembers.length) {
+            return fromContext.slice(0, 8);
+        }
+
+        const memberSet = new Set(groupMembers.map(n => String(n).trim()).filter(Boolean));
+        const inGroup = fromContext.filter(s => memberSet.has(s.name));
+        if (inGroup.length) return inGroup.slice(0, 10);
+
+        return Array.from(memberSet).slice(0, 10).map(name => ({ name, weight: 1 }));
     }
 
     function pickSpeakerWeighted(speakers) {
@@ -502,13 +521,28 @@ SPEAKER: ${speakerName}
 SECTION: ${sectionIndex + 1} / ${sectionsCount}
 `.trim();
 
-        if (typeof generateTrialDialogue === 'function') {
-            const out = String(await generateTrialDialogue(prompt, { maxTokens: 140, temperature: 0.7 }) || '').trim();
-            if (out) return sanitizeDebateLine(out);
+        if (typeof generateTrialDialogue !== 'function') {
+            return ensureSingleWeakPointMarker('...');
         }
 
-        const fallback = buildFallbackStatement({ speakerName, context });
-        return fallback;
+        for (let attempt = 0; attempt < 3; attempt++) {
+            const out = String(
+                await generateTrialDialogue(prompt, {
+                    maxTokens: 160,
+                    temperature: 0.75 + attempt * 0.1,
+                }) || ''
+            ).trim();
+
+            const dialogueOnly = extractDialogueOnly(out);
+            if (!dialogueOnly) continue;
+
+            const normalized = sanitizeDebateLine(`"${dialogueOnly}"`);
+            const withWeak = ensureSingleWeakPointMarker(normalized);
+            if (withWeak && withWeak !== '...') return withWeak;
+            if (withWeak) return withWeak;
+        }
+
+        return ensureSingleWeakPointMarker('...');
     }
 
     function sanitizeDebateLine(text) {
@@ -518,19 +552,36 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
         return stripSurroundingQuotes(t);
     }
 
-    function buildFallbackStatement({ speakerName, context }) {
-        const hints = context
-            .filter(m => !m.isUser)
-            .slice(-6)
-            .map(m => m.text)
-            .join(' ')
-            .split(/\s+/)
-            .filter(w => w.length >= 6)
-            .slice(0, 18)
-            .join(' ');
+    function ensureSingleWeakPointMarker(text) {
+        const raw = String(text || '').trim();
+        const hasOpen = /\[\[WEAK\]\]/i.test(raw);
+        const hasClose = /\[\[\/WEAK\]\]/i.test(raw);
+        if (hasOpen && hasClose) {
+            const firstOpen = raw.search(/\[\[WEAK\]\]/i);
+            const afterOpen = raw.slice(firstOpen + 8);
+            const firstCloseRel = afterOpen.search(/\[\[\/WEAK\]\]/i);
+            if (firstCloseRel >= 0) {
+                const firstClose = firstOpen + 8 + firstCloseRel;
+                const keep = raw.slice(0, firstClose + 9);
+                const tail = raw.slice(firstClose + 9).replace(/\[\[WEAK\]\]|\[\[\/WEAK\]\]/gi, '');
+                return (keep + tail).replace(/\s+/g, ' ').trim();
+            }
+        }
 
-        const core = hints || 'The timeline does not match what we established.';
-        return `"Listen up—${core}. [[WEAK]]That still doesn’t prove your alibi holds up.[[/WEAK]]"`;
+        const clean = raw.replace(/\[\[WEAK\]\]|\[\[\/WEAK\]\]/gi, '').replace(/\s+/g, ' ').trim();
+        if (!clean) return '[[WEAK]]...[[/WEAK]]';
+
+        const words = clean.split(' ').filter(Boolean);
+        if (words.length <= 3) return `[[WEAK]]${clean}[[/WEAK]]`;
+
+        const span = Math.min(8, Math.max(4, Math.floor(words.length / 2)));
+        const start = Math.max(0, Math.min(words.length - span, Math.floor(words.length / 3)));
+        const weak = words.slice(start, start + span).join(' ');
+
+        const before = words.slice(0, start).join(' ');
+        const after = words.slice(start + span).join(' ');
+
+        return [before, `[[WEAK]]${weak}[[/WEAK]]`, after].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
     }
 
     function splitStatementIntoParts(statement) {
@@ -599,6 +650,44 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
                 text,
             };
         });
+    }
+
+    function getGroupMemberNames() {
+        const ctx = window.SillyTavern?.getContext?.();
+        if (!ctx) return [];
+        const groupId = ctx.groupId ?? ctx.group_id;
+        if (groupId == null || groupId === '') return [];
+
+        const chars = Array.isArray(ctx.characters) ? ctx.characters : [];
+        const fromCharacters = chars
+            .filter(c => !(c?.is_user || c?.isUser))
+            .map(c => String(c?.name || '').trim())
+            .filter(Boolean);
+        if (fromCharacters.length) return Array.from(new Set(fromCharacters));
+
+        const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+        const fromChat = chat
+            .filter(m => !(m?.is_user || m?.isUser) && !(m?.is_system || m?.isSystem))
+            .map(m => String(m?.ch_name || m?.name || '').trim())
+            .filter(Boolean);
+        return Array.from(new Set(fromChat));
+    }
+
+    function sampleWeightedWithoutReplacement(items, count) {
+        const pool = items.map(it => ({ ...it, weight: Number(it.weight) || 1 })).filter(it => it.name);
+        const picked = [];
+        while (picked.length < count && pool.length) {
+            const total = pool.reduce((sum, it) => sum + it.weight, 0);
+            let r = Math.random() * total;
+            let idx = 0;
+            for (; idx < pool.length; idx++) {
+                r -= pool[idx].weight;
+                if (r <= 0) break;
+            }
+            const chosen = pool.splice(Math.min(idx, pool.length - 1), 1)[0];
+            picked.push({ name: chosen.name, weight: chosen.weight });
+        }
+        return picked;
     }
 
     return {
