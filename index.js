@@ -3205,7 +3205,7 @@ function getCharacterSourceText(charName) {
     return sources.join("\n\n") || "NO SOURCE DATA AVAILABLE.";
 }
 
-async function getSpriteUrl(charName) {
+async function getSpriteUrl(charName, label = "neutral") {
     let folder = charName;
     const stChars = window.characters;
     if (Array.isArray(stChars)) {
@@ -3218,8 +3218,9 @@ async function getSpriteUrl(charName) {
         const resp = await fetch(`/api/sprites/get?name=${encodeURIComponent(folder)}`);
         if (!resp.ok) return null;
         const sprites = await resp.json();
+        const desired = sprites.find(s => String(s.label || '').toLowerCase() === String(label || '').toLowerCase());
         const neutral = sprites.find(s => s.label === "neutral");
-        return neutral?.path ?? null;
+        return desired?.path ?? neutral?.path ?? null;
     } catch {
         return null;
     }

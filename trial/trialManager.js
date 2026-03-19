@@ -40,6 +40,7 @@ export function createTrialManager(deps) {
     let portraitImgEl = null;
     let portraitToken = 0;
     let portraitSpeaker = null;
+    let portraitEmotion = null;
 
     function setState(newState) {
         console.log(`[Dangan][Trial] State change: ${currentState} -> ${newState}`);
@@ -233,7 +234,8 @@ export function createTrialManager(deps) {
         if (speakerEl) speakerEl.textContent = String(speakerName).toUpperCase();
         if (countEl) countEl.textContent = `SECTION ${(debateSectionIndex % currentDebateSections) + 1} / ${currentDebateSections}`;
 
-        void updateSpeakerPortrait(speakerName);
+        const emotion = part?.emotion || inferEmotionFromText(part?.text);
+        void updateSpeakerPortrait(speakerName, emotion);
 
         showStatementChunk({
             text: part.text,
@@ -250,12 +252,14 @@ export function createTrialManager(deps) {
         });
     }
 
-    async function updateSpeakerPortrait(speakerName) {
+    async function updateSpeakerPortrait(speakerName, emotion) {
         if (!portraitImgEl) return;
         const name = String(speakerName || '').trim();
         if (!name) return;
-        if (portraitSpeaker === name) return;
+        const emo = String(emotion || '').trim().toLowerCase() || 'neutral';
+        if (portraitSpeaker === name && portraitEmotion === emo) return;
         portraitSpeaker = name;
+        portraitEmotion = emo;
 
         const token = ++portraitToken;
 
@@ -265,7 +269,7 @@ export function createTrialManager(deps) {
         }
 
         try {
-            const url = await getSpriteUrl(name);
+            const url = await getSpriteUrl(name, emo);
             if (token !== portraitToken) return;
             if (!url) {
                 portraitImgEl.style.display = 'none';
@@ -310,18 +314,23 @@ export function createTrialManager(deps) {
         statementEl = el;
         const w = window.innerWidth || 1200;
         const h = window.innerHeight || 800;
-        const baseY = Number.isFinite(laneY) ? laneY : Math.round(h * 0.58);
+        const baseY = Number.isFinite(laneY) ? laneY : Math.round(h * 0.52);
 
-        const startX = Math.round(w * 0.90);
-        const endX = Math.round(w * 0.18);
-        const rise = Math.round(h * 0.12);
-        const startY = baseY + Math.round(Math.random() * 10 - 5);
-        const endY = baseY - rise + Math.round(Math.random() * 10 - 5);
+        const centerX = Math.round(w * 0.52);
+        const centerY = Math.round(h * 0.50);
+        const startX = centerX + Math.round(Math.random() * 40 - 20);
+        const startY = centerY + Math.round(Math.random() * 36 - 18) + Math.round((baseY - centerY) * 0.15);
 
-        const duration = 2400 + Math.floor(Math.random() * 350);
+        const dir = Math.random() < 0.5 ? -1 : 1;
+        const driftX = dir * Math.round(w * 0.10);
+        const endX = startX + driftX;
+        const endY = startY + Math.round(Math.random() * 18 - 9);
+
+        const duration = 6200 + Math.floor(Math.random() * 1200);
         let rafId = 0;
         let cancelled = false;
         const startTime = performance.now();
+        const isScreaming = isAllCapsLine(el.textContent);
 
         return new Promise(resolve => {
             let finished = false;
@@ -339,23 +348,24 @@ export function createTrialManager(deps) {
 
                 const p = Math.max(0, Math.min(1, (now - startTime) / duration));
 
-                const ease = 1 - Math.pow(1 - p, 2);
-                const x = startX + (endX - startX) * ease;
-                const y = startY + (endY - startY) * ease;
+                const x = startX + (endX - startX) * p;
+                const y = startY + (endY - startY) * p;
 
                 const peak = 1 - Math.abs(p - 0.5) * 2;
-                const scale = 0.90 + 0.18 * peak;
-                const rot = -18;
-                const skew = -12;
+                const scale = 0.92 + 0.20 * peak;
+                const rot = -10 + dir * 4;
+                const skew = dir * -10;
 
                 let opacity = 1;
-                if (p < 0.08) opacity = p / 0.08;
-                else if (p > 0.92) opacity = Math.max(0, (1 - p) / 0.08);
+                if (p < 0.12) opacity = p / 0.12;
+                else if (p > 0.86) opacity = Math.max(0, (1 - p) / 0.14);
 
                 el.style.left = `${x}px`;
                 el.style.top = `${y}px`;
                 el.style.opacity = String(opacity);
-                el.style.transform = `translate(-50%, -50%) rotate(${rot}deg) skewX(${skew}deg) scale(${scale})`;
+                const shake = isScreaming ? (Math.sin(now / 28) * 2.2) : 0;
+                const shakeY = isScreaming ? (Math.cos(now / 24) * 1.6) : 0;
+                el.style.transform = `translate(calc(-50% + ${shake}px), calc(-50% + ${shakeY}px)) rotate(${rot}deg) skewX(${skew}deg) scale(${scale})`;
 
                 if (p >= 1) {
                     el.remove();
@@ -382,6 +392,27 @@ export function createTrialManager(deps) {
 
             rafId = requestAnimationFrame(frame);
         });
+    }
+
+    function isAllCapsLine(text) {
+        const raw = String(text || '');
+        const letters = raw.replace(/[^A-Za-z]/g, '');
+        if (letters.length < 6) return false;
+        const upper = letters.replace(/[^A-Z]/g, '').length;
+        return upper / letters.length >= 0.85;
+    }
+
+    function inferEmotionFromText(text) {
+        const t = String(text || '');
+        if (!t.trim()) return 'neutral';
+        if (isAllCapsLine(t)) return 'angry';
+        if (/!{2,}/.test(t)) return 'surprised';
+        if (/\?{2,}/.test(t)) return 'thinking';
+        if (/\.\.\./.test(t)) return 'sad';
+        if (/!!/.test(t)) return 'angry';
+        if (/!/.test(t)) return 'surprised';
+        if (/\?/.test(t)) return 'thinking';
+        return 'neutral';
     }
 
     function handleShoot(e) {
@@ -616,7 +647,10 @@ export function createTrialManager(deps) {
                 sectionIndex: i,
                 sectionsCount,
             });
-            const parts = splitStatementIntoParts(statement);
+            const parts = splitStatementIntoParts(statement).map(p => ({
+                ...p,
+                emotion: inferEmotionFromText(p.text),
+            }));
             sections.push({ speakerName, statement, parts });
 
             const spoken = stripSurroundingQuotes(extractDialogueOnly(statement) || statement);
@@ -719,7 +753,7 @@ Rules:
 - 1–2 sentences.
 - Use facts and implications from the context.
 - Your line should respond naturally to what others have said so far.
-- Inside the quotes, mark EXACTLY ONE weak point using [[WEAK]]...[[/WEAK]].
+- Inside the quotes, mark EXACTLY ONE weak point using this format: [[WEAK POINT]].
 - The weak point should be short: preferably 1 word, max 3 words.
 - No other markup and no speaker labels.
 
@@ -769,53 +803,43 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
 
     function ensureSingleWeakPointMarker(text) {
         const raw = String(text || '').trim();
-        const hasOpen = /\[\[WEAK\]\]/i.test(raw);
-        const hasClose = /\[\[\/WEAK\]\]/i.test(raw);
-        if (hasOpen && hasClose) {
-            const firstOpen = raw.search(/\[\[WEAK\]\]/i);
-            const afterOpen = raw.slice(firstOpen + 8);
-            const firstCloseRel = afterOpen.search(/\[\[\/WEAK\]\]/i);
-            if (firstCloseRel >= 0) {
-                const firstClose = firstOpen + 8 + firstCloseRel;
-                const keep = raw.slice(0, firstClose + 9);
-                const tail = raw.slice(firstClose + 9).replace(/\[\[WEAK\]\]|\[\[\/WEAK\]\]/gi, '');
-                return normalizeWeakPointSpan((keep + tail).replace(/\s+/g, ' ').trim());
-            }
+        const existing = raw.match(/\[\[([^\]]+)\]\]/);
+        if (existing) {
+            const rawWeak = String(existing[1] || '').trim().replace(/\s+/g, ' ');
+            const trimmedWeak = shrinkWeakPoint(rawWeak);
+            return raw.replace(/\[\[[^\]]+\]\]/, `[[${trimmedWeak}]]`);
         }
 
-        const clean = raw.replace(/\[\[WEAK\]\]|\[\[\/WEAK\]\]/gi, '').replace(/\s+/g, ' ').trim();
-        if (!clean) return '[[WEAK]]...[[/WEAK]]';
+        const clean = raw.replace(/\s+/g, ' ').trim();
+        if (!clean) return '[[...]]';
 
         const words = clean.split(' ').filter(Boolean);
-        if (words.length <= 3) return `[[WEAK]]${clean}[[/WEAK]]`;
+        const chosen = pickCompactWeakPoint(words);
+        if (!chosen) return `[[${words[0] || '...'}]]`;
 
-        const span = Math.min(3, Math.max(1, Math.floor(words.length / 6)));
-        const start = Math.max(0, Math.min(words.length - span, Math.floor(words.length / 3)));
-        const weak = words.slice(start, start + span).join(' ');
+        const idx = words.findIndex(w => normalizeLooseToken(w) === normalizeLooseToken(chosen));
+        if (idx >= 0) {
+            const before = words.slice(0, idx).join(' ');
+            const after = words.slice(idx + 1).join(' ');
+            return [before, `[[${chosen}]]`, after].filter(Boolean).join(' ');
+        }
 
-        const before = words.slice(0, start).join(' ');
-        const after = words.slice(start + span).join(' ');
-
-        return normalizeWeakPointSpan(
-            [before, `[[WEAK]]${weak}[[/WEAK]]`, after]
-                .filter(Boolean)
-                .join(' ')
-                .replace(/\s+/g, ' ')
-                .trim()
-        );
+        return `${clean} [[${chosen}]]`;
     }
 
-    function normalizeWeakPointSpan(text) {
-        const raw = String(text || '').trim();
-        const match = raw.match(/\[\[WEAK\]\]([\s\S]*?)\[\[\/WEAK\]\]/i);
-        if (!match) return raw;
+    function normalizeLooseToken(value) {
+        return String(value || '')
+            .toLowerCase()
+            .replace(/^[^\w]+|[^\w]+$/g, '')
+            .trim();
+    }
 
-        const weakRaw = String(match[1] || '').trim().replace(/\s+/g, ' ');
-        const weakWords = weakRaw.split(' ').filter(Boolean);
-        if (weakWords.length <= 3) return raw;
-
-        const shrunken = pickCompactWeakPoint(weakWords);
-        return raw.replace(/\[\[WEAK\]\][\s\S]*?\[\[\/WEAK\]\]/i, `[[WEAK]]${shrunken}[[/WEAK]]`);
+    function shrinkWeakPoint(text) {
+        const raw = String(text || '').trim().replace(/\s+/g, ' ');
+        if (!raw) return '...';
+        const words = raw.split(' ').filter(Boolean);
+        if (words.length <= 3) return raw;
+        return pickCompactWeakPoint(words);
     }
 
     function pickCompactWeakPoint(words) {
@@ -833,18 +857,16 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
             .filter(w => w.length >= 4 && !stop.has(w.toLowerCase()))
             .sort((a, b) => b.length - a.length);
 
-        const chosen = candidates[0] || cleaned[0] || '...';
-        return chosen;
+        return candidates[0] || cleaned[0] || '...';
     }
 
     function splitStatementIntoParts(statement) {
         const raw = String(statement || '').trim();
-        const weakMatch = raw.match(/\[\[WEAK\]\]([\s\S]*?)\[\[\/WEAK\]\]/i);
-        let clean = raw.replace(/\[\[WEAK\]\]|\[\[\/WEAK\]\]/gi, '').trim();
-        clean = clean.replace(/\s+/g, ' ');
+        const weakMatch = raw.match(/\[\[([^\]]+)\]\]/);
+        const weakText = weakMatch ? String(weakMatch[1] || '').trim().replace(/\s+/g, ' ') : '';
+        let clean = raw.replace(/\[\[[^\]]+\]\]/g, '').trim().replace(/\s+/g, ' ');
 
-        if (weakMatch && weakMatch[1]) {
-            const weakText = weakMatch[1].trim().replace(/\s+/g, ' ');
+        if (weakText) {
             const beforeAfter = clean.split(weakText);
             if (beforeAfter.length >= 2) {
                 const before = beforeAfter[0].trim();
