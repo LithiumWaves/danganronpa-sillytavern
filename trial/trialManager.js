@@ -310,17 +310,15 @@ export function createTrialManager(deps) {
         statementEl = el;
         const w = window.innerWidth || 1200;
         const h = window.innerHeight || 800;
-        const laneOffset = Number.isFinite(laneY) ? (laneY - Math.round(h * 0.58)) : 0;
+        const baseY = Number.isFinite(laneY) ? laneY : Math.round(h * 0.58);
 
-        const centerX = Math.round(w * 0.56);
-        const centerY = Math.round(h * 0.52) + Math.round(laneOffset * 0.35);
-        const rx = Math.round(w * 0.58);
-        const ry = Math.round(h * 0.26);
+        const startX = Math.round(w * 0.90);
+        const endX = Math.round(w * 0.18);
+        const rise = Math.round(h * 0.12);
+        const startY = baseY + Math.round(Math.random() * 10 - 5);
+        const endY = baseY - rise + Math.round(Math.random() * 10 - 5);
 
-        const startAngle = (-0.15 * Math.PI) + (Math.random() * 0.08 * Math.PI);
-        const endAngle = (-1.18 * Math.PI) + (Math.random() * 0.06 * Math.PI);
-
-        const duration = 2600 + Math.floor(Math.random() * 400);
+        const duration = 2400 + Math.floor(Math.random() * 350);
         let rafId = 0;
         let cancelled = false;
         const startTime = performance.now();
@@ -341,13 +339,14 @@ export function createTrialManager(deps) {
 
                 const p = Math.max(0, Math.min(1, (now - startTime) / duration));
 
-                const angle = startAngle + (endAngle - startAngle) * p;
-                const x = centerX + rx * Math.cos(angle);
-                const y = centerY + ry * Math.sin(angle);
+                const ease = 1 - Math.pow(1 - p, 2);
+                const x = startX + (endX - startX) * ease;
+                const y = startY + (endY - startY) * ease;
 
                 const peak = 1 - Math.abs(p - 0.5) * 2;
-                const scale = 0.82 + 0.22 * peak;
-                const rot = -16 + (Math.sin(angle) * 6);
+                const scale = 0.90 + 0.18 * peak;
+                const rot = -18;
+                const skew = -12;
 
                 let opacity = 1;
                 if (p < 0.08) opacity = p / 0.08;
@@ -356,7 +355,7 @@ export function createTrialManager(deps) {
                 el.style.left = `${x}px`;
                 el.style.top = `${y}px`;
                 el.style.opacity = String(opacity);
-                el.style.transform = `translate(-50%, -50%) rotate(${rot}deg) scale(${scale})`;
+                el.style.transform = `translate(-50%, -50%) rotate(${rot}deg) skewX(${skew}deg) scale(${scale})`;
 
                 if (p >= 1) {
                     el.remove();
@@ -648,7 +647,7 @@ export function createTrialManager(deps) {
     }
 
     function pickSpeakersFromContext(context) {
-        const members = getGroupChatMembers();
+        const members = getGroupChatMembers(context);
         if (members.length) {
             const counts = new Map();
             for (const m of context) {
@@ -990,17 +989,28 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
         return false;
     }
 
-    function getGroupChatMembers() {
+    function getGroupChatMembers(context) {
         const ctx = window.SillyTavern?.getContext?.();
         if (!ctx) return [];
         const groupId = ctx.groupId ?? ctx.group_id;
         if (groupId == null || groupId === '') return [];
 
+        const activeKeys = new Set(
+            (Array.isArray(context) ? context : [])
+                .filter(m => m && !m.isUser)
+                .map(m => normalizeLooseName(m.name))
+                .filter(Boolean)
+        );
+
         const chars = Array.isArray(ctx.characters) ? ctx.characters : [];
         const members = chars
             .filter(c => !(c?.is_user || c?.isUser))
             .map(c => String(c?.name || '').trim())
-            .filter(Boolean);
+            .filter(Boolean)
+            .filter(name => {
+                if (!activeKeys.size) return false;
+                return activeKeys.has(normalizeLooseName(name));
+            });
 
         return Array.from(new Set(members)).map(name => ({ name }));
     }
