@@ -25,10 +25,10 @@ const ROOM_SVG_FILES = [
 ];
 
 const TYPE_DEFAULT_ICONS = {
-    "truth-bullet": "truth-bullet-location.svg",
+    "truth-bullet": "artillery-shell.svg",
     "monomachine":  "monomachine-store.svg",
     "trial":        "trial-room.svg",
-    "body":         "body-discovery-location.svg",
+    "body":         "chalk-outline-murder.svg",
 };
 const MAP_POINT_WIDTH = 480;
 const MAP_POINT_HEIGHT = 272;
@@ -59,7 +59,7 @@ function getFloorByKey(areaKey, floorKey) {
     return area.floors.find(floor => floor.key === floorKey) || null;
 }
 
-export function createMapPanelController({ extensionFolderPath, getItemsPanelController, playSfx, getSfx, getSetting, onWalkStep, onTrialStartRequest, getTruthBulletByLocationId, navigateToTruth, onMachineOpen, onMachineClose }) {
+export function createMapPanelController({ extensionFolderPath, getItemsPanelController, playSfx, getSfx, getSetting, onWalkStep, onTrialStartRequest, getTruthBulletByLocationId, navigateToTruth, onMachineOpen, onMachineClose, playShopTrack, stopShopTrack }) {
     const state = {
         area: "hopes_peak",
         floor: "floor_1",
@@ -247,10 +247,13 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             const topPercent = (pin.y / MAP_POINT_HEIGHT) * 100;
             const matchedBullet = (pin.type === "truth-bullet" || pin.type === "body")
                 ? getTruthBulletByLocationId?.(pin.locationId) : null;
-            const iconSrc = `${extensionFolderPath}/assets/rooms/${escapeHtml(pin.icon)}`;
-            const pinBulletOverlayHtml = matchedBullet?.image
-                ? `<img class="map-custom-pin-bullet-overlay" src="${matchedBullet.image}" alt="" />`
-                : "";
+            const ICON_MIGRATIONS = {
+                "truth-bullet-location.svg": "artillery-shell.svg",
+                "body-discovery-location.svg": "chalk-outline-murder.svg",
+            };
+            const resolvedIcon = ICON_MIGRATIONS[pin.icon] ?? pin.icon;
+            const iconSrc = `${extensionFolderPath}/assets/rooms/${escapeHtml(resolvedIcon)}`;
+            const pinBulletOverlayHtml = "";
 
             const isHighlighted = pin.id === state.highlightedPinId;
             const isRoomHidden  = pin.type === "room"         && state.roomViewMode === "off";
@@ -319,27 +322,16 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
     }
 
     function syncMachineTrack($panel) {
-        const track = document.getElementById("monopad_sfx_monochine_track");
-        if (!track) return;
-
         const shouldPlay = isMachineTrackEnabled() && $(selectors.machineOverlay).hasClass("open");
         if (shouldPlay) {
-            track.loop = true;
-            track.volume = getMachineTrackVolume();
-            if (state.machineTrackStarted) return;
-            track.currentTime = 0;
-            track.play().then(() => {
+            if (!state.machineTrackStarted) {
+                playShopTrack?.();
                 state.machineTrackStarted = true;
-            }).catch(() => {
-                state.machineTrackStarted = false;
-            });
+            }
             return;
         }
 
-        if (!track.paused) {
-            track.pause();
-        }
-        track.currentTime = 0;
+        stopShopTrack?.();
         state.machineTrackStarted = false;
     }
 
@@ -351,8 +343,9 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         let showCustomNames = false;
 
         function updateEyeBtn() {
-            $(".mml-eye-btn").attr("title", showCustomNames ? "Hide custom item names" : "Show custom item names");
-            $(".mml-eye-btn").html(showCustomNames ? "&#x1F441;" : "&#x1F648;");
+            const icon = showCustomNames ? "eye-open.svg" : "eye-closed.svg";
+            const title = showCustomNames ? "Hide custom item names" : "Show custom item names";
+            $(".mml-eye-btn").attr("title", title).html(`<img src="${extensionFolderPath}/assets/${icon}" alt="" style="width:14px;height:14px;object-fit:contain;filter:invert(1);opacity:0.8;pointer-events:none"/>`);
         }
 
         function buildRows() {
@@ -380,7 +373,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                     <div class="mml-header">
                         <span class="mml-title">ITEM POOL</span>
                         <div class="mml-header-actions">
-                            <button type="button" class="mml-eye-btn" title="Show custom item names">&#x1F648;</button>
+                            <button type="button" class="mml-eye-btn" title="Show custom item names"><img src="${extensionFolderPath}/assets/eye-closed.svg" alt="" style="width:14px;height:14px;object-fit:contain;filter:invert(1);opacity:0.8;pointer-events:none"/></button>
                             <button type="button" class="mml-add-btn" title="Add custom item">+</button>
                             <button type="button" class="mml-close">✕</button>
                         </div>
@@ -1492,6 +1485,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             const pinId = $(this).data("custom-pin-id");
             const pin = state.customPins.find(p => p.id === pinId);
             if (!pin) return;
+            if (pin.locked) return;
 
             const $pin = $(this);
             const wrapEl = $imageWrap.get(0);
@@ -1545,6 +1539,15 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                 $(this).removeData("drag-moved");
                 e.stopImmediatePropagation();
             }
+        });
+
+        $panel.off("click.pinListLock").on("click.pinListLock", ".map-pins-list-lock", function () {
+            const pinId = $(this).closest(".map-pins-list-item").data("pin-id");
+            const pin = state.customPins.find(p => p.id === pinId);
+            if (!pin) return;
+            pin.locked = !pin.locked;
+            saveCustomPins();
+            renderPinList($panel);
         });
 
         $panel.off("click.pinListEdit").on("click.pinListEdit", ".map-pins-list-edit", function () {
@@ -1688,8 +1691,9 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         for (const pin of floorPins) {
             const isActive = pin.id === state.highlightedPinId;
             $list.append(`
-                <div class="map-pins-list-item type-${escapeHtml(pin.type)}${isActive ? " active" : ""}" data-pin-id="${escapeHtml(pin.id)}">
+                <div class="map-pins-list-item type-${escapeHtml(pin.type)}${isActive ? " active" : ""}${pin.locked ? " locked" : ""}" data-pin-id="${escapeHtml(pin.id)}">
                     <button type="button" class="map-pins-list-name" title="${escapeHtml(pin.locationId || '')}">${escapeHtml(pin.label)}</button>
+                    <button type="button" class="map-pins-list-lock${pin.locked ? " is-locked" : ""}" aria-label="${pin.locked ? "Unlock" : "Lock"} ${escapeHtml(pin.label)}" title="${pin.locked ? "Unlock pin" : "Lock pin"}"><img src="${extensionFolderPath}/assets/${pin.locked ? "padlock.svg" : "padlock-open.svg"}" alt="" /></button>
                     <button type="button" class="map-pins-list-edit" aria-label="Edit ${escapeHtml(pin.label)}">✏</button>
                     <button type="button" class="map-pins-list-delete" aria-label="Delete ${escapeHtml(pin.label)}">✕</button>
                 </div>

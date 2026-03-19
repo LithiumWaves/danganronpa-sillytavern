@@ -412,12 +412,112 @@
                 </div>
 
                 <div class="settings-item settings-item-stack">
-                    <span class="settings-label">INVESTIGATION TRACKS</span>
-                    <div class="settings-note">Select tracks that play after the Investigation SFX ends. A random selection is picked each time.</div>
-                    <div class="investigation-tracks-wrap">
-                        <div id="investigation-tracks-list" class="investigation-tracks-list"></div>
-                        <div id="investigation-selected-list" class="investigation-selected-list">
-                            <div class="investigation-selected-empty">NONE SELECTED</div>
+                    <span class="settings-label">BGM TRACKS</span>
+                    <div class="settings-note">Select tracks that play after each phase starts. Multiple selections pick randomly. No selections plays no audio.</div>
+                    <div class="bgm-tracks-tabs">
+                        <button class="bgm-tracks-tab active" data-tab="daytime">DAYTIME</button>
+                        <button class="bgm-tracks-tab" data-tab="nighttime">NIGHTTIME</button>
+                        <button class="bgm-tracks-tab" data-tab="investigation">INVESTIGATION</button>
+                        <button class="bgm-tracks-tab" data-tab="shop">SHOP</button>
+                        <button class="bgm-tracks-tab" data-tab="trial">TRIAL</button>
+                    </div>
+                    <div class="bgm-tracks-panel active" data-tab="daytime">
+                        <div class="investigation-tracks-wrap">
+                            <div id="daytime-tracks-list" class="investigation-tracks-list"></div>
+                            <div id="daytime-selected-list" class="investigation-selected-list">
+                                <div class="investigation-selected-empty">NONE SELECTED</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bgm-tracks-panel" data-tab="nighttime">
+                        <div class="investigation-tracks-wrap">
+                            <div id="nighttime-tracks-list" class="investigation-tracks-list"></div>
+                            <div id="nighttime-selected-list" class="investigation-selected-list">
+                                <div class="investigation-selected-empty">NONE SELECTED</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bgm-tracks-panel" data-tab="investigation">
+                        <div class="investigation-tracks-wrap">
+                            <div id="investigation-tracks-list" class="investigation-tracks-list"></div>
+                            <div id="investigation-selected-list" class="investigation-selected-list">
+                                <div class="investigation-selected-empty">NONE SELECTED</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bgm-tracks-panel" data-tab="shop">
+                        <div class="investigation-tracks-wrap">
+                            <div id="shop-tracks-list" class="investigation-tracks-list"></div>
+                            <div id="shop-selected-list" class="investigation-selected-list">
+                                <div class="investigation-selected-empty">NONE SELECTED</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bgm-tracks-panel" data-tab="trial">
+                        <div class="bgm-tracks-subtabs">
+                            <button class="bgm-tracks-subtab active" data-subtab="trial-general">GENERAL</button>
+                            <button class="bgm-tracks-subtab" data-subtab="trial-preparation">PREPARATION</button>
+                            <button class="bgm-tracks-subtab" data-subtab="trial-debates">DEBATES</button>
+                            <button class="bgm-tracks-subtab" data-subtab="trial-scrum">SCRUM</button>
+                            <button class="bgm-tracks-subtab" data-subtab="trial-pta">PTA</button>
+                            <button class="bgm-tracks-subtab" data-subtab="trial-reenactment">RE-ENACTMENT</button>
+                            <button class="bgm-tracks-subtab" data-subtab="trial-closing">CLOSING</button>
+                        </div>
+                        <div class="bgm-tracks-subpanel active" data-subtab="trial-general">
+                            <div class="investigation-tracks-wrap">
+                                <div id="trial-general-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="trial-general-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bgm-tracks-subpanel" data-subtab="trial-preparation">
+                            <div class="investigation-tracks-wrap">
+                                <div id="trial-preparation-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="trial-preparation-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bgm-tracks-subpanel" data-subtab="trial-debates">
+                            <div class="investigation-tracks-wrap">
+                                <div id="trial-debates-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="trial-debates-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bgm-tracks-subpanel" data-subtab="trial-scrum">
+                            <div class="investigation-tracks-wrap">
+                                <div id="trial-scrum-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="trial-scrum-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bgm-tracks-subpanel" data-subtab="trial-pta">
+                            <div class="investigation-tracks-wrap">
+                                <div id="trial-pta-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="trial-pta-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bgm-tracks-subpanel" data-subtab="trial-reenactment">
+                            <div class="investigation-tracks-wrap">
+                                <div id="trial-reenactment-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="trial-reenactment-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bgm-tracks-subpanel" data-subtab="trial-closing">
+                            <div class="investigation-tracks-wrap">
+                                <div id="trial-closing-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="trial-closing-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -483,6 +583,14 @@
                         <button id="dangan_configure_vfx" class="settings-small-button" type="button">CONFIGURE EXPRESSIONS</button>
                     </div>
                     <div class="settings-note">Visual and audio effects on character expressions. Character-specific.</div>
+                </div>
+
+                <div class="settings-item settings-item-stack">
+                    <span class="settings-label">BODY DISCOVERY CINEMATICS</span>
+                    <div class="settings-ai-actions">
+                        <button id="dangan_configure_deaths" class="settings-small-button" type="button">CONFIGURE DEATHS</button>
+                    </div>
+                    <div class="settings-note">Create named cinematics for <code>/body-discovered name=&lt;name&gt;</code>. Set background segments, camera pins, shake and static effects.</div>
                 </div>
             </section>
 
@@ -755,10 +863,6 @@
 </audio>
 
 
-<audio id="monopad_sfx_monochine_track" preload="auto" loop>
-    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/monomono/monochine_track.mp3" type="audio/mpeg">
-    <source src="scripts/extensions/third-party/danganronpa-extension/assets/monochine_track.mp3" type="audio/mpeg">
-</audio>
 
 <audio id="bullet_sfx_get" preload="auto">
     <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/truth/bullet_sfx_get.mp3" type="audio/mpeg">

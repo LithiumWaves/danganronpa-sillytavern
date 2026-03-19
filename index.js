@@ -20,6 +20,11 @@ import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers 
 import { createClassTrialMenuController } from "./trial/menu/classTrialMenu.js";
 import { createTrialManager, TrialPhases } from "./trial/trialManager.js";
 import { initVfxSystem, onVfxChatChanged } from "./vfx/vfxSystem.js";
+import { createBdaCinematicEditor } from "./vfx/bdaCinematicEditor.js";
+import { createVoteResultsController } from "./vfx/voteResults.js";
+import { createQuestionTimeController } from "./vfx/questionTime.js";
+import { createQuestionTruthController } from "./vfx/questionTruth.js";
+import { createHangmansGambitController } from "./vfx/hangmansGambit.js";
 import { createAudioVisualizerController } from "./audio/audioVisualizer.js";
 import { user_avatar } from "../../../personas.js";
 
@@ -46,6 +51,11 @@ let monokumaAnnouncementController = null;
 let classTrialMenuController = null;
 let trialManager = null;
 let vfxCleanup = null;
+let bdaCinematicEditor = null;
+let voteResultsController   = null;
+let questionTimeController    = null;
+let questionTruthController   = null;
+let hangmansGambitController  = null;
 
 const openRouterSettings = createOpenRouterSettingsManager({
     extensionName,
@@ -304,6 +314,10 @@ function applyRewardDifficultyProfile(profileKey) {
 
 function awardMonocoins(amount = 0, reason = "") {
     rewards?.awardMonocoins(amount, reason);
+}
+
+function deductMonocoins(amount = 0, reason = "") {
+    rewards?.deductMonocoins(amount, reason);
 }
 
 function increaseTrustWithRewards(char) {
@@ -2185,9 +2199,68 @@ const nightTimeStartController = {
 
 let investigationTrackAudio = null;
 let investigationUnderway = false;
+let shopTrackAudio = null;
 
-function playInvestigationTrack() {
-    const tracks = getMonopadSetting("investigationTracks") || [];
+function playShopTrack() {
+    const tracks = getMonopadSetting("shopTracks") || [];
+    if (!tracks.length) return;
+    const path = tracks[Math.floor(Math.random() * tracks.length)];
+    if (!path) return;
+    if (shopTrackAudio) {
+        shopTrackAudio.pause();
+        shopTrackAudio = null;
+    }
+    shopTrackAudio = new Audio(path);
+    shopTrackAudio.loop = true;
+    shopTrackAudio.volume = Number(getMonopadSetting("monomonoBgmVolume") ?? 40) / 100;
+    shopTrackAudio.play().catch(e => console.warn("[Dangan][Shop] Track play failed:", e));
+}
+
+function stopShopTrack() {
+    if (shopTrackAudio) {
+        shopTrackAudio.pause();
+        shopTrackAudio = null;
+    }
+}
+
+const BGM_TRACK_TABS = [
+    { key: "daytime",            settingKey: "daytimeTracks",         listId: "daytime-tracks-list",            selectedId: "daytime-selected-list" },
+    { key: "nighttime",          settingKey: "nighttimeTracks",       listId: "nighttime-tracks-list",          selectedId: "nighttime-selected-list" },
+    { key: "investigation",      settingKey: "investigationTracks",   listId: "investigation-tracks-list",      selectedId: "investigation-selected-list" },
+    { key: "shop",               settingKey: "shopTracks",            listId: "shop-tracks-list",               selectedId: "shop-selected-list" },
+    { key: "trial-general",      settingKey: "trialGeneralTracks",      listId: "trial-general-tracks-list",      selectedId: "trial-general-selected-list" },
+    { key: "trial-preparation",  settingKey: "trialPreparationTracks",  listId: "trial-preparation-tracks-list",  selectedId: "trial-preparation-selected-list" },
+    { key: "trial-debates",      settingKey: "trialDebatesTracks",      listId: "trial-debates-tracks-list",      selectedId: "trial-debates-selected-list" },
+    { key: "trial-scrum",        settingKey: "trialScrumTracks",      listId: "trial-scrum-tracks-list",        selectedId: "trial-scrum-selected-list" },
+    { key: "trial-pta",          settingKey: "trialPtaTracks",        listId: "trial-pta-tracks-list",          selectedId: "trial-pta-selected-list" },
+    { key: "trial-reenactment",  settingKey: "trialReenactmentTracks",listId: "trial-reenactment-tracks-list",  selectedId: "trial-reenactment-selected-list" },
+    { key: "trial-closing",      settingKey: "trialClosingTracks",    listId: "trial-closing-tracks-list",      selectedId: "trial-closing-selected-list" },
+];
+
+let cachedBgmPaths = null;
+
+async function fetchBgmPaths() {
+    if (cachedBgmPaths !== null) return cachedBgmPaths;
+    try {
+        const response = await fetch("/api/assets/get", {
+            method: "POST",
+            headers: getRequestHeaders({ omitContentType: true }),
+        });
+        if (response.ok) {
+            const data = await response.json();
+            cachedBgmPaths = Array.isArray(data.bgm) ? data.bgm.filter(p => p && p.trim()) : [];
+        } else {
+            cachedBgmPaths = [];
+        }
+    } catch (e) {
+        console.warn("[Dangan][BGM] Failed to fetch BGM list:", e);
+        cachedBgmPaths = [];
+    }
+    return cachedBgmPaths;
+}
+
+function playTrackFromSetting(settingKey) {
+    const tracks = getMonopadSetting(settingKey) || [];
     if (!tracks.length) return;
 
     const path = tracks[Math.floor(Math.random() * tracks.length)];
@@ -2196,12 +2269,12 @@ function playInvestigationTrack() {
     // Route through Dynamic Audio extension if available — shows in its UI
     const $bgmSelect = $("#audio_bgm_select");
     if ($bgmSelect.length) {
-        if (!$bgmSelect.find(`option[value="${CSS.escape ? path : path}"]`).length) {
+        if (!$bgmSelect.find(`option[value="${path}"]`).length) {
             const name = path.split("/").pop().replace(/\.[^/.]+$/, "");
             $bgmSelect.append(new Option(`asset: ${name}`, path));
         }
         $bgmSelect.val(path).trigger("change");
-        console.log(`[Dangan][Investigation] Handing off to Dynamic Audio: ${path}`);
+        console.log(`[Dangan][BGM] Handing off to Dynamic Audio (${settingKey}): ${path}`);
         return;
     }
 
@@ -2215,10 +2288,15 @@ function playInvestigationTrack() {
     investigationTrackAudio.loop = true;
     investigationTrackAudio.volume = Number(getMonopadSetting("monopadVolume") ?? 50) / 100;
     investigationTrackAudio.play().catch(e =>
-        console.warn("[Dangan][Investigation] Track play failed:", e)
+        console.warn(`[Dangan][BGM] Track play failed (${settingKey}):`, e)
     );
-    console.log(`[Dangan][Investigation] Playing track (direct): ${path}`);
+    console.log(`[Dangan][BGM] Playing track (direct) (${settingKey}): ${path}`);
 }
+
+function playInvestigationTrack() { playTrackFromSetting("investigationTracks"); }
+function playDaytimeTrack()       { playTrackFromSetting("daytimeTracks"); }
+function playNighttimeTrack()     { playTrackFromSetting("nighttimeTracks"); }
+function playTrialTrack()         { playTrackFromSetting("trialGeneralTracks"); }
 
 function stopInvestigationTrack() {
     // Stop direct audio fallback if it was used
@@ -2233,11 +2311,11 @@ function stopInvestigationTrack() {
     }
 }
 
-function renderSelectedInvestigationTracks() {
-    const $panel = $("#investigation-selected-list");
+function renderSelectedTracksForTab(settingKey, selectedId) {
+    const $panel = $(`#${selectedId}`);
     if (!$panel.length) return;
 
-    const tracks = getMonopadSetting("investigationTracks") || [];
+    const tracks = getMonopadSetting(settingKey) || [];
     $panel.empty();
 
     if (!tracks.length) {
@@ -2251,25 +2329,13 @@ function renderSelectedInvestigationTracks() {
     });
 }
 
-async function renderInvestigationTracks() {
-    const $list = $("#investigation-tracks-list");
+async function renderTracksForTab(settingKey, listId, selectedId) {
+    const $list = $(`#${listId}`);
     if (!$list.length) return;
 
     $list.empty().append('<div class="investigation-tracks-loading">LOADING TRACKS...</div>');
 
-    let bgmPaths = [];
-    try {
-        const response = await fetch("/api/assets/get", {
-            method: "POST",
-            headers: getRequestHeaders({ omitContentType: true }),
-        });
-        if (response.ok) {
-            const data = await response.json();
-            bgmPaths = Array.isArray(data.bgm) ? data.bgm.filter(p => p && p.trim()) : [];
-        }
-    } catch (e) {
-        console.warn("[Dangan][Investigation] Failed to fetch BGM list:", e);
-    }
+    const bgmPaths = await fetchBgmPaths();
 
     $list.empty();
 
@@ -2278,12 +2344,12 @@ async function renderInvestigationTracks() {
         return;
     }
 
-    const selected = new Set(getMonopadSetting("investigationTracks") || []);
+    const selected = new Set(getMonopadSetting(settingKey) || []);
     const allSelected = bgmPaths.every(p => selected.has(p));
 
     const $selectAll = $(`
         <label class="investigation-track-row investigation-track-select-all">
-            <input type="checkbox" class="investigation-track-select-all-checkbox" ${allSelected ? "checked" : ""}>
+            <input type="checkbox" class="bgm-track-select-all-checkbox" data-setting="${settingKey}" data-list="${listId}" data-selected="${selectedId}" ${allSelected ? "checked" : ""}>
             <span class="investigation-track-name">(Select All)</span>
         </label>
     `);
@@ -2295,14 +2361,24 @@ async function renderInvestigationTracks() {
         const checked = selected.has(path);
         const $row = $(`
             <label class="investigation-track-row">
-                <input type="checkbox" class="investigation-track-checkbox" data-path="${path}" ${checked ? "checked" : ""}>
+                <input type="checkbox" class="bgm-track-checkbox" data-path="${path}" data-setting="${settingKey}" data-list="${listId}" data-selected="${selectedId}" ${checked ? "checked" : ""}>
                 <span class="investigation-track-name">${name}</span>
+                <button type="button" class="bgm-track-play-btn" data-path="${path}" aria-label="Play ${name}">
+                    <svg class="bgm-play-icon" viewBox="0 0 10 10" fill="currentColor"><polygon points="2,1 9,5 2,9"/></svg>
+                    <svg class="bgm-pause-icon" viewBox="0 0 10 10" fill="currentColor"><rect x="2" y="1" width="2.5" height="8"/><rect x="5.5" y="1" width="2.5" height="8"/></svg>
+                </button>
             </label>
         `);
         $list.append($row);
     });
 
-    renderSelectedInvestigationTracks();
+    renderSelectedTracksForTab(settingKey, selectedId);
+}
+
+async function renderAllBgmTrackTabs() {
+    cachedBgmPaths = null; // force fresh fetch
+    await fetchBgmPaths();
+    BGM_TRACK_TABS.forEach(tab => renderTracksForTab(tab.settingKey, tab.listId, tab.selectedId));
 }
 
 const investigationStartController = {
@@ -2400,7 +2476,7 @@ async function triggerTrialStartFromMapPin() {
     if (!accepted) return false;
 
     console.log("[Dangan][Trial] Begin Class Trial selected from map pin.");
-    trialManager?.start();
+    playTrialTrack();
     return true;
 }
 
@@ -3280,12 +3356,19 @@ function getActiveUserAvatarUrl() {
 function applyImageVisibilitySettings() {
     document.body.classList.toggle("dangan-hide-truth-images", !!getMonopadSetting("hideTruthBulletImages"));
     document.body.classList.toggle("dangan-hide-gift-images", !!getMonopadSetting("hideGiftImages"));
-    document.body.classList.toggle("dangan-hide-hopes-peak-branding", !!getMonopadSetting("hideHopesPeakBranding"));
+    const hideBranding = !!getMonopadSetting("hideHopesPeakBranding");
+    document.body.classList.toggle("dangan-hide-hopes-peak-branding", hideBranding);
+    const btnImg = document.querySelector("#dangan_monopad_button img");
+    if (btnImg) {
+        btnImg.src = hideBranding
+            ? `${extensionFolderPath}/assets/smartphone.svg`
+            : `${extensionFolderPath}/assets/hopes-peak-crest.png`;
+    }
 }
 
 function applyDynamicTheme() {
     const body = document.body;
-    body.classList.remove("dangan-theme-daily", "dangan-theme-night", "dangan-theme-investigation");
+    body.classList.remove("dangan-theme-daily", "dangan-theme-night", "dangan-theme-investigation", "dangan-theme-damaged");
 
     if (!getMonopadSetting("dynamicThemes")) return;
 
@@ -3382,6 +3465,35 @@ async function fadeInAndResumeBgm(durationMs = 600) {
         el.volume = Math.min(targetVolume, (targetVolume * i) / steps);
         await new Promise(resolve => setTimeout(resolve, stepDelay));
     }
+}
+
+let _hgPreviousBgmSelectVal = null;
+
+function playHGBgm() {
+    const $sel = $('#audio_bgm_select');
+    if (!$sel.length) return null;
+    _hgPreviousBgmSelectVal = $sel.val();
+    const path = "assets/bgm/Hangman's Gambit.mp3";
+    if (!$sel.find(`option[value="${path}"]`).length) {
+        $sel.append(new Option("Hangman's Gambit", path));
+    }
+    $sel.val(path).trigger('change');
+    const audioEl = document.getElementById('audio_bgm');
+    if (audioEl) audioEl.loop = true;
+    return audioEl;
+}
+
+function resumeBgmAfterHG() {
+    const $sel = $('#audio_bgm_select');
+    if (!$sel.length || !_hgPreviousBgmSelectVal) {
+        _hgPreviousBgmSelectVal = null;
+        return;
+    }
+    const savedVal = _hgPreviousBgmSelectVal;
+    _hgPreviousBgmSelectVal = null;
+    const audioEl = document.getElementById('audio_bgm');
+    if (audioEl) audioEl.loop = false;
+    $sel.val(savedVal).trigger('change');
 }
 
 async function runMonokumaLessonStep(step, state) {
@@ -3636,7 +3748,7 @@ function applySettingsTabUI() {
     $(".settings-lang-btn").removeClass("active");
     $(`.settings-lang-btn[data-lang="${lang}"]`).addClass("active");
 
-    renderInvestigationTracks();
+    renderAllBgmTrackTabs();
 
     const providerSelect = document.getElementById("dangan_generation_provider");
     if (providerSelect) {
@@ -5070,6 +5182,10 @@ jQuery(async () => {
             shouldPlayAudio: () => Number(extension_settings[extensionName]?.announcementVolume ?? 65) > 0,
             getVolume: () => Number(extension_settings[extensionName]?.announcementVolume ?? 65) / 100,
             getLanguage: () => String(extension_settings[extensionName]?.monokumaLanguage ?? "EN"),
+            onBefore: async () => {
+                audioVisualizer.hide();
+                await fadeOutAndPauseBgm(500);
+            },
         });
 
         // SillyTavern may re-mount portions of the DOM after extension load.
@@ -5194,6 +5310,8 @@ jQuery(async () => {
                 },
                 onMachineOpen: () => fadeOutAndPauseBgm(),
                 onMachineClose: () => fadeInAndResumeBgm(),
+                playShopTrack,
+                stopShopTrack,
             });
             mapPanelController?.renderMapPanel?.();
         } catch (error) {
@@ -5327,6 +5445,7 @@ $(".monopad-icon").on("mouseenter", function () {
                     $(`.monopad-panel-content[data-panel="welcome"]`).addClass("active");
                 } else {
                     setActiveMonopadTab("truth");
+                    window.renderTruthBullets?.();
                 }
 
                 if (getMonopadSetting("bootAnimations")) {
@@ -5504,8 +5623,7 @@ $(".monopad-icon").on("mouseenter", function () {
             setMonopadSetting("monomonoBgmVolume", vol);
             const monomonoValue = document.getElementById("dangan_monomono_value");
             if (monomonoValue) monomonoValue.textContent = `${vol}%`;
-            const track = document.getElementById("monopad_sfx_monochine_track");
-            if (track) track.volume = vol / 100;
+            if (shopTrackAudio) shopTrackAudio.volume = vol / 100;
         });
 
         $(document).on("click", ".settings-lang-btn", function () {
@@ -5515,37 +5633,87 @@ $(".monopad-icon").on("mouseenter", function () {
             $(`.settings-lang-btn[data-lang="${lang}"]`).addClass("active");
         });
 
-        $(document).on("change", ".investigation-track-select-all-checkbox", function () {
-            const $list = $("#investigation-tracks-list");
-            const allPaths = $list.find(".investigation-track-checkbox").map(function () {
+        $(document).on("change", ".bgm-track-select-all-checkbox", function () {
+            const settingKey = String($(this).data("setting") || "");
+            const listId = String($(this).data("list") || "");
+            const selectedId = String($(this).data("selected") || "");
+            if (!settingKey || !listId) return;
+            const $list = $(`#${listId}`);
+            const allPaths = $list.find(".bgm-track-checkbox").map(function () {
                 return String($(this).data("path") || "");
             }).get().filter(Boolean);
             if (this.checked) {
-                setMonopadSetting("investigationTracks", allPaths);
-                $list.find(".investigation-track-checkbox").prop("checked", true);
+                setMonopadSetting(settingKey, allPaths);
+                $list.find(".bgm-track-checkbox").prop("checked", true);
             } else {
-                setMonopadSetting("investigationTracks", []);
-                $list.find(".investigation-track-checkbox").prop("checked", false);
+                setMonopadSetting(settingKey, []);
+                $list.find(".bgm-track-checkbox").prop("checked", false);
             }
-            renderSelectedInvestigationTracks();
+            renderSelectedTracksForTab(settingKey, selectedId);
         });
 
-        $(document).on("change", ".investigation-track-checkbox", function () {
+        $(document).on("change", ".bgm-track-checkbox", function () {
             const path = String($(this).data("path") || "");
-            if (!path) return;
-            const tracks = new Set(getMonopadSetting("investigationTracks") || []);
+            const settingKey = String($(this).data("setting") || "");
+            const listId = String($(this).data("list") || "");
+            const selectedId = String($(this).data("selected") || "");
+            if (!path || !settingKey) return;
+            const tracks = new Set(getMonopadSetting(settingKey) || []);
             if (this.checked) tracks.add(path);
             else tracks.delete(path);
-            setMonopadSetting("investigationTracks", [...tracks]);
+            setMonopadSetting(settingKey, [...tracks]);
             // Sync select-all state
-            const $list = $("#investigation-tracks-list");
-            const total = $list.find(".investigation-track-checkbox").length;
-            const checked = $list.find(".investigation-track-checkbox:checked").length;
-            $list.find(".investigation-track-select-all-checkbox").prop("checked", total > 0 && checked === total);
-            renderSelectedInvestigationTracks();
+            const $list = $(`#${listId}`);
+            const total = $list.find(".bgm-track-checkbox").length;
+            const checked = $list.find(".bgm-track-checkbox:checked").length;
+            $list.find(".bgm-track-select-all-checkbox").prop("checked", total > 0 && checked === total);
+            renderSelectedTracksForTab(settingKey, selectedId);
         });
 
-        renderInvestigationTracks();
+        $(document).on("click", ".bgm-tracks-tab", function () {
+            const tabKey = String(this.dataset.tab || "");
+            $(".bgm-tracks-tab").removeClass("active");
+            $(".bgm-tracks-panel").removeClass("active");
+            $(`.bgm-tracks-tab[data-tab="${tabKey}"]`).addClass("active");
+            $(`.bgm-tracks-panel[data-tab="${tabKey}"]`).addClass("active");
+        });
+
+        $(document).on("click", ".bgm-tracks-subtab", function () {
+            const subtabKey = String(this.dataset.subtab || "");
+            const $trial = $(this).closest(".bgm-tracks-panel");
+            $trial.find(".bgm-tracks-subtab").removeClass("active");
+            $trial.find(".bgm-tracks-subpanel").removeClass("active");
+            $trial.find(`.bgm-tracks-subtab[data-subtab="${subtabKey}"]`).addClass("active");
+            $trial.find(`.bgm-tracks-subpanel[data-subtab="${subtabKey}"]`).addClass("active");
+        });
+
+        $(document).on("click", ".bgm-track-play-btn", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const path = String($(this).data("path") || "");
+            if (!path) return;
+
+            const isPlaying = $(this).hasClass("playing");
+
+            if (isPlaying) {
+                const bgm = document.getElementById("audio_bgm");
+                if (bgm instanceof HTMLAudioElement) bgm.pause();
+                $(this).removeClass("playing");
+            } else {
+                const $bgmSelect = $("#audio_bgm_select");
+                if ($bgmSelect.length) {
+                    if (!$bgmSelect.find(`option[value="${path}"]`).length) {
+                        const name = path.split("/").pop().replace(/\.[^/.]+$/, "");
+                        $bgmSelect.append(new Option(`asset: ${name}`, path));
+                    }
+                    $bgmSelect.val(path).trigger("change");
+                }
+                $(".bgm-track-play-btn").removeClass("playing");
+                $(this).addClass("playing");
+            }
+        });
+
+        renderAllBgmTrackTabs();
 
         $("#dangan_generation_provider").on("change", function () {
             setMonopadSetting("generationProvider", this.value || defaultSettings.generationProvider);
@@ -5663,8 +5831,13 @@ classTrialMenuController = createClassTrialMenuController({
     getSfx: () => sfx,
     onOpen: () => fadeOutAndPauseBgm(),
     onClose: () => fadeInAndResumeBgm(),
+    getPreparationTracks: () => getMonopadSetting("trialPreparationTracks") || [],
 });
-window.startClassTrial = () => classTrialMenuController?.open?.();
+window.startClassTrial = async () => {
+    const accepted = await classTrialMenuController?.open?.();
+    if (accepted) playTrialTrack();
+    return accepted;
+};
 
 const audioVisualizer = createAudioVisualizerController({
     getAudioElement: () => {
@@ -5764,6 +5937,49 @@ debugSTGlobals();
     } catch (e) {
         console.error(`[${extensionName}] ❌ Trial Manager init failed:`, e);
     }
+    bdaCinematicEditor = createBdaCinematicEditor({
+        extensionFolderPath,
+        getCinematics: () => getMonopadSetting("bdaCinematics") || [],
+        saveCinematics: (data) => {
+            setMonopadSetting("bdaCinematics", data);
+            saveSettingsDebounced();
+        },
+    });
+
+    $(document).on("click", "#dangan_configure_deaths", () => {
+        bdaCinematicEditor?.open();
+    });
+
+    voteResultsController = createVoteResultsController({
+        extensionFolderPath,
+        getCharacters: () => {
+            const chars = [...characters.values()];
+            const playerName = getActivePersonaName();
+            if (playerName && playerName !== 'STUDENT') {
+                chars.push({ name: playerName, isPlayer: true, dead: false, missing: false });
+            }
+            return chars;
+        },
+        getUserAvatarUrl: getActiveUserAvatarUrl,
+        getSpriteUrl: async (charName) => {
+            let folder = charName;
+            const stChars = window.characters;
+            if (Array.isArray(stChars)) {
+                const stChar = stChars.find(c => c.name === charName);
+                if (stChar?.avatar) folder = stChar.avatar.replace(/\.[^.]+$/, "");
+            }
+            try {
+                const resp = await fetch(`/api/sprites/get?name=${encodeURIComponent(folder)}`);
+                if (!resp.ok) return null;
+                const sprites = await resp.json();
+                return sprites.find(s => s.label === "neutral")?.path ?? null;
+            } catch { return null; }
+        },
+    });
+
+    questionTimeController   = createQuestionTimeController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme });
+    questionTruthController  = createQuestionTruthController({ extensionFolderPath, getTruthBullets: getTruthBulletsSnapshot, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme });
+    hangmansGambitController = createHangmansGambitController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, pauseDynamicAudio: fadeOutAndPauseBgm, resumeDynamicAudio: resumeBgmAfterHG, playBgm: playHGBgm });
 
     } catch (error) {
         bootstrapDebugUi();
@@ -5777,10 +5993,17 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'body-discovered',
     callback: async (args) => {
         const bgName = String(args.bg || '').trim();
+        const cinematicName = String(args.name || '').trim();
+
+        // Look up named cinematic (if requested), or default to the first configured cinematic
+        const allCinematics = getMonopadSetting('bdaCinematics') || [];
+        const cinematic = cinematicName
+            ? allCinematics.find(c => c.name?.toLowerCase() === cinematicName.toLowerCase()) ?? null
+            : (allCinematics[0] ?? null);
 
         // Switch the background underneath the static overlay so the transition is hidden
         const switchBackground = () => {
-            if (!bgName) return;
+            if (!bgName || cinematic) return;
             const bgElements = Array.from(document.querySelectorAll('.bg_example'));
             const lower = bgName.toLowerCase();
             const match = bgElements.find(el => el.getAttribute('bgfile')?.toLowerCase().includes(lower));
@@ -5788,8 +6011,9 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         };
 
         // 1. Static + vignette overlay (despair noise) — swap BG at peak while hidden
-        const overlayPromise = monokumaAnnouncementController?.triggerAsync('BODY_DISCOVERY');
-        setTimeout(switchBackground, 220);
+        //    If a named cinematic is given, pass it so the controller uses custom playback.
+        const overlayPromise = monokumaAnnouncementController?.triggerAsync('BODY_DISCOVERY', { cinematic });
+        if (!cinematic) setTimeout(switchBackground, 220);
         await overlayPromise;
 
         // 2. Body Discovery Announcement (BDA)
@@ -5800,11 +6024,17 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         applyDynamicTheme();
         return '';
     },
-    helpString: 'Plays the body discovery vignette, then the BDA, then triggers Investigation. Optional: bg=&lt;name&gt; to transition to a background under the static.',
+    helpString: 'Plays the body discovery vignette, then the BDA, then triggers Investigation. Optional: bg=&lt;name&gt; to switch background under static; name=&lt;name&gt; to use a configured cinematic.',
     namedArgumentList: [
         SlashCommandNamedArgument.fromProps({
             name: 'bg',
             description: 'Background image to switch to under the static effect (partial name match)',
+            typeList: [ARGUMENT_TYPE.STRING],
+            isRequired: false,
+        }),
+        SlashCommandNamedArgument.fromProps({
+            name: 'name',
+            description: 'Name of a configured body discovery cinematic to play instead of the default sequence',
             typeList: [ARGUMENT_TYPE.STRING],
             isRequired: false,
         }),
@@ -5824,6 +6054,8 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         await monokumaAnnouncementController?.triggerAsync('NIGHT_ANNOUN');
         // Show "Night Time START!" banner + SFX, wait for both to finish
         await nightTimeStartController.triggerAsync();
+        // Play nighttime BGM track (if any selected)
+        playNighttimeTrack();
         // Now switch to the night theme
         applyDynamicTheme();
         return '';
@@ -5845,6 +6077,8 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         await monokumaAnnouncementController?.triggerAsync('DAY_ANNOUN');
         // Show "Free Time START!" banner + SFX, wait for both to finish
         await freeTimeStartController.triggerAsync();
+        // Play daytime BGM track (if any selected)
+        playDaytimeTrack();
         // Now switch to the day theme
         applyDynamicTheme();
         return '';
@@ -5877,5 +6111,107 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             typeList: [ARGUMENT_TYPE.STRING],
             isRequired: true,
         }),
+    ],
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'vote',
+    callback: async (args) => {
+        const guess  = String(args.guess  || '').trim() || null;
+        const result = String(args.result || '').trim() || null;
+        await voteResultsController?.run({ guess, result });
+        return '';
+    },
+    helpString: 'Spins the class trial vote roulette. guess=&lt;name&gt; is who was voted for (required). result=&lt;name&gt; is the actual blackened (optional, random if omitted). Fails if guess ≠ result.',
+    namedArgumentList: [
+        SlashCommandNamedArgument.fromProps({
+            name: 'guess',
+            description: 'The character that was voted for (partial name match)',
+            typeList: [ARGUMENT_TYPE.STRING],
+            isRequired: true,
+        }),
+        SlashCommandNamedArgument.fromProps({
+            name: 'result',
+            description: 'The actual blackened character (partial name match). Random if omitted.',
+            typeList: [ARGUMENT_TYPE.STRING],
+            isRequired: false,
+        }),
+    ],
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'question-time',
+    callback: async (args) => {
+        const title   = String(args.title   || '').trim();
+        const time    = Math.max(1, Number(args.time)   || 30);
+        const correct = Math.min(4, Math.max(1, Number(args.correct) || 1));
+        const answers = [
+            String(args.a1 || '').trim(),
+            String(args.a2 || '').trim(),
+            String(args.a3 || '').trim(),
+            String(args.a4 || '').trim(),
+        ];
+        if (!title || answers.some(a => !a)) {
+            console.warn('[QuestionTime] title and all four answers are required.');
+            return '';
+        }
+        await questionTimeController?.run({ title, time, answers, correct });
+        return '';
+    },
+    helpString: 'Displays a Danganronpa-style question with four answers and a countdown timer. Correct answer triggers GOT IT banner.',
+    namedArgumentList: [
+        SlashCommandNamedArgument.fromProps({ name: 'title',   description: 'The question to display',     typeList: [ARGUMENT_TYPE.STRING], isRequired: true }),
+        SlashCommandNamedArgument.fromProps({ name: 'time',    description: 'Time limit in seconds',       typeList: [ARGUMENT_TYPE.NUMBER], isRequired: true }),
+        SlashCommandNamedArgument.fromProps({ name: 'a1',      description: 'Answer option 1',             typeList: [ARGUMENT_TYPE.STRING], isRequired: true }),
+        SlashCommandNamedArgument.fromProps({ name: 'a2',      description: 'Answer option 2',             typeList: [ARGUMENT_TYPE.STRING], isRequired: true }),
+        SlashCommandNamedArgument.fromProps({ name: 'a3',      description: 'Answer option 3',             typeList: [ARGUMENT_TYPE.STRING], isRequired: true }),
+        SlashCommandNamedArgument.fromProps({ name: 'a4',      description: 'Answer option 4',             typeList: [ARGUMENT_TYPE.STRING], isRequired: true }),
+        SlashCommandNamedArgument.fromProps({ name: 'correct', description: 'Correct answer number (1–4)', typeList: [ARGUMENT_TYPE.NUMBER], isRequired: true }),
+    ],
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'question-truth',
+    callback: async (args) => {
+        const question = String(args.question || '').trim();
+        const answer   = String(args.answer   || '').trim();
+        if (!question || !answer) {
+            console.warn('[QuestionTruth] question and answer are required.');
+            return '';
+        }
+        const time = args.time ? Number(args.time) : 0;
+        await questionTruthController?.run({ question, answer, time });
+        return '';
+    },
+    helpString: 'Displays the Truth Bullet list and asks the player to select the correct one. Correct answer gives 5 monocoins and the GOT IT banner.',
+    namedArgumentList: [
+        SlashCommandNamedArgument.fromProps({ name: 'question', description: 'The statement to answer',           typeList: [ARGUMENT_TYPE.STRING], isRequired: true }),
+        SlashCommandNamedArgument.fromProps({ name: 'answer',   description: 'Name of the correct Truth Bullet',  typeList: [ARGUMENT_TYPE.STRING], isRequired: true }),
+        SlashCommandNamedArgument.fromProps({ name: 'time',     description: 'Optional time limit in seconds',    typeList: [ARGUMENT_TYPE.NUMBER], isRequired: false }),
+    ],
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'hangmans-gambit',
+    callback: async (args) => {
+        const question   = String(args.question   || '').trim();
+        const answer     = String(args.answer     || '').trim();
+        const time       = Math.max(5,  Number(args.time)       || 60);
+        const health     = Math.max(1,  Number(args.health)     || 3);
+        const difficulty = Math.min(5, Math.max(1, Number(args.difficulty) || 2));
+        if (!question || !answer) {
+            console.warn('[HangmansGambit] question and answer are required.');
+            return '';
+        }
+        await hangmansGambitController?.run({ question, answer, time, health, difficulty });
+        return '';
+    },
+    helpString: 'Displays a Danganronpa-style Hangman\'s Gambit minigame. Letters scroll across the screen; pick a letter into your Stock, then click the same letter to match it against the current target character in the anagram. Correct matches reveal letters; wrong picks or timeout deduct health.',
+    namedArgumentList: [
+        SlashCommandNamedArgument.fromProps({ name: 'question',   description: 'Title/prompt shown to the player',             typeList: [ARGUMENT_TYPE.STRING], isRequired: true }),
+        SlashCommandNamedArgument.fromProps({ name: 'answer',     description: 'The word/phrase to unscramble (the anagram)',   typeList: [ARGUMENT_TYPE.STRING], isRequired: true }),
+        SlashCommandNamedArgument.fromProps({ name: 'time',       description: 'Time limit in seconds (default 60)',            typeList: [ARGUMENT_TYPE.NUMBER], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'health',     description: 'Number of health points (default 3)',           typeList: [ARGUMENT_TYPE.NUMBER], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'difficulty', description: 'Difficulty 1–5: controls speed, bubble count, and letter variety (default 2)', typeList: [ARGUMENT_TYPE.NUMBER], isRequired: false }),
     ],
 }));
