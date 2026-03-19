@@ -301,40 +301,87 @@ export function createTrialManager(deps) {
             el.classList.add('dangan-weak-point');
         }
         el.textContent = stripSurroundingQuotes(String(text || ''));
-        el.style.top = `${laneY}px`;
-        el.style.left = `0px`;
         debateOverlay.appendChild(el);
 
         if (isWeakPoint) {
             currentWeakPointInfo = { text: el.textContent, element: el };
         }
 
-        const startX = (window.innerWidth || 1200) + 220;
-        const endX = -(el.getBoundingClientRect().width + 240);
-        const distance = Math.abs(startX - endX);
-        const duration = Math.round(Math.max(1800, Math.min(3800, (distance / 0.7))));
-
         statementEl = el;
-        statementAnimation = el.animate(
-            [
-                { transform: `translateX(${startX}px) skewX(-12deg)`, opacity: 0 },
-                { transform: `translateX(${startX - 120}px) skewX(-12deg)`, opacity: 1, offset: 0.08 },
-                { transform: `translateX(${endX}px) skewX(-12deg)`, opacity: 1 },
-            ],
-            { duration, easing: 'linear', fill: 'forwards' }
-        );
+        const w = window.innerWidth || 1200;
+        const h = window.innerHeight || 800;
+        const laneOffset = Number.isFinite(laneY) ? (laneY - Math.round(h * 0.58)) : 0;
+
+        const centerX = Math.round(w * 0.56);
+        const centerY = Math.round(h * 0.52) + Math.round(laneOffset * 0.35);
+        const rx = Math.round(w * 0.58);
+        const ry = Math.round(h * 0.26);
+
+        const startAngle = (-0.15 * Math.PI) + (Math.random() * 0.08 * Math.PI);
+        const endAngle = (-1.18 * Math.PI) + (Math.random() * 0.06 * Math.PI);
+
+        const duration = 2600 + Math.floor(Math.random() * 400);
+        let rafId = 0;
+        let cancelled = false;
+        const startTime = performance.now();
 
         return new Promise(resolve => {
-            statementAnimation.onfinish = () => {
-                if (statementEl === el) {
-                    el.remove();
-                    statementEl = null;
-                    statementAnimation = null;
-                    if (currentWeakPointInfo?.element === el) currentWeakPointInfo = null;
-                }
+            let finished = false;
+            const finish = () => {
+                if (finished) return;
+                finished = true;
                 resolve();
             };
-            statementAnimation.oncancel = () => resolve();
+
+            const frame = (now) => {
+                if (cancelled || currentState !== TrialPhases.NON_STOP_DEBATE || statementEl !== el) {
+                    finish();
+                    return;
+                }
+
+                const p = Math.max(0, Math.min(1, (now - startTime) / duration));
+
+                const angle = startAngle + (endAngle - startAngle) * p;
+                const x = centerX + rx * Math.cos(angle);
+                const y = centerY + ry * Math.sin(angle);
+
+                const peak = 1 - Math.abs(p - 0.5) * 2;
+                const scale = 0.82 + 0.22 * peak;
+                const rot = -16 + (Math.sin(angle) * 6);
+
+                let opacity = 1;
+                if (p < 0.08) opacity = p / 0.08;
+                else if (p > 0.92) opacity = Math.max(0, (1 - p) / 0.08);
+
+                el.style.left = `${x}px`;
+                el.style.top = `${y}px`;
+                el.style.opacity = String(opacity);
+                el.style.transform = `translate(-50%, -50%) rotate(${rot}deg) scale(${scale})`;
+
+                if (p >= 1) {
+                    el.remove();
+                    if (statementEl === el) {
+                        statementEl = null;
+                        statementAnimation = null;
+                        if (currentWeakPointInfo?.element === el) currentWeakPointInfo = null;
+                    }
+                    finish();
+                    return;
+                }
+
+                rafId = requestAnimationFrame(frame);
+            };
+
+            statementAnimation = {
+                cancel: () => {
+                    cancelled = true;
+                    if (rafId) cancelAnimationFrame(rafId);
+                    rafId = 0;
+                    finish();
+                },
+            };
+
+            rafId = requestAnimationFrame(frame);
         });
     }
 
@@ -434,11 +481,58 @@ export function createTrialManager(deps) {
     }
 
     function splitIntoChunks(text) {
-        const words = text.split(' ');
-        const chunks = [];
-        for (let i = 0; i < words.length; i += 5) {
-            chunks.push(words.slice(i, i + 5).join(' '));
+        const raw = String(text || '').replace(/\s+/g, ' ').trim();
+        if (!raw) return [];
+
+        let tokens = raw.split(' ').filter(Boolean);
+
+        const merged = [];
+        for (const tok of tokens) {
+            if (/^[,.;:!?]+$/.test(tok) && !merged.length) {
+                continue;
+            }
+            if (/^[,.;:!?]+$/.test(tok) && merged.length) {
+                merged[merged.length - 1] = `${merged[merged.length - 1]}${tok}`;
+                continue;
+            }
+            merged.push(tok);
         }
+        tokens = merged;
+
+        const chunks = [];
+        const targetWords = 3;
+        const maxWords = 5;
+        const maxChars = 28;
+
+        let i = 0;
+        while (i < tokens.length) {
+            let current = '';
+            let words = 0;
+
+            while (i < tokens.length) {
+                const next = tokens[i];
+                const tentative = current ? `${current} ${next}` : next;
+
+                const wouldExceedWords = words >= maxWords;
+                const wouldExceedChars = tentative.length > maxChars && words >= 1;
+                const wouldHitTarget = words >= targetWords && tentative.length > maxChars;
+
+                if (wouldExceedWords || wouldExceedChars || wouldHitTarget) break;
+
+                current = tentative;
+                words += 1;
+                i += 1;
+            }
+
+            if (!current && i < tokens.length) {
+                current = tokens[i];
+                i += 1;
+            }
+
+            current = current.trim();
+            if (current) chunks.push(current);
+        }
+
         return chunks;
     }
 
@@ -626,7 +720,8 @@ Rules:
 - 1–2 sentences.
 - Use facts and implications from the context.
 - Your line should respond naturally to what others have said so far.
-- Inside the quotes, mark EXACTLY ONE clause as a possible weak point using [[WEAK]]...[[/WEAK]].
+- Inside the quotes, mark EXACTLY ONE weak point using [[WEAK]]...[[/WEAK]].
+- The weak point should be short: preferably 1 word, max 3 words.
 - No other markup and no speaker labels.
 
 CHARACTER DATA:
@@ -685,7 +780,7 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
                 const firstClose = firstOpen + 8 + firstCloseRel;
                 const keep = raw.slice(0, firstClose + 9);
                 const tail = raw.slice(firstClose + 9).replace(/\[\[WEAK\]\]|\[\[\/WEAK\]\]/gi, '');
-                return (keep + tail).replace(/\s+/g, ' ').trim();
+                return normalizeWeakPointSpan((keep + tail).replace(/\s+/g, ' ').trim());
             }
         }
 
@@ -695,14 +790,52 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
         const words = clean.split(' ').filter(Boolean);
         if (words.length <= 3) return `[[WEAK]]${clean}[[/WEAK]]`;
 
-        const span = Math.min(8, Math.max(4, Math.floor(words.length / 2)));
+        const span = Math.min(3, Math.max(1, Math.floor(words.length / 6)));
         const start = Math.max(0, Math.min(words.length - span, Math.floor(words.length / 3)));
         const weak = words.slice(start, start + span).join(' ');
 
         const before = words.slice(0, start).join(' ');
         const after = words.slice(start + span).join(' ');
 
-        return [before, `[[WEAK]]${weak}[[/WEAK]]`, after].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+        return normalizeWeakPointSpan(
+            [before, `[[WEAK]]${weak}[[/WEAK]]`, after]
+                .filter(Boolean)
+                .join(' ')
+                .replace(/\s+/g, ' ')
+                .trim()
+        );
+    }
+
+    function normalizeWeakPointSpan(text) {
+        const raw = String(text || '').trim();
+        const match = raw.match(/\[\[WEAK\]\]([\s\S]*?)\[\[\/WEAK\]\]/i);
+        if (!match) return raw;
+
+        const weakRaw = String(match[1] || '').trim().replace(/\s+/g, ' ');
+        const weakWords = weakRaw.split(' ').filter(Boolean);
+        if (weakWords.length <= 3) return raw;
+
+        const shrunken = pickCompactWeakPoint(weakWords);
+        return raw.replace(/\[\[WEAK\]\][\s\S]*?\[\[\/WEAK\]\]/i, `[[WEAK]]${shrunken}[[/WEAK]]`);
+    }
+
+    function pickCompactWeakPoint(words) {
+        const stop = new Set([
+            'the', 'a', 'an', 'and', 'or', 'but', 'to', 'of', 'in', 'on', 'at', 'for', 'from', 'with',
+            'is', 'are', 'was', 'were', 'be', 'been', 'being', 'it', 'that', 'this', 'these', 'those',
+            'i', 'you', 'we', 'they', 'he', 'she', 'him', 'her', 'them', 'my', 'your', 'our', 'their',
+        ]);
+
+        const cleaned = words
+            .map(w => String(w || '').replace(/^[^\w]+|[^\w]+$/g, ''))
+            .filter(Boolean);
+
+        const candidates = cleaned
+            .filter(w => w.length >= 4 && !stop.has(w.toLowerCase()))
+            .sort((a, b) => b.length - a.length);
+
+        const chosen = candidates[0] || cleaned[0] || '...';
+        return chosen;
     }
 
     function splitStatementIntoParts(statement) {
