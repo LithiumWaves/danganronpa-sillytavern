@@ -25,6 +25,7 @@ import { createVoteResultsController } from "./vfx/voteResults.js";
 import { createQuestionTimeController } from "./vfx/questionTime.js";
 import { createQuestionTruthController } from "./vfx/questionTruth.js";
 import { createHangmansGambitController } from "./vfx/hangmansGambit.js";
+import { createPanicTalkActionController } from "./vfx/panicTalkAction.js";
 import { createAudioVisualizerController } from "./audio/audioVisualizer.js";
 import { user_avatar } from "../../../personas.js";
 
@@ -56,6 +57,7 @@ let voteResultsController   = null;
 let questionTimeController    = null;
 let questionTruthController   = null;
 let hangmansGambitController  = null;
+let panicTalkActionController = null;
 
 const openRouterSettings = createOpenRouterSettingsManager({
     extensionName,
@@ -5980,6 +5982,7 @@ debugSTGlobals();
     questionTimeController   = createQuestionTimeController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme });
     questionTruthController  = createQuestionTruthController({ extensionFolderPath, getTruthBullets: getTruthBulletsSnapshot, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme });
     hangmansGambitController = createHangmansGambitController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, pauseDynamicAudio: fadeOutAndPauseBgm, resumeDynamicAudio: resumeBgmAfterHG, playBgm: playHGBgm });
+    panicTalkActionController = createPanicTalkActionController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme });
 
     } catch (error) {
         bootstrapDebugUi();
@@ -6213,5 +6216,77 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         SlashCommandNamedArgument.fromProps({ name: 'time',       description: 'Time limit in seconds (default 60)',            typeList: [ARGUMENT_TYPE.NUMBER], isRequired: false }),
         SlashCommandNamedArgument.fromProps({ name: 'health',     description: 'Number of health points (default 3)',           typeList: [ARGUMENT_TYPE.NUMBER], isRequired: false }),
         SlashCommandNamedArgument.fromProps({ name: 'difficulty', description: 'Difficulty 1–5: controls speed, bubble count, and letter variety (default 2)', typeList: [ARGUMENT_TYPE.NUMBER], isRequired: false }),
+    ],
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'pta',
+    callback: async (args) => {
+        const enemyHp  = Math.max(1, Number(args.enemyHp)  || 100);
+        const playerHp = Math.max(1, Number(args.playerHp) || 100);
+        const phases   = Math.min(3, Math.max(1, Number(args.phases) || 3));
+        const dialogs  = ['A','B','C','D','E','F','G','H','I','J','K']
+            .map(l => String(args[`dialog${l}`] || args[`Dialog${l}`] || '').trim())
+            .filter(Boolean);
+        const NSolution    = String(args.nSolution    || args.NSolution    || '').trim();
+        const SSolution    = String(args.sSolution    || args.SSolution    || '').trim();
+        const ESolution    = String(args.eSolution    || args.ESolution    || '').trim();
+        const WSolution    = String(args.wSolution    || args.WSolution    || '').trim();
+        const FinalSolution      = String(args.finalSolution      || args.FinalSolution      || '').trim().toUpperCase();
+        const FinalSolutionQuote = String(args.finalSolutionQuote || args.FinalSolutionQuote || '').trim();
+        const bgArg = String(args.bg || args.BG || '').trim();
+        let BG = '';
+        if (bgArg) {
+            const lower = bgArg.toLowerCase();
+            const match = Array.from(document.querySelectorAll('.bg_example'))
+                .find(el => el.getAttribute('bgfile')?.toLowerCase().includes(lower));
+            if (match) {
+                const bgfile   = match.getAttribute('bgfile') || '';
+                const isCustom = match.getAttribute('custom') === 'true';
+                const bgUrl    = isCustom
+                    ? encodeURI(bgfile)
+                    : `backgrounds/${encodeURIComponent(bgfile)}`;
+                BG = bgUrl;
+            }
+        }
+        if (dialogs.length === 0) {
+            console.warn('[PTA] At least one dialog (dialogA–dialogK) is required.');
+            return '';
+        }
+        const clairvoyance = getEquippedSkillsSnapshot().includes('shop_skill_clairvoyance');
+        await panicTalkActionController?.run({ enemyHp, playerHp, phases, dialogs, NSolution, SSolution, ESolution, WSolution, FinalSolution, FinalSolutionQuote, BG, clairvoyance });
+        return '';
+    },
+    helpString: 'Displays a Danganronpa-style Panic Talk Action minigame. Dialog pieces appear on a 3×3 grid and zoom in — shoot them with mouse clicks or arrow keys + Space before they expire. Orange text damages the opponent; pink text hurts you when broken; blue text needs two hits. Defeat the opponent to enter the Final Argument phase.',
+    namedArgumentList: [
+        SlashCommandNamedArgument.fromProps({ name: 'enemyHp',      description: 'Opponent starting HP (default 100)',                         typeList: [ARGUMENT_TYPE.NUMBER], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'playerHp',     description: 'Player starting HP (default 100)',                           typeList: [ARGUMENT_TYPE.NUMBER], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'phases',       description: 'Number of battle phases 1–3 (default 3)',                    typeList: [ARGUMENT_TYPE.NUMBER], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'dialogA',      description: 'Dialog piece A (required)',                                  typeList: [ARGUMENT_TYPE.STRING], isRequired: true  }),
+        SlashCommandNamedArgument.fromProps({ name: 'dialogB',      description: 'Dialog piece B',                                            typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'dialogC',      description: 'Dialog piece C',                                            typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'dialogD',      description: 'Dialog piece D',                                            typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'dialogE',      description: 'Dialog piece E',                                            typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'dialogF',      description: 'Dialog piece F',                                            typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'dialogG',      description: 'Dialog piece G',                                            typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'dialogH',      description: 'Dialog piece H',                                            typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'dialogI',      description: 'Dialog piece I',                                            typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'dialogJ',      description: 'Dialog piece J',                                            typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'dialogK',      description: 'Dialog piece K',                                            typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'nSolution',         description: 'Text shown above the up-arrow button',                      typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'sSolution',         description: 'Text shown below the down-arrow button',                    typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'eSolution',         description: 'Text shown beside the right-arrow button',                  typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'wSolution',         description: 'Text shown beside the left-arrow button',                   typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'finalSolution',     description: 'Correct 4-key press order using N/S/E/W (e.g. "WNES")',    typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'finalSolutionQuote',description: 'Pink zooming text shown in the centre during the Final Argument phase', typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'bg',                description: 'Background name from SillyTavern\'s BG list (partial match)',           typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        // Legacy uppercase aliases
+        SlashCommandNamedArgument.fromProps({ name: 'NSolution',         description: '(alias) Text shown above the up-arrow button',            typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'SSolution',         description: '(alias) Text shown below the down-arrow button',          typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'ESolution',         description: '(alias) Text shown beside the right-arrow button',        typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'WSolution',         description: '(alias) Text shown beside the left-arrow button',         typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'FinalSolution',     description: '(alias) Correct 4-key press order using N/S/E/W',         typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'FinalSolutionQuote',description: '(alias) Pink zooming text during the Final Argument phase',typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'BG',                description: '(alias) Background name from SillyTavern\'s BG list',     typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
     ],
 }));
