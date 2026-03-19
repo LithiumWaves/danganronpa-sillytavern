@@ -510,22 +510,27 @@ export function createTrialManager(deps) {
         if (!selectedSpeakers.length) return null;
 
         const sections = [];
-        let previousSpeakerName = '';
-        let previousStatement = '';
+        const debateSoFar = [];
         for (let i = 0; i < sectionsCount; i++) {
             const speakerName = pickSpeakerWeighted(selectedSpeakers);
+            const debateSoFarText = debateSoFar.length
+                ? debateSoFar.map(line => `- ${line}`).join('\n')
+                : '';
             const statement = await generateSectionStatement({
                 speakerName,
-                previousSpeakerName,
-                previousStatement,
+                debateSoFarText,
                 context,
                 sectionIndex: i,
                 sectionsCount,
             });
             const parts = splitStatementIntoParts(statement);
             sections.push({ speakerName, statement, parts });
-            previousSpeakerName = speakerName;
-            previousStatement = statement;
+
+            const spoken = stripSurroundingQuotes(extractDialogueOnly(statement) || statement);
+            if (spoken) {
+                debateSoFar.push(`${speakerName}: ${spoken}`);
+                while (debateSoFar.length > 3) debateSoFar.shift();
+            }
         }
         return sections;
     }
@@ -599,7 +604,7 @@ export function createTrialManager(deps) {
         return speakers[0]?.name || '???';
     }
 
-    async function generateSectionStatement({ speakerName, previousSpeakerName, previousStatement, context, sectionIndex, sectionsCount }) {
+    async function generateSectionStatement({ speakerName, debateSoFarText, context, sectionIndex, sectionsCount }) {
         const contextLines = context
             .slice(-14)
             .map(m => `${m.isUser ? 'YOU' : m.name}: ${m.text}`)
@@ -607,11 +612,6 @@ export function createTrialManager(deps) {
 
         const sourceText = typeof getCharacterSourceText === 'function'
             ? String(getCharacterSourceText(speakerName) || '').trim()
-            : '';
-
-        const previousLine = String(previousStatement || '').trim();
-        const previousLineText = previousLine
-            ? stripSurroundingQuotes(extractDialogueOnly(previousLine) || previousLine)
             : '';
 
         const prompt = `
@@ -625,14 +625,15 @@ Rules:
 - No narration, no actions, no inner thoughts.
 - 1–2 sentences.
 - Use facts and implications from the context.
+- Your line should respond naturally to what others have said so far.
 - Inside the quotes, mark EXACTLY ONE clause as a possible weak point using [[WEAK]]...[[/WEAK]].
 - No other markup and no speaker labels.
 
 CHARACTER DATA:
 ${sourceText || 'NO CHARACTER DATA AVAILABLE.'}
 
-PREVIOUS LINE (what was just said):
-${previousLineText ? `${String(previousSpeakerName || '???')}: ${previousLineText}` : 'NONE'}
+DEBATE SO FAR (most recent lines):
+${debateSoFarText || 'NONE'}
 
 RECENT CONTEXT:
 ${contextLines}
