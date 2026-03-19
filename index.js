@@ -3128,6 +3128,26 @@ function getCharacterSourceText(charName) {
     return sources.join("\n\n") || "NO SOURCE DATA AVAILABLE.";
 }
 
+async function getSpriteUrl(charName) {
+    let folder = charName;
+    const stChars = window.characters;
+    if (Array.isArray(stChars)) {
+        const stChar = stChars.find(c => c.name === charName);
+        if (stChar?.avatar) {
+            folder = stChar.avatar.replace(/\.[^.]+$/, "");
+        }
+    }
+    try {
+        const resp = await fetch(`/api/sprites/get?name=${encodeURIComponent(folder)}`);
+        if (!resp.ok) return null;
+        const sprites = await resp.json();
+        const neutral = sprites.find(s => s.label === "neutral");
+        return neutral?.path ?? null;
+    } catch {
+        return null;
+    }
+}
+
 function debugSTGlobals() {
     const keys = [
         "SillyTavern",
@@ -5155,33 +5175,7 @@ jQuery(async () => {
             },
             getUserName: getActivePersonaName,
             getUserAvatarUrl: getActiveUserAvatarUrl,
-            getSpriteUrl: async (charName) => {
-                // Determine folder: prefer avatar filename (without ext), fall back to charName itself
-                let folder = charName;
-                const stChars = window.characters;
-                if (Array.isArray(stChars)) {
-                    const stChar = stChars.find(c => c.name === charName);
-                    if (stChar?.avatar) {
-                        folder = stChar.avatar.replace(/\.[^.]+$/, "");
-                    }
-                }
-                console.debug(`[Dangan][Sprite] Looking up neutral for "${charName}", folder="${folder}"`);
-                try {
-                    const resp = await fetch(`/api/sprites/get?name=${encodeURIComponent(folder)}`);
-                    if (!resp.ok) {
-                        console.debug(`[Dangan][Sprite] API error ${resp.status} for folder="${folder}"`);
-                        return null;
-                    }
-                    const sprites = await resp.json();
-                    console.debug(`[Dangan][Sprite] Got ${sprites.length} sprites:`, sprites.map(s => s.label));
-                    const neutral = sprites.find(s => s.label === "neutral");
-                    console.debug(`[Dangan][Sprite] Neutral path:`, neutral?.path);
-                    return neutral?.path ?? null;
-                } catch (e) {
-                    console.debug(`[Dangan][Sprite] Fetch error:`, e);
-                    return null;
-                }
-            },
+            getSpriteUrl,
         });
 
         try {
