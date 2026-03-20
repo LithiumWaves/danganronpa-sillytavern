@@ -41,6 +41,9 @@ export function createTrialManager(deps) {
     let portraitToken = 0;
     let portraitSpeaker = null;
     let portraitEmotion = null;
+    let lastHitBullet = null;
+    let lastHitWeakPoint = null;
+    let rebuttalPromptActive = false;
 
     function setState(newState) {
         console.log(`[Dangan][Trial] State change: ${currentState} -> ${newState}`);
@@ -533,19 +536,22 @@ export function createTrialManager(deps) {
     }
 
     function showExplanationUI(bullet, refutedText) {
-        const overlay = document.createElement('div');
-        overlay.id = 'dangan-explanation-overlay';
-        overlay.className = 'dangan-trial-overlay explanation';
-        overlay.innerHTML = `
-            <div class="dangan-explanation-box">
-                <div class="dangan-explanation-header">REBUTTAL PHASE</div>
-                <div class="dangan-explanation-refuted">"${refutedText}"</div>
-                <div class="dangan-explanation-vs">VS</div>
-                <div class="dangan-explanation-bullet">${bullet.title}</div>
-                <div class="dangan-explanation-prompt">Provide your argument to refute the claim:</div>
+        lastHitBullet = bullet;
+        lastHitWeakPoint = refutedText;
+
+        const notification = document.createElement('div');
+        notification.id = 'dangan-trial-rebuttal-notif';
+        notification.className = 'dangan-trial-notification rebuttal-active';
+        notification.innerHTML = `
+            <div class="dangan-trial-notif-content">
+                <div class="rebuttal-header">REBUTTAL PHASE</div>
+                <div class="rebuttal-info">
+                    Using <strong>${bullet.title}</strong> to refute <em>"${refutedText}"</em>.
+                </div>
+                <div class="rebuttal-prompt">Explain your reasoning in the chat...</div>
             </div>
         `;
-        document.body.appendChild(overlay);
+        document.body.appendChild(notification);
         
         // Focus chat input
         const chatInput = document.querySelector('#send_textarea, #chat_input');
@@ -553,18 +559,47 @@ export function createTrialManager(deps) {
     }
 
     function onMessageSent(text) {
-        if (currentState !== TrialPhases.TRUTH_BULLET_EXPLANATION) return;
+        if (currentState !== TrialPhases.TRUTH_BULLET_EXPLANATION) {
+            if (rebuttalPromptActive) {
+                const ctx = window.SillyTavern?.getContext?.();
+                const setPrompt = ctx?.setExtensionPrompt || window.setExtensionPrompt;
+                if (typeof setPrompt === 'function') {
+                    setPrompt('dangan_rebuttal_judgment', '', 0, 0, false, 'system');
+                }
+                rebuttalPromptActive = false;
+            }
+            return;
+        }
 
-        // Here we could add logic to tell the AI to validate the refutation.
-        // For now, we just transition back to pre-debate after the message is sent.
-        console.log('[Dangan][Trial] Argument sent, transitioning back to Pre-Debate');
+        const notif = document.getElementById('dangan-trial-rebuttal-notif');
+        if (notif) notif.remove();
+
+        const ctx = window.SillyTavern?.getContext?.();
+        const setPrompt = ctx?.setExtensionPrompt || window.setExtensionPrompt;
         
-        const explanationOverlay = document.getElementById('dangan-explanation-overlay');
-        if (explanationOverlay) explanationOverlay.remove();
+        if (typeof setPrompt === 'function') {
+            const prompt = `
+[SYSTEM: TRIAL REBUTTAL JUDGMENT]
+The user is attempting to refute the claim: "${lastHitWeakPoint}"
+Using the Truth Bullet: "${lastHitBullet.title}"
+User's reasoning: "${text}"
+
+JUDGMENT RULES:
+1. Evaluate if the reasoning and the Truth Bullet logically contradict the claim.
+2. If it makes sense, react with characters being impressed, shocked by the contradiction, or moving the trial forward.
+3. If it does NOT make sense, react with characters being skeptical, confused, or asking for better proof.
+4. Keep the Danganronpa trial momentum and stay in character.
+5. The next character response should act as a judge or witness reacting to this specific rebuttal.
+`.trim();
+            setPrompt('dangan_rebuttal_judgment', prompt, 0, 0, false, 'system');
+            rebuttalPromptActive = true;
+        }
+
+        console.log('[Dangan][Trial] Rebuttal judgment prompt injected, transitioning back to Pre-Debate');
         
         setTimeout(() => {
             setState(TrialPhases.PRE_DEBATE);
-        }, 2000); // Wait for AI response
+        }, 800);
     }
 
     function getRecentMessages() {

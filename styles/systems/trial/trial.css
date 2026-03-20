@@ -95,6 +95,40 @@
     font-family: 'Orbitron', sans-serif;
     z-index: 2147483640;
     animation: slideInRight 0.5s ease-out;
+    max-width: 350px;
+}
+
+.dangan-trial-notification.rebuttal-active {
+    border-color: #ffff00;
+    background: rgba(26, 0, 51, 0.9);
+    box-shadow: 0 0 20px rgba(255, 255, 0, 0.3);
+}
+
+.rebuttal-header {
+    color: #ffff00;
+    font-size: 14px;
+    letter-spacing: 0.15em;
+    margin-bottom: 8px;
+    font-weight: bold;
+    text-shadow: 0 0 5px rgba(255, 255, 0, 0.5);
+}
+
+.rebuttal-info {
+    font-size: 15px;
+    line-height: 1.4;
+    margin-bottom: 10px;
+}
+
+.rebuttal-info strong {
+    color: #ff00ff;
+    text-shadow: 0 0 5px rgba(255, 0, 255, 0.5);
+}
+
+.rebuttal-prompt {
+    font-size: 12px;
+    opacity: 0.9;
+    font-style: italic;
+    color: #00ffff;
 }
 
 @keyframes slideInRight {
