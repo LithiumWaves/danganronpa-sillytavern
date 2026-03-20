@@ -195,9 +195,101 @@
     pointer-events: none;
 }
 
-.dangan-explanation-box {
-    background: linear-gradient(135deg, #1a0033 0%, #000000 100%);
-    border: 4px solid #ff00ff;
+/* ─── Bullet-time screen vfx ─────────── */
+#dangan-bt-vfx {
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at center, rgba(0,160,30,0.12) 0%, rgba(0,90,15,0.28) 100%);
+    mix-blend-mode: screen;
+    pointer-events: none; z-index: 2147483640;
+    opacity: 0; transition: opacity 180ms ease;
+}
+#dangan-bt-vfx.hg-active { opacity: 1; }
+
+/* ─── Bullet-time ALERT rows ─────────── */
+#dangan-bt-alert-overlay {
+    position: absolute;
+    left: 0; right: 0;
+    top: 0; bottom: 0;
+    z-index: 2147483630;
+    overflow: hidden;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-evenly;
+    opacity: 0;
+    transition: opacity 80ms ease;
+}
+#dangan-bt-alert-overlay.hg-active { opacity: 0.2; }
+.hg-alert-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.hg-alert-row-l { animation: hgAlertL 5s linear infinite; }
+.hg-alert-row-r { animation: hgAlertR 5s linear infinite; }
+@keyframes hgAlertL {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+}
+@keyframes hgAlertR {
+    from { transform: translateX(-50%); }
+    to   { transform: translateX(0); }
+}
+.hg-alert-box {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 148px;
+    height: 56px;
+    padding: 0 10px;
+    background: #000;
+    border: 2.5px solid #78ff44;
+    border-radius: 8px;
+    flex-shrink: 0;
+    gap: 2px;
+    box-shadow: 0 0 10px rgba(120,255,68,0.28), inset 0 0 8px rgba(120,255,68,0.06);
+}
+.hg-alert-word {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 22px; font-weight: 900;
+    color: #78ff44;
+    letter-spacing: 8px; text-indent: 8px;
+    text-shadow: 0 0 12px rgba(120,255,68,0.9);
+    line-height: 1;
+}
+.hg-alert-concentrating {
+    font-family: "Orbitron", monospace;
+    font-size: 6px; font-weight: 700;
+    color: #78ff44;
+    letter-spacing: 2.5px;
+    opacity: 0.6; line-height: 1;
+}
+
+/* ─── Truth Bullet Shoot Animation ────── */
+.dangan-bullet-projectile {
+    position: absolute;
+    color: #00ffff;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: bold;
+    font-size: 24px;
+    text-transform: uppercase;
+    text-shadow: 0 0 10px #00ffff, 0 0 20px rgba(0, 255, 255, 0.5);
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 2147483647;
+}
+
+.dangan-burst-fragment {
+    position: absolute;
+    background: white;
+    width: 4px;
+    height: 4px;
+    pointer-events: none;
+    z-index: 2147483646;
+}
     padding: 40px;
     text-align: center;
     color: white;

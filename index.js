@@ -5946,7 +5946,8 @@ debugSTGlobals();
         extensionName,
         extensionSettings: extension_settings,
         eventSource,
-        event_types
+        event_types,
+        endTrial: () => trialManager?.endTrial(),
     };
 
     console.log(`[${extensionName}] 🚀 Extension fully loaded.`);
@@ -6033,6 +6034,16 @@ debugSTGlobals();
 });
 
 // ── Slash Commands ──────────────────────────────────────────────────────────
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'end-trial',
+    callback: async () => {
+        console.log('[Dangan] Manual trial termination requested.');
+        trialManager?.endTrial();
+        return '';
+    },
+    helpString: 'Immediately ends the current Class Trial and clears persistent state.',
+}));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'body-discovered',
@@ -6331,4 +6342,14 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         SlashCommandNamedArgument.fromProps({ name: 'FinalSolutionQuote',description: '(alias) Pink zooming text during the Final Argument phase',typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
         SlashCommandNamedArgument.fromProps({ name: 'BG',                description: '(alias) Background name from SillyTavern\'s BG list',     typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
     ],
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'end-trial',
+    callback: async () => {
+        console.log('[Dangan] Manual trial termination requested.');
+        trialManager?.endTrial();
+        return '';
+    },
+    helpString: 'Immediately ends the current Class Trial and clears persistent state.',
 }));

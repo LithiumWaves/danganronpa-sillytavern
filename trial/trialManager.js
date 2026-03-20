@@ -54,6 +54,13 @@ export function createTrialManager(deps) {
         const oldState = currentState;
         currentState = newState;
         
+        // Persist state to extension settings
+        if (typeof saveSettingsDebounced === 'function') {
+            extensionSettings[extensionName].currentTrialState = newState;
+            extensionSettings[extensionName].persistentDebateHistory = persistentDebateHistory;
+            saveSettingsDebounced();
+        }
+
         if (oldState === TrialPhases.NON_STOP_DEBATE && newState !== TrialPhases.NON_STOP_DEBATE) {
             cleanupNSDListeners();
         } else if (newState === TrialPhases.NON_STOP_DEBATE && oldState !== TrialPhases.NON_STOP_DEBATE) {
@@ -110,11 +117,32 @@ export function createTrialManager(deps) {
         // Apply visual effect to background if slowing down
         const overlay = document.getElementById('dangan-nonstop-debate-overlay');
         if (overlay) {
+            let btVfx = document.getElementById('dangan-bt-vfx');
+            let btAlert = document.getElementById('dangan-bt-alert-overlay');
+
             if (mod < 1.0) {
-                overlay.style.backgroundColor = 'rgba(0, 8, 35, 0.4)';
-                overlay.style.transition = 'background-color 0.3s ease';
+                if (!btVfx) {
+                    btVfx = document.createElement('div');
+                    btVfx.id = 'dangan-bt-vfx';
+                    overlay.appendChild(btVfx);
+                }
+                if (!btAlert) {
+                    btAlert = document.createElement('div');
+                    btAlert.id = 'dangan-bt-alert-overlay';
+                    const alertBox = `<div class="hg-alert-box"><div class="hg-alert-word">ALERT</div><div class="hg-alert-concentrating">CONCENTRATING</div></div>`;
+                    const alertRowContent = alertBox.repeat(36);
+                    btAlert.innerHTML = Array.from({ length: 14 }, (_, i) =>
+                        `<div class="hg-alert-row hg-alert-row-${i % 2 === 0 ? 'l' : 'r'}">${alertRowContent}</div>`
+                    ).join('');
+                    overlay.appendChild(btAlert);
+                }
+                requestAnimationFrame(() => {
+                    btVfx.classList.add('hg-active');
+                    btAlert.classList.add('hg-active');
+                });
             } else {
-                overlay.style.backgroundColor = 'transparent';
+                if (btVfx) btVfx.classList.remove('hg-active');
+                if (btAlert) btAlert.classList.remove('hg-active');
             }
         }
     }
@@ -633,19 +661,114 @@ ${historyText}
 
     function hitWeakPoint(wp, currentBullet) {
         console.log('[Dangan][Trial] CRITICAL HIT!');
-        playSfx?.(getSfx?.().hit || 'hit'); 
         
-        // Highlight the hit weak point
-        wp.style.color = '#ff0000';
-        wp.style.fontSize = '48px';
-        wp.style.fontWeight = 'bold';
-        wp.style.transition = 'all 0.2s ease-out';
-        wp.style.textShadow = '0 0 20px #ff0000';
+        // 1. Create the Bullet Projectile animation
+        const projectile = document.createElement('div');
+        projectile.className = 'dangan-bullet-projectile';
+        projectile.textContent = currentBullet.title || 'TRUTH BULLET';
         
-        setTimeout(() => {
-            setState(TrialPhases.TRUTH_BULLET_EXPLANATION);
-            showExplanationUI(currentBullet, wp.textContent);
-        }, 1000);
+        // Start from bottom-center
+        const startX = window.innerWidth / 2;
+        const startY = window.innerHeight;
+        
+        // Target: the weak point
+        const rect = wp.getBoundingClientRect();
+        const targetX = rect.left + rect.width / 2;
+        const targetY = rect.top + rect.height / 2;
+        
+        projectile.style.left = `${startX}px`;
+        projectile.style.top = `${startY}px`;
+        projectile.style.transform = 'translate(-50%, -50%)';
+        document.body.appendChild(projectile);
+        
+        // Animate the bullet shooting
+        const bulletAnim = projectile.animate([
+            { left: `${startX}px`, top: `${startY}px`, scale: 0.5, opacity: 0 },
+            { left: `${targetX}px`, top: `${targetY}px`, scale: 1.2, opacity: 1, offset: 0.9 },
+            { left: `${targetX}px`, top: `${targetY}px`, scale: 1.5, opacity: 0 }
+        ], {
+            duration: 400,
+            easing: 'cubic-bezier(0.1, 0.9, 0.2, 1)'
+        });
+
+        bulletAnim.onfinish = () => {
+            projectile.remove();
+            playSfx?.(getSfx?.().hit || 'hit');
+            
+            // 2. Burst effect on the statement chunk
+            if (statementEl) {
+                createBurstEffect(targetX, targetY);
+                statementEl.style.transition = 'all 0.3s ease-out';
+                statementEl.style.transform += ' scale(1.2)';
+                statementEl.style.opacity = '0';
+                setTimeout(() => statementEl?.remove(), 300);
+            }
+
+            // 3. Show COUNTER banner
+            showCounterBanner().then(() => {
+                setState(TrialPhases.TRUTH_BULLET_EXPLANATION);
+                showExplanationUI(currentBullet, wp.textContent);
+            });
+        };
+    }
+
+    function createBurstEffect(x, y) {
+        for (let i = 0; i < 20; i++) {
+            const frag = document.createElement('div');
+            frag.className = 'dangan-burst-fragment';
+            frag.style.left = `${x}px`;
+            frag.style.top = `${y}px`;
+            document.body.appendChild(frag);
+            
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 50 + Math.random() * 150;
+            const tx = Math.cos(angle) * dist;
+            const ty = Math.sin(angle) * dist;
+            
+            frag.animate([
+                { transform: 'translate(0, 0) scale(1)', opacity: 1 },
+                { transform: `translate(${tx}px, ${ty}px) scale(0)`, opacity: 0 }
+            ], {
+                duration: 500,
+                easing: 'ease-out'
+            }).onfinish = () => frag.remove();
+        }
+    }
+
+    async function showCounterBanner() {
+        const overlay = document.createElement('div');
+        overlay.id = 'dangan-counter-overlay';
+        overlay.style.cssText = `
+            position: fixed; inset: 0; z-index: 2147483647;
+            background: rgba(0, 0, 0, 0.4);
+            display: flex; align-items: center; justify-content: center;
+            pointer-events: none; opacity: 0; transition: opacity 0.2s;
+        `;
+        
+        const banner = document.createElement('img');
+        // Reusing final-blow-banner.png for dramatic flair as requested
+        banner.src = 'scripts/extensions/third-party/danganronpa-extension/assets/final-blow-banner.png';
+        banner.style.cssText = `
+            max-width: 80%; transform: scale(0.5) rotate(-5deg);
+            filter: drop-shadow(0 0 20px #00ffff);
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        `;
+        
+        overlay.appendChild(banner);
+        document.body.appendChild(overlay);
+        
+        await new Promise(r => requestAnimationFrame(() => {
+            overlay.style.opacity = '1';
+            banner.style.transform = 'scale(1.1) rotate(0deg)';
+            r();
+        }));
+        
+        await new Promise(r => setTimeout(r, 1200));
+        
+        overlay.style.opacity = '0';
+        banner.style.transform = 'scale(1.5) translateY(-50px)';
+        await new Promise(r => setTimeout(r, 400));
+        overlay.remove();
     }
 
     function showExplanationUI(bullet, refutedText) {
@@ -1508,16 +1631,53 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
         return picked;
     }
 
+    function endTrial() {
+        console.log('[Dangan][Trial] Ending trial and clearing persistent state.');
+        persistentDebateHistory = [];
+        setState(TrialPhases.IDLE);
+        
+        // Clear from extension settings
+        if (typeof saveSettingsDebounced === 'function') {
+            extensionSettings[extensionName].currentTrialState = TrialPhases.IDLE;
+            extensionSettings[extensionName].persistentDebateHistory = [];
+            saveSettingsDebounced();
+        }
+    }
+
+    function initFromPersistentState() {
+        const savedState = extensionSettings[extensionName]?.currentTrialState;
+        const savedHistory = extensionSettings[extensionName]?.persistentDebateHistory;
+
+        if (Array.isArray(savedHistory)) {
+            persistentDebateHistory = savedHistory;
+        }
+
+        if (savedState && savedState !== TrialPhases.IDLE) {
+            console.log(`[Dangan][Trial] Restoring trial state: ${savedState}`);
+            // Transition back to the saved state. 
+            // Returning to PRE_DEBATE is safer after a refresh for stability.
+            if (savedState === TrialPhases.NON_STOP_DEBATE) {
+                setState(TrialPhases.PRE_DEBATE);
+            } else {
+                setState(savedState);
+            }
+        }
+    }
+
+    // Call init on manager creation
+    setTimeout(initFromPersistentState, 500);
+
     return {
         start: () => {
             setState(TrialPhases.PRE_DEBATE);
         },
         stop: () => {
-            setState(TrialPhases.IDLE);
+            endTrial();
         },
         debugStartNonStopDebateWithLines,
         onMessageSent,
         getState: () => currentState,
         phases: TrialPhases,
+        endTrial,
     };
 }
