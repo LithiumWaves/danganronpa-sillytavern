@@ -243,7 +243,7 @@ function insertTruthBulletUI(bullet) {
 
     const $item = $(`
         <div class="truth-item" data-id="${bullet.id}">
-            <img src="scripts/extensions/third-party/danganronpa-extension/assets/artillery-shell.svg" alt="" class="truth-bullet-icon">
+            <img src="scripts/extensions/third-party/danganronpa-extension/assets/icons/artillery-shell.svg" alt="" class="truth-bullet-icon">
             ${bullet.title.toUpperCase()}
         </div>
     `);
@@ -276,7 +276,7 @@ function insertArchivedTruthBulletUI(bullet) {
 
     const $item = $(`
         <div class="truth-archived-item" data-id="${bullet.id}">
-            <img src="scripts/extensions/third-party/danganronpa-extension/assets/artillery-shell.svg" alt="" class="truth-bullet-icon truth-bullet-icon--archived">
+            <img src="scripts/extensions/third-party/danganronpa-extension/assets/icons/artillery-shell.svg" alt="" class="truth-bullet-icon truth-bullet-icon--archived">
             ${bullet.title.toUpperCase()}
         </div>
     `);
@@ -603,6 +603,14 @@ export function handleTruthBullet(title, description, options = {}) {
     return addTruthBullet(title, description, options);
 }
 
+
+export function clearAllTruthBullets() {
+    truthBullets.length = 0;
+    archivedTruthBullets.length = 0;
+    processedTruthSignatures.clear();
+    saveTruthBullets();
+    renderTruthBullets();
+}
 
 export function setNextTruthBulletSfxVariant(variant = "") {
     const key = String(variant || "").trim().toLowerCase();

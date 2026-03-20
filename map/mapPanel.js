@@ -37,18 +37,18 @@ const MAP_AREAS = {
     hopes_peak: {
         label: "HOPE'S PEAK ACADEMY",
         floors: [
-            { key: "floor_1", label: "FLOOR 1", image: "floor_one.png", description: "Main academy first floor." },
-            { key: "floor_2", label: "FLOOR 2", image: "floor_two.png", description: "Main academy second floor." },
-            { key: "floor_3", label: "FLOOR 3", image: "floor_three.png", description: "Main academy third floor." },
-            { key: "floor_4", label: "FLOOR 4", image: "floor_four.png", description: "Main academy fourth floor." },
-            { key: "floor_5", label: "FLOOR 5", image: "floor_five.png", description: "Main academy fifth floor." },
+            { key: "floor_1", label: "FLOOR 1", image: "images/maps/floor_one.png", description: "Main academy first floor." },
+            { key: "floor_2", label: "FLOOR 2", image: "images/maps/floor_two.png", description: "Main academy second floor." },
+            { key: "floor_3", label: "FLOOR 3", image: "images/maps/floor_three.png", description: "Main academy third floor." },
+            { key: "floor_4", label: "FLOOR 4", image: "images/maps/floor_four.png", description: "Main academy fourth floor." },
+            { key: "floor_5", label: "FLOOR 5", image: "images/maps/floor_five.png", description: "Main academy fifth floor." },
         ],
     },
     hotel_despair: {
         label: "HOPE'S PEAK ACADEMY DORMS",
         floors: [
-            { key: "floor_1", label: "FLOOR 1", image: "hotel_despair.png", description: "Accessible by corridor from academy floor 1." },
-            { key: "hidden_floor", label: "HIDDEN FLOOR", image: "hidden_floor.png", description: "Secret second floor above Hotel Despair." },
+            { key: "floor_1", label: "FLOOR 1", image: "images/maps/hotel_despair.png", description: "Accessible by corridor from academy floor 1." },
+            { key: "hidden_floor", label: "HIDDEN FLOOR", image: "images/maps/hidden_floor.png", description: "Secret second floor above Hotel Despair." },
         ],
     },
 };
@@ -343,7 +343,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         let showCustomNames = false;
 
         function updateEyeBtn() {
-            const icon = showCustomNames ? "eye-open.svg" : "eye-closed.svg";
+            const icon = showCustomNames ? "icons/eye-open.svg" : "icons/eye-closed.svg";
             const title = showCustomNames ? "Hide custom item names" : "Show custom item names";
             $(".mml-eye-btn").attr("title", title).html(`<img src="${extensionFolderPath}/assets/${icon}" alt="" style="width:14px;height:14px;object-fit:contain;filter:invert(1);opacity:0.8;pointer-events:none"/>`);
         }
@@ -373,7 +373,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                     <div class="mml-header">
                         <span class="mml-title">ITEM POOL</span>
                         <div class="mml-header-actions">
-                            <button type="button" class="mml-eye-btn" title="Show custom item names"><img src="${extensionFolderPath}/assets/eye-closed.svg" alt="" style="width:14px;height:14px;object-fit:contain;filter:invert(1);opacity:0.8;pointer-events:none"/></button>
+                            <button type="button" class="mml-eye-btn" title="Show custom item names"><img src="${extensionFolderPath}/assets/icons/eye-closed.svg" alt="" style="width:14px;height:14px;object-fit:contain;filter:invert(1);opacity:0.8;pointer-events:none"/></button>
                             <button type="button" class="mml-add-btn" title="Add custom item">+</button>
                             <button type="button" class="mml-close">✕</button>
                         </div>
@@ -470,13 +470,13 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                     <button type="button" class="map-machine-close" aria-label="Close MonoMono Machine">✕</button>
 
                     <div class="map-machine-coins-row">
-                        <img class="map-machine-coin-icon" src="${extensionFolderPath}/assets/monocoin.png" alt="Monocoin" />
+                        <img class="map-machine-coin-icon" src="${extensionFolderPath}/assets/images/ui/monocoin.png" alt="Monocoin" />
                         <div class="map-machine-coins">x 0</div>
                     </div>
 
                     <div class="map-machine-image-wrap">
                         <div class="map-machine-sunburst" aria-hidden="true"></div>
-                        <img class="map-machine-image" src="${extensionFolderPath}/assets/monochine_idle.png" alt="MonoMono Machine" />
+                        <img class="map-machine-image" src="${extensionFolderPath}/assets/monochine/monochine_idle.png" alt="MonoMono Machine" />
                         <div class="map-machine-banner" aria-live="polite"></div>
                     </div>
 
@@ -582,7 +582,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
 
             const $img = $(selectors.machineImage);
             if ($img.length) {
-                $img.attr("src", `${extensionFolderPath}/assets/monochine_roll.gif`);
+                $img.attr("src", `${extensionFolderPath}/assets/monochine/monochine_roll.gif`);
 
                 const obtainedMessage = run.rollCount > 1
                     ? `You've obtained ${run.rollCount} gifts! ${run.duplicateCount} duplicate${run.duplicateCount === 1 ? "" : "s"}.`
@@ -600,7 +600,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                 }, MACHINE_JINGLE_DELAY_MS);
 
                 state.machineRollTimeout = setTimeout(() => {
-                    $img.attr("src", `${extensionFolderPath}/assets/monochine_idle.png`);
+                    $img.attr("src", `${extensionFolderPath}/assets/monochine/monochine_idle.png`);
                     state.machineRolling = false;
                     $(selectors.machineRoll).prop("disabled", false);
                     $(selectors.machineAdd).prop("disabled", false);
@@ -653,7 +653,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         }
 
         state.machineRolling = false;
-        $(selectors.machineImage).attr("src", `${extensionFolderPath}/assets/monochine_idle.png`);
+        $(selectors.machineImage).attr("src", `${extensionFolderPath}/assets/monochine/monochine_idle.png`);
         $(selectors.machineRoll).prop("disabled", false);
         $(selectors.machineAdd).prop("disabled", false);
         $(selectors.machineAddRoll).prop("disabled", false);
@@ -689,7 +689,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         $(selectors.machineRoll).prop("disabled", false);
         $(selectors.machineAdd).prop("disabled", false);
         $(selectors.machineAddRoll).prop("disabled", false);
-        $(selectors.machineImage).attr("src", `${extensionFolderPath}/assets/monochine_idle.png`);
+        $(selectors.machineImage).attr("src", `${extensionFolderPath}/assets/monochine/monochine_idle.png`);
         $panel.addClass("machine-overlay-open");
         $(selectors.machineOverlay).addClass("open").attr("aria-hidden", "false");
         syncMachineTrack($panel);
@@ -1693,7 +1693,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             $list.append(`
                 <div class="map-pins-list-item type-${escapeHtml(pin.type)}${isActive ? " active" : ""}${pin.locked ? " locked" : ""}" data-pin-id="${escapeHtml(pin.id)}">
                     <button type="button" class="map-pins-list-name" title="${escapeHtml(pin.locationId || '')}">${escapeHtml(pin.label)}</button>
-                    <button type="button" class="map-pins-list-lock${pin.locked ? " is-locked" : ""}" aria-label="${pin.locked ? "Unlock" : "Lock"} ${escapeHtml(pin.label)}" title="${pin.locked ? "Unlock pin" : "Lock pin"}"><img src="${extensionFolderPath}/assets/${pin.locked ? "padlock.svg" : "padlock-open.svg"}" alt="" /></button>
+                    <button type="button" class="map-pins-list-lock${pin.locked ? " is-locked" : ""}" aria-label="${pin.locked ? "Unlock" : "Lock"} ${escapeHtml(pin.label)}" title="${pin.locked ? "Unlock pin" : "Lock pin"}"><img src="${extensionFolderPath}/assets/icons/${pin.locked ? "padlock.svg" : "padlock-open.svg"}" alt="" /></button>
                     <button type="button" class="map-pins-list-edit" aria-label="Edit ${escapeHtml(pin.label)}">✏</button>
                     <button type="button" class="map-pins-list-delete" aria-label="Delete ${escapeHtml(pin.label)}">✕</button>
                 </div>

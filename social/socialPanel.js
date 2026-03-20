@@ -196,7 +196,7 @@ export function createSocialPanelController({
         if (!characters.size) {
             $content.html(`
                 <img class="social-no-char-crest"
-                    src="scripts/extensions/third-party/danganronpa-extension/assets/hopes-peak-crest.png"
+                    src="scripts/extensions/third-party/danganronpa-extension/assets/images/ui/hopes-peak-crest.png"
                     alt="Hope's Peak Academy" />
             `);
             return;
@@ -230,7 +230,7 @@ export function createSocialPanelController({
                 <svg class="mastermind-stamp-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" overflow="visible">
                     <polygon points="100,6 194,100 100,194 6,100" fill="none" stroke="rgb(255,20,180)" stroke-width="3.5"/>
                     <polygon points="100,21 179,100 100,179 21,100" fill="none" stroke="rgb(255,20,180)" stroke-width="2.5"/>
-                    <image class="mono-eye-img" href="scripts/extensions/third-party/danganronpa-extension/assets/eye.png" x="35" y="59" width="130" height="83"/>
+                    <image class="mono-eye-img" href="scripts/extensions/third-party/danganronpa-extension/assets/images/ui/eye.png" x="35" y="59" width="130" height="83"/>
                 </svg>
             </div>`;
 
@@ -330,7 +330,7 @@ export function createSocialPanelController({
             </div>`;
 
         $content.html(`
-            <img class="social-no-char-crest" src="scripts/extensions/third-party/danganronpa-extension/assets/hopes-peak-crest.png" alt="" aria-hidden="true" />
+            <img class="social-no-char-crest" src="scripts/extensions/third-party/danganronpa-extension/assets/images/ui/hopes-peak-crest.png" alt="" aria-hidden="true" />
             ${filterBar}
             <div class="social-char-sections">
                 ${sections}

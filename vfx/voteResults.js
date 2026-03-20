@@ -571,7 +571,7 @@ export function createVoteResultsController({ getCharacters, getSpriteUrl, getUs
         const ctx = canvas.getContext("2d");
 
         const img = new Image();
-        img.src = `${folderPath}/assets/monocoin.png`;
+        img.src = `${folderPath}/assets/images/ui/monocoin.png`;
 
         const COIN_SIZE     = 38;
         const GRAVITY       = 0.45;

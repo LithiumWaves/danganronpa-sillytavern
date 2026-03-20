@@ -752,7 +752,7 @@ async function triggerTrialStartFromMapPin() {
 
 function createTrialIntroOstController() {
     const candidateTracks = buildExtensionPathCandidates()
-        .map(basePath => `${basePath}/assets/classtrial/trialunderground.mp3`);
+        .map(basePath => `${basePath}/assets/bgm/trialunderground.mp3`);
 
     let activeAudio = null;
     let activeTrackIndex = -1;
@@ -2411,7 +2411,7 @@ async function runMonokumaLessonStep(step, state) {
     );
 
     if (step.action === "spawnTruthBullet") {
-        handleTruthBullet("Important Thing!", "Will this show us whodunnit?", { grantMonocoins: false, grantXp: false, image: `${extensionFolderPath}/assets/monokuma_kotodama.png` });
+        handleTruthBullet("Important Thing!", "Will this show us whodunnit?", { grantMonocoins: false, grantXp: false, image: `${extensionFolderPath}/assets/images/ui/monokuma_kotodama.png` });
         window.renderTruthBullets?.();
     }
 
@@ -3081,7 +3081,7 @@ function runBreachSuccessSequence() {
     appendBreachTerminalLine("[FF-LINK] Breaching Monopad debug partitions...", { className: "alert" });
 
     if (!breachAudio) {
-        breachAudio = new Audio(`${extensionFolderPath}/assets/nwo.mp3`);
+        breachAudio = new Audio(`${extensionFolderPath}/assets/bgm/nwo.mp3`);
         breachAudio.loop = true;
         breachAudio.volume = 0.6;
     }

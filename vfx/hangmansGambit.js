@@ -648,7 +648,7 @@ export function createHangmansGambitController({
         document.body.insertAdjacentHTML("beforeend", `
             <div id="dangan-hg-banner">
                 <div id="dangan-hg-banner-inner">
-                    <img class="hg-banner-img" src="${extensionFolderPath}/assets/got-it-banner.png" alt="Got It"/>
+                    <img class="hg-banner-img" src="${extensionFolderPath}/assets/images/minigames/got-it-banner.png" alt="Got It"/>
                 </div>
             </div>
         `);
@@ -706,7 +706,7 @@ export function createHangmansGambitController({
                     <div class="hg-tm-header">
                         <div class="hg-tm-title">Hangman's Gambit</div>
                     </div>
-                    <img class="hg-tm-img" src="${extensionFolderPath}/assets/hangmans-gambit-tutorial.png" alt=""/>
+                    <img class="hg-tm-img" src="${extensionFolderPath}/assets/images/minigames/hangmans-gambit-tutorial.png" alt=""/>
                     <div class="hg-tm-body">
                         <p><strong>Hangman's Gambit</strong> is a minigame where you are tasked with answering a <strong>Question</strong>, visible in the bottom-right side of your screen. The answer to this question is in the form of an <strong>Anagram</strong>. During <strong>Hangman's Gambit</strong>, you will see colored spheres with letters printed on them. Clicking a sphere will load it into your <strong>Stock</strong>, at the bottom of your screen in the center. Matching two of the same letter will fire that combination into the <strong>Anagram</strong>. If the letter is correct, you'll expose a part of the Anagram! If it's wrong, however, you'll take damage to your <strong>Health</strong>. You can see your <strong>Health</strong> on the top-right, represented by hearts. Taking damage deducts <strong>Monocoins</strong>; run out of <strong>Health</strong> and it's game over! Underneath your Health you will see a green bar — by pressing either Shift key, you can activate <strong>Bullet Time</strong>, which will slow time by 50% for both the timer (Visible in the bottom left), and for the moving spheres. <strong>Bullet Time</strong> regenerates over time. Can you solve the Hangman's Gambit..?</p>
                     </div>
@@ -834,7 +834,7 @@ export function createHangmansGambitController({
                 overlay.querySelector('#hg-bt-alert-overlay')?.classList.toggle('hg-active', on);
                 if (on) {
                     if (!btAudio) {
-                        btAudio = new Audio(`${extensionFolderPath}/assets/slowmo.wav`);
+                        btAudio = new Audio(`${extensionFolderPath}/assets/sfx/minigames/slowmo.wav`);
                         btAudio.loop = true;
                         btAudio.play().catch(() => {});
                     }
@@ -1127,7 +1127,7 @@ export function createHangmansGambitController({
                 }
                 stockLetter   = letter;
                 stockBubbleId = id;
-                new Audio(`${extensionFolderPath}/assets/correct-hangman.wav`).play().catch(() => {});
+                new Audio(`${extensionFolderPath}/assets/sfx/minigames/correct-hangman.wav`).play().catch(() => {});
                 activeBubbles.get(id)?.el.classList.add('hg-stocked-bubble');
                 updateStockDisplay();
             }
@@ -1161,7 +1161,7 @@ export function createHangmansGambitController({
                 el.textContent = answerUpper[idx];
                 el.classList.add('hg-revealed');
                 el.classList.remove('hg-target');
-                new Audio(`${extensionFolderPath}/assets/correct-letter.wav`).play().catch(() => {});
+                new Audio(`${extensionFolderPath}/assets/sfx/minigames/correct-letter.wav`).play().catch(() => {});
             }
 
             function advanceTarget() {
@@ -1339,7 +1339,7 @@ export function createHangmansGambitController({
                     }
                 }
                 // Fallback: play directly
-                const bgm = new Audio(`${extensionFolderPath}/assets/Hangman's Gambit.mp3`);
+                const bgm = new Audio(`${extensionFolderPath}/assets/bgm/Hangman's Gambit.mp3`);
                 bgm.loop = true;
                 _bgmAudio = bgm;
                 _bgmIsDA  = false;
@@ -1352,7 +1352,7 @@ export function createHangmansGambitController({
                 const wantsTutorial = await showTutorialPrompt();
                 if (wantsTutorial) await showTutorialModal();
                 tutorialActive = false;
-                const introAudio = new Audio(`${extensionFolderPath}/assets/minigame-start.wav`);
+                const introAudio = new Audio(`${extensionFolderPath}/assets/sfx/minigames/minigame-start.wav`);
                 introAudio.addEventListener('ended', beginBgm, { once: true });
                 introAudio.addEventListener('error', beginBgm, { once: true });
                 introAudio.play().catch(() => beginBgm());

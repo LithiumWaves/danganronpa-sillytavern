@@ -346,7 +346,7 @@ function buildStyles() {
 function buildBannerHtml(extensionFolderPath) {
     return `<div id="dangan-qtt-banner">
         <div id="dangan-qtt-banner-inner">
-            <img class="qtt-banner-img" src="${extensionFolderPath}/assets/got-it-banner.png" alt="Got It"/>
+            <img class="qtt-banner-img" src="${extensionFolderPath}/assets/images/minigames/got-it-banner.png" alt="Got It"/>
         </div>
     </div>`;
 }
@@ -413,18 +413,18 @@ export function createQuestionTruthController({ extensionFolderPath = '', getTru
         const overlay = document.createElement("div");
         overlay.id = QTT_ID;
         overlay.innerHTML = `
-            <img class="qtt-revolver" src="${extensionFolderPath}/assets/revolver-cylinder.png" alt=""/>
+            <img class="qtt-revolver" src="${extensionFolderPath}/assets/images/minigames/revolver-cylinder.png" alt=""/>
             ${hasTimer ? `<div id="qtt-timer">00:${String(Math.floor(time)).padStart(2,'0')}:000</div>` : ''}
             <div class="qtt-body">
                 <div class="qtt-list-panel">
                     <div class="qtt-list-header">
-                        <img class="qtt-list-header-icon" src="${extensionFolderPath}/assets/bullets.svg" alt=""/>
+                        <img class="qtt-list-header-icon" src="${extensionFolderPath}/assets/icons/bullets.svg" alt=""/>
                         TRUTH BULLETS
                     </div>
                     <div class="qtt-health">${heartHTML}</div>
                     <div class="qtt-list-items">
                         ${bullets.length
-                            ? bullets.map((b, i) => `<div class="qtt-bullet-item" data-idx="${i}"><img class="qtt-bullet-icon" src="${extensionFolderPath}/assets/artillery-shell.svg" alt=""/>${b.title}</div>`).join('')
+                            ? bullets.map((b, i) => `<div class="qtt-bullet-item" data-idx="${i}"><img class="qtt-bullet-icon" src="${extensionFolderPath}/assets/icons/artillery-shell.svg" alt=""/>${b.title}</div>`).join('')
                             : '<div class="qtt-empty">NO TRUTH BULLETS</div>'
                         }
                     </div>

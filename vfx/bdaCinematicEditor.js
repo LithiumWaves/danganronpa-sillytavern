@@ -1302,7 +1302,7 @@ export function createBdaCinematicEditor({ extensionFolderPath, getCinematics, s
                 </div>
 
                 <div class="bda-editor-footer">
-                    <div class="bda-footer-note">Triggered via <code>/body-discovered name=&lt;cinematic name&gt;</code></div>
+                    <div class="bda-footer-note">Triggered via <code>/body-discovered bg=&lt;cinematic name&gt;</code></div>
                     <div class="bda-footer-actions">
                         <button type="button" id="bda-save" class="bda-btn bda-btn-primary">SAVE</button>
                         <button type="button" id="bda-cancel" class="bda-btn">CLOSE</button>

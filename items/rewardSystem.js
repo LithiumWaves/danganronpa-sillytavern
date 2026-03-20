@@ -69,7 +69,7 @@ export function createRewardSystem({ extensionName, extensionFolderPath, extensi
         toast = document.createElement("div");
         toast.id = "monocoin-toast";
         toast.innerHTML = `
-            <img class="monocoin-toast-icon" src="${extensionFolderPath}/assets/monocoin.png" alt="Monocoin" />
+            <img class="monocoin-toast-icon" src="${extensionFolderPath}/assets/images/ui/monocoin.png" alt="Monocoin" />
             <div class="monocoin-toast-text">+0 MONOCOINS</div>
         `;
 

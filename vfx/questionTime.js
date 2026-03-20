@@ -317,7 +317,7 @@ function buildHourglass() {
 function buildBanner(extensionFolderPath = '') {
     return `<div id="dangan-qt-banner">
         <div id="dangan-qt-banner-inner">
-            <img class="qt-banner-img" src="${extensionFolderPath}/assets/got-it-banner.png" alt="Got It"/>
+            <img class="qt-banner-img" src="${extensionFolderPath}/assets/images/minigames/got-it-banner.png" alt="Got It"/>
         </div>
     </div>`;
 }

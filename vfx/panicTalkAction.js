@@ -906,7 +906,7 @@ export function createPanicTalkActionController({
 
             <div id="pta-panel-bl" class="pta-panel">
                 <div id="pta-ammo-wrap">
-                    <img id="pta-ammo-icon" src="${extensionFolderPath}/assets/artillery-shell.svg" alt=""/>
+                    <img id="pta-ammo-icon" src="${extensionFolderPath}/assets/icons/artillery-shell.svg" alt=""/>
                     <div id="pta-ammo-count">×${AMMO_MAX}</div>
                     <div id="pta-ammo-label">AMMO</div>
                 </div>
@@ -930,7 +930,7 @@ export function createPanicTalkActionController({
             </div>
 
             <div id="pta-sprite">
-                <img src="${extensionFolderPath}/assets/pta-tester-main.webp" alt=""/>
+                <img src="${extensionFolderPath}/assets/images/minigames/pta-tester-main.webp" alt=""/>
             </div>
 
             <div id="pta-phase-banner">
@@ -1107,7 +1107,7 @@ export function createPanicTalkActionController({
                     try { bgmAudio.pause(); bgmAudio.src = ''; } catch(_) {}
                     bgmAudio = null;
                 }
-                const src = `${extensionFolderPath}/assets/Panic Talk Action Phase ${phaseNum}.mp3`;
+                const src = `${extensionFolderPath}/assets/bgm/Panic Talk Action Phase ${phaseNum}.mp3`;
                 bgmAudio = new Audio(src);
                 bgmAudio.loop = (phaseNum === 3);
                 bgmAudio.volume = 0.7;
@@ -1289,7 +1289,7 @@ export function createPanicTalkActionController({
 
             function tickReload() {
                 if (isResolved) { stopReload(); return; }
-                new Audio(`${extensionFolderPath}/assets/reload.wav`).play().catch(() => {});
+                new Audio(`${extensionFolderPath}/assets/sfx/minigames/reload.wav`).play().catch(() => {});
                 ammo = Math.min(AMMO_MAX, ammo + 1);
                 updateAmmoUI();
                 if (ammo >= AMMO_MAX) stopReload();
@@ -1334,7 +1334,7 @@ export function createPanicTalkActionController({
                 showHitBurst(cellIdx);
 
                 if (!activeDialogs.has(cellIdx)) {
-                    new Audio(`${extensionFolderPath}/assets/empty-grid-hit.wav`).play().catch(() => {});
+                    new Audio(`${extensionFolderPath}/assets/sfx/minigames/empty-grid-hit.wav`).play().catch(() => {});
                     const miss = document.createElement('div');
                     miss.className = 'pta-miss-label';
                     miss.textContent = 'MISS!';
@@ -1349,7 +1349,7 @@ export function createPanicTalkActionController({
                         // Every hit on blue deals 1HP to opponent
                         currentEnemyHp = Math.max(0, currentEnemyHp - 1);
                         updateBars();
-                        new Audio(`${extensionFolderPath}/assets/hit-other.wav`).play().catch(() => {});
+                        new Audio(`${extensionFolderPath}/assets/sfx/minigames/hit-other.wav`).play().catch(() => {});
                         if (info.hitCount < 2) {
                             // First hit – turn orange, flash blue
                             info.el.classList.remove('pta-blue');
@@ -1374,10 +1374,10 @@ export function createPanicTalkActionController({
                         fadeCellWarn(cellIdx);
 
                         if (type === 'normal') {
-                            new Audio(`${extensionFolderPath}/assets/hit-white.wav`).play().catch(() => {});
+                            new Audio(`${extensionFolderPath}/assets/sfx/minigames/hit-white.wav`).play().catch(() => {});
                             flashScreen('white');
                         } else {
-                            new Audio(`${extensionFolderPath}/assets/hit-other.wav`).play().catch(() => {});
+                            new Audio(`${extensionFolderPath}/assets/sfx/minigames/hit-other.wav`).play().catch(() => {});
                         }
 
                         if (type === 'pink') {
@@ -1482,7 +1482,7 @@ export function createPanicTalkActionController({
                 fadeInSolTexts(); // also starts timer + unlocks input after texts appear
 
                 // Loop heartbeat for the duration
-                heartbeatAudio = new Audio(`${extensionFolderPath}/assets/heartbeat.wav`);
+                heartbeatAudio = new Audio(`${extensionFolderPath}/assets/sfx/minigames/heartbeat.wav`);
                 heartbeatAudio.loop = true;
                 heartbeatAudio.play().catch(() => {});
                 _heartbeatAudio = heartbeatAudio;
@@ -1496,7 +1496,7 @@ export function createPanicTalkActionController({
                 if (isResolved || finalInputLocked || finalInputSeq.length >= 4) return;
                 if (finalInputSeq.includes(dir)) return;
 
-                new Audio(`${extensionFolderPath}/assets/submission.wav`).play().catch(() => {});
+                new Audio(`${extensionFolderPath}/assets/sfx/minigames/submission.wav`).play().catch(() => {});
 
                 finalInputSeq.push(dir);
                 updateSeqDisplay();
@@ -1562,7 +1562,7 @@ export function createPanicTalkActionController({
                 }
                 moveSpriteToCol(1);
                 triggerFinalQuote();
-                heartbeatAudio = new Audio(`${extensionFolderPath}/assets/heartbeat.wav`);
+                heartbeatAudio = new Audio(`${extensionFolderPath}/assets/sfx/minigames/heartbeat.wav`);
                 heartbeatAudio.loop = true;
                 heartbeatAudio.play().catch(() => {});
                 _heartbeatAudio = heartbeatAudio;
@@ -1588,7 +1588,7 @@ export function createPanicTalkActionController({
                 document.body.insertAdjacentHTML('beforeend', `
                     <div id="pta-got-it-banner" style="position:fixed;top:33.33%;left:0;right:0;height:33.34%;z-index:2147483647;pointer-events:none;overflow:hidden;border-top:6px solid #000;border-bottom:6px solid #000;">
                         <div id="pta-got-it-banner-inner" style="position:absolute;top:0;bottom:0;left:100%;width:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;transition:left 0.325s cubic-bezier(0.22,0.61,0.36,1);">
-                            <img style="width:100%;height:100%;object-fit:cover;object-position:center;display:block;" src="${extensionFolderPath}/assets/got-it-banner.png" alt="Got It"/>
+                            <img style="width:100%;height:100%;object-fit:cover;object-position:center;display:block;" src="${extensionFolderPath}/assets/images/minigames/got-it-banner.png" alt="Got It"/>
                         </div>
                     </div>
                 `);
@@ -1614,7 +1614,7 @@ export function createPanicTalkActionController({
                 document.body.insertAdjacentHTML('beforeend', `
                     <div id="pta-final-blow-banner" style="position:fixed;top:33.33%;left:0;right:0;height:33.34%;z-index:2147483647;pointer-events:none;overflow:hidden;">
                         <div id="pta-final-blow-banner-inner" style="position:absolute;top:0;bottom:0;right:100%;width:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;transition:right 0.325s cubic-bezier(0.22,0.61,0.36,1);">
-                            <img style="width:100%;height:100%;object-fit:cover;object-position:center;display:block;" src="${extensionFolderPath}/assets/final-blow-banner.png" alt="Final Blow"/>
+                            <img style="width:100%;height:100%;object-fit:cover;object-position:center;display:block;" src="${extensionFolderPath}/assets/images/minigames/final-blow-banner.png" alt="Final Blow"/>
                         </div>
                     </div>
                 `);
@@ -1643,7 +1643,7 @@ export function createPanicTalkActionController({
                     finalQuoteEl.classList.add('pta-quote-dying');
                     setTimeout(() => {
                         chosenSentenceEl.classList.add('pta-float-up');
-                        new Audio(`${extensionFolderPath}/assets/final-shot.wav`).play().catch(() => {});
+                        new Audio(`${extensionFolderPath}/assets/sfx/minigames/final-shot.wav`).play().catch(() => {});
                     }, 350);
 
                     // Float animation finishes ~1900ms in; show banner, then flash sprite
@@ -1651,8 +1651,8 @@ export function createPanicTalkActionController({
                         clearTimeout(spriteMoveTimer);
                         spriteEl.classList.add('pta-sprite-flashing');
                         setTimeout(() => {
-                            spriteImg.src = `${extensionFolderPath}/assets/pta-tester-final.webp`;
-                            new Audio(`${extensionFolderPath}/assets/pta-end.wav`).play().catch(() => {});
+                            spriteImg.src = `${extensionFolderPath}/assets/images/minigames/pta-tester-final.webp`;
+                            new Audio(`${extensionFolderPath}/assets/sfx/minigames/pta-end.wav`).play().catch(() => {});
                         }, 250);
                         setTimeout(() => endGame(true), 600);
                     }), 1900);
@@ -1717,7 +1717,7 @@ export function createPanicTalkActionController({
                     if (i !== cursorCell) {
                         cursorCell = i;
                         updateCursor();
-                        const mvSfx = new Audio(`${extensionFolderPath}/assets/movement.wav`); mvSfx.volume = 0.75; mvSfx.play().catch(() => {});
+                        const mvSfx = new Audio(`${extensionFolderPath}/assets/sfx/minigames/movement.wav`); mvSfx.volume = 0.75; mvSfx.play().catch(() => {});
                     }
                 });
                 cell.addEventListener('click', () => {
@@ -1759,19 +1759,19 @@ export function createPanicTalkActionController({
                 switch (e.key) {
                     case 'ArrowUp':
                         e.preventDefault();
-                        if (cursorCell >= 3) { cursorCell -= 3; updateCursor(); const a1=new Audio(`${extensionFolderPath}/assets/movement.wav`);a1.volume=0.75;a1.play().catch(()=>{}); }
+                        if (cursorCell >= 3) { cursorCell -= 3; updateCursor(); const a1=new Audio(`${extensionFolderPath}/assets/sfx/minigames/movement.wav`);a1.volume=0.75;a1.play().catch(()=>{}); }
                         break;
                     case 'ArrowDown':
                         e.preventDefault();
-                        if (cursorCell <= 5) { cursorCell += 3; updateCursor(); const a2=new Audio(`${extensionFolderPath}/assets/movement.wav`);a2.volume=0.75;a2.play().catch(()=>{}); }
+                        if (cursorCell <= 5) { cursorCell += 3; updateCursor(); const a2=new Audio(`${extensionFolderPath}/assets/sfx/minigames/movement.wav`);a2.volume=0.75;a2.play().catch(()=>{}); }
                         break;
                     case 'ArrowLeft':
                         e.preventDefault();
-                        if (cursorCell % 3 > 0) { cursorCell--; updateCursor(); const a3=new Audio(`${extensionFolderPath}/assets/movement.wav`);a3.volume=0.75;a3.play().catch(()=>{}); }
+                        if (cursorCell % 3 > 0) { cursorCell--; updateCursor(); const a3=new Audio(`${extensionFolderPath}/assets/sfx/minigames/movement.wav`);a3.volume=0.75;a3.play().catch(()=>{}); }
                         break;
                     case 'ArrowRight':
                         e.preventDefault();
-                        if (cursorCell % 3 < 2) { cursorCell++; updateCursor(); const a4=new Audio(`${extensionFolderPath}/assets/movement.wav`);a4.volume=0.75;a4.play().catch(()=>{}); }
+                        if (cursorCell % 3 < 2) { cursorCell++; updateCursor(); const a4=new Audio(`${extensionFolderPath}/assets/sfx/minigames/movement.wav`);a4.volume=0.75;a4.play().catch(()=>{}); }
                         break;
                     case ' ':
                         e.preventDefault();
@@ -1822,7 +1822,7 @@ export function createPanicTalkActionController({
                             <div class="pta-tm-header">
                                 <div class="pta-tm-title">Panic Talk Action</div>
                             </div>
-                            <img class="pta-tm-img" src="${extensionFolderPath}/assets/pta-tutorial.png" alt=""/>
+                            <img class="pta-tm-img" src="${extensionFolderPath}/assets/images/minigames/pta-tutorial.png" alt=""/>
                             <div class="pta-tm-body">
                                 <strong>Panic Talk Action</strong> is a minigame where you are tasked with combating your opponent's <strong>Statements</strong>. <strong>Statements</strong> will fill the 3×3 grid at random, and zoom closer to the camera, making the grid cell glow red gradually. After a small amount of time glowing red, you will take damage to your <strong>Health</strong>. Running out of <strong>Health</strong>, visible in the bottom-right. Run out of health and it's game over! To combat a <strong>Statement</strong>, simply click the grid cell you wish to <strong>Shoot</strong>, or use the Arrow Keys and the Space bar to <strong>Shoot</strong>. <strong>Shooting</strong> consumes 1 <strong>Ammo</strong>; you can reload <strong>Ammo</strong> by pressing the R key, or clicking the <strong>Ammo</strong> icon, or by running out of <strong>Ammo</strong>. Shooting a <strong>White Statement</strong> prevents you from taking damage. Shooting a <strong>Yellow Statement</strong> prevents you from taking damage and deals damage to your opponent. Shooting a <strong>Blue Statement</strong> will deal damage to your opponent and turn the <strong>Blue Statement</strong> into a <strong>Yellow Statement</strong>. Shooting a <strong>Pink Statement</strong> will deal damage to yourself, so watch out! But don't worry! Letting a <strong>Pink Statement</strong> turn red won't deal damage to you! After enough damage is dealt, your opponent — and their <strong>Statements</strong> — will speed up. Damage your opponent enough and you'll enter the <strong>Final Question</strong>! During the <strong>Final Question</strong>, you'll need to make a <strong>Final Answer</strong> that answers the opponent's <strong>Final Question</strong> by using the Arrow Keys; there are four options, so think quickly and with confidence! Getting the <strong>Final Answer</strong> wrong or running out of time will give the opponent some <strong>Health</strong> back, and deal some damage to you, so try not to mess up! It's all or nothing now..!
                             </div>
@@ -1852,7 +1852,7 @@ export function createPanicTalkActionController({
                 const wantsTutorial = await showTutorialPrompt();
                 if (wantsTutorial) await showTutorialModal();
                 tutorialActive = false;
-                const introAudio = new Audio(`${extensionFolderPath}/assets/minigame-start.wav`);
+                const introAudio = new Audio(`${extensionFolderPath}/assets/sfx/minigames/minigame-start.wav`);
                 introAudio.addEventListener('ended', beginGame, { once: true });
                 introAudio.addEventListener('error', beginGame, { once: true });
                 introAudio.play().catch(() => beginGame());

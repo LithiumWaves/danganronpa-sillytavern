@@ -3,7 +3,7 @@ import { saveSettingsDebounced, getRequestHeaders, eventSource, event_types } fr
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../../slash-commands/SlashCommandArgument.js';
-import { initTruthBullets, handleTruthBullet, setNextTruthBulletSfxVariant, getTruthBulletByLocationId, showTruthBulletByLocationId, showTruthBulletById, getTruthBullets } from "./truth/truthBullets.js";
+import { initTruthBullets, handleTruthBullet, setNextTruthBulletSfxVariant, getTruthBulletByLocationId, showTruthBulletByLocationId, showTruthBulletById, getTruthBullets, clearAllTruthBullets } from "./truth/truthBullets.js";
 import { buildDecagram, crackShard, shatterShard } from "./trust/trustDecagram.js";
 import { initTrustAnimations, playTrustRankUp, playTrustRankDown, playTrustMaxed, playTrustToDistrustTransition, playDistrustRankDown, playDistrustRankUp, playDistrustToTrustRecovery } from "./trust/trustAnimations.js";
 import { increaseTrust, decreaseTrust } from "./trust/trustAPI.js";
@@ -3381,8 +3381,8 @@ function applyImageVisibilitySettings() {
     const btnImg = document.querySelector("#dangan_monopad_button img");
     if (btnImg) {
         btnImg.src = hideBranding
-            ? `${extensionFolderPath}/assets/smartphone.svg`
-            : `${extensionFolderPath}/assets/hopes-peak-crest.png`;
+            ? `${extensionFolderPath}/assets/icons/smartphone.svg`
+            : `${extensionFolderPath}/assets/images/ui/hopes-peak-crest.png`;
     }
 }
 
@@ -3572,7 +3572,7 @@ async function runMonokumaLessonStep(step, state) {
     );
 
     if (step.action === "spawnTruthBullet") {
-        handleTruthBullet("Important Thing!", "Will this show us whodunnit?", { grantMonocoins: false, grantXp: false, image: `${extensionFolderPath}/assets/monokuma_kotodama.png` });
+        handleTruthBullet("Important Thing!", "Will this show us whodunnit?", { grantMonocoins: false, grantXp: false, image: `${extensionFolderPath}/assets/images/ui/monokuma_kotodama.png` });
         window.renderTruthBullets?.();
     }
 
@@ -4271,7 +4271,7 @@ function runBreachSuccessSequence() {
     appendBreachTerminalLine("[FF-LINK] Breaching Monopad debug partitions...", { className: "alert" });
 
     if (!breachAudio) {
-        breachAudio = new Audio(`${extensionFolderPath}/assets/nwo.mp3`);
+        breachAudio = new Audio(`${extensionFolderPath}/assets/bgm/nwo.mp3`);
         breachAudio.loop = true;
         breachAudio.volume = 0.6;
     }
@@ -5050,6 +5050,15 @@ function bindDebugControlEvents() {
             saveSettingsDebounced();
             itemsPanelController?.renderSkillsItemsPanel?.();
             appendPayloadStreamLine(`[FF-INJECT] Granted ${count} gift(s).`);
+        });
+    });
+
+    $(document).on("click.debugControls", "#monopad-payload-clear-truth-bullets", () => {
+        playDebugClickSfx();
+        runPayloadActionAnimation("TRUTH BULLET PURGE", () => {
+            const count = getTruthBullets().length;
+            clearAllTruthBullets();
+            appendPayloadStreamLine(`[FF-INJECT] ${count} truth bullet(s) deleted.`);
         });
     });
 
@@ -6085,13 +6094,14 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'body-discovered',
     callback: async (args) => {
         const bgName = String(args.bg || '').trim();
-        const cinematicName = String(args.name || '').trim();
+        const cinematicName = String(args.cinematic || '').trim();
 
-        // Look up named cinematic (if requested), or default to the first configured cinematic
+        // Look up named cinematic (if requested), or default to the first configured cinematic.
+        // If bg= is explicitly provided without cinematic=, skip auto-selection so the bg switch runs.
         const allCinematics = getMonopadSetting('bdaCinematics') || [];
         const cinematic = cinematicName
             ? allCinematics.find(c => c.name?.toLowerCase() === cinematicName.toLowerCase()) ?? null
-            : (allCinematics[0] ?? null);
+            : bgName ? null : (allCinematics[0] ?? null);
 
         // Switch the background underneath the static overlay so the transition is hidden
         const switchBackground = () => {
@@ -6116,7 +6126,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         applyDynamicTheme();
         return '';
     },
-    helpString: 'Plays the body discovery vignette, then the BDA, then triggers Investigation. Optional: bg=&lt;name&gt; to switch background under static; name=&lt;name&gt; to use a configured cinematic.',
+    helpString: 'Plays the body discovery vignette, then the BDA, then triggers Investigation. Optional: bg=&lt;name&gt; to switch background under static; cinematic=&lt;name&gt; to use a configured BDA cinematic.',
     namedArgumentList: [
         SlashCommandNamedArgument.fromProps({
             name: 'bg',
@@ -6125,7 +6135,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             isRequired: false,
         }),
         SlashCommandNamedArgument.fromProps({
-            name: 'name',
+            name: 'cinematic',
             description: 'Name of a configured body discovery cinematic to play instead of the default sequence',
             typeList: [ARGUMENT_TYPE.STRING],
             isRequired: false,
