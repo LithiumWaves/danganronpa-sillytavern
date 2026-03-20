@@ -5272,6 +5272,10 @@ jQuery(async () => {
         investigation_start: document.getElementById("investigation_start_sfx"),
         hit: document.getElementById("trial_sfx_hit"),
         miss: document.getElementById("trial_sfx_miss"),
+        shoottb: document.getElementById("trial_sfx_shoottb"),
+        tbcycle: document.getElementById("trial_sfx_tbcycle"),
+        tbmiss: document.getElementById("trial_sfx_tbmiss"),
+        countersfx: document.getElementById("trial_sfx_counter"),
     }
 
         initTrustAnimations({

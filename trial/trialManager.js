@@ -51,6 +51,7 @@ export function createTrialManager(deps) {
     let perjuryChargeTimer = null;
     let isPerjuryCharged = false;
     let lastHitWasPerjury = false;
+    let shotCooldown = false;
 
     function setState(newState) {
         console.log(`[Dangan][Trial] State change: ${currentState} -> ${newState}`);
@@ -88,6 +89,20 @@ export function createTrialManager(deps) {
             keysPressed.delete(e.key);
             updateSpeedModifier();
         }, { signal });
+
+        window.addEventListener('wheel', (e) => {
+            if (currentState !== TrialPhases.NON_STOP_DEBATE) return;
+            const bullets = getTruthBullets();
+            if (bullets.length <= 1) return;
+
+            if (e.deltaY > 0) {
+                selectedTruthBulletIndex = (selectedTruthBulletIndex + 1) % bullets.length;
+            } else {
+                selectedTruthBulletIndex = (selectedTruthBulletIndex - 1 + bullets.length) % bullets.length;
+            }
+            playSfx?.('tbcycle');
+            syncUI();
+        }, { signal, passive: true });
 
         // Perjury logic
         window.addEventListener('mousedown', (e) => {
@@ -686,8 +701,14 @@ ${historyText}
     }
 
     function handleShoot(e, isPerjury = false) {
+        if (shotCooldown) return;
+        shotCooldown = true;
+        setTimeout(() => { shotCooldown = false; }, 400);
+
         const bullets = getTruthBullets();
         const currentBullet = bullets[selectedTruthBulletIndex] || { title: 'TRUTH BULLET' };
+
+        playSfx?.('shoottb');
 
         // 1. Direct target check
         const target = e.target;
@@ -720,72 +741,79 @@ ${historyText}
             }
         }
 
-        // If we didn't hit anything, but it was a click (not a charged release)
-        if (!isPerjury) {
-            playSfx?.(getSfx?.().miss || 'miss');
-        }
+        // Miss
+        playSfx?.('tbmiss');
     }
 
     function hitWeakPoint(wp, currentBullet, isPerjury = false) {
         console.log(`[Dangan][Trial] CRITICAL HIT! (Perjury: ${isPerjury})`);
         lastHitWasPerjury = isPerjury;
         
-        // 1. Create the Bullet Projectile animation
-        const projectile = document.createElement('div');
-        projectile.className = `dangan-bullet-projectile ${isPerjury ? 'perjury' : ''}`;
-        projectile.textContent = isPerjury ? `LIE: ${currentBullet.title}` : currentBullet.title;
-        
-        // Start from bottom-center
-        const startX = window.innerWidth / 2;
-        const startY = window.innerHeight;
-        
-        // Target: the weak point
         const rect = wp.getBoundingClientRect();
         const targetX = rect.left + rect.width / 2;
         const targetY = rect.top + rect.height / 2;
         
-        projectile.style.left = `${startX}px`;
-        projectile.style.top = `${startY}px`;
-        projectile.style.transform = 'translate(-50%, -50%) rotateX(45deg) rotateZ(10deg)'; // 3D angle
-        document.body.appendChild(projectile);
+        playSfx?.(getSfx?.().hit || 'hit');
         
-        // Animate the bullet shooting
-        const bulletAnim = projectile.animate([
-            { left: `${startX}px`, top: `${startY}px`, scale: 0.5, opacity: 0, transform: 'translate(-50%, -50%) rotateX(60deg)' },
-            { left: `${targetX}px`, top: `${targetY}px`, scale: 1.2, opacity: 1, transform: 'translate(-50%, -50%) rotateX(20deg)', offset: 0.9 },
-            { left: `${targetX}px`, top: `${targetY}px`, scale: 1.5, opacity: 0, transform: 'translate(-50%, -50%) rotateX(0deg)' }
-        ], {
-            duration: 450,
-            easing: 'cubic-bezier(0.1, 0.9, 0.2, 1)'
+        // 2. Burst effect on the statement chunk
+        const parentStatement = wp.closest('.dangan-floating-statement');
+        if (parentStatement) {
+            createBurstEffect(targetX, targetY);
+            parentStatement.style.transition = 'all 0.2s ease-out';
+            parentStatement.style.transform += ' scale(1.4)';
+            parentStatement.style.filter = 'brightness(3) blur(5px)';
+            parentStatement.style.opacity = '0';
+            setTimeout(() => parentStatement.remove(), 250);
+        }
+
+        // 3. Show COUNTER or PERJURY banner
+        const bannerType = isPerjury ? 'perjury' : 'counter';
+        showTrialBanner(bannerType).then(() => {
+            setState(TrialPhases.TRUTH_BULLET_EXPLANATION);
+            showExplanationUI(currentBullet, wp.textContent);
         });
+    }
 
-        bulletAnim.onfinish = () => {
-            projectile.remove();
-            playSfx?.(getSfx?.().hit || 'hit');
+    function createBurstEffect(x, y) {
+        // Ensure we create enough fragments and they are added to the body
+        const fragmentCount = 35;
+        for (let i = 0; i < fragmentCount; i++) {
+            const frag = document.createElement('div');
+            frag.className = 'dangan-burst-fragment';
+            frag.style.left = `${x}px`;
+            frag.style.top = `${y}px`;
+            // Randomize size slightly
+            const size = 4 + Math.random() * 8;
+            frag.style.width = `${size}px`;
+            frag.style.height = `${size}px`;
+            document.body.appendChild(frag);
             
-            // 2. Burst effect on the statement chunk
-            const parentStatement = wp.closest('.dangan-floating-statement');
-            if (parentStatement) {
-                createBurstEffect(targetX, targetY);
-                parentStatement.style.transition = 'all 0.2s ease-out';
-                parentStatement.style.transform += ' scale(1.4)';
-                parentStatement.style.filter = 'brightness(3) blur(5px)';
-                parentStatement.style.opacity = '0';
-                setTimeout(() => parentStatement.remove(), 250);
-            }
-
-            // 3. Show COUNTER or PERJURY banner
-            const bannerType = isPerjury ? 'perjury' : 'counter';
-            showTrialBanner(bannerType).then(() => {
-                setState(TrialPhases.TRUTH_BULLET_EXPLANATION);
-                showExplanationUI(currentBullet, wp.textContent);
-            });
-        };
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 120 + Math.random() * 300;
+            const tx = Math.cos(angle) * dist;
+            const ty = Math.sin(angle) * dist;
+            const rot = Math.random() * 720;
+            
+            frag.animate([
+                { transform: 'translate(-50%, -50%) scale(1) rotate(0deg)', opacity: 1 },
+                { transform: `translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px)) scale(0) rotate(${rot}deg)`, opacity: 0 }
+            ], {
+                duration: 700 + Math.random() * 500,
+                easing: 'cubic-bezier(0.1, 0.8, 0.3, 1)'
+            }).onfinish = () => frag.remove();
+        }
     }
 
     async function showTrialBanner(type) {
+        playSfx?.('countersfx');
+        
         const overlay = document.createElement('div');
         overlay.id = 'dangan-counter-overlay';
+        overlay.style.cssText = `
+            position: fixed; inset: 0; z-index: 2147483647;
+            background: rgba(0, 0, 0, 0.4);
+            pointer-events: none; opacity: 0; transition: opacity 0.3s;
+        `;
         
         const banner = document.createElement('div');
         banner.className = `dangan-trial-banner banner-${type}`;
@@ -797,18 +825,21 @@ ${historyText}
         document.body.appendChild(overlay);
         
         await new Promise(r => requestAnimationFrame(() => {
+            overlay.style.opacity = '1';
             banner.classList.add('active');
             r();
         }));
         
+        // Voice line still plays if available
         if (type === 'perjury') {
             playSfx?.(getSfx?.().vic_Monok_01_021 || 'vic_Monok_01_021'); 
         } else {
             playSfx?.(getSfx?.().vic_Monok_01_022 || 'vic_Monok_01_022');
         }
         
-        await new Promise(r => setTimeout(r, 1500));
+        await new Promise(r => setTimeout(r, 1600));
         
+        overlay.style.opacity = '0';
         banner.classList.remove('active');
         banner.classList.add('exit');
         
