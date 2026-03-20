@@ -128,16 +128,19 @@ export function createTrialManager(deps) {
     }
 
     function showPerjuryVfx(active) {
+        const reticle = document.getElementById('dangan-trial-reticle');
+        if (reticle) {
+            if (active) {
+                reticle.classList.add('perjury-charging');
+            } else {
+                reticle.classList.remove('perjury-charging');
+            }
+        }
+
         let vfx = document.getElementById('dangan-perjury-charge-vfx');
         if (!vfx && active) {
             vfx = document.createElement('div');
             vfx.id = 'dangan-perjury-charge-vfx';
-            // Use the perjury asset for the charge effect
-            const assetPath = 'scripts/extensions/third-party/danganronpa-extension/assets/classtrial/perjury.png';
-            vfx.style.backgroundImage = `url("${assetPath}")`;
-            vfx.style.backgroundSize = 'contain';
-            vfx.style.backgroundRepeat = 'no-repeat';
-            vfx.style.backgroundPosition = 'center';
             document.body.appendChild(vfx);
         }
         if (vfx) vfx.classList.toggle('charging', active);
@@ -166,11 +169,14 @@ export function createTrialManager(deps) {
 
         // Apply visual effect to background if slowing down
         const overlay = document.getElementById('dangan-nonstop-debate-overlay');
+        const cylinder = document.querySelector('.dangan-cylinder-inner');
+        
         if (overlay) {
             let btVfx = document.getElementById('dangan-bt-vfx');
             let btAlert = document.getElementById('dangan-bt-alert-overlay');
 
             if (mod < 1.0) {
+                if (cylinder) cylinder.style.borderColor = '#ff00ff';
                 if (!btVfx) {
                     btVfx = document.createElement('div');
                     btVfx.id = 'dangan-bt-vfx';
@@ -191,6 +197,7 @@ export function createTrialManager(deps) {
                     btAlert.classList.add('hg-active');
                 });
             } else {
+                if (cylinder) cylinder.style.borderColor = 'rgba(0, 255, 255, 0.4)';
                 if (btVfx) btVfx.classList.remove('hg-active');
                 if (btAlert) btAlert.classList.remove('hg-active');
             }
@@ -206,6 +213,13 @@ export function createTrialManager(deps) {
             setPrompt('dangan_debate_history', '', 0, 0, false, 'system');
             setPrompt('dangan_rebuttal_judgment', '', 0, 0, false, 'system');
             return;
+        }
+
+        // Always save persistent history to settings for page refreshes
+        if (typeof saveSettingsDebounced === 'function') {
+            extensionSettings[extensionName].persistentDebateHistory = persistentDebateHistory;
+            extensionSettings[extensionName].currentTrialState = currentState;
+            saveSettingsDebounced();
         }
 
         if (persistentDebateHistory.length > 0) {
@@ -760,51 +774,23 @@ ${historyText}
                 setTimeout(() => parentStatement.remove(), 250);
             }
 
-            // 3. Show COUNTER banner
-            showCounterBanner().then(() => {
+            // 3. Show COUNTER or PERJURY banner
+            const bannerType = isPerjury ? 'perjury' : 'counter';
+            showTrialBanner(bannerType).then(() => {
                 setState(TrialPhases.TRUTH_BULLET_EXPLANATION);
                 showExplanationUI(currentBullet, wp.textContent);
             });
         };
     }
 
-    function createBurstEffect(x, y) {
-        // Ensure we create enough fragments and they are added to the body
-        const fragmentCount = 30;
-        for (let i = 0; i < fragmentCount; i++) {
-            const frag = document.createElement('div');
-            frag.className = 'dangan-burst-fragment';
-            frag.style.left = `${x}px`;
-            frag.style.top = `${y}px`;
-            // Randomize size slightly
-            const size = 4 + Math.random() * 6;
-            frag.style.width = `${size}px`;
-            frag.style.height = `${size}px`;
-            document.body.appendChild(frag);
-            
-            const angle = Math.random() * Math.PI * 2;
-            const dist = 100 + Math.random() * 250;
-            const tx = Math.cos(angle) * dist;
-            const ty = Math.sin(angle) * dist;
-            const rot = Math.random() * 360;
-            
-            frag.animate([
-                { transform: 'translate(-50%, -50%) scale(1) rotate(0deg)', opacity: 1 },
-                { transform: `translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px)) scale(0) rotate(${rot}deg)`, opacity: 0 }
-            ], {
-                duration: 600 + Math.random() * 400,
-                easing: 'cubic-bezier(0.1, 0.8, 0.3, 1)'
-            }).onfinish = () => frag.remove();
-        }
-    }
-
-    async function showCounterBanner() {
+    async function showTrialBanner(type) {
         const overlay = document.createElement('div');
         overlay.id = 'dangan-counter-overlay';
         
         const banner = document.createElement('div');
-        banner.className = 'dangan-counter-banner';
-        const assetPath = 'scripts/extensions/third-party/danganronpa-extension/assets/classtrial/counter.png';
+        banner.className = `dangan-trial-banner banner-${type}`;
+        const assetName = type === 'perjury' ? 'perjury.png' : 'counter.png';
+        const assetPath = `scripts/extensions/third-party/danganronpa-extension/assets/classtrial/${assetName}`;
         banner.style.backgroundImage = `url("${assetPath}")`;
         
         overlay.appendChild(banner);
@@ -815,7 +801,11 @@ ${historyText}
             r();
         }));
         
-        playSfx?.(getSfx?.().vic_Monok_01_022 || 'vic_Monok_01_022'); // Optional dramatic voice if available
+        if (type === 'perjury') {
+            playSfx?.(getSfx?.().vic_Monok_01_021 || 'vic_Monok_01_021'); 
+        } else {
+            playSfx?.(getSfx?.().vic_Monok_01_022 || 'vic_Monok_01_022');
+        }
         
         await new Promise(r => setTimeout(r, 1500));
         
