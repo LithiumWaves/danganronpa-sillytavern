@@ -48,6 +48,9 @@ export function createTrialManager(deps) {
     let speedModifier = 1.0;
     let keysPressed = new Set();
     let nsdKeyAC = null;
+    let perjuryChargeTimer = null;
+    let isPerjuryCharged = false;
+    let lastHitWasPerjury = false;
 
     function setState(newState) {
         console.log(`[Dangan][Trial] State change: ${currentState} -> ${newState}`);
@@ -86,11 +89,58 @@ export function createTrialManager(deps) {
             updateSpeedModifier();
         }, { signal });
 
+        // Perjury logic
+        window.addEventListener('mousedown', (e) => {
+            if (currentState !== TrialPhases.NON_STOP_DEBATE) return;
+            if (e.button !== 0) return; // Left click only
+
+            clearTimeout(perjuryChargeTimer);
+            isPerjuryCharged = false;
+            
+            perjuryChargeTimer = setTimeout(() => {
+                isPerjuryCharged = true;
+                console.log('[Dangan][Trial] PERJURY CHARGED!');
+                playSfx?.(getSfx?.().mode_switch || 'mode_switch');
+                showPerjuryVfx(true);
+            }, 1200); // 1.2s to charge
+        }, { signal });
+
+        window.addEventListener('mouseup', (e) => {
+            if (currentState !== TrialPhases.NON_STOP_DEBATE) return;
+            if (e.button !== 0) return;
+
+            clearTimeout(perjuryChargeTimer);
+            
+            // If we are over a weak point, handle the shot
+            handleShoot(e, isPerjuryCharged);
+            
+            isPerjuryCharged = false;
+            showPerjuryVfx(false);
+        }, { signal });
+
         // Safety: reset on blur
         window.addEventListener('blur', () => {
             keysPressed.clear();
             updateSpeedModifier();
+            clearTimeout(perjuryChargeTimer);
+            showPerjuryVfx(false);
         }, { signal });
+    }
+
+    function showPerjuryVfx(active) {
+        let vfx = document.getElementById('dangan-perjury-charge-vfx');
+        if (!vfx && active) {
+            vfx = document.createElement('div');
+            vfx.id = 'dangan-perjury-charge-vfx';
+            // Use the perjury asset for the charge effect
+            const assetPath = 'scripts/extensions/third-party/danganronpa-extension/assets/classtrial/perjury.png';
+            vfx.style.backgroundImage = `url("${assetPath}")`;
+            vfx.style.backgroundSize = 'contain';
+            vfx.style.backgroundRepeat = 'no-repeat';
+            vfx.style.backgroundPosition = 'center';
+            document.body.appendChild(vfx);
+        }
+        if (vfx) vfx.classList.toggle('charging', active);
     }
 
     function cleanupNSDListeners() {
@@ -621,29 +671,29 @@ ${historyText}
         return 'neutral';
     }
 
-    function handleShoot(e) {
+    function handleShoot(e, isPerjury = false) {
         const bullets = getTruthBullets();
         const currentBullet = bullets[selectedTruthBulletIndex] || { title: 'TRUTH BULLET' };
 
         // 1. Direct target check
         const target = e.target;
         if (target instanceof HTMLElement && target.classList.contains('dangan-weak-point')) {
-            hitWeakPoint(target, currentBullet);
+            hitWeakPoint(target, currentBullet, isPerjury);
             return;
         }
 
         // 2. Element from point check
         const topEl = document.elementFromPoint(e.clientX, e.clientY);
         if (topEl?.classList.contains('dangan-weak-point')) {
-            hitWeakPoint(topEl, currentBullet);
+            hitWeakPoint(topEl, currentBullet, isPerjury);
             return;
         }
 
-        // 3. Rect based check (original logic but more robust)
+        // 3. Rect based check
         const wp = currentWeakPointInfo?.element;
         if (wp instanceof HTMLElement) {
             const rect = wp.getBoundingClientRect();
-            const padding = 34; // Slightly increased padding
+            const padding = 34;
             const hit = (
                 e.clientX >= rect.left - padding &&
                 e.clientX <= rect.right + padding &&
@@ -651,21 +701,25 @@ ${historyText}
                 e.clientY <= rect.bottom + padding
             );
             if (hit) {
-                hitWeakPoint(wp, currentBullet);
+                hitWeakPoint(wp, currentBullet, isPerjury);
                 return;
             }
         }
 
-        playSfx?.(getSfx?.().miss || 'miss');
+        // If we didn't hit anything, but it was a click (not a charged release)
+        if (!isPerjury) {
+            playSfx?.(getSfx?.().miss || 'miss');
+        }
     }
 
-    function hitWeakPoint(wp, currentBullet) {
-        console.log('[Dangan][Trial] CRITICAL HIT!');
+    function hitWeakPoint(wp, currentBullet, isPerjury = false) {
+        console.log(`[Dangan][Trial] CRITICAL HIT! (Perjury: ${isPerjury})`);
+        lastHitWasPerjury = isPerjury;
         
         // 1. Create the Bullet Projectile animation
         const projectile = document.createElement('div');
-        projectile.className = 'dangan-bullet-projectile';
-        projectile.textContent = currentBullet.title || 'TRUTH BULLET';
+        projectile.className = `dangan-bullet-projectile ${isPerjury ? 'perjury' : ''}`;
+        projectile.textContent = isPerjury ? `LIE: ${currentBullet.title}` : currentBullet.title;
         
         // Start from bottom-center
         const startX = window.innerWidth / 2;
@@ -678,16 +732,16 @@ ${historyText}
         
         projectile.style.left = `${startX}px`;
         projectile.style.top = `${startY}px`;
-        projectile.style.transform = 'translate(-50%, -50%)';
+        projectile.style.transform = 'translate(-50%, -50%) rotateX(45deg) rotateZ(10deg)'; // 3D angle
         document.body.appendChild(projectile);
         
         // Animate the bullet shooting
         const bulletAnim = projectile.animate([
-            { left: `${startX}px`, top: `${startY}px`, scale: 0.5, opacity: 0 },
-            { left: `${targetX}px`, top: `${targetY}px`, scale: 1.2, opacity: 1, offset: 0.9 },
-            { left: `${targetX}px`, top: `${targetY}px`, scale: 1.5, opacity: 0 }
+            { left: `${startX}px`, top: `${startY}px`, scale: 0.5, opacity: 0, transform: 'translate(-50%, -50%) rotateX(60deg)' },
+            { left: `${targetX}px`, top: `${targetY}px`, scale: 1.2, opacity: 1, transform: 'translate(-50%, -50%) rotateX(20deg)', offset: 0.9 },
+            { left: `${targetX}px`, top: `${targetY}px`, scale: 1.5, opacity: 0, transform: 'translate(-50%, -50%) rotateX(0deg)' }
         ], {
-            duration: 400,
+            duration: 450,
             easing: 'cubic-bezier(0.1, 0.9, 0.2, 1)'
         });
 
@@ -696,12 +750,14 @@ ${historyText}
             playSfx?.(getSfx?.().hit || 'hit');
             
             // 2. Burst effect on the statement chunk
-            if (statementEl) {
+            const parentStatement = wp.closest('.dangan-floating-statement');
+            if (parentStatement) {
                 createBurstEffect(targetX, targetY);
-                statementEl.style.transition = 'all 0.3s ease-out';
-                statementEl.style.transform += ' scale(1.2)';
-                statementEl.style.opacity = '0';
-                setTimeout(() => statementEl?.remove(), 300);
+                parentStatement.style.transition = 'all 0.2s ease-out';
+                parentStatement.style.transform += ' scale(1.4)';
+                parentStatement.style.filter = 'brightness(3) blur(5px)';
+                parentStatement.style.opacity = '0';
+                setTimeout(() => parentStatement.remove(), 250);
             }
 
             // 3. Show COUNTER banner
@@ -713,24 +769,31 @@ ${historyText}
     }
 
     function createBurstEffect(x, y) {
-        for (let i = 0; i < 20; i++) {
+        // Ensure we create enough fragments and they are added to the body
+        const fragmentCount = 30;
+        for (let i = 0; i < fragmentCount; i++) {
             const frag = document.createElement('div');
             frag.className = 'dangan-burst-fragment';
             frag.style.left = `${x}px`;
             frag.style.top = `${y}px`;
+            // Randomize size slightly
+            const size = 4 + Math.random() * 6;
+            frag.style.width = `${size}px`;
+            frag.style.height = `${size}px`;
             document.body.appendChild(frag);
             
             const angle = Math.random() * Math.PI * 2;
-            const dist = 50 + Math.random() * 150;
+            const dist = 100 + Math.random() * 250;
             const tx = Math.cos(angle) * dist;
             const ty = Math.sin(angle) * dist;
+            const rot = Math.random() * 360;
             
             frag.animate([
-                { transform: 'translate(0, 0) scale(1)', opacity: 1 },
-                { transform: `translate(${tx}px, ${ty}px) scale(0)`, opacity: 0 }
+                { transform: 'translate(-50%, -50%) scale(1) rotate(0deg)', opacity: 1 },
+                { transform: `translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px)) scale(0) rotate(${rot}deg)`, opacity: 0 }
             ], {
-                duration: 500,
-                easing: 'ease-out'
+                duration: 600 + Math.random() * 400,
+                easing: 'cubic-bezier(0.1, 0.8, 0.3, 1)'
             }).onfinish = () => frag.remove();
         }
     }
@@ -738,36 +801,28 @@ ${historyText}
     async function showCounterBanner() {
         const overlay = document.createElement('div');
         overlay.id = 'dangan-counter-overlay';
-        overlay.style.cssText = `
-            position: fixed; inset: 0; z-index: 2147483647;
-            background: rgba(0, 0, 0, 0.4);
-            display: flex; align-items: center; justify-content: center;
-            pointer-events: none; opacity: 0; transition: opacity 0.2s;
-        `;
         
-        const banner = document.createElement('img');
-        // Reusing final-blow-banner.png for dramatic flair as requested
-        banner.src = 'scripts/extensions/third-party/danganronpa-extension/assets/final-blow-banner.png';
-        banner.style.cssText = `
-            max-width: 80%; transform: scale(0.5) rotate(-5deg);
-            filter: drop-shadow(0 0 20px #00ffff);
-            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        `;
+        const banner = document.createElement('div');
+        banner.className = 'dangan-counter-banner';
+        const assetPath = 'scripts/extensions/third-party/danganronpa-extension/assets/classtrial/counter.png';
+        banner.style.backgroundImage = `url("${assetPath}")`;
         
         overlay.appendChild(banner);
         document.body.appendChild(overlay);
         
         await new Promise(r => requestAnimationFrame(() => {
-            overlay.style.opacity = '1';
-            banner.style.transform = 'scale(1.1) rotate(0deg)';
+            banner.classList.add('active');
             r();
         }));
         
-        await new Promise(r => setTimeout(r, 1200));
+        playSfx?.(getSfx?.().vic_Monok_01_022 || 'vic_Monok_01_022'); // Optional dramatic voice if available
         
-        overlay.style.opacity = '0';
-        banner.style.transform = 'scale(1.5) translateY(-50px)';
-        await new Promise(r => setTimeout(r, 400));
+        await new Promise(r => setTimeout(r, 1500));
+        
+        banner.classList.remove('active');
+        banner.classList.add('exit');
+        
+        await new Promise(r => setTimeout(r, 600));
         overlay.remove();
     }
 
@@ -810,7 +865,7 @@ ${historyText}
             return;
         }
 
-        console.log('[Dangan][Trial] Processing rebuttal explanation...');
+        console.log(`[Dangan][Trial] Processing rebuttal explanation... (Perjury: ${lastHitWasPerjury})`);
         const notif = document.getElementById('dangan-trial-rebuttal-notif');
         if (notif) notif.remove();
 
@@ -818,18 +873,24 @@ ${historyText}
         const setPrompt = ctx?.setExtensionPrompt || window.setExtensionPrompt;
         
         if (typeof setPrompt === 'function') {
+            const perjuryNote = lastHitWasPerjury 
+                ? "\n[IMPORTANT: This is a PERJURY (LIE). The user is lying to refute the claim. Characters should react to the boldness or the deception if they suspect it, or be misled if the lie is convincing.]" 
+                : "";
+
             const prompt = `
 [SYSTEM: TRIAL REBUTTAL JUDGMENT]
 The user is attempting to refute the claim: "${lastHitWeakPoint}"
-Using the Truth Bullet: "${lastHitBullet.title}"
+Using the Truth Bullet: "${lastHitBullet.title}" ${lastHitWasPerjury ? '(AS A LIE)' : ''}
 User's reasoning: "${text}"
+${perjuryNote}
 
 JUDGMENT RULES:
 1. Evaluate if the reasoning and the Truth Bullet logically contradict the claim.
-2. If it makes sense, react with characters being impressed, shocked by the contradiction, or moving the trial forward.
-3. If it does NOT make sense, react with characters being skeptical, confused, or asking for better proof.
-4. Keep the Danganronpa trial momentum and stay in character.
-5. The next character response should act as a judge or witness reacting to this specific rebuttal.
+2. If it was a PERJURY, judge if the lie is clever or necessary to move the trial forward.
+3. If it makes sense, react with characters being impressed, shocked by the contradiction, or moving the trial forward.
+4. If it does NOT make sense, react with characters being skeptical, confused, or asking for better proof.
+5. Keep the Danganronpa trial momentum and stay in character.
+6. The next character response should act as a judge or witness reacting to this specific rebuttal.
 `.trim();
             console.log('[Dangan][Trial] Injecting rebuttal judgment prompt.');
             // Depth 0, position 1 (after history), is_system true

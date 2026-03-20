@@ -280,15 +280,81 @@
     white-space: nowrap;
     pointer-events: none;
     z-index: 2147483647;
+    /* 3D perspective effect */
+    transform-style: preserve-3d;
+    perspective: 1000px;
+}
+
+.dangan-bullet-projectile.perjury {
+    color: #ff00ff;
+    text-shadow: 0 0 10px #ff00ff, 0 0 20px rgba(255, 0, 255, 0.5);
 }
 
 .dangan-burst-fragment {
     position: absolute;
     background: white;
-    width: 4px;
-    height: 4px;
+    width: 6px;
+    height: 6px;
     pointer-events: none;
     z-index: 2147483646;
+    box-shadow: 0 0 5px white;
+}
+
+/* ─── Counter Banner Animation ────────── */
+#dangan-counter-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    background: rgba(0, 0, 0, 0.2);
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.dangan-counter-banner {
+    position: absolute;
+    height: 180px;
+    width: 140%;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    top: 50%;
+    left: -120%;
+    transform: translateY(-50%) rotate(-15deg);
+    filter: drop-shadow(0 0 20px rgba(0, 255, 255, 0.6));
+    transition: left 0.5s cubic-bezier(0.15, 0.85, 0.35, 1.15);
+}
+
+.dangan-counter-banner.active {
+    left: -20%;
+}
+
+.dangan-counter-banner.exit {
+    left: 120%;
+}
+
+/* ─── Perjury Charging VFX ────────────── */
+#dangan-perjury-charge-vfx {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 2147483645;
+    background-color: rgba(255, 0, 255, 0);
+    background-size: 300px;
+    background-repeat: no-repeat;
+    background-position: center;
+    opacity: 0;
+    transition: opacity 0.3s;
+    filter: drop-shadow(0 0 30px rgba(255, 0, 255, 0.5));
+}
+
+#dangan-perjury-charge-vfx.charging {
+    opacity: 0.8;
+    animation: danganPulsePerjury 0.8s infinite alternate ease-in-out;
+}
+
+@keyframes danganPulsePerjury {
+    from { transform: scale(0.95); background-color: rgba(255, 0, 255, 0.05); }
+    to { transform: scale(1.05); background-color: rgba(255, 0, 255, 0.2); }
 }
     padding: 40px;
     text-align: center;
