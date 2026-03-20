@@ -336,6 +336,10 @@ ${historyText}
     }
 
     async function startNonStopDebate() {
+        // Clear previous sections to avoid stale data
+        preparedDebateSections = null;
+        debateSectionsActive = null;
+        
         currentDebateSections = Math.floor(Math.random() * (8 - 3 + 1)) + 3;
         showNonStopDebateCutscene();
         
@@ -345,13 +349,20 @@ ${historyText}
                 setTimeout(() => reject(new Error('Debate generation timed out')), 25000)
             );
             
-            preparedDebateSections = await Promise.race([
+            console.log(`[Dangan][Trial] Starting generation for ${currentDebateSections} sections...`);
+            const sections = await Promise.race([
                 buildDebateSections({ sectionsCount: currentDebateSections }),
                 timeoutPromise
             ]);
+            
+            if (Array.isArray(sections) && sections.length > 0) {
+                preparedDebateSections = sections;
+                console.log(`[Dangan][Trial] Generation successful: ${sections.length} sections.`);
+            } else {
+                console.warn('[Dangan][Trial] Generation returned empty or invalid sections.');
+            }
         } catch (e) {
-            console.warn('[Dangan][Trial] Debate section generation failed or timed out, falling back:', e);
-            preparedDebateSections = null;
+            console.warn('[Dangan][Trial] Debate section generation failed or timed out:', e);
         } finally {
             // Transition to debate phase before finishing cutscene
             setState(TrialPhases.NON_STOP_DEBATE);
@@ -465,18 +476,24 @@ ${historyText}
     function buildFallbackSectionsIfNeeded(prepared) {
         if (Array.isArray(prepared) && prepared.length) return prepared;
 
-        const messages = getRecentMessages();
-        if (!messages.length) return null;
-
-        const sections = [];
-        for (let i = 0; i < currentDebateSections; i++) {
-            const msg = messages[i % messages.length];
-            const speakerName = msg.name || '???';
-            const chunks = splitIntoChunks(String(msg.text || ''));
-            const weakPointIndex = chunks.length ? Math.floor(Math.random() * chunks.length) : 0;
-            const parts = chunks.map((t, idx) => ({ text: t, isWeakPoint: idx === weakPointIndex }));
-            sections.push({ speakerName, statement: msg.text, parts });
-        }
+        console.warn('[Dangan][Trial] No generated debate lines found, using fallback placeholder.');
+        
+        // Return a single section with a generic line instead of regular chat history
+        const fallbackText = 'Dialogue generation [[failed]]... Check your API connection or logs.';
+        const chunks = splitIntoChunks(fallbackText);
+        
+        const sections = [{
+            speakerName: 'System',
+            statement: fallbackText,
+            parts: chunks.map(t => {
+                const hasMarker = t.includes('[[') && t.includes(']]');
+                return {
+                    text: t.replace(/\[\[|\]\]/g, ''),
+                    isWeakPoint: hasMarker,
+                    weakMarkup: hasMarker ? t.match(/\[\[(.*?)\]\]/)?.[1] : null,
+                };
+            })
+        }];
         return sections;
     }
 
@@ -1578,7 +1595,7 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
 
         // Strategy 5: Single character chat fallback
         const activeCharId = ctx.characterId ?? ctx.character_id ?? ctx.charaId ?? ctx.char_id;
-        if ((groupId == null || groupId === '') && activeCharId != null) {
+        if (activeCharId != null) {
             const sid = String(activeCharId).trim();
             const allChars = [
                 ...chars,
@@ -1587,6 +1604,12 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
             const found = allChars.find(c => String(c?.id ?? c?.characterId ?? c?.char_id ?? '').trim() === sid);
             const name = String(found?.name || ctx.characterName || ctx.character_name || '').trim();
             if (name && !isGroupMemberMuted(name) && !isAssistantLikeName(name)) return [{ name }];
+        }
+
+        // Strategy 6: Absolute fallback - if we still have nothing, take anyone from ctx.characters
+        if (chars.length) {
+            const first = chars.find(c => !isAssistantLikeName(c?.name));
+            if (first?.name) return [{ name: first.name }];
         }
 
         return [];

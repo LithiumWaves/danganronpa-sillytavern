@@ -6051,6 +6051,37 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'nonstop-debate',
+    callback: async (args, value) => {
+        const lines = [];
+        for (let i = 1; i <= 8; i++) {
+            const arg = args[`s${i}-q`];
+            if (arg) lines.push(arg);
+        }
+        if (!lines.length && value) {
+            lines.push(value);
+        }
+        if (lines.length) {
+            trialManager?.debugStartNonStopDebateWithLines(lines);
+            return '';
+        }
+        toastr.info('Please provide at least one line: /nonstop-debate s1-q="Your line"');
+        return '';
+    },
+    namedArguments: [
+        SlashCommandNamedArgument.fromProps({ name: 's1-q', description: 'Section 1 Dialogue', typeList: [ARGUMENT_TYPE.STRING] }),
+        SlashCommandNamedArgument.fromProps({ name: 's2-q', description: 'Section 2 Dialogue', typeList: [ARGUMENT_TYPE.STRING] }),
+        SlashCommandNamedArgument.fromProps({ name: 's3-q', description: 'Section 3 Dialogue', typeList: [ARGUMENT_TYPE.STRING] }),
+        SlashCommandNamedArgument.fromProps({ name: 's4-q', description: 'Section 4 Dialogue', typeList: [ARGUMENT_TYPE.STRING] }),
+        SlashCommandNamedArgument.fromProps({ name: 's5-q', description: 'Section 5 Dialogue', typeList: [ARGUMENT_TYPE.STRING] }),
+        SlashCommandNamedArgument.fromProps({ name: 's6-q', description: 'Section 6 Dialogue', typeList: [ARGUMENT_TYPE.STRING] }),
+        SlashCommandNamedArgument.fromProps({ name: 's7-q', description: 'Section 7 Dialogue', typeList: [ARGUMENT_TYPE.STRING] }),
+        SlashCommandNamedArgument.fromProps({ name: 's8-q', description: 'Section 8 Dialogue', typeList: [ARGUMENT_TYPE.STRING] }),
+    ],
+    helpString: 'Force start a Non-stop Debate with specific lines for debugging.',
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'body-discovered',
     callback: async (args) => {
         const bgName = String(args.bg || '').trim();
