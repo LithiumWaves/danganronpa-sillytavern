@@ -329,14 +329,18 @@ export function createTrialManager(deps) {
         const rawText = stripSurroundingQuotes(String(text || ''));
         const wm = String(weakMarkup || '').trim();
         if (wm && rawText.includes(wm)) {
+            const inner = stripWeakBrackets(wm);
             const escapedText = escapeHtml(rawText);
             const escapedWm = escapeHtml(wm);
-            el.innerHTML = escapedText.replace(
+            const escapedInner = escapeHtml(inner);
+            const replaced = escapedText.replace(
                 new RegExp(escapeRegExp(escapedWm), 'g'),
-                `<span class="dangan-weak-point">${escapedWm}</span>`
+                `<span class="dangan-weak-point">${escapedInner}</span>`
             );
+            el.innerHTML = replaced.replace(/\[\[|\]\]/g, '');
         } else {
-            el.textContent = rawText;
+            el.textContent = rawText.replace(/\[\[|\]\]/g, '');
+            if (isWeakPoint) el.classList.add('dangan-weak-point');
         }
         debateOverlay.appendChild(el);
 
@@ -454,6 +458,12 @@ export function createTrialManager(deps) {
 
     function escapeRegExp(str) {
         return String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function stripWeakBrackets(value) {
+        const t = String(value || '').trim();
+        if (t.startsWith('[[') && t.endsWith(']]') && t.length >= 4) return t.slice(2, -2).trim();
+        return t.replace(/\[\[|\]\]/g, '').trim();
     }
 
     function inferEmotionFromText(text) {
@@ -1059,7 +1069,7 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
         const groupId = ctx.groupId ?? ctx.group_id;
         const chars = Array.isArray(ctx.characters) ? ctx.characters : [];
         const ctxNames = chars
-            .filter(c => !(c?.is_user || c?.isUser))
+            .filter(c => isSpeakerCandidateChar(c, ctx))
             .map(c => String(c?.name || '').trim())
             .filter(Boolean);
 
@@ -1090,7 +1100,7 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
             ];
             const found = allChars.find(c => String(c?.id ?? c?.characterId ?? c?.char_id ?? '').trim() === sid);
             const name = String(found?.name || ctx.characterName || ctx.character_name || '').trim();
-            if (name) return [{ name }];
+            if (name && !isGroupMemberMuted(name) && !isAssistantLikeName(name)) return [{ name }];
         }
 
         if (ctxNames.length) {
@@ -1251,6 +1261,35 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
         }
 
         return Array.from(names);
+    }
+
+    function isAssistantLikeName(name) {
+        const n = normalizeLooseName(name);
+        if (!n) return false;
+        return n === 'assistant' || n === 'sillytavern' || n === 'system';
+    }
+
+    function isSpeakerCandidateChar(char, ctx) {
+        if (!char) return false;
+        if (char.is_user === true || char.isUser === true) return false;
+        if (char.is_assistant === true || char.isAssistant === true) return false;
+        if (char.is_system === true || char.isSystem === true) return false;
+        if (char.is_narrator === true || char.isNarrator === true) return false;
+        if (char.disabled === true || char.is_disabled === true) return false;
+        if (char.enabled === false || char.isEnabled === false) return false;
+
+        const name = String(char.name || '').trim();
+        if (!name) return false;
+        if (isAssistantLikeName(name)) return false;
+        if (isGroupMemberMuted(name)) return false;
+
+        const assistantId = ctx?.assistantId ?? ctx?.assistant_id ?? ctx?.assistantCharacterId ?? ctx?.assistant_character_id;
+        if (assistantId != null) {
+            const cid = String(char?.id ?? char?.characterId ?? char?.char_id ?? '').trim();
+            if (cid && String(assistantId).trim() === cid) return false;
+        }
+
+        return true;
     }
 
     function sampleWeightedWithoutReplacement(items, count) {
