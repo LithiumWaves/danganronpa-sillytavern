@@ -6218,19 +6218,37 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'nonstop-debate',
-    callback: async (args) => {
+    callback: async (args, value) => {
         const lines = [];
+        // 1. Try named arguments s1-q to s8-q
         for (let i = 1; i <= 8; i++) {
             const key = `s${i}-q`;
             const altKey = `s${i}_q`;
-            const value = String(args[key] ?? args[altKey] ?? '').trim();
-            if (value) lines.push(value);
+            const val = String(args[key] ?? args[altKey] ?? '').trim();
+            if (val) lines.push(val);
         }
+        
+        // 2. Fallback to positional arguments if no named arguments provided
+        if (!lines.length && value) {
+            const matches = value.match(/"([^"]+)"|'([^']+)'|(\S+)/g);
+            if (matches) {
+                matches.forEach(m => {
+                    const cleaned = m.replace(/^["']|["']$/g, '').trim();
+                    if (cleaned) lines.push(cleaned);
+                });
+            }
+        }
+
         if (!lines.length) {
-            console.warn('[NonstopDebate] Provide at least one sN-q argument.');
+            console.warn('[NonstopDebate] Provide at least one s1-q argument or quoted positional lines.');
             return '';
         }
-        trialManager?.debugStartNonStopDebateWithLines?.(lines);
+        
+        console.log('[NonstopDebate] Debug start with lines:', lines);
+        const success = trialManager?.debugStartNonStopDebateWithLines?.(lines);
+        if (!success) {
+            console.error('[NonstopDebate] Failed to start debate. trialManager or lines invalid.');
+        }
         return '';
     },
     helpString: 'Debug: starts a Non-stop Debate immediately using the provided section lines. Provide s1-q..s8-q as quoted dialogue. Example: /nonstop-debate s1-q="Line 1 [[weak]]" s2-q="Line 2 ..."',

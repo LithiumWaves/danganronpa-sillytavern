@@ -327,20 +327,18 @@ export function createTrialManager(deps) {
         const w = window.innerWidth || 1200;
         el.style.width = `${Math.min(Math.round(w * 0.82), 980)}px`;
         const rawText = stripSurroundingQuotes(String(text || ''));
-        const wm = String(weakMarkup || '').trim();
-        if (wm && rawText.includes(wm)) {
-            const inner = stripWeakBrackets(wm);
+        const cleanedText = rawText.replace(/\[\[|\]\]/g, '');
+
+        if (isWeakPoint) {
             const escapedText = escapeHtml(rawText);
-            const escapedWm = escapeHtml(wm);
-            const escapedInner = escapeHtml(inner);
-            const replaced = escapedText.replace(
-                new RegExp(escapeRegExp(escapedWm), 'g'),
-                `<span class="dangan-weak-point">${escapedInner}</span>`
-            );
+            const replaced = escapedText.replace(/\[\[\s*([^\]]+?)\s*\]\]/gi, (_m, inner) => {
+                const cleaned = stripWeakBrackets(inner);
+                return `<span class="dangan-weak-point">${escapeHtml(cleaned)}</span>`;
+            });
+            // Final fallback to remove any leftover markers that might have escaped the span regex
             el.innerHTML = replaced.replace(/\[\[|\]\]/g, '');
         } else {
-            el.textContent = rawText.replace(/\[\[|\]\]/g, '');
-            if (isWeakPoint) el.classList.add('dangan-weak-point');
+            el.textContent = cleanedText;
         }
         debateOverlay.appendChild(el);
 
@@ -481,40 +479,57 @@ export function createTrialManager(deps) {
 
     function handleShoot(e) {
         const bullets = getTruthBullets();
-        const currentBullet = bullets[selectedTruthBulletIndex];
-        if (!currentBullet) return;
+        const currentBullet = bullets[selectedTruthBulletIndex] || { title: 'TRUTH BULLET' };
 
+        // 1. Direct target check
+        const target = e.target;
+        if (target instanceof HTMLElement && target.classList.contains('dangan-weak-point')) {
+            hitWeakPoint(target, currentBullet);
+            return;
+        }
+
+        // 2. Element from point check
+        const topEl = document.elementFromPoint(e.clientX, e.clientY);
+        if (topEl?.classList.contains('dangan-weak-point')) {
+            hitWeakPoint(topEl, currentBullet);
+            return;
+        }
+
+        // 3. Rect based check (original logic but more robust)
         const wp = currentWeakPointInfo?.element;
         if (wp instanceof HTMLElement) {
             const rect = wp.getBoundingClientRect();
-            const padding = 26;
+            const padding = 34; // Slightly increased padding
             const hit = (
                 e.clientX >= rect.left - padding &&
                 e.clientX <= rect.right + padding &&
                 e.clientY >= rect.top - padding &&
                 e.clientY <= rect.bottom + padding
             );
-            if (!hit) {
-                playSfx?.(getSfx?.().miss || 'miss');
+            if (hit) {
+                hitWeakPoint(wp, currentBullet);
                 return;
             }
-
-            console.log('[Dangan][Trial] CRITICAL HIT!');
-            playSfx?.(getSfx?.().hit || 'hit'); 
-            
-            // Highlight the hit weak point
-            wp.style.color = '#ff0000';
-            wp.style.fontSize = '48px';
-            wp.style.fontWeight = 'bold';
-            
-            setTimeout(() => {
-                setState(TrialPhases.TRUTH_BULLET_EXPLANATION);
-                showExplanationUI(currentBullet, wp.textContent);
-            }, 1000);
-            return;
         }
 
         playSfx?.(getSfx?.().miss || 'miss');
+    }
+
+    function hitWeakPoint(wp, currentBullet) {
+        console.log('[Dangan][Trial] CRITICAL HIT!');
+        playSfx?.(getSfx?.().hit || 'hit'); 
+        
+        // Highlight the hit weak point
+        wp.style.color = '#ff0000';
+        wp.style.fontSize = '48px';
+        wp.style.fontWeight = 'bold';
+        wp.style.transition = 'all 0.2s ease-out';
+        wp.style.textShadow = '0 0 20px #ff0000';
+        
+        setTimeout(() => {
+            setState(TrialPhases.TRUTH_BULLET_EXPLANATION);
+            showExplanationUI(currentBullet, wp.textContent);
+        }, 1000);
     }
 
     function showExplanationUI(bullet, refutedText) {
@@ -918,20 +933,22 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
         const raw = String(statement || '').trim().replace(/\s+/g, ' ');
         const weakMatch = raw.match(/\[\[([^\]]+)\]\]/);
         const weakToken = weakMatch ? String(weakMatch[1] || '').trim().replace(/\s+/g, ' ') : '';
-        const weakMarkup = weakToken ? `[[${weakToken}]]` : '';
+        const weakRegex = weakToken
+            ? new RegExp(`\\[\\[\\s*${escapeRegExp(weakToken)}\\s*\\]\\]`, 'i')
+            : null;
 
         const chunks = splitIntoChunks(raw);
         if (!chunks.length) return [];
 
-        if (!weakMarkup) {
+        if (!weakRegex) {
             const weakPointIndex = chunks.length ? Math.floor(Math.random() * chunks.length) : 0;
             return chunks.map((t, i) => ({ text: t, isWeakPoint: i === weakPointIndex, weakMarkup: '' }));
         }
 
         return chunks.map((t) => ({
             text: t,
-            isWeakPoint: t.includes(weakMarkup),
-            weakMarkup: t.includes(weakMarkup) ? weakMarkup : '',
+            isWeakPoint: weakRegex.test(t),
+            weakMarkup: weakToken,
         }));
     }
 
@@ -1068,34 +1085,46 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
 
         const groupId = ctx.groupId ?? ctx.group_id;
         const chars = Array.isArray(ctx.characters) ? ctx.characters : [];
-        const ctxNames = chars
+        
+        // Strategy 1: Characters directly in the context (unmuted candidates)
+        const ctxCandidates = chars
             .filter(c => isSpeakerCandidateChar(c, ctx))
             .map(c => String(c?.name || '').trim())
-            .filter(Boolean);
+            .filter(n => n && !isAssistantLikeName(n));
 
+        // Strategy 2: Intersection of DOM and context (active speakers)
         const domNames = getActiveChatMemberNamesFromDom();
-        if (domNames.length && ctxNames.length) {
+        if (domNames.length && ctxCandidates.length) {
             const domSet = new Set(domNames.map(normalizeLooseName));
-            const intersected = ctxNames.filter(n => domSet.has(normalizeLooseName(n)));
+            const intersected = ctxCandidates.filter(n => domSet.has(normalizeLooseName(n)));
             if (intersected.length) {
                 return Array.from(new Set(intersected))
-                    .filter(name => !isGroupMemberMuted(name))
                     .map(name => ({ name }));
             }
         }
 
+        // Strategy 3: Group metadata
         const groupNames = getActiveGroupMemberNames(ctx);
         if (groupId != null && groupId !== '' && groupNames.length) {
-            return Array.from(new Set(groupNames))
-                .filter(name => !isGroupMemberMuted(name))
+            const filteredGroup = groupNames.filter(n => !isGroupMemberMuted(n) && !isAssistantLikeName(n));
+            if (filteredGroup.length) {
+                return Array.from(new Set(filteredGroup))
+                    .map(name => ({ name }));
+            }
+        }
+
+        // Strategy 4: Fallback to any unmuted character in the current context
+        if (ctxCandidates.length) {
+            return Array.from(new Set(ctxCandidates))
                 .map(name => ({ name }));
         }
 
+        // Strategy 5: Single character chat fallback
         const activeCharId = ctx.characterId ?? ctx.character_id ?? ctx.charaId ?? ctx.char_id;
         if ((groupId == null || groupId === '') && activeCharId != null) {
             const sid = String(activeCharId).trim();
             const allChars = [
-                ...(Array.isArray(ctx.characters) ? ctx.characters : []),
+                ...chars,
                 ...(Array.isArray(window.characters) ? window.characters : []),
             ];
             const found = allChars.find(c => String(c?.id ?? c?.characterId ?? c?.char_id ?? '').trim() === sid);
@@ -1103,15 +1132,7 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
             if (name && !isGroupMemberMuted(name) && !isAssistantLikeName(name)) return [{ name }];
         }
 
-        if (ctxNames.length) {
-            return Array.from(new Set(ctxNames))
-                .filter(name => !isGroupMemberMuted(name))
-                .map(name => ({ name }));
-        }
-
-        return groupNames.length
-            ? Array.from(new Set(groupNames)).filter(name => !isGroupMemberMuted(name)).map(name => ({ name }))
-            : [];
+        return [];
     }
 
     function getActiveGroupMemberNames(ctx) {
