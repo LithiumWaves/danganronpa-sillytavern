@@ -2479,6 +2479,7 @@ async function triggerTrialStartFromMapPin() {
 
     console.log("[Dangan][Trial] Begin Class Trial selected from map pin.");
     playTrialTrack();
+    trialManager?.start();
     return true;
 }
 
@@ -2894,11 +2895,27 @@ return char.social.notes;
 let sfx = {};
 function playSfx(sound) {
     if (!sound) return;
+    
+    let audio = sound;
+    if (typeof sound === 'string') {
+        audio = sfx[sound] || document.getElementById(sound);
+    }
+    
+    if (!audio || typeof audio.play !== 'function') {
+        console.warn("[Dangan] playSfx: Invalid sound object/ID:", sound);
+        return;
+    }
+
     const volume = Number(extension_settings[extensionName]?.monopadVolume ?? 50) / 100;
     if (volume <= 0) return;
-    sound.currentTime = 0;
-    sound.volume = volume;
-    sound.play().catch(() => {});
+    
+    try {
+        audio.currentTime = 0;
+        audio.volume = volume;
+        audio.play().catch(e => console.warn("[Dangan] Audio play blocked/failed:", e));
+    } catch (err) {
+        console.error("[Dangan] Error playing SFX:", err);
+    }
 }
 
 let audioUnlocked = false;
@@ -3206,7 +3223,7 @@ function getCharacterSourceText(charName) {
     return sources.join("\n\n") || "NO SOURCE DATA AVAILABLE.";
 }
 
-async function getSpriteUrl(charName) {
+async function getSpriteUrl(charName, label = "neutral") {
     let folder = charName;
     const stChars = window.characters;
     if (Array.isArray(stChars)) {
@@ -3219,8 +3236,9 @@ async function getSpriteUrl(charName) {
         const resp = await fetch(`/api/sprites/get?name=${encodeURIComponent(folder)}`);
         if (!resp.ok) return null;
         const sprites = await resp.json();
+        const desired = sprites.find(s => String(s.label || '').toLowerCase() === String(label || '').toLowerCase());
         const neutral = sprites.find(s => s.label === "neutral");
-        return neutral?.path ?? null;
+        return desired?.path ?? neutral?.path ?? null;
     } catch {
         return null;
     }
@@ -5252,6 +5270,8 @@ jQuery(async () => {
         trust_shatter: document.getElementById("trust_sfx_shatter"),
         distrust_recover: document.getElementById("distrust_sfx_recover"),
         investigation_start: document.getElementById("investigation_start_sfx"),
+        hit: document.getElementById("trial_sfx_hit"),
+        miss: document.getElementById("trial_sfx_miss"),
     }
 
         initTrustAnimations({
@@ -5836,9 +5856,7 @@ classTrialMenuController = createClassTrialMenuController({
     getPreparationTracks: () => getMonopadSetting("trialPreparationTracks") || [],
 });
 window.startClassTrial = async () => {
-    const accepted = await classTrialMenuController?.open?.();
-    if (accepted) playTrialTrack();
-    return accepted;
+    return triggerTrialStartFromMapPin();
 };
 
 const audioVisualizer = createAudioVisualizerController({

@@ -1849,10 +1849,25 @@ return char.social.notes;
 let sfx = {};
 function playSfx(sound) {
     if (!sound) return;
+    
+    let audio = sound;
+    if (typeof sound === 'string') {
+        audio = sfx[sound] || document.getElementById(sound);
+    }
+    
+    if (!audio || typeof audio.play !== 'function') {
+        return;
+    }
+
     if (!extension_settings[extensionName]?.monopadSounds) return;
-    sound.currentTime = 0;
-    sound.volume = 0.5;
-    sound.play().catch(() => {});
+    
+    try {
+        audio.currentTime = 0;
+        audio.volume = 0.5;
+        audio.play().catch(() => {});
+    } catch (err) {
+        // Ignore
+    }
 }
 
 let audioUnlocked = false;
@@ -4048,6 +4063,8 @@ jQuery(async () => {
         trust_shatter: document.getElementById("trust_sfx_shatter"),
         distrust_recover: document.getElementById("distrust_sfx_recover"),
         investigation_start: document.getElementById("investigation_start_sfx"),
+        hit: document.getElementById("trial_sfx_hit"),
+        miss: document.getElementById("trial_sfx_miss"),
     }
 
         initTrustAnimations({

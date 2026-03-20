@@ -40,6 +40,10 @@ export function createTrialManager(deps) {
     let portraitImgEl = null;
     let portraitToken = 0;
     let portraitSpeaker = null;
+    let portraitEmotion = null;
+    let lastHitBullet = null;
+    let lastHitWeakPoint = null;
+    let rebuttalPromptActive = false;
 
     function setState(newState) {
         console.log(`[Dangan][Trial] State change: ${currentState} -> ${newState}`);
@@ -120,6 +124,28 @@ export function createTrialManager(deps) {
         }
         await endNonStopDebateCutscene();
         setState(TrialPhases.NON_STOP_DEBATE);
+    }
+
+    function debugStartNonStopDebateWithLines(lines) {
+        const list = Array.isArray(lines) ? lines.map(l => String(l || '').trim()).filter(Boolean) : [];
+        if (!list.length) return false;
+
+        const speakers = getChatCardMembers().map(s => s.name).filter(Boolean);
+        const speakerPool = speakers.length ? speakers : ['???'];
+
+        currentDebateSections = Math.min(8, Math.max(1, list.length));
+        preparedDebateSections = list.slice(0, currentDebateSections).map((line, idx) => {
+            const speakerName = speakerPool[idx % speakerPool.length];
+            const normalized = ensureSingleWeakPointMarker(line);
+            const parts = splitStatementIntoParts(normalized).map(p => ({
+                ...p,
+                emotion: inferEmotionFromText(p.text),
+            }));
+            return { speakerName, statement: normalized, parts };
+        });
+
+        setState(TrialPhases.NON_STOP_DEBATE);
+        return true;
     }
 
     function setupNonStopDebate() {
@@ -233,12 +259,14 @@ export function createTrialManager(deps) {
         if (speakerEl) speakerEl.textContent = String(speakerName).toUpperCase();
         if (countEl) countEl.textContent = `SECTION ${(debateSectionIndex % currentDebateSections) + 1} / ${currentDebateSections}`;
 
-        void updateSpeakerPortrait(speakerName);
+        const emotion = part?.emotion || inferEmotionFromText(part?.text);
+        void updateSpeakerPortrait(speakerName, emotion);
 
         showStatementChunk({
             text: part.text,
             isWeakPoint: Boolean(part.isWeakPoint),
             laneY: getLaneY(debatePartIndex),
+            weakMarkup: part.weakMarkup,
         }).then(() => {
             if (currentState !== TrialPhases.NON_STOP_DEBATE) return;
             debatePartIndex++;
@@ -250,12 +278,14 @@ export function createTrialManager(deps) {
         });
     }
 
-    async function updateSpeakerPortrait(speakerName) {
+    async function updateSpeakerPortrait(speakerName, emotion) {
         if (!portraitImgEl) return;
         const name = String(speakerName || '').trim();
         if (!name) return;
-        if (portraitSpeaker === name) return;
+        const emo = String(emotion || '').trim().toLowerCase() || 'neutral';
+        if (portraitSpeaker === name && portraitEmotion === emo) return;
         portraitSpeaker = name;
+        portraitEmotion = emo;
 
         const token = ++portraitToken;
 
@@ -265,7 +295,7 @@ export function createTrialManager(deps) {
         }
 
         try {
-            const url = await getSpriteUrl(name);
+            const url = await getSpriteUrl(name, emo);
             if (token !== portraitToken) return;
             if (!url) {
                 portraitImgEl.style.display = 'none';
@@ -279,7 +309,7 @@ export function createTrialManager(deps) {
         }
     }
 
-    function showStatementChunk({ text, isWeakPoint, laneY }) {
+    function showStatementChunk({ text, isWeakPoint, laneY, weakMarkup }) {
         if (!debateOverlay) return Promise.resolve();
 
         if (playbackTimerId) window.clearTimeout(playbackTimerId);
@@ -297,99 +327,231 @@ export function createTrialManager(deps) {
 
         const el = document.createElement('div');
         el.className = 'dangan-floating-statement dangan-statement-single';
+        const w = window.innerWidth || 1200;
+        el.style.width = `${Math.min(Math.round(w * 0.82), 980)}px`;
+        const rawText = stripSurroundingQuotes(String(text || ''));
+        const cleanedText = rawText.replace(/\[\[|\]\]/g, '');
+
         if (isWeakPoint) {
-            el.classList.add('dangan-weak-point');
+            const escapedText = escapeHtml(rawText);
+            const replaced = escapedText.replace(/\[\[\s*([^\]]+?)\s*\]\]/gi, (_m, inner) => {
+                const cleaned = stripWeakBrackets(inner);
+                return `<span class="dangan-weak-point">${escapeHtml(cleaned)}</span>`;
+            });
+            // Final fallback to remove any leftover markers that might have escaped the span regex
+            el.innerHTML = replaced.replace(/\[\[|\]\]/g, '');
+        } else {
+            el.textContent = cleanedText;
         }
-        el.textContent = stripSurroundingQuotes(String(text || ''));
-        el.style.top = `${laneY}px`;
-        el.style.left = `0px`;
         debateOverlay.appendChild(el);
 
         if (isWeakPoint) {
-            currentWeakPointInfo = { text: el.textContent, element: el };
+            const wp = el.querySelector('.dangan-weak-point');
+            currentWeakPointInfo = wp
+                ? { text: wp.textContent, element: wp }
+                : { text: el.textContent, element: el };
         }
 
-        const startX = (window.innerWidth || 1200) + 220;
-        const endX = -(el.getBoundingClientRect().width + 240);
-        const distance = Math.abs(startX - endX);
-        const duration = Math.round(Math.max(1800, Math.min(3800, (distance / 0.7))));
-
         statementEl = el;
-        statementAnimation = el.animate(
-            [
-                { transform: `translateX(${startX}px) skewX(-12deg)`, opacity: 0 },
-                { transform: `translateX(${startX - 120}px) skewX(-12deg)`, opacity: 1, offset: 0.08 },
-                { transform: `translateX(${endX}px) skewX(-12deg)`, opacity: 1 },
-            ],
-            { duration, easing: 'linear', fill: 'forwards' }
-        );
+        const h = window.innerHeight || 800;
+        const baseY = Number.isFinite(laneY) ? laneY : Math.round(h * 0.52);
+
+        const centerX = Math.round(w * 0.52);
+        const centerY = Math.round(h * 0.50);
+        const startX = centerX + Math.round(Math.random() * 40 - 20);
+        const startY = centerY + Math.round(Math.random() * 36 - 18) + Math.round((baseY - centerY) * 0.15);
+
+        const motionMode = Math.random() < 0.18 ? 'pov' : 'drift';
+        const dir = Math.random() < 0.5 ? -1 : 1;
+        const driftX = dir * Math.round(w * 0.11);
+        const endX = startX + driftX;
+        const endY = startY + (motionMode === 'drift' ? Math.round(Math.random() * 16 - 8) : Math.round(Math.random() * 10 - 5));
+
+        const duration = motionMode === 'drift'
+            ? (6600 + Math.floor(Math.random() * 1500))
+            : (1800 + Math.floor(Math.random() * 450));
+        let rafId = 0;
+        let cancelled = false;
+        const startTime = performance.now();
+        const isScreaming = isAllCapsLine(el.textContent);
 
         return new Promise(resolve => {
-            statementAnimation.onfinish = () => {
-                if (statementEl === el) {
-                    el.remove();
-                    statementEl = null;
-                    statementAnimation = null;
-                    if (currentWeakPointInfo?.element === el) currentWeakPointInfo = null;
-                }
+            let finished = false;
+            const finish = () => {
+                if (finished) return;
+                finished = true;
                 resolve();
             };
-            statementAnimation.oncancel = () => resolve();
+
+            const frame = (now) => {
+                if (cancelled || currentState !== TrialPhases.NON_STOP_DEBATE || statementEl !== el) {
+                    finish();
+                    return;
+                }
+
+                const p = Math.max(0, Math.min(1, (now - startTime) / duration));
+
+                const x = startX + (endX - startX) * p;
+                const y = startY + (endY - startY) * p;
+
+                const peak = 1 - Math.abs(p - 0.5) * 2;
+                const rot = -10 + dir * 4;
+                const skew = dir * -10;
+
+                const scale = motionMode === 'pov'
+                    ? (0.92 + 0.28 * peak)
+                    : 1;
+
+                let opacity = 1;
+                if (p < 0.12) opacity = p / 0.12;
+                else if (p > 0.86) opacity = Math.max(0, (1 - p) / 0.14);
+
+                el.style.left = `${x}px`;
+                el.style.top = `${y}px`;
+                el.style.opacity = String(opacity);
+                const shake = isScreaming ? (Math.sin(now / 28) * 2.2) : 0;
+                const shakeY = isScreaming ? (Math.cos(now / 24) * 1.6) : 0;
+                el.style.transform = `translate(calc(-50% + ${shake}px), calc(-50% + ${shakeY}px)) rotate(${rot}deg) skewX(${skew}deg) scale(${scale})`;
+
+                if (p >= 1) {
+                    el.remove();
+                    if (statementEl === el) {
+                        statementEl = null;
+                        statementAnimation = null;
+                        if (currentWeakPointInfo?.element === el) currentWeakPointInfo = null;
+                    }
+                    finish();
+                    return;
+                }
+
+                rafId = requestAnimationFrame(frame);
+            };
+
+            statementAnimation = {
+                cancel: () => {
+                    cancelled = true;
+                    if (rafId) cancelAnimationFrame(rafId);
+                    rafId = 0;
+                    finish();
+                },
+            };
+
+            rafId = requestAnimationFrame(frame);
         });
+    }
+
+    function isAllCapsLine(text) {
+        const raw = String(text || '');
+        const letters = raw.replace(/[^A-Za-z]/g, '');
+        if (letters.length < 6) return false;
+        const upper = letters.replace(/[^A-Z]/g, '').length;
+        return upper / letters.length >= 0.85;
+    }
+
+    function escapeHtml(str) {
+        return String(str || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function escapeRegExp(str) {
+        return String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function stripWeakBrackets(value) {
+        const t = String(value || '').trim();
+        if (t.startsWith('[[') && t.endsWith(']]') && t.length >= 4) return t.slice(2, -2).trim();
+        return t.replace(/\[\[|\]\]/g, '').trim();
+    }
+
+    function inferEmotionFromText(text) {
+        const t = String(text || '');
+        if (!t.trim()) return 'neutral';
+        if (isAllCapsLine(t)) return 'angry';
+        if (/!{2,}/.test(t)) return 'surprised';
+        if (/\?{2,}/.test(t)) return 'thinking';
+        if (/\.\.\./.test(t)) return 'sad';
+        if (/!!/.test(t)) return 'angry';
+        if (/!/.test(t)) return 'surprised';
+        if (/\?/.test(t)) return 'thinking';
+        return 'neutral';
     }
 
     function handleShoot(e) {
         const bullets = getTruthBullets();
-        const currentBullet = bullets[selectedTruthBulletIndex];
-        if (!currentBullet) return;
+        const currentBullet = bullets[selectedTruthBulletIndex] || { title: 'TRUTH BULLET' };
 
+        // 1. Direct target check
+        const target = e.target;
+        if (target instanceof HTMLElement && target.classList.contains('dangan-weak-point')) {
+            hitWeakPoint(target, currentBullet);
+            return;
+        }
+
+        // 2. Element from point check
+        const topEl = document.elementFromPoint(e.clientX, e.clientY);
+        if (topEl?.classList.contains('dangan-weak-point')) {
+            hitWeakPoint(topEl, currentBullet);
+            return;
+        }
+
+        // 3. Rect based check (original logic but more robust)
         const wp = currentWeakPointInfo?.element;
         if (wp instanceof HTMLElement) {
             const rect = wp.getBoundingClientRect();
-            const padding = 26;
+            const padding = 34; // Slightly increased padding
             const hit = (
                 e.clientX >= rect.left - padding &&
                 e.clientX <= rect.right + padding &&
                 e.clientY >= rect.top - padding &&
                 e.clientY <= rect.bottom + padding
             );
-            if (!hit) {
-                playSfx?.(getSfx?.().miss || 'miss');
+            if (hit) {
+                hitWeakPoint(wp, currentBullet);
                 return;
             }
-
-            console.log('[Dangan][Trial] CRITICAL HIT!');
-            playSfx?.(getSfx?.().hit || 'hit'); 
-            
-            // Highlight the hit weak point
-            wp.style.color = '#ff0000';
-            wp.style.fontSize = '48px';
-            wp.style.fontWeight = 'bold';
-            
-            setTimeout(() => {
-                setState(TrialPhases.TRUTH_BULLET_EXPLANATION);
-                showExplanationUI(currentBullet, wp.textContent);
-            }, 1000);
-            return;
         }
 
         playSfx?.(getSfx?.().miss || 'miss');
     }
 
+    function hitWeakPoint(wp, currentBullet) {
+        console.log('[Dangan][Trial] CRITICAL HIT!');
+        playSfx?.(getSfx?.().hit || 'hit'); 
+        
+        // Highlight the hit weak point
+        wp.style.color = '#ff0000';
+        wp.style.fontSize = '48px';
+        wp.style.fontWeight = 'bold';
+        wp.style.transition = 'all 0.2s ease-out';
+        wp.style.textShadow = '0 0 20px #ff0000';
+        
+        setTimeout(() => {
+            setState(TrialPhases.TRUTH_BULLET_EXPLANATION);
+            showExplanationUI(currentBullet, wp.textContent);
+        }, 1000);
+    }
+
     function showExplanationUI(bullet, refutedText) {
-        const overlay = document.createElement('div');
-        overlay.id = 'dangan-explanation-overlay';
-        overlay.className = 'dangan-trial-overlay explanation';
-        overlay.innerHTML = `
-            <div class="dangan-explanation-box">
-                <div class="dangan-explanation-header">REBUTTAL PHASE</div>
-                <div class="dangan-explanation-refuted">"${refutedText}"</div>
-                <div class="dangan-explanation-vs">VS</div>
-                <div class="dangan-explanation-bullet">${bullet.title}</div>
-                <div class="dangan-explanation-prompt">Provide your argument to refute the claim:</div>
+        lastHitBullet = bullet;
+        lastHitWeakPoint = refutedText;
+
+        const notification = document.createElement('div');
+        notification.id = 'dangan-trial-rebuttal-notif';
+        notification.className = 'dangan-trial-notification rebuttal-active';
+        notification.innerHTML = `
+            <div class="dangan-trial-notif-content">
+                <div class="rebuttal-header">REBUTTAL PHASE</div>
+                <div class="rebuttal-info">
+                    Using <strong>${bullet.title}</strong> to refute <em>"${refutedText}"</em>.
+                </div>
+                <div class="rebuttal-prompt">Explain your reasoning in the chat...</div>
             </div>
         `;
-        document.body.appendChild(overlay);
+        document.body.appendChild(notification);
         
         // Focus chat input
         const chatInput = document.querySelector('#send_textarea, #chat_input');
@@ -397,48 +559,115 @@ export function createTrialManager(deps) {
     }
 
     function onMessageSent(text) {
-        if (currentState !== TrialPhases.TRUTH_BULLET_EXPLANATION) return;
+        if (currentState !== TrialPhases.TRUTH_BULLET_EXPLANATION) {
+            if (rebuttalPromptActive) {
+                const ctx = window.SillyTavern?.getContext?.();
+                const setPrompt = ctx?.setExtensionPrompt || window.setExtensionPrompt;
+                if (typeof setPrompt === 'function') {
+                    setPrompt('dangan_rebuttal_judgment', '', 0, 0, false, 'system');
+                }
+                rebuttalPromptActive = false;
+            }
+            return;
+        }
 
-        // Here we could add logic to tell the AI to validate the refutation.
-        // For now, we just transition back to pre-debate after the message is sent.
-        console.log('[Dangan][Trial] Argument sent, transitioning back to Pre-Debate');
+        const notif = document.getElementById('dangan-trial-rebuttal-notif');
+        if (notif) notif.remove();
+
+        const ctx = window.SillyTavern?.getContext?.();
+        const setPrompt = ctx?.setExtensionPrompt || window.setExtensionPrompt;
         
-        const explanationOverlay = document.getElementById('dangan-explanation-overlay');
-        if (explanationOverlay) explanationOverlay.remove();
+        if (typeof setPrompt === 'function') {
+            const prompt = `
+[SYSTEM: TRIAL REBUTTAL JUDGMENT]
+The user is attempting to refute the claim: "${lastHitWeakPoint}"
+Using the Truth Bullet: "${lastHitBullet.title}"
+User's reasoning: "${text}"
+
+JUDGMENT RULES:
+1. Evaluate if the reasoning and the Truth Bullet logically contradict the claim.
+2. If it makes sense, react with characters being impressed, shocked by the contradiction, or moving the trial forward.
+3. If it does NOT make sense, react with characters being skeptical, confused, or asking for better proof.
+4. Keep the Danganronpa trial momentum and stay in character.
+5. The next character response should act as a judge or witness reacting to this specific rebuttal.
+`.trim();
+            setPrompt('dangan_rebuttal_judgment', prompt, 0, 0, false, 'system');
+            rebuttalPromptActive = true;
+        }
+
+        console.log('[Dangan][Trial] Rebuttal judgment prompt injected, transitioning back to Pre-Debate');
         
         setTimeout(() => {
             setState(TrialPhases.PRE_DEBATE);
-        }, 2000); // Wait for AI response
+        }, 800);
     }
 
     function getRecentMessages() {
         const ctx = window.SillyTavern?.getContext?.();
         const chat = Array.isArray(ctx?.chat) ? ctx.chat : null;
 
-        const mapped = (chat || readDomChatMessages(30))
-            .map(m => ({
-                isUser: Boolean(m?.is_user ?? m?.isUser),
-                isSystem: Boolean(m?.is_system ?? m?.isSystem),
-                name: String(m?.name || m?.ch_name || m?.character_name || m?.sender || (m?.is_user ? 'You' : '???')),
-                text: String(m?.mes || m?.text || m?.message || '').trim(),
-            }))
-            .filter(m => !m.isUser && !m.isSystem)
-            .map(m => ({
-                name: m.name,
-                text: extractDialogueOnly(m.text),
-            }))
-            .filter(m => m.text);
+        const ctxMessages = chat ? mapContextChatMessages(chat) : [];
+        const domMessages = ctxMessages.length ? [] : mapDomMessages(readDomChatMessages(30));
+        const source = (ctxMessages.length ? ctxMessages : domMessages)
+            .filter(m => !m.isUser && !m.isSystem && m.text);
 
-        return mapped.slice(-10);
+        const mapped = source
+            .map(m => {
+                const dialogueOnly = extractDialogueOnly(m.text);
+                return {
+                    name: m.name,
+                    text: dialogueOnly || m.text,
+                };
+            })
+            .filter(m => m.name && m.text);
+
+        return mapped.slice(-12);
     }
 
     function splitIntoChunks(text) {
-        const words = text.split(' ');
-        const chunks = [];
-        for (let i = 0; i < words.length; i += 5) {
-            chunks.push(words.slice(i, i + 5).join(' '));
+        const raw = String(text || '').replace(/\s+/g, ' ').trim();
+        if (!raw) return [];
+
+        const soft = /([,;:]\s+|\.\.\.\s+|\.\s+|\?\s+|!\s+|\)\s+|\]\]\s+|\bbut\s+|\bhowever\s+|\bthough\s+|\byet\s+|\bso\s+|\bbecause\s+)/i;
+        const parts = raw.split(soft).filter(Boolean);
+        const normalized = [];
+        for (let i = 0; i < parts.length; i++) {
+            const part = parts[i];
+            if (soft.test(part) && normalized.length) {
+                normalized[normalized.length - 1] += part;
+            } else {
+                normalized.push(part);
+            }
         }
-        return chunks;
+        const text2 = normalized.join('').replace(/\s+/g, ' ').trim();
+
+        const candidates = [];
+        const re = /,\s+|;\s+|:\s+|\.\.\.\s+|\.\s+|\?\s+|!\s+|\bbut\s+|\bhowever\s+|\bthough\s+|\byet\s+|\bso\s+|\bbecause\s+/gi;
+        let m;
+        while ((m = re.exec(text2)) !== null) {
+            const idx = m.index + m[0].length;
+            if (idx > 10 && idx < text2.length - 10) candidates.push(idx);
+        }
+
+        const target = Math.round(text2.length * 0.62);
+        let splitAt = -1;
+        let bestDist = Infinity;
+        for (const idx of candidates) {
+            const dist = Math.abs(idx - target);
+            if (dist < bestDist) {
+                bestDist = dist;
+                splitAt = idx;
+            }
+        }
+
+        if (splitAt === -1 || text2.length < 80) {
+            return [text2];
+        }
+
+        const a = text2.slice(0, splitAt).trim();
+        const b = text2.slice(splitAt).trim();
+        if (!a || !b) return [text2];
+        return [a, b];
     }
 
     function cleanupDebateUI() {
@@ -509,16 +738,30 @@ export function createTrialManager(deps) {
         if (!selectedSpeakers.length) return null;
 
         const sections = [];
+        const debateSoFar = [];
         for (let i = 0; i < sectionsCount; i++) {
             const speakerName = pickSpeakerWeighted(selectedSpeakers);
+            const debateSoFarText = debateSoFar.length
+                ? debateSoFar.map(line => `- ${line}`).join('\n')
+                : '';
             const statement = await generateSectionStatement({
                 speakerName,
+                debateSoFarText,
                 context,
                 sectionIndex: i,
                 sectionsCount,
             });
-            const parts = splitStatementIntoParts(statement);
+            const parts = splitStatementIntoParts(statement).map(p => ({
+                ...p,
+                emotion: inferEmotionFromText(p.text),
+            }));
             sections.push({ speakerName, statement, parts });
+
+            const spoken = stripSurroundingQuotes(extractDialogueOnly(statement) || statement);
+            if (spoken) {
+                debateSoFar.push(`${speakerName}: ${spoken}`);
+                while (debateSoFar.length > 3) debateSoFar.shift();
+            }
         }
         return sections;
     }
@@ -526,19 +769,49 @@ export function createTrialManager(deps) {
     function getContextMessagesForTrial() {
         const ctx = window.SillyTavern?.getContext?.();
         const chat = Array.isArray(ctx?.chat) ? ctx.chat : null;
-        const source = chat || readDomChatMessages(40);
+        const ctxMessages = chat ? mapContextChatMessages(chat) : [];
+        const domMessages = ctxMessages.length ? [] : mapDomMessages(readDomChatMessages(40));
+        const source = (ctxMessages.length ? ctxMessages : domMessages)
+            .filter(m => !m.isSystem && m.text)
+            .slice(-30);
+
         return source
-            .filter(m => !m?.is_system && !m?.isSystem)
-            .slice(-30)
             .map(m => ({
-                isUser: Boolean(m?.is_user ?? m?.isUser),
-                name: String(m?.name || m?.ch_name || m?.character_name || m?.sender || (m?.is_user ? 'You' : '???')),
-                text: String(m?.mes || m?.text || m?.message || '').trim(),
+                isUser: m.isUser,
+                name: m.name,
+                text: m.text,
             }))
             .filter(m => m.text);
     }
 
     function pickSpeakersFromContext(context) {
+        const members = getChatCardMembers();
+        if (members.length) {
+            const counts = new Map();
+            for (const m of context) {
+                if (m.isUser) continue;
+                const rawName = String(m.name || '').trim();
+                if (!rawName) continue;
+                const key = normalizeLooseName(rawName);
+                counts.set(key, (counts.get(key) || 0) + 1);
+            }
+
+            const weighted = members.map(member => {
+                const key = normalizeLooseName(member.name);
+                const count = counts.get(key) || 0;
+                return { name: member.name, weight: Math.max(1, count) };
+            });
+
+            const hasRealCounts = weighted.some(s => (counts.get(normalizeLooseName(s.name)) || 0) > 0);
+            const pool = hasRealCounts
+                ? weighted.filter(s => (counts.get(normalizeLooseName(s.name)) || 0) > 0)
+                : weighted;
+
+            return pool
+                .filter(s => !isGroupMemberMuted(s.name))
+                .sort((a, b) => b.weight - a.weight);
+        }
+
         const counts = new Map();
         for (const m of context) {
             if (m.isUser) continue;
@@ -549,8 +822,7 @@ export function createTrialManager(deps) {
 
         return Array.from(counts.entries())
             .sort((a, b) => b[1] - a[1])
-            .map(([name, count]) => ({ name, weight: count }))
-            .filter(s => !isGroupMemberMuted(s.name));
+            .map(([name, count]) => ({ name, weight: count }));
     }
 
     function pickSpeakerWeighted(speakers) {
@@ -563,7 +835,7 @@ export function createTrialManager(deps) {
         return speakers[0]?.name || '???';
     }
 
-    async function generateSectionStatement({ speakerName, context, sectionIndex, sectionsCount }) {
+    async function generateSectionStatement({ speakerName, debateSoFarText, context, sectionIndex, sectionsCount }) {
         const contextLines = context
             .slice(-14)
             .map(m => `${m.isUser ? 'YOU' : m.name}: ${m.text}`)
@@ -582,13 +854,18 @@ Rules:
 - Stay fully in character.
 - Output ONLY spoken dialogue in double quotes.
 - No narration, no actions, no inner thoughts.
-- 1–2 sentences, assertive courtroom tone.
+- 1–2 sentences.
 - Use facts and implications from the context.
-- Inside the quotes, mark EXACTLY ONE clause as a possible weak point using [[WEAK]]...[[/WEAK]].
+- Your line should respond naturally to what others have said so far.
+- Inside the quotes, mark EXACTLY ONE weak point using this format: [[WEAK POINT]].
+- The weak point should be short: preferably 1 word, max 3 words.
 - No other markup and no speaker labels.
 
 CHARACTER DATA:
 ${sourceText || 'NO CHARACTER DATA AVAILABLE.'}
+
+DEBATE SO FAR (most recent lines):
+${debateSoFarText || 'NONE'}
 
 RECENT CONTEXT:
 ${contextLines}
@@ -630,59 +907,84 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
 
     function ensureSingleWeakPointMarker(text) {
         const raw = String(text || '').trim();
-        const hasOpen = /\[\[WEAK\]\]/i.test(raw);
-        const hasClose = /\[\[\/WEAK\]\]/i.test(raw);
-        if (hasOpen && hasClose) {
-            const firstOpen = raw.search(/\[\[WEAK\]\]/i);
-            const afterOpen = raw.slice(firstOpen + 8);
-            const firstCloseRel = afterOpen.search(/\[\[\/WEAK\]\]/i);
-            if (firstCloseRel >= 0) {
-                const firstClose = firstOpen + 8 + firstCloseRel;
-                const keep = raw.slice(0, firstClose + 9);
-                const tail = raw.slice(firstClose + 9).replace(/\[\[WEAK\]\]|\[\[\/WEAK\]\]/gi, '');
-                return (keep + tail).replace(/\s+/g, ' ').trim();
-            }
+        const existing = raw.match(/\[\[([^\]]+)\]\]/);
+        if (existing) {
+            const rawWeak = String(existing[1] || '').trim().replace(/\s+/g, ' ');
+            const trimmedWeak = shrinkWeakPoint(rawWeak);
+            return raw.replace(/\[\[[^\]]+\]\]/, `[[${trimmedWeak}]]`);
         }
 
-        const clean = raw.replace(/\[\[WEAK\]\]|\[\[\/WEAK\]\]/gi, '').replace(/\s+/g, ' ').trim();
-        if (!clean) return '[[WEAK]]...[[/WEAK]]';
+        const clean = raw.replace(/\s+/g, ' ').trim();
+        if (!clean) return '[[...]]';
 
         const words = clean.split(' ').filter(Boolean);
-        if (words.length <= 3) return `[[WEAK]]${clean}[[/WEAK]]`;
+        const chosen = pickCompactWeakPoint(words);
+        if (!chosen) return `[[${words[0] || '...'}]]`;
 
-        const span = Math.min(8, Math.max(4, Math.floor(words.length / 2)));
-        const start = Math.max(0, Math.min(words.length - span, Math.floor(words.length / 3)));
-        const weak = words.slice(start, start + span).join(' ');
+        const idx = words.findIndex(w => normalizeLooseToken(w) === normalizeLooseToken(chosen));
+        if (idx >= 0) {
+            const before = words.slice(0, idx).join(' ');
+            const after = words.slice(idx + 1).join(' ');
+            return [before, `[[${chosen}]]`, after].filter(Boolean).join(' ');
+        }
 
-        const before = words.slice(0, start).join(' ');
-        const after = words.slice(start + span).join(' ');
+        return `${clean} [[${chosen}]]`;
+    }
 
-        return [before, `[[WEAK]]${weak}[[/WEAK]]`, after].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+    function normalizeLooseToken(value) {
+        return String(value || '')
+            .toLowerCase()
+            .replace(/^[^\w]+|[^\w]+$/g, '')
+            .trim();
+    }
+
+    function shrinkWeakPoint(text) {
+        const raw = String(text || '').trim().replace(/\s+/g, ' ');
+        if (!raw) return '...';
+        const words = raw.split(' ').filter(Boolean);
+        if (words.length <= 3) return raw;
+        return pickCompactWeakPoint(words);
+    }
+
+    function pickCompactWeakPoint(words) {
+        const stop = new Set([
+            'the', 'a', 'an', 'and', 'or', 'but', 'to', 'of', 'in', 'on', 'at', 'for', 'from', 'with',
+            'is', 'are', 'was', 'were', 'be', 'been', 'being', 'it', 'that', 'this', 'these', 'those',
+            'i', 'you', 'we', 'they', 'he', 'she', 'him', 'her', 'them', 'my', 'your', 'our', 'their',
+        ]);
+
+        const cleaned = words
+            .map(w => String(w || '').replace(/^[^\w]+|[^\w]+$/g, ''))
+            .filter(Boolean);
+
+        const candidates = cleaned
+            .filter(w => w.length >= 4 && !stop.has(w.toLowerCase()))
+            .sort((a, b) => b.length - a.length);
+
+        return candidates[0] || cleaned[0] || '...';
     }
 
     function splitStatementIntoParts(statement) {
-        const raw = String(statement || '').trim();
-        const weakMatch = raw.match(/\[\[WEAK\]\]([\s\S]*?)\[\[\/WEAK\]\]/i);
-        let clean = raw.replace(/\[\[WEAK\]\]|\[\[\/WEAK\]\]/gi, '').trim();
-        clean = clean.replace(/\s+/g, ' ');
+        const raw = String(statement || '').trim().replace(/\s+/g, ' ');
+        const weakMatch = raw.match(/\[\[([^\]]+)\]\]/);
+        const weakToken = weakMatch ? String(weakMatch[1] || '').trim().replace(/\s+/g, ' ') : '';
+        const weakRegex = weakToken
+            ? new RegExp(`\\[\\[\\s*${escapeRegExp(weakToken)}\\s*\\]\\]`, 'i')
+            : null;
 
-        if (weakMatch && weakMatch[1]) {
-            const weakText = weakMatch[1].trim().replace(/\s+/g, ' ');
-            const beforeAfter = clean.split(weakText);
-            if (beforeAfter.length >= 2) {
-                const before = beforeAfter[0].trim();
-                const after = beforeAfter.slice(1).join(weakText).trim();
-                const parts = [];
-                if (before) parts.push(...splitIntoChunks(before).map(t => ({ text: t, isWeakPoint: false })));
-                parts.push({ text: weakText, isWeakPoint: true });
-                if (after) parts.push(...splitIntoChunks(after).map(t => ({ text: t, isWeakPoint: false })));
-                return parts.filter(p => p.text);
-            }
+        const chunks = splitIntoChunks(raw);
+        if (!chunks.length) return [];
+
+        if (!weakRegex) {
+            const weakPointIndex = chunks.length ? Math.floor(Math.random() * chunks.length) : 0;
+            return chunks.map((t, i) => ({ text: t, isWeakPoint: i === weakPointIndex, weakMarkup: '' }));
         }
 
-        const chunks = splitIntoChunks(clean);
-        const weakPointIndex = chunks.length ? Math.floor(Math.random() * chunks.length) : 0;
-        return chunks.map((t, i) => ({ text: t, isWeakPoint: i === weakPointIndex }));
+        return chunks.map((t) => ({
+            text: t,
+            isWeakPoint: weakRegex.test(t),
+            weakMarkup: weakToken,
+        }));
     }
 
     function extractDialogueOnly(text) {
@@ -740,7 +1042,7 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
             const chName = node.getAttribute('ch_name') || node.getAttribute('name') || '';
             const isUser = node.getAttribute('is_user') === 'true';
             const isSystem = node.getAttribute('is_system') === 'true';
-            const text = String(textEl?.innerText || '').trim();
+            const text = String(textEl?.innerHTML || textEl?.textContent || '').trim();
             return {
                 isUser,
                 isSystem,
@@ -748,6 +1050,41 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
                 text,
             };
         });
+    }
+
+    const htmlDecodeBuffer = document.createElement('div');
+    function toPlainText(value) {
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+        htmlDecodeBuffer.innerHTML = raw;
+        return String(htmlDecodeBuffer.textContent || htmlDecodeBuffer.innerText || '').trim();
+    }
+
+    function mapContextChatMessages(chat) {
+        return chat.map((msg) => {
+            const isUser =
+                String(msg?.is_user ?? msg?.isUser ?? '').toLowerCase() === 'true' ||
+                msg?.is_user === true ||
+                msg?.isUser === true;
+            const isSystem =
+                String(msg?.is_system ?? msg?.isSystem ?? msg?.is_system_message ?? '').toLowerCase() === 'true' ||
+                msg?.is_system === true ||
+                msg?.isSystem === true ||
+                msg?.is_system_message === true;
+            const name = String(msg?.name || msg?.ch_name || msg?.character_name || msg?.display_name || '').trim();
+            const textRaw = msg?.mes ?? msg?.message ?? msg?.content ?? msg?.swipe_info?.[msg?.swipe_id || 0]?.mes ?? '';
+            const text = toPlainText(textRaw);
+            return { isUser, isSystem, name, text };
+        }).filter(m => m.text);
+    }
+
+    function mapDomMessages(domMessages) {
+        return domMessages.map(m => ({
+            isUser: Boolean(m?.isUser),
+            isSystem: Boolean(m?.isSystem),
+            name: String(m?.ch_name || '').trim(),
+            text: toPlainText(m?.text || ''),
+        })).filter(m => m.text);
     }
 
     function normalizeLooseName(name) {
@@ -777,6 +1114,240 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
         return false;
     }
 
+    function getChatCardMembers() {
+        const ctx = window.SillyTavern?.getContext?.();
+        if (!ctx) return [];
+
+        const groupId = ctx.groupId ?? ctx.group_id;
+        const chars = Array.isArray(ctx.characters) ? ctx.characters : [];
+        
+        // Strategy 1: Characters directly in the context (unmuted candidates)
+        const ctxCandidates = chars
+            .filter(c => isSpeakerCandidateChar(c, ctx))
+            .map(c => String(c?.name || '').trim())
+            .filter(n => n && !isAssistantLikeName(n));
+
+        // Strategy 2: Intersection of DOM and context (active speakers)
+        const domNames = getActiveChatMemberNamesFromDom();
+        if (domNames.length && ctxCandidates.length) {
+            const domSet = new Set(domNames.map(normalizeLooseName));
+            const intersected = ctxCandidates.filter(n => domSet.has(normalizeLooseName(n)));
+            if (intersected.length) {
+                return Array.from(new Set(intersected))
+                    .map(name => ({ name }));
+            }
+        }
+
+        // Strategy 3: Group metadata
+        const groupNames = getActiveGroupMemberNames(ctx);
+        if (groupId != null && groupId !== '' && groupNames.length) {
+            const filteredGroup = groupNames.filter(n => !isGroupMemberMuted(n) && !isAssistantLikeName(n));
+            if (filteredGroup.length) {
+                return Array.from(new Set(filteredGroup))
+                    .map(name => ({ name }));
+            }
+        }
+
+        // Strategy 4: Fallback to any unmuted character in the current context
+        if (ctxCandidates.length) {
+            return Array.from(new Set(ctxCandidates))
+                .map(name => ({ name }));
+        }
+
+        // Strategy 5: Single character chat fallback
+        const activeCharId = ctx.characterId ?? ctx.character_id ?? ctx.charaId ?? ctx.char_id;
+        if ((groupId == null || groupId === '') && activeCharId != null) {
+            const sid = String(activeCharId).trim();
+            const allChars = [
+                ...chars,
+                ...(Array.isArray(window.characters) ? window.characters : []),
+            ];
+            const found = allChars.find(c => String(c?.id ?? c?.characterId ?? c?.char_id ?? '').trim() === sid);
+            const name = String(found?.name || ctx.characterName || ctx.character_name || '').trim();
+            if (name && !isGroupMemberMuted(name) && !isAssistantLikeName(name)) return [{ name }];
+        }
+
+        return [];
+    }
+
+    function getActiveGroupMemberNames(ctx) {
+        const names = new Set();
+        const groupId = ctx.groupId ?? ctx.group_id;
+        if (groupId == null || groupId === '') return [];
+
+        const meta = window.chat_metadata || ctx.chat_metadata || ctx.chatMetadata || null;
+        const sources = [
+            ctx.group,
+            ctx.groupChat,
+            ctx.group_chat,
+            meta?.group_chat,
+            meta?.groupChat,
+            window.groupChat,
+            window.group_chat,
+            window.group,
+            window.groups,
+            window.group_chats,
+            window.groupChats,
+        ];
+
+        const allChars = [
+            ...(Array.isArray(ctx.characters) ? ctx.characters : []),
+            ...(Array.isArray(window.characters) ? window.characters : []),
+        ];
+
+        const addName = (n) => {
+            const name = String(n || '').trim();
+            if (name) names.add(name);
+        };
+
+        const resolveFromId = (id) => {
+            const sid = String(id || '').trim();
+            if (!sid) return;
+            const found = allChars.find(c =>
+                String(c?.id ?? c?.characterId ?? c?.char_id ?? c?.chara_id ?? c?.member_id ?? '').trim() === sid
+            );
+            if (found?.name) addName(found.name);
+        };
+
+        const matchesGroup = (obj) => {
+            if (!obj || groupId == null) return true;
+            const gid = String(groupId).trim();
+            const oid = obj?.groupId ?? obj?.group_id ?? obj?.id ?? obj?.chat_id ?? obj?.groupChatId ?? obj?.group_chat_id;
+            if (oid == null) return true;
+            return String(oid).trim() === gid;
+        };
+
+        const pullFromAny = (obj) => {
+            if (!obj) return;
+
+            if (typeof obj === 'number') {
+                resolveFromId(obj);
+                return;
+            }
+            if (typeof obj === 'string') {
+                addName(obj);
+                return;
+            }
+
+            if (Array.isArray(obj)) {
+                for (const item of obj) {
+                    if (item && typeof item === 'object' && !matchesGroup(item)) continue;
+                    pullFromAny(item);
+                }
+                return;
+            }
+
+            if (obj && typeof obj === 'object' && !matchesGroup(obj)) return;
+
+            const gid = String(groupId).trim();
+            if (obj && typeof obj === 'object' && Object.prototype.hasOwnProperty.call(obj, gid)) {
+                pullFromAny(obj[gid]);
+                return;
+            }
+
+            const maybeMembers = obj.members
+                || obj.member_list
+                || obj.characters
+                || obj.participants
+                || obj.group_members
+                || obj.memberIds
+                || obj.member_ids
+                || obj.characterIds
+                || obj.character_ids;
+            if (Array.isArray(maybeMembers)) {
+                for (const item of maybeMembers) pullFromAny(item);
+                return;
+            }
+
+            const id = obj.id ?? obj.characterId ?? obj.char_id ?? obj.member_id;
+            const name = obj.name ?? obj.ch_name ?? obj.character_name ?? obj.display_name;
+            if (name) addName(name);
+            else if (id != null) resolveFromId(id);
+        };
+
+        for (const s of sources) {
+            if (s && typeof s === 'object' && !Array.isArray(s)) {
+                const gid = String(groupId).trim();
+                if (Object.prototype.hasOwnProperty.call(s, gid)) {
+                    pullFromAny(s[gid]);
+                    continue;
+                }
+            }
+            if (Array.isArray(s)) {
+                const gid = String(groupId).trim();
+                const matched = s.find(item => item && typeof item === 'object' && matchesGroup(item) && String(item?.id ?? item?.groupId ?? item?.group_id ?? '').trim() === gid);
+                if (matched) {
+                    pullFromAny(matched);
+                    continue;
+                }
+            }
+            pullFromAny(s);
+        }
+
+        return Array.from(names);
+    }
+
+    function getActiveChatMemberNamesFromDom() {
+        const names = new Set();
+        const selectors = [
+            '[data-character-name]',
+            '[data-ch-name]',
+            '[data-name]',
+            '.group_member_name',
+            '.group-member-name',
+            '.group_member .name',
+            '.group-member .name',
+            '.member .name',
+            '.member-name',
+            '.char_name',
+            '.character_name',
+        ];
+
+        for (const sel of selectors) {
+            const nodes = Array.from(document.querySelectorAll(sel));
+            for (const node of nodes) {
+                const attrName =
+                    node.getAttribute?.('data-character-name') ||
+                    node.getAttribute?.('data-ch-name') ||
+                    node.getAttribute?.('data-name') ||
+                    '';
+                const text = String(attrName || node.textContent || '').trim();
+                if (text && text.length <= 64) names.add(text);
+            }
+        }
+
+        return Array.from(names);
+    }
+
+    function isAssistantLikeName(name) {
+        const n = normalizeLooseName(name);
+        if (!n) return false;
+        return n === 'assistant' || n === 'sillytavern' || n === 'system';
+    }
+
+    function isSpeakerCandidateChar(char, ctx) {
+        if (!char) return false;
+        if (char.is_user === true || char.isUser === true) return false;
+        if (char.is_assistant === true || char.isAssistant === true) return false;
+        if (char.is_system === true || char.isSystem === true) return false;
+        if (char.is_narrator === true || char.isNarrator === true) return false;
+        if (char.disabled === true || char.is_disabled === true) return false;
+        if (char.enabled === false || char.isEnabled === false) return false;
+
+        const name = String(char.name || '').trim();
+        if (!name) return false;
+        if (isAssistantLikeName(name)) return false;
+        if (isGroupMemberMuted(name)) return false;
+
+        const assistantId = ctx?.assistantId ?? ctx?.assistant_id ?? ctx?.assistantCharacterId ?? ctx?.assistant_character_id;
+        if (assistantId != null) {
+            const cid = String(char?.id ?? char?.characterId ?? char?.char_id ?? '').trim();
+            if (cid && String(assistantId).trim() === cid) return false;
+        }
+
+        return true;
+    }
+
     function sampleWeightedWithoutReplacement(items, count) {
         const pool = items.map(it => ({ ...it, weight: Number(it.weight) || 1 })).filter(it => it.name);
         const picked = [];
@@ -801,6 +1372,7 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
         stop: () => {
             setState(TrialPhases.IDLE);
         },
+        debugStartNonStopDebateWithLines,
         onMessageSent,
         getState: () => currentState,
         phases: TrialPhases,
