@@ -1,5 +1,13 @@
 /* styles/systems/trial/trial.css */
 
+/* Hide ST elements during NSD */
+body.dangan-nsd-active #chat-shield,
+body.dangan-nsd-active .vn-container,
+body.dangan-nsd-active #expression-holder,
+body.dangan-nsd-active .char-container {
+    display: none !important;
+}
+
 #dangan-nonstop-debate-overlay {
     position: fixed;
     top: 0;
@@ -10,13 +18,15 @@
     background: transparent;
     pointer-events: auto;
     overflow: hidden;
+    /* Hide the real cursor */
+    cursor: none !important;
 }
 
 #dangan-trial-reticle {
     position: absolute;
-    width: 80px;
-    height: 80px;
-    background-image: url('scripts/extensions/third-party/danganronpa-extension/assets/trialcursor.png');
+    width: 120px; /* Slightly larger */
+    height: 120px;
+    background-image: url('scripts/extensions/third-party/danganronpa-extension/assets/classtrial/trialcursor.png');
     background-size: contain;
     background-repeat: no-repeat;
     background-position: center;
@@ -330,13 +340,13 @@
 
 .dangan-trial-banner {
     position: absolute;
-    height: 420px; /* Even bigger */
-    width: 180%; /* Even wider */
-    background-size: contain;
+    height: 100vh; /* Stretch to full height */
+    width: 200%; /* Wider to cover the whole screen while diagonal */
+    background-size: 100% 100%; /* Force stretch the image */
     background-repeat: no-repeat;
     background-position: center;
     top: 50%;
-    left: -200%;
+    left: -220%;
     transform: translateY(-50%) rotate(-8deg);
     filter: drop-shadow(0 0 40px rgba(0, 255, 255, 0.9));
     transition: left 0.5s cubic-bezier(0.15, 0.85, 0.35, 1.15);

@@ -53,22 +53,44 @@ export function createTrialManager(deps) {
     let lastHitWasPerjury = false;
     let shotCooldown = false;
 
+    function getTrialPersistenceKey() {
+        const ctx = window.SillyTavern?.getContext?.();
+        const groupId = ctx?.groupId ?? ctx?.group_id ?? '';
+        const chatId = ctx?.chatId ?? ctx?.chat_id ?? ctx?.chatFile ?? '';
+        const characterId = ctx?.characterId ?? ctx?.character_id ?? '';
+
+        if (groupId) return `group_${groupId}`;
+        if (chatId) return `chat_${chatId}`;
+        if (characterId) return `char_${characterId}`;
+        return 'default';
+    }
+
     function setState(newState) {
         console.log(`[Dangan][Trial] State change: ${currentState} -> ${newState}`);
         const oldState = currentState;
         currentState = newState;
         
-        // Persist state to extension settings
+        // Persist state to extension settings (per chat/group)
         if (typeof saveSettingsDebounced === 'function') {
-            extensionSettings[extensionName].currentTrialState = newState;
-            extensionSettings[extensionName].persistentDebateHistory = persistentDebateHistory;
+            const key = getTrialPersistenceKey();
+            if (!extensionSettings[extensionName].trials) {
+                extensionSettings[extensionName].trials = {};
+            }
+            if (!extensionSettings[extensionName].trials[key]) {
+                extensionSettings[extensionName].trials[key] = {};
+            }
+            
+            extensionSettings[extensionName].trials[key].currentTrialState = newState;
+            extensionSettings[extensionName].trials[key].persistentDebateHistory = persistentDebateHistory;
             saveSettingsDebounced();
         }
 
         if (oldState === TrialPhases.NON_STOP_DEBATE && newState !== TrialPhases.NON_STOP_DEBATE) {
             cleanupNSDListeners();
+            document.body.classList.remove('dangan-nsd-active');
         } else if (newState === TrialPhases.NON_STOP_DEBATE && oldState !== TrialPhases.NON_STOP_DEBATE) {
             setupNSDListeners();
+            document.body.classList.add('dangan-nsd-active');
         }
 
         syncUI();
@@ -224,16 +246,24 @@ export function createTrialManager(deps) {
         const setPrompt = ctx?.setExtensionPrompt || window.setExtensionPrompt;
         if (typeof setPrompt !== 'function') return;
 
+        const key = getTrialPersistenceKey();
+
         if (currentState === TrialPhases.IDLE) {
             setPrompt('dangan_debate_history', '', 0, 0, false, 'system');
             setPrompt('dangan_rebuttal_judgment', '', 0, 0, false, 'system');
             return;
         }
 
-        // Always save persistent history to settings for page refreshes
+        // Always save persistent history to settings for page refreshes (per chat/group)
         if (typeof saveSettingsDebounced === 'function') {
-            extensionSettings[extensionName].persistentDebateHistory = persistentDebateHistory;
-            extensionSettings[extensionName].currentTrialState = currentState;
+            if (!extensionSettings[extensionName].trials) {
+                extensionSettings[extensionName].trials = {};
+            }
+            if (!extensionSettings[extensionName].trials[key]) {
+                extensionSettings[extensionName].trials[key] = {};
+            }
+            extensionSettings[extensionName].trials[key].persistentDebateHistory = persistentDebateHistory;
+            extensionSettings[extensionName].trials[key].currentTrialState = currentState;
             saveSettingsDebounced();
         }
 
@@ -497,6 +527,8 @@ ${historyText}
         if (!name) return;
         const emo = String(emotion || '').trim().toLowerCase() || 'neutral';
         if (portraitSpeaker === name && portraitEmotion === emo) return;
+
+        console.log(`[Dangan][Trial] Updating portrait for ${name} with emotion: ${emo}`);
         portraitSpeaker = name;
         portraitEmotion = emo;
 
@@ -688,15 +720,24 @@ ${historyText}
     }
 
     function inferEmotionFromText(text) {
-        const t = String(text || '');
+        const t = String(text || '').toLowerCase();
         if (!t.trim()) return 'neutral';
-        if (isAllCapsLine(t)) return 'angry';
-        if (/!{2,}/.test(t)) return 'surprised';
-        if (/\?{2,}/.test(t)) return 'thinking';
-        if (/\.\.\./.test(t)) return 'sad';
-        if (/!!/.test(t)) return 'angry';
-        if (/!/.test(t)) return 'surprised';
-        if (/\?/.test(t)) return 'thinking';
+        
+        // Anger/Aggression
+        if (isAllCapsLine(text) || /!{2,}/.test(t) || /shut up|liar|wrong|impossible/i.test(t)) return 'angry';
+        
+        // Surprise/Shock
+        if (/\?{2,}/.test(t) || /what|how|really|wait/i.test(t)) return 'surprised';
+        
+        // Sadness/Doubt
+        if (/\.\.\./.test(t) || /sorry|sad|unfortunate|helpless/i.test(t)) return 'sad';
+        
+        // Thinking/Logic
+        if (/\?/.test(t) || /maybe|perhaps|consider|evidence/i.test(t)) return 'thinking';
+        
+        // Joy/Excitement (rare in trials but possible)
+        if (/haha|great|wonderful|correct/i.test(t)) return 'joy';
+
         return 'neutral';
     }
 
@@ -1718,24 +1759,30 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
         persistentDebateHistory = [];
         setState(TrialPhases.IDLE);
         
-        // Clear from extension settings
+        // Clear from extension settings (per chat/group)
         if (typeof saveSettingsDebounced === 'function') {
-            extensionSettings[extensionName].currentTrialState = TrialPhases.IDLE;
-            extensionSettings[extensionName].persistentDebateHistory = [];
-            saveSettingsDebounced();
+            const key = getTrialPersistenceKey();
+            if (extensionSettings[extensionName].trials && extensionSettings[extensionName].trials[key]) {
+                extensionSettings[extensionName].trials[key].currentTrialState = TrialPhases.IDLE;
+                extensionSettings[extensionName].trials[key].persistentDebateHistory = [];
+                saveSettingsDebounced();
+            }
         }
     }
 
     function initFromPersistentState() {
-        const savedState = extensionSettings[extensionName]?.currentTrialState;
-        const savedHistory = extensionSettings[extensionName]?.persistentDebateHistory;
+        const key = getTrialPersistenceKey();
+        const saved = extensionSettings[extensionName]?.trials?.[key];
+        
+        const savedState = saved?.currentTrialState;
+        const savedHistory = saved?.persistentDebateHistory;
 
         if (Array.isArray(savedHistory)) {
             persistentDebateHistory = savedHistory;
         }
 
         if (savedState && savedState !== TrialPhases.IDLE) {
-            console.log(`[Dangan][Trial] Restoring trial state: ${savedState}`);
+            console.log(`[Dangan][Trial] Restoring trial state for ${key}: ${savedState}`);
             // Transition back to the saved state. 
             // Returning to PRE_DEBATE is safer after a refresh for stability.
             if (savedState === TrialPhases.NON_STOP_DEBATE) {
