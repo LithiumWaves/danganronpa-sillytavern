@@ -45,12 +45,78 @@ export function createTrialManager(deps) {
     let lastHitWeakPoint = null;
     let rebuttalPromptActive = false;
     let persistentDebateHistory = [];
+    let speedModifier = 1.0;
+    let keysPressed = new Set();
+    let nsdKeyAC = null;
 
     function setState(newState) {
         console.log(`[Dangan][Trial] State change: ${currentState} -> ${newState}`);
+        const oldState = currentState;
         currentState = newState;
+        
+        if (oldState === TrialPhases.NON_STOP_DEBATE && newState !== TrialPhases.NON_STOP_DEBATE) {
+            cleanupNSDListeners();
+        } else if (newState === TrialPhases.NON_STOP_DEBATE && oldState !== TrialPhases.NON_STOP_DEBATE) {
+            setupNSDListeners();
+        }
+
         syncUI();
         syncPrompt();
+    }
+
+    function setupNSDListeners() {
+        if (nsdKeyAC) nsdKeyAC.abort();
+        nsdKeyAC = new AbortController();
+        const signal = nsdKeyAC.signal;
+
+        window.addEventListener('keydown', (e) => {
+            keysPressed.add(e.key);
+            updateSpeedModifier();
+        }, { signal });
+
+        window.addEventListener('keyup', (e) => {
+            keysPressed.delete(e.key);
+            updateSpeedModifier();
+        }, { signal });
+
+        // Safety: reset on blur
+        window.addEventListener('blur', () => {
+            keysPressed.clear();
+            updateSpeedModifier();
+        }, { signal });
+    }
+
+    function cleanupNSDListeners() {
+        if (nsdKeyAC) {
+            nsdKeyAC.abort();
+            nsdKeyAC = null;
+        }
+        keysPressed.clear();
+        speedModifier = 1.0;
+    }
+
+    function updateSpeedModifier() {
+        let mod = 1.0;
+        // Holding Shift slows down (0.4x)
+        if (keysPressed.has('Shift')) {
+            mod = 0.4;
+        }
+        // Holding Escape speeds up (3.0x)
+        else if (keysPressed.has('Escape')) {
+            mod = 3.0;
+        }
+        speedModifier = mod;
+
+        // Apply visual effect to background if slowing down
+        const overlay = document.getElementById('dangan-nonstop-debate-overlay');
+        if (overlay) {
+            if (mod < 1.0) {
+                overlay.style.backgroundColor = 'rgba(0, 8, 35, 0.4)';
+                overlay.style.transition = 'background-color 0.3s ease';
+            } else {
+                overlay.style.backgroundColor = 'transparent';
+            }
+        }
     }
 
     function syncPrompt() {
@@ -412,7 +478,8 @@ ${historyText}
             : (1800 + Math.floor(Math.random() * 450));
         let rafId = 0;
         let cancelled = false;
-        const startTime = performance.now();
+        let lastNow = performance.now();
+        let elapsed = 0;
         const isScreaming = isAllCapsLine(el.textContent);
 
         return new Promise(resolve => {
@@ -429,7 +496,13 @@ ${historyText}
                     return;
                 }
 
-                const p = Math.max(0, Math.min(1, (now - startTime) / duration));
+                // Variable time step based on speedModifier
+                const dt = now - lastNow;
+                const delta = dt * speedModifier;
+                lastNow = now;
+                elapsed += delta;
+
+                const p = Math.max(0, Math.min(1, elapsed / duration));
 
                 const x = startX + (endX - startX) * p;
                 const y = startY + (endY - startY) * p;
