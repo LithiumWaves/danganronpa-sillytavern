@@ -371,8 +371,10 @@ ${historyText}
             console.warn('[Dangan][Trial] Debate section generation failed or timed out, falling back:', e);
             preparedDebateSections = null;
         } finally {
-            await endNonStopDebateCutscene();
+            // Set state first so debate UI is ready and background elements are hidden 
+            // BEFORE the cutscene overlay starts fading out.
             setState(TrialPhases.NON_STOP_DEBATE);
+            await endNonStopDebateCutscene();
         }
     }
 
