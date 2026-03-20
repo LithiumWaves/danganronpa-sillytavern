@@ -344,9 +344,10 @@ ${historyText}
         showNonStopDebateCutscene();
         
         try {
-            // Race the generation against a 25-second timeout to prevent "stuck" cutscene
+            // Race the generation against a 90-second timeout to prevent "stuck" cutscene
+            // Sequential generation of 8 sections can take significant time depending on the API.
             const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('Debate generation timed out')), 25000)
+                setTimeout(() => reject(new Error('Debate generation timed out')), 90000)
             );
             
             console.log(`[Dangan][Trial] Starting generation for ${currentDebateSections} sections...`);
@@ -363,6 +364,8 @@ ${historyText}
             }
         } catch (e) {
             console.warn('[Dangan][Trial] Debate section generation failed or timed out:', e);
+            // If we timed out but buildDebateSections managed to collect some results,
+            // they should have been stored in preparedDebateSections by the function itself.
         } finally {
             // Transition to debate phase before finishing cutscene
             setState(TrialPhases.NON_STOP_DEBATE);
@@ -1146,25 +1149,39 @@ JUDGMENT RULES:
             const debateSoFarText = debateSoFar.length
                 ? debateSoFar.map(line => `- ${line}`).join('\n')
                 : '';
-            const statement = await generateSectionStatement({
-                speakerName,
-                debateSoFarText,
-                context,
-                sectionIndex: i,
-                sectionsCount,
-            });
-            const parts = splitStatementIntoParts(statement).map(p => ({
-                ...p,
-                emotion: inferEmotionFromText(p.text),
-            }));
-            sections.push({ speakerName, statement, parts });
+            
+            try {
+                const statement = await generateSectionStatement({
+                    speakerName,
+                    debateSoFarText,
+                    context,
+                    sectionIndex: i,
+                    sectionsCount,
+                });
+                
+                const parts = splitStatementIntoParts(statement).map(p => ({
+                    ...p,
+                    emotion: inferEmotionFromText(p.text),
+                }));
+                
+                const section = { speakerName, statement, parts };
+                sections.push(section);
+                
+                // Update shared debate state for next section's context
+                const spoken = stripSurroundingQuotes(extractDialogueOnly(statement) || statement);
+                if (spoken) {
+                    const line = `${speakerName}: ${spoken}`;
+                    debateSoFar.push(line);
+                    persistentDebateHistory.push(line);
+                    while (debateSoFar.length > 3) debateSoFar.shift();
+                }
 
-            const spoken = stripSurroundingQuotes(extractDialogueOnly(statement) || statement);
-            if (spoken) {
-                const line = `${speakerName}: ${spoken}`;
-                debateSoFar.push(line);
-                persistentDebateHistory.push(line);
-                while (debateSoFar.length > 3) debateSoFar.shift();
+                // If this is part of startNonStopDebate, this global state allows partial debate starting if timeout happens
+                preparedDebateSections = sections;
+            } catch (e) {
+                console.error(`[Dangan][Trial] Error generating section ${i + 1}:`, e);
+                // Continue to next section or stop here if it was a timeout
+                if (e.message?.includes('timed out')) throw e;
             }
         }
         
@@ -1307,7 +1324,7 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
             setPrompt('dangan_debate_history', historyPrompt, 1, 0, false, 'system');
         }
 
-        for (let attempt = 0; attempt < 3; attempt++) {
+        for (let attempt = 0; attempt < 2; attempt++) {
             const out = String(
                 await generateTrialDialogue(prompt, {
                     maxTokens: 160,
