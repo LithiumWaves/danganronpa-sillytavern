@@ -1057,9 +1057,26 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
         if (!ctx) return [];
 
         const groupId = ctx.groupId ?? ctx.group_id;
+        const chars = Array.isArray(ctx.characters) ? ctx.characters : [];
+        const ctxNames = chars
+            .filter(c => !(c?.is_user || c?.isUser))
+            .map(c => String(c?.name || '').trim())
+            .filter(Boolean);
+
+        const domNames = getActiveChatMemberNamesFromDom();
+        if (domNames.length && ctxNames.length) {
+            const domSet = new Set(domNames.map(normalizeLooseName));
+            const intersected = ctxNames.filter(n => domSet.has(normalizeLooseName(n)));
+            if (intersected.length) {
+                return Array.from(new Set(intersected))
+                    .filter(name => !isGroupMemberMuted(name))
+                    .map(name => ({ name }));
+            }
+        }
+
         const groupNames = getActiveGroupMemberNames(ctx);
         if (groupId != null && groupId !== '' && groupNames.length) {
-            return groupNames
+            return Array.from(new Set(groupNames))
                 .filter(name => !isGroupMemberMuted(name))
                 .map(name => ({ name }));
         }
@@ -1076,18 +1093,15 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
             if (name) return [{ name }];
         }
 
-        const chars = Array.isArray(ctx.characters) ? ctx.characters : [];
-        if (chars.length && chars.length <= 20) {
-            const members = chars
-                .filter(c => !(c?.is_user || c?.isUser))
-                .map(c => String(c?.name || '').trim())
-                .filter(Boolean)
-                .filter(name => !isGroupMemberMuted(name));
-
-            return Array.from(new Set(members)).map(name => ({ name }));
+        if (ctxNames.length) {
+            return Array.from(new Set(ctxNames))
+                .filter(name => !isGroupMemberMuted(name))
+                .map(name => ({ name }));
         }
 
-        return [];
+        return groupNames.length
+            ? Array.from(new Set(groupNames)).filter(name => !isGroupMemberMuted(name)).map(name => ({ name }))
+            : [];
     }
 
     function getActiveGroupMemberNames(ctx) {
@@ -1202,6 +1216,38 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
                 }
             }
             pullFromAny(s);
+        }
+
+        return Array.from(names);
+    }
+
+    function getActiveChatMemberNamesFromDom() {
+        const names = new Set();
+        const selectors = [
+            '[data-character-name]',
+            '[data-ch-name]',
+            '[data-name]',
+            '.group_member_name',
+            '.group-member-name',
+            '.group_member .name',
+            '.group-member .name',
+            '.member .name',
+            '.member-name',
+            '.char_name',
+            '.character_name',
+        ];
+
+        for (const sel of selectors) {
+            const nodes = Array.from(document.querySelectorAll(sel));
+            for (const node of nodes) {
+                const attrName =
+                    node.getAttribute?.('data-character-name') ||
+                    node.getAttribute?.('data-ch-name') ||
+                    node.getAttribute?.('data-name') ||
+                    '';
+                const text = String(attrName || node.textContent || '').trim();
+                if (text && text.length <= 64) names.add(text);
+            }
         }
 
         return Array.from(names);
