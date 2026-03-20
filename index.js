@@ -6215,3 +6215,33 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         SlashCommandNamedArgument.fromProps({ name: 'difficulty', description: 'Difficulty 1–5: controls speed, bubble count, and letter variety (default 2)', typeList: [ARGUMENT_TYPE.NUMBER], isRequired: false }),
     ],
 }));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'nonstop-debate',
+    callback: async (args) => {
+        const lines = [];
+        for (let i = 1; i <= 8; i++) {
+            const key = `s${i}-q`;
+            const altKey = `s${i}_q`;
+            const value = String(args[key] ?? args[altKey] ?? '').trim();
+            if (value) lines.push(value);
+        }
+        if (!lines.length) {
+            console.warn('[NonstopDebate] Provide at least one sN-q argument.');
+            return '';
+        }
+        trialManager?.debugStartNonStopDebateWithLines?.(lines);
+        return '';
+    },
+    helpString: 'Debug: starts a Non-stop Debate immediately using the provided section lines. Provide s1-q..s8-q as quoted dialogue. Example: /nonstop-debate s1-q="Line 1 [[weak]]" s2-q="Line 2 ..."',
+    namedArgumentList: [
+        SlashCommandNamedArgument.fromProps({ name: 's1-q', description: 'Section 1 line', typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 's2-q', description: 'Section 2 line', typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 's3-q', description: 'Section 3 line', typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 's4-q', description: 'Section 4 line', typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 's5-q', description: 'Section 5 line', typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 's6-q', description: 'Section 6 line', typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 's7-q', description: 'Section 7 line', typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 's8-q', description: 'Section 8 line', typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+    ],
+}));

@@ -123,6 +123,28 @@ export function createTrialManager(deps) {
         setState(TrialPhases.NON_STOP_DEBATE);
     }
 
+    function debugStartNonStopDebateWithLines(lines) {
+        const list = Array.isArray(lines) ? lines.map(l => String(l || '').trim()).filter(Boolean) : [];
+        if (!list.length) return false;
+
+        const speakers = getChatCardMembers().map(s => s.name).filter(Boolean);
+        const speakerPool = speakers.length ? speakers : ['???'];
+
+        currentDebateSections = Math.min(8, Math.max(1, list.length));
+        preparedDebateSections = list.slice(0, currentDebateSections).map((line, idx) => {
+            const speakerName = speakerPool[idx % speakerPool.length];
+            const normalized = ensureSingleWeakPointMarker(line);
+            const parts = splitStatementIntoParts(normalized).map(p => ({
+                ...p,
+                emotion: inferEmotionFromText(p.text),
+            }));
+            return { speakerName, statement: normalized, parts };
+        });
+
+        setState(TrialPhases.NON_STOP_DEBATE);
+        return true;
+    }
+
     function setupNonStopDebate() {
         cleanupDebateUI();
 
@@ -302,6 +324,8 @@ export function createTrialManager(deps) {
 
         const el = document.createElement('div');
         el.className = 'dangan-floating-statement dangan-statement-single';
+        const w = window.innerWidth || 1200;
+        el.style.width = `${Math.min(Math.round(w * 0.82), 980)}px`;
         const rawText = stripSurroundingQuotes(String(text || ''));
         const wm = String(weakMarkup || '').trim();
         if (wm && rawText.includes(wm)) {
@@ -324,7 +348,6 @@ export function createTrialManager(deps) {
         }
 
         statementEl = el;
-        const w = window.innerWidth || 1200;
         const h = window.innerHeight || 800;
         const baseY = Number.isFinite(laneY) ? laneY : Math.round(h * 0.52);
 
@@ -1041,6 +1064,18 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
                 .map(name => ({ name }));
         }
 
+        const activeCharId = ctx.characterId ?? ctx.character_id ?? ctx.charaId ?? ctx.char_id;
+        if ((groupId == null || groupId === '') && activeCharId != null) {
+            const sid = String(activeCharId).trim();
+            const allChars = [
+                ...(Array.isArray(ctx.characters) ? ctx.characters : []),
+                ...(Array.isArray(window.characters) ? window.characters : []),
+            ];
+            const found = allChars.find(c => String(c?.id ?? c?.characterId ?? c?.char_id ?? '').trim() === sid);
+            const name = String(found?.name || ctx.characterName || ctx.character_name || '').trim();
+            if (name) return [{ name }];
+        }
+
         const chars = Array.isArray(ctx.characters) ? ctx.characters : [];
         if (chars.length && chars.length <= 20) {
             const members = chars
@@ -1094,13 +1129,26 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
             if (found?.name) addName(found.name);
         };
 
+        const matchesGroup = (obj) => {
+            if (!obj || groupId == null) return true;
+            const gid = String(groupId).trim();
+            const oid = obj?.groupId ?? obj?.group_id ?? obj?.id ?? obj?.chat_id ?? obj?.groupChatId ?? obj?.group_chat_id;
+            if (oid == null) return true;
+            return String(oid).trim() === gid;
+        };
+
         const pullFromAny = (obj) => {
             if (!obj) return;
 
             if (Array.isArray(obj)) {
-                for (const item of obj) pullFromAny(item);
+                for (const item of obj) {
+                    if (item && typeof item === 'object' && !matchesGroup(item)) continue;
+                    pullFromAny(item);
+                }
                 return;
             }
+
+            if (obj && typeof obj === 'object' && !matchesGroup(obj)) return;
 
             const maybeMembers = obj.members || obj.member_list || obj.characters || obj.participants || obj.group_members;
             if (Array.isArray(maybeMembers)) {
@@ -1115,7 +1163,17 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
             else if (typeof obj === 'string') addName(obj);
         };
 
-        for (const s of sources) pullFromAny(s);
+        for (const s of sources) {
+            if (Array.isArray(s)) {
+                const gid = String(groupId).trim();
+                const matched = s.find(item => item && typeof item === 'object' && matchesGroup(item) && String(item?.id ?? item?.groupId ?? item?.group_id ?? '').trim() === gid);
+                if (matched) {
+                    pullFromAny(matched);
+                    continue;
+                }
+            }
+            pullFromAny(s);
+        }
 
         return Array.from(names);
     }
@@ -1144,6 +1202,7 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
         stop: () => {
             setState(TrialPhases.IDLE);
         },
+        debugStartNonStopDebateWithLines,
         onMessageSent,
         getState: () => currentState,
         phases: TrialPhases,

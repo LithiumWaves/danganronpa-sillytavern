@@ -115,7 +115,7 @@
 
 .dangan-floating-statement {
     position: absolute;
-    white-space: nowrap;
+    white-space: normal;
     color: white;
     font-size: 32px;
     font-family: 'Orbitron', sans-serif;
@@ -130,6 +130,7 @@
     line-height: 1.08;
     text-align: center;
     padding: 0;
+    width: min(82vw, 980px);
     text-shadow:
         -2px -2px 0 rgba(0, 0, 0, 0.95),
         -2px  0   0 rgba(0, 0, 0, 0.95),
