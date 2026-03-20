@@ -1,28 +1,5 @@
 /* styles/systems/trial/trial.css */
 
-/* Hide ST elements during NSD */
-body.dangan-trial-active {
-    background: #000 !important;
-}
-
-/* Ensure common ST background containers are transparent during trial */
-body.dangan-trial-active #main-container,
-body.dangan-trial-active #chat,
-body.dangan-trial-active .mes-container,
-body.dangan-trial-active #shell,
-body.dangan-trial-active .content-container,
-body.dangan-trial-active .ui-dialog {
-    background-color: transparent !important;
-    background-image: none !important;
-}
-
-body.dangan-nsd-active #chat-shield,
-body.dangan-nsd-active .vn-container,
-body.dangan-nsd-active #expression-holder,
-body.dangan-nsd-active .char-container {
-    display: none !important;
-}
-
 #dangan-nonstop-debate-overlay {
     position: fixed;
     top: 0;

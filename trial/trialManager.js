@@ -93,10 +93,8 @@ export function createTrialManager(deps) {
 
         if (oldState === TrialPhases.NON_STOP_DEBATE && newState !== TrialPhases.NON_STOP_DEBATE) {
             cleanupNSDListeners();
-            document.body.classList.remove('dangan-nsd-active');
         } else if (newState === TrialPhases.NON_STOP_DEBATE && oldState !== TrialPhases.NON_STOP_DEBATE) {
             setupNSDListeners();
-            document.body.classList.add('dangan-nsd-active');
         }
 
         syncUI();
@@ -288,22 +286,6 @@ ${historyText}
     }
 
     function syncUI() {
-        if (currentState !== TrialPhases.IDLE) {
-            if (vnModeController?.setEnabled) {
-                vnModeController.setEnabled(true);
-            }
-            document.body.classList.add('dangan-trial-active');
-        } else {
-            document.body.classList.remove('dangan-trial-active');
-        }
-
-        // Handle Pre-Debate specific body class
-        if (currentState === TrialPhases.PRE_DEBATE) {
-            document.body.classList.add('dangan-trial-discussion-vn-active');
-        } else {
-            document.body.classList.remove('dangan-trial-discussion-vn-active');
-        }
-
         console.log(`[Dangan][Trial] syncUI: state=${currentState}`);
 
         switch (currentState) {
@@ -371,8 +353,7 @@ ${historyText}
             console.warn('[Dangan][Trial] Debate section generation failed or timed out, falling back:', e);
             preparedDebateSections = null;
         } finally {
-            // Set state first so debate UI is ready and background elements are hidden 
-            // BEFORE the cutscene overlay starts fading out.
+            // Transition to debate phase before finishing cutscene
             setState(TrialPhases.NON_STOP_DEBATE);
             await endNonStopDebateCutscene();
         }
