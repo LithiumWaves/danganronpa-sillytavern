@@ -1124,7 +1124,7 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
             const sid = String(id || '').trim();
             if (!sid) return;
             const found = allChars.find(c =>
-                String(c?.id ?? c?.characterId ?? c?.char_id ?? '').trim() === sid
+                String(c?.id ?? c?.characterId ?? c?.char_id ?? c?.chara_id ?? c?.member_id ?? '').trim() === sid
             );
             if (found?.name) addName(found.name);
         };
@@ -1140,6 +1140,15 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
         const pullFromAny = (obj) => {
             if (!obj) return;
 
+            if (typeof obj === 'number') {
+                resolveFromId(obj);
+                return;
+            }
+            if (typeof obj === 'string') {
+                addName(obj);
+                return;
+            }
+
             if (Array.isArray(obj)) {
                 for (const item of obj) {
                     if (item && typeof item === 'object' && !matchesGroup(item)) continue;
@@ -1150,7 +1159,21 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
 
             if (obj && typeof obj === 'object' && !matchesGroup(obj)) return;
 
-            const maybeMembers = obj.members || obj.member_list || obj.characters || obj.participants || obj.group_members;
+            const gid = String(groupId).trim();
+            if (obj && typeof obj === 'object' && Object.prototype.hasOwnProperty.call(obj, gid)) {
+                pullFromAny(obj[gid]);
+                return;
+            }
+
+            const maybeMembers = obj.members
+                || obj.member_list
+                || obj.characters
+                || obj.participants
+                || obj.group_members
+                || obj.memberIds
+                || obj.member_ids
+                || obj.characterIds
+                || obj.character_ids;
             if (Array.isArray(maybeMembers)) {
                 for (const item of maybeMembers) pullFromAny(item);
                 return;
@@ -1160,10 +1183,16 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
             const name = obj.name ?? obj.ch_name ?? obj.character_name ?? obj.display_name;
             if (name) addName(name);
             else if (id != null) resolveFromId(id);
-            else if (typeof obj === 'string') addName(obj);
         };
 
         for (const s of sources) {
+            if (s && typeof s === 'object' && !Array.isArray(s)) {
+                const gid = String(groupId).trim();
+                if (Object.prototype.hasOwnProperty.call(s, gid)) {
+                    pullFromAny(s[gid]);
+                    continue;
+                }
+            }
             if (Array.isArray(s)) {
                 const gid = String(groupId).trim();
                 const matched = s.find(item => item && typeof item === 'object' && matchesGroup(item) && String(item?.id ?? item?.groupId ?? item?.group_id ?? '').trim() === gid);
