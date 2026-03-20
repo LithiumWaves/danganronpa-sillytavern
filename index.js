@@ -5940,30 +5940,44 @@ debugSTGlobals();
         console.error(`[${extensionName}] ❌ Trial Manager init failed:`, e);
     }
 
+    // Expose for debugging
+    window.DanganExtension = {
+        trialManager,
+        extensionName,
+        extensionSettings: extension_settings,
+        eventSource,
+        event_types
+    };
+
+    console.log(`[${extensionName}] 🚀 Extension fully loaded.`);
+
     try {
-        // Clear previous listeners to avoid duplicates
-        eventSource.off(event_types.MESSAGE_SENT);
-        
-        // Hook into SillyTavern's message sending event for reliable state transitions
-        eventSource.on(event_types.MESSAGE_SENT, (mesId) => {
+        // Hook into multiple events for maximum reliability
+        const handleMessage = (mesId) => {
+            console.log(`[${extensionName}] 🔊 eventSource trigger:`, mesId);
             const ctx = window.SillyTavern?.getContext?.();
             const chat = ctx?.chat;
             if (!Array.isArray(chat)) return;
             
-            // Find the message by ID, index, or just take the last one if it's from user
-             const msg = chat[mesId] || chat.find(m => m.mesId === mesId) || chat[chat.length - 1];
-             if (msg && (msg.is_user || msg.force_user)) {
-                 console.log(`[${extensionName}] 💬 Message sent detected: "${msg.mes?.slice(0, 30)}..."`);
-                 
-                 // If the message was sent via the UI (human typed), it might take a moment 
-                 // for the state to be ready. 
-                 const text = msg.mes;
-                 setTimeout(() => {
-                     console.log(`[${extensionName}] 🚀 Triggering trialManager.onMessageSent with text: "${text?.slice(0, 20)}..."`);
-                     trialManager?.onMessageSent(text);
-                 }, 250);
-             }
-        });
+            const msg = chat[mesId] || chat.find(m => m.mesId === mesId) || chat[chat.length - 1];
+            if (msg && (msg.is_user || msg.force_user)) {
+                console.log(`[${extensionName}] 💬 User message detected: "${msg.mes?.slice(0, 30)}..."`);
+                const text = msg.mes;
+                setTimeout(() => {
+                    if (trialManager) {
+                        console.log(`[${extensionName}] 🚀 Calling trialManager.onMessageSent`);
+                        trialManager.onMessageSent(text);
+                    } else {
+                        console.warn(`[${extensionName}] ⚠️ trialManager not initialized yet.`);
+                    }
+                }, 250);
+            }
+        };
+
+        eventSource.on(event_types.MESSAGE_SENT, handleMessage);
+        eventSource.on(event_types.USER_MESSAGE_RENDERED, handleMessage);
+        
+        console.log(`[${extensionName}] ✅ Chat hooks initialized.`);
     } catch (e) {
         console.error(`[${extensionName}] ❌ Chat hooks failed:`, e);
     }

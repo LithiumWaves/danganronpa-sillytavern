@@ -44,11 +44,38 @@ export function createTrialManager(deps) {
     let lastHitBullet = null;
     let lastHitWeakPoint = null;
     let rebuttalPromptActive = false;
+    let persistentDebateHistory = [];
 
     function setState(newState) {
         console.log(`[Dangan][Trial] State change: ${currentState} -> ${newState}`);
         currentState = newState;
         syncUI();
+        syncPrompt();
+    }
+
+    function syncPrompt() {
+        const ctx = window.SillyTavern?.getContext?.();
+        const setPrompt = ctx?.setExtensionPrompt || window.setExtensionPrompt;
+        if (typeof setPrompt !== 'function') return;
+
+        if (currentState === TrialPhases.IDLE) {
+            setPrompt('dangan_debate_history', '', 0, 0, false, 'system');
+            setPrompt('dangan_rebuttal_judgment', '', 0, 0, false, 'system');
+            return;
+        }
+
+        if (persistentDebateHistory.length > 0) {
+            const historyText = persistentDebateHistory.map(line => `- ${line}`).join('\n');
+            const prompt = `
+### DANGANRONPA DEBATE CONTEXT
+The characters recently had a fast-paced Non-stop Debate. Use the following lines as context for your next response:
+${historyText}
+### END DEBATE CONTEXT
+`.trim();
+            // Depth 0 means inject at the very end of the prompt (most recent context)
+            // is_system: true
+            setPrompt('dangan_debate_history', prompt, 0, 1, true, 'system');
+        }
     }
 
     function syncUI() {
@@ -68,6 +95,8 @@ export function createTrialManager(deps) {
             document.body.classList.remove('dangan-trial-discussion-vn-active');
         }
 
+        console.log(`[Dangan][Trial] syncUI: state=${currentState}`);
+
         switch (currentState) {
             case TrialPhases.IDLE:
                 cleanupDebateUI();
@@ -81,6 +110,10 @@ export function createTrialManager(deps) {
                 break;
             case TrialPhases.TRUTH_BULLET_EXPLANATION:
                 cleanupDebateUI();
+                // Show rebuttal UI if bullet hit
+                if (lastHitBullet && lastHitWeakPoint) {
+                    showExplanationUI(lastHitBullet, lastHitWeakPoint);
+                }
                 break;
         }
     }
@@ -133,10 +166,17 @@ export function createTrialManager(deps) {
         const speakers = getChatCardMembers().map(s => s.name).filter(Boolean);
         const speakerPool = speakers.length ? speakers : ['???'];
 
+        persistentDebateHistory = [];
         currentDebateSections = Math.min(8, Math.max(1, list.length));
         preparedDebateSections = list.slice(0, currentDebateSections).map((line, idx) => {
             const speakerName = speakerPool[idx % speakerPool.length];
             const normalized = ensureSingleWeakPointMarker(line);
+            
+            const spoken = stripSurroundingQuotes(extractDialogueOnly(normalized) || normalized);
+            if (spoken) {
+                persistentDebateHistory.push(`${speakerName}: ${spoken}`);
+            }
+
             const parts = splitStatementIntoParts(normalized).map(p => ({
                 ...p,
                 emotion: inferEmotionFromText(p.text),
@@ -596,7 +636,8 @@ JUDGMENT RULES:
 5. The next character response should act as a judge or witness reacting to this specific rebuttal.
 `.trim();
             console.log('[Dangan][Trial] Injecting rebuttal judgment prompt.');
-            setPrompt('dangan_rebuttal_judgment', prompt, 0, 0, false, 'system');
+            // Depth 0, position 1 (after history), is_system true
+            setPrompt('dangan_rebuttal_judgment', prompt, 0, 1, true, 'system');
             rebuttalPromptActive = true;
         }
 
@@ -746,6 +787,10 @@ JUDGMENT RULES:
 
         const sections = [];
         const debateSoFar = [];
+        
+        // Reset persistent history for the new debate
+        persistentDebateHistory = [];
+
         for (let i = 0; i < sectionsCount; i++) {
             const speakerName = pickSpeakerWeighted(selectedSpeakers);
             const debateSoFarText = debateSoFar.length
@@ -766,10 +811,16 @@ JUDGMENT RULES:
 
             const spoken = stripSurroundingQuotes(extractDialogueOnly(statement) || statement);
             if (spoken) {
-                debateSoFar.push(`${speakerName}: ${spoken}`);
+                const line = `${speakerName}: ${spoken}`;
+                debateSoFar.push(line);
+                persistentDebateHistory.push(line);
                 while (debateSoFar.length > 3) debateSoFar.shift();
             }
         }
+        
+        // Sync prompt immediately after building sections
+        syncPrompt();
+        
         return sections;
     }
 
