@@ -11,6 +11,7 @@ export function createTrialManager(deps) {
     const {
         extensionName,
         extensionSettings,
+        extensionFolderPath,
         saveSettingsDebounced,
         vnModeController,
         getTruthBullets,
@@ -21,6 +22,11 @@ export function createTrialManager(deps) {
         getSfx,
         characters,
     } = deps;
+
+    function getAssetUrl(name) {
+        const base = extensionFolderPath || `scripts/extensions/third-party/${extensionName}`;
+        return `${base}/assets/classtrial/${name}`;
+    }
 
     let currentState = TrialPhases.IDLE;
     let currentDebateSections = 0;
@@ -350,16 +356,24 @@ ${historyText}
     async function startNonStopDebate() {
         currentDebateSections = Math.floor(Math.random() * (8 - 3 + 1)) + 3;
         showNonStopDebateCutscene();
+        
         try {
-            preparedDebateSections = await buildDebateSections({
-                sectionsCount: currentDebateSections,
-            });
+            // Race the generation against a 25-second timeout to prevent "stuck" cutscene
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Debate generation timed out')), 25000)
+            );
+            
+            preparedDebateSections = await Promise.race([
+                buildDebateSections({ sectionsCount: currentDebateSections }),
+                timeoutPromise
+            ]);
         } catch (e) {
-            console.warn('[Dangan][Trial] Debate section generation failed, falling back:', e);
+            console.warn('[Dangan][Trial] Debate section generation failed or timed out, falling back:', e);
             preparedDebateSections = null;
+        } finally {
+            await endNonStopDebateCutscene();
+            setState(TrialPhases.NON_STOP_DEBATE);
         }
-        await endNonStopDebateCutscene();
-        setState(TrialPhases.NON_STOP_DEBATE);
     }
 
     function debugStartNonStopDebateWithLines(lines) {
@@ -723,20 +737,23 @@ ${historyText}
         const t = String(text || '').toLowerCase();
         if (!t.trim()) return 'neutral';
         
+        // Map to common SillyTavern Expression labels: 
+        // joy, sadness, anger, surprise, disgust, fear
+        
         // Anger/Aggression
-        if (isAllCapsLine(text) || /!{2,}/.test(t) || /shut up|liar|wrong|impossible/i.test(t)) return 'angry';
+        if (isAllCapsLine(text) || /!{2,}/.test(t) || /shut up|liar|wrong|impossible|dammit|bastard/i.test(t)) return 'anger';
         
         // Surprise/Shock
-        if (/\?{2,}/.test(t) || /what|how|really|wait/i.test(t)) return 'surprised';
+        if (/\?{2,}/.test(t) || /what|how|really|wait|no way|impossible/i.test(t)) return 'surprise';
         
         // Sadness/Doubt
-        if (/\.\.\./.test(t) || /sorry|sad|unfortunate|helpless/i.test(t)) return 'sad';
+        if (/\.\.\./.test(t) || /sorry|sad|unfortunate|helpless|forgive/i.test(t)) return 'sadness';
         
-        // Thinking/Logic
-        if (/\?/.test(t) || /maybe|perhaps|consider|evidence/i.test(t)) return 'thinking';
+        // Thinking/Logic (often maps to neutral or surprise in ST, but let's try 'thinking' as a fallback)
+        if (/\?/.test(t) || /maybe|perhaps|consider|evidence|think|logic/i.test(t)) return 'surprise';
         
-        // Joy/Excitement (rare in trials but possible)
-        if (/haha|great|wonderful|correct/i.test(t)) return 'joy';
+        // Joy/Excitement
+        if (/haha|great|wonderful|correct|exactly|yes/i.test(t)) return 'joy';
 
         return 'neutral';
     }
@@ -859,8 +876,7 @@ ${historyText}
         const banner = document.createElement('div');
         banner.className = `dangan-trial-banner banner-${type}`;
         const assetName = type === 'perjury' ? 'perjury.png' : 'counter.png';
-        const assetPath = `scripts/extensions/third-party/danganronpa-extension/assets/classtrial/${assetName}`;
-        banner.style.backgroundImage = `url("${assetPath}")`;
+        banner.style.backgroundImage = `url("${getAssetUrl(assetName)}")`;
         
         overlay.appendChild(banner);
         document.body.appendChild(overlay);
@@ -1163,6 +1179,8 @@ JUDGMENT RULES:
 
     function pickSpeakersFromContext(context) {
         const members = getChatCardMembers();
+        console.log(`[Dangan][Trial] Speaker candidates from group:`, members.map(m => m.name));
+
         if (members.length) {
             const counts = new Map();
             for (const m of context) {
@@ -1184,9 +1202,12 @@ JUDGMENT RULES:
                 ? weighted.filter(s => (counts.get(normalizeLooseName(s.name)) || 0) > 0)
                 : weighted;
 
-            return pool
+            const finalSpeakers = pool
                 .filter(s => !isGroupMemberMuted(s.name))
                 .sort((a, b) => b.weight - a.weight);
+            
+            console.log(`[Dangan][Trial] Final speaker pool:`, finalSpeakers.map(s => s.name));
+            return finalSpeakers;
         }
 
         const counts = new Map();
@@ -1197,9 +1218,12 @@ JUDGMENT RULES:
             counts.set(name, (counts.get(name) || 0) + 1);
         }
 
-        return Array.from(counts.entries())
+        const fallbackSpeakers = Array.from(counts.entries())
             .sort((a, b) => b[1] - a[1])
             .map(([name, count]) => ({ name, weight: count }));
+        
+        console.log(`[Dangan][Trial] Fallback speaker pool (from history):`, fallbackSpeakers.map(s => s.name));
+        return fallbackSpeakers;
     }
 
     function pickSpeakerWeighted(speakers) {

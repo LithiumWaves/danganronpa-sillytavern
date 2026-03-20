@@ -5930,6 +5930,7 @@ debugSTGlobals();
         trialManager = createTrialManager({
             extensionName,
             extensionSettings: extension_settings,
+            extensionFolderPath,
             saveSettingsDebounced,
             vnModeController,
             getTruthBullets,

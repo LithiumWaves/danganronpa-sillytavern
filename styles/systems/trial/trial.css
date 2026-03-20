@@ -1,6 +1,10 @@
 /* styles/systems/trial/trial.css */
 
 /* Hide ST elements during NSD */
+body.dangan-trial-active {
+    background: #000 !important;
+}
+
 body.dangan-nsd-active #chat-shield,
 body.dangan-nsd-active .vn-container,
 body.dangan-nsd-active #expression-holder,
@@ -26,7 +30,7 @@ body.dangan-nsd-active .char-container {
     position: absolute;
     width: 120px; /* Slightly larger */
     height: 120px;
-    background-image: url('scripts/extensions/third-party/danganronpa-extension/assets/classtrial/trialcursor.png');
+    background-image: url('../../../assets/classtrial/trialcursor.png');
     background-size: contain;
     background-repeat: no-repeat;
     background-position: center;
@@ -340,29 +344,29 @@ body.dangan-nsd-active .char-container {
 
 .dangan-trial-banner {
     position: absolute;
-    height: 100vh; /* Stretch to full height */
-    width: 200%; /* Wider to cover the whole screen while diagonal */
-    background-size: 100% 100%; /* Force stretch the image */
+    height: 100vh;
+    width: 250%; /* Slightly narrower but still covers */
+    background-size: 100% 100%; /* Stretch to fit as requested */
     background-repeat: no-repeat;
     background-position: center;
     top: 50%;
-    left: -220%;
-    transform: translateY(-50%) rotate(-8deg);
-    filter: drop-shadow(0 0 40px rgba(0, 255, 255, 0.9));
-    transition: left 0.5s cubic-bezier(0.15, 0.85, 0.35, 1.15);
+    left: -300%;
+    transform: translateY(-50%) rotate(-10deg);
+    filter: drop-shadow(0 0 50px rgba(0, 255, 255, 0.95));
+    transition: left 0.6s cubic-bezier(0.15, 0.85, 0.35, 1.15);
     z-index: 2147483647;
 }
 
 .dangan-trial-banner.banner-perjury {
-    filter: drop-shadow(0 0 40px rgba(255, 0, 255, 0.9));
+    filter: drop-shadow(0 0 50px rgba(255, 0, 255, 0.95));
 }
 
 .dangan-trial-banner.active {
-    left: -40%;
+    left: -100%; /* Move to center */
 }
 
 .dangan-trial-banner.exit {
-    left: 180%;
+    left: 200%;
 }
 
 /* ─── Perjury Charging VFX ────────────── */
@@ -395,12 +399,18 @@ body.dangan-nsd-active .char-container {
     from { background-color: rgba(255, 0, 255, 0.05); }
     to { background-color: rgba(255, 0, 255, 0.2); }
 }
+
+.dangan-explanation-box {
     padding: 40px;
     text-align: center;
     color: white;
     font-family: 'Orbitron', sans-serif;
     box-shadow: 0 0 50px rgba(255, 0, 255, 0.5);
     max-width: 80%;
+    background: rgba(0, 0, 0, 0.85);
+    border: 2px solid #ff00ff;
+    position: relative;
+    z-index: 10;
 }
 
 .dangan-explanation-header {
@@ -466,7 +476,8 @@ body.dangan-nsd-active .char-container {
     z-index: 2147483647;
     pointer-events: auto;
     overflow: hidden;
-    background: radial-gradient(circle at center, rgba(0, 255, 255, 0.08), rgba(0, 0, 0, 0.85));
+    background-color: #000; /* Solid fallback */
+    background-image: radial-gradient(circle at center, rgba(0, 255, 255, 0.08), rgba(0, 0, 0, 0.85));
     display: flex;
     align-items: center;
     justify-content: center;
