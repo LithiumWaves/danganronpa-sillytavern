@@ -559,8 +559,11 @@ export function createTrialManager(deps) {
     }
 
     function onMessageSent(text) {
+        console.log(`[Dangan][Trial] onMessageSent: state=${currentState}, rebuttalPromptActive=${rebuttalPromptActive}`);
+        
         if (currentState !== TrialPhases.TRUTH_BULLET_EXPLANATION) {
             if (rebuttalPromptActive) {
+                console.log('[Dangan][Trial] Clearing stale rebuttal prompt.');
                 const ctx = window.SillyTavern?.getContext?.();
                 const setPrompt = ctx?.setExtensionPrompt || window.setExtensionPrompt;
                 if (typeof setPrompt === 'function') {
@@ -571,6 +574,7 @@ export function createTrialManager(deps) {
             return;
         }
 
+        console.log('[Dangan][Trial] Processing rebuttal explanation...');
         const notif = document.getElementById('dangan-trial-rebuttal-notif');
         if (notif) notif.remove();
 
@@ -591,13 +595,13 @@ JUDGMENT RULES:
 4. Keep the Danganronpa trial momentum and stay in character.
 5. The next character response should act as a judge or witness reacting to this specific rebuttal.
 `.trim();
+            console.log('[Dangan][Trial] Injecting rebuttal judgment prompt.');
             setPrompt('dangan_rebuttal_judgment', prompt, 0, 0, false, 'system');
             rebuttalPromptActive = true;
         }
 
-        console.log('[Dangan][Trial] Rebuttal judgment prompt injected, transitioning back to Pre-Debate');
-        
         setTimeout(() => {
+            console.log('[Dangan][Trial] Transitioning back to PRE_DEBATE');
             setState(TrialPhases.PRE_DEBATE);
         }, 800);
     }
@@ -694,6 +698,9 @@ JUDGMENT RULES:
         }
         const notif = document.getElementById('dangan-trial-pre-debate-notif');
         if (notif) notif.remove();
+        
+        const rebuttalNotif = document.getElementById('dangan-trial-rebuttal-notif');
+        if (rebuttalNotif) rebuttalNotif.remove();
     }
 
     function showNonStopDebateCutscene() {

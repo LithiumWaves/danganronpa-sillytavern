@@ -1,5 +1,5 @@
 import { extension_settings } from "../../../extensions.js";
-import { saveSettingsDebounced, getRequestHeaders } from "../../../../script.js";
+import { saveSettingsDebounced, getRequestHeaders, eventSource, event_types } from "../../../../script.js";
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../../slash-commands/SlashCommandArgument.js';
@@ -5888,53 +5888,35 @@ itemsPanelController.renderSkillsItemsPanel();
 
 debugSTGlobals();
         
-        try {
-            $("#send_button").on("click", function () {
-                const text = $("#send_textarea").val();
-                trialManager?.onMessageSent(text);
-            });
-
-            $("#send_textarea").on("keydown", function (e) {
-                if (e.key === "Enter" && !e.shiftKey) {
-                    const text = $(this).val();
-                    trialManager?.onMessageSent(text);
-                }
-            });
-        } catch (e) {
-            console.error(`[${extensionName}] ❌ Chat hooks failed:`, e);
-        }
-
-        initTruthBullets({
-    extension_settings,
-    saveSettingsDebounced,
-    sfx,
-    characters,
-    normalizeName,
-    registerCharacterFromMessage,
-    increaseTrust: increaseTrustWithRewards,
-    decreaseTrust,
-    startV3CObserver,
-    awardMonocoins,
-    awardXp,
-    monocoinRewards: MONOCOIN_REWARDS,
-    xpRewards: XP_REWARDS,
-    playSfx,
-    extension_settings,
-    saveSettingsDebounced,
-    extensionName,
-    getSetting: getMonopadSetting,
-    navigateToMapPin: (locationId) => {
-        setActiveMonopadTab("map");
-        mapPanelController?.highlightPinByLocationId?.(locationId);
-    },
-    hasMapPin: (locationId) => mapPanelController?.hasPinForLocationId?.(locationId) ?? false,
-    placeOnMap: (label, locationId) => {
-        setActiveMonopadTab("map");
-        mapPanelController?.openPinCreatorWithPrefill?.(label, locationId);
-    },
-    removePin: (locationId) => mapPanelController?.removePinByLocationId?.(locationId),
-    setPinHidden: (locationId, hidden) => mapPanelController?.setPinHidden?.(locationId, hidden),
-});
+    initTruthBullets({
+        extension_settings,
+        saveSettingsDebounced,
+        sfx,
+        characters,
+        normalizeName,
+        registerCharacterFromMessage,
+        increaseTrust: increaseTrustWithRewards,
+        decreaseTrust,
+        startV3CObserver,
+        awardMonocoins,
+        awardXp,
+        monocoinRewards: MONOCOIN_REWARDS,
+        xpRewards: XP_REWARDS,
+        playSfx,
+        extensionName,
+        getSetting: getMonopadSetting,
+        navigateToMapPin: (locationId) => {
+            setActiveMonopadTab("map");
+            mapPanelController?.highlightPinByLocationId?.(locationId);
+        },
+        hasMapPin: (locationId) => mapPanelController?.hasPinForLocationId?.(locationId) ?? false,
+        placeOnMap: (label, locationId) => {
+            setActiveMonopadTab("map");
+            mapPanelController?.openPinCreatorWithPrefill?.(label, locationId);
+        },
+        removePin: (locationId) => mapPanelController?.removePinByLocationId?.(locationId),
+        setPinHidden: (locationId, hidden) => mapPanelController?.setPinHidden?.(locationId, hidden),
+    });
 
     vfxCleanup = initVfxSystem();
 
@@ -5954,6 +5936,27 @@ debugSTGlobals();
         });
     } catch (e) {
         console.error(`[${extensionName}] ❌ Trial Manager init failed:`, e);
+    }
+
+    try {
+        // Clear previous listeners to avoid duplicates
+        eventSource.off(event_types.MESSAGE_SENT);
+        
+        // Hook into SillyTavern's message sending event for reliable state transitions
+        eventSource.on(event_types.MESSAGE_SENT, (mesId) => {
+            const ctx = window.SillyTavern?.getContext?.();
+            const chat = ctx?.chat;
+            if (!Array.isArray(chat)) return;
+            
+            // Find the message by ID, index, or just take the last one if it's from user
+             const msg = chat[mesId] || chat.find(m => m.mesId === mesId) || chat[chat.length - 1];
+             if (msg && (msg.is_user || msg.force_user)) {
+                 console.log(`[${extensionName}] 💬 Message sent detected: "${msg.mes?.slice(0, 30)}..."`);
+                 trialManager?.onMessageSent(msg.mes);
+             }
+        });
+    } catch (e) {
+        console.error(`[${extensionName}] ❌ Chat hooks failed:`, e);
     }
     bdaCinematicEditor = createBdaCinematicEditor({
         extensionFolderPath,
