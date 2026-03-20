@@ -5954,7 +5954,14 @@ debugSTGlobals();
              const msg = chat[mesId] || chat.find(m => m.mesId === mesId) || chat[chat.length - 1];
              if (msg && (msg.is_user || msg.force_user)) {
                  console.log(`[${extensionName}] 💬 Message sent detected: "${msg.mes?.slice(0, 30)}..."`);
-                 trialManager?.onMessageSent(msg.mes);
+                 
+                 // If the message was sent via the UI (human typed), it might take a moment 
+                 // for the state to be ready. 
+                 const text = msg.mes;
+                 setTimeout(() => {
+                     console.log(`[${extensionName}] 🚀 Triggering trialManager.onMessageSent with text: "${text?.slice(0, 20)}..."`);
+                     trialManager?.onMessageSent(text);
+                 }, 250);
              }
         });
     } catch (e) {

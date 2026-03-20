@@ -852,6 +852,9 @@ JUDGMENT RULES:
             ? String(getCharacterSourceText(speakerName) || '').trim()
             : '';
 
+        // Capture current debate state for persistent context injection
+        const debateMarker = `[NSD_SECTION_${sectionIndex + 1}_OF_${sectionsCount}]`;
+        
         const prompt = `
 You are ${speakerName}.
 
@@ -867,6 +870,8 @@ Rules:
 - Inside the quotes, mark EXACTLY ONE weak point using this format: [[WEAK POINT]].
 - The weak point should be short: preferably 1 word, max 3 words.
 - No other markup and no speaker labels.
+
+MARKER: ${debateMarker}
 
 CHARACTER DATA:
 ${sourceText || 'NO CHARACTER DATA AVAILABLE.'}
@@ -884,6 +889,14 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
             return ensureSingleWeakPointMarker('...');
         }
 
+        // Inject the debate context into the global session prompt so the AI "sees" it during generation
+        const ctx = window.SillyTavern?.getContext?.();
+        const setPrompt = ctx?.setExtensionPrompt || window.setExtensionPrompt;
+        if (typeof setPrompt === 'function') {
+            const historyPrompt = `[DANGANRONPA DEBATE HISTORY]\n${debateSoFarText || 'Debate just started.'}`;
+            setPrompt('dangan_debate_history', historyPrompt, 1, 0, false, 'system');
+        }
+
         for (let attempt = 0; attempt < 3; attempt++) {
             const out = String(
                 await generateTrialDialogue(prompt, {
@@ -899,7 +912,6 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
             const normalized = sanitizeDebateLine(`"${candidate}"`);
             const withWeak = ensureSingleWeakPointMarker(normalized);
             if (withWeak && withWeak !== '...') return withWeak;
-            if (withWeak) return withWeak;
         }
 
         return ensureSingleWeakPointMarker('...');
