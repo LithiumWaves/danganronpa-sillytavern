@@ -451,6 +451,9 @@ ${historyText}
     }
 
     function startDebatePlayback(prepared) {
+        if (playbackTimerId) window.clearTimeout(playbackTimerId);
+        playbackTimerId = null;
+
         debateSectionsActive = buildFallbackSectionsIfNeeded(prepared);
         if (!debateSectionsActive?.length) return;
 
@@ -514,7 +517,7 @@ ${historyText}
                 debatePartIndex = 0;
                 debateSectionIndex = (debateSectionIndex + 1) % currentDebateSections;
             }
-            playbackTimerId = window.setTimeout(playNextChunk, 120);
+            playbackTimerId = window.setTimeout(playNextChunk, 1200);
         });
     }
 
@@ -751,25 +754,25 @@ ${historyText}
 
         playSfx?.('shoottb');
 
-        // 1. Direct target check
-        const target = e.target;
-        if (target instanceof HTMLElement && target.classList.contains('dangan-weak-point')) {
-            hitWeakPoint(target, currentBullet, isPerjury);
-            return;
-        }
-
-        // 2. Element from point check
+        // 1. Element from point check (more reliable than e.target for floating layers)
         const topEl = document.elementFromPoint(e.clientX, e.clientY);
         if (topEl?.classList.contains('dangan-weak-point')) {
             hitWeakPoint(topEl, currentBullet, isPerjury);
             return;
         }
 
-        // 3. Rect based check
+        // 2. Direct target check
+        const target = e.target;
+        if (target instanceof HTMLElement && target.classList.contains('dangan-weak-point')) {
+            hitWeakPoint(target, currentBullet, isPerjury);
+            return;
+        }
+
+        // 3. Rect based check (only if it's actually a weak point part)
         const wp = currentWeakPointInfo?.element;
-        if (wp instanceof HTMLElement) {
+        if (wp instanceof HTMLElement && wp.classList.contains('dangan-weak-point')) {
             const rect = wp.getBoundingClientRect();
-            const padding = 34;
+            const padding = 20; // Tighten the hit box
             const hit = (
                 e.clientX >= rect.left - padding &&
                 e.clientX <= rect.right + padding &&
@@ -991,51 +994,60 @@ JUDGMENT RULES:
         const raw = String(text || '').replace(/\s+/g, ' ').trim();
         if (!raw) return [];
 
-        const soft = /([,;:]\s+|\.\.\.\s+|\.\s+|\?\s+|!\s+|\)\s+|\]\]\s+|\bbut\s+|\bhowever\s+|\bthough\s+|\byet\s+|\bso\s+|\bbecause\s+)/i;
-        const parts = raw.split(soft).filter(Boolean);
-        const normalized = [];
+        // Split by major punctuation, including weak point markers
+        // We want to keep the punctuation with the preceding chunk
+        const re = /([,;:]\s+|\.\.\.\s+|\.\s+|\?\s+|!\s+|\)\s+|\]\]\s*)/g;
+        const parts = raw.split(re).filter(Boolean);
+        
+        const chunks = [];
+        let current = '';
+        
         for (let i = 0; i < parts.length; i++) {
-            const part = parts[i];
-            if (soft.test(part) && normalized.length) {
-                normalized[normalized.length - 1] += part;
+            const p = parts[i];
+            if (re.test(p)) {
+                // It's a punctuation/marker, attach to current
+                current += p;
+                if (current.trim().length > 15) { // Minimum chunk size to avoid tiny fragments
+                    chunks.push(current.trim());
+                    current = '';
+                }
             } else {
-                normalized.push(part);
+                current += p;
             }
         }
-        const text2 = normalized.join('').replace(/\s+/g, ' ').trim();
+        if (current.trim()) chunks.push(current.trim());
 
-        const candidates = [];
-        const re = /,\s+|;\s+|:\s+|\.\.\.\s+|\.\s+|\?\s+|!\s+|\bbut\s+|\bhowever\s+|\bthough\s+|\byet\s+|\bso\s+|\bbecause\s+/gi;
-        let m;
-        while ((m = re.exec(text2)) !== null) {
-            const idx = m.index + m[0].length;
-            if (idx > 10 && idx < text2.length - 10) candidates.push(idx);
-        }
-
-        const target = Math.round(text2.length * 0.62);
-        let splitAt = -1;
-        let bestDist = Infinity;
-        for (const idx of candidates) {
-            const dist = Math.abs(idx - target);
-            if (dist < bestDist) {
-                bestDist = dist;
-                splitAt = idx;
+        // If a chunk is still too long (> 65 chars), try to split by conjunctions
+        const finalChunks = [];
+        const softSplit = /(\bbut\s+|\bhowever\s+|\bthough\s+|\byet\s+|\bso\s+|\bbecause\s+)/i;
+        
+        for (let chunk of chunks) {
+            if (chunk.length > 65) {
+                const subParts = chunk.split(softSplit).filter(Boolean);
+                let subCurrent = '';
+                for (let sp of subParts) {
+                    if (softSplit.test(sp)) {
+                        subCurrent += sp;
+                        finalChunks.push(subCurrent.trim());
+                        subCurrent = '';
+                    } else {
+                        subCurrent += sp;
+                    }
+                }
+                if (subCurrent.trim()) finalChunks.push(subCurrent.trim());
+            } else {
+                finalChunks.push(chunk);
             }
         }
 
-        if (splitAt === -1 || text2.length < 80) {
-            return [text2];
-        }
-
-        const a = text2.slice(0, splitAt).trim();
-        const b = text2.slice(splitAt).trim();
-        if (!a || !b) return [text2];
-        return [a, b];
+        return finalChunks.filter(c => c.length > 0);
     }
 
     function cleanupDebateUI() {
-        if (playbackTimerId) window.clearTimeout(playbackTimerId);
-        playbackTimerId = null;
+        if (playbackTimerId) {
+            window.clearTimeout(playbackTimerId);
+            playbackTimerId = null;
+        }
         if (statementAnimation) {
             try { statementAnimation.cancel(); } catch {}
             statementAnimation = null;
@@ -1048,6 +1060,9 @@ JUDGMENT RULES:
             debateOverlay.remove();
             debateOverlay = null;
         }
+        // Also clear any lingering statements from the body if they weren't in the overlay
+        document.querySelectorAll('.dangan-floating-statement').forEach(el => el.remove());
+        
         portraitImgEl = null;
         portraitSpeaker = null;
         portraitToken++;
@@ -1244,8 +1259,9 @@ Rules:
 - 1–2 sentences.
 - Use facts and implications from the context.
 - Your line should respond naturally to what others have said so far.
-- Inside the quotes, mark EXACTLY ONE weak point using this format: [[WEAK POINT]].
-- The weak point should be short: preferably 1 word, max 3 words.
+- Inside the quotes, you MUST mark EXACTLY ONE weak point (a contradiction or key claim) using [[WEAK POINT]] format.
+- Example: "The [[locked door]] proves that the killer must still be inside this very room!"
+- The weak point should be short: 1-3 words.
 - No other markup and no speaker labels.
 
 MARKER: ${debateMarker}
@@ -1302,29 +1318,39 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
     }
 
     function ensureSingleWeakPointMarker(text) {
-        const raw = String(text || '').trim();
+        let raw = String(text || '').trim();
+        
+        // 1. Try to fix common AI mistakes with the format
+        raw = raw.replace(/\[\[?([^\]]+)\]?\]/g, '[[$1]]'); // Fix single brackets
+        raw = raw.replace(/\*\*([^*]+)\*\*/g, '[[$1]]'); // Use bold text as weak points if marker missing
+        
+        // 2. Check for existing valid marker
         const existing = raw.match(/\[\[([^\]]+)\]\]/);
         if (existing) {
             const rawWeak = String(existing[1] || '').trim().replace(/\s+/g, ' ');
             const trimmedWeak = shrinkWeakPoint(rawWeak);
+            // Re-replace ONLY the first one
             return raw.replace(/\[\[[^\]]+\]\]/, `[[${trimmedWeak}]]`);
         }
 
+        // 3. Fallback: Force mark a word if no marker found
         const clean = raw.replace(/\s+/g, ' ').trim();
-        if (!clean) return '[[...]]';
+        if (!clean || clean === '...') return '[[...]]';
 
         const words = clean.split(' ').filter(Boolean);
         const chosen = pickCompactWeakPoint(words);
         if (!chosen) return `[[${words[0] || '...'}]]`;
 
-        const idx = words.findIndex(w => normalizeLooseToken(w) === normalizeLooseToken(chosen));
-        if (idx >= 0) {
-            const before = words.slice(0, idx).join(' ');
-            const after = words.slice(idx + 1).join(' ');
-            return [before, `[[${chosen}]]`, after].filter(Boolean).join(' ');
+        // Look for the word in the original text to replace it with [[ ]]
+        // Use regex for case-insensitive whole word replacement
+        const escapedChosen = escapeRegExp(chosen);
+        const re = new RegExp(`\\b${escapedChosen}\\b`, 'i');
+        if (re.test(clean)) {
+            return clean.replace(re, `[[${chosen}]]`);
         }
 
-        return `${clean} [[${chosen}]]`;
+        // Ultimate fallback
+        return `[[${chosen}]] ${clean.replace(new RegExp(escapedChosen, 'gi'), '').trim()}`;
     }
 
     function normalizeLooseToken(value) {

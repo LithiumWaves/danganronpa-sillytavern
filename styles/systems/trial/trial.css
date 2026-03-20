@@ -10,8 +10,6 @@
     background: transparent;
     pointer-events: auto;
     overflow: hidden;
-    /* Hide the real cursor */
-    cursor: none !important;
 }
 
 #dangan-trial-reticle {
@@ -464,8 +462,8 @@
     z-index: 2147483647;
     pointer-events: auto;
     overflow: hidden;
-    background-color: #000; /* Solid fallback */
-    background-image: radial-gradient(circle at center, rgba(0, 255, 255, 0.08), rgba(0, 0, 0, 0.85));
+    background-color: transparent; /* No black screen */
+    background-image: radial-gradient(circle at center, rgba(0, 255, 255, 0.04), rgba(0, 0, 0, 0.1));
     display: flex;
     align-items: center;
     justify-content: center;
