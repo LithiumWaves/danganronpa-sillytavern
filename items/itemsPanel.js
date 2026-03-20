@@ -166,6 +166,7 @@ const itemCatalog = [
     { id: "shop_skill_dramatic_pause_plus", name: "Dramatic Pause+", category: "skill", rarity: "N", description: "A stagecraft micro-module for timing your words.", effect: "Adds impact before major rebuttals." },
     { id: "shop_skill_monokuma_warranty", name: "Monokuma Warranty", category: "skill", rarity: "SR", description: "A suspicious service contract stamped with a bear seal.", effect: "Survive one terrible bargain (maybe)." },
     { id: "shop_skill_protagonist_hair_flip", name: "Protagonist Hair Flip", category: "skill", rarity: "R", description: "A dramatic flourish practiced in reflective surfaces.", effect: "Temporarily boosts confidence in tense scenes." },
+    { id: "shop_skill_clairvoyance", name: "Clairvoyance", category: "skill", rarity: "R", description: "A subtle sharpening of perception — you begin to read the room's pulse.", effect: "Displays HP values for you and your opponent during Panic Talk Action." },
 ];
 
 export function createItemsPanelController({ extensionName, extension_settings, saveSettingsDebounced, playSfx, getSfx, onGiftUseRequest }) {
@@ -179,6 +180,7 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         { id: "shop_skill_dramatic_pause_plus", name: "Dramatic Pause+", cost: 1, skillPointCost: 6, teaserEffect: "Adds impact before major rebuttals." },
         { id: "shop_skill_monokuma_warranty", name: "Monokuma Warranty", cost: 1, skillPointCost: 12, teaserEffect: "Survive one terrible bargain (maybe)." },
         { id: "shop_skill_protagonist_hair_flip", name: "Protagonist Hair Flip", cost: 1, skillPointCost: 7, teaserEffect: "Temporarily boosts confidence in tense scenes." },
+        { id: "shop_skill_clairvoyance", name: "Clairvoyance", cost: 10, skillPointCost: 2, teaserEffect: "Displays HP values for you and your opponent during Panic Talk Action." },
     ];
 
 

@@ -546,6 +546,7 @@ body.hg-shaking { animation: hgScreenShake 80ms steps(2,end) infinite; }
     width: 100%; display: block;
     flex-shrink: 0;
     height: auto;
+    border-radius: 0;
 }
 .hg-tm-body {
     padding: 20px 24px;
