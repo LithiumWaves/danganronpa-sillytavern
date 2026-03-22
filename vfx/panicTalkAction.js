@@ -851,6 +851,8 @@ export function createPanicTalkActionController({
         FinalSolutionQuote,
         BG,
         clairvoyance = false,
+        mainSprite = null,
+        defeatSprite = null,
     }) {
         destroy();
 
@@ -930,7 +932,7 @@ export function createPanicTalkActionController({
             </div>
 
             <div id="pta-sprite">
-                <img src="${extensionFolderPath}/assets/images/minigames/pta-tester-main.webp" alt=""/>
+                <img src="${mainSprite || extensionFolderPath + '/assets/images/minigames/pta-tester-main.webp'}" alt=""/>
             </div>
 
             <div id="pta-phase-banner">
@@ -1651,7 +1653,7 @@ export function createPanicTalkActionController({
                         clearTimeout(spriteMoveTimer);
                         spriteEl.classList.add('pta-sprite-flashing');
                         setTimeout(() => {
-                            spriteImg.src = `${extensionFolderPath}/assets/images/minigames/pta-tester-final.webp`;
+                            spriteImg.src = defeatSprite || `${extensionFolderPath}/assets/images/minigames/pta-tester-final.webp`;
                             new Audio(`${extensionFolderPath}/assets/sfx/minigames/pta-end.wav`).play().catch(() => {});
                         }, 250);
                         setTimeout(() => endGame(true), 600);

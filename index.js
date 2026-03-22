@@ -26,6 +26,7 @@ import { createQuestionTimeController } from "./vfx/questionTime.js";
 import { createQuestionTruthController } from "./vfx/questionTruth.js";
 import { createHangmansGambitController } from "./vfx/hangmansGambit.js";
 import { createPanicTalkActionController } from "./vfx/panicTalkAction.js";
+import { MPD_TEST_SCENARIOS } from "./vfx/massPanicDebate.js";
 import { createAudioVisualizerController } from "./audio/audioVisualizer.js";
 import { user_avatar } from "../../../personas.js";
 
@@ -56,8 +57,8 @@ let bdaCinematicEditor = null;
 let voteResultsController   = null;
 let questionTimeController    = null;
 let questionTruthController   = null;
-let hangmansGambitController  = null;
-let panicTalkActionController = null;
+let hangmansGambitController    = null;
+let panicTalkActionController   = null;
 
 const openRouterSettings = createOpenRouterSettingsManager({
     extensionName,
@@ -2235,6 +2236,7 @@ const BGM_TRACK_TABS = [
     { key: "trial-debates",      settingKey: "trialDebatesTracks",      listId: "trial-debates-tracks-list",      selectedId: "trial-debates-selected-list" },
     { key: "trial-scrum",        settingKey: "trialScrumTracks",      listId: "trial-scrum-tracks-list",        selectedId: "trial-scrum-selected-list" },
     { key: "trial-pta",          settingKey: "trialPtaTracks",        listId: "trial-pta-tracks-list",          selectedId: "trial-pta-selected-list" },
+    { key: "trial-panic",        settingKey: "trialPanicTracks",      listId: "trial-panic-tracks-list",        selectedId: "trial-panic-selected-list" },
     { key: "trial-reenactment",  settingKey: "trialReenactmentTracks",listId: "trial-reenactment-tracks-list",  selectedId: "trial-reenactment-selected-list" },
     { key: "trial-closing",      settingKey: "trialClosingTracks",    listId: "trial-closing-tracks-list",      selectedId: "trial-closing-selected-list" },
 ];
@@ -5285,12 +5287,23 @@ jQuery(async () => {
         tbcycle: document.getElementById("trial_sfx_tbcycle"),
         tbmiss: document.getElementById("trial_sfx_tbmiss"),
         countersfx: document.getElementById("trial_sfx_counter"),
+        tb_shot: document.getElementById("trial_sfx_tb_shot"),
+        tb_spent: document.getElementById("trial_sfx_tb_spent"),
+        rejected_shot: document.getElementById("trial_sfx_rejected_shot"),
+        weak_spot_hit: document.getElementById("trial_sfx_weak_spot_hit"),
+        wn_shooting: document.getElementById("trial_sfx_wn_shooting"),
+        wn_damage: document.getElementById("trial_sfx_wn_damage"),
+        chain_trigger: document.getElementById("trial_sfx_chain_trigger"),
+        chain_broken: document.getElementById("trial_sfx_chain_broken"),
     }
 
         initTrustAnimations({
     sfx,
     unlockAudio,
-    playSfx,
+    playSfx: (sound) => {
+        if (trialManager?.getState?.() === TrialPhases.NON_STOP_DEBATE) return;
+        playSfx(sound);
+    },
     getSetting: getMonopadSetting
 });
 
@@ -5949,6 +5962,16 @@ debugSTGlobals();
             playSfx,
             getSfx: () => sfx,
             characters,
+            playDebatesTrack: () => playTrackFromSetting('trialDebatesTracks'),
+            stopDebatesTrack: () => fadeOutAndPauseBgm(600),
+            playPanicTrack: () => playTrackFromSetting('trialPanicTracks'),
+            suppressVisualizer: () => audioVisualizer.suppress(),
+            unsuppressVisualizer: () => audioVisualizer.unsuppress(),
+            onStartHangmansGambit: () => hangmansGambitController?.run({ question: 'Identify the culprit', answer: 'BLACKENED', time: 60, health: 3, difficulty: 2 }),
+            onStartPanicTalkAction: () => panicTalkActionController?.run({ enemyHp: 100, playerHp: 100, phases: 3, dialogs: ['You\'re wrong!', 'That\'s impossible!', 'I won\'t let you expose the truth!'] }),
+            onStartVotingTime: () => voteResultsController?.run({}),
+            onStartMassPanicDebate: () => trialManager?.startMassPanicDebate(MPD_TEST_SCENARIOS.slice(0, 6)),
+            getEquippedSkillsSnapshot,
         });
     } catch (e) {
         console.error(`[${extensionName}] ❌ Trial Manager init failed:`, e);
@@ -6038,9 +6061,8 @@ debugSTGlobals();
 
     questionTimeController   = createQuestionTimeController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme });
     questionTruthController  = createQuestionTruthController({ extensionFolderPath, getTruthBullets: getTruthBulletsSnapshot, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme });
-    hangmansGambitController = createHangmansGambitController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, pauseDynamicAudio: fadeOutAndPauseBgm, resumeDynamicAudio: resumeBgmAfterHG, playBgm: playHGBgm });
+    hangmansGambitController  = createHangmansGambitController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, pauseDynamicAudio: fadeOutAndPauseBgm, resumeDynamicAudio: resumeBgmAfterHG, playBgm: playHGBgm });
     panicTalkActionController = createPanicTalkActionController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme });
-
     } catch (error) {
         bootstrapDebugUi();
         console.error(`[${extensionName}] ❌ Load failed:`, error);
@@ -6089,6 +6111,145 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     ],
     helpString: 'Force start a Non-stop Debate with specific lines for debugging.',
 }));
+
+// Shared line pool for all NSD test commands (24 lines, one per max section)
+// whiteNoise: pink obstructing text spawned alongside weak-point lines (null = none)
+const NSD_TEST_LINES = [
+    { text: "There's no way anyone could have entered the room without a key!", whiteNoise: null },
+    { text: "[[The security footage clearly shows the door was locked all night.]]", whiteNoise: "Static interference detected..." },
+    { text: "I was with someone the entire time — I have a perfect alibi!", whiteNoise: null },
+    { text: "None of you were even near the scene when it happened...", whiteNoise: null },
+    { text: "The evidence you're pointing to doesn't prove anything at all!", whiteNoise: null },
+    { text: "That's a complete lie and you know it!", whiteNoise: null },
+    { text: "The body wasn't discovered until after the morning announcement.", whiteNoise: null },
+    { text: "[[Someone must have tampered with the investigation before we got there.]]", whiteNoise: "SIGNAL LOST — SIGNAL LOST" },
+    { text: "I heard a noise coming from the hallway around that time!", whiteNoise: null },
+    { text: "It's impossible for one person to have done all of this alone.", whiteNoise: null },
+    { text: "The motive doesn't make any sense for any of us!", whiteNoise: null },
+    { text: "Why would anyone risk exposure like that so carelessly?", whiteNoise: null },
+    { text: "There were two sets of footprints leading away from the scene.", whiteNoise: null },
+    { text: "[[The weapon was never found, which changes everything!]]", whiteNoise: "White Noise — do not trust this" },
+    { text: "I saw someone near the [[storage room]] just before the body was found.", whiteNoise: null },
+    { text: "That testimony completely contradicts what the others said earlier.", whiteNoise: null },
+    { text: "None of the windows were broken — so how did they escape?", whiteNoise: null },
+    { text: "The time of death puts everything you're saying in question.", whiteNoise: null },
+    { text: "I never touched the door handle — check for fingerprints if you want!", whiteNoise: null },
+    { text: "Someone is lying to protect themselves right now in this very room.", whiteNoise: null },
+    { text: "[[That argument only works if you ignore what happened before noon!]]", whiteNoise: "╳ ╳ ╳  interference  ╳ ╳ ╳" },
+    { text: "There's a witness — someone saw the whole thing and stayed quiet.", whiteNoise: null },
+    { text: "The real killer is trying to frame an innocent person in this room!", whiteNoise: null },
+    { text: "[[Everything points to the fact that this murder was planned in advance.]]", whiteNoise: "ERROR — DATA CORRUPTED" },
+];
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'startNonStopDebateTest',
+    callback: async (args) => {
+        const entries = NSD_TEST_LINES.map((line, i) => ({
+            text: line.text,
+            whiteNoise: line.whiteNoise || null,
+            speaker: String(args[`speaker${i + 1}`] || '').trim(),
+        }));
+        trialManager?.debugStartNonStopDebateWithLines(entries);
+        return '';
+    },
+    namedArguments: Array.from({ length: 24 }, (_, i) =>
+        SlashCommandNamedArgument.fromProps({
+            name: `speaker${i + 1}`,
+            description: `Speaker for line ${i + 1} (leave blank to pick randomly from current characters)`,
+            typeList: [ARGUMENT_TYPE.STRING],
+        })
+    ),
+    helpString: 'Start a Non-stop Debate with 24 stubbed test lines for debugging. Optionally set speaker1 through speaker24 to assign specific speakers per line.',
+}));
+
+function makeNsdTestCommand(name, lineCount, helpSuffix) {
+    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+        name,
+        callback: async (args) => {
+            const entries = NSD_TEST_LINES.slice(0, lineCount).map((line, i) => ({
+                text: line.text,
+                whiteNoise: line.whiteNoise || null,
+                speaker: String(args[`speaker${i + 1}`] || '').trim(),
+            }));
+            trialManager?.debugStartNonStopDebateWithLines(entries);
+            return '';
+        },
+        namedArguments: Array.from({ length: lineCount }, (_, i) =>
+            SlashCommandNamedArgument.fromProps({
+                name: `speaker${i + 1}`,
+                description: `Speaker for line ${i + 1}`,
+                typeList: [ARGUMENT_TYPE.STRING],
+            })
+        ),
+        helpString: `Start a Non-stop Debate with ${lineCount} test lines (${helpSuffix}). Optionally set speaker1–speaker${lineCount}.`,
+    }));
+}
+
+makeNsdTestCommand('startNonStopDebateTestSmall',      4,  'Small: 1–5 sections, 3 bullets');
+makeNsdTestCommand('startNonStopDebateTestMedium',     9,  'Medium: 6–11 sections, 5 bullets');
+makeNsdTestCommand('startNonStopDebateTestLarge',      14, 'Large: 12–17 sections, 7 bullets');
+makeNsdTestCommand('startNonStopDebateTestExtraLarge', 20, 'Extra-large: 18+ sections, full bullet list');
+
+// ── Mass Panic Debate slash commands ────────────────────────────────────────
+
+/**
+ * Build a scenario array from flat named args.
+ * sc1-c1-q / sc1-c2-q / sc1-c3-q ... sc8-c3-q
+ * The weak-spot column is inferred from [[...]] markup.
+ */
+function buildMpdScenariosFromArgs(args, maxScenarios = 8) {
+    const scenarios = [];
+    for (let s = 1; s <= maxScenarios; s++) {
+        const texts = [];
+        for (let c = 1; c <= 3; c++) {
+            const t = String(args[`sc${s}-c${c}-q`] || '').trim();
+            if (t) texts.push({ text: t, speaker: String(args[`sc${s}-c${c}-speaker`] || '').trim() });
+        }
+        if (texts.length === 3) scenarios.push({ texts });
+        else if (texts.length > 0 && texts.length < 3) {
+            // Pad to 3 with empty strings
+            while (texts.length < 3) texts.push({ text: '...', speaker: '' });
+            scenarios.push({ texts });
+        }
+    }
+    return scenarios;
+}
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'mass-panic-debate',
+    callback: async (args) => {
+        const scenarios = buildMpdScenariosFromArgs(args, 8);
+        if (!scenarios.length) {
+            toastr.info('Provide at least one full scenario: /mass-panic-debate sc1-c1-q="..." sc1-c2-q="..." sc1-c3-q="..."');
+            return '';
+        }
+        trialManager?.startMassPanicDebate(scenarios);
+        return '';
+    },
+    namedArguments: Array.from({ length: 8 }, (_, s) =>
+        [1, 2, 3].map(c => [
+            SlashCommandNamedArgument.fromProps({ name: `sc${s + 1}-c${c}-q`,      description: `Scenario ${s + 1} column ${c} text`,    typeList: [ARGUMENT_TYPE.STRING] }),
+            SlashCommandNamedArgument.fromProps({ name: `sc${s + 1}-c${c}-speaker`, description: `Scenario ${s + 1} column ${c} speaker`, typeList: [ARGUMENT_TYPE.STRING] }),
+        ])
+    ).flat(2),
+    helpString: 'Start a Mass Panic Debate. Each scenario needs three text columns (c1/c2/c3). Mark one weak spot per scenario with [[brackets]].',
+}));
+
+function makeMpdTestCommand(name, scenarioCount, helpSuffix) {
+    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+        name,
+        callback: async () => {
+            trialManager?.startMassPanicDebate(MPD_TEST_SCENARIOS.slice(0, scenarioCount));
+            return '';
+        },
+        helpString: `Start a Mass Panic Debate test (${helpSuffix}) with ${scenarioCount} scenarios.`,
+    }));
+}
+
+makeMpdTestCommand('startMassPanicDebateTestSmall',      3,  'SM');
+makeMpdTestCommand('startMassPanicDebateTestMedium',     6,  'MD');
+makeMpdTestCommand('startMassPanicDebateTestLarge',      9,  'LG');
+makeMpdTestCommand('startMassPanicDebateTestExtraLarge', 12, 'XL');
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'body-discovered',
@@ -6353,7 +6514,42 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             return '';
         }
         const clairvoyance = getEquippedSkillsSnapshot().includes('shop_skill_clairvoyance');
-        await panicTalkActionController?.run({ enemyHp, playerHp, phases, dialogs, NSolution, SSolution, ESolution, WSolution, FinalSolution, FinalSolutionQuote, BG, clairvoyance });
+
+        // Resolve character-specific PTA sprites
+        let mainSprite = null;
+        let defeatSprite = null;
+        const ptaCtx = window.SillyTavern?.getContext?.();
+        // name2 is the current character's display name in SillyTavern context;
+        // fall back to window.characters[window.this_chid] for reliability
+        const ptaCharName = String(
+            ptaCtx?.name2 ||
+            (window.this_chid != null && Array.isArray(window.characters)
+                ? window.characters[window.this_chid]?.name
+                : '') ||
+            ''
+        ).trim();
+        if (ptaCharName) {
+            // Resolve the sprite folder (avatar filename without extension)
+            let ptaFolder = ptaCharName;
+            if (Array.isArray(window.characters)) {
+                const stChar = window.characters.find(c => c.name === ptaCharName);
+                if (stChar?.avatar) ptaFolder = stChar.avatar.replace(/\.[^.]+$/, '');
+            }
+            try {
+                const resp = await fetch(`/api/sprites/get?name=${encodeURIComponent(ptaFolder)}`);
+                if (resp.ok) {
+                    const sprites = await resp.json();
+                    // Only use a sprite explicitly named 'panictalkaction' — no neutral fallback
+                    const ptaSprite = sprites.find(s => String(s.label || '').toLowerCase() === 'panictalkaction');
+                    if (ptaSprite?.path) {
+                        mainSprite = ptaSprite.path;
+                        defeatSprite = ptaSprite.path;
+                    }
+                }
+            } catch { /* fall through to tester images */ }
+        }
+
+        await panicTalkActionController?.run({ enemyHp, playerHp, phases, dialogs, NSolution, SSolution, ESolution, WSolution, FinalSolution, FinalSolutionQuote, BG, clairvoyance, mainSprite, defeatSprite });
         return '';
     },
     helpString: 'Displays a Danganronpa-style Panic Talk Action minigame. Dialog pieces appear on a 3×3 grid and zoom in — shoot them with mouse clicks or arrow keys + Space before they expire. Orange text damages the opponent; pink text hurts you when broken; blue text needs two hits. Defeat the opponent to enter the Final Argument phase.',

@@ -167,6 +167,8 @@ const itemCatalog = [
     { id: "shop_skill_monokuma_warranty", name: "Monokuma Warranty", category: "skill", rarity: "SR", description: "A suspicious service contract stamped with a bear seal.", effect: "Survive one terrible bargain (maybe)." },
     { id: "shop_skill_protagonist_hair_flip", name: "Protagonist Hair Flip", category: "skill", rarity: "R", description: "A dramatic flourish practiced in reflective surfaces.", effect: "Temporarily boosts confidence in tense scenes." },
     { id: "shop_skill_clairvoyance", name: "Clairvoyance", category: "skill", rarity: "R", description: "A subtle sharpening of perception — you begin to read the room's pulse.", effect: "Displays HP values for you and your opponent during Panic Talk Action." },
+    { id: "shop_skill_beta_block", name: "Beta Block", category: "skill", rarity: "R", description: "A strategic read of panic — you sense the pressure before the chains appear.", effect: "Shows the number of hits required to break column locks during Mass Panic Debate." },
+    { id: "shop_skill_seating_plan_copy", name: "Seating Plan Copy", category: "skill", rarity: "R", description: "A rough diagram scratched from memory — everyone's position, clear.", effect: "Reveals the seating arrangement during Mass Panic Debate. Toggle view with Tab." },
 ];
 
 export function createItemsPanelController({ extensionName, extension_settings, saveSettingsDebounced, playSfx, getSfx, onGiftUseRequest }) {
@@ -181,6 +183,8 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         { id: "shop_skill_monokuma_warranty", name: "Monokuma Warranty", cost: 1, skillPointCost: 12, teaserEffect: "Survive one terrible bargain (maybe)." },
         { id: "shop_skill_protagonist_hair_flip", name: "Protagonist Hair Flip", cost: 1, skillPointCost: 7, teaserEffect: "Temporarily boosts confidence in tense scenes." },
         { id: "shop_skill_clairvoyance", name: "Clairvoyance", cost: 10, skillPointCost: 2, teaserEffect: "Displays HP values for you and your opponent during Panic Talk Action." },
+        { id: "shop_skill_beta_block", name: "Beta Block", cost: 10, skillPointCost: 2, teaserEffect: "Shows the number of hits required to break column locks during Mass Panic Debate." },
+        { id: "shop_skill_seating_plan_copy", name: "Seating Plan Copy", cost: 10, skillPointCost: 2, teaserEffect: "Reveals the seating arrangement during Mass Panic Debate. Toggle view with Tab." },
     ];
 
 

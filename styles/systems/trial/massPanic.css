@@ -1,0 +1,211 @@
+/* ── Mass Panic Debate — overlays injected into #dangan-nonstop-debate-overlay ── */
+
+/* Crimson filter — permanent tint over everything */
+#mpd-crimson {
+    position: absolute;
+    inset: 0;
+    background: rgba(180, 0, 0, 0.32);
+    pointer-events: none;
+    z-index: 50;
+}
+
+/* ── Columns ─────────────────────────────────────────────────────────── */
+
+.mpd-column {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 33.3334%;
+    overflow: hidden;
+    z-index: 2;
+}
+
+.mpd-col-divider {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(
+        to bottom,
+        transparent 0%,
+        rgba(200, 0, 0, 0.6) 20%,
+        rgba(200, 0, 0, 0.6) 80%,
+        transparent 100%
+    );
+    pointer-events: none;
+    z-index: 25;
+}
+
+/* ── Chain overlay ───────────────────────────────────────────────────── */
+
+.mpd-chain-overlay {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+    z-index: 20;
+}
+
+.mpd-chain-overlay.active {
+    opacity: 1;
+    z-index: 2147483646;
+    background:
+        repeating-linear-gradient(
+            45deg,
+            transparent 0px, transparent 9px,
+            rgba(160, 0, 0, 0.30) 9px, rgba(160, 0, 0, 0.30) 11px
+        ),
+        repeating-linear-gradient(
+            -45deg,
+            transparent 0px, transparent 9px,
+            rgba(160, 0, 0, 0.30) 9px, rgba(160, 0, 0, 0.30) 11px
+        );
+}
+
+/* Chain link character overlay */
+.mpd-chain-overlay.active::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(80, 0, 0, 0.45);
+}
+
+.mpd-chain-overlay.active::after {
+    content: none;
+}
+
+@keyframes mpd-chain-flicker {
+    0%   { opacity: 0.45; filter: brightness(0.85); }
+    100% { opacity: 0.90; filter: brightness(1.35); }
+}
+
+/* Blocked feedback flash */
+.mpd-chain-overlay.mpd-blocked-flash {
+    animation: mpd-blocked 0.28s ease-out;
+}
+
+@keyframes mpd-blocked {
+    0%   { filter: brightness(2.5); }
+    100% { filter: brightness(1); }
+}
+
+/* Chain-break flash on unlock */
+.mpd-chain-break-flash {
+    animation: mpd-break-flash 0.45s ease-out;
+}
+
+@keyframes mpd-break-flash {
+    0%   { filter: brightness(3); }
+    100% { filter: brightness(1); }
+}
+
+/* ── Statements ──────────────────────────────────────────────────────── */
+
+.mpd-statement {
+    position: absolute;
+    color: white;
+    font-family: 'Poor Richard', 'Orbitron', sans-serif;
+    font-size: 22px;
+    line-height: 1.35;
+    text-shadow:
+        2px 2px 4px #000,
+        0 0 14px rgba(255, 60, 60, 0.55);
+    user-select: none;
+    pointer-events: none;
+    white-space: normal;
+    z-index: 15;
+}
+
+/* MPD weak point overrides the default cyan NSD style with red */
+.mpd-weak-point {
+    color: #ff4040 !important;
+    font-weight: bold;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-shadow:
+        0 0 12px rgba(255, 0, 0, 0.95),
+        2px 2px 4px #000 !important;
+    pointer-events: auto;
+    cursor: crosshair;
+    animation: mpd-wp-pulse 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes mpd-wp-pulse {
+    0%   { text-shadow: 0 0 8px  rgba(255, 0, 0, 0.7),  2px 2px 4px #000; }
+    100% { text-shadow: 0 0 20px rgba(255, 80, 0, 1.0), 2px 2px 4px #000; }
+}
+
+/* ── Chain-break countdown badge ─────────────────────────────────────── */
+
+#mpd-chain-counter {
+    position: absolute;
+    top: calc(42% - 200px);
+    transform: translate(-50%, -50%);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 80px;
+    font-weight: 900;
+    color: rgba(255, 100, 0, 0.95);
+    text-shadow:
+        0 0 24px rgba(255, 0, 0, 1),
+        0 0 48px rgba(255, 0, 0, 0.5);
+    pointer-events: none;
+    z-index: 60;
+    display: none;
+    letter-spacing: -2px;
+    animation: mpd-counter-pulse 0.4s ease-in-out infinite alternate;
+}
+
+@keyframes mpd-counter-pulse {
+    0%   { transform: translate(-50%, -50%) scale(1); }
+    100% { transform: translate(-50%, -50%) scale(1.08); }
+}
+
+/* ── Header label ────────────────────────────────────────────────────── */
+
+#mpd-header-label {
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.25em;
+    color: rgba(255, 80, 80, 0.85);
+    text-shadow: 0 0 10px rgba(255, 0, 0, 0.7);
+    pointer-events: none;
+    z-index: 60;
+}
+
+/* ── Hide seating debug in MPD (unless Seating Plan Copy skill is active) ── */
+
+#dangan-nonstop-debate-overlay.mpd-active #dangan-seating-debug {
+    display: none !important;
+}
+
+#dangan-nonstop-debate-overlay.mpd-active.mpd-seating-copy #dangan-seating-debug {
+    display: block !important;
+}
+
+/* ── Portrait centering for MPD columns ──────────────────────────────── */
+
+/* Remove the off-screen offsets NSD uses so each slot centres in its column */
+#dangan-nonstop-debate-overlay.mpd-active .dangan-portrait-left-slot {
+    margin-left: 0;
+}
+
+#dangan-nonstop-debate-overlay.mpd-active .dangan-portrait-right-slot {
+    margin-right: 0;
+}
+
+/* Red tint on character sprites */
+#dangan-nonstop-debate-overlay.mpd-active .dangan-portrait-slot img {
+    filter: drop-shadow(0 0 12px rgba(0,0,0,0.7)) sepia(0.45) saturate(1.5) hue-rotate(-20deg);
+}
+
+/* Notification button */
+#dangan-start-mpdebate-btn {
+    background: #8b0000;
+    color: #fff;
+}

@@ -1,5 +1,10 @@
 /* styles/systems/trial/trial.css */
 
+/* Hide all debate UI during pre-intro, but keep character sprites visible */
+#dangan-nonstop-debate-overlay.nsd-pre-intro > *:not(.dangan-trial-portrait-stage) {
+    visibility: hidden;
+}
+
 #dangan-nonstop-debate-overlay {
     position: fixed;
     top: 0;
@@ -9,7 +14,8 @@
     z-index: 2147483640; /* Lower than cutscene to prevent pop-in */
     background: transparent;
     pointer-events: auto;
-    overflow: hidden;
+    overflow: visible;
+    cursor: crosshair;
 }
 
 #dangan-trial-reticle {
@@ -49,19 +55,46 @@
     text-transform: uppercase;
     color: #00ffff;
     text-shadow: 0 0 15px rgba(0, 255, 255, 0.6), 2px 2px 0px rgba(0, 0, 0, 0.8);
-    background: linear-gradient(90deg, rgba(0, 255, 255, 0.2) 0%, transparent 100%);
+    background: rgba(0, 255, 255, 0.15);
     padding: 5px 20px;
-    border-left: 4px solid #00ffff;
-    clip-path: polygon(0 0, 100% 0, 90% 100%, 0 100%);
 }
 
-#dangan-section-count {
-    font-size: 16px;
-    font-weight: bold;
-    color: white;
+#dangan-section-dots {
+    display: grid;
+    grid-template-columns: repeat(12, 10px);
+    gap: 8px;
     padding-left: 24px;
-    opacity: 0.9;
-    text-shadow: 1px 1px 2px black;
+    padding-top: 4px;
+}
+
+.dangan-section-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(180, 180, 180, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    flex-shrink: 0;
+    transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+
+.dangan-section-dot-active {
+    background: #ffd700;
+    border-color: #ffec6e;
+    box-shadow:
+        0 0 6px 2px rgba(255, 215, 0, 0.85),
+        0 0 14px 4px rgba(255, 200, 0, 0.5);
+}
+
+#dangan-seating-debug {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 20;
+    background: rgba(0, 8, 20, 0.65);
+    border: 1px solid rgba(0, 255, 255, 0.18);
+    border-radius: 4px;
+    padding: 16px;
+    pointer-events: none;
 }
 
 .dangan-trial-bottom-left {
@@ -69,47 +102,119 @@
     bottom: 40px;
     left: 40px;
     z-index: 10;
+    rotate: -5deg;
+    transform-origin: left bottom;
 }
 
-.dangan-cylinder-inner {
-    width: 240px;
-    height: 240px;
-    background: radial-gradient(circle at center, rgba(20, 20, 20, 0.8) 0%, rgba(0, 0, 0, 0.9) 100%);
-    border: 2px solid rgba(0, 255, 255, 0.4);
-    border-radius: 50%;
+.dangan-cylinder-wrap {
+    position: relative;
+    width: 406px;
+    height: 406px;
+    z-index: 0;
+}
+
+.dangan-cylinder-index {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 42px;
+    font-weight: 900;
+    color: #00ffff;
+    text-shadow:
+        0 0 12px rgba(0, 255, 255, 0.9),
+        0 0 30px rgba(0, 200, 255, 0.6),
+        2px 2px 4px rgba(0, 0, 0, 0.9);
+    letter-spacing: 0.05em;
+    pointer-events: none;
+    z-index: 2;
+    transition: color 0.25s ease, text-shadow 0.25s ease;
+}
+
+.dangan-cylinder-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+    transform-origin: center;
+    filter:
+        sepia(1) hue-rotate(150deg) saturate(6) brightness(1.2)
+        drop-shadow(0 0 18px rgba(0, 255, 255, 0.75))
+        drop-shadow(0 0 45px rgba(0, 200, 255, 0.45));
+    opacity: 0.88;
+    transition: filter 0.25s ease;
+}
+
+/* ─── Truth Bullet Cartridge (main NSD view) ─── */
+.dangan-bullet-cartridge {
+    position: absolute;
+    top: calc(50% - 2px);
+    transform: translateY(-50%);
+    left: 270px;
+    height: 36px;
+    min-width: 340px;
+    padding: 0 58px 0 48px;
+    z-index: 1;
     display: flex;
     align-items: center;
-    justify-content: center;
-    color: #00ffff;
-    font-family: 'Orbitron', sans-serif;
-    text-align: center;
-    padding: 25px;
-    box-sizing: border-box;
-    box-shadow: 0 0 30px rgba(0, 0, 0, 0.8), inset 0 0 20px rgba(0, 255, 255, 0.1);
-    position: relative;
+    background: linear-gradient(
+        90deg,
+        rgba(0, 28, 42, 0.97)   0%,
+        rgba(0, 90, 120, 0.98)  22%,
+        rgba(0, 175, 200, 0.99) 55%,
+        rgba(0, 155, 185, 0.98) 80%,
+        rgba(0, 110, 140, 0.97) 100%
+    );
+    border-radius: 36px 58px 58px 36px;
+    border: 1px solid rgba(0, 255, 255, 0.35);
+    box-shadow:
+        inset 0 2px 0 rgba(180, 255, 255, 0.18),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.3),
+        0 0 18px rgba(0, 255, 255, 0.35),
+        4px 8px 28px rgba(0, 0, 0, 0.75);
 }
 
-.dangan-cylinder-inner::before {
+/* Adjacent bullets — hidden until cycling */
+.dangan-bullet-cartridge--adj {
+    opacity: 0;
+    pointer-events: none;
+    scale: 0.88;
+    filter: brightness(0.7);
+    transition: opacity 0.4s ease;
+}
+
+.dangan-bullet-cartridge--above {
+    transform: translateY(calc(-50% - 44px));
+}
+
+.dangan-bullet-cartridge--below {
+    transform: translateY(calc(-50% + 44px));
+}
+
+.dangan-bullet-cartridge::before {
     content: '';
     position: absolute;
-    inset: -10px;
-    border: 1px solid rgba(0, 255, 255, 0.2);
-    border-radius: 50%;
-    animation: danganRotateCylinder 10s linear infinite;
+    top: 0;
+    left: 36px;
+    right: 58px;
+    height: 44%;
+    background: linear-gradient(to bottom, rgba(180, 255, 255, 0.14), transparent);
+    border-radius: 0 0 50% 50%;
+    pointer-events: none;
 }
 
-@keyframes danganRotateCylinder {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}
-
-.dangan-bullet-label {
-    font-size: 18px;
-    font-weight: 900;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
-    line-height: 1.2;
+.dangan-bullet-cartridge-name {
+    color: #fff8f4;
+    font-family: 'Palatino Linotype', 'Book Antiqua', 'Palatino', Georgia, serif;
+    font-size: 26px;
+    font-weight: 400;
+    white-space: nowrap;
+    text-shadow:
+        0 0 18px rgba(0, 255, 255, 0.7),
+        2px 2px 6px rgba(0, 0, 0, 0.95),
+        -1px -1px 0 rgba(0, 0, 0, 0.7);
+    letter-spacing: 0.02em;
 }
 
 .dangan-trial-notification {
@@ -127,9 +232,9 @@
 }
 
 .dangan-trial-notification.rebuttal-active {
-    border-color: #ffff00;
+    border-color: #00ffff;
     background: rgba(26, 0, 51, 0.9);
-    box-shadow: 0 0 20px rgba(255, 255, 0, 0.3);
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
 }
 
 .rebuttal-header {
@@ -152,6 +257,12 @@
     text-shadow: 0 0 5px rgba(255, 0, 255, 0.5);
 }
 
+.rebuttal-info em {
+    color: #ffff00;
+    text-shadow: 0 0 5px rgba(255, 255, 0, 0.5);
+    font-style: italic;
+}
+
 .rebuttal-prompt {
     font-size: 12px;
     opacity: 0.9;
@@ -164,8 +275,7 @@
     to { transform: translateX(0); }
 }
 
-#dangan-start-nonstop-btn {
-    background: #00ffff;
+.dangan-trial-start-btn {
     color: black;
     border: none;
     padding: 5px 10px;
@@ -173,6 +283,24 @@
     cursor: pointer;
     font-weight: bold;
     display: block;
+    width: 100%;
+    text-align: center;
+}
+
+#dangan-start-nonstop-btn {
+    background: #00ffff;
+}
+
+#dangan-start-hangman-btn {
+    background: #ff9900;
+}
+
+#dangan-start-pta-btn {
+    background: #ff4466;
+}
+
+#dangan-start-voting-btn {
+    background: #ffdd00;
 }
 
 .dangan-floating-statement {
@@ -183,6 +311,7 @@
     font-family: 'Poor Richard', 'Orbitron', sans-serif;
     text-shadow: 2px 2px 4px black;
     user-select: none;
+    z-index: 2147483645;
 }
 
 .dangan-statement-single {
@@ -296,6 +425,186 @@
     opacity: 0.6; line-height: 1;
 }
 
+/* ─── Speed-up lines ────────────────────── */
+#dangan-nsd-speedlines {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 11;
+    overflow: hidden;
+    opacity: 0;
+    transition: opacity 0.1s ease;
+}
+#dangan-nsd-speedlines.nsd-sl-active { opacity: 1; }
+
+.nsd-speedline {
+    position: absolute;
+    left: 100%;
+    height: var(--sl-h, 1px);
+    width: var(--sl-w, 200px);
+    border-radius: 1px;
+    background: linear-gradient(to left, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0));
+    animation: nsdSlMove var(--sl-dur, 0.22s) linear var(--sl-delay, 0s) infinite;
+}
+
+@keyframes nsdSlMove {
+    from { transform: translateX(0); }
+    to   { transform: translateX(calc(-100vw - 500px)); }
+}
+
+/* ─── Concentrate resource bar ──────────── */
+#dangan-concentrate-bar-wrap {
+    padding-left: 24px;
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+#dangan-concentrate-bar-label {
+    font-family: 'Orbitron', monospace;
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: rgba(255, 100, 200, 0.55);
+    text-shadow: 0 0 6px rgba(255, 50, 180, 0.4);
+}
+#dangan-concentrate-bar-track {
+    width: 140px;
+    height: 6px;
+    background: rgba(80, 0, 40, 0.3);
+    border: 1px solid rgba(255, 0, 150, 0.25);
+    border-radius: 3px;
+    overflow: hidden;
+}
+#dangan-concentrate-bar-fill {
+    height: 100%;
+    width: 100%;
+    background: #ff69b4;
+    box-shadow: 0 0 8px rgba(255, 105, 180, 0.7);
+    border-radius: 3px;
+    transition: width 80ms linear;
+}
+#dangan-concentrate-bar-fill.nsd-bt-depleted {
+    background: rgba(120, 0, 60, 0.35);
+    box-shadow: none;
+}
+#dangan-concentrate-bar-fill.nsd-bt-active {
+    animation: nsdConcentratePulse 0.38s ease-in-out infinite;
+}
+@keyframes nsdConcentratePulse {
+    0%, 100% { background: #ff69b4; box-shadow: 0 0 6px rgba(255,105,180,0.7); }
+    50%       { background: #ffb3de; box-shadow: 0 0 18px rgba(255,180,220,1), 0 0 30px rgba(255,100,180,0.6); }
+}
+
+/* ─── Truth Bullet Intro Screen ────── */
+#dangan-bullet-intro {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10, 0, 0, 0.55);
+    overflow: hidden;
+    cursor: none;
+    pointer-events: none;
+}
+
+#dangan-bullet-intro-cylinder {
+    position: absolute;
+    left: -480px;   /* half of 960 — center sits on the left viewport edge */
+    top: 50%;
+    transform: translateY(-50%);
+    width: 960px;
+    height: 960px;
+    pointer-events: none;
+}
+
+#dangan-bullet-intro-cyl-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    transform-origin: center;
+    filter:
+        sepia(1) hue-rotate(340deg) saturate(8) brightness(0.85)
+        drop-shadow(0 0 22px rgba(210, 30, 20, 0.85))
+        drop-shadow(0 0 55px rgba(180, 10, 10, 0.5));
+    opacity: 0.9;
+}
+
+#dangan-bullet-intro-list {
+    position: absolute;
+    left: 490px;   /* right edge of the cylinder */
+    top: 0;        /* vertical position controlled by JS scrollListToActive */
+    rotate: -5deg;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    align-items: flex-start;
+    pointer-events: none;
+}
+
+.dangan-bullet-intro-item {
+    width: 460px;
+    height: 54px;
+    background: linear-gradient(105deg, rgba(48, 14, 14, 0.94) 55%, rgba(68, 22, 22, 0.88));
+    border-radius: 6px 34px 34px 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #e8d4c8;
+    font-family: 'Palatino Linotype', 'Book Antiqua', 'Palatino', Georgia, serif;
+    font-size: 21px;
+    font-weight: 400;
+    cursor: pointer;
+    border: 1px solid rgba(150, 55, 45, 0.38);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 170, 140, 0.1),
+        3px 6px 20px rgba(0, 0, 0, 0.7);
+    text-shadow: 1px 1px 5px rgba(0, 0, 0, 0.95);
+    position: relative;
+    overflow: hidden;
+    opacity: 0;
+    /* translate is a CSS individual transform — composes with animation's transform and active's scale */
+    transition: translate 0.18s ease;
+    animation: bulletIntroSlideIn 0.38s ease calc(var(--i) * 0.07s) forwards;
+}
+
+.dangan-bullet-intro-item::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 18px;
+    right: 44px;
+    height: 45%;
+    background: linear-gradient(to bottom, rgba(255, 190, 160, 0.07), transparent);
+    border-radius: 0 0 50% 50%;
+    pointer-events: none;
+}
+
+.dangan-bullet-intro-item:hover:not(.active) {
+    filter: brightness(1.25);
+}
+
+.dangan-bullet-intro-item.active {
+    background: linear-gradient(105deg, rgba(185, 55, 65, 0.97) 55%, rgba(215, 75, 85, 0.92));
+    border-color: rgba(255, 135, 115, 0.65);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 225, 205, 0.28),
+        0 0 24px rgba(215, 55, 65, 0.6),
+        3px 6px 22px rgba(0, 0, 0, 0.8);
+    color: #fff9f6;
+    text-shadow: 0 0 14px rgba(255, 155, 135, 0.75), 1px 1px 5px rgba(0, 0, 0, 0.95);
+    scale: 1.04 1.07;   /* individual transform — doesn't fight animation's transform */
+    transform-origin: left center;
+    z-index: 1;
+}
+
+@keyframes bulletIntroSlideIn {
+    from { opacity: 0; transform: translateX(70px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
 /* ─── Truth Bullet Shoot Animation ────── */
 .dangan-bullet-projectile {
     position: absolute;
@@ -326,6 +635,180 @@
     pointer-events: none;
     z-index: 2147483646;
     box-shadow: 0 0 5px white;
+}
+
+/* ─── NSD shot burst (mirrors PTA hit burst) ──── */
+@keyframes nsd-burst-core {
+    0%   { background: radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,220,80,0.85) 35%, rgba(255,100,30,0.5) 65%, transparent 100%); transform: scale(0.1); opacity: 1; }
+    50%  { background: radial-gradient(circle, rgba(255,255,255,0.9) 0%, rgba(255,200,50,0.7) 35%, rgba(255,80,10,0.3) 65%, transparent 100%); transform: scale(1.1); opacity: 0.85; }
+    100% { background: radial-gradient(circle, rgba(255,255,255,0) 0%, rgba(255,180,30,0) 50%, transparent 100%); transform: scale(1.4); opacity: 0; }
+}
+@keyframes nsd-burst-ring {
+    0%   { transform: scale(0.1); opacity: 1; }
+    60%  { transform: scale(1.0); opacity: 0.8; }
+    100% { transform: scale(1.5); opacity: 0; }
+}
+.dangan-nsd-shot-burst {
+    position: fixed;
+    width: 110px; height: 110px;
+    margin-left: -55px; margin-top: -55px;
+    pointer-events: none;
+    z-index: 2147483646;
+    border-radius: 50%;
+    animation: nsd-burst-core 0.35s ease-out forwards;
+}
+.dangan-nsd-shot-burst::after {
+    content: '';
+    position: absolute;
+    top: calc(50% - 45px); left: calc(50% - 45px);
+    width: 90px; height: 90px;
+    border-radius: 50%;
+    border: 4px solid rgba(255, 255, 255, 0.9);
+    animation: nsd-burst-ring 0.35s ease-out forwards;
+}
+
+/* ─── NSD shot screen flash ──────────────────── */
+#dangan-nsd-shot-flash {
+    position: fixed;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.22);
+    pointer-events: none;
+    z-index: 2147483645;
+    opacity: 0;
+    transition: opacity 0.06s ease;
+}
+#dangan-nsd-shot-flash.flash {
+    opacity: 1;
+    transition: opacity 0s;
+}
+
+@keyframes wn-press-flash {
+    0%   { opacity: 0; }
+    15%  { opacity: 1; }
+    100% { opacity: 0; }
+}
+#dangan-wn-press-flash {
+    position: fixed;
+    inset: 0;
+    background: rgba(200, 0, 255, 0.18);
+    pointer-events: none;
+    z-index: 2147483644;
+    opacity: 0;
+}
+#dangan-wn-press-flash.flash {
+    animation: wn-press-flash 0.22s ease-out forwards;
+}
+
+/* ─── White Noise burst (pink variant of nsd-burst) ── */
+@keyframes wn-burst-core {
+    0%   { background: radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,105,180,0.9) 35%, rgba(200,0,255,0.5) 65%, transparent 100%); transform: scale(0.1); opacity: 1; }
+    50%  { background: radial-gradient(circle, rgba(255,255,255,0.9) 0%, rgba(255,80,160,0.7) 35%, rgba(180,0,220,0.3) 65%, transparent 100%); transform: scale(1.1); opacity: 0.85; }
+    100% { background: radial-gradient(circle, rgba(255,255,255,0) 0%, rgba(255,50,150,0) 50%, transparent 100%); transform: scale(1.4); opacity: 0; }
+}
+@keyframes wn-burst-ring {
+    0%   { transform: scale(0.1); opacity: 1; }
+    60%  { transform: scale(1.0); opacity: 0.8; }
+    100% { transform: scale(1.5); opacity: 0; }
+}
+.dangan-wn-burst {
+    position: fixed;
+    width: 110px; height: 110px;
+    margin-left: -55px; margin-top: -55px;
+    pointer-events: none;
+    z-index: 2147483646;
+    border-radius: 50%;
+    animation: wn-burst-core 0.35s ease-out forwards;
+}
+.dangan-wn-burst::after {
+    content: '';
+    position: absolute;
+    top: calc(50% - 45px); left: calc(50% - 45px);
+    width: 90px; height: 90px;
+    border-radius: 50%;
+    border: 4px solid rgba(255, 105, 180, 0.9);
+    animation: wn-burst-ring 0.35s ease-out forwards;
+}
+
+/* ─── White Noise ────────────────────────────── */
+@keyframes white-noise-break {
+    0%   { opacity: 1; transform: translate(-50%, -50%) scale(1.3); filter: brightness(3); }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(2.2); filter: brightness(5); }
+}
+
+@keyframes white-noise-flash {
+    0%   { color: #ff69b4; text-shadow: 0 0 8px rgba(255, 105, 180, 0.9), 0 0 20px rgba(255, 105, 180, 0.5); }
+    30%  { color: #ffffff; text-shadow: 0 0 20px rgba(255, 0, 255, 1), 0 0 40px rgba(200, 0, 255, 0.9), 0 0 70px rgba(180, 0, 255, 0.7); }
+    100% { color: #ff69b4; text-shadow: 0 0 8px rgba(255, 105, 180, 0.9), 0 0 20px rgba(255, 105, 180, 0.5); }
+}
+
+.dangan-white-noise {
+    position: fixed;
+    font-family: 'Orbitron', 'Impact', sans-serif;
+    font-size: 26px;
+    font-weight: 800;
+    color: #ff69b4;
+    text-shadow:
+        0 0 8px  rgba(255, 105, 180, 0.9),
+        0 0 20px rgba(255, 105, 180, 0.5);
+    pointer-events: none;
+    z-index: 2147483645;
+    white-space: nowrap;
+    user-select: none;
+    transition: color 0.08s ease, text-shadow 0.08s ease;
+    will-change: transform, opacity, left, top;
+}
+
+.dangan-white-noise.hovered {
+    text-shadow:
+        0 0 12px rgba(255, 105, 180, 1),
+        0 0 28px rgba(255, 105, 180, 0.75),
+        0 0 48px rgba(255, 105, 180, 0.4);
+}
+
+.dangan-white-noise.hit-1 {
+    color: #ff1493;
+    text-shadow:
+        0 0 12px rgba(255, 20, 147, 1),
+        0 0 28px rgba(255, 20, 147, 0.7),
+        0 0 50px rgba(255, 20, 147, 0.4);
+}
+
+.dangan-white-noise.hit-2 {
+    color: #ff00ff;
+    text-shadow:
+        0 0 16px rgba(255, 0, 255, 1),
+        0 0 36px rgba(255, 0, 255, 0.85),
+        0 0 64px rgba(255, 0, 255, 0.5);
+}
+
+.dangan-white-noise.flash {
+    animation: white-noise-flash 0.18s ease-out forwards;
+    transition: none;
+}
+
+.dangan-white-noise.breaking {
+    pointer-events: none;
+    animation: white-noise-break 0.32s ease-out forwards;
+}
+
+/* ─── NSD truth bullet projectile ────────────── */
+.dangan-nsd-projectile {
+    position: fixed;
+    color: #ffffff;
+    font-family: 'Orbitron', 'Impact', sans-serif;
+    font-size: 64px;
+    font-weight: 900;
+    letter-spacing: -1px;
+    text-shadow:
+        0 0 12px rgba(0, 255, 255, 0.95),
+        0 0 28px rgba(0, 200, 255, 0.7),
+        3px 3px 0 rgba(0, 30, 80, 0.85);
+    pointer-events: none;
+    z-index: 2147483646;
+    white-space: nowrap;
+    /* first character is the leading tip — pivot scaling around the left edge */
+    transform-origin: left center;
+    will-change: transform, opacity, left, top;
 }
 
 .dangan-trial-banner {
@@ -432,23 +915,38 @@
     opacity: 0.9;
 }
 
-.dangan-trial-portrait {
+.dangan-trial-portrait-stage {
     position: absolute;
-    left: 10px;
-    top: 120px;
-    width: 280px;
-    height: 520px;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 100vh;
     pointer-events: none;
     display: flex;
     align-items: flex-end;
-    justify-content: center;
-    background: linear-gradient(135deg, rgba(0, 255, 255, 0.18), rgba(0, 0, 0, 0));
-    border: 2px solid rgba(0, 255, 255, 0.25);
-    clip-path: polygon(0 0, 92% 0, 100% 8%, 100% 100%, 8% 100%, 0 92%);
-    box-shadow: 0 0 20px rgba(0, 255, 255, 0.15);
+    justify-content: space-evenly;
+    z-index: 10;
+    overflow: visible;
 }
 
-#dangan-trial-portrait-img {
+.dangan-portrait-left-slot {
+    margin-left: -360px;
+}
+
+.dangan-portrait-right-slot {
+    margin-right: -360px;
+}
+
+.dangan-portrait-slot {
+    width: 480px;
+    height: 720px; /* overridden per-character by JS */
+    flex-shrink: 0;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+}
+
+.dangan-portrait-slot img {
     width: 100%;
     height: 100%;
     object-fit: contain;

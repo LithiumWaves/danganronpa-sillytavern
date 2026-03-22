@@ -4,6 +4,7 @@
 @import url("./styles/legacy.css");
 @import url("./styles/systems/vfx/vfx.css");
 @import url("./styles/systems/trial/trial.css");
+@import url("./styles/systems/trial/massPanic.css");
 
 .dangan-trial-skill-manager {
     border: 1px solid rgba(80, 224, 255, 0.5);

@@ -112,7 +112,7 @@ export function createVoteResultsController({ getCharacters, getSpriteUrl, getUs
     }
 
     async function run({ guess: guessArg = null, result: resultArg = null } = {}) {
-        const allChars = [...(getCharacters?.() ?? [])].filter(c => !c.dead && !c.missing);
+        const allChars = [...(getCharacters?.() ?? [])];
         if (allChars.length < 2) { console.warn("[VoteResults] Not enough living characters."); return; }
 
         const n       = 16; // always 16 slots; spare slots are empty

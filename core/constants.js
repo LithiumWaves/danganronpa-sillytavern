@@ -88,6 +88,7 @@ export const defaultSettings = {
     trialDebatesTracks: [],
     trialScrumTracks: [],
     trialPtaTracks: [],
+    trialPanicTracks: [],
     trialReenactmentTracks: [],
     trialClosingTracks: [],
     trialVotingTracks: [],

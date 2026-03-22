@@ -15,6 +15,7 @@ export function createAudioVisualizerController({ getAudioElement, assetsBasePat
     let ctx         = null;
     let titleEl     = null;
     let isVisible   = false;
+    let suppressed  = false;
 
     // Layer element references for swapping
     let imgClock        = null;
@@ -218,6 +219,7 @@ export function createAudioVisualizerController({ getAudioElement, assetsBasePat
     // ── Show / hide ────────────────────────────────────────────
 
     function setVisible(v) {
+        if (suppressed && v) return; // stay hidden while suppressed
         if (isVisible === v) return;
         isVisible = v;
         if (v) {
@@ -271,6 +273,8 @@ export function createAudioVisualizerController({ getAudioElement, assetsBasePat
     }
 
     function hide() { setVisible(false); }
+    function suppress()   { suppressed = true;  setVisible(false); }
+    function unsuppress() { suppressed = false; }
 
-    return { init, destroy, hide };
+    return { init, destroy, hide, suppress, unsuppress };
 }
