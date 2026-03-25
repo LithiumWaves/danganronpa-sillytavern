@@ -403,21 +403,10 @@ function buildStyles() {
 
 function buildStubPhaseOneLines() {
     return [
-        "There's no way",
-        "you could've gone",
-        "outside!",
-        "Everyone heard",
-        "the impact in",
-        "the library...",
-        "The hallway cameras",
-        "were active",
-        "the whole time.",
-        "No one bypasses",
-        "that lock without",
-        "being seen.",
-        "Everyone heard",
-        "the impact",
-        "from the library",
+        ["There's no way", "you could've", "gone outside!"],
+        ["Everyone heard", "the impact in", "the library..."],
+        ["The hallway cameras", "were active", "the whole time."],
+        ["No one bypasses", "that lock without", "being seen."],
     ];
 }
 
@@ -540,12 +529,14 @@ export function createRebuttalShowdownController({
         const resultEl = overlay.querySelector("#rs-result");
 
         const phaseOneLines = buildStubPhaseOneLines();
+        const totalPhaseOneChunks = phaseOneLines.reduce((sum, lineGroup) => sum + lineGroup.length, 0);
         const lanes = [80, 140, 200, 260, 320, 380, 440];
         const lineEntities = new Map();
         let phase = "phase1";
         let lastSpawnTs = 0;
         let spawnIndex = 0;
-        const cutTarget = Math.min(9, phaseOneLines.length);
+        let nextPhraseReadyTs = 0;
+        const cutTarget = Math.min(9, totalPhaseOneChunks);
         const missLimit = 4;
         let cuts = 0;
         let misses = 0;
@@ -622,13 +613,14 @@ export function createRebuttalShowdownController({
 
         function spawnLine(now) {
             if (spawnIndex >= phaseOneLines.length) return;
-            if (now - lastSpawnTs < 250) return;
+            if (lineEntities.size > 0) return;
+            if (now < nextPhraseReadyTs) return;
+            if (now - lastSpawnTs < 220) return;
             lastSpawnTs = now;
-            const batchSize = Math.min(2, phaseOneLines.length - spawnIndex);
-            for (let i = 0; i < batchSize; i += 1) {
-                const text = phaseOneLines[spawnIndex % phaseOneLines.length];
-                const lane = lanes[(spawnIndex * 2 + i * 3) % lanes.length];
-                spawnIndex += 1;
+            const phraseChunks = phaseOneLines[spawnIndex] || [];
+            const lane = lanes[(spawnIndex * 2) % lanes.length];
+            spawnIndex += 1;
+            phraseChunks.forEach((text, i) => {
                 const el = document.createElement("div");
                 el.className = "rs-line";
                 el.textContent = text;
@@ -637,14 +629,14 @@ export function createRebuttalShowdownController({
                 lineEntities.set(`${Date.now()}-${Math.random()}`, {
                     el,
                     text,
-                    x: -width - 40 - (i * 46),
-                    y: lane + ((spawnIndex % 2) ? 0 : 22),
+                    x: -width - 40 - (i * 52),
+                    y: lane + (i * 62),
                     width,
                     height: 56,
-                    speed: 220 + ((spawnIndex + i) % 5) * 24,
+                    speed: 230 + (i * 10),
                     cut: false,
                 });
-            }
+            });
         }
 
         function updateLines(dt) {
@@ -664,6 +656,9 @@ export function createRebuttalShowdownController({
                 entity?.el.remove();
                 lineEntities.delete(key);
             });
+            if (lineEntities.size === 0) {
+                nextPhraseReadyTs = performance.now() + 170;
+            }
             if (misses >= missLimit) {
                 triggerDuelPenalty();
             }
@@ -694,6 +689,9 @@ export function createRebuttalShowdownController({
                     setTimeout(() => {
                         entityRef.el.remove();
                         lineEntities.delete(key);
+                        if (lineEntities.size === 0) {
+                            nextPhraseReadyTs = performance.now() + 170;
+                        }
                     }, 220);
                     cuts += 1;
                     updateHud();
