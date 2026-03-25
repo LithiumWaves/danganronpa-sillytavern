@@ -23,6 +23,18 @@ function normalizeLabel(value) {
     return String(value || "").trim().toLowerCase();
 }
 
+function normalizeDeg(deg) {
+    let value = deg;
+    while (value > 180) value -= 360;
+    while (value < -180) value += 360;
+    return value;
+}
+
+function lerpAngleDeg(fromDeg, toDeg, t) {
+    const delta = normalizeDeg(toDeg - fromDeg);
+    return normalizeDeg(fromDeg + (delta * t));
+}
+
 function lineIntersectsRect(x1, y1, x2, y2, left, top, width, height) {
     const right = left + width;
     const bottom = top + height;
@@ -559,6 +571,9 @@ export function createRebuttalShowdownController({
         let cursorY = Math.max(edgePadding, window.innerHeight - edgePadding);
         let cursorEdge = "right";
         let bladeAngleDeg = -152;
+        let targetCursorX = cursorX;
+        let targetCursorY = cursorY;
+        let targetBladeAngleDeg = bladeAngleDeg;
         let bladeLength = Math.max(window.innerWidth, Math.hypot(window.innerWidth, window.innerHeight) * 1.35);
 
         function renderBullets() {
@@ -875,32 +890,45 @@ export function createRebuttalShowdownController({
             const minY = edgePadding;
             const rightDist = Math.abs(nx - maxX);
             const bottomDist = Math.abs(ny - maxY);
-            if (rightDist <= bottomDist) {
+            const switchBias = 34;
+            let desiredEdge = cursorEdge;
+            if (cursorEdge === "right") {
+                if ((bottomDist + switchBias) < rightDist) desiredEdge = "bottom";
+            } else if ((rightDist + switchBias) < bottomDist) {
+                desiredEdge = "right";
+            }
+            if (Math.abs(rightDist - bottomDist) < 16) {
+                desiredEdge = rightDist <= bottomDist ? "right" : "bottom";
+            }
+            cursorEdge = desiredEdge;
+            if (cursorEdge === "right") {
                 cursorEdge = "right";
-                cursorX = maxX;
-                cursorY = Math.min(maxY, Math.max(minY, ny));
-                const t = (cursorY - minY) / Math.max(1, maxY - minY);
-                bladeAngleDeg = -116 - (t * 54);
+                targetCursorX = maxX;
+                targetCursorY = Math.min(maxY, Math.max(minY, ny));
+                const t = (targetCursorY - minY) / Math.max(1, maxY - minY);
+                targetBladeAngleDeg = -118 - (t * 52);
             } else {
                 cursorEdge = "bottom";
-                cursorX = Math.min(maxX, Math.max(minX, nx));
-                cursorY = maxY;
-                const t = (cursorX - minX) / Math.max(1, maxX - minX);
-                bladeAngleDeg = -104 - (t * 62);
+                targetCursorX = Math.min(maxX, Math.max(minX, nx));
+                targetCursorY = maxY;
+                const t = (targetCursorX - minX) / Math.max(1, maxX - minX);
+                targetBladeAngleDeg = -106 - (t * 60);
             }
-            syncBladeVisuals();
         }
 
         function onResize() {
             const maxX = Math.max(edgePadding, window.innerWidth - edgePadding);
             const maxY = Math.max(edgePadding, window.innerHeight - edgePadding);
             if (cursorEdge === "bottom") {
-                cursorX = Math.min(maxX, Math.max(edgePadding, cursorX));
-                cursorY = maxY;
+                targetCursorX = Math.min(maxX, Math.max(edgePadding, targetCursorX));
+                targetCursorY = maxY;
             } else {
-                cursorX = maxX;
-                cursorY = Math.min(maxY, Math.max(edgePadding, cursorY));
+                targetCursorX = maxX;
+                targetCursorY = Math.min(maxY, Math.max(edgePadding, targetCursorY));
             }
+            cursorX = targetCursorX;
+            cursorY = targetCursorY;
+            bladeAngleDeg = targetBladeAngleDeg;
             bladeLength = Math.max(window.innerWidth, Math.hypot(window.innerWidth, window.innerHeight) * 1.35);
             syncBladeVisuals();
         }
@@ -927,6 +955,11 @@ export function createRebuttalShowdownController({
             if (!running) return;
             const dt = lastTs ? Math.min(0.06, (ts - lastTs) / 1000) : 0.016;
             lastTs = ts;
+            const follow = Math.min(1, dt * 18);
+            cursorX += (targetCursorX - cursorX) * follow;
+            cursorY += (targetCursorY - cursorY) * follow;
+            bladeAngleDeg = lerpAngleDeg(bladeAngleDeg, targetBladeAngleDeg, Math.min(1, dt * 14));
+            syncBladeVisuals();
 
             if (phase === "phase1" && !duelTriggered) {
                 spawnLine(ts);
