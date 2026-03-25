@@ -621,25 +621,21 @@ export function createRebuttalShowdownController({
             const phraseChunks = phaseOneLines[spawnIndex] || [];
             const lane = lanes[(spawnIndex * 2) % lanes.length];
             spawnIndex += 1;
-            const patternType = spawnIndex % 4;
+            const formations = [
+                [[0, 0], [180, 92], [370, 176]],
+                [[0, 0], [230, 40], [460, 128]],
+                [[0, 18], [220, 122], [470, 68]],
+                [[0, 0], [200, 138], [440, 240]],
+                [[0, 52], [250, 0], [490, 118]],
+            ];
+            const formation = formations[spawnIndex % formations.length];
             phraseChunks.forEach((text, i) => {
                 const el = document.createElement("div");
                 el.className = "rs-line";
                 el.textContent = text;
                 arena.appendChild(el);
                 const width = Math.max(70, el.getBoundingClientRect().width);
-                let offsetX = i * 52;
-                let offsetY = i * 62;
-                if (patternType === 1) {
-                    offsetX = i * 40;
-                    offsetY = i % 2 === 0 ? i * 52 : i * 22;
-                } else if (patternType === 2) {
-                    offsetX = i * 58;
-                    offsetY = Math.round(Math.sin(i * 1.2) * 58) + 58;
-                } else if (patternType === 3) {
-                    offsetX = i * 32;
-                    offsetY = i * 36;
-                }
+                const [offsetX, offsetY] = formation[Math.min(i, formation.length - 1)];
                 lineEntities.set(`${Date.now()}-${Math.random()}`, {
                     el,
                     text,
@@ -647,7 +643,7 @@ export function createRebuttalShowdownController({
                     y: lane + offsetY,
                     width,
                     height: 56,
-                    speed: 98 + (i * 8) + ((spawnIndex + i) % 3) * 6,
+                    speed: 92 + (i * 7) + ((spawnIndex + i) % 3) * 5,
                     cut: false,
                 });
             });
@@ -655,12 +651,16 @@ export function createRebuttalShowdownController({
 
         function updateLines(dt) {
             const removeKeys = [];
-            const middleX = window.innerWidth * 0.52;
-            const accelSpan = Math.max(120, window.innerWidth * 0.28);
+            const middleX = window.innerWidth * 0.5;
+            const accelSpan = Math.max(140, window.innerWidth * 0.24);
             lineEntities.forEach((entity, key) => {
                 if (!entity.cut) {
-                    const progressPastMiddle = Math.max(0, (entity.x - middleX) / accelSpan);
-                    const accelMultiplier = 1 + Math.min(2.6, progressPastMiddle * 2.6);
+                    const centerX = entity.x + (entity.width * 0.5);
+                    let accelMultiplier = 1;
+                    if (centerX >= middleX) {
+                        const progressPastMiddle = Math.max(0, (centerX - middleX) / accelSpan);
+                        accelMultiplier = 3.2 + Math.min(4.8, progressPastMiddle * 4.8);
+                    }
                     entity.x += entity.speed * accelMultiplier * dt;
                     entity.el.style.transform = `translate3d(${entity.x}px, ${entity.y}px, 0)`;
                     if (entity.x > window.innerWidth + 16) {
