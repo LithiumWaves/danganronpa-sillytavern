@@ -181,7 +181,7 @@ function buildStyles() {
         position: absolute;
         left: 0;
         top: 0;
-        width: 170px;
+        width: 100vw;
         height: 2px;
         border-radius: 2px;
         background: linear-gradient(90deg, rgba(95,210,255,0.2), rgba(95,210,255,0.9), rgba(255,255,255,1), rgba(95,210,255,0.9));
@@ -194,7 +194,7 @@ function buildStyles() {
         position: absolute;
         left: 0;
         top: 0;
-        width: 210px;
+        width: 100vw;
         height: 3px;
         border-radius: 2px;
         pointer-events: none;
@@ -403,16 +403,13 @@ function buildStyles() {
 
 function buildStubPhaseOneLines() {
     return [
-        "There was no way",
-        "You could have gone",
-        "Outside!",
-        "The hallway cameras were active",
-        "No one bypasses that lock",
-        "You have no proof at all",
-        "Your timeline does not line up",
-        "Everyone heard the same thing",
-        "The door stayed sealed",
-        "Your claim collapses here",
+        "There's no way you could've gone outside!",
+        "Everyone heard the impact in the library...",
+        "The hallway cameras were active the whole time.",
+        "No one bypasses that lock without being seen.",
+        "Your timeline does not match the witness report.",
+        "The door stayed sealed after the alarm sounded.",
+        "You still have no proof for that route.",
     ];
 }
 
@@ -536,12 +533,11 @@ export function createRebuttalShowdownController({
 
         const phaseOneLines = buildStubPhaseOneLines();
         const lanes = [80, 140, 200, 260, 320, 380, 440];
-        const arenaRect = () => arena.getBoundingClientRect();
         const lineEntities = new Map();
         let phase = "phase1";
         let lastSpawnTs = 0;
         let spawnIndex = 0;
-        const cutTarget = 7;
+        const cutTarget = Math.min(7, phaseOneLines.length);
         const missLimit = 4;
         let cuts = 0;
         let misses = 0;
@@ -557,9 +553,13 @@ export function createRebuttalShowdownController({
         let playerBetweenMessage = "";
         let resolved = false;
         let finalOutcome = false;
-        let cursorX = window.innerWidth * 0.5;
-        let cursorY = window.innerHeight * 0.5;
-        let bladeAngleDeg = -20;
+        const edgePadding = 18;
+        let cursorX = Math.max(edgePadding, window.innerWidth - edgePadding);
+        let cursorY = Math.max(edgePadding, window.innerHeight - edgePadding);
+        let aimX = Math.max(edgePadding, window.innerWidth * 0.62);
+        let aimY = Math.max(edgePadding, window.innerHeight * 0.26);
+        let bladeAngleDeg = Math.atan2(aimY - cursorY, aimX - cursorX) * 180 / Math.PI;
+        let bladeLength = Math.max(window.innerWidth, Math.hypot(window.innerWidth, window.innerHeight) * 1.35);
 
         function renderBullets() {
             bulletsEl.innerHTML = bladeOptions.map(option => `
@@ -585,7 +585,9 @@ export function createRebuttalShowdownController({
             cursorEl.style.top = `${cursorY}px`;
             bladeEl.style.left = `${cursorX}px`;
             bladeEl.style.top = `${cursorY}px`;
+            bladeEl.style.width = `${bladeLength}px`;
             bladeEl.style.transform = `translate(0, -50%) rotate(${bladeAngleDeg}deg)`;
+            slashEl.style.width = `${bladeLength}px`;
         }
 
         function showResult(win, text) {
@@ -613,7 +615,8 @@ export function createRebuttalShowdownController({
 
         function spawnLine(now) {
             if (spawnIndex >= phaseOneLines.length) return;
-            if (now - lastSpawnTs < 640) return;
+            if (lineEntities.size > 0) return;
+            if (now - lastSpawnTs < 480) return;
             lastSpawnTs = now;
             const text = phaseOneLines[spawnIndex % phaseOneLines.length];
             const lane = lanes[spawnIndex % lanes.length];
@@ -669,11 +672,10 @@ export function createRebuttalShowdownController({
             slashEl.style.transform = `translate(0, -50%) rotate(${bladeAngleDeg}deg)`;
             requestAnimationFrame(() => slashEl.classList.add("rs-active"));
             const radians = bladeAngleDeg * Math.PI / 180;
-            const len = 190;
-            const x2 = cursorX + Math.cos(radians) * len;
-            const y2 = cursorY + Math.sin(radians) * len;
-            const x1 = cursorX - Math.cos(radians) * 14;
-            const y1 = cursorY - Math.sin(radians) * 14;
+            const x1 = cursorX - Math.cos(radians) * 8;
+            const y1 = cursorY - Math.sin(radians) * 8;
+            const x2 = cursorX + Math.cos(radians) * bladeLength;
+            const y2 = cursorY + Math.sin(radians) * bladeLength;
             lineEntities.forEach(entity => {
                 if (entity.cut) return;
                 if (lineIntersectsRect(x1, y1, x2, y2, entity.x, entity.y, entity.width, entity.height)) {
@@ -737,6 +739,7 @@ export function createRebuttalShowdownController({
             overlay.removeEventListener("mousedown", onMouseDown);
             overlay.removeEventListener("contextmenu", onContextMenu);
             window.removeEventListener("keydown", onKeyDown);
+            window.removeEventListener("resize", onResize);
             if (win) {
                 awardMonocoins?.(8, "rebuttal showdown clear");
                 showResult(true, "ARGUMENT SHATTERED");
@@ -757,9 +760,21 @@ export function createRebuttalShowdownController({
             const selected = bladeOptions.find(option => option.id === selectedBladeId);
             const selectedNorm = normalizeLabel(selected?.title || "");
             const weakRect = weakEl.getBoundingClientRect();
-            const dx = cursorX - (weakRect.left + weakRect.width / 2);
-            const dy = cursorY - (weakRect.top + weakRect.height / 2);
-            const onTarget = Math.hypot(dx, dy) <= Math.max(70, weakRect.width * 0.26);
+            const radians = bladeAngleDeg * Math.PI / 180;
+            const x1 = cursorX - Math.cos(radians) * 8;
+            const y1 = cursorY - Math.sin(radians) * 8;
+            const x2 = cursorX + Math.cos(radians) * bladeLength;
+            const y2 = cursorY + Math.sin(radians) * bladeLength;
+            const onTarget = lineIntersectsRect(
+                x1,
+                y1,
+                x2,
+                y2,
+                weakRect.left,
+                weakRect.top,
+                weakRect.width,
+                weakRect.height
+            );
             if (onTarget && selectedNorm === weakPointNorm) {
                 finish(true);
                 return;
@@ -779,13 +794,33 @@ export function createRebuttalShowdownController({
         function onMouseMove(event) {
             const nx = event.clientX;
             const ny = event.clientY;
-            const dx = nx - cursorX;
-            const dy = ny - cursorY;
-            cursorX = nx;
-            cursorY = ny;
-            if (Math.abs(dx) + Math.abs(dy) > 0.1) {
-                bladeAngleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+            const maxX = Math.max(edgePadding, window.innerWidth - edgePadding);
+            const maxY = Math.max(edgePadding, window.innerHeight - edgePadding);
+            const rightDist = Math.abs(nx - maxX);
+            const bottomDist = Math.abs(ny - maxY);
+            if (rightDist <= bottomDist) {
+                cursorX = maxX;
+                cursorY = Math.min(maxY, Math.max(edgePadding, ny));
+            } else {
+                cursorX = Math.min(maxX, Math.max(edgePadding, nx));
+                cursorY = maxY;
             }
+            aimX = nx;
+            aimY = ny;
+            const dirX = aimX - cursorX;
+            const dirY = aimY - cursorY;
+            if (Math.abs(dirX) + Math.abs(dirY) > 0.1) {
+                bladeAngleDeg = Math.atan2(dirY, dirX) * 180 / Math.PI;
+            }
+            syncBladeVisuals();
+        }
+
+        function onResize() {
+            const maxX = Math.max(edgePadding, window.innerWidth - edgePadding);
+            const maxY = Math.max(edgePadding, window.innerHeight - edgePadding);
+            cursorX = Math.min(maxX, Math.max(edgePadding, cursorX));
+            cursorY = Math.min(maxY, Math.max(edgePadding, cursorY));
+            bladeLength = Math.max(window.innerWidth, Math.hypot(window.innerWidth, window.innerHeight) * 1.35);
             syncBladeVisuals();
         }
 
@@ -844,6 +879,7 @@ export function createRebuttalShowdownController({
         overlay.addEventListener("mousedown", onMouseDown);
         overlay.addEventListener("contextmenu", onContextMenu);
         window.addEventListener("keydown", onKeyDown);
+        window.addEventListener("resize", onResize);
         rafId = requestAnimationFrame(gameLoop);
 
         return new Promise(resolve => {
