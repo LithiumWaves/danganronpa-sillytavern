@@ -122,7 +122,7 @@ function buildStyles() {
         left: 0;
         top: 0;
         color: #fff;
-        font-size: clamp(30px, 4.8vh, 72px);
+        font-size: clamp(40px, 6.2vh, 92px);
         font-weight: 900;
         letter-spacing: 0.03em;
         line-height: 1;
@@ -536,6 +536,7 @@ export function createRebuttalShowdownController({
         let lastSpawnTs = 0;
         let spawnIndex = 0;
         let nextPhraseReadyTs = 0;
+        let hadActivePhraseChunks = false;
         const cutTarget = Math.min(9, totalPhaseOneChunks);
         const missLimit = 4;
         let cuts = 0;
@@ -620,20 +621,33 @@ export function createRebuttalShowdownController({
             const phraseChunks = phaseOneLines[spawnIndex] || [];
             const lane = lanes[(spawnIndex * 2) % lanes.length];
             spawnIndex += 1;
+            const patternType = spawnIndex % 4;
             phraseChunks.forEach((text, i) => {
                 const el = document.createElement("div");
                 el.className = "rs-line";
                 el.textContent = text;
                 arena.appendChild(el);
                 const width = Math.max(70, el.getBoundingClientRect().width);
+                let offsetX = i * 52;
+                let offsetY = i * 62;
+                if (patternType === 1) {
+                    offsetX = i * 40;
+                    offsetY = i % 2 === 0 ? i * 52 : i * 22;
+                } else if (patternType === 2) {
+                    offsetX = i * 58;
+                    offsetY = Math.round(Math.sin(i * 1.2) * 58) + 58;
+                } else if (patternType === 3) {
+                    offsetX = i * 32;
+                    offsetY = i * 36;
+                }
                 lineEntities.set(`${Date.now()}-${Math.random()}`, {
                     el,
                     text,
-                    x: -width - 40 - (i * 52),
-                    y: lane + (i * 62),
+                    x: -width - 42 - offsetX,
+                    y: lane + offsetY,
                     width,
                     height: 56,
-                    speed: 230 + (i * 10),
+                    speed: 98 + (i * 8) + ((spawnIndex + i) % 3) * 6,
                     cut: false,
                 });
             });
@@ -641,9 +655,13 @@ export function createRebuttalShowdownController({
 
         function updateLines(dt) {
             const removeKeys = [];
+            const middleX = window.innerWidth * 0.52;
+            const accelSpan = Math.max(120, window.innerWidth * 0.28);
             lineEntities.forEach((entity, key) => {
                 if (!entity.cut) {
-                    entity.x += entity.speed * dt;
+                    const progressPastMiddle = Math.max(0, (entity.x - middleX) / accelSpan);
+                    const accelMultiplier = 1 + Math.min(2.6, progressPastMiddle * 2.6);
+                    entity.x += entity.speed * accelMultiplier * dt;
                     entity.el.style.transform = `translate3d(${entity.x}px, ${entity.y}px, 0)`;
                     if (entity.x > window.innerWidth + 16) {
                         removeKeys.push(key);
@@ -656,7 +674,10 @@ export function createRebuttalShowdownController({
                 entity?.el.remove();
                 lineEntities.delete(key);
             });
-            if (lineEntities.size === 0) {
+            if (lineEntities.size > 0) {
+                hadActivePhraseChunks = true;
+            } else if (hadActivePhraseChunks) {
+                hadActivePhraseChunks = false;
                 nextPhraseReadyTs = performance.now() + 170;
             }
             if (misses >= missLimit) {
@@ -689,7 +710,8 @@ export function createRebuttalShowdownController({
                     setTimeout(() => {
                         entityRef.el.remove();
                         lineEntities.delete(key);
-                        if (lineEntities.size === 0) {
+                        if (lineEntities.size === 0 && hadActivePhraseChunks) {
+                            hadActivePhraseChunks = false;
                             nextPhraseReadyTs = performance.now() + 170;
                         }
                     }, 220);
