@@ -122,9 +122,9 @@ function buildStyles() {
         left: 0;
         top: 0;
         color: #fff;
-        font-size: clamp(20px, 3.2vh, 46px);
+        font-size: clamp(30px, 4.8vh, 72px);
         font-weight: 900;
-        letter-spacing: 0.02em;
+        letter-spacing: 0.03em;
         line-height: 1;
         white-space: nowrap;
         transform: translate3d(0,0,0);
@@ -415,6 +415,9 @@ function buildStubPhaseOneLines() {
         "No one bypasses",
         "that lock without",
         "being seen.",
+        "Everyone heard",
+        "the impact",
+        "from the library",
     ];
 }
 
@@ -542,7 +545,7 @@ export function createRebuttalShowdownController({
         let phase = "phase1";
         let lastSpawnTs = 0;
         let spawnIndex = 0;
-        const cutTarget = Math.min(7, phaseOneLines.length);
+        const cutTarget = Math.min(9, phaseOneLines.length);
         const missLimit = 4;
         let cuts = 0;
         let misses = 0;
@@ -561,6 +564,7 @@ export function createRebuttalShowdownController({
         const edgePadding = 18;
         let cursorX = Math.max(edgePadding, window.innerWidth - edgePadding);
         let cursorY = Math.max(edgePadding, window.innerHeight - edgePadding);
+        let cursorEdge = "right";
         let bladeAngleDeg = -152;
         let bladeLength = Math.max(window.innerWidth, Math.hypot(window.innerWidth, window.innerHeight) * 1.35);
 
@@ -618,36 +622,38 @@ export function createRebuttalShowdownController({
 
         function spawnLine(now) {
             if (spawnIndex >= phaseOneLines.length) return;
-            if (lineEntities.size > 0) return;
-            if (now - lastSpawnTs < 480) return;
+            if (now - lastSpawnTs < 250) return;
             lastSpawnTs = now;
-            const text = phaseOneLines[spawnIndex % phaseOneLines.length];
-            const lane = lanes[spawnIndex % lanes.length];
-            spawnIndex += 1;
-            const el = document.createElement("div");
-            el.className = "rs-line";
-            el.textContent = text;
-            arena.appendChild(el);
-            const width = Math.max(60, el.getBoundingClientRect().width);
-            lineEntities.set(`${Date.now()}-${Math.random()}`, {
-                el,
-                text,
-                x: window.innerWidth + 20,
-                y: lane + ((spawnIndex % 2) ? 0 : 26),
-                width,
-                height: 48,
-                speed: 180 + (spawnIndex % 4) * 28,
-                cut: false,
-            });
+            const batchSize = Math.min(2, phaseOneLines.length - spawnIndex);
+            for (let i = 0; i < batchSize; i += 1) {
+                const text = phaseOneLines[spawnIndex % phaseOneLines.length];
+                const lane = lanes[(spawnIndex * 2 + i * 3) % lanes.length];
+                spawnIndex += 1;
+                const el = document.createElement("div");
+                el.className = "rs-line";
+                el.textContent = text;
+                arena.appendChild(el);
+                const width = Math.max(70, el.getBoundingClientRect().width);
+                lineEntities.set(`${Date.now()}-${Math.random()}`, {
+                    el,
+                    text,
+                    x: -width - 40 - (i * 46),
+                    y: lane + ((spawnIndex % 2) ? 0 : 22),
+                    width,
+                    height: 56,
+                    speed: 220 + ((spawnIndex + i) % 5) * 24,
+                    cut: false,
+                });
+            }
         }
 
         function updateLines(dt) {
             const removeKeys = [];
             lineEntities.forEach((entity, key) => {
                 if (!entity.cut) {
-                    entity.x -= entity.speed * dt;
+                    entity.x += entity.speed * dt;
                     entity.el.style.transform = `translate3d(${entity.x}px, ${entity.y}px, 0)`;
-                    if (entity.x + entity.width < -16) {
+                    if (entity.x > window.innerWidth + 16) {
                         removeKeys.push(key);
                         misses += 1;
                     }
@@ -797,22 +803,40 @@ export function createRebuttalShowdownController({
         }
 
         function onMouseMove(event) {
+            const nx = event.clientX;
             const ny = event.clientY;
             const maxX = Math.max(edgePadding, window.innerWidth - edgePadding);
             const maxY = Math.max(edgePadding, window.innerHeight - edgePadding);
+            const minX = edgePadding;
             const minY = edgePadding;
-            cursorX = maxX;
-            cursorY = Math.min(maxY, Math.max(minY, ny));
-            const t = (cursorY - minY) / Math.max(1, maxY - minY);
-            bladeAngleDeg = -118 - (t * 52);
+            const rightDist = Math.abs(nx - maxX);
+            const bottomDist = Math.abs(ny - maxY);
+            if (rightDist <= bottomDist) {
+                cursorEdge = "right";
+                cursorX = maxX;
+                cursorY = Math.min(maxY, Math.max(minY, ny));
+                const t = (cursorY - minY) / Math.max(1, maxY - minY);
+                bladeAngleDeg = -116 - (t * 54);
+            } else {
+                cursorEdge = "bottom";
+                cursorX = Math.min(maxX, Math.max(minX, nx));
+                cursorY = maxY;
+                const t = (cursorX - minX) / Math.max(1, maxX - minX);
+                bladeAngleDeg = -104 - (t * 62);
+            }
             syncBladeVisuals();
         }
 
         function onResize() {
             const maxX = Math.max(edgePadding, window.innerWidth - edgePadding);
             const maxY = Math.max(edgePadding, window.innerHeight - edgePadding);
-            cursorX = Math.min(maxX, Math.max(edgePadding, cursorX));
-            cursorY = Math.min(maxY, Math.max(edgePadding, cursorY));
+            if (cursorEdge === "bottom") {
+                cursorX = Math.min(maxX, Math.max(edgePadding, cursorX));
+                cursorY = maxY;
+            } else {
+                cursorX = maxX;
+                cursorY = Math.min(maxY, Math.max(edgePadding, cursorY));
+            }
             bladeLength = Math.max(window.innerWidth, Math.hypot(window.innerWidth, window.innerHeight) * 1.35);
             syncBladeVisuals();
         }
