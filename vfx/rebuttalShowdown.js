@@ -403,13 +403,18 @@ function buildStyles() {
 
 function buildStubPhaseOneLines() {
     return [
-        "There's no way you could've gone outside!",
-        "Everyone heard the impact in the library...",
-        "The hallway cameras were active the whole time.",
-        "No one bypasses that lock without being seen.",
-        "Your timeline does not match the witness report.",
-        "The door stayed sealed after the alarm sounded.",
-        "You still have no proof for that route.",
+        "There's no way",
+        "you could've gone",
+        "outside!",
+        "Everyone heard",
+        "the impact in",
+        "the library...",
+        "The hallway cameras",
+        "were active",
+        "the whole time.",
+        "No one bypasses",
+        "that lock without",
+        "being seen.",
     ];
 }
 
@@ -556,9 +561,7 @@ export function createRebuttalShowdownController({
         const edgePadding = 18;
         let cursorX = Math.max(edgePadding, window.innerWidth - edgePadding);
         let cursorY = Math.max(edgePadding, window.innerHeight - edgePadding);
-        let aimX = Math.max(edgePadding, window.innerWidth * 0.62);
-        let aimY = Math.max(edgePadding, window.innerHeight * 0.26);
-        let bladeAngleDeg = Math.atan2(aimY - cursorY, aimX - cursorX) * 180 / Math.PI;
+        let bladeAngleDeg = -152;
         let bladeLength = Math.max(window.innerWidth, Math.hypot(window.innerWidth, window.innerHeight) * 1.35);
 
         function renderBullets() {
@@ -676,13 +679,15 @@ export function createRebuttalShowdownController({
             const y1 = cursorY - Math.sin(radians) * 8;
             const x2 = cursorX + Math.cos(radians) * bladeLength;
             const y2 = cursorY + Math.sin(radians) * bladeLength;
-            lineEntities.forEach(entity => {
+            lineEntities.forEach((entity, key) => {
                 if (entity.cut) return;
                 if (lineIntersectsRect(x1, y1, x2, y2, entity.x, entity.y, entity.width, entity.height)) {
                     entity.cut = true;
                     entity.el.classList.add("rs-cut");
+                    const entityRef = entity;
                     setTimeout(() => {
-                        entity.el.remove();
+                        entityRef.el.remove();
+                        lineEntities.delete(key);
                     }, 220);
                     cuts += 1;
                     updateHud();
@@ -792,26 +797,14 @@ export function createRebuttalShowdownController({
         }
 
         function onMouseMove(event) {
-            const nx = event.clientX;
             const ny = event.clientY;
             const maxX = Math.max(edgePadding, window.innerWidth - edgePadding);
             const maxY = Math.max(edgePadding, window.innerHeight - edgePadding);
-            const rightDist = Math.abs(nx - maxX);
-            const bottomDist = Math.abs(ny - maxY);
-            if (rightDist <= bottomDist) {
-                cursorX = maxX;
-                cursorY = Math.min(maxY, Math.max(edgePadding, ny));
-            } else {
-                cursorX = Math.min(maxX, Math.max(edgePadding, nx));
-                cursorY = maxY;
-            }
-            aimX = nx;
-            aimY = ny;
-            const dirX = aimX - cursorX;
-            const dirY = aimY - cursorY;
-            if (Math.abs(dirX) + Math.abs(dirY) > 0.1) {
-                bladeAngleDeg = Math.atan2(dirY, dirX) * 180 / Math.PI;
-            }
+            const minY = edgePadding;
+            cursorX = maxX;
+            cursorY = Math.min(maxY, Math.max(minY, ny));
+            const t = (cursorY - minY) / Math.max(1, maxY - minY);
+            bladeAngleDeg = -118 - (t * 52);
             syncBladeVisuals();
         }
 
