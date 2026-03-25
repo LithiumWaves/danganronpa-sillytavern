@@ -541,7 +541,7 @@ export function createRebuttalShowdownController({
         const missLimit = 4;
         let cuts = 0;
         let misses = 0;
-        let phase1Tick = 0;
+        let lastFormationIndex = -1;
         let duelTriggered = false;
         let slashCooldownUntil = 0;
         let finisherCooldownUntil = 0;
@@ -624,39 +624,53 @@ export function createRebuttalShowdownController({
             spawnIndex += 1;
             const formations = [
                 {
-                    offsets: [[0, 0], [190, 86], [390, 164]],
+                    offsets: [[0, 0], [195, 92], [410, 176]],
                     rotations: [0, 0, 0],
-                    drift: 0,
-                    scale: [1, 1, 1],
                 },
                 {
-                    offsets: [[0, 0], [250, 44], [500, 126]],
-                    rotations: [-18, -18, -18],
-                    drift: 8,
-                    scale: [0.96, 1.04, 0.96],
+                    offsets: [[0, 0], [235, 48], [510, 132]],
+                    rotations: [-14, -14, -14],
                 },
                 {
-                    offsets: [[0, 20], [228, 124], [502, 72]],
-                    rotations: [14, 14, 14],
-                    drift: 11,
-                    scale: [0.95, 1.08, 0.95],
+                    offsets: [[0, 18], [230, 118], [518, 70]],
+                    rotations: [12, 12, 12],
                 },
                 {
-                    offsets: [[0, 0], [214, 138], [460, 236]],
-                    rotations: [-28, -28, -28],
-                    drift: 6,
-                    scale: [0.94, 1.1, 1.02],
+                    offsets: [[0, 0], [210, 138], [448, 244]],
+                    rotations: [-20, -20, -20],
                 },
                 {
-                    offsets: [[0, 54], [270, 0], [530, 110]],
-                    rotations: [22, 22, 22],
-                    drift: 10,
-                    scale: [1, 1.04, 0.98],
+                    offsets: [[0, 56], [266, 0], [536, 114]],
+                    rotations: [18, 18, 18],
+                },
+                {
+                    offsets: [[0, 0], [240, 92], [500, 40]],
+                    rotations: [-10, 8, -14],
+                },
+                {
+                    offsets: [[0, 86], [255, 26], [520, 146]],
+                    rotations: [14, -10, 16],
+                },
+                {
+                    offsets: [[0, 0], [215, 58], [475, 202]],
+                    rotations: [0, -24, -24],
+                },
+                {
+                    offsets: [[0, 24], [286, 114], [562, 8]],
+                    rotations: [16, 4, -12],
+                },
+                {
+                    offsets: [[0, 0], [268, 142], [546, 214]],
+                    rotations: [-6, -14, -22],
                 },
             ];
-            const formation = formations[spawnIndex % formations.length];
-            const phraseSpeed = 84 + ((spawnIndex % 3) * 8);
-            const phraseDriftHz = 1.8 + (spawnIndex % 2) * 0.45;
+            let formationIndex = (spawnIndex * 3 + Math.floor(Math.random() * formations.length)) % formations.length;
+            if (formationIndex === lastFormationIndex) {
+                formationIndex = (formationIndex + 1) % formations.length;
+            }
+            lastFormationIndex = formationIndex;
+            const formation = formations[formationIndex];
+            const phraseSpeed = 128 + ((spawnIndex % 4) * 12);
             phraseChunks.forEach((text, i) => {
                 const el = document.createElement("div");
                 el.className = "rs-line";
@@ -671,14 +685,9 @@ export function createRebuttalShowdownController({
                     x: -width - 42 - offsetX,
                     y: lane + offsetY,
                     width,
-                    yBase: lane + offsetY,
                     height: 72,
-                    speed: phraseSpeed + (i * 2),
+                    speed: phraseSpeed + (i * 6),
                     rotationDeg: formation.rotations[chunkIndex],
-                    scale: formation.scale[chunkIndex] || 1,
-                    driftAmp: formation.drift,
-                    driftHz: phraseDriftHz,
-                    driftPhase: i * 0.8,
                     cut: false,
                 });
             });
@@ -687,21 +696,17 @@ export function createRebuttalShowdownController({
         function updateLines(dt) {
             const removeKeys = [];
             const middleX = window.innerWidth * 0.5;
-            const accelSpan = Math.max(120, window.innerWidth * 0.2);
-            phase1Tick += dt;
+            const accelSpan = Math.max(90, window.innerWidth * 0.16);
             lineEntities.forEach((entity, key) => {
                 if (!entity.cut) {
                     const centerX = entity.x + (entity.width * 0.5);
-                    let accelMultiplier = 1;
+                    let accelMultiplier = 1.75;
                     if (centerX >= middleX) {
                         const progressPastMiddle = Math.max(0, (centerX - middleX) / accelSpan);
-                        accelMultiplier = 4.5 + Math.min(6.5, progressPastMiddle * 6.5);
+                        accelMultiplier = 9.5 + Math.min(8.5, progressPastMiddle * 8.5);
                     }
                     entity.x += entity.speed * accelMultiplier * dt;
-                    const yDrift = Math.sin((phase1Tick * entity.driftHz * Math.PI * 2) + entity.driftPhase) * entity.driftAmp;
-                    const yRender = entity.yBase + yDrift;
-                    entity.y = yRender;
-                    entity.el.style.transform = `translate3d(${entity.x}px, ${yRender}px, 0) rotate(${entity.rotationDeg}deg) scale(${entity.scale})`;
+                    entity.el.style.transform = `translate3d(${entity.x}px, ${entity.y}px, 0) rotate(${entity.rotationDeg}deg)`;
                     if (entity.x > window.innerWidth + 16) {
                         removeKeys.push(key);
                         misses += 1;
