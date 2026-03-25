@@ -541,6 +541,7 @@ export function createRebuttalShowdownController({
         const missLimit = 4;
         let cuts = 0;
         let misses = 0;
+        let phase1Tick = 0;
         let duelTriggered = false;
         let slashCooldownUntil = 0;
         let finisherCooldownUntil = 0;
@@ -622,28 +623,62 @@ export function createRebuttalShowdownController({
             const lane = lanes[(spawnIndex * 2) % lanes.length];
             spawnIndex += 1;
             const formations = [
-                [[0, 0], [180, 92], [370, 176]],
-                [[0, 0], [230, 40], [460, 128]],
-                [[0, 18], [220, 122], [470, 68]],
-                [[0, 0], [200, 138], [440, 240]],
-                [[0, 52], [250, 0], [490, 118]],
+                {
+                    offsets: [[0, 0], [190, 86], [390, 164]],
+                    rotations: [0, 0, 0],
+                    drift: 0,
+                    scale: [1, 1, 1],
+                },
+                {
+                    offsets: [[0, 0], [250, 44], [500, 126]],
+                    rotations: [-18, -18, -18],
+                    drift: 8,
+                    scale: [0.96, 1.04, 0.96],
+                },
+                {
+                    offsets: [[0, 20], [228, 124], [502, 72]],
+                    rotations: [14, 14, 14],
+                    drift: 11,
+                    scale: [0.95, 1.08, 0.95],
+                },
+                {
+                    offsets: [[0, 0], [214, 138], [460, 236]],
+                    rotations: [-28, -28, -28],
+                    drift: 6,
+                    scale: [0.94, 1.1, 1.02],
+                },
+                {
+                    offsets: [[0, 54], [270, 0], [530, 110]],
+                    rotations: [22, 22, 22],
+                    drift: 10,
+                    scale: [1, 1.04, 0.98],
+                },
             ];
             const formation = formations[spawnIndex % formations.length];
+            const phraseSpeed = 84 + ((spawnIndex % 3) * 8);
+            const phraseDriftHz = 1.8 + (spawnIndex % 2) * 0.45;
             phraseChunks.forEach((text, i) => {
                 const el = document.createElement("div");
                 el.className = "rs-line";
                 el.textContent = text;
                 arena.appendChild(el);
                 const width = Math.max(70, el.getBoundingClientRect().width);
-                const [offsetX, offsetY] = formation[Math.min(i, formation.length - 1)];
+                const chunkIndex = Math.min(i, formation.offsets.length - 1);
+                const [offsetX, offsetY] = formation.offsets[chunkIndex];
                 lineEntities.set(`${Date.now()}-${Math.random()}`, {
                     el,
                     text,
                     x: -width - 42 - offsetX,
                     y: lane + offsetY,
                     width,
-                    height: 56,
-                    speed: 92 + (i * 7) + ((spawnIndex + i) % 3) * 5,
+                    yBase: lane + offsetY,
+                    height: 72,
+                    speed: phraseSpeed + (i * 2),
+                    rotationDeg: formation.rotations[chunkIndex],
+                    scale: formation.scale[chunkIndex] || 1,
+                    driftAmp: formation.drift,
+                    driftHz: phraseDriftHz,
+                    driftPhase: i * 0.8,
                     cut: false,
                 });
             });
@@ -652,17 +687,21 @@ export function createRebuttalShowdownController({
         function updateLines(dt) {
             const removeKeys = [];
             const middleX = window.innerWidth * 0.5;
-            const accelSpan = Math.max(140, window.innerWidth * 0.24);
+            const accelSpan = Math.max(120, window.innerWidth * 0.2);
+            phase1Tick += dt;
             lineEntities.forEach((entity, key) => {
                 if (!entity.cut) {
                     const centerX = entity.x + (entity.width * 0.5);
                     let accelMultiplier = 1;
                     if (centerX >= middleX) {
                         const progressPastMiddle = Math.max(0, (centerX - middleX) / accelSpan);
-                        accelMultiplier = 3.2 + Math.min(4.8, progressPastMiddle * 4.8);
+                        accelMultiplier = 4.5 + Math.min(6.5, progressPastMiddle * 6.5);
                     }
                     entity.x += entity.speed * accelMultiplier * dt;
-                    entity.el.style.transform = `translate3d(${entity.x}px, ${entity.y}px, 0)`;
+                    const yDrift = Math.sin((phase1Tick * entity.driftHz * Math.PI * 2) + entity.driftPhase) * entity.driftAmp;
+                    const yRender = entity.yBase + yDrift;
+                    entity.y = yRender;
+                    entity.el.style.transform = `translate3d(${entity.x}px, ${yRender}px, 0) rotate(${entity.rotationDeg}deg) scale(${entity.scale})`;
                     if (entity.x > window.innerWidth + 16) {
                         removeKeys.push(key);
                         misses += 1;
