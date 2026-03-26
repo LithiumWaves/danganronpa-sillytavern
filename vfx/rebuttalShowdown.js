@@ -35,6 +35,10 @@ function lerpAngleDeg(fromDeg, toDeg, t) {
     return normalizeDeg(fromDeg + (delta * t));
 }
 
+function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+}
+
 function lineIntersectsRect(x1, y1, x2, y2, left, top, width, height) {
     const right = left + width;
     const bottom = top + height;
@@ -646,6 +650,8 @@ export function createRebuttalShowdownController({
         let targetCursorX = cursorX;
         let targetCursorY = cursorY;
         let targetBladeAngleDeg = bladeAngleDeg;
+        let lastMouseX = cursorX - 200;
+        let lastMouseY = cursorY - 120;
         let bladeLength = Math.max(window.innerWidth, Math.hypot(window.innerWidth, window.innerHeight) * 1.35);
 
         function renderBullets() {
@@ -1130,48 +1136,72 @@ export function createRebuttalShowdownController({
         function onMouseMove(event) {
             const nx = event.clientX;
             const ny = event.clientY;
+            lastMouseX = nx;
+            lastMouseY = ny;
             const maxX = Math.max(edgePadding, window.innerWidth - edgePadding);
             const maxY = Math.max(edgePadding, window.innerHeight - edgePadding);
             const minX = edgePadding;
             const minY = edgePadding;
-            const rightDist = Math.abs(nx - maxX);
-            const bottomDist = Math.abs(ny - maxY);
-            const switchBias = 34;
-            let desiredEdge = cursorEdge;
-            if (cursorEdge === "right") {
-                if ((bottomDist + switchBias) < rightDist) desiredEdge = "bottom";
-            } else if ((rightDist + switchBias) < bottomDist) {
-                desiredEdge = "right";
-            }
-            if (Math.abs(rightDist - bottomDist) < 16) {
-                desiredEdge = rightDist <= bottomDist ? "right" : "bottom";
-            }
-            cursorEdge = desiredEdge;
-            if (cursorEdge === "right") {
-                cursorEdge = "right";
-                targetCursorX = maxX;
-                targetCursorY = Math.min(maxY, Math.max(minY, ny));
-                const t = (targetCursorY - minY) / Math.max(1, maxY - minY);
-                targetBladeAngleDeg = -118 - (t * 52);
+
+            const cornerRadius = 90;
+            const cornerCenterX = maxX - cornerRadius;
+            const cornerCenterY = maxY - cornerRadius;
+            const inCornerZone = nx >= cornerCenterX && ny >= cornerCenterY;
+
+            if (inCornerZone) {
+                const dx = nx - cornerCenterX;
+                const dy = ny - cornerCenterY;
+                let theta = Math.atan2(Math.max(0, dy), Math.max(0, dx));
+                theta = clamp(theta, 0, Math.PI * 0.5);
+                targetCursorX = cornerCenterX + Math.cos(theta) * cornerRadius;
+                targetCursorY = cornerCenterY + Math.sin(theta) * cornerRadius;
+                cursorEdge = "corner";
             } else {
-                cursorEdge = "bottom";
-                targetCursorX = Math.min(maxX, Math.max(minX, nx));
-                targetCursorY = maxY;
-                const t = (targetCursorX - minX) / Math.max(1, maxX - minX);
-                targetBladeAngleDeg = -106 - (t * 60);
+                const rightRailY = clamp(ny, minY, maxY - cornerRadius);
+                const bottomRailX = clamp(nx, minX, maxX - cornerRadius);
+                const rightDist = Math.hypot(nx - maxX, ny - rightRailY);
+                const bottomDist = Math.hypot(nx - bottomRailX, ny - maxY);
+                if (rightDist <= bottomDist) {
+                    cursorEdge = "right";
+                    targetCursorX = maxX;
+                    targetCursorY = rightRailY;
+                } else {
+                    cursorEdge = "bottom";
+                    targetCursorX = bottomRailX;
+                    targetCursorY = maxY;
+                }
             }
+
+            const aimDX = Math.min(-8, nx - targetCursorX);
+            const aimDY = ny - targetCursorY;
+            const desiredAngle = Math.atan2(aimDY, aimDX) * 180 / Math.PI;
+            targetBladeAngleDeg = clamp(desiredAngle, -178, -96);
         }
 
         function onResize() {
             const maxX = Math.max(edgePadding, window.innerWidth - edgePadding);
             const maxY = Math.max(edgePadding, window.innerHeight - edgePadding);
-            if (cursorEdge === "bottom") {
-                targetCursorX = Math.min(maxX, Math.max(edgePadding, targetCursorX));
+            if (cursorEdge === "corner") {
+                const cornerRadius = 90;
+                const cornerCenterX = maxX - cornerRadius;
+                const cornerCenterY = maxY - cornerRadius;
+                const vx = targetCursorX - cornerCenterX;
+                const vy = targetCursorY - cornerCenterY;
+                let theta = Math.atan2(Math.max(0, vy), Math.max(0, vx));
+                theta = clamp(theta, 0, Math.PI * 0.5);
+                targetCursorX = cornerCenterX + Math.cos(theta) * cornerRadius;
+                targetCursorY = cornerCenterY + Math.sin(theta) * cornerRadius;
+            } else if (cursorEdge === "bottom") {
+                targetCursorX = Math.min(maxX - 90, Math.max(edgePadding, targetCursorX));
                 targetCursorY = maxY;
             } else {
                 targetCursorX = maxX;
-                targetCursorY = Math.min(maxY, Math.max(edgePadding, targetCursorY));
+                targetCursorY = Math.min(maxY - 90, Math.max(edgePadding, targetCursorY));
             }
+            const aimDX = Math.min(-8, lastMouseX - targetCursorX);
+            const aimDY = lastMouseY - targetCursorY;
+            const desiredAngle = Math.atan2(aimDY, aimDX) * 180 / Math.PI;
+            targetBladeAngleDeg = clamp(desiredAngle, -178, -96);
             cursorX = targetCursorX;
             cursorY = targetCursorY;
             bladeAngleDeg = targetBladeAngleDeg;
