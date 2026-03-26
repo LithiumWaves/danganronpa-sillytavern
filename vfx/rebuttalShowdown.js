@@ -172,11 +172,38 @@ function buildStyles() {
     .rs-duel-box {
         border: 2px solid rgba(255,120,120,0.85);
         background: rgba(20,0,0,0.72);
-        padding: 18px 28px;
-        font-size: clamp(16px, 2.8vh, 38px);
+        padding: 18px 24px;
+        width: min(520px, 82vw);
+        display: grid;
+        gap: 10px;
+        text-align: center;
+    }
+    .rs-duel-title {
+        font-size: clamp(20px, 3.1vh, 42px);
         font-weight: 900;
         letter-spacing: 0.1em;
         text-shadow: 0 0 15px rgba(255,40,40,0.9);
+    }
+    .rs-duel-sub {
+        font-size: clamp(11px, 1.5vh, 16px);
+        letter-spacing: 0.07em;
+        color: rgba(255,255,255,0.9);
+    }
+    .rs-duel-meter {
+        width: 100%;
+        height: 12px;
+        border: 1px solid rgba(255,255,255,0.35);
+        background: rgba(255,255,255,0.12);
+    }
+    .rs-duel-fill {
+        width: 0%;
+        height: 100%;
+        background: linear-gradient(90deg, #ff6a6a, #ffd2d2);
+    }
+    .rs-duel-count {
+        font-size: clamp(14px, 2vh, 22px);
+        font-weight: 800;
+        letter-spacing: 0.08em;
     }
     .rs-cursor {
         position: absolute;
@@ -489,7 +516,12 @@ export function createRebuttalShowdownController({
                 <div class="rs-blade" id="rs-blade"></div>
                 <div class="rs-slash" id="rs-slash"></div>
                 <div class="rs-duel" id="rs-duel">
-                    <div class="rs-duel-box">DUEL PENALTY</div>
+                    <div class="rs-duel-box">
+                        <div class="rs-duel-title">DUEL CLASH</div>
+                        <div class="rs-duel-sub">Left-click rapidly to break through.</div>
+                        <div class="rs-duel-meter"><div class="rs-duel-fill" id="rs-duel-fill"></div></div>
+                        <div class="rs-duel-count" id="rs-duel-count">0 / 18</div>
+                    </div>
                 </div>
                 <div class="rs-between" id="rs-between">
                     <div class="rs-between-card">
@@ -525,6 +557,8 @@ export function createRebuttalShowdownController({
         const bladeEl = overlay.querySelector("#rs-blade");
         const slashEl = overlay.querySelector("#rs-slash");
         const duelEl = overlay.querySelector("#rs-duel");
+        const duelFillEl = overlay.querySelector("#rs-duel-fill");
+        const duelCountEl = overlay.querySelector("#rs-duel-count");
         const betweenEl = overlay.querySelector("#rs-between");
         const betweenInput = overlay.querySelector("#rs-between-input");
         const betweenContinueBtn = overlay.querySelector("#rs-between-continue");
@@ -553,8 +587,10 @@ export function createRebuttalShowdownController({
         const missLimit = 4;
         let cuts = 0;
         let misses = 0;
+        let duelClicks = 0;
         let lastFormationIndex = -1;
         let duelTriggered = false;
+        const duelClickTarget = 18;
         let slashCooldownUntil = 0;
         let finisherCooldownUntil = 0;
         const slashCooldownMs = 240;
@@ -615,17 +651,33 @@ export function createRebuttalShowdownController({
             lineEntities.clear();
         }
 
-        async function triggerDuelPenalty() {
+        function updateDuelHud() {
+            const safeClicks = Math.min(duelClickTarget, Math.max(0, duelClicks));
+            const pct = (safeClicks / duelClickTarget) * 100;
+            duelFillEl.style.width = `${pct}%`;
+            duelCountEl.textContent = `${safeClicks} / ${duelClickTarget}`;
+        }
+
+        function triggerDuelPenalty() {
             if (duelTriggered || phase !== "phase1") return;
             duelTriggered = true;
+            phase = "duel";
+            removeAllLines();
+            duelClicks = 0;
+            updateDuelHud();
             phaseLabelEl.textContent = "PENALTY · DUEL";
             duelEl.classList.add("rs-show");
-            await delay(1300);
-            duelEl.classList.remove("rs-show");
-            misses = 2;
-            updateHud();
-            phaseLabelEl.textContent = "PHASE 1 · CUTTING";
-            duelTriggered = false;
+        }
+
+        function handleDuelClick() {
+            if (phase !== "duel" || !duelTriggered) return;
+            duelClicks += 1;
+            updateDuelHud();
+            if (duelClicks >= duelClickTarget) {
+                duelTriggered = false;
+                duelEl.classList.remove("rs-show");
+                enterPhaseTwo();
+            }
         }
 
         function spawnLine(now) {
@@ -973,11 +1025,16 @@ export function createRebuttalShowdownController({
         function onMouseDown(event) {
             if (event.button !== 0) return;
             event.preventDefault();
+            if (phase === "duel") {
+                handleDuelClick();
+                return;
+            }
             trySlash(performance.now());
         }
 
         function onContextMenu(event) {
             event.preventDefault();
+            if (phase === "duel") return;
             tryFinisher(performance.now());
         }
 
