@@ -686,23 +686,60 @@ export function createRebuttalShowdownController({
             lastFormationIndex = formationIndex;
             const formation = formations[formationIndex];
             const phraseSpeed = 128 + ((spawnIndex % 4) * 12);
+            const arenaHeight = Math.max(220, arena.clientHeight || window.innerHeight);
+            const minGapX = 44;
+            const minGapY = 28;
+            const placedBoxes = [];
+            const initialChunks = [];
             phraseChunks.forEach((text, i) => {
                 const el = document.createElement("div");
                 el.className = "rs-line";
                 el.textContent = text;
                 arena.appendChild(el);
-                const width = Math.max(70, el.getBoundingClientRect().width);
+                const rect = el.getBoundingClientRect();
+                const width = Math.max(70, rect.width);
+                const height = Math.max(72, rect.height);
                 const chunkIndex = Math.min(i, formation.offsets.length - 1);
                 const [offsetX, offsetY] = formation.offsets[chunkIndex];
-                lineEntities.set(`${Date.now()}-${Math.random()}`, {
+                initialChunks.push({
                     el,
                     text,
                     x: -width - 42 - offsetX,
                     y: lane + offsetY,
                     width,
-                    height: 72,
+                    height,
                     speed: phraseSpeed + (i * 6),
                     rotationDeg: formation.rotations[chunkIndex],
+                });
+            });
+            initialChunks.forEach((chunk, i) => {
+                let attempts = 0;
+                let y = chunk.y;
+                const baseY = chunk.y;
+                const step = 30;
+                while (attempts < 18) {
+                    const overlap = placedBoxes.some(box => {
+                        const overlapX = chunk.x < (box.x + box.width + minGapX) && (chunk.x + chunk.width + minGapX) > box.x;
+                        const overlapY = y < (box.y + box.height + minGapY) && (y + chunk.height + minGapY) > box.y;
+                        return overlapX && overlapY;
+                    });
+                    if (!overlap) break;
+                    const dir = (attempts % 2 === 0 ? 1 : -1) * (i % 2 === 0 ? 1 : -1);
+                    y = baseY + (Math.ceil((attempts + 1) / 2) * step * dir);
+                    y = Math.max(56, Math.min(arenaHeight - chunk.height - 40, y));
+                    attempts += 1;
+                }
+                chunk.y = y;
+                placedBoxes.push({ x: chunk.x, y: chunk.y, width: chunk.width, height: chunk.height });
+                lineEntities.set(`${Date.now()}-${Math.random()}`, {
+                    el: chunk.el,
+                    text: chunk.text,
+                    x: chunk.x,
+                    y: chunk.y,
+                    width: chunk.width,
+                    height: chunk.height,
+                    speed: chunk.speed,
+                    rotationDeg: chunk.rotationDeg,
                     cut: false,
                 });
             });
