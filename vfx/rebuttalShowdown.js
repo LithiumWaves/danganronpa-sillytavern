@@ -39,6 +39,10 @@ function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
 }
 
+function lerp(a, b, t) {
+    return a + ((b - a) * t);
+}
+
 function lineIntersectsRect(x1, y1, x2, y2, left, top, width, height) {
     const right = left + width;
     const bottom = top + height;
@@ -1133,6 +1137,41 @@ export function createRebuttalShowdownController({
             }
         }
 
+        function computeRailBladeAngle(cx, cy, edge, bounds) {
+            const minX = bounds.minX;
+            const minY = bounds.minY;
+            const maxX = bounds.maxX;
+            const maxY = bounds.maxY;
+            const cornerRadius = bounds.cornerRadius;
+            const rightSpan = Math.max(1, (maxY - cornerRadius) - minY);
+            const bottomSpan = Math.max(1, (maxX - cornerRadius) - minX);
+
+            const rightT = clamp((cy - minY) / rightSpan, 0, 1);
+            const rightAimX = minX + 12;
+            const rightAimY = lerp(minY, maxY, rightT);
+
+            const bottomT = clamp((cx - minX) / bottomSpan, 0, 1);
+            const bottomAimX = lerp(minX, maxX, bottomT);
+            const bottomAimY = minY + 12;
+
+            let aimX = rightAimX;
+            let aimY = rightAimY;
+            if (edge === "bottom") {
+                aimX = bottomAimX;
+                aimY = bottomAimY;
+            } else if (edge === "corner") {
+                const cornerCenterX = maxX - cornerRadius;
+                const cornerCenterY = maxY - cornerRadius;
+                const theta = clamp(Math.atan2(Math.max(0, cy - cornerCenterY), Math.max(0, cx - cornerCenterX)), 0, Math.PI * 0.5);
+                const blend = theta / (Math.PI * 0.5);
+                aimX = lerp(rightAimX, bottomAimX, blend);
+                aimY = lerp(rightAimY, bottomAimY, blend);
+            }
+
+            const angle = Math.atan2(aimY - cy, aimX - cx) * 180 / Math.PI;
+            return clamp(angle, -178, -82);
+        }
+
         function onMouseMove(event) {
             const nx = event.clientX;
             const ny = event.clientY;
@@ -1172,10 +1211,7 @@ export function createRebuttalShowdownController({
                 }
             }
 
-            const aimDX = Math.min(-8, nx - targetCursorX);
-            const aimDY = ny - targetCursorY;
-            const desiredAngle = Math.atan2(aimDY, aimDX) * 180 / Math.PI;
-            targetBladeAngleDeg = clamp(desiredAngle, -178, -96);
+            targetBladeAngleDeg = computeRailBladeAngle(targetCursorX, targetCursorY, cursorEdge, { minX, minY, maxX, maxY, cornerRadius });
         }
 
         function onResize() {
@@ -1198,10 +1234,13 @@ export function createRebuttalShowdownController({
                 targetCursorX = maxX;
                 targetCursorY = Math.min(maxY - 90, Math.max(edgePadding, targetCursorY));
             }
-            const aimDX = Math.min(-8, lastMouseX - targetCursorX);
-            const aimDY = lastMouseY - targetCursorY;
-            const desiredAngle = Math.atan2(aimDY, aimDX) * 180 / Math.PI;
-            targetBladeAngleDeg = clamp(desiredAngle, -178, -96);
+            targetBladeAngleDeg = computeRailBladeAngle(targetCursorX, targetCursorY, cursorEdge, {
+                minX: edgePadding,
+                minY: edgePadding,
+                maxX,
+                maxY,
+                cornerRadius: 90,
+            });
             cursorX = targetCursorX;
             cursorY = targetCursorY;
             bladeAngleDeg = targetBladeAngleDeg;
