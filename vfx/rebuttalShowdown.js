@@ -146,6 +146,10 @@ function buildStyles() {
     .rs-line.rs-cut {
         animation: rsCutOut 220ms ease-out forwards;
     }
+    .rs-line.rs-weakpoint {
+        color: #ffd6d6;
+        text-shadow: 0 0 8px rgba(255,255,255,0.95), 0 0 20px rgba(255,80,80,0.95), 0 0 34px rgba(255,30,30,0.7);
+    }
     @keyframes rsCutOut {
         0% { opacity: 1; transform: translate3d(0,0,0) scale(1); filter: brightness(1.2); }
         100% { opacity: 0; transform: translate3d(-25px, 0, 0) scale(0.86); filter: brightness(2); }
@@ -437,6 +441,29 @@ function buildStyles() {
     .rs-result.rs-loss {
         color: #ff9a9a;
     }
+    .rs-counter {
+        position: absolute;
+        inset: 0;
+        z-index: 55;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+        font-size: clamp(44px, 10vh, 128px);
+        font-weight: 900;
+        letter-spacing: 0.12em;
+        color: #bdefff;
+        text-shadow: 0 0 26px rgba(118,228,255,0.95), 0 0 56px rgba(118,228,255,0.65);
+    }
+    .rs-counter.rs-show {
+        display: flex;
+        animation: rsCounterPop 420ms ease-out;
+    }
+    @keyframes rsCounterPop {
+        0% { opacity: 0; transform: scale(0.74); }
+        55% { opacity: 1; transform: scale(1.05); }
+        100% { opacity: 1; transform: scale(1); }
+    }
     `;
 }
 
@@ -449,14 +476,14 @@ function buildStubPhaseOneLines() {
     ];
 }
 
-function buildPhaseTwoArgumentLines(playerMessage) {
+function buildPhaseTwoLineGroups(playerMessage) {
     const userText = String(playerMessage || "").trim();
-    const suffix = userText ? ` Yet you said: "${userText.slice(0, 80)}"` : "";
+    const userChunk = userText ? `"${userText.slice(0, 30)}"` : "your claim";
     return [
-        `You cannot prove the route.${suffix}`,
-        "Your alibi is self-reported only.",
-        "The contradiction in your timeline is obvious.",
-        "The weak point is your missing evidence.",
+        { chunks: ["You keep saying", userChunk, "backs your route."] },
+        { chunks: ["But the timeline", "still does not", "line up."] },
+        { chunks: ["The camera record", "has no trace", "of your path."] },
+        { chunks: ["That statement", "contradicts the", "hallway evidence."], weakPointIndex: 1 },
     ];
 }
 
@@ -546,6 +573,7 @@ export function createRebuttalShowdownController({
                     <div class="rs-panel-head">TRUTH BLADES</div>
                     <div class="rs-bullets" id="rs-bullets"></div>
                 </div>
+                <div class="rs-counter" id="rs-counter">COUNTER</div>
                 <div class="rs-result" id="rs-result"></div>
             </div>
         `;
@@ -572,6 +600,7 @@ export function createRebuttalShowdownController({
         const phaseLabelEl = overlay.querySelector("#rs-phase-label");
         const cutLabelEl = overlay.querySelector("#rs-cut-label");
         const missLabelEl = overlay.querySelector("#rs-miss-label");
+        const counterEl = overlay.querySelector("#rs-counter");
         const resultEl = overlay.querySelector("#rs-result");
 
         const phaseOneLines = buildStubPhaseOneLines();
@@ -583,6 +612,13 @@ export function createRebuttalShowdownController({
         let spawnIndex = 0;
         let nextPhraseReadyTs = 0;
         let hadActivePhraseChunks = false;
+        let phase2Groups = [];
+        let phase2SpawnIndex = 0;
+        let phase2LastSpawnTs = 0;
+        let phase2NextReadyTs = 0;
+        let phase2HadActiveChunks = false;
+        let phase2WeakPointResolved = false;
+        let counterBannerUntil = 0;
         const cutTarget = Math.min(9, totalPhaseOneChunks);
         const missLimit = 4;
         let cuts = 0;
@@ -792,6 +828,94 @@ export function createRebuttalShowdownController({
                     height: chunk.height,
                     speed: chunk.speed,
                     rotationDeg: chunk.rotationDeg,
+                    isWeakPoint: false,
+                    cut: false,
+                });
+            });
+        }
+
+        function spawnPhaseTwoLine(now) {
+            if (phase2SpawnIndex >= phase2Groups.length) return;
+            if (lineEntities.size > 0) return;
+            if (now < phase2NextReadyTs) return;
+            if (now - phase2LastSpawnTs < 200) return;
+            phase2LastSpawnTs = now;
+            const group = phase2Groups[phase2SpawnIndex] || { chunks: [] };
+            const phraseChunks = group.chunks || [];
+            const weakPointIndex = Number.isInteger(group.weakPointIndex) ? group.weakPointIndex : -1;
+            const lane = lanes[(phase2SpawnIndex * 3 + 1) % lanes.length];
+            phase2SpawnIndex += 1;
+            const formations = [
+                { offsets: [[0, 0], [210, 90], [430, 170]], rotations: [0, 0, 0] },
+                { offsets: [[0, 6], [250, 56], [528, 136]], rotations: [-12, -12, -12] },
+                { offsets: [[0, 24], [250, 116], [542, 72]], rotations: [10, 10, 10] },
+                { offsets: [[0, 0], [214, 138], [470, 236]], rotations: [-18, -18, -18] },
+                { offsets: [[0, 58], [282, 0], [560, 118]], rotations: [16, 16, 16] },
+            ];
+            let formationIndex = (phase2SpawnIndex * 5 + Math.floor(Math.random() * formations.length)) % formations.length;
+            if (formationIndex === lastFormationIndex) {
+                formationIndex = (formationIndex + 1) % formations.length;
+            }
+            lastFormationIndex = formationIndex;
+            const formation = formations[formationIndex];
+            const phraseSpeed = 120 + ((phase2SpawnIndex % 4) * 10);
+            const arenaHeight = Math.max(220, arena.clientHeight || window.innerHeight);
+            const minGapX = 46;
+            const minGapY = 28;
+            const placedBoxes = [];
+            const initialChunks = [];
+            phraseChunks.forEach((text, i) => {
+                const el = document.createElement("div");
+                el.className = "rs-line";
+                if (i === weakPointIndex) el.classList.add("rs-weakpoint");
+                el.textContent = text;
+                arena.appendChild(el);
+                const rect = el.getBoundingClientRect();
+                const width = Math.max(70, rect.width);
+                const height = Math.max(72, rect.height);
+                const chunkIndex = Math.min(i, formation.offsets.length - 1);
+                const [offsetX, offsetY] = formation.offsets[chunkIndex];
+                initialChunks.push({
+                    el,
+                    text,
+                    x: -width - 42 - offsetX,
+                    y: lane + offsetY,
+                    width,
+                    height,
+                    speed: phraseSpeed + (i * 6),
+                    rotationDeg: formation.rotations[chunkIndex],
+                    isWeakPoint: i === weakPointIndex,
+                });
+            });
+            initialChunks.forEach((chunk, i) => {
+                let attempts = 0;
+                let y = chunk.y;
+                const baseY = chunk.y;
+                const step = 30;
+                while (attempts < 18) {
+                    const overlap = placedBoxes.some(box => {
+                        const overlapX = chunk.x < (box.x + box.width + minGapX) && (chunk.x + chunk.width + minGapX) > box.x;
+                        const overlapY = y < (box.y + box.height + minGapY) && (y + chunk.height + minGapY) > box.y;
+                        return overlapX && overlapY;
+                    });
+                    if (!overlap) break;
+                    const dir = (attempts % 2 === 0 ? 1 : -1) * (i % 2 === 0 ? 1 : -1);
+                    y = baseY + (Math.ceil((attempts + 1) / 2) * step * dir);
+                    y = Math.max(56, Math.min(arenaHeight - chunk.height - 40, y));
+                    attempts += 1;
+                }
+                chunk.y = y;
+                placedBoxes.push({ x: chunk.x, y: chunk.y, width: chunk.width, height: chunk.height });
+                lineEntities.set(`${Date.now()}-${Math.random()}`, {
+                    el: chunk.el,
+                    text: chunk.text,
+                    x: chunk.x,
+                    y: chunk.y,
+                    width: chunk.width,
+                    height: chunk.height,
+                    speed: chunk.speed,
+                    rotationDeg: chunk.rotationDeg,
+                    isWeakPoint: chunk.isWeakPoint,
                     cut: false,
                 });
             });
@@ -801,6 +925,7 @@ export function createRebuttalShowdownController({
             const removeKeys = [];
             const middleX = window.innerWidth * 0.5;
             const accelSpan = Math.max(90, window.innerWidth * 0.16);
+            let weakPointPassed = false;
             lineEntities.forEach((entity, key) => {
                 if (!entity.cut) {
                     const centerX = entity.x + (entity.width * 0.5);
@@ -812,6 +937,9 @@ export function createRebuttalShowdownController({
                     entity.x += entity.speed * accelMultiplier * dt;
                     entity.el.style.transform = `translate3d(${entity.x}px, ${entity.y}px, 0) rotate(${entity.rotationDeg}deg)`;
                     if (entity.x > window.innerWidth + 16) {
+                        if (phase === "phase2" && entity.isWeakPoint && !phase2WeakPointResolved) {
+                            weakPointPassed = true;
+                        }
                         removeKeys.push(key);
                         misses += 1;
                     }
@@ -822,13 +950,23 @@ export function createRebuttalShowdownController({
                 entity?.el.remove();
                 lineEntities.delete(key);
             });
-            if (lineEntities.size > 0) {
+            if (weakPointPassed) {
+                finish(false);
+                return;
+            }
+            if (phase === "phase1" && lineEntities.size > 0) {
                 hadActivePhraseChunks = true;
-            } else if (hadActivePhraseChunks) {
+            } else if (phase === "phase1" && hadActivePhraseChunks) {
                 hadActivePhraseChunks = false;
                 nextPhraseReadyTs = performance.now() + 170;
             }
-            if (misses >= missLimit) {
+            if (phase === "phase2" && lineEntities.size > 0) {
+                phase2HadActiveChunks = true;
+            } else if (phase === "phase2" && phase2HadActiveChunks) {
+                phase2HadActiveChunks = false;
+                phase2NextReadyTs = performance.now() + 160;
+            }
+            if (phase === "phase1" && misses >= missLimit) {
                 triggerDuelPenalty();
             }
             updateHud();
@@ -897,13 +1035,27 @@ export function createRebuttalShowdownController({
 
         function enterPhaseTwo() {
             phase = "phase2";
-            phaseLabelEl.textContent = "PHASE 2 · FINISH";
-            weakEl.classList.add("rs-show");
+            phaseLabelEl.textContent = "PHASE 2 · COUNTER";
+            weakEl.classList.remove("rs-show");
             panelEl.classList.add("rs-show");
             cooldownEl.classList.add("rs-show");
             finishNoteEl.classList.add("rs-show");
-            argLinesEl.innerHTML = buildPhaseTwoArgumentLines(playerBetweenMessage)
-                .map(line => `<div class="rs-arg-line">${escapeHtml(line)}</div>`)
+            removeAllLines();
+            phase2Groups = buildPhaseTwoLineGroups(playerBetweenMessage);
+            phase2SpawnIndex = 0;
+            phase2LastSpawnTs = 0;
+            phase2NextReadyTs = 0;
+            phase2HadActiveChunks = false;
+            phase2WeakPointResolved = false;
+            counterBannerUntil = 0;
+            argLinesEl.innerHTML = phase2Groups
+                .map(group => {
+                    const weakIndex = Number.isInteger(group.weakPointIndex) ? group.weakPointIndex : -1;
+                    return group.chunks.map((chunk, i) => {
+                        const prefix = i === weakIndex ? "⚠ " : "";
+                        return `<div class="rs-arg-line">${escapeHtml(prefix + chunk)}</div>`;
+                    }).join("");
+                })
                 .join("");
             renderBullets();
         }
@@ -932,39 +1084,44 @@ export function createRebuttalShowdownController({
             destroy();
         }
 
-        function tryFinisher(now) {
+        function tryCounter(now) {
             if (phase !== "phase2") return;
+            if (phase2WeakPointResolved) return;
             if (now < finisherCooldownUntil) return;
             finisherCooldownUntil = now + finisherCooldownMs;
             const selected = bladeOptions.find(option => option.id === selectedBladeId);
             const selectedNorm = normalizeLabel(selected?.title || "");
-            const weakRect = weakEl.getBoundingClientRect();
             const radians = bladeAngleDeg * Math.PI / 180;
             const x1 = cursorX - Math.cos(radians) * 8;
             const y1 = cursorY - Math.sin(radians) * 8;
             const x2 = cursorX + Math.cos(radians) * bladeLength;
             const y2 = cursorY + Math.sin(radians) * bladeLength;
-            const onTarget = lineIntersectsRect(
-                x1,
-                y1,
-                x2,
-                y2,
-                weakRect.left,
-                weakRect.top,
-                weakRect.width,
-                weakRect.height
-            );
-            if (onTarget && selectedNorm === weakPointNorm) {
-                finish(true);
+            let hitWeakKey = null;
+            lineEntities.forEach((entity, key) => {
+                if (hitWeakKey) return;
+                if (!entity.isWeakPoint || entity.cut) return;
+                if (lineIntersectsRect(x1, y1, x2, y2, entity.x, entity.y, entity.width, entity.height)) {
+                    hitWeakKey = key;
+                }
+            });
+            if (hitWeakKey && selectedNorm === weakPointNorm) {
+                const weakEntity = lineEntities.get(hitWeakKey);
+                phase2WeakPointResolved = true;
+                counterBannerUntil = performance.now() + 900;
+                weakEntity?.el.classList.add("rs-cut");
+                setTimeout(() => {
+                    weakEntity?.el.remove();
+                    lineEntities.delete(hitWeakKey);
+                }, 200);
+                removeAllLines();
+                phase = "counter";
+                setTimeout(() => {
+                    if (!resolved) finish(true);
+                }, 820);
                 return;
             }
             misses += 1;
             updateHud();
-            weakEl.animate([
-                { transform: "translate(-50%, -50%) scale(1)" },
-                { transform: "translate(-50%, -50%) scale(1.06)" },
-                { transform: "translate(-50%, -50%) scale(1)" },
-            ], { duration: 180, easing: "ease-out" });
             if (misses >= missLimit + 2) {
                 finish(false);
             }
@@ -1035,7 +1192,7 @@ export function createRebuttalShowdownController({
         function onContextMenu(event) {
             event.preventDefault();
             if (phase === "duel") return;
-            tryFinisher(performance.now());
+            tryCounter(performance.now());
         }
 
         function onKeyDown(event) {
@@ -1067,15 +1224,22 @@ export function createRebuttalShowdownController({
             }
 
             if (phase === "phase2") {
+                spawnPhaseTwoLine(ts);
+                updateLines(dt);
+                if (phase2SpawnIndex >= phase2Groups.length && lineEntities.size === 0 && !phase2WeakPointResolved) {
+                    finish(false);
+                    return;
+                }
                 const remain = Math.max(0, finisherCooldownUntil - performance.now());
                 const pct = 100 - Math.min(100, remain / finisherCooldownMs * 100);
                 cooldownFillEl.style.width = `${pct}%`;
                 finishNoteEl.textContent = remain <= 0
-                    ? "Right-click Finisher ready"
-                    : `Finisher cooldown ${(remain / 1000).toFixed(1)}s`;
+                    ? "Right-click COUNTER ready"
+                    : `Counter cooldown ${(remain / 1000).toFixed(1)}s`;
             } else {
                 cooldownFillEl.style.width = "0%";
             }
+            counterEl.classList.toggle("rs-show", performance.now() < counterBannerUntil);
 
             rafId = requestAnimationFrame(gameLoop);
         }
