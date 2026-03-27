@@ -26,6 +26,7 @@ import { createQuestionTimeController } from "./vfx/questionTime.js";
 import { createQuestionTruthController } from "./vfx/questionTruth.js";
 import { createHangmansGambitController } from "./vfx/hangmansGambit.js";
 import { createPanicTalkActionController } from "./vfx/panicTalkAction.js";
+import { createRebuttalShowdownController } from "./vfx/rebuttalShowdown.js";
 import { MPD_TEST_SCENARIOS } from "./vfx/massPanicDebate.js";
 import { createAudioVisualizerController } from "./audio/audioVisualizer.js";
 import { user_avatar } from "../../../personas.js";
@@ -59,6 +60,7 @@ let questionTimeController    = null;
 let questionTruthController   = null;
 let hangmansGambitController    = null;
 let panicTalkActionController   = null;
+let rebuttalShowdownController = null;
 
 const openRouterSettings = createOpenRouterSettingsManager({
     extensionName,
@@ -6063,6 +6065,7 @@ debugSTGlobals();
     questionTruthController  = createQuestionTruthController({ extensionFolderPath, getTruthBullets: getTruthBulletsSnapshot, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme });
     hangmansGambitController  = createHangmansGambitController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, pauseDynamicAudio: fadeOutAndPauseBgm, resumeDynamicAudio: resumeBgmAfterHG, playBgm: playHGBgm });
     panicTalkActionController = createPanicTalkActionController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme });
+    rebuttalShowdownController = createRebuttalShowdownController({ extensionFolderPath, getTruthBullets: getTruthBulletsSnapshot, awardMonocoins, deductMonocoins });
     } catch (error) {
         bootstrapDebugUi();
         console.error(`[${extensionName}] ❌ Load failed:`, error);
@@ -6477,6 +6480,15 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         SlashCommandNamedArgument.fromProps({ name: 'health',     description: 'Number of health points (default 3)',           typeList: [ARGUMENT_TYPE.NUMBER], isRequired: false }),
         SlashCommandNamedArgument.fromProps({ name: 'difficulty', description: 'Difficulty 1–5: controls speed, bubble count, and letter variety (default 2)', typeList: [ARGUMENT_TYPE.NUMBER], isRequired: false }),
     ],
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'rebuttal-showdown',
+    callback: async () => {
+        await rebuttalShowdownController?.run();
+        return '';
+    },
+    helpString: 'Starts a Rebuttal Showdown minigame with two phases: cut through scrolling statements with left-click slashes, then right-click the weak point using the correct Truth Blade.',
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
