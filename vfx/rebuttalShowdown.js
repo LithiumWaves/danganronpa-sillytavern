@@ -151,8 +151,20 @@ function buildStyles() {
         animation: rsCutOut 220ms ease-out forwards;
     }
     .rs-line.rs-weakpoint {
-        color: #ffd6d6;
-        text-shadow: 0 0 8px rgba(255,255,255,0.95), 0 0 20px rgba(255,80,80,0.95), 0 0 34px rgba(255,30,30,0.7);
+        color: #ffe569;
+        text-shadow: 0 0 8px rgba(255,255,255,0.98), 0 0 20px rgba(255,236,124,0.95), 0 0 34px rgba(255,205,50,0.82);
+    }
+    .rs-line.rs-damaged {
+        color: #ffd0d0;
+        letter-spacing: 0.045em;
+        text-shadow: 0 0 8px rgba(255,255,255,0.9), 0 0 18px rgba(255,120,120,0.8);
+        filter: saturate(0.7) contrast(1.12);
+        animation: rsDamagePulse 130ms ease-out;
+    }
+    @keyframes rsDamagePulse {
+        0% { transform: translate3d(0,0,0) scale(1); }
+        50% { transform: translate3d(0,0,0) scale(1.03); }
+        100% { transform: translate3d(0,0,0) scale(1); }
     }
     @keyframes rsCutOut {
         0% { opacity: 1; transform: translate3d(0,0,0) scale(1); filter: brightness(1.2); }
@@ -680,15 +692,23 @@ export function createRebuttalShowdownController({
             const original = String(entity.baseText || entity.text || "");
             if (maxHp <= 1 || hp <= 0) {
                 entity.el.textContent = original;
+                entity.el.classList.remove("rs-damaged");
             } else {
                 const words = original.split(/\s+/).filter(Boolean);
                 if (words.length <= 1) {
-                    entity.el.textContent = hp >= maxHp ? original : `${original.slice(0, Math.max(1, Math.floor(original.length * hp / maxHp)))}…`;
+                    const keepChars = Math.max(1, Math.floor(original.length * hp / maxHp));
+                    const clipped = original.slice(0, keepChars);
+                    entity.el.textContent = hp >= maxHp ? original : `${clipped} ✕`;
                 } else {
                     const keep = Math.max(1, Math.ceil(words.length * (hp / maxHp)));
                     const clipped = words.slice(0, keep).join(" ");
-                    entity.el.textContent = keep < words.length ? `${clipped} …` : clipped;
+                    const lost = Math.max(0, words.length - keep);
+                    const marks = lost > 0 ? ` ${"✕ ".repeat(Math.min(4, lost)).trim()}` : "";
+                    entity.el.textContent = keep < words.length ? `${clipped}${marks}` : clipped;
                 }
+                entity.el.classList.remove("rs-damaged");
+                void entity.el.offsetWidth;
+                entity.el.classList.add("rs-damaged");
             }
             const rect = entity.el.getBoundingClientRect();
             entity.width = Math.max(50, rect.width);
@@ -1007,7 +1027,7 @@ export function createRebuttalShowdownController({
         }
 
         function trySlash(now) {
-            if (phase !== "phase1") return;
+            if (phase !== "phase1" && phase !== "phase2") return;
             if (duelTriggered) return;
             if (now < slashCooldownUntil) return;
             slashCooldownUntil = now + slashCooldownMs;
@@ -1024,6 +1044,14 @@ export function createRebuttalShowdownController({
             lineEntities.forEach((entity, key) => {
                 if (entity.cut) return;
                 if (lineIntersectsRect(x1, y1, x2, y2, entity.x, entity.y, entity.width, entity.height)) {
+                    if (phase === "phase2" && entity.isWeakPoint) {
+                        entity.el.animate([
+                            { transform: `translate3d(${entity.x}px, ${entity.y}px, 0) rotate(${entity.rotationDeg}deg) scale(1)` },
+                            { transform: `translate3d(${entity.x}px, ${entity.y}px, 0) rotate(${entity.rotationDeg}deg) scale(1.06)` },
+                            { transform: `translate3d(${entity.x}px, ${entity.y}px, 0) rotate(${entity.rotationDeg}deg) scale(1)` },
+                        ], { duration: 120, easing: "ease-out" });
+                        return;
+                    }
                     entity.hitPoints = Math.max(0, Number(entity.hitPoints || 1) - 1);
                     if (entity.hitPoints > 0) {
                         updateEntityDamageVisual(entity);
