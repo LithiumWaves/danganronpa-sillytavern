@@ -155,16 +155,30 @@ function buildStyles() {
         text-shadow: 0 0 8px rgba(255,255,255,0.98), 0 0 20px rgba(255,236,124,0.95), 0 0 34px rgba(255,205,50,0.82);
     }
     .rs-line.rs-damaged {
-        color: #ffd0d0;
-        letter-spacing: 0.045em;
-        text-shadow: 0 0 8px rgba(255,255,255,0.9), 0 0 18px rgba(255,120,120,0.8);
-        filter: saturate(0.7) contrast(1.12);
+        color: #ffc2c2;
+        text-shadow: 0 0 6px rgba(255,255,255,0.88), 0 0 16px rgba(255,120,120,0.72);
+        opacity: 0.86;
         animation: rsDamagePulse 130ms ease-out;
     }
     @keyframes rsDamagePulse {
         0% { transform: translate3d(0,0,0) scale(1); }
         50% { transform: translate3d(0,0,0) scale(1.03); }
         100% { transform: translate3d(0,0,0) scale(1); }
+    }
+    .rs-break-shard {
+        position: absolute;
+        width: 5px;
+        height: 2px;
+        border-radius: 1px;
+        background: rgba(255,245,245,0.95);
+        pointer-events: none;
+        z-index: 33;
+        transform-origin: 50% 50%;
+        animation: rsBreakShard 260ms ease-out forwards;
+    }
+    @keyframes rsBreakShard {
+        0% { opacity: 1; transform: translate3d(0,0,0) scale(1); }
+        100% { opacity: 0; transform: translate3d(var(--dx, 0px), var(--dy, 0px), 0) scale(0.6); }
     }
     @keyframes rsCutOut {
         0% { opacity: 1; transform: translate3d(0,0,0) scale(1); filter: brightness(1.2); }
@@ -694,18 +708,10 @@ export function createRebuttalShowdownController({
                 entity.el.textContent = original;
                 entity.el.classList.remove("rs-damaged");
             } else {
-                const words = original.split(/\s+/).filter(Boolean);
-                if (words.length <= 1) {
-                    const keepChars = Math.max(1, Math.floor(original.length * hp / maxHp));
-                    const clipped = original.slice(0, keepChars);
-                    entity.el.textContent = hp >= maxHp ? original : `${clipped} ✕`;
-                } else {
-                    const keep = Math.max(1, Math.ceil(words.length * (hp / maxHp)));
-                    const clipped = words.slice(0, keep).join(" ");
-                    const lost = Math.max(0, words.length - keep);
-                    const marks = lost > 0 ? ` ${"✕ ".repeat(Math.min(4, lost)).trim()}` : "";
-                    entity.el.textContent = keep < words.length ? `${clipped}${marks}` : clipped;
-                }
+                const chars = [...original];
+                const visibleChars = Math.max(1, Math.floor(chars.length * (hp / maxHp)));
+                const vanished = chars.map((ch, idx) => (idx < visibleChars ? ch : " "));
+                entity.el.textContent = vanished.join("");
                 entity.el.classList.remove("rs-damaged");
                 void entity.el.offsetWidth;
                 entity.el.classList.add("rs-damaged");
@@ -713,6 +719,25 @@ export function createRebuttalShowdownController({
             const rect = entity.el.getBoundingClientRect();
             entity.width = Math.max(50, rect.width);
             entity.height = Math.max(56, rect.height);
+        }
+
+        function playBreakEffect(entity, intensity = 1) {
+            if (!entity?.el) return;
+            const cx = entity.x + (entity.width * 0.5);
+            const cy = entity.y + (entity.height * 0.5);
+            const count = Math.max(4, Math.floor(8 * intensity));
+            for (let i = 0; i < count; i += 1) {
+                const shard = document.createElement("span");
+                shard.className = "rs-break-shard";
+                shard.style.left = `${cx}px`;
+                shard.style.top = `${cy}px`;
+                const angle = (Math.PI * 2 * i / count) + (Math.random() * 0.4);
+                const dist = (16 + Math.random() * 38) * intensity;
+                shard.style.setProperty("--dx", `${Math.cos(angle) * dist}px`);
+                shard.style.setProperty("--dy", `${Math.sin(angle) * dist}px`);
+                arena.appendChild(shard);
+                setTimeout(() => shard.remove(), 290);
+            }
         }
 
         function syncBladeVisuals() {
@@ -1045,6 +1070,7 @@ export function createRebuttalShowdownController({
                 if (entity.cut) return;
                 if (lineIntersectsRect(x1, y1, x2, y2, entity.x, entity.y, entity.width, entity.height)) {
                     if (phase === "phase2" && entity.isWeakPoint) {
+                        playBreakEffect(entity, 0.8);
                         entity.el.animate([
                             { transform: `translate3d(${entity.x}px, ${entity.y}px, 0) rotate(${entity.rotationDeg}deg) scale(1)` },
                             { transform: `translate3d(${entity.x}px, ${entity.y}px, 0) rotate(${entity.rotationDeg}deg) scale(1.06)` },
@@ -1054,8 +1080,10 @@ export function createRebuttalShowdownController({
                     }
                     entity.hitPoints = Math.max(0, Number(entity.hitPoints || 1) - 1);
                     if (entity.hitPoints > 0) {
+                        playBreakEffect(entity, 0.9);
                         updateEntityDamageVisual(entity);
                     } else {
+                        playBreakEffect(entity, 1.3);
                         entity.cut = true;
                         entity.el.classList.add("rs-cut");
                         const entityRef = entity;
@@ -1156,8 +1184,6 @@ export function createRebuttalShowdownController({
             if (phase2WeakPointResolved) return;
             if (now < finisherCooldownUntil) return;
             finisherCooldownUntil = now + finisherCooldownMs;
-            const selected = bladeOptions.find(option => option.id === selectedBladeId);
-            const selectedNorm = normalizeLabel(selected?.title || "");
             const radians = bladeAngleDeg * Math.PI / 180;
             const x1 = cursorX - Math.cos(radians) * 8;
             const y1 = cursorY - Math.sin(radians) * 8;
@@ -1167,14 +1193,19 @@ export function createRebuttalShowdownController({
             lineEntities.forEach((entity, key) => {
                 if (hitWeakKey) return;
                 if (!entity.isWeakPoint || entity.cut) return;
-                if (lineIntersectsRect(x1, y1, x2, y2, entity.x, entity.y, entity.width, entity.height)) {
+                const cx = entity.x + (entity.width * 0.5);
+                const cy = entity.y + (entity.height * 0.5);
+                const pointDistance = Math.abs((y2 - y1) * cx - (x2 - x1) * cy + x2 * y1 - y2 * x1) / Math.max(1, Math.hypot(y2 - y1, x2 - x1));
+                const nearLine = pointDistance <= Math.max(28, entity.height * 0.55);
+                if (nearLine || lineIntersectsRect(x1, y1, x2, y2, entity.x, entity.y, entity.width, entity.height)) {
                     hitWeakKey = key;
                 }
             });
-            if (hitWeakKey && selectedNorm === weakPointNorm) {
+            if (hitWeakKey) {
                 const weakEntity = lineEntities.get(hitWeakKey);
                 phase2WeakPointResolved = true;
                 counterBannerUntil = performance.now() + 900;
+                playBreakEffect(weakEntity, 1.8);
                 weakEntity?.el.classList.add("rs-cut");
                 setTimeout(() => {
                     weakEntity?.el.remove();
