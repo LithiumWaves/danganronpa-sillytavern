@@ -133,6 +133,16 @@ function buildStyles() {
         overflow: hidden;
         cursor: none;
     }
+    .rs-struggle {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: linear-gradient(180deg, rgba(255,40,40,0), rgba(255,40,40,0.92), rgba(255,40,40,0));
+        box-shadow: 0 0 14px rgba(255,40,40,0.7);
+        pointer-events: none;
+        z-index: 19;
+    }
     .rs-line {
         position: absolute;
         left: 0;
@@ -579,6 +589,7 @@ export function createRebuttalShowdownController({
             </div>
             <div class="rs-main">
                 <div class="rs-arena" id="rs-arena"></div>
+                <div class="rs-struggle" id="rs-struggle"></div>
                 <div class="rs-cursor" id="rs-cursor"></div>
                 <div class="rs-blade" id="rs-blade"></div>
                 <div class="rs-slash" id="rs-slash"></div>
@@ -625,6 +636,7 @@ export function createRebuttalShowdownController({
         requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add("rs-on")));
 
         const arena = overlay.querySelector("#rs-arena");
+        const struggleEl = overlay.querySelector("#rs-struggle");
         const cursorEl = overlay.querySelector("#rs-cursor");
         const bladeEl = overlay.querySelector("#rs-blade");
         const slashEl = overlay.querySelector("#rs-slash");
@@ -686,15 +698,16 @@ export function createRebuttalShowdownController({
         let resolved = false;
         let finalOutcome = false;
         const edgePadding = 18;
-        let cursorX = Math.max(edgePadding, window.innerWidth - edgePadding);
+        let struggle = 0.35;
+        let controlFreedom = 0.2;
+        let cursorX = window.innerWidth * 0.5;
         let cursorY = Math.max(edgePadding, window.innerHeight - edgePadding);
-        let cursorEdge = "right";
-        let bladeAngleDeg = -152;
+        let bladeAngleDeg = -90;
         let targetCursorX = cursorX;
         let targetCursorY = cursorY;
         let targetBladeAngleDeg = bladeAngleDeg;
-        let lastMouseX = cursorX - 200;
-        let lastMouseY = cursorY - 120;
+        let lastMouseX = cursorX;
+        let lastMouseY = cursorY - 300;
         let bladeLength = Math.max(window.innerWidth, Math.hypot(window.innerWidth, window.innerHeight) * 1.35);
 
         function renderBullets() {
@@ -714,6 +727,31 @@ export function createRebuttalShowdownController({
         function updateHud() {
             cutLabelEl.textContent = `CUTS ${cuts} / ${cutTarget}`;
             missLabelEl.textContent = `MISSES ${misses} / ${missLimit}`;
+        }
+
+        function getStruggleShiftPx() {
+            return Math.max(120, window.innerWidth * 0.22);
+        }
+
+        function getArcHalfAngleDeg() {
+            return 12 + (controlFreedom * 58);
+        }
+
+        function adjustControlState(successWeight, failureWeight = 0) {
+            if (successWeight > 0) {
+                struggle = clamp(struggle - (0.14 * successWeight), -1, 1);
+                controlFreedom = clamp(controlFreedom + (0.06 * successWeight), 0.14, 1);
+            }
+            if (failureWeight > 0) {
+                struggle = clamp(struggle + (0.18 * failureWeight), -1, 1);
+                controlFreedom = clamp(controlFreedom - (0.08 * failureWeight), 0.14, 1);
+            }
+        }
+
+        function computeBladeAngleFromCursorAndMouse(cx, cy, mx, my) {
+            const raw = Math.atan2(my - cy, mx - cx) * 180 / Math.PI;
+            const halfArc = getArcHalfAngleDeg();
+            return clamp(raw, -90 - halfArc, -90 + halfArc);
         }
 
         function updateEntityDamageVisual(entity) {
@@ -1038,6 +1076,7 @@ export function createRebuttalShowdownController({
                         }
                         removeKeys.push(key);
                         misses += 1;
+                        adjustControlState(0, 1);
                     }
                 }
             });
@@ -1099,6 +1138,7 @@ export function createRebuttalShowdownController({
                     if (entity.hitPoints > 0) {
                         playBreakEffect(entity, 0.9);
                         updateEntityDamageVisual(entity);
+                        adjustControlState(0.35, 0);
                     } else {
                         playBreakEffect(entity, 1.3);
                         entity.cut = true;
@@ -1113,6 +1153,7 @@ export function createRebuttalShowdownController({
                             }
                         }, 220);
                         cuts += 1;
+                        adjustControlState(1, 0);
                         updateHud();
                     }
                 }
@@ -1237,17 +1278,11 @@ export function createRebuttalShowdownController({
             if (now < finisherCooldownUntil) return;
             finisherCooldownUntil = now + finisherCooldownMs;
             misses += 1;
+            adjustControlState(0, 0.7);
             updateHud();
             if (misses >= missLimit + 2) {
                 finish(false);
             }
-        }
-
-        function computeBladeAngleFromCursorAndMouse(cx, cy, mx, my) {
-            const dx = Math.min(-16, mx - cx);
-            const dy = my - cy;
-            const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-            return clamp(angle, -179, -91);
         }
 
         function onMouseMove(event) {
@@ -1255,63 +1290,13 @@ export function createRebuttalShowdownController({
             const ny = event.clientY;
             lastMouseX = nx;
             lastMouseY = ny;
-            const maxX = Math.max(edgePadding, window.innerWidth - edgePadding);
-            const maxY = Math.max(edgePadding, window.innerHeight - edgePadding);
-            const minX = edgePadding;
-            const minY = edgePadding;
-
-            const cornerRadius = 90;
-            const cornerCenterX = maxX - cornerRadius;
-            const cornerCenterY = maxY - cornerRadius;
-            const inCornerZone = nx >= cornerCenterX && ny >= cornerCenterY;
-
-            if (inCornerZone) {
-                const dx = nx - cornerCenterX;
-                const dy = ny - cornerCenterY;
-                let theta = Math.atan2(Math.max(0, dy), Math.max(0, dx));
-                theta = clamp(theta, 0, Math.PI * 0.5);
-                targetCursorX = cornerCenterX + Math.cos(theta) * cornerRadius;
-                targetCursorY = cornerCenterY + Math.sin(theta) * cornerRadius;
-                cursorEdge = "corner";
-            } else {
-                const rightRailY = clamp(ny, minY, maxY - cornerRadius);
-                const bottomRailX = clamp(nx, minX, maxX - cornerRadius);
-                const rightDist = Math.hypot(nx - maxX, ny - rightRailY);
-                const bottomDist = Math.hypot(nx - bottomRailX, ny - maxY);
-                if (rightDist <= bottomDist) {
-                    cursorEdge = "right";
-                    targetCursorX = maxX;
-                    targetCursorY = rightRailY;
-                } else {
-                    cursorEdge = "bottom";
-                    targetCursorX = bottomRailX;
-                    targetCursorY = maxY;
-                }
-            }
-
             targetBladeAngleDeg = computeBladeAngleFromCursorAndMouse(targetCursorX, targetCursorY, nx, ny);
         }
 
         function onResize() {
-            const maxX = Math.max(edgePadding, window.innerWidth - edgePadding);
-            const maxY = Math.max(edgePadding, window.innerHeight - edgePadding);
-            if (cursorEdge === "corner") {
-                const cornerRadius = 90;
-                const cornerCenterX = maxX - cornerRadius;
-                const cornerCenterY = maxY - cornerRadius;
-                const vx = targetCursorX - cornerCenterX;
-                const vy = targetCursorY - cornerCenterY;
-                let theta = Math.atan2(Math.max(0, vy), Math.max(0, vx));
-                theta = clamp(theta, 0, Math.PI * 0.5);
-                targetCursorX = cornerCenterX + Math.cos(theta) * cornerRadius;
-                targetCursorY = cornerCenterY + Math.sin(theta) * cornerRadius;
-            } else if (cursorEdge === "bottom") {
-                targetCursorX = Math.min(maxX - 90, Math.max(edgePadding, targetCursorX));
-                targetCursorY = maxY;
-            } else {
-                targetCursorX = maxX;
-                targetCursorY = Math.min(maxY - 90, Math.max(edgePadding, targetCursorY));
-            }
+            const shiftPx = getStruggleShiftPx();
+            targetCursorX = clamp((window.innerWidth * 0.5) + (struggle * shiftPx), edgePadding, window.innerWidth - edgePadding);
+            targetCursorY = Math.max(edgePadding, window.innerHeight - edgePadding);
             targetBladeAngleDeg = computeBladeAngleFromCursorAndMouse(targetCursorX, targetCursorY, lastMouseX, lastMouseY);
             cursorX = targetCursorX;
             cursorY = targetCursorY;
@@ -1347,6 +1332,13 @@ export function createRebuttalShowdownController({
             if (!running) return;
             const dt = lastTs ? Math.min(0.06, (ts - lastTs) / 1000) : 0.016;
             lastTs = ts;
+            const shiftPx = getStruggleShiftPx();
+            targetCursorX = clamp((window.innerWidth * 0.5) + (struggle * shiftPx), edgePadding, window.innerWidth - edgePadding);
+            targetCursorY = Math.max(edgePadding, window.innerHeight - edgePadding);
+            targetBladeAngleDeg = computeBladeAngleFromCursorAndMouse(targetCursorX, targetCursorY, lastMouseX, lastMouseY);
+            if (struggleEl) {
+                struggleEl.style.left = `${targetCursorX}px`;
+            }
             const follow = Math.min(1, dt * 18);
             cursorX += (targetCursorX - cursorX) * follow;
             cursorY += (targetCursorY - cursorY) * follow;
