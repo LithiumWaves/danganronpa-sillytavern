@@ -173,9 +173,9 @@ function buildStyles() {
         animation: rsDamagePulse 130ms ease-out;
     }
     @keyframes rsDamagePulse {
-        0% { transform: translate3d(0,0,0) scale(1); }
-        50% { transform: translate3d(0,0,0) scale(1.03); }
-        100% { transform: translate3d(0,0,0) scale(1); }
+        0% { filter: brightness(1) saturate(0.9); opacity: 0.82; }
+        50% { filter: brightness(1.25) saturate(1.1); opacity: 1; }
+        100% { filter: brightness(1) saturate(0.9); opacity: 0.86; }
     }
     .rs-break-shard {
         position: absolute;
@@ -479,6 +479,44 @@ function buildStyles() {
     .rs-result.rs-loss {
         color: #ff9a9a;
     }
+    .rs-bullet-scroll {
+        position: absolute;
+        right: 22px;
+        bottom: 86px;
+        z-index: 24;
+        width: min(360px, 36vw);
+        border: 1px solid rgba(255,255,255,0.26);
+        background: rgba(0,0,0,0.56);
+        display: none;
+    }
+    .rs-bullet-scroll.rs-show { display: block; }
+    .rs-bullet-scroll-head {
+        padding: 7px 10px;
+        border-bottom: 1px solid rgba(255,255,255,0.2);
+        font-size: clamp(10px, 1.2vh, 14px);
+        letter-spacing: 0.08em;
+        color: rgba(255,255,255,0.8);
+    }
+    .rs-bullet-scroll-body {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px 10px;
+    }
+    .rs-bullet-scroll-arrow {
+        width: 28px;
+        text-align: center;
+        color: rgba(255,255,255,0.9);
+        font-weight: 800;
+    }
+    .rs-bullet-scroll-current {
+        flex: 1;
+        text-align: center;
+        font-size: clamp(11px, 1.45vh, 17px);
+        font-weight: 800;
+        color: rgba(185,236,255,0.96);
+        text-shadow: 0 0 14px rgba(120,220,255,0.65);
+    }
     .rs-counter {
         position: absolute;
         inset: 0;
@@ -618,6 +656,14 @@ export function createRebuttalShowdownController({
                 </div>
                 <div class="rs-cooldown" id="rs-cooldown"><div id="rs-cooldown-fill" class="rs-cooldown-fill"></div></div>
                 <div class="rs-finish-note" id="rs-finish-note">Right-click Finisher ready</div>
+                <div class="rs-bullet-scroll" id="rs-bullet-scroll">
+                    <div class="rs-bullet-scroll-head">TRUTH BLADE · SCROLL</div>
+                    <div class="rs-bullet-scroll-body">
+                        <div class="rs-bullet-scroll-arrow">◀</div>
+                        <div class="rs-bullet-scroll-current" id="rs-bullet-scroll-current">-</div>
+                        <div class="rs-bullet-scroll-arrow">▶</div>
+                    </div>
+                </div>
                 <div class="rs-phase-panel" id="rs-panel">
                     <div class="rs-panel-head">PHASE 2 ARGUMENT LINES</div>
                     <div class="rs-arg-lines" id="rs-arg-lines"></div>
@@ -653,6 +699,8 @@ export function createRebuttalShowdownController({
         const cooldownEl = overlay.querySelector("#rs-cooldown");
         const cooldownFillEl = overlay.querySelector("#rs-cooldown-fill");
         const finishNoteEl = overlay.querySelector("#rs-finish-note");
+        const bulletScrollEl = overlay.querySelector("#rs-bullet-scroll");
+        const bulletScrollCurrentEl = overlay.querySelector("#rs-bullet-scroll-current");
         const phaseLabelEl = overlay.querySelector("#rs-phase-label");
         const cutLabelEl = overlay.querySelector("#rs-cut-label");
         const missLabelEl = overlay.querySelector("#rs-miss-label");
@@ -710,6 +758,19 @@ export function createRebuttalShowdownController({
         let lastMouseY = cursorY - 300;
         let bladeLength = Math.max(window.innerWidth, Math.hypot(window.innerWidth, window.innerHeight) * 1.35);
 
+        function getSelectedBladeIndex() {
+            const idx = bladeOptions.findIndex(option => option.id === selectedBladeId);
+            return idx >= 0 ? idx : 0;
+        }
+
+        function cycleBlade(delta) {
+            if (!bladeOptions.length) return;
+            const current = getSelectedBladeIndex();
+            const next = (current + delta + bladeOptions.length) % bladeOptions.length;
+            selectedBladeId = bladeOptions[next].id;
+            renderBullets();
+        }
+
         function renderBullets() {
             bulletsEl.innerHTML = bladeOptions.map(option => `
                 <button type="button" class="rs-bullet ${selectedBladeId === option.id ? "rs-selected" : ""}" data-id="${escapeHtml(option.id)}">
@@ -722,6 +783,10 @@ export function createRebuttalShowdownController({
                     renderBullets();
                 });
             });
+            const selected = bladeOptions[getSelectedBladeIndex()];
+            if (bulletScrollCurrentEl) {
+                bulletScrollCurrentEl.textContent = selected?.title || "-";
+            }
         }
 
         function updateHud() {
@@ -1190,7 +1255,8 @@ export function createRebuttalShowdownController({
             phase = "phase2";
             phaseLabelEl.textContent = "PHASE 2 · COUNTER";
             weakEl.classList.remove("rs-show");
-            panelEl.classList.add("rs-show");
+            panelEl.classList.remove("rs-show");
+            bulletScrollEl.classList.add("rs-show");
             cooldownEl.classList.add("rs-show");
             finishNoteEl.classList.add("rs-show");
             removeAllLines();
@@ -1222,6 +1288,7 @@ export function createRebuttalShowdownController({
             overlay.removeEventListener("mousemove", onMouseMove);
             overlay.removeEventListener("mousedown", onMouseDown);
             overlay.removeEventListener("contextmenu", onContextMenu);
+            overlay.removeEventListener("wheel", onWheel);
             window.removeEventListener("keydown", onKeyDown);
             window.removeEventListener("resize", onResize);
             if (win) {
@@ -1321,7 +1388,27 @@ export function createRebuttalShowdownController({
             tryCounter(performance.now());
         }
 
+        function onWheel(event) {
+            if (phase !== "phase2") return;
+            event.preventDefault();
+            if (event.deltaY > 0) {
+                cycleBlade(1);
+            } else if (event.deltaY < 0) {
+                cycleBlade(-1);
+            }
+        }
+
         function onKeyDown(event) {
+            if (phase === "phase2" && (event.key === "ArrowRight" || event.key === "ArrowDown")) {
+                event.preventDefault();
+                cycleBlade(1);
+                return;
+            }
+            if (phase === "phase2" && (event.key === "ArrowLeft" || event.key === "ArrowUp")) {
+                event.preventDefault();
+                cycleBlade(-1);
+                return;
+            }
             if (event.key === "Escape") {
                 event.preventDefault();
                 finish(false);
@@ -1383,6 +1470,7 @@ export function createRebuttalShowdownController({
         overlay.addEventListener("mousemove", onMouseMove);
         overlay.addEventListener("mousedown", onMouseDown);
         overlay.addEventListener("contextmenu", onContextMenu);
+        overlay.addEventListener("wheel", onWheel, { passive: false });
         window.addEventListener("keydown", onKeyDown);
         window.addEventListener("resize", onResize);
         rafId = requestAnimationFrame(gameLoop);
