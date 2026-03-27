@@ -148,7 +148,9 @@ function buildStyles() {
         opacity: 0.98;
     }
     .rs-line.rs-cut {
-        animation: rsCutOut 220ms ease-out forwards;
+        opacity: 0;
+        filter: brightness(2);
+        transition: opacity 140ms ease-out, filter 140ms ease-out;
     }
     .rs-line.rs-weakpoint {
         color: #ffe569;
@@ -167,10 +169,10 @@ function buildStyles() {
     }
     .rs-break-shard {
         position: absolute;
-        width: 5px;
-        height: 2px;
-        border-radius: 1px;
-        background: rgba(255,245,245,0.95);
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: rgba(255,245,245,0.92);
         pointer-events: none;
         z-index: 33;
         transform-origin: 50% 50%;
@@ -179,10 +181,6 @@ function buildStyles() {
     @keyframes rsBreakShard {
         0% { opacity: 1; transform: translate3d(0,0,0) scale(1); }
         100% { opacity: 0; transform: translate3d(var(--dx, 0px), var(--dy, 0px), 0) scale(0.6); }
-    }
-    @keyframes rsCutOut {
-        0% { opacity: 1; transform: translate3d(0,0,0) scale(1); filter: brightness(1.2); }
-        100% { opacity: 0; transform: translate3d(-25px, 0, 0) scale(0.86); filter: brightness(2); }
     }
     .rs-duel {
         position: absolute;
@@ -479,20 +477,32 @@ function buildStyles() {
         align-items: center;
         justify-content: center;
         pointer-events: none;
-        font-size: clamp(44px, 10vh, 128px);
-        font-weight: 900;
-        letter-spacing: 0.12em;
-        color: #bdefff;
-        text-shadow: 0 0 26px rgba(118,228,255,0.95), 0 0 56px rgba(118,228,255,0.65);
+    }
+    .rs-counter-inner {
+        width: min(1100px, 100vw);
+        height: min(34vh, 300px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transform: translateX(-120%);
+        opacity: 0;
+    }
+    .rs-counter-img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        filter: drop-shadow(0 0 24px rgba(95,220,255,0.55));
     }
     .rs-counter.rs-show {
         display: flex;
-        animation: rsCounterPop 420ms ease-out;
     }
-    @keyframes rsCounterPop {
-        0% { opacity: 0; transform: scale(0.74); }
-        55% { opacity: 1; transform: scale(1.05); }
-        100% { opacity: 1; transform: scale(1); }
+    .rs-counter.rs-show .rs-counter-inner {
+        animation: rsCounterSlide 460ms cubic-bezier(0.22,0.61,0.36,1) forwards;
+    }
+    @keyframes rsCounterSlide {
+        0% { opacity: 0; transform: translateX(-120%); }
+        70% { opacity: 1; transform: translateX(2%); }
+        100% { opacity: 1; transform: translateX(0%); }
     }
     `;
 }
@@ -603,7 +613,11 @@ export function createRebuttalShowdownController({
                     <div class="rs-panel-head">TRUTH BLADES</div>
                     <div class="rs-bullets" id="rs-bullets"></div>
                 </div>
-                <div class="rs-counter" id="rs-counter">COUNTER</div>
+                <div class="rs-counter" id="rs-counter">
+                    <div class="rs-counter-inner">
+                        <img id="rs-counter-img" class="rs-counter-img" alt="COUNTER"/>
+                    </div>
+                </div>
                 <div class="rs-result" id="rs-result"></div>
             </div>
         `;
@@ -631,7 +645,10 @@ export function createRebuttalShowdownController({
         const cutLabelEl = overlay.querySelector("#rs-cut-label");
         const missLabelEl = overlay.querySelector("#rs-miss-label");
         const counterEl = overlay.querySelector("#rs-counter");
+        const counterImgEl = overlay.querySelector("#rs-counter-img");
         const resultEl = overlay.querySelector("#rs-result");
+        const counterBannerSrc = `${(extensionFolderPath || "").replace(/\\/g, "/")}/assets/classtrial/counter.png`;
+        if (counterImgEl) counterImgEl.src = counterBannerSrc;
 
         const phaseOneLines = buildStubPhaseOneLines();
         const totalPhaseOneChunks = phaseOneLines.reduce((sum, lineGroup) => sum + lineGroup.length, 0);
@@ -1182,8 +1199,6 @@ export function createRebuttalShowdownController({
         function tryCounter(now) {
             if (phase !== "phase2") return;
             if (phase2WeakPointResolved) return;
-            if (now < finisherCooldownUntil) return;
-            finisherCooldownUntil = now + finisherCooldownMs;
             const radians = bladeAngleDeg * Math.PI / 180;
             const x1 = cursorX - Math.cos(radians) * 8;
             const y1 = cursorY - Math.sin(radians) * 8;
@@ -1202,6 +1217,7 @@ export function createRebuttalShowdownController({
                 }
             });
             if (hitWeakKey) {
+                finisherCooldownUntil = now + finisherCooldownMs;
                 const weakEntity = lineEntities.get(hitWeakKey);
                 phase2WeakPointResolved = true;
                 counterBannerUntil = performance.now() + 900;
@@ -1218,6 +1234,8 @@ export function createRebuttalShowdownController({
                 }, 820);
                 return;
             }
+            if (now < finisherCooldownUntil) return;
+            finisherCooldownUntil = now + finisherCooldownMs;
             misses += 1;
             updateHud();
             if (misses >= missLimit + 2) {
