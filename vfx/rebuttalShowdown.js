@@ -673,6 +673,28 @@ export function createRebuttalShowdownController({
             missLabelEl.textContent = `MISSES ${misses} / ${missLimit}`;
         }
 
+        function updateEntityDamageVisual(entity) {
+            if (!entity?.el) return;
+            const maxHp = Math.max(1, Number(entity.maxHitPoints || 1));
+            const hp = Math.max(0, Number(entity.hitPoints || 0));
+            const original = String(entity.baseText || entity.text || "");
+            if (maxHp <= 1 || hp <= 0) {
+                entity.el.textContent = original;
+            } else {
+                const words = original.split(/\s+/).filter(Boolean);
+                if (words.length <= 1) {
+                    entity.el.textContent = hp >= maxHp ? original : `${original.slice(0, Math.max(1, Math.floor(original.length * hp / maxHp)))}…`;
+                } else {
+                    const keep = Math.max(1, Math.ceil(words.length * (hp / maxHp)));
+                    const clipped = words.slice(0, keep).join(" ");
+                    entity.el.textContent = keep < words.length ? `${clipped} …` : clipped;
+                }
+            }
+            const rect = entity.el.getBoundingClientRect();
+            entity.width = Math.max(50, rect.width);
+            entity.height = Math.max(56, rect.height);
+        }
+
         function syncBladeVisuals() {
             cursorEl.style.left = `${cursorX}px`;
             cursorEl.style.top = `${cursorY}px`;
@@ -828,6 +850,7 @@ export function createRebuttalShowdownController({
                 lineEntities.set(`${Date.now()}-${Math.random()}`, {
                     el: chunk.el,
                     text: chunk.text,
+                    baseText: chunk.text,
                     x: chunk.x,
                     y: chunk.y,
                     width: chunk.width,
@@ -835,6 +858,8 @@ export function createRebuttalShowdownController({
                     speed: chunk.speed,
                     rotationDeg: chunk.rotationDeg,
                     isWeakPoint: false,
+                    maxHitPoints: ((spawnIndex + i) % 7 === 0) ? 3 : (((spawnIndex + i) % 3 === 0) ? 2 : 1),
+                    hitPoints: ((spawnIndex + i) % 7 === 0) ? 3 : (((spawnIndex + i) % 3 === 0) ? 2 : 1),
                     cut: false,
                 });
             });
@@ -915,6 +940,7 @@ export function createRebuttalShowdownController({
                 lineEntities.set(`${Date.now()}-${Math.random()}`, {
                     el: chunk.el,
                     text: chunk.text,
+                    baseText: chunk.text,
                     x: chunk.x,
                     y: chunk.y,
                     width: chunk.width,
@@ -922,6 +948,8 @@ export function createRebuttalShowdownController({
                     speed: chunk.speed,
                     rotationDeg: chunk.rotationDeg,
                     isWeakPoint: chunk.isWeakPoint,
+                    maxHitPoints: 1,
+                    hitPoints: 1,
                     cut: false,
                 });
             });
@@ -996,19 +1024,24 @@ export function createRebuttalShowdownController({
             lineEntities.forEach((entity, key) => {
                 if (entity.cut) return;
                 if (lineIntersectsRect(x1, y1, x2, y2, entity.x, entity.y, entity.width, entity.height)) {
-                    entity.cut = true;
-                    entity.el.classList.add("rs-cut");
-                    const entityRef = entity;
-                    setTimeout(() => {
-                        entityRef.el.remove();
-                        lineEntities.delete(key);
-                        if (lineEntities.size === 0 && hadActivePhraseChunks) {
-                            hadActivePhraseChunks = false;
-                            nextPhraseReadyTs = performance.now() + 170;
-                        }
-                    }, 220);
-                    cuts += 1;
-                    updateHud();
+                    entity.hitPoints = Math.max(0, Number(entity.hitPoints || 1) - 1);
+                    if (entity.hitPoints > 0) {
+                        updateEntityDamageVisual(entity);
+                    } else {
+                        entity.cut = true;
+                        entity.el.classList.add("rs-cut");
+                        const entityRef = entity;
+                        setTimeout(() => {
+                            entityRef.el.remove();
+                            lineEntities.delete(key);
+                            if (lineEntities.size === 0 && hadActivePhraseChunks) {
+                                hadActivePhraseChunks = false;
+                                nextPhraseReadyTs = performance.now() + 170;
+                            }
+                        }, 220);
+                        cuts += 1;
+                        updateHud();
+                    }
                 }
             });
         }
