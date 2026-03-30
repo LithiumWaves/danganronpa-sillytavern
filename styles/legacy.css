@@ -74,8 +74,9 @@ body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-text {
     height: 48px;
 
     background: #000;
-    border: 2px solid #fff;
+    border: 2px solid rgba(255, 255, 255, 0.85);
     border-radius: 50%;
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.15);
 
     cursor: grab;
     z-index: 9999;
@@ -85,6 +86,22 @@ body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-text {
     justify-content: center;
 
     box-sizing: border-box;
+    transition: border-color 0.4s ease, box-shadow 0.4s ease;
+}
+
+body.dangan-theme-daily #dangan_monopad_button {
+    border-color: rgba(60, 130, 230, 0.85);
+    box-shadow: 0 0 10px rgba(60, 130, 230, 0.35);
+}
+
+body.dangan-theme-night #dangan_monopad_button {
+    border-color: rgba(140, 140, 160, 0.75);
+    box-shadow: 0 0 8px rgba(140, 140, 160, 0.2);
+}
+
+body.dangan-theme-investigation #dangan_monopad_button {
+    border-color: rgba(240, 80, 154, 0.85);
+    box-shadow: 0 0 10px rgba(240, 80, 154, 0.35);
 }
 
 
@@ -1672,7 +1689,8 @@ body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-text {
 }
 
 .report-sprite-col {
-    flex-shrink: 0;
+    flex: 1;
+    min-width: 0;
     position: relative;
     background:
         radial-gradient(ellipse at 50% 60%, rgba(36, 10, 46, 0.97), rgba(8, 3, 14, 1));
@@ -1707,8 +1725,13 @@ body.dangan-trial-discussion-vn-active #dangan-vn-overlay .dangan-vn-text {
 }
 
 .report-sprite-img {
-    height: 100%;
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
     width: auto;
+    height: 100%;
+    max-width: 100%;
     display: none;
     object-fit: contain;
     object-position: bottom center;
@@ -7545,6 +7568,7 @@ body.dangan-trial-vn-chat-hidden #chat {
 .dangan-vn-transcript-toggle {
     padding: 0 9px;
     font-family: "Orbitron", "Rajdhani", monospace;
+    letter-spacing: 0.06em;
 }
 
 .dangan-vn-stream-toggle {
@@ -7705,9 +7729,9 @@ body.dangan-trial-vn-chat-hidden #chat {
 }
 
 .dangan-vn-transcript-title {
-    font-family: "Orbitron", "Rajdhani", monospace;
+    font-family: 'Noto Sans JP', sans-serif;
     font-size: 12px;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.01em;
     color: #f5f8ff;
     text-transform: uppercase;
 }
@@ -7745,18 +7769,46 @@ body.dangan-trial-vn-chat-hidden #chat {
 }
 
 .dangan-vn-transcript-speaker {
-    font-family: "Orbitron", "Rajdhani", monospace;
+    font-family: 'Noto Sans JP', sans-serif;
     font-size: 10px;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.01em;
     text-transform: uppercase;
     color: #b9d8ff;
     margin-bottom: 5px;
 }
 
 .dangan-vn-transcript-message {
+    font-family: 'Noto Sans JP', sans-serif;
     font-size: 14px;
-    line-height: 1.4;
-    color: #f4f8ff;
+    line-height: 1.35;
+    letter-spacing: 0.01em;
+    font-weight: 700;
+    color: var(--SmartThemeBodyColor, #f4f8ff);
+}
+
+/* Mirror SillyTavern's .mes_text colour rules so formatted chat text renders
+   correctly inside the transcript (which lives outside #chat). */
+.dangan-vn-transcript-message em,
+.dangan-vn-transcript-message i {
+    color: var(--SmartThemeEmColor);
+}
+
+.dangan-vn-transcript-message q {
+    color: var(--SmartThemeQuoteColor);
+}
+
+.dangan-vn-transcript-message u {
+    color: var(--SmartThemeUnderlineColor);
+}
+
+/* Preserve explicit font[color] overrides in nested formatted elements */
+.dangan-vn-transcript-message font[color] em,
+.dangan-vn-transcript-message font[color] i,
+.dangan-vn-transcript-message font[color] u,
+.dangan-vn-transcript-message font[color] q,
+.dangan-vn-transcript-message q i,
+.dangan-vn-transcript-message q em {
+    color: inherit;
 }
 
 .dangan-vn-transcript-empty {
@@ -9027,7 +9079,7 @@ body.dangan-theme-investigation .dangan-vn-compose-collapse-toggle:hover {
 
 @keyframes dbgm-marquee {
     0%   { transform: translateX(190px); }
-    100% { transform: translateX(-100%); }
+    100% { transform: translateX(-125%); }
 }
 
 @keyframes dbgm-rock {
@@ -9208,11 +9260,19 @@ body.dangan-theme-night .dbgm-wisps img {
     object-fit: fill;
 }
 
-.dbgm-titlebar-text {
+.dbgm-titlebar-text-container {
+    width: 218px;
     position: absolute;
+    height: 22px;
+    top: 5px;
+    overflow: hidden;
+}
+
+.dbgm-titlebar-text {
+    position: relative;
     z-index: 1;
     top: 0;
-    left: 0;
+    left: 20px;
     height: 100%;
     display: inline-flex;
     align-items: center;
@@ -9970,6 +10030,132 @@ body.dangan-theme-night .dbgm-wisps img {
 .bda-footer-actions {
     display: flex;
     gap: 6px;
+}
+
+/* ── Execution Cinematic Editor ─────────────────────────────────────────── */
+
+.exec-editor-overlay .bda-editor-title { color: #ff9944; }
+
+.exec-type-btn {
+    font-size: 9px;
+    letter-spacing: 1px;
+    padding: 4px 10px;
+    border-color: #444;
+    color: #888;
+}
+.exec-type-btn.active {
+    border-color: #ff9944;
+    color: #ff9944;
+    background: rgba(255, 153, 68, 0.1);
+}
+
+/* Media panel: images + audio side by side */
+.exec-media-panel {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid #252525;
+    max-height: 160px;
+}
+.exec-media-col {
+    display: flex;
+    flex-direction: column;
+    padding: 8px 12px;
+    overflow: hidden;
+}
+.exec-images-col {
+    flex: 2;
+    border-right: 1px solid #252525;
+    min-width: 0;
+}
+.exec-audio-col {
+    flex: 1;
+    min-width: 180px;
+}
+.exec-image-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    padding: 2px 0;
+}
+.exec-img-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid #333;
+    padding: 3px 6px;
+    border-radius: 3px;
+    max-width: 220px;
+}
+.exec-img-thumb {
+    width: 36px;
+    height: 24px;
+    object-fit: cover;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+.exec-img-name {
+    font-size: 9px;
+    color: #aaa;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+}
+.exec-media-actions {
+    margin-top: 6px;
+    flex-shrink: 0;
+}
+.exec-upload-label {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    font-size: 9px;
+    letter-spacing: 1px;
+}
+.exec-upload-label:hover { background: #2a2a2a; }
+.exec-audio-upload-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
+}
+.exec-media-filename {
+    font-size: 9px;
+    color: #aaa;
+    letter-spacing: 0.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 140px;
+}
+
+/* Video panel */
+.exec-video-panel {
+    border-bottom: 1px solid #252525;
+    overflow-y: auto;
+    max-height: 320px;
+}
+.exec-media-upload-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+.exec-video-preview-wrap {
+    margin-top: 8px;
+}
+.exec-video-preview {
+    width: 100%;
+    max-height: 240px;
+    background: #000;
+    display: block;
 }
 
 /* Chat message text font */

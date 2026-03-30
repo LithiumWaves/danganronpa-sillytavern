@@ -5,6 +5,11 @@ import { extensionName, extensionFolderPath } from "../core/constants.js";
 
 const VFX_SFX_BASE = `${extensionFolderPath}/assets/sfx/reactions/`;
 
+// Allows the GCP stage to redirect VFX effects onto its own sprite elements
+// instead of SillyTavern's hidden native #expression-image.
+let expressionTargetFn = null;
+export function setExpressionTarget(fn) { expressionTargetFn = fn; }
+
 const VFX_MAP = {
     realization:   { css: "dr-vfx-realization",   duration: 1000, sfx: "realization.wav" },
     surprise:      { css: "dr-vfx-surprise",       duration: 1000, sfx: "surprise.wav"   },
@@ -362,7 +367,9 @@ function saveEmotionHtmlForAll(emotion, html) {
         extension_settings[extensionName].vfxSettings = {};
     }
     const store = extension_settings[extensionName].vfxSettings;
-    const keys = new Set([...Object.keys(store), "__global__"]);
+    const ctx = window.SillyTavern?.getContext?.();
+    const allChids = Array.isArray(ctx?.characters) ? ctx.characters.map((_, i) => String(i)) : [];
+    const keys = new Set([...Object.keys(store), "__global__", ...allChids]);
     for (const key of keys) {
         if (!store[key] || typeof store[key] !== "object") {
             store[key] = { enabled: true, emotions: {} };
@@ -408,8 +415,10 @@ function saveEmotionCssForAll(emotion, css) {
         extension_settings[extensionName].vfxSettings = {};
     }
     const store = extension_settings[extensionName].vfxSettings;
-    // Include all existing character keys plus __global__ so new characters inherit it
-    const keys = new Set([...Object.keys(store), "__global__"]);
+    const ctx = window.SillyTavern?.getContext?.();
+    const allChids = Array.isArray(ctx?.characters) ? ctx.characters.map((_, i) => String(i)) : [];
+    // Include all character chids so every character gets the update, not just those already in store
+    const keys = new Set([...Object.keys(store), "__global__", ...allChids]);
     for (const key of keys) {
         if (!store[key] || typeof store[key] !== "object") {
             store[key] = { enabled: true, emotions: {} };
@@ -484,7 +493,8 @@ function triggerVfx(expression) {
     if (!VFX_MAP[expression]) return;
     // Small delay to let the expression swap animation settle
     setTimeout(() => {
-        const $img = $("#expression-image");
+        const imgEl = expressionTargetFn?.() ?? document.getElementById("expression-image");
+        const $img = $(imgEl);
         if (!$img.length) return;
         applyEmotionCss(expression);
         playOnElement(expression, $img);

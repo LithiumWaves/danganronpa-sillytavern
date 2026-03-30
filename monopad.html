@@ -67,6 +67,10 @@
                 <div class="truth-container">
                     <div class="truth-list">
                         <div class="truth-list-header"><img src="scripts/extensions/third-party/danganronpa-extension/assets/icons/bullets.svg" alt="" class="truth-header-icon">TRUTH BULLETS</div>
+                        <div class="truth-sort-bar">
+                            <button class="truth-sort-btn active" data-sort="latest" data-other="oldest" data-label-a="SORT: LATEST" data-label-b="SORT: OLDEST">SORT: LATEST</button>
+                            <button class="truth-sort-btn" data-sort="az" data-other="za" data-label-a="SORT: A–Z" data-label-b="SORT: Z–A">SORT: A–Z</button>
+                        </div>
                         <div class="truth-list-items"></div>
                     </div>
 
@@ -571,6 +575,11 @@
                     <button class="settings-toggle" data-setting="hideHopesPeakBranding"></button>
                 </div>
 
+                <div class="settings-item">
+                    <span class="settings-label">USE TALENT IMAGES FOR CHARACTER ANALYSIS PAGE</span>
+                    <button class="settings-toggle" data-setting="talentImagesForAnalysis"></button>
+                </div>
+
             </section>
 
             <!-- FX -->
@@ -585,12 +594,21 @@
                     <div class="settings-note">Visual and audio effects on character expressions. Character-specific.</div>
                 </div>
 
+
                 <div class="settings-item settings-item-stack">
                     <span class="settings-label">BODY DISCOVERY CINEMATICS</span>
                     <div class="settings-ai-actions">
                         <button id="dangan_configure_deaths" class="settings-small-button" type="button">CONFIGURE DEATHS</button>
                     </div>
                     <div class="settings-note">Create named cinematics for <code>/body-discovered name=&lt;name&gt;</code>. Set background segments, camera pins, shake and static effects.</div>
+                </div>
+
+                <div class="settings-item settings-item-stack">
+                    <span class="settings-label">EXECUTION CINEMATICS</span>
+                    <div class="settings-ai-actions">
+                        <button id="dangan_configure_executions" class="settings-small-button" type="button">CONFIGURE EXECUTIONS</button>
+                    </div>
+                    <div class="settings-note">Create execution cinematics for <code>/execute name=&lt;name&gt;</code>. Upload an MP4 or build a cinematic with custom images and audio. Marks the character dead on completion.</div>
                 </div>
             </section>
 
@@ -716,6 +734,7 @@
                 </div>
             </div>
         </div>
+
 
         <div id="monopad-vfx-overlay" class="monopad-vfx-overlay" aria-hidden="true">
             <div class="monopad-vfx-window" role="dialog" aria-modal="true" aria-labelledby="monopad-vfx-title">

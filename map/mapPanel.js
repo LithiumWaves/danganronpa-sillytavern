@@ -237,14 +237,80 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
     state.areaOverrides = loadAreaOverrides();
     state.customPins = loadCustomPins();
 
+    // Tracks scroll areas already observed so we don't add duplicate ResizeObservers
+    const _observedScrollAreas = new WeakSet();
+
+    // Returns the rendered image rect within the scroll area, accounting for object-fit: contain letterboxing.
+    function getLetterbox($panel) {
+        const saEl = $panel.find(selectors.scrollArea).get(0);
+        const imgEl = $panel.find(selectors.image).get(0);
+        if (!saEl || !imgEl) return null;
+        const containerW = saEl.clientWidth;
+        const containerH = saEl.clientHeight;
+        if (!containerW || !containerH) return null;
+        const natW = imgEl.naturalWidth || MAP_POINT_WIDTH;
+        const natH = imgEl.naturalHeight || MAP_POINT_HEIGHT;
+        const containerAspect = containerW / containerH;
+        const imageAspect = natW / natH;
+        let renderedW, renderedH, offsetX, offsetY;
+        if (containerAspect > imageAspect) {
+            renderedH = containerH;
+            renderedW = containerH * imageAspect;
+            offsetX = (containerW - renderedW) / 2;
+            offsetY = 0;
+        } else {
+            renderedW = containerW;
+            renderedH = containerW / imageAspect;
+            offsetX = 0;
+            offsetY = (containerH - renderedH) / 2;
+        }
+        return { renderedW, renderedH, offsetX, offsetY, containerW, containerH };
+    }
+
+    // Converts a browser client position to map coordinates [0–MAP_POINT_WIDTH, 0–MAP_POINT_HEIGHT],
+    // accounting for current zoom/pan and letterbox offset.
+    function clientToMapCoords(clientX, clientY, $panel) {
+        const saEl = $panel.find(selectors.scrollArea).get(0);
+        if (!saEl) return { x: 0, y: 0 };
+        const rect = saEl.getBoundingClientRect();
+        const localX = clientX - rect.left;
+        const localY = clientY - rect.top;
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+        const unzoomedX = (localX - centerX - state.mapPanX) / state.mapZoom + centerX;
+        const unzoomedY = (localY - centerY - state.mapPanY) / state.mapZoom + centerY;
+        const lb = getLetterbox($panel);
+        if (lb) {
+            const imgX = unzoomedX - lb.offsetX;
+            const imgY = unzoomedY - lb.offsetY;
+            return {
+                x: Math.round(Math.max(0, Math.min(imgX / lb.renderedW, 1)) * MAP_POINT_WIDTH),
+                y: Math.round(Math.max(0, Math.min(imgY / lb.renderedH, 1)) * MAP_POINT_HEIGHT),
+            };
+        }
+        return {
+            x: Math.round(Math.max(0, Math.min(unzoomedX / rect.width,  1)) * MAP_POINT_WIDTH),
+            y: Math.round(Math.max(0, Math.min(unzoomedY / rect.height, 1)) * MAP_POINT_HEIGHT),
+        };
+    }
+
     function renderCustomPins($pinLayer) {
         $pinLayer.find(selectors.customPin).remove();
         const floorPins = state.customPins.filter(
             p => p.areaKey === state.area && p.floorKey === state.floor && !p.hidden
         );
+        const lb = getLetterbox($(selectors.panel));
         for (const pin of floorPins) {
-            const leftPercent = (pin.x / MAP_POINT_WIDTH) * 100;
-            const topPercent = (pin.y / MAP_POINT_HEIGHT) * 100;
+            let leftPercent, topPercent;
+            if (lb) {
+                const pxLeft = lb.offsetX + (pin.x / MAP_POINT_WIDTH)  * lb.renderedW;
+                const pxTop  = lb.offsetY + (pin.y / MAP_POINT_HEIGHT) * lb.renderedH;
+                leftPercent = (pxLeft / lb.containerW) * 100;
+                topPercent  = (pxTop  / lb.containerH) * 100;
+            } else {
+                leftPercent = (pin.x / MAP_POINT_WIDTH)  * 100;
+                topPercent  = (pin.y / MAP_POINT_HEIGHT) * 100;
+            }
             const matchedBullet = (pin.type === "truth-bullet" || pin.type === "body")
                 ? getTruthBulletByLocationId?.(pin.locationId) : null;
             const ICON_MIGRATIONS = {
@@ -1430,16 +1496,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         $imageWrap.off("click.pinPlace").on("click.pinPlace", (e) => {
             if (!state.pinPlacementMode || !state.pendingCustomPin) return;
             if ($(e.target).closest("button").length && !$(e.target).closest(".map-image-wrap").is(e.target)) return;
-            const wrapEl = $imageWrap.get(0);
-            const rect = wrapEl.getBoundingClientRect();
-            const localX = e.clientX - rect.left;
-            const localY = e.clientY - rect.top;
-            const centerX = rect.width / 2;
-            const centerY = rect.height / 2;
-            const imageX = (localX - centerX - state.mapPanX) / state.mapZoom + centerX;
-            const imageY = (localY - centerY - state.mapPanY) / state.mapZoom + centerY;
-            const x = Math.round(Math.max(0, Math.min(imageX / rect.width, 1)) * MAP_POINT_WIDTH);
-            const y = Math.round(Math.max(0, Math.min(imageY / rect.height, 1)) * MAP_POINT_HEIGHT);
+            const { x, y } = clientToMapCoords(e.clientX, e.clientY, $panel);
 
             const newPin = {
                 id: `custom_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -1492,27 +1549,27 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             let dragged = false;
 
             function toMapCoords(clientX, clientY) {
-                const rect = wrapEl.getBoundingClientRect();
-                const localX = clientX - rect.left;
-                const localY = clientY - rect.top;
-                const centerX = rect.width / 2;
-                const centerY = rect.height / 2;
-                const imageX = (localX - centerX - state.mapPanX) / state.mapZoom + centerX;
-                const imageY = (localY - centerY - state.mapPanY) / state.mapZoom + centerY;
-                return {
-                    x: Math.round(Math.max(0, Math.min(imageX / rect.width,  1)) * MAP_POINT_WIDTH),
-                    y: Math.round(Math.max(0, Math.min(imageY / rect.height, 1)) * MAP_POINT_HEIGHT),
-                };
+                return clientToMapCoords(clientX, clientY, $panel);
             }
 
             function onMouseMove(ev) {
                 dragged = true;
                 $pin.addClass("map-custom-pin-dragging");
                 const { x, y } = toMapCoords(ev.clientX, ev.clientY);
-                $pin.css({
-                    left: `${(x / MAP_POINT_WIDTH) * 100}%`,
-                    top:  `${(y / MAP_POINT_HEIGHT) * 100}%`,
-                });
+                const lb = getLetterbox($panel);
+                if (lb) {
+                    const pxLeft = lb.offsetX + (x / MAP_POINT_WIDTH)  * lb.renderedW;
+                    const pxTop  = lb.offsetY + (y / MAP_POINT_HEIGHT) * lb.renderedH;
+                    $pin.css({
+                        left: `${(pxLeft / lb.containerW) * 100}%`,
+                        top:  `${(pxTop  / lb.containerH) * 100}%`,
+                    });
+                } else {
+                    $pin.css({
+                        left: `${(x / MAP_POINT_WIDTH)  * 100}%`,
+                        top:  `${(y / MAP_POINT_HEIGHT) * 100}%`,
+                    });
+                }
             }
 
             function onMouseUp(ev) {
@@ -1725,6 +1782,24 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         $panel.find(selectors.addAreaBtn).off("click.addArea").on("click.addArea", openCreateAreaModal);
         renderFloorButtons($panel);
         renderMapImage($panel);
+
+        // Re-render pins when the image loads (natural dimensions needed for letterbox calc)
+        $panel.find(selectors.image).off("load.pinresize").on("load.pinresize", () => {
+            renderCustomPins($panel.find(selectors.pinLayer));
+        });
+
+        // Re-render pins whenever the scroll area is resized (browser resize changes letterbox)
+        if (window.ResizeObserver) {
+            const saEl = $panel.find(selectors.scrollArea).get(0);
+            if (saEl && !_observedScrollAreas.has(saEl)) {
+                _observedScrollAreas.add(saEl);
+                new ResizeObserver(() => {
+                    const $p = $(selectors.panel);
+                    const $pl = $p.find(selectors.pinLayer);
+                    if ($pl.length) renderCustomPins($pl);
+                }).observe(saEl);
+            }
+        }
         bindMapZoomControls($panel);
         bindMapPan($panel);
         bindCustomPinsControls($panel);

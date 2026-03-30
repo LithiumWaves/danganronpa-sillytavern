@@ -1,10 +1,15 @@
 @import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600&family=Rajdhani:wght@400;500;600&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Boldonse&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&display=swap");
 @import url("./styles/legacy.css");
 @import url("./styles/systems/vfx/vfx.css");
 @import url("./styles/systems/trial/trial.css");
 @import url("./styles/systems/trial/massPanic.css");
+@import url("./styles/systems/truth/panel.css");
+@import url("./styles/groupChat.css");
+
+
 
 .dangan-trial-skill-manager {
     border: 1px solid rgba(80, 224, 255, 0.5);
@@ -150,5 +155,230 @@
     .monopad-time-button {
         font-size: 9px;
         padding: 4px 6px;
+    }
+}
+
+/* ── XP Gain Popup ──────────────────────────────────────────────────────── */
+#dangan-xp-popup {
+    position: fixed;
+    left: 50%;
+    top: 10%;
+    transform: translate(-50%, -50%) translateY(10px) scale(0.92);
+    z-index: 2147483600;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 7px;
+    padding: 14px 22px;
+    border: 1px solid rgba(255, 205, 70, 0.55);
+    border-radius: 14px;
+    background: rgba(10, 12, 18, 0.88);
+    color: #ffe08a;
+    font-family: "Orbitron", sans-serif;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.22s ease, transform 0.3s ease;
+    backdrop-filter: blur(6px);
+    min-width: 160px;
+    text-align: center;
+}
+
+#dangan-xp-popup.show {
+    opacity: 1;
+    transform: translate(-50%, -50%) translateY(0) scale(1);
+}
+
+.dangan-xp-popup-amount {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+}
+
+.dangan-xp-popup-bar-wrap {
+    width: 100%;
+    height: 4px;
+    background: rgba(255, 205, 70, 0.2);
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.dangan-xp-popup-bar-fill {
+    height: 100%;
+    background: #ffe08a;
+    border-radius: 999px;
+}
+
+.dangan-xp-popup-label {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    opacity: 0.65;
+}
+
+/* ── Level-Up Popup ─────────────────────────────────────────────────────── */
+#dangan-levelup-popup {
+    position: fixed;
+    left: 50%;
+    top: 10%;
+    transform: translate(-50%, -50%) scale(0.82);
+    z-index: 2147483600;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 24px 40px;
+    border: 2px solid rgba(255, 100, 170, 0.7);
+    border-radius: 18px;
+    background: rgba(10, 8, 20, 0.92);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.25s ease, transform 0.35s cubic-bezier(0.22, 1.4, 0.36, 1);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 0 48px rgba(255, 100, 170, 0.28), inset 0 0 24px rgba(255, 100, 170, 0.06);
+    text-align: center;
+    font-family: "Orbitron", sans-serif;
+}
+
+#dangan-levelup-popup.show {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+}
+
+.dangan-levelup-popup-title {
+    font-size: 28px;
+    font-weight: 900;
+    letter-spacing: 0.16em;
+    color: #ff64aa;
+    text-shadow: 0 0 18px rgba(255, 100, 170, 0.85);
+    opacity: 0;
+}
+
+#dangan-levelup-popup.show .dangan-levelup-popup-title {
+    animation: dangan-levelup-title-in 0.55s 0.1s ease forwards;
+}
+
+.dangan-levelup-popup-level {
+    font-size: 14px;
+    letter-spacing: 0.2em;
+    color: #ffe08a;
+    opacity: 0;
+}
+
+#dangan-levelup-popup.show .dangan-levelup-popup-level {
+    animation: dangan-levelup-title-in 0.45s 0.28s ease forwards;
+}
+
+@keyframes dangan-levelup-title-in {
+    0%   { transform: scale(0.75); opacity: 0; }
+    65%  { transform: scale(1.1);  opacity: 1; }
+    100% { transform: scale(1);    opacity: 1; }
+}
+
+/* ── Level Progress Bar (top-right HUD) ─────────────────────────────── */
+
+/* Default theme: gold/amber */
+#dangan-level-bar {
+    --dlvl-rgb:      190, 148, 18;
+    --dlvl-fill-a:   rgba(170, 120, 10, 0.9);
+    --dlvl-fill-b:   rgba(240, 198, 36, 0.95);
+    --dlvl-track-bg: rgba(40, 26, 4, 0.85);
+    --dlvl-bg:       rgba(6, 4, 2, 0.82);
+}
+
+/* Daily Life (day): blue */
+body.dangan-theme-daily #dangan-level-bar {
+    --dlvl-rgb:      60, 130, 230;
+    --dlvl-fill-a:   rgba(30, 90, 210, 0.9);
+    --dlvl-fill-b:   rgba(110, 185, 255, 0.95);
+    --dlvl-track-bg: rgba(6, 16, 44, 0.85);
+    --dlvl-bg:       rgba(4, 10, 28, 0.85);
+}
+
+/* Night: gray */
+body.dangan-theme-night #dangan-level-bar {
+    --dlvl-rgb:      140, 140, 160;
+    --dlvl-fill-a:   rgba(90, 90, 110, 0.9);
+    --dlvl-fill-b:   rgba(180, 180, 200, 0.95);
+    --dlvl-track-bg: rgba(14, 14, 22, 0.85);
+    --dlvl-bg:       rgba(8, 8, 14, 0.85);
+}
+
+/* Investigation: pink */
+body.dangan-theme-investigation #dangan-level-bar {
+    --dlvl-rgb:      240, 80, 154;
+    --dlvl-fill-a:   rgba(190, 30, 110, 0.9);
+    --dlvl-fill-b:   rgba(255, 140, 200, 0.95);
+    --dlvl-track-bg: rgba(40, 6, 22, 0.85);
+    --dlvl-bg:       rgba(22, 4, 14, 0.85);
+}
+
+#dangan-level-bar {
+    position: fixed;
+    top: 20px;
+    right: 76px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px 5px 8px;
+    background: var(--dlvl-bg);
+    border: 1px solid rgba(var(--dlvl-rgb), 0.6);
+    box-shadow: 0 0 10px rgba(var(--dlvl-rgb), 0.14), inset 0 0 12px rgba(0, 0, 0, 0.55);
+    z-index: 50;
+    pointer-events: none;
+    user-select: none;
+    min-width: 170px;
+    backdrop-filter: blur(4px);
+    transition: border-color 0.4s ease, box-shadow 0.4s ease, background 0.4s ease;
+}
+
+.dlvl-label {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    color: rgba(var(--dlvl-rgb), 0.95);
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    text-shadow: 0 0 8px rgba(var(--dlvl-rgb), 0.55);
+    transition: color 0.4s ease, text-shadow 0.4s ease;
+}
+
+.dlvl-track {
+    flex: 1;
+    height: 6px;
+    background: var(--dlvl-track-bg);
+    border: 1px solid rgba(var(--dlvl-rgb), 0.35);
+    overflow: hidden;
+    transition: border-color 0.4s ease, background 0.4s ease;
+}
+
+.dlvl-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--dlvl-fill-a), var(--dlvl-fill-b));
+    transition: width 0.45s cubic-bezier(0.22, 1, 0.36, 1), background 0.4s ease;
+}
+
+#dangan-level-bar.dlvl-flash {
+    animation: dlvl-border-flash 1.4s ease-out;
+}
+
+#dangan-level-bar.dlvl-flash .dlvl-fill {
+    animation: dlvl-fill-flash 1.4s ease-out;
+}
+
+@keyframes dlvl-border-flash {
+    0%   { border-color: rgba(var(--dlvl-rgb), 0.95); box-shadow: 0 0 20px rgba(var(--dlvl-rgb), 0.65), inset 0 0 12px rgba(0,0,0,0.55); }
+    100% { border-color: rgba(var(--dlvl-rgb), 0.60); box-shadow: 0 0 10px rgba(var(--dlvl-rgb), 0.14), inset 0 0 12px rgba(0,0,0,0.55); }
+}
+
+@keyframes dlvl-fill-flash {
+    0%   { filter: brightness(2.2); }
+    100% { filter: brightness(1); }
+}
+
+@media (max-width: 700px) {
+    #dangan-level-bar {
+        top: max(10px, env(safe-area-inset-top, 0px));
+        right: max(62px, calc(env(safe-area-inset-right, 0px) + 58px));
+        min-width: 130px;
+        padding: 4px 8px 4px 6px;
     }
 }

@@ -1,5 +1,7 @@
 export function createRewardSystem({ extensionName, extensionFolderPath, extension_settings, saveSettingsDebounced, monocoinRewards, xpRewards, getItemsPanelController, increaseTrust }) {
     let monocoinToastTimeout = null;
+    let xpPopupTimeout = null;
+    let levelUpPopupTimeout = null;
 
     const LEVEL_CAP = 100;
     const BASE_SKILL_POINTS = 10;
@@ -42,6 +44,28 @@ export function createRewardSystem({ extensionName, extensionFolderPath, extensi
         return { ext, progression };
     }
 
+    function ensureLevelBar() {
+        let bar = document.getElementById('dangan-level-bar');
+        if (bar) return bar;
+        bar = document.createElement('div');
+        bar.id = 'dangan-level-bar';
+        bar.innerHTML = `
+            <span class="dlvl-label">LVL <span class="dlvl-num">1</span></span>
+            <div class="dlvl-track"><div class="dlvl-fill"></div></div>
+        `;
+        document.body.appendChild(bar);
+        return bar;
+    }
+
+    function flashLevelBar() {
+        const bar = document.getElementById('dangan-level-bar');
+        if (!bar) return;
+        bar.classList.remove('dlvl-flash');
+        void bar.offsetWidth;
+        bar.classList.add('dlvl-flash');
+        setTimeout(() => bar.classList.remove('dlvl-flash'), 1400);
+    }
+
     function renderProgressionUi() {
         const { progression } = ensureProgressionState();
         const levelEl = document.getElementById("monopad-level-value");
@@ -60,6 +84,13 @@ export function createRewardSystem({ extensionName, extensionFolderPath, extensi
                 ? "MAX LEVEL"
                 : `${xp} / ${required} XP`;
         }
+
+        // Persistent level bar (top-right HUD)
+        const bar = ensureLevelBar();
+        const barNum  = bar.querySelector('.dlvl-num');
+        const barFill = bar.querySelector('.dlvl-fill');
+        if (barNum)  barNum.textContent = String(level);
+        if (barFill) barFill.style.width = `${Math.round(ratio * 100)}%`;
     }
 
     function ensureMonocoinToast() {
@@ -94,6 +125,66 @@ export function createRewardSystem({ extensionName, extensionFolderPath, extensi
         monocoinToastTimeout = setTimeout(() => {
             toast.classList.remove("show");
         }, 1400);
+    }
+
+    function ensureXpPopup() {
+        let popup = document.getElementById("dangan-xp-popup");
+        if (popup) return popup;
+        popup = document.createElement("div");
+        popup.id = "dangan-xp-popup";
+        popup.innerHTML = `
+            <div class="dangan-xp-popup-amount">+0 XP</div>
+            <div class="dangan-xp-popup-bar-wrap"><div class="dangan-xp-popup-bar-fill"></div></div>
+            <div class="dangan-xp-popup-label">LEVEL <span class="dangan-xp-popup-level">1</span></div>
+        `;
+        document.body.appendChild(popup);
+        return popup;
+    }
+
+    function showXpPopup(amount, newXp, required, level) {
+        const popup = ensureXpPopup();
+        const amountEl = popup.querySelector(".dangan-xp-popup-amount");
+        const fillEl = popup.querySelector(".dangan-xp-popup-bar-fill");
+        const levelEl = popup.querySelector(".dangan-xp-popup-level");
+
+        if (amountEl) amountEl.textContent = `+${amount} XP`;
+        if (levelEl) levelEl.textContent = String(level);
+
+        const ratio = level >= LEVEL_CAP ? 1 : Math.max(0, Math.min(1, newXp / required));
+        if (fillEl) fillEl.style.width = `${Math.round(ratio * 100)}%`;
+
+        popup.classList.remove("show");
+        void popup.offsetWidth;
+        popup.classList.add("show");
+
+        clearTimeout(xpPopupTimeout);
+        xpPopupTimeout = setTimeout(() => popup.classList.remove("show"), 1800);
+    }
+
+    function ensureLevelUpPopup() {
+        let popup = document.getElementById("dangan-levelup-popup");
+        if (popup) return popup;
+        popup = document.createElement("div");
+        popup.id = "dangan-levelup-popup";
+        popup.innerHTML = `
+            <div class="dangan-levelup-popup-title">LEVEL UP!</div>
+            <div class="dangan-levelup-popup-level">LEVEL <span class="dangan-levelup-popup-num">1</span></div>
+        `;
+        document.body.appendChild(popup);
+        return popup;
+    }
+
+    function showLevelUpPopup(newLevel) {
+        const popup = ensureLevelUpPopup();
+        const numEl = popup.querySelector(".dangan-levelup-popup-num");
+        if (numEl) numEl.textContent = String(newLevel);
+
+        popup.classList.remove("show");
+        void popup.offsetWidth;
+        popup.classList.add("show");
+
+        clearTimeout(levelUpPopupTimeout);
+        levelUpPopupTimeout = setTimeout(() => popup.classList.remove("show"), 2800);
     }
 
     function awardMonocoins(amount = 0, reason = "") {
@@ -171,6 +262,13 @@ export function createRewardSystem({ extensionName, extensionFolderPath, extensi
         saveSettingsDebounced();
         renderProgressionUi();
         getItemsPanelController()?.renderSkillsItemsPanel();
+
+        if (leveledUp) {
+            showLevelUpPopup(progression.level);
+        } else {
+            showXpPopup(reward, progression.xp, getXpRequiredForLevel(progression.level), progression.level);
+        }
+        flashLevelBar();
 
         if (reason) {
             console.log(`[${extensionName}] Awarded ${reward} XP (${reason})${leveledUp ? ` · +${leveledUp} level${leveledUp === 1 ? '' : 's'}` : ''}.`);

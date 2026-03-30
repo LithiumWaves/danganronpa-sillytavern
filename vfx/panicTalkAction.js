@@ -792,6 +792,12 @@ function buildStyles() {
     object-fit: contain;
     object-position: center center;
     display: block;
+    animation: pta-sprite-glow 2.7s ease-in-out infinite;
+}
+@keyframes pta-sprite-glow {
+    0%   { filter: drop-shadow(0 0 2px rgba(255, 80, 180, 0.55)); }
+    50%  { filter: drop-shadow(0 0 7px rgba(255, 80, 180, 1)) drop-shadow(0 0 13px rgba(255, 80, 180, 0.5)); }
+    100% { filter: drop-shadow(0 0 2px rgba(255, 80, 180, 0.55)); }
 }
 @keyframes pta-sprite-flash {
     0%   { filter: brightness(1); }

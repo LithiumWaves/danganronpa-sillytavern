@@ -1,5 +1,6 @@
 import { extension_settings } from "../../../extensions.js";
 import { saveSettingsDebounced, getRequestHeaders, eventSource, event_types } from "../../../../script.js";
+import { executeSlashCommandsWithOptions } from '../../../slash-commands.js';
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../../slash-commands/SlashCommandArgument.js';
@@ -19,14 +20,17 @@ import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "./core/monokumaLes
 import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers } from "./monokuma/announcementController.js";
 import { createClassTrialMenuController } from "./trial/menu/classTrialMenu.js";
 import { createTrialManager, TrialPhases } from "./trial/trialManager.js";
-import { initVfxSystem, onVfxChatChanged } from "./vfx/vfxSystem.js";
+import { initVfxSystem, onVfxChatChanged, setExpressionTarget } from "./vfx/vfxSystem.js";
 import { createBdaCinematicEditor } from "./vfx/bdaCinematicEditor.js";
+import { createExecutionCinematicEditor } from "./vfx/executionCinematicEditor.js";
 import { createVoteResultsController } from "./vfx/voteResults.js";
 import { createQuestionTimeController } from "./vfx/questionTime.js";
 import { createQuestionTruthController } from "./vfx/questionTruth.js";
 import { createHangmansGambitController } from "./vfx/hangmansGambit.js";
 import { createPanicTalkActionController } from "./vfx/panicTalkAction.js";
-import { createRebuttalShowdownController } from "./vfx/rebuttalShowdown.js";
+import { createChooseCharacterController } from "./vfx/chooseCharacter.js";
+import { createIntroduceCharacterController } from "./vfx/introduceCharacter.js";
+import { createRebuttalShowdownController, createInterjectionCinematicRunner } from "./vfx/rebuttalShowdown.js";
 import { MPD_TEST_SCENARIOS } from "./vfx/massPanicDebate.js";
 import { createAudioVisualizerController } from "./audio/audioVisualizer.js";
 import { user_avatar } from "../../../personas.js";
@@ -55,12 +59,16 @@ let classTrialMenuController = null;
 let trialManager = null;
 let vfxCleanup = null;
 let bdaCinematicEditor = null;
+let executionCinematicEditor = null;
 let voteResultsController   = null;
 let questionTimeController    = null;
 let questionTruthController   = null;
 let hangmansGambitController    = null;
 let panicTalkActionController   = null;
-let rebuttalShowdownController = null;
+let rebuttalShowdownController  = null;
+let interjectionRunner          = null;
+let chooseCharacterController   = null;
+let introduceCharacterController = null;
 
 const openRouterSettings = createOpenRouterSettingsManager({
     extensionName,
@@ -245,7 +253,7 @@ function renderTimeTrackerUi() {
     }
 }
 
-function passTimeToNight({ source = "manual" } = {}) {
+async function passTimeToNight({ source = "manual" } = {}) {
     const state = ensureTimeTrackerState();
     if (state.phase !== TIME_PHASE_DAY || state.dayActionUsed) return false;
 
@@ -255,13 +263,15 @@ function passTimeToNight({ source = "manual" } = {}) {
     saveSettingsDebounced();
     renderTimeTrackerUi();
     applyTimeContextToGeneration();
+    await monokumaAnnouncementController?.triggerAsync("NIGHT_ANNOUN");
+    await nightTimeStartController.triggerAsync();
+    playNighttimeTrack();
     applyDynamicTheme();
-    monokumaAnnouncementController?.trigger("NIGHT_ANNOUN");
     console.log(`[${extensionName}] Time advanced to NIGHT (source: ${source}).`);
     return true;
 }
 
-function sleepToNextDay({ source = "manual" } = {}) {
+async function sleepToNextDay({ source = "manual" } = {}) {
     const state = ensureTimeTrackerState();
     if (state.phase !== TIME_PHASE_NIGHT) return false;
 
@@ -272,8 +282,10 @@ function sleepToNextDay({ source = "manual" } = {}) {
     saveSettingsDebounced();
     renderTimeTrackerUi();
     applyTimeContextToGeneration();
+    await monokumaAnnouncementController?.triggerAsync("DAY_ANNOUN");
+    await freeTimeStartController.triggerAsync();
+    playDaytimeTrack();
     applyDynamicTheme();
-    monokumaAnnouncementController?.trigger("DAY_ANNOUN");
     console.log(`[${extensionName}] Time advanced to DAY ${state.day} (source: ${source}).`);
     return true;
 }
@@ -1218,7 +1230,7 @@ function createVnModeController() {
                 name,
                 text,
             };
-        }).filter(msg => !msg.isUser && !msg.isSystem && msg.text);
+        }).filter(msg => !msg.isSystem && msg.text);
     }
 
     function getDomMessages() {
@@ -1226,9 +1238,11 @@ function createVnModeController() {
             const isUser = msgEl.getAttribute('is_user') === 'true';
             const isSystem = msgEl.getAttribute('is_system') === 'true';
             const name = String(msgEl.getAttribute('ch_name') || msgEl.getAttribute('name') || '').trim();
-            const text = toPlainText(msgEl.querySelector('.mes_text')?.innerHTML || msgEl.querySelector('.mes_text')?.textContent || '');
-            return { key: `dom-${idx}`, isUser, isSystem, name, text };
-        }).filter(msg => !msg.isUser && !msg.isSystem && msg.text);
+            const mesTextEl = msgEl.querySelector('.mes_text');
+            const html = mesTextEl?.innerHTML || mesTextEl?.textContent || '';
+            const text = toPlainText(html);
+            return { key: `dom-${idx}`, isUser, isSystem, name, text, html };
+        }).filter(msg => !msg.isSystem && msg.text);
     }
 
     function getMessageEntries() {
@@ -1266,6 +1280,9 @@ function createVnModeController() {
     function renderTranscript() {
         if (!transcriptBodyEl) return;
 
+        // Use the same raw-text source as the VN box so *markers* are preserved
+        // for parseVnMarkup to colour action/bold/dialogue segments correctly.
+        // (getDomMessages strips * markers — ST already rendered them to <em> in the DOM.)
         const entries = getMessageEntries();
         transcriptBodyEl.innerHTML = '';
 
@@ -1277,6 +1294,14 @@ function createVnModeController() {
             return;
         }
 
+        // Copy only the font-family from the chat; size/line-height stay as the transcript
+        // defines them — the chat's configured font size is often very small and would make
+        // the transcript unreadable if copied verbatim.
+        const sampleMesText = document.querySelector('.mes .mes_text');
+        const chatFontFamily = sampleMesText
+            ? getComputedStyle(sampleMesText).fontFamily
+            : null;
+
         for (const entry of entries) {
             const row = document.createElement('div');
             row.className = 'dangan-vn-transcript-entry';
@@ -1287,7 +1312,14 @@ function createVnModeController() {
 
             const message = document.createElement('div');
             message.className = 'dangan-vn-transcript-message';
-            message.textContent = stripV3CMarkersFromText(entry.text || '').replace(/\s+/g, ' ').trim() || '...';
+            if (chatFontFamily) {
+                message.style.fontFamily = chatFontFamily;
+            }
+
+            // Use the same VN markup parser so colours match what the VN text box shows
+            // (*action* → green, **bold** → orange, "dialogue" → white, narrator → body colour).
+            const cleanText = stripV3CMarkersFromText(entry.text || '').replace(/\s+/g, ' ').trim();
+            message.innerHTML = cleanText ? parseVnMarkup(cleanText).html : '...';
 
             row.appendChild(speaker);
             row.appendChild(message);
@@ -1354,6 +1386,7 @@ function createVnModeController() {
         messageIndex = Math.max(0, Math.min(messageIndex, messages.length - 1));
 
         const entry = messages[messageIndex];
+        if (entry?.name) trialManager?.updateGroupChatSpeaker?.(entry.name);
         const clean = stripV3CMarkersFromText(entry.text).replace(/\s+/g, ' ').trim();
         const chunks = splitIntoChunks(clean);
 
@@ -1783,51 +1816,56 @@ function createVnModeController() {
         dockTypingSection();
     });
 
+    let _vnObsRaf = null;
     const observer = new MutationObserver(() => {
-        ensureHostAttached();
-        updateBottomOffset();
-        syncMonopadVisibility();
-        dockTypingSection();
-        if (transcriptOpen) {
-            renderTranscript();
-        }
-        if (!host.classList.contains('active')) return;
-        const messages = getMessageEntries();
-        const currentChatScope = getChatScopeSignature();
-        const chatScopeChanged = currentChatScope !== lastObservedChatScope;
-        const previousCount = lastObservedMessageCount;
-        const hadMessageCountChange = messages.length !== previousCount;
-        const previousLastSignature = lastObservedLastSignature;
-        const currentLastSignature = getMessageSignature(messages[messages.length - 1]);
-        const hadLastSignatureChange = currentLastSignature !== previousLastSignature;
-        lastObservedMessageCount = messages.length;
-        lastObservedLastSignature = currentLastSignature;
-        lastObservedChatScope = currentChatScope;
-        if (!messages.length) {
-            renderCurrent();
-            return;
-        }
+        if (_vnObsRaf) return;
+        _vnObsRaf = requestAnimationFrame(() => {
+            _vnObsRaf = null;
+            ensureHostAttached();
+            updateBottomOffset();
+            syncMonopadVisibility();
+            dockTypingSection();
+            if (transcriptOpen) {
+                renderTranscript();
+            }
+            if (!host.classList.contains('active')) return;
+            const messages = getMessageEntries();
+            const currentChatScope = getChatScopeSignature();
+            const chatScopeChanged = currentChatScope !== lastObservedChatScope;
+            const previousCount = lastObservedMessageCount;
+            const hadMessageCountChange = messages.length !== previousCount;
+            const previousLastSignature = lastObservedLastSignature;
+            const currentLastSignature = getMessageSignature(messages[messages.length - 1]);
+            const hadLastSignatureChange = currentLastSignature !== previousLastSignature;
+            lastObservedMessageCount = messages.length;
+            lastObservedLastSignature = currentLastSignature;
+            lastObservedChatScope = currentChatScope;
+            if (!messages.length) {
+                renderCurrent();
+                return;
+            }
 
-        const maxIndex = messages.length - 1;
-        const wasAtTailBeforeNewMessage = hadMessageCountChange && messageIndex >= Math.max(0, maxIndex - 1);
+            const maxIndex = messages.length - 1;
+            const wasAtTailBeforeNewMessage = hadMessageCountChange && messageIndex >= Math.max(0, maxIndex - 1);
 
-        if (chatScopeChanged) {
-            jumpToLatest();
-        } else if (hadMessageCountChange && previousCount === 0 && messages.length > 0) {
-            jumpToLatest();
-        } else if (!hadMessageCountChange && hadLastSignatureChange) {
-            if (messageIndex >= maxIndex) {
+            if (chatScopeChanged) {
+                jumpToLatest();
+            } else if (hadMessageCountChange && previousCount === 0 && messages.length > 0) {
+                jumpToLatest();
+            } else if (!hadMessageCountChange && hadLastSignatureChange) {
+                if (messageIndex >= maxIndex) {
+                    jumpToLatest();
+                } else {
+                    renderCurrent();
+                }
+            } else if (hadMessageCountChange && messages.length > previousCount && wasAtTailBeforeNewMessage) {
+                renderCurrent();
+            } else if (messageIndex >= maxIndex || (wasAtTailBeforeNewMessage && !hadMessageCountChange)) {
                 jumpToLatest();
             } else {
                 renderCurrent();
             }
-        } else if (hadMessageCountChange && messages.length > previousCount && wasAtTailBeforeNewMessage) {
-            renderCurrent();
-        } else if (messageIndex >= maxIndex || (wasAtTailBeforeNewMessage && !hadMessageCountChange)) {
-            jumpToLatest();
-        } else {
-            renderCurrent();
-        }
+        });
     });
 
     const chatEl = document.getElementById('chat');
@@ -2280,6 +2318,8 @@ function playTrackFromSetting(settingKey) {
             $bgmSelect.append(new Option(`asset: ${name}`, path));
         }
         $bgmSelect.val(path).trigger("change");
+        // Ensure the track loops regardless of the user's BGM lock setting
+        $("#audio_bgm").prop("loop", true);
         console.log(`[Dangan][BGM] Handing off to Dynamic Audio (${settingKey}): ${path}`);
         return;
     }
@@ -2737,7 +2777,7 @@ async function tryResolvePendingGiftForMessage(msgEl, rawText) {
     pendingGiftResolutionInFlight = false;
 }
 
-async function generateIsolated(prompt, { allowDialogue = false } = {}) {
+async function generateIsolated(prompt, { allowDialogue = false, maxTokens = 300 } = {}) {
     const fullPrompt = `
 You are an analysis engine.
 You do NOT roleplay.
@@ -2749,7 +2789,7 @@ ${prompt}
 
     if (isOpenRouterGenerationEnabled()) {
         return generateWithOpenRouter(fullPrompt, {
-            maxTokens: 300,
+            maxTokens,
             temperature: 0.25,
             topP: 0.9,
             stop: ["USER:", "ASSISTANT:", "###"]
@@ -2767,10 +2807,7 @@ ${prompt}
 
     const result = await ctx.generateRaw({
         prompt: fullPrompt,
-        max_tokens: 300,
-        temperature: 0.25,
-        top_p: 0.9,
-        stop: ["USER:", "ASSISTANT:", "###"]
+        responseLength: maxTokens,
     });
 
     return (result || "").trim();
@@ -2823,41 +2860,22 @@ if (hasRealData && char.social?.notes) {
 
     const sourceText = getCharacterSourceText(char.name);
 
-    const prompt = `
-TASK:
-Analyze the character and produce a concise analytical profile.
+    const prompt = `Extract a character profile for "${char.name}" from the Danganronpa game series.
+Use the SOURCE below if available. If the source says "NO SOURCE DATA AVAILABLE", use your own knowledge of the Danganronpa games.
+Output ONLY these 6 lines, no extra text:
+ultimate: <role>
+height: <height in cm if known, else "unknown">
+measurements: <measurements if known, else "unknown">
+personality: <3-4 traits, comma-separated>
+likes: <2-3 items, comma-separated>
+dislikes: <2-3 items, comma-separated>
 
-You are NOT summarizing.
-You are NOT copying phrasing.
-You are performing trait abstraction.
-
-Rules:
-- Do NOT roleplay
-- Do NOT quote the source text
-- Do NOT reuse wording from the character card
-- Use neutral, third-person analytical language
-- Combine similar traits into categories
-- Remove redundancy
-
-Return the data EXACTLY in this format:
-
-ultimate: <profession or role>
-height: <approximate or inferred>
-measurements: <approximate or inferred>
-personality: <3–5 concise analytical traits>
-likes: <short list of interests or motivations>
-dislikes: <short list of aversions or conflicts>
-
-Use commas to separate items.
-Use neutral psychological descriptors.
-If unsure, infer conservatively.
-
-SOURCE DATA:
-${sourceText}
-`.trim();
+SOURCE:
+${sourceText.slice(0, 800)}`.trim();
 
     try {
-        const result = (await generateIsolated(prompt)) || "";
+        const result = (await generateIsolated(prompt, { maxTokens: 200 })) || "";
+        console.log("[Dangan][Social] Raw generation result:", JSON.stringify(result));
         const lines = result
     .split("\n")
     .map(l => l.trim())
@@ -2892,8 +2910,214 @@ saveCharacters();
 return char.social.notes;
     } catch (err) {
         console.error("[Dangan][Social] Generation failed:", err);
-        return "ultimate: unknown\nheight: unknown\nmeasurements: unknown\npersonality: unknown";
+        char.social = {
+            profile: {
+                ultimate: "unknown",
+                height: "unknown",
+                measurements: "unknown",
+                personality: "unknown",
+                likes: "unknown",
+                dislikes: "unknown"
+            },
+            notes: "",
+            generatedAt: Date.now()
+        };
+        return "";
     }
+}
+
+// ── Execution Cinematic Playback ─────────────────────────────────────────────
+
+async function runExecutionCinematic(cinematic, charName) {
+    // Build or reuse playback overlay
+    let overlay = document.getElementById("exec-playback-overlay");
+    if (!overlay) {
+        overlay = document.createElement("div");
+        overlay.id = "exec-playback-overlay";
+        overlay.style.cssText = "position:fixed;inset:0;z-index:2147483645;background:#000;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.35s ease;pointer-events:none";
+        document.body.appendChild(overlay);
+    }
+
+    // Fade in overlay
+    overlay.style.pointerEvents = "auto";
+    overlay.style.opacity = "0";
+    // two frames so transition fires
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    overlay.style.opacity = "1";
+    await new Promise(r => setTimeout(r, 380));
+
+    if (!cinematic) {
+        // No cinematic configured — just hold black for 1s then fade out
+        await new Promise(r => setTimeout(r, 1000));
+    } else if (cinematic.type === "video" && cinematic.videoSrc) {
+        await runExecutionVideo(overlay, cinematic);
+    } else if (cinematic.type === "cinematic") {
+        await runExecutionImageCinematic(overlay, cinematic);
+    }
+
+    // Fade out overlay
+    overlay.style.opacity = "0";
+    await new Promise(r => setTimeout(r, 380));
+    overlay.innerHTML = "";
+    overlay.style.pointerEvents = "none";
+}
+
+async function runExecutionVideo(overlay, cinematic) {
+    overlay.innerHTML = "";
+    const video = document.createElement("video");
+    video.src = cinematic.videoSrc;
+    video.style.cssText = "width:100%;height:100%;object-fit:contain;background:#000";
+    video.autoplay = true;
+    overlay.appendChild(video);
+
+    await new Promise(resolve => {
+        video.addEventListener("ended", resolve, { once: true });
+        video.addEventListener("error", resolve, { once: true });
+        // Fallback: timeout at 5 minutes
+        setTimeout(resolve, 5 * 60 * 1000);
+    });
+}
+
+async function runExecutionImageCinematic(overlay, cinematic) {
+    overlay.innerHTML = "";
+
+    const bg = document.createElement("div");
+    bg.id = "exec-pb-bg";
+    bg.style.cssText = "position:absolute;inset:0;background-size:cover;background-position:center;background-repeat:no-repeat;transform-origin:center;transition:none";
+    const colorize = document.createElement("div");
+    colorize.style.cssText = "position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity 200ms";
+    const staticEl = document.createElement("div");
+    staticEl.style.cssText = "position:absolute;inset:0;pointer-events:none;opacity:0;background:url('data:image/svg+xml,<svg xmlns=\"http://www.w3.org/2000/svg\"><filter id=\"n\"><feTurbulence type=\"fractalNoise\" baseFrequency=\"0.65\" numOctaves=\"3\" stitchTiles=\"stitch\"/></filter><rect width=\"100%\" height=\"100%\" filter=\"url(%23n)\" opacity=\"0.15\"/></svg>') center/cover";
+    overlay.appendChild(bg); overlay.appendChild(colorize); overlay.appendChild(staticEl);
+
+    if (!cinematic.audioSrc) {
+        await new Promise(r => setTimeout(r, 10000));
+        return;
+    }
+
+    const audio = new Audio(cinematic.audioSrc);
+    const trackDurationMs = await new Promise(resolve => {
+        audio.addEventListener("loadedmetadata", () => resolve(Math.round(audio.duration * 1000)), { once: true });
+        audio.addEventListener("error", () => resolve(10000), { once: true });
+        setTimeout(() => resolve(10000), 5000);
+    });
+
+    const sortedSegs = [...(cinematic.bgSegments || [])].sort((a, b) => a.startFrac - b.startFrac);
+    const sortedPins = [...(cinematic.pins || [])].sort((a, b) => a.timeFrac - b.timeFrac);
+    const imagesById = new Map((cinematic.images || []).map(i => [i.id, i]));
+
+    function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+    function segAtMs(ms) { return sortedSegs.filter(s => s.startFrac * trackDurationMs <= ms).at(-1) ?? null; }
+    function pinAtMs(ms) {
+        for (const pin of sortedPins) {
+            const start = (pin.timeFrac ?? 0) * trackDurationMs;
+            const end = start + Math.max(100, pin.focusDurationMs ?? 800);
+            if (ms >= start && ms <= end) return pin;
+        }
+        return null;
+    }
+
+    function applySegEffects(seg) {
+        const filters = [];
+        if ((seg?.hueShift ?? 0) !== 0) filters.push(`hue-rotate(${seg.hueShift}deg)`);
+        if (seg?.imgFilter === "grayscale") filters.push("grayscale(1)");
+        else if (seg?.imgFilter === "sepia") filters.push("sepia(1)");
+        bg.style.filter = filters.join(" ");
+        if (seg?.colorize) { colorize.style.background = seg.colorize; colorize.style.opacity = String(seg.colorizeOpacity ?? 0.4); }
+        else { colorize.style.opacity = "0"; }
+    }
+
+    // Schedule BG image switches
+    const timers = [];
+    for (const seg of sortedSegs) {
+        if (!seg.bgFile) continue;
+        const img = imagesById.get(seg.bgFile);
+        if (!img?.src) continue;
+        timers.push(setTimeout(() => {
+            bg.style.backgroundImage = `url("${img.src}")`;
+            applySegEffects(seg);
+        }, Math.round(seg.startFrac * trackDurationMs)));
+    }
+
+    let rafId = null;
+    let lastSegId = undefined, lastPinId = undefined;
+
+    function tick() {
+        if (!audio || audio.paused || audio.ended) return;
+        const elapsed = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.currentTime * 1000 : 0;
+
+        const activeSeg = segAtMs(elapsed);
+        const activePin = pinAtMs(elapsed);
+
+        if (activeSeg?.id !== lastSegId) { applySegEffects(activeSeg); lastSegId = activeSeg?.id ?? null; }
+
+        // Per-frame fade
+        if (activeSeg) {
+            const segStart = activeSeg.startFrac * trackDurationMs;
+            const segEnd = activeSeg.endFrac * trackDurationMs;
+            const segElapsed = elapsed - segStart, segRemain = segEnd - elapsed;
+            const fadeInMs = activeSeg.fadeIn ?? 0, fadeOutMs = activeSeg.fadeOut ?? 0;
+            let opacity = 1;
+            if (fadeInMs > 0 && segElapsed < fadeInMs) opacity = Math.min(opacity, segElapsed / fadeInMs);
+            if (fadeOutMs > 0 && segRemain < fadeOutMs) opacity = Math.min(opacity, segRemain / fadeOutMs);
+            bg.style.opacity = String(clamp01(opacity));
+        } else { bg.style.opacity = "1"; }
+
+        // Camera transform
+        if (activePin) {
+            const startMs = (activePin.timeFrac ?? 0) * trackDurationMs;
+            const durMs = Math.max(1, activePin.focusDurationMs ?? 800);
+            const t = clamp01((elapsed - startMs) / durMs);
+            const pinB = activePin.connectTo ? sortedPins.find(p => p.id === activePin.connectTo) ?? null : null;
+            let ix, iy;
+            if (pinB) {
+                if ((activePin.pathType ?? "direct") === "smooth") {
+                    const mx = (activePin.xFrac + pinB.xFrac) / 2, my = (activePin.yFrac + pinB.yFrac) / 2;
+                    const dx = pinB.xFrac - activePin.xFrac, dy = pinB.yFrac - activePin.yFrac;
+                    const len = Math.sqrt(dx*dx + dy*dy) || 0.001;
+                    const cpx = mx + (-dy/len)*len*0.35, cpy = my + (dx/len)*len*0.35;
+                    ix = (1-t)*(1-t)*activePin.xFrac + 2*(1-t)*t*cpx + t*t*pinB.xFrac;
+                    iy = (1-t)*(1-t)*activePin.yFrac + 2*(1-t)*t*cpy + t*t*pinB.yFrac;
+                } else {
+                    ix = activePin.xFrac + (pinB.xFrac - activePin.xFrac) * t;
+                    iy = activePin.yFrac + (pinB.yFrac - activePin.yFrac) * t;
+                }
+            } else { ix = activePin.xFrac; iy = activePin.yFrac; }
+            const scale = (activePin.baseZoom ?? 1.0) + ((activePin.zoom ?? 1.3) - (activePin.baseZoom ?? 1.0)) * t;
+            bg.style.transition = "none";
+            bg.style.transform = `scale(${scale.toFixed(3)}) translate(${((0.5-ix)*100).toFixed(2)}%, ${((0.5-iy)*100).toFixed(2)}%)`;
+            lastPinId = activePin.id;
+
+            // Shake
+            const shakeAmt = activePin.shake ?? 0;
+            bg.style.animation = shakeAmt > 0 ? `bda-shake ${Math.round(40+(1-shakeAmt)*60)}ms steps(3,end) infinite` : "";
+
+            // Static
+            staticEl.style.opacity = String(activePin.staticOpacity ?? 0);
+        } else {
+            if (lastPinId) { bg.style.transition = "transform 0.4s ease-out"; bg.style.transform = "scale(1) translate(0%,0%)"; lastPinId = null; }
+            bg.style.animation = "";
+            staticEl.style.opacity = "0";
+        }
+
+        rafId = requestAnimationFrame(tick);
+    }
+
+    audio.addEventListener("play", () => { rafId = requestAnimationFrame(tick); }, { once: true });
+
+    await new Promise(resolve => {
+        audio.addEventListener("ended", resolve, { once: true });
+        audio.addEventListener("error", resolve, { once: true });
+        setTimeout(resolve, trackDurationMs + 1000);
+        audio.play().catch(resolve);
+    });
+
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    timers.forEach(clearTimeout);
+
+    bg.style.transition = "transform 1s ease-out";
+    bg.style.transform = "scale(1) translate(0%,0%)";
+    await new Promise(r => setTimeout(r, 1100));
 }
 
 let sfx = {};
@@ -3159,8 +3383,14 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
 })
 } // ✅ CLOSE processAllMessages()
 
+    let _processAllMsgRaf = null;
     const observer = new MutationObserver(() => {
-        processAllMessages();
+        if (!_processAllMsgRaf) {
+            _processAllMsgRaf = requestAnimationFrame(() => {
+                _processAllMsgRaf = null;
+                processAllMessages();
+            });
+        }
     });
 
     observer.observe(chat, {
@@ -3246,6 +3476,31 @@ async function getSpriteUrl(charName, label = "neutral") {
     } catch {
         return null;
     }
+}
+
+const KNOWN_HEIGHTS_CM = new Map([
+    ['monokuma',75],['saionji',130],['hiyoko',130],['hanamura',133],['teruteru',133],
+    ['kuzuryu',157],['fuyuhiko',157],['nanami',160],['chiaki',160],['mioda',164],
+    ['ibuki',164],['koizumi',165],['mahiru',165],['tsumiki',165],['mikan',165],
+    ['soda',172],['kazuichi',172],['pekoyama',172],['peko',172],['nevermind',174],
+    ['sonia',174],['owari',176],['akane',176],['hinata',179],['hajime',179],
+    ['komaeda',180],['nagito',180],['tanaka',182],['gundham',182],['togami',185],
+    ['byakuya',185],['nidai',198],['nekomaru',198],
+]);
+
+function getCharacterHeightCm(name) {
+    if (!name) return null;
+    const needle = String(name).trim().toLowerCase();
+    for (const token of needle.split(/\s+/)) {
+        if (KNOWN_HEIGHTS_CM.has(token)) return KNOWN_HEIGHTS_CM.get(token);
+    }
+    const stChars = window.characters;
+    if (Array.isArray(stChars)) {
+        const match = stChars.find(c => String(c.name || '').trim().toLowerCase() === needle);
+        const raw = String(match?.extensions?.height_cm ?? match?.data?.extensions?.height_cm ?? '').trim();
+        if (raw) { const n = parseFloat(raw); if (n > 0) return n; }
+    }
+    return null;
 }
 
 function debugSTGlobals() {
@@ -4088,13 +4343,18 @@ function ensureDebugControlsStyleTag() {
 function startDebugUiObserver() {
     if (debugUiObserver) return;
 
+    let _debugUiRaf = null;
     debugUiObserver = new MutationObserver(() => {
-        const controls = document.getElementById("trust-debug-controls");
-        const modal = document.getElementById("truth-debug-modal");
+        if (_debugUiRaf) return;
+        _debugUiRaf = requestAnimationFrame(() => {
+            _debugUiRaf = null;
+            const controls = document.getElementById("trust-debug-controls");
+            const modal = document.getElementById("truth-debug-modal");
 
-        if (!controls || controls.parentElement !== document.body || !modal || modal.parentElement !== document.body) {
-            ensureGlobalDebugUi();
-        }
+            if (!controls || controls.parentElement !== document.body || !modal || modal.parentElement !== document.body) {
+                ensureGlobalDebugUi();
+            }
+        });
     });
 
     debugUiObserver.observe(document.body, {
@@ -5342,6 +5602,11 @@ jQuery(async () => {
             getUserName: getActivePersonaName,
             getUserAvatarUrl: getActiveUserAvatarUrl,
             getSpriteUrl,
+            getPromeSpritePack: () => {
+                const prome = extension_settings?.['Prome-VN-Extension'];
+                return (prome?.enableUserSprite && prome?.userSprite) ? prome.userSprite : null;
+            },
+            getMonopadSetting,
         });
 
         try {
@@ -5572,11 +5837,47 @@ $(".monopad-icon").on("mouseenter", function () {
             playHoverWithCooldown();
         });
 
-        $(document).on("mouseenter", "#monopad-pass-time, #monopad-sleep, #dangan_monopad_close, .truth-item, .truth-archived-item, .truth-remove-button, .truth-reload-button, .truth-delete-button, .truth-image-delete-btn, .truth-image-upload-label", function () {
+        $(document).on("mouseenter", "#monopad-pass-time, #monopad-sleep, #dangan_monopad_close, .truth-item, .truth-archived-item, .truth-remove-button, .truth-reload-button, .truth-delete-button, .truth-image-delete-btn, .truth-image-upload-label, .truth-place-on-map-button, .truth-discard-confirm, .truth-discard-cancel", function () {
             if (!this.disabled) playHoverWithCooldown();
         });
 
-        $(document).on("click", ".truth-item, .truth-archived-item, .truth-remove-button, .truth-reload-button, .truth-delete-button, .truth-image-delete-btn, .truth-image-upload-label", function () {
+        $(document).on("click", ".truth-item, .truth-archived-item, .truth-remove-button, .truth-reload-button, .truth-delete-button, .truth-image-delete-btn, .truth-image-upload-label, .truth-place-on-map-button, .truth-discard-confirm, .truth-discard-cancel", function () {
+            playSfx(sfx.click);
+        });
+
+        const MAP_BUTTONS = [
+            ".map-floor-button", ".map-add-area-button", ".map-add-floor-button",
+            ".map-area-button", ".map-area-entry-rename", ".map-area-entry-delete",
+            ".map-floor-entry-rename", ".map-floor-entry-delete",
+            ".map-pins-type-btn", ".map-pins-icon-btn",
+            ".map-pins-list-name", ".map-pins-list-lock", ".map-pins-list-edit", ".map-pins-list-delete",
+            ".map-create-area-save", ".map-create-area-cancel", ".map-create-area-upload-label",
+            ".map-machine-close", ".map-machine-button",
+            ".map-pin-edit-save", ".map-pin-edit-cancel",
+            ".map-zoom-btn",
+        ].join(", ");
+
+        $(document).on("mouseenter", MAP_BUTTONS, function () {
+            if (!this.disabled) playHoverWithCooldown();
+        });
+
+        $(document).on("click", MAP_BUTTONS, function () {
+            playSfx(sfx.click);
+        });
+
+        const SOCIAL_BUTTONS = [
+            ".social-char-card",
+            ".social-sort-btn", ".social-filter-btn", ".social-overlay-toggle",
+            ".social-list-header",
+            ".social-list-item", ".social-name", ".social-delete",
+            ".report-dead-btn", ".report-missing-btn", ".report-mastermind-btn",
+        ].join(", ");
+
+        $(document).on("mouseenter", SOCIAL_BUTTONS, function () {
+            if (!this.disabled) playHoverWithCooldown();
+        });
+
+        $(document).on("click", SOCIAL_BUTTONS, function () {
             playSfx(sfx.click);
         });
 
@@ -5616,14 +5917,14 @@ $(".monopad-icon").on("mouseenter", function () {
             await startMonokumaLesson();
         });
 
-        $("#monopad-pass-time").on("click", () => {
+        $("#monopad-pass-time").on("click", async () => {
             playSfx(sfx.click);
-            passTimeToNight({ source: "monopad_button" });
+            await passTimeToNight({ source: "monopad_button" });
         });
 
-        $("#monopad-sleep").on("click", () => {
+        $("#monopad-sleep").on("click", async () => {
             playSfx(sfx.click);
-            sleepToNextDay({ source: "monopad_button" });
+            await sleepToNextDay({ source: "monopad_button" });
         });
 
         $(".settings-toggle").on("click", function () {
@@ -5949,6 +6250,7 @@ debugSTGlobals();
     });
 
     vfxCleanup = initVfxSystem();
+    setExpressionTarget(() => trialManager?.getGcpSpeakerImg?.() ?? document.getElementById('expression-image'));
 
     try {
         trialManager = createTrialManager({
@@ -5970,10 +6272,81 @@ debugSTGlobals();
             suppressVisualizer: () => audioVisualizer.suppress(),
             unsuppressVisualizer: () => audioVisualizer.unsuppress(),
             onStartHangmansGambit: () => hangmansGambitController?.run({ question: 'Identify the culprit', answer: 'BLACKENED', time: 60, health: 3, difficulty: 2 }),
-            onStartPanicTalkAction: () => panicTalkActionController?.run({ enemyHp: 100, playerHp: 100, phases: 3, dialogs: ['You\'re wrong!', 'That\'s impossible!', 'I won\'t let you expose the truth!'] }),
+            onStartPanicTalkAction: async () => {
+                // Resolve the current speaker as the PTA enemy
+                const speakerName = trialManager?.getGcpSpeakerName?.() ?? null;
+
+                // mainSprite: dedicated panictalkaction sprite, falls back to neutral via getSpriteUrl
+                // defeatSprite: surprised reaction, falls back to neutral
+                let mainSprite   = null;
+                let defeatSprite = null;
+                if (speakerName) {
+                    [mainSprite, defeatSprite] = await Promise.all([
+                        getSpriteUrl(speakerName, 'panictalkaction').catch(() => null),
+                        getSpriteUrl(speakerName, 'surprised').catch(() => null),
+                    ]);
+                }
+
+                // Resolve 'gore' background from ST's loaded background list
+                const bgMatch = Array.from(document.querySelectorAll('.bg_example'))
+                    .find(el => el.getAttribute('bgfile')?.toLowerCase().includes('gore'));
+                let BG = '';
+                if (bgMatch) {
+                    const bgfile   = bgMatch.getAttribute('bgfile') || '';
+                    const isCustom = bgMatch.getAttribute('custom') === 'true';
+                    BG = isCustom ? encodeURI(bgfile) : `backgrounds/${encodeURIComponent(bgfile)}`;
+                }
+
+                panicTalkActionController?.run({
+                    enemyHp: 100, playerHp: 100, phases: 3,
+                    dialogs: ['You\'re wrong!', 'That\'s impossible!', 'I won\'t let you expose the truth!'],
+                    BG,
+                    mainSprite,
+                    defeatSprite,
+                });
+            },
+            onStartInterjection: ({ characterName } = {}) => {
+                const bgmPath = `${(extensionFolderPath || '').replace(/\\/g, '/')}/assets/bgm/New Classmates of the Dead.mp3`;
+                const $bgmSelect = $('#audio_bgm_select');
+                if ($bgmSelect.length) {
+                    if (!$bgmSelect.find(`option[value="${bgmPath}"]`).length) {
+                        $bgmSelect.append(new Option('asset: New Classmates of the Dead', bgmPath));
+                    }
+                    $bgmSelect.val(bgmPath).trigger('change');
+                }
+                interjectionRunner?.run({ characterName })
+                    ?.then(() => triggerInterjectorResponse(characterName));
+            },
             onStartVotingTime: () => voteResultsController?.run({}),
+            onStartQuestionTime: () => questionTimeController?.run({ title: 'Who is the blackened?', time: 30, answers: ['Suspect A', 'Suspect B', 'Suspect C', 'Suspect D'], correct: 1 }),
+            onStartQuestionTruth: () => questionTruthController?.run({ question: 'What is the key piece of evidence?', answer: '' }),
+            onStartChoosing: ({ characters = [], startIdx = 0 } = {}) => chooseCharacterController?.run({ characters, startIdx }),
             onStartMassPanicDebate: () => trialManager?.startMassPanicDebate(MPD_TEST_SCENARIOS.slice(0, 6)),
+            onStartRebuttalShowdown: (params) => rebuttalShowdownController?.run(params),
+            onStartPunishmentTime: async ({ characterName } = {}) => {
+                if (!characterName) return;
+                try {
+                    const allCinematics = getMonopadSetting('executionCinematics') || [];
+                    const cinematic = allCinematics.find(c => c.name?.toLowerCase() === characterName.toLowerCase()) ?? null;
+                    await runExecutionCinematic(cinematic, characterName);
+                    for (const [, char] of characters) {
+                        if (normalizeName(char.name) === normalizeName(characterName)) {
+                            char.dead = true;
+                            saveCharacters();
+                            break;
+                        }
+                    }
+                    await trialManager?.markCharacterExecuted(characterName);
+                    await executeSlashCommandsWithOptions(`/member-disable ${characterName}`, { handleParserErrors: true });
+                } catch (err) {
+                    console.warn('[danganronpa] onStartPunishmentTime failed:', err);
+                }
+            },
             getEquippedSkillsSnapshot,
+            attachDraggablePositioning,
+            applyCustomUiPosition,
+            awardXp,
+            xpRewards: XP_REWARDS,
         });
     } catch (e) {
         console.error(`[${extensionName}] ❌ Trial Manager init failed:`, e);
@@ -5991,6 +6364,9 @@ debugSTGlobals();
 
     console.log(`[${extensionName}] 🚀 Extension fully loaded.`);
 
+    // Initialize the group chat portrait stage once ST has settled
+    setTimeout(() => trialManager?.initGroupChatPortraits?.(), 1500);
+
     try {
         // Hook into multiple events for maximum reliability
         const handleMessage = (mesId) => {
@@ -6007,6 +6383,10 @@ debugSTGlobals();
                     if (trialManager) {
                         console.log(`[${extensionName}] 🚀 Calling trialManager.onMessageSent`);
                         trialManager.onMessageSent(text);
+                        // Scroll GCP stage to player slot when user speaks
+                        const pCtx = window.SillyTavern?.getContext?.();
+                        const playerName = pCtx?.name1 || pCtx?.user_name || pCtx?.userName || pCtx?.personaName;
+                        if (playerName) trialManager.updateGroupChatSpeaker?.(playerName);
                     } else {
                         console.warn(`[${extensionName}] ⚠️ trialManager not initialized yet.`);
                     }
@@ -6016,11 +6396,93 @@ debugSTGlobals();
 
         eventSource.on(event_types.MESSAGE_SENT, handleMessage);
         eventSource.on(event_types.USER_MESSAGE_RENDERED, handleMessage);
-        
+
+        // Update group chat portrait stage when a character speaks
+        const handleCharacterMessage = (mesId) => {
+            const ctx = window.SillyTavern?.getContext?.();
+            if (!ctx) return;
+            const msg = ctx.chat?.[mesId] ?? ctx.chat?.[ctx.chat.length - 1];
+            if (msg && !msg.is_user && msg.name) {
+                trialManager?.updateGroupChatSpeaker?.(msg.name);
+            }
+        };
+        eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, handleCharacterMessage);
+
+        // On chat change, rebuild the stage (group ↔ 1-on-1 may differ) then snap to latest speaker
+        eventSource.on(event_types.CHAT_CHANGED, () => {
+            trialManager?.destroyGroupChatPortraits?.();
+            setTimeout(async () => {
+                trialManager?.onChatChanged?.();
+                await trialManager?.initGroupChatPortraits?.();
+                const ctx = window.SillyTavern?.getContext?.();
+                const lastMsg = [...(ctx?.chat || [])].reverse().find(m => !m.is_user && m.name);
+                if (lastMsg?.name) trialManager?.updateGroupChatSpeaker?.(lastMsg.name);
+            }, 300);
+        });
+
         console.log(`[${extensionName}] ✅ Chat hooks initialized.`);
     } catch (e) {
         console.error(`[${extensionName}] ❌ Chat hooks failed:`, e);
     }
+
+    // Mirror /emote expression changes to the active GCP portrait slot.
+    // ST may either append a new <img> (childList) or update an existing one's src (attributes),
+    // so we watch both. We also debounce to avoid rapid VFX/SFX sequences applying
+    // multiple expressions in a row to the same portrait.
+    (function setupExpressionMirror() {
+        let _pendingExprSrc = null;
+        let _exprDebounceTimer = null;
+
+        function flushExpression() {
+            const src = _pendingExprSrc;
+            _pendingExprSrc = null;
+            if (!src) return;
+            const speakerImg = trialManager?.getGcpSpeakerImg?.();
+            if (!speakerImg) return;
+            if (speakerImg.parentElement?.classList.contains('gcp-dead')) return;
+            speakerImg.src = src;
+        }
+
+        function onExpressionImg(imgNode) {
+            const src = imgNode.getAttribute?.('src') || imgNode.src;
+            if (!src) return;
+            // Route Prome user sprite changes directly to the player slot (no debounce needed)
+            if (imgNode.closest?.('#expression-prome-user')) {
+                const playerImg = trialManager?.getGcpPlayerImg?.();
+                if (playerImg) playerImg.src = src;
+                return;
+            }
+            // Debounce: only apply the last expression in a rapid burst so VFX/SFX sequences
+            // don't stack multiple emotion changes onto the same portrait at once.
+            _pendingExprSrc = src;
+            clearTimeout(_exprDebounceTimer);
+            _exprDebounceTimer = setTimeout(flushExpression, 80);
+        }
+
+        function tryAttach() {
+            const vnWrapper  = document.getElementById('expression-wrapper');
+            const exprHolder = document.getElementById('expression-holder');
+            if (!vnWrapper && !exprHolder) { setTimeout(tryAttach, 500); return; }
+
+            const mo = new MutationObserver(mutations => {
+                for (const m of mutations) {
+                    if (m.type === 'childList') {
+                        for (const node of m.addedNodes) {
+                            if (node.nodeName === 'IMG') onExpressionImg(node);
+                        }
+                    } else if (m.type === 'attributes' && m.target.nodeName === 'IMG') {
+                        // /emote updates an existing <img>'s src attribute rather than replacing the node
+                        onExpressionImg(/** @type {HTMLImageElement} */ (m.target));
+                    }
+                }
+            });
+            const opts = { subtree: true, childList: true, attributes: true, attributeFilter: ['src'] };
+            if (vnWrapper)  mo.observe(vnWrapper,  opts);
+            if (exprHolder) mo.observe(exprHolder, opts);
+        }
+        tryAttach();
+    })();
+
     bdaCinematicEditor = createBdaCinematicEditor({
         extensionFolderPath,
         getCinematics: () => getMonopadSetting("bdaCinematics") || [],
@@ -6032,6 +6494,18 @@ debugSTGlobals();
 
     $(document).on("click", "#dangan_configure_deaths", () => {
         bdaCinematicEditor?.open();
+    });
+
+    executionCinematicEditor = createExecutionCinematicEditor({
+        getCinematics: () => getMonopadSetting("executionCinematics") || [],
+        saveCinematics: (data) => {
+            setMonopadSetting("executionCinematics", data);
+            saveSettingsDebounced();
+        },
+    });
+
+    $(document).on("click", "#dangan_configure_executions", () => {
+        executionCinematicEditor?.open();
     });
 
     voteResultsController = createVoteResultsController({
@@ -6061,11 +6535,29 @@ debugSTGlobals();
         },
     });
 
-    questionTimeController   = createQuestionTimeController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme });
-    questionTruthController  = createQuestionTruthController({ extensionFolderPath, getTruthBullets: getTruthBulletsSnapshot, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme });
-    hangmansGambitController  = createHangmansGambitController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, pauseDynamicAudio: fadeOutAndPauseBgm, resumeDynamicAudio: resumeBgmAfterHG, playBgm: playHGBgm });
+    const getPlayerSpriteUrl = (emotion) => {
+        const prome = extension_settings?.['Prome-VN-Extension'];
+        if (!prome?.enableUserSprite || !prome?.userSprite) return null;
+        return `/characters/${prome.userSprite}/${emotion}.png`;
+    };
+    questionTimeController   = createQuestionTimeController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, getPlayerSpriteUrl });
+    questionTruthController  = createQuestionTruthController({ extensionFolderPath, getTruthBullets: getTruthBulletsSnapshot, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, getPlayerSpriteUrl });
+    hangmansGambitController  = createHangmansGambitController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, pauseDynamicAudio: fadeOutAndPauseBgm, resumeDynamicAudio: resumeBgmAfterHG, playBgm: playHGBgm, getPlayerSpriteUrl });
     panicTalkActionController = createPanicTalkActionController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme });
-    rebuttalShowdownController = createRebuttalShowdownController({ extensionFolderPath, getTruthBullets: getTruthBulletsSnapshot, awardMonocoins, deductMonocoins });
+    rebuttalShowdownController = createRebuttalShowdownController({
+        extensionFolderPath, getTruthBullets: getTruthBulletsSnapshot,
+        awardMonocoins, deductMonocoins, getSpriteUrl,
+        getUserAvatarUrl: getActiveUserAvatarUrl,
+        getPromeSpritePack: () => {
+            const prome = extension_settings?.['Prome-VN-Extension'];
+            return (prome?.enableUserSprite && prome?.userSprite) ? prome.userSprite : null;
+        },
+        getCharacterHeightCm,
+        onWin: () => trialManager?.showCounterBanner?.(),
+    });
+    interjectionRunner = createInterjectionCinematicRunner({ extensionFolderPath, getSpriteUrl });
+    chooseCharacterController    = createChooseCharacterController({ extensionFolderPath, getSpriteUrl, getPlayerSpriteUrl });
+    introduceCharacterController = createIntroduceCharacterController({ extensionFolderPath });
     } catch (error) {
         bootstrapDebugUi();
         console.error(`[${extensionName}] ❌ Load failed:`, error);
@@ -6073,6 +6565,29 @@ debugSTGlobals();
 });
 
 // ── Slash Commands ──────────────────────────────────────────────────────────
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'introduce',
+    callback: async () => {
+        const name = trialManager?.getGcpSpeakerName?.() ?? null;
+        if (!name) return '';
+        const ultimate  = lookupUltimateFromLorebook(name);
+        const spriteUrl = await getSpriteUrl(name, 'neutral').catch(() => null);
+        await introduceCharacterController?.run({ name, ultimate, spriteUrl });
+        return '';
+    },
+    helpString: 'Shows a 4-second character introduction screen for the current speaker.',
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'choose',
+    callback: async () => {
+        const info = trialManager?.getGcpInfo?.() ?? { characters: [], currentIndex: 0 };
+        await chooseCharacterController?.run({ characters: info.characters, startIdx: info.currentIndex });
+        return '';
+    },
+    helpString: 'Opens the character selection screen. Navigate with arrow keys, confirm with Enter.',
+}));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'end-trial',
@@ -6116,32 +6631,32 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 // Shared line pool for all NSD test commands (24 lines, one per max section)
-// whiteNoise: pink obstructing text spawned alongside weak-point lines (null = none)
+// whiteNoise: string or string[] of unique reactions spawned over weak-point lines (null = none)
 const NSD_TEST_LINES = [
     { text: "There's no way anyone could have entered the room without a key!", whiteNoise: null },
-    { text: "[[The security footage clearly shows the door was locked all night.]]", whiteNoise: "Static interference detected..." },
+    { text: "[[The security footage clearly shows the door was locked all night.]]", whiteNoise: ["Static interference detected...", "That can't be right!", "No way...", "I don't believe it"] },
     { text: "I was with someone the entire time — I have a perfect alibi!", whiteNoise: null },
     { text: "None of you were even near the scene when it happened...", whiteNoise: null },
     { text: "The evidence you're pointing to doesn't prove anything at all!", whiteNoise: null },
     { text: "That's a complete lie and you know it!", whiteNoise: null },
     { text: "The body wasn't discovered until after the morning announcement.", whiteNoise: null },
-    { text: "[[Someone must have tampered with the investigation before we got there.]]", whiteNoise: "SIGNAL LOST — SIGNAL LOST" },
-    { text: "I heard a noise coming from the hallway around that time!", whiteNoise: null },
+    { text: "[[Someone must have tampered with the investigation before we got there.]]", whiteNoise: ["SIGNAL LOST — SIGNAL LOST", "Stop lying!!", "Who would do that?!", "This is wrong..."] },
+    { text: "I heard a noise coming from the hallway around that time — ((and I know you heard it too))!", whiteNoise: null },
     { text: "It's impossible for one person to have done all of this alone.", whiteNoise: null },
     { text: "The motive doesn't make any sense for any of us!", whiteNoise: null },
     { text: "Why would anyone risk exposure like that so carelessly?", whiteNoise: null },
     { text: "There were two sets of footprints leading away from the scene.", whiteNoise: null },
-    { text: "[[The weapon was never found, which changes everything!]]", whiteNoise: "White Noise — do not trust this" },
+    { text: "[[The weapon was never found, which changes everything!]]", whiteNoise: ["White Noise — do not trust this", "That changes everything!", "Oh no...", "Wait, what?!"] },
     { text: "I saw someone near the [[storage room]] just before the body was found.", whiteNoise: null },
     { text: "That testimony completely contradicts what the others said earlier.", whiteNoise: null },
     { text: "None of the windows were broken — so how did they escape?", whiteNoise: null },
     { text: "The time of death puts everything you're saying in question.", whiteNoise: null },
     { text: "I never touched the door handle — check for fingerprints if you want!", whiteNoise: null },
-    { text: "Someone is lying to protect themselves right now in this very room.", whiteNoise: null },
-    { text: "[[That argument only works if you ignore what happened before noon!]]", whiteNoise: "╳ ╳ ╳  interference  ╳ ╳ ╳" },
+    { text: "((Someone is lying to protect themselves right now in this very room.))", whiteNoise: null },
+    { text: "[[That argument only works if you ignore what happened before noon!]]", whiteNoise: ["╳ ╳ ╳  interference  ╳ ╳ ╳", "Shut up already!", "Grr...", "I can't take this!"] },
     { text: "There's a witness — someone saw the whole thing and stayed quiet.", whiteNoise: null },
     { text: "The real killer is trying to frame an innocent person in this room!", whiteNoise: null },
-    { text: "[[Everything points to the fact that this murder was planned in advance.]]", whiteNoise: "ERROR — DATA CORRUPTED" },
+    { text: "[[Everything points to the fact that this murder was planned in advance.]]", whiteNoise: ["ERROR — DATA CORRUPTED", "This is terrifying...", "I knew it!", "We're all doomed"] },
 ];
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
@@ -6308,47 +6823,46 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'pass-time',
-    callback: async () => {
-        const state = ensureTimeTrackerState();
-        state.phase = TIME_PHASE_NIGHT;
-        state.dayActionUsed = true;
-        saveSettingsDebounced();
-        renderTimeTrackerUi();
-        applyTimeContextToGeneration();
-        // Keep current (day) theme during the announcement
-        await monokumaAnnouncementController?.triggerAsync('NIGHT_ANNOUN');
-        // Show "Night Time START!" banner + SFX, wait for both to finish
-        await nightTimeStartController.triggerAsync();
-        // Play nighttime BGM track (if any selected)
-        playNighttimeTrack();
-        // Now switch to the night theme
-        applyDynamicTheme();
+    name: 'execute',
+    callback: async (args) => {
+        const charName = String(args.name || '').trim();
+        if (!charName) return '';
+
+        const allCinematics = getMonopadSetting('executionCinematics') || [];
+        const cinematic = allCinematics.find(c => c.name?.toLowerCase() === charName.toLowerCase()) ?? null;
+
+        await runExecutionCinematic(cinematic, charName);
+
+        // Mark character as dead after execution
+        for (const [, char] of characters) {
+            if (normalizeName(char.name) === normalizeName(charName)) {
+                char.dead = true;
+                saveCharacters();
+                break;
+            }
+        }
         return '';
     },
+    helpString: 'Plays an execution cinematic for the named character, then marks them as dead.',
+    namedArgumentList: [
+        SlashCommandNamedArgument.fromProps({
+            name: 'name',
+            description: 'Character name — must match an execution cinematic and a registered character',
+            typeList: [ARGUMENT_TYPE.STRING],
+            isRequired: true,
+        }),
+    ],
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'pass-time',
+    callback: async () => { await passTimeToNight({ source: 'slash_command' }); return ''; },
     helpString: 'Triggers the nighttime announcement, shows a Night Time Start banner, then switches to the Night theme.',
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'go-to-sleep',
-    callback: async () => {
-        const state = ensureTimeTrackerState();
-        state.day = Math.max(1, Number(state.day || 1) + 1);
-        state.phase = TIME_PHASE_DAY;
-        state.dayActionUsed = false;
-        saveSettingsDebounced();
-        renderTimeTrackerUi();
-        applyTimeContextToGeneration();
-        // Keep current (night) theme during the announcement
-        await monokumaAnnouncementController?.triggerAsync('DAY_ANNOUN');
-        // Show "Free Time START!" banner + SFX, wait for both to finish
-        await freeTimeStartController.triggerAsync();
-        // Play daytime BGM track (if any selected)
-        playDaytimeTrack();
-        // Now switch to the day theme
-        applyDynamicTheme();
-        return '';
-    },
+    callback: async () => { await sleepToNextDay({ source: 'slash_command' }); return ''; },
     helpString: 'Advances to the next day, plays the daytime announcement, shows a Free Time Start banner, then switches to the Day theme.',
 }));
 
@@ -6421,7 +6935,8 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             console.warn('[QuestionTime] title and all four answers are required.');
             return '';
         }
-        await questionTimeController?.run({ title, time, answers, correct });
+        const won = await questionTimeController?.run({ title, time, answers, correct });
+        if (won) awardXp(XP_REWARDS.questionTime ?? 8, 'question time completed');
         return '';
     },
     helpString: 'Displays a Danganronpa-style question with four answers and a countdown timer. Correct answer triggers GOT IT banner.',
@@ -6446,7 +6961,8 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             return '';
         }
         const time = args.time ? Number(args.time) : 0;
-        await questionTruthController?.run({ question, answer, time });
+        const won = await questionTruthController?.run({ question, answer, time });
+        if (won) awardXp(XP_REWARDS.questionTruth ?? 10, 'question truth completed');
         return '';
     },
     helpString: 'Displays the Truth Bullet list and asks the player to select the correct one. Correct answer gives 5 monocoins and the GOT IT banner.',
@@ -6469,7 +6985,8 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             console.warn('[HangmansGambit] question and answer are required.');
             return '';
         }
-        await hangmansGambitController?.run({ question, answer, time, health, difficulty });
+        const won = await hangmansGambitController?.run({ question, answer, time, health, difficulty });
+        if (won) awardXp(XP_REWARDS.hangmansGambit ?? 15, "hangman's gambit completed");
         return '';
     },
     helpString: 'Displays a Danganronpa-style Hangman\'s Gambit minigame. Letters scroll across the screen; pick a letter into your Stock, then click the same letter to match it against the current target character in the anagram. Correct matches reveal letters; wrong picks or timeout deduct health.',
@@ -6490,6 +7007,124 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     },
     helpString: 'Starts a Rebuttal Showdown minigame with two phases: cut through scrolling statements with left-click slashes, then right-click the weak point using the correct Truth Blade.',
 }));
+
+// ── Interject command ────────────────────────────────────────────────────────
+
+// After the interjection cinematic, force the interjecting character to reply immediately.
+// This makes the interjection feel like a sudden, live outburst — the character cuts in and
+// speaks before anyone else gets a turn.
+async function triggerInterjectorResponse(characterName) {
+    const cmd = characterName ? `/trigger await=false ${characterName}` : '/trigger await=false';
+    try {
+        await executeSlashCommandsWithOptions(cmd, { handleParserErrors: true });
+    } catch (err) {
+        console.warn('[danganronpa] triggerInterjectorResponse failed:', err);
+    }
+}
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'interject',
+    callback: async (args) => {
+        const ctx  = window.SillyTavern?.getContext?.();
+        const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+        const last = [...chat].reverse().find(m => !m.is_user && !m.is_system && m.name);
+        const lastSpeakerName = last ? String(last.name || '').trim() || null : null;
+        const characterName   = String(args.character || '').trim() || lastSpeakerName || null;
+
+        // If the interjecting character isn't the current speaker, scroll the GCP stage to focus them
+        if (characterName && characterName !== lastSpeakerName) {
+            trialManager?.updateGroupChatSpeaker(characterName);
+        }
+
+        // Force Dynamic Audio to play New Classmates of the Dead
+        const bgmPath = `${(extensionFolderPath || '').replace(/\\/g, '/')}/assets/bgm/New Classmates of the Dead.mp3`;
+        const $bgmSelect = $('#audio_bgm_select');
+        if ($bgmSelect.length) {
+            if (!$bgmSelect.find(`option[value="${bgmPath}"]`).length) {
+                $bgmSelect.append(new Option('asset: New Classmates of the Dead', bgmPath));
+            }
+            $bgmSelect.val(bgmPath).trigger('change');
+        }
+
+        await interjectionRunner?.run({ characterName });
+        await triggerInterjectorResponse(characterName);
+        return '';
+    },
+    namedArguments: [
+        SlashCommandNamedArgument.fromProps({ name: 'character', description: 'Character name for the interjection sprite (defaults to last speaker)', typeList: [ARGUMENT_TYPE.STRING] }),
+    ],
+    helpString: 'Plays a rebuttal interjection cinematic and switches BGM to New Classmates of the Dead. Use <code>character="Name"</code> to specify who interjects (defaults to the last speaker). If the character differs from the last speaker, the seating plan scrolls to focus on them.',
+}));
+
+// ── Rebuttal Showdown sized commands ────────────────────────────────────────
+
+function rsGetContext(args) {
+    const ctx  = window.SillyTavern?.getContext?.();
+    const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+    const last = [...chat].reverse().find(m => !m.is_user && !m.is_system && m.name);
+    const opponentName = String(args.opponent || '').trim() || (last ? String(last.name || '').trim() : null) || null;
+    const playerName   = String(args.player   || '').trim() || null;
+    return { opponentName, playerName };
+}
+
+function rsSplitStatement(text, numChunks = 3) {
+    const words = String(text || '').trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return [text];
+    if (words.length <= numChunks) return words;
+    const perChunk = Math.ceil(words.length / numChunks);
+    const chunks = [];
+    for (let i = 0; i < words.length; i += perChunk) {
+        chunks.push(words.slice(i, i + perChunk).join(' '));
+    }
+    return chunks;
+}
+
+function rsBuildPhaseOneLines(args, maxLines) {
+    const lines = [];
+    for (let i = 1; i <= maxLines; i++) {
+        const phrase = String(args[`s${i}-q`] || '').trim();
+        if (phrase) lines.push(rsSplitStatement(phrase));
+    }
+    return lines.length ? lines : null;
+}
+
+const RS_SIZES = {
+    small:      { suffix: 'small',      maxLines:  4, maxBullets:  3, initialTimeMs: 20000, cutTarget:  6, label: 'Small'       },
+    medium:     { suffix: 'medium',     maxLines:  6, maxBullets:  5, initialTimeMs: 30000, cutTarget:  9, label: 'Medium'      },
+    large:      { suffix: 'large',      maxLines:  8, maxBullets:  7, initialTimeMs: 45000, cutTarget: 14, label: 'Large'       },
+    extralarge: { suffix: 'extralarge', maxLines: 12, maxBullets: 10, initialTimeMs: 60000, cutTarget: 20, label: 'Extra Large' },
+};
+
+for (const cfg of Object.values(RS_SIZES)) {
+    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+        name: `rebuttal-showdown-${cfg.suffix}`,
+        callback: async (args) => {
+            const { opponentName, playerName } = rsGetContext(args);
+            const phaseOneLines = rsBuildPhaseOneLines(args, cfg.maxLines);
+            await rebuttalShowdownController?.run({
+                opponentName,
+                playerName,
+                phaseOneLines,
+                initialTimeMs: cfg.initialTimeMs,
+                cutTarget: cfg.cutTarget,
+                maxBullets: cfg.maxBullets,
+            });
+            return '';
+        },
+        namedArguments: [
+            SlashCommandNamedArgument.fromProps({ name: 'opponent', description: 'Opponent character name (defaults to last speaker)', typeList: [ARGUMENT_TYPE.STRING] }),
+            SlashCommandNamedArgument.fromProps({ name: 'player',   description: 'Player character name',                              typeList: [ARGUMENT_TYPE.STRING] }),
+            ...Array.from({ length: cfg.maxLines }, (_, i) =>
+                SlashCommandNamedArgument.fromProps({
+                    name: `s${i + 1}-q`,
+                    description: `Statement ${i + 1} (full phrase, auto-split into chunks)`,
+                    typeList: [ARGUMENT_TYPE.STRING],
+                })
+            ),
+        ],
+        helpString: `Starts a ${cfg.label} Rebuttal Showdown (up to ${cfg.maxLines} statements, ${cfg.initialTimeMs / 1000}s timer, ${cfg.cutTarget}-cut target).`,
+    }));
+}
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'pta',
@@ -6561,7 +7196,8 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             } catch { /* fall through to tester images */ }
         }
 
-        await panicTalkActionController?.run({ enemyHp, playerHp, phases, dialogs, NSolution, SSolution, ESolution, WSolution, FinalSolution, FinalSolutionQuote, BG, clairvoyance, mainSprite, defeatSprite });
+        const won = await panicTalkActionController?.run({ enemyHp, playerHp, phases, dialogs, NSolution, SSolution, ESolution, WSolution, FinalSolution, FinalSolutionQuote, BG, clairvoyance, mainSprite, defeatSprite });
+        if (won) awardXp(XP_REWARDS.panicTalkAction ?? 18, 'panic talk action completed');
         return '';
     },
     helpString: 'Displays a Danganronpa-style Panic Talk Action minigame. Dialog pieces appear on a 3×3 grid and zoom in — shoot them with mouse clicks or arrow keys + Space before they expire. Orange text damages the opponent; pink text hurts you when broken; blue text needs two hits. Defeat the opponent to enter the Final Argument phase.',

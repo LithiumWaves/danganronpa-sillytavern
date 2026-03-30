@@ -1,0 +1,62 @@
+/* ── Group Chat Portrait Stage ───────────────────────────────────────────────
+   Persistent portrait strip shown in the main group chat view.
+   Reuses the same seating plan and cylinder-warp maths as the NSD parade.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+#dangan-group-chat-stage {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 5;
+    perspective: 1200px;
+    perspective-origin: 50% 100%;
+}
+
+.dangan-gcp-slot {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    will-change: transform;
+    transition: transform 1.7s ease-out;
+}
+
+.dangan-gcp-slot img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    filter: drop-shadow(0 0 12px rgba(0, 0, 0, 0.7));
+    display: block;
+}
+
+.dangan-gcp-slot.gcp-dead img {
+    filter: grayscale(1) brightness(0.55);
+}
+
+/* Hide SillyTavern's native VN expression holders when our stage is active.
+   Uses a body class (toggled by JS) instead of :has() — :has() forces the browser
+   to re-evaluate on every DOM mutation under body, causing 70ms layout tasks.
+   visibility:hidden (not display:none) keeps ST's jQuery .is(':visible') = true,
+   preventing ST from clearing and rebuilding expression holders on every message. */
+body.dangan-gcp-active #visual-novel-wrapper {
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+body.dangan-gcp-active #expression-wrapper {
+    visibility: hidden !important;
+}
+/* Suppress Prome's user-sprite overlay whenever the GCP stage is active (idle AND debates).
+   We render the player in the GCP carousel or in the debate portrait stage instead.
+   Must use display:none !important — Prome's CSS sets visibility:visible directly on the
+   element (body.waifuMode.userSprite #expression-prome-user { display:flex; visibility:visible })
+   which overrides inherited visibility:hidden from a parent, so we must target the element
+   itself and use display:none to beat it. */
+body.dangan-gcp-active #expression-prome-user {
+    display: none !important;
+    pointer-events: none !important;
+}
+
+

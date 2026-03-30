@@ -25,6 +25,38 @@
     border-bottom: 1px solid rgba(255, 255, 255, 0.15);
 }
 
+.truth-sort-bar {
+    display: flex;
+    gap: 4px;
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.truth-sort-btn {
+    padding: 4px 10px;
+    background: rgba(8, 3, 14, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: rgba(200, 200, 220, 0.5);
+    font-family: inherit;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.truth-sort-btn:hover {
+    border-color: rgba(255, 255, 255, 0.3);
+    color: rgba(220, 220, 240, 0.8);
+}
+
+.truth-sort-btn.active {
+    border-color: rgba(200, 200, 255, 0.5);
+    color: rgba(200, 210, 255, 0.9);
+    background: rgba(20, 15, 50, 0.85);
+}
+
 .truth-list-items {
     flex: 1;
     padding: 8px;
@@ -249,8 +281,7 @@
     width: 220px;
     position: relative;
     background: radial-gradient(ellipse at 50% 60%, rgba(36,10,46,0.97), rgba(8,3,14,1));
-    border: 1px solid rgba(200,80,220,0.38);
-    box-shadow: inset 0 0 60px rgba(0,0,0,0.55), 0 0 12px rgba(180,60,200,0.12);
+    box-shadow: inset 0 0 60px rgba(0,0,0,0.55);
     display: flex;
     flex-direction: column;
     align-items: center;

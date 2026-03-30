@@ -8,6 +8,7 @@ const elementSources = new WeakMap();
 export function createAudioVisualizerController({ getAudioElement, assetsBasePath, getGameState }) {
     let audioCtx    = null;
     let analyser    = null;
+    let fftData     = null;
     let rafId       = null;
     let pollTimer   = null;
     let root        = null;
@@ -58,7 +59,7 @@ export function createAudioVisualizerController({ getAudioElement, assetsBasePat
             </div>
             <div class="dbgm-layer dbgm-scroller" aria-hidden="true">
                 <img src="${base}/text-scroller.png" alt="" draggable="false" />
-                <span class="dbgm-titlebar-text"></span>
+                <div class="dbgm-titlebar-text-container"><span class="dbgm-titlebar-text"></span></div>
             </div>
         `;
 
@@ -107,13 +108,37 @@ export function createAudioVisualizerController({ getAudioElement, assetsBasePat
 
     function updateTitle() {
         if (!titleEl) return;
-        const select = document.getElementById('audio_bgm_select');
-        if (!select) return;
-        const opt = select.options[select.selectedIndex];
-        if (!opt) return;
-        let name = opt.text || opt.value || '';
-        name = name.split('/').pop().replace(/\.[^.]+$/, '');
-        try { name = decodeURIComponent(name); } catch (_) {}
+
+        // Primary: derive from what the audio element is actually playing.
+        // The select can fall out of sync when Dynamic Audio's fillBGMSelect()
+        // wipes injected options (e.g. the interjection BGM), so always trust the src.
+        const audioEl = document.getElementById('audio_bgm');
+        const src = audioEl instanceof HTMLAudioElement ? (audioEl.src || '') : '';
+        let name = '';
+
+        if (src) {
+            try {
+                name = new URL(src).pathname.split('/').pop() || '';
+            } catch (_) {
+                name = src.split('/').pop();
+            }
+            name = name.replace(/\.[^.]+$/, '');
+            try { name = decodeURIComponent(name); } catch (_) {}
+        }
+
+        // Fallback: use the select label when nothing is playing yet.
+        if (!name) {
+            const select = document.getElementById('audio_bgm_select');
+            if (select) {
+                const opt = select.options[select.selectedIndex];
+                if (opt) {
+                    name = opt.text || opt.value || '';
+                    name = name.split('/').pop().replace(/\.[^.]+$/, '');
+                    try { name = decodeURIComponent(name); } catch (_) {}
+                }
+            }
+        }
+
         name = name.replace(/^asset:\s*/i, '');
         titleEl.textContent = name;
     }
@@ -139,6 +164,7 @@ export function createAudioVisualizerController({ getAudioElement, assetsBasePat
             analyser = audioCtx.createAnalyser();
             analyser.fftSize = 512;
             analyser.smoothingTimeConstant = 0.82;
+            fftData = new Uint8Array(analyser.frequencyBinCount);
 
             src.connect(analyser);
             analyser.connect(audioCtx.destination);
@@ -164,8 +190,9 @@ export function createAudioVisualizerController({ getAudioElement, assetsBasePat
         ctx.clearRect(0, 0, W, H);
 
         const bins     = analyser.frequencyBinCount; // 256
-        const data     = new Uint8Array(bins);
-        analyser.getByteFrequencyData(data);
+        if (!fftData || fftData.length !== bins) fftData = new Uint8Array(bins);
+        analyser.getByteFrequencyData(fftData);
+        const data     = fftData;
 
         // Skip the first 4 bins (DC / rumble) and use up to 60% of spectrum.
         // Use logarithmic spacing so each bar covers a balanced frequency range,
@@ -258,16 +285,22 @@ export function createAudioVisualizerController({ getAudioElement, assetsBasePat
 
     function init() {
         buildDOM();
-        pollTimer = setInterval(poll, POLL_INTERVAL_MS);
+        let lastPoll = 0;
+        const rafPoll = (now) => {
+            if (now - lastPoll >= POLL_INTERVAL_MS) { lastPoll = now; poll(); }
+            pollTimer = requestAnimationFrame(rafPoll);
+        };
+        pollTimer = requestAnimationFrame(rafPoll);
     }
 
     function destroy() {
-        clearInterval(pollTimer);
+        cancelAnimationFrame(pollTimer);
         if (rafId) cancelAnimationFrame(rafId);
         window.removeEventListener('resize', syncCanvasSize);
         root?.remove();
         analyser?.disconnect();
         analyser = null;
+        fftData  = null;
         if (audioCtx && audioCtx.state !== 'closed') audioCtx.close().catch(() => {});
         audioCtx = null;
     }

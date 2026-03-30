@@ -29,9 +29,19 @@ export function createTrialManager(deps) {
         unsuppressVisualizer,
         onStartHangmansGambit,
         onStartPanicTalkAction,
+        onStartInterjection,
         onStartVotingTime,
+        onStartQuestionTime,
+        onStartQuestionTruth,
+        onStartChoosing,
         onStartMassPanicDebate,
+        onStartRebuttalShowdown,
+        onStartPunishmentTime,
         getEquippedSkillsSnapshot,
+        attachDraggablePositioning,
+        applyCustomUiPosition,
+        awardXp,
+        xpRewards,
     } = deps;
 
     function getAssetUrl(name) {
@@ -61,6 +71,7 @@ export function createTrialManager(deps) {
     let portraitSpeaker = null;
     let portraitEmotion = null;
     let debateSeatingPlan = null;
+    let paradeController  = null;
     let characterEmotions = new Map();
     let lastHitBullet = null;
     let lastHitWeakPoint = null;
@@ -81,7 +92,21 @@ export function createTrialManager(deps) {
     let nsdActiveBullets = null;  // filtered bullet list for the current NSD; null = use full list
     let adjacentHideTimer = null;
     let keysPressed = new Set();
-    let shiftLeftPressed = false;
+    let shiftLeftPressed  = false;
+    let shiftRightPressed = false;
+    let absorbTarget      = null;   // weak-point element being charged for absorption
+    let absorbTimerId     = null;   // 3-second charge timeout
+    let absorbStartTime   = null;   // charge start (ms)
+    let absorbRafId       = null;   // RAF for progress ring
+    let tempBullet        = null;   // current absorbed temporary truth bullet
+    let scanningAudio     = null;   // looping scanning-shot.wav during charge
+    let lieHeld           = false;  // Enter key held for lie-scan mode
+    let lieAbsorbTarget   = null;
+    let lieAbsorbTimerId  = null;
+    let lieAbsorbStartTime = null;
+    let lieAbsorbRafId    = null;
+    let lieScanningAudio  = null;
+    let lieGenerationPromise = null; // kicked off at scan start, awaited at completion
     let btSlowmoAudio = null;
     let ffAudio = null;
     let nsdKeyAC = null;
@@ -89,6 +114,18 @@ export function createTrialManager(deps) {
     let isPerjuryCharged = false;
     let lastHitWasPerjury = false;
     let shotCooldown = false;
+    let gcpStage        = null;       // #dangan-group-chat-stage element
+    let gcpSlots        = [];        // array of { name, el, img }
+    let gcpIndexMap     = new Map(); // normalizedName → gcpSlots index (filtered subset)
+    let gcpCurrentFloat = 0;         // fractional center index (animated)
+    let gcpAnimRafId    = null;      // RAF id for scroll animation
+    let gcpInitializing = false;     // true while initGroupChatPortraits is awaiting sprites
+    let gcpSeatingListRenderer = null; // callback set by Trial Controls to stay in sync with rebuilds
+    let nsdShiftParadeStop = null;   // stop fn for in-progress speaker-shift parade (NSD only)
+
+    // Shared white-noise animation pool — one RAF loop drives all active elements.
+    let wnAnimPool  = [];
+    let wnPoolRafId = null;
     let activeWhiteNoiseEls = [];
     let hoveredWhiteNoise = null;
     let lastCursorX = 0;
@@ -96,6 +133,13 @@ export function createTrialManager(deps) {
     let wnSpaceHeld = false;
     let wnSpaceTapTimer = null;
     let wnSpaceRepeatTimer = null;
+
+    // Characters who are muted (disabled) but have a dead.png — seated but never speak.
+    const silencedSeats = new Set();
+
+    function isSilenced(name) {
+        return silencedSeats.has(normalizeSeatName(String(name || '')));
+    }
 
     // ── Mass Panic Debate state ───────────────────────────────────────────────
     let mpdScenarios        = null;
@@ -106,10 +150,18 @@ export function createTrialManager(deps) {
     let mpdLockTimer        = null;
     let mpdColEls           = [null, null, null];
     let mpdColAnims         = [null, null, null];
+    let mpdColumnSpeakers   = [null, null, null];
     let mpdRHeld            = false;
     let mpdRTapTimer        = null;
     let mpdRRepeatTimer     = null;
-    const MPD_CHAIN_BREAKS_NEEDED      = 8;
+    // Breaks needed scales with debate size: ≤3 → 3 (SM), ≤6 → 5 (MD), ≤9 → 6 (LG), >9 → 8 (XL)
+    function mpdBreaksNeeded() {
+        const n = mpdScenarios?.length ?? 0;
+        if (n <= 3) return 3;
+        if (n <= 6) return 5;
+        if (n <= 9) return 6;
+        return 8;
+    }
     const MPD_LOCK_CHANCE_PER_SCENARIO = 0.35;
     let mpdSkillBetaBlock       = false;
     let mpdSkillSeatingPlanCopy = false;
@@ -118,20 +170,35 @@ export function createTrialManager(deps) {
         return currentState === TrialPhases.NON_STOP_DEBATE || currentState === TrialPhases.MASS_PANIC_DEBATE;
     }
 
+    // Normalise a whiteNoise value to a non-empty string array, or null.
+    // Accepts: null | undefined | "" | "single string" | ["a", "b", ...]
+    function normalizeWhiteNoise(wn) {
+        if (!wn) return null;
+        const arr = Array.isArray(wn)
+            ? wn.map(s => String(s || '').trim()).filter(Boolean)
+            : [String(wn).trim()].filter(Boolean);
+        return arr.length ? arr : null;
+    }
+
     function parseMpdScenarios(rawScenarios) {
-        return rawScenarios.map(s => {
-            let weakSpotColumn = -1;
-            const texts = (s.texts || []).map((t, col) => {
-                const hasWeak = /\[\[.*?\]\]/.test(String(t.text || ''));
-                if (hasWeak && weakSpotColumn === -1) weakSpotColumn = col;
-                return { text: String(t.text || ''), speaker: String(t.speaker || ''), whiteNoise: t.whiteNoise || null, isWeakPoint: hasWeak };
+        return rawScenarios
+            .filter(s => (s.texts || []).every(t => {
+                const speaker = String(t.speaker || '').trim();
+                return !speaker || !isCharacterDead(speaker);
+            }))
+            .map(s => {
+                let weakSpotColumn = -1;
+                const texts = (s.texts || []).map((t, col) => {
+                    const hasWeak = /\[\[.*?\]\]/.test(String(t.text || ''));
+                    if (hasWeak && weakSpotColumn === -1) weakSpotColumn = col;
+                    return { text: String(t.text || ''), speaker: String(t.speaker || ''), whiteNoise: normalizeWhiteNoise(t.whiteNoise), isWeakPoint: hasWeak };
+                });
+                if (weakSpotColumn === -1 && texts.length) {
+                    weakSpotColumn = Math.floor(Math.random() * texts.length);
+                    texts[weakSpotColumn] = { ...texts[weakSpotColumn], isWeakPoint: true };
+                }
+                return { texts, weakSpotColumn };
             });
-            if (weakSpotColumn === -1 && texts.length) {
-                weakSpotColumn = Math.floor(Math.random() * texts.length);
-                texts[weakSpotColumn] = { ...texts[weakSpotColumn], isWeakPoint: true };
-            }
-            return { texts, weakSpotColumn };
-        });
     }
 
     function getTrialPersistenceKey() {
@@ -168,10 +235,19 @@ export function createTrialManager(deps) {
 
         const wasDebate = oldState === TrialPhases.NON_STOP_DEBATE || oldState === TrialPhases.MASS_PANIC_DEBATE;
         const isDebate  = newState === TrialPhases.NON_STOP_DEBATE || newState === TrialPhases.MASS_PANIC_DEBATE;
+        const isNsd     = newState === TrialPhases.NON_STOP_DEBATE;
+        document.body.classList.toggle('dangan-nsd-running', isNsd);
         if (wasDebate && !isDebate) {
             cleanupNSDListeners();
         } else if (isDebate && !wasDebate) {
             setupNSDListeners();
+        }
+
+        // Hide group chat portraits during active debates; show during idle/pre-debate
+        const gcpVisible = newState === TrialPhases.IDLE || newState === TrialPhases.PRE_DEBATE;
+        const gcpWasVisible = oldState === TrialPhases.IDLE || oldState === TrialPhases.PRE_DEBATE;
+        if (gcpVisible !== gcpWasVisible) {
+            setGroupChatPortraitsVisible(gcpVisible);
         }
 
         syncUI();
@@ -185,7 +261,12 @@ export function createTrialManager(deps) {
 
         window.addEventListener('keydown', (e) => {
             keysPressed.add(e.key);
-            if (e.code === 'ShiftLeft') shiftLeftPressed = true;
+            if (e.code === 'ShiftLeft')  { shiftLeftPressed  = true; }
+            if (e.code === 'ShiftRight') { shiftRightPressed = true; reticleEl?.classList.add('absorb-mode'); }
+            if (e.key === 'Enter' && isDebateActive()) {
+                e.preventDefault();
+                if (!lieHeld) { lieHeld = true; reticleEl?.classList.add('lie-mode'); }
+            }
             updateSpeedModifier();
 
             if (e.key === ' ' && currentState === TrialPhases.NON_STOP_DEBATE) {
@@ -218,8 +299,8 @@ export function createTrialManager(deps) {
                     }, 250);
                 }
             }
-            if (currentState === TrialPhases.NON_STOP_DEBATE ||
-                (currentState === TrialPhases.MASS_PANIC_DEBATE && mpdSkillSeatingPlanCopy)) {
+            if ((currentState === TrialPhases.NON_STOP_DEBATE || currentState === TrialPhases.MASS_PANIC_DEBATE) &&
+                mpdSkillSeatingPlanCopy) {
                 if (e.key === 'Tab') {
                     e.preventDefault();
                     seatingDebugMode = seatingDebugMode === 'circle' ? 'line' : 'circle';
@@ -230,14 +311,25 @@ export function createTrialManager(deps) {
             if (isDebateActive()) {
                 if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
                     e.preventDefault();
-                    const bullets = getDebateBullets();
+                    const bullets  = getDebateBullets();
                     if (bullets.length > 1) {
+                        const prevIdx    = selectedTruthBulletIndex;
+                        const prevBullet = bullets[prevIdx];
                         if (e.key === 'ArrowDown') {
                             selectedTruthBulletIndex = (selectedTruthBulletIndex + 1) % bullets.length;
                             revolverTarget += 40;
                         } else {
                             selectedTruthBulletIndex = (selectedTruthBulletIndex - 1 + bullets.length) % bullets.length;
                             revolverTarget -= 40;
+                        }
+                        // Consume the temporary bullet the moment the player scrolls away from it
+                        if (prevBullet?.isTemporary) {
+                            const newBullets = bullets.filter(b => !b.isTemporary);
+                            nsdActiveBullets = newBullets;
+                            tempBullet       = null;
+                            // If the removed entry was before the new selection, shift index down by 1
+                            if (prevIdx < selectedTruthBulletIndex) selectedTruthBulletIndex--;
+                            selectedTruthBulletIndex = Math.max(0, Math.min(selectedTruthBulletIndex, newBullets.length - 1));
                         }
                         playSfx?.('tbcycle');
                         renderCylinder();
@@ -249,7 +341,9 @@ export function createTrialManager(deps) {
 
         window.addEventListener('keyup', (e) => {
             keysPressed.delete(e.key);
-            if (e.code === 'ShiftLeft') shiftLeftPressed = false;
+            if (e.code === 'ShiftLeft')  { shiftLeftPressed  = false; }
+            if (e.code === 'ShiftRight') { shiftRightPressed = false; reticleEl?.classList.remove('absorb-mode'); cancelAbsorb(); }
+            if (e.key === 'Enter') { lieHeld = false; reticleEl?.classList.remove('lie-mode'); cancelLieAbsorb(); }
             updateSpeedModifier();
             if (e.key === ' ') { clearWnSpaceTimers(); clearMpdRTimers(); }
         }, { signal });
@@ -300,7 +394,13 @@ export function createTrialManager(deps) {
         // Safety: reset on blur
         window.addEventListener('blur', () => {
             keysPressed.clear();
-            shiftLeftPressed = false;
+            shiftLeftPressed  = false;
+            shiftRightPressed = false;
+            reticleEl?.classList.remove('absorb-mode');
+            reticleEl?.classList.remove('lie-mode');
+            cancelAbsorb();
+            lieHeld = false;
+            cancelLieAbsorb();
             updateSpeedModifier();
             clearTimeout(perjuryChargeTimer);
             showPerjuryVfx(false);
@@ -348,21 +448,209 @@ export function createTrialManager(deps) {
         if (vfx) vfx.classList.toggle('charging', active);
     }
 
+    // ── Weak-point absorption ─────────────────────────────────────────────────
+
+    function startAbsorb(wpEl) {
+        if (absorbTarget === wpEl) return;
+        cancelAbsorb();
+        absorbTarget    = wpEl;
+        absorbStartTime = Date.now();
+        reticleEl?.classList.add('absorb-charging');
+        tickAbsorbProgress();
+        absorbTimerId = setTimeout(completeAbsorb, 3000);
+        // Loop scanning audio for the duration of the charge
+        scanningAudio = new Audio(`${extensionFolderPath}/assets/sfx/trial/scanning-shot.wav`);
+        scanningAudio.loop = true;
+        scanningAudio.play().catch(() => {});
+    }
+
+    function cancelAbsorb() {
+        clearTimeout(absorbTimerId); absorbTimerId = null;
+        if (absorbRafId) { cancelAnimationFrame(absorbRafId); absorbRafId = null; }
+        if (scanningAudio) { scanningAudio.pause(); scanningAudio = null; }
+        absorbTarget    = null;
+        absorbStartTime = null;
+        reticleEl?.classList.remove('absorb-charging');
+        reticleEl?.style.removeProperty('--absorb-progress');
+    }
+
+    function tickAbsorbProgress() {
+        if (!absorbStartTime) return;
+        const progress = Math.min(1, (Date.now() - absorbStartTime) / 3000);
+        reticleEl?.style.setProperty('--absorb-progress', String(progress));
+        if (progress < 1) absorbRafId = requestAnimationFrame(tickAbsorbProgress);
+    }
+
+    function showAbsorbFlash() {
+        let el = document.getElementById('dangan-absorb-flash');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'dangan-absorb-flash';
+            document.body.appendChild(el);
+        }
+        el.classList.remove('flash');
+        void el.offsetWidth;
+        el.classList.add('flash');
+    }
+
+    function completeAbsorb() {
+        const wpEl = absorbTarget;
+        // Stop scanning audio before cancelAbsorb clears it
+        if (scanningAudio) { scanningAudio.pause(); scanningAudio = null; }
+        cancelAbsorb();
+        if (!wpEl?.isConnected) return;
+        // Play completion sound
+        new Audio(`${extensionFolderPath}/assets/sfx/trial/scanned-shot.wav`).play().catch(() => {});
+        showAbsorbFlash();
+
+        // Block if the weak point is in a locked MPD column
+        if (currentState === TrialPhases.MASS_PANIC_DEBATE && mpdLockActive) {
+            const rect    = wpEl.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const col     = Math.max(0, Math.min(2, Math.floor((centerX / window.innerWidth) * 3)));
+            if (col !== mpdFreeColumn) return;
+        }
+
+        // Strip [[…]] markup to get the plain weak-point text
+        const rawText  = (wpEl.textContent || '').replace(/^\[+|\]+$/g, '').trim() || 'ABSORBED TRUTH';
+        tempBullet     = { title: rawText, text: rawText, isTemporary: true };
+
+        // Inject at the end of the active bullet list
+        const current       = getDebateBullets();
+        nsdActiveBullets    = [...current, tempBullet];
+        selectedTruthBulletIndex = nsdActiveBullets.length - 1;
+
+        playSfx?.('tbcycle');
+        renderCylinder();
+        showAdjacentBullets();
+
+        // Neutralise the absorbed weak-point visually
+        wpEl.classList.remove('dangan-weak-point', 'mpd-weak-point');
+        wpEl.style.cssText = '';
+    }
+
+    // ── Lie-scan absorption ────────────────────────────────────────────────────
+
+    function startLieAbsorb(wpEl) {
+        if (lieAbsorbTarget === wpEl) return;
+        cancelLieAbsorb();
+        lieAbsorbTarget    = wpEl;
+        lieAbsorbStartTime = Date.now();
+        reticleEl?.classList.add('lie-absorb-charging');
+        tickLieAbsorbProgress();
+        lieAbsorbTimerId = setTimeout(() => void completeLieAbsorb(), 3000);
+        lieScanningAudio = new Audio(`${extensionFolderPath}/assets/sfx/trial/scanning-lie.wav`);
+        lieScanningAudio.loop = true;
+        lieScanningAudio.play().catch(() => {});
+        // Kick off generation immediately so it's ready by the time the charge completes
+        const weakText = (wpEl.textContent || '').replace(/^\[+|\]+$/g, '').trim() || 'unknown claim';
+        lieGenerationPromise = generateLieFromWeakPoint(weakText);
+    }
+
+    function cancelLieAbsorb() {
+        clearTimeout(lieAbsorbTimerId); lieAbsorbTimerId = null;
+        if (lieAbsorbRafId) { cancelAnimationFrame(lieAbsorbRafId); lieAbsorbRafId = null; }
+        if (lieScanningAudio) { lieScanningAudio.pause(); lieScanningAudio = null; }
+        lieAbsorbTarget      = null;
+        lieAbsorbStartTime   = null;
+        lieGenerationPromise = null;
+        reticleEl?.classList.remove('lie-absorb-charging');
+        reticleEl?.style.removeProperty('--lie-progress');
+    }
+
+    function tickLieAbsorbProgress() {
+        if (!lieAbsorbStartTime) return;
+        const progress = Math.min(1, (Date.now() - lieAbsorbStartTime) / 3000);
+        reticleEl?.style.setProperty('--lie-progress', String(progress));
+        if (progress < 1) lieAbsorbRafId = requestAnimationFrame(tickLieAbsorbProgress);
+    }
+
+    async function completeLieAbsorb() {
+        const wpEl = lieAbsorbTarget;
+        if (lieScanningAudio) { lieScanningAudio.pause(); lieScanningAudio = null; }
+        cancelLieAbsorb();
+        if (!wpEl?.isConnected) return;
+
+        // Block if the weak point is in a locked MPD column
+        if (currentState === TrialPhases.MASS_PANIC_DEBATE && mpdLockActive) {
+            const rect    = wpEl.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const col     = Math.max(0, Math.min(2, Math.floor((centerX / window.innerWidth) * 3)));
+            if (col !== mpdFreeColumn) return;
+        }
+
+        new Audio(`${extensionFolderPath}/assets/sfx/trial/scanned-lie.wav`).play().catch(() => {});
+        showAbsorbFlash();
+
+        const lieText = await (lieGenerationPromise ?? generateLieFromWeakPoint(
+            (wpEl.textContent || '').replace(/^\[+|\]+$/g, '').trim() || 'unknown claim'
+        ));
+
+        tempBullet = { title: lieText, text: lieText, isTemporary: true, isLie: true };
+
+        const current = getDebateBullets();
+        nsdActiveBullets = [...current, tempBullet];
+        selectedTruthBulletIndex = nsdActiveBullets.length - 1;
+
+        playSfx?.('tbcycle');
+        renderCylinder();
+        showAdjacentBullets();
+
+        wpEl.classList.remove('dangan-weak-point', 'mpd-weak-point');
+        wpEl.style.cssText = '';
+    }
+
+    async function generateLieFromWeakPoint(weakPointText) {
+        if (typeof generateTrialDialogue !== 'function') return 'Nothing of note.';
+        const prompt = `You are writing fabricated evidence for a Danganronpa-style Non-stop Debate.
+
+The player scanned a weak point and wants a LIE that directly contradicts it.
+
+ORIGINAL WEAK POINT: "${weakPointText}"
+
+Write a single short sentence (5–12 words) that is a plausible-sounding lie directly contradicting the original claim. Output ONLY the sentence — no quotes, no explanation, no speaker labels.
+
+Example:
+ORIGINAL: "The security footage clearly shows the door was locked all night."
+OUTPUT: The door was secretly unlocked from the inside.`.trim();
+
+        try {
+            const out = String(
+                await generateTrialDialogue(prompt, { maxTokens: 60, temperature: 0.85 }) || ''
+            ).trim();
+            return out.replace(/^["'"'`]|["'"'`]$/g, '').trim() || 'Nothing of note.';
+        } catch {
+            return 'Nothing of note.';
+        }
+    }
+
     function cleanupNSDListeners() {
         if (nsdKeyAC) {
             nsdKeyAC.abort();
             nsdKeyAC = null;
         }
         keysPressed.clear();
+        shiftRightPressed = false;
+        cancelAbsorb();
+        lieHeld = false;
+        cancelLieAbsorb();
         speedModifier = 1.0;
         clearWnSpaceTimers();
         clearMpdRTimers();
     }
 
     function applyCartridgeTheme(mod) {
+        const bullets = getDebateBullets();
+        const cur = bullets[selectedTruthBulletIndex];
+        const isLieBullet = Boolean(cur?.isLie);
+
         const cylinderImg = document.getElementById('dangan-cylinder-img');
         document.querySelectorAll('.dangan-bullet-cartridge').forEach(c => {
-            if (mod > 1.0) {
+            if (isLieBullet) {
+                c.style.background   = 'linear-gradient(90deg, rgba(40,0,60,0.97) 0%, rgba(100,0,160,0.98) 22%, rgba(160,0,230,0.99) 55%, rgba(140,0,200,0.98) 80%, rgba(100,0,160,0.97) 100%)';
+                c.style.boxShadow    = 'inset 0 2px 0 rgba(200,100,255,0.18), inset 0 -1px 0 rgba(0,0,0,0.3), 0 0 18px rgba(160,0,255,0.45), 4px 8px 28px rgba(0,0,0,0.75)';
+                c.style.borderColor  = 'rgba(160,0,255,0.4)';
+            } else if (mod > 1.0) {
                 c.style.background   = 'linear-gradient(90deg, rgba(60,38,0,0.97) 0%, rgba(160,110,0,0.98) 22%, rgba(220,175,0,0.99) 55%, rgba(205,158,0,0.98) 80%, rgba(170,120,0,0.97) 100%)';
                 c.style.boxShadow    = 'inset 0 2px 0 rgba(255,240,180,0.18), inset 0 -1px 0 rgba(0,0,0,0.3), 0 0 18px rgba(255,220,0,0.45), 4px 8px 28px rgba(0,0,0,0.75)';
                 c.style.borderColor  = 'rgba(255,220,0,0.4)';
@@ -378,7 +666,10 @@ export function createTrialManager(deps) {
         });
         const indexEl = document.querySelector('.dangan-cylinder-index');
         if (cylinderImg) {
-            if (mod > 1.0) {
+            if (isLieBullet) {
+                cylinderImg.style.filter = 'sepia(1) hue-rotate(270deg) saturate(10) brightness(1.3) drop-shadow(0 0 18px rgba(160,0,255,0.9)) drop-shadow(0 0 45px rgba(160,0,255,0.6))';
+                if (indexEl) { indexEl.style.color = '#aa00ff'; indexEl.style.textShadow = '0 0 12px rgba(160,0,255,0.9), 0 0 30px rgba(160,0,255,0.6), 2px 2px 4px rgba(0,0,0,0.9)'; }
+            } else if (mod > 1.0) {
                 cylinderImg.style.filter = 'sepia(1) hue-rotate(10deg) saturate(8) brightness(1.4) drop-shadow(0 0 18px rgba(255,220,0,0.9)) drop-shadow(0 0 45px rgba(255,180,0,0.6))';
                 if (indexEl) { indexEl.style.color = '#ffd700'; indexEl.style.textShadow = '0 0 12px rgba(255,220,0,0.9), 0 0 30px rgba(255,180,0,0.6), 2px 2px 4px rgba(0,0,0,0.9)'; }
             } else if (mod < 1.0) {
@@ -457,16 +748,10 @@ export function createTrialManager(deps) {
         }
     }
 
-    function updateConcentrateBar() {
-        const fill = document.getElementById('dangan-concentrate-bar-fill');
-        if (!fill) return;
-        fill.style.width = `${btCharge * 100}%`;
-        fill.classList.toggle('nsd-bt-active',    btConcentrateActive);
-        fill.classList.toggle('nsd-bt-depleted',  btCharge <= 0.01);
-    }
-
     function startConcentrateLoop() {
         btLastTs = null;
+        // Cache element once — avoids a DOM query every frame
+        const fill = document.getElementById('dangan-concentrate-bar-fill');
         function tick(ts) {
             if (!btLastTs) btLastTs = ts;
             const dt = Math.min((ts - btLastTs) / 1000, 0.1);
@@ -499,7 +784,12 @@ export function createTrialManager(deps) {
                     btSlowmoAudio = null;
                 }
             }
-            updateConcentrateBar();
+            // scaleX instead of width — compositor-only, zero layout work
+            if (fill) {
+                fill.style.transform = `scaleX(${btCharge})`;
+                fill.classList.toggle('nsd-bt-active',   btConcentrateActive);
+                fill.classList.toggle('nsd-bt-depleted', btCharge <= 0.01);
+            }
             btConcentrateRaf = requestAnimationFrame(tick);
         }
         btConcentrateRaf = requestAnimationFrame(tick);
@@ -551,10 +841,11 @@ ${historyText}
         switch (currentState) {
             case TrialPhases.IDLE:
                 cleanupDebateUI();
+                if (isGroupChat()) showPreDebateNotification();
                 break;
             case TrialPhases.PRE_DEBATE:
                 cleanupDebateUI();
-                showPreDebateNotification();
+                if (isGroupChat()) showPreDebateNotification();
                 break;
             case TrialPhases.NON_STOP_DEBATE:
                 setupNonStopDebate();
@@ -580,17 +871,139 @@ ${historyText}
         notification.className = 'dangan-trial-notification';
         notification.innerHTML = `
             <div class="dangan-trial-notif-content">
-                <span>Discussion is ongoing...</span>
-                <button id="dangan-start-nonstop-btn"   class="dangan-trial-start-btn" style="display:none">START NON-STOP DEBATE</button>
-                <button id="dangan-start-mpdebate-btn" class="dangan-trial-start-btn" style="display:none">START MASS PANIC DEBATE</button>
-                <button id="dangan-start-hangman-btn"  class="dangan-trial-start-btn" style="display:none">START HANGMAN'S GAMBIT</button>
-                <button id="dangan-start-pta-btn"      class="dangan-trial-start-btn" style="display:none">START PANIC TALK ACTION</button>
-                <button id="dangan-start-voting-btn"   class="dangan-trial-start-btn" style="display:none">START VOTING TIME</button>
+                <div class="dangan-trial-notif-drag-handle">
+                    <span class="dangan-trial-notif-drag-icon">⠿</span>
+                    <span>Discussion is ongoing...</span>
+                    <button class="dangan-trial-collapse-btn" title="Collapse panel">▼</button>
+                </div>
+                <div class="dangan-trial-notif-body">
+                    <button id="dangan-start-nonstop-btn"   class="dangan-trial-start-btn" style="display:none">START NON-STOP DEBATE</button>
+                    <button id="dangan-start-mpdebate-btn" class="dangan-trial-start-btn" style="display:none">START MASS PANIC DEBATE</button>
+                    <button id="dangan-start-hangman-btn"  class="dangan-trial-start-btn" style="display:none">START HANGMAN'S GAMBIT</button>
+                    <button id="dangan-start-pta-btn"        class="dangan-trial-start-btn" style="display:none">START PANIC TALK ACTION</button>
+                    <button id="dangan-start-interject-btn" class="dangan-trial-start-btn" style="display:none">START INTERJECTION</button>
+                    <button id="dangan-start-rebuttal-btn"  class="dangan-trial-start-btn" style="display:none">START REBUTTAL SHOWDOWN</button>
+                    <button id="dangan-start-voting-btn"        class="dangan-trial-start-btn" style="display:none">START VOTING TIME</button>
+                    <button id="dangan-start-punishment-btn"   class="dangan-trial-start-btn" style="display:none">START PUNISHMENT TIME</button>
+                    <button id="dangan-start-qtime-btn"        class="dangan-trial-start-btn" style="display:none">START QUESTION TIME</button>
+                    <button id="dangan-start-qtruth-btn"       class="dangan-trial-start-btn" style="display:none">START QUESTION TRUTH</button>
+                    <button id="dangan-start-choosing-btn"     class="dangan-trial-start-btn" style="display:none">START CHOOSING</button>
+                    ${isGroupChat() ? `
+                    <div class="dangan-seating-plan-section">
+                        <div class="dangan-seating-plan-header">
+                            <span>SEATING PLAN</span>
+                            <div class="dangan-seating-plan-actions">
+                                <button id="dangan-seating-shuffle-btn" class="dangan-seating-action-btn">SHUFFLE</button>
+                                <button id="dangan-seating-reset-btn"   class="dangan-seating-action-btn dangan-seating-reset-btn">RESET</button>
+                            </div>
+                        </div>
+                        <div id="dangan-seating-plan-list" class="dangan-seating-plan-list"></div>
+                    </div>` : ''}
+                </div>
             </div>
         `;
         document.body.appendChild(notification);
 
-        // Show buttons after 5 seconds
+        applyCustomUiPosition?.(notification, 'dangan-trial-panel-pos');
+        attachDraggablePositioning?.(notification, {
+            storageKey: 'dangan-trial-panel-pos',
+            handleSelector: '.dangan-trial-notif-drag-handle',
+        });
+
+        // Collapse / expand toggle
+        const collapseBtn = notification.querySelector('.dangan-trial-collapse-btn');
+        collapseBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isCollapsed = notification.classList.toggle('collapsed');
+            collapseBtn.textContent = isCollapsed ? '▲' : '▼';
+            collapseBtn.title = isCollapsed ? 'Expand panel' : 'Collapse panel';
+        });
+
+        function renderSeatingList(plan) {
+            const listEl = notification.querySelector('#dangan-seating-plan-list');
+            if (!listEl) return;
+
+            // If GCP is active, use its slot order as the source of truth (matches what the user
+            // sees on screen). GCP excludes muted characters; buildFreshPlan includes muted-with-dead
+            // chars for debate purposes, which would cause seat numbers to diverge from the GCP.
+            // GCP slots are the source of truth when active; fall back to the provided plan.
+            // Either way, the player (Prome user sprite) is never a gcpSlot — append manually.
+            let displayPlan = gcpSlots.length
+                ? gcpSlots.map(s => s.name)
+                : (plan ? [...plan] : []);
+            const playerName = getPlayerName();
+            if (playerName && !displayPlan.some(n => normalizeSeatName(n) === normalizeSeatName(playerName))) {
+                displayPlan.push(playerName);
+            }
+
+            if (!displayPlan.length) {
+                listEl.innerHTML = '<span class="dangan-seating-plan-empty">Auto-generated on debate start</span>';
+                return;
+            }
+            const speakerIdx = gcpSlots.length ? Math.round(gcpCurrentFloat) : -1;
+            listEl.innerHTML = displayPlan.map((name, i) => {
+                const first = (name.split(' ')[0] || name).substring(0, 10);
+                const cls = i === speakerIdx ? ' dangan-seating-speaker-chip' : '';
+                return `<span class="dangan-seating-plan-chip${cls}"><span class="seat-num">${i + 1}.</span>${first}</span>`;
+            }).join('');
+        }
+
+        if (isGroupChat()) {
+            async function buildFreshPlan() {
+                silencedSeats.clear();
+                const allMembers = getChatCardMembers().map(m => m.name).filter(Boolean);
+                const seated = [];
+                for (const name of allMembers) {
+                    if (isCharacterMuted(name)) {
+                        const deadUrl = await getSpriteUrl(name, 'dead').catch(() => null);
+                        if (deadUrl) {
+                            seated.push(name);
+                            silencedSeats.add(normalizeSeatName(name));
+                        }
+                        // no dead.png → exclude entirely
+                    } else {
+                        seated.push(name);
+                    }
+                }
+                const playerName = getPlayerName();
+                if (playerName) seated.push(playerName);
+                debateSeatingPlan = buildSeatingPlan(seated);
+                return debateSeatingPlan;
+            }
+
+            // Register a live callback so GCP rebuilds automatically refresh the list.
+            // Cleared when the notification is removed (panel closed or debate starts).
+            gcpSeatingListRenderer = () => renderSeatingList(null);
+
+            // Initial display: if GCP is already active use its slot order directly.
+            // Still run buildFreshPlan to populate silencedSeats for the upcoming debate,
+            // but don't wait on it for the render — renderSeatingList reads gcpSlots itself.
+            if (gcpSlots.length) {
+                buildFreshPlan(); // side-effect: populates silencedSeats
+                renderSeatingList(null);
+            } else {
+                buildFreshPlan().then(plan => renderSeatingList(plan));
+            }
+
+            notification.querySelector('#dangan-seating-shuffle-btn').onclick = () => {
+                debateSeatingPlan = buildSeatingPlan(debateSeatingPlan?.length ? [...debateSeatingPlan] : []);
+                renderSeatingList(debateSeatingPlan);
+            };
+            notification.querySelector('#dangan-seating-reset-btn').onclick = () => {
+                buildFreshPlan().then(plan => renderSeatingList(plan));
+            };
+        }
+
+        // Clear the live seating renderer when the panel is removed
+        const notifObserver = new MutationObserver(() => {
+            if (!document.body.contains(notification)) {
+                gcpSeatingListRenderer = null;
+                notifObserver.disconnect();
+            }
+        });
+        notifObserver.observe(document.body, { childList: true, subtree: true });
+
+        // Show debate buttons after 5 seconds
         setTimeout(() => {
             notification.querySelectorAll('.dangan-trial-start-btn').forEach(btn => btn.style.display = 'block');
         }, 5000);
@@ -611,37 +1024,64 @@ ${historyText}
             notification.remove();
             onStartPanicTalkAction?.();
         };
+        notification.querySelector('#dangan-start-interject-btn').onclick = () => {
+            notification.remove();
+            const _ctx  = window.SillyTavern?.getContext?.();
+            const _chat = Array.isArray(_ctx?.chat) ? _ctx.chat : [];
+            const _last = [..._chat].reverse().find(m => !m.is_user && !m.is_system && m.name);
+            const characterName = _last ? String(_last.name || '').trim() || null : null;
+            onStartInterjection?.({ characterName });
+        };
+        notification.querySelector('#dangan-start-rebuttal-btn').onclick = () => {
+            notification.remove();
+            const _ctx  = window.SillyTavern?.getContext?.();
+            const _chat = Array.isArray(_ctx?.chat) ? _ctx.chat : [];
+            const _last = [..._chat].reverse().find(m => !m.is_user && !m.is_system && m.name);
+            const opponentName = _last ? String(_last.name || '').trim() || null : null;
+            onStartRebuttalShowdown?.({ opponentName, playerName: getPlayerName() });
+        };
         notification.querySelector('#dangan-start-voting-btn').onclick = () => {
             notification.remove();
             onStartVotingTime?.();
         };
+        notification.querySelector('#dangan-start-punishment-btn').onclick = () => {
+            notification.remove();
+            const speakerName = gcpSlots[Math.round(gcpCurrentFloat)]?.name ?? null;
+            onStartPunishmentTime?.({ characterName: speakerName });
+        };
+        notification.querySelector('#dangan-start-qtime-btn').onclick = () => {
+            notification.remove();
+            onStartQuestionTime?.();
+        };
+        notification.querySelector('#dangan-start-qtruth-btn').onclick = () => {
+            notification.remove();
+            onStartQuestionTruth?.();
+        };
+        notification.querySelector('#dangan-start-choosing-btn').onclick = () => {
+            notification.remove();
+            onStartChoosing?.({
+                characters: gcpSlots.map(s => ({
+                    name:   s.name,
+                    src:    s.img?.src || null,
+                    height: parseInt(s.el?.style.height) || 720,
+                })),
+                startIdx: Math.round(gcpCurrentFloat),
+            });
+        };
     }
 
     async function startNonStopDebate() {
-        // Clear previous sections to avoid stale data
-        preparedDebateSections = null;
-        debateSectionsActive = null;
-        debateSeatingPlan = null;
-        
-        currentDebateSections = Math.floor(Math.random() * (8 - 3 + 1)) + 3;
-        showNonStopDebateCutscene();
-        
+        const count = Math.floor(Math.random() * (8 - 3 + 1)) + 3;
         try {
-            console.log(`[Dangan][Trial] Starting generation for ${currentDebateSections} sections...`);
-            const sections = await buildDebateSections({ sectionsCount: currentDebateSections });
-            
+            const sections = await buildDebateSections({ sectionsCount: count });
             if (Array.isArray(sections) && sections.length > 0) {
-                preparedDebateSections = sections;
-                console.log(`[Dangan][Trial] Generation successful: ${sections.length} sections.`);
+                const lines = sections.map(s => ({ text: s.statement, speaker: s.speakerName, whiteNoise: s.whiteNoise }));
+                debugStartNonStopDebateWithLines(lines);
             } else {
-                console.warn('[Dangan][Trial] Generation returned empty or invalid sections.');
+                console.warn('[Dangan][Trial] Generation returned empty sections.');
             }
         } catch (e) {
             console.warn('[Dangan][Trial] Debate section generation failed:', e);
-        } finally {
-            // Transition to debate phase before finishing cutscene
-            setState(TrialPhases.NON_STOP_DEBATE);
-            await endNonStopDebateCutscene();
         }
     }
 
@@ -651,14 +1091,14 @@ ${historyText}
                 return {
                     text: String(l.text || '').trim(),
                     speaker: String(l.speaker || '').trim(),
-                    whiteNoise: String(l.whiteNoise || '').trim() || null,
+                    whiteNoise: normalizeWhiteNoise(l.whiteNoise),
                 };
             }
             return { text: String(l || '').trim(), speaker: '', whiteNoise: null };
         }).filter(e => e.text) : [];
         if (!list.length) return false;
 
-        const speakers = getChatCardMembers().map(s => s.name).filter(Boolean).filter(n => !isCharacterDead(n));
+        const speakers = getChatCardMembers().map(s => s.name).filter(Boolean).filter(n => !isCharacterDead(n) && !isSilenced(n));
         const speakerPool = speakers.length ? speakers : ['???'];
 
         persistentDebateHistory = [];
@@ -669,7 +1109,8 @@ ${historyText}
             const speakerName = (speaker && !isCharacterDead(speaker))
                 ? speaker
                 : speakerPool[Math.floor(Math.random() * speakerPool.length)];
-            const normalized = ensureSingleWeakPointMarker(text);
+            const isAgree  = /\(\([^)]+\)\)/.test(text);
+            const normalized = isAgree ? text : ensureSingleWeakPointMarker(text);
 
             const spoken = stripSurroundingQuotes(extractDialogueOnly(normalized) || normalized);
             if (spoken) {
@@ -691,12 +1132,18 @@ ${historyText}
         const ctx = window.SillyTavern?.getContext?.();
         const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
         const result = new Map();
-        // Walk oldest→newest so the last message per character wins
+        // Walk oldest→newest so the last message per character wins.
+        // Prefer ST's stored extra.expression (set by the expression module) over text inference.
         for (const msg of chat) {
             const name = String(msg.name || '').trim();
-            const text = String(msg.mes  || '').trim();
-            if (!name || !text || msg.is_user || msg.is_system) continue;
-            result.set(name, inferEmotionFromText(text));
+            if (!name || msg.is_user || msg.is_system) continue;
+            const stored = typeof msg.extra?.expression === 'string' ? msg.extra.expression.trim() : '';
+            if (stored) {
+                result.set(name, stored);
+            } else {
+                const text = String(msg.mes || '').trim();
+                if (text) result.set(name, inferEmotionFromText(text));
+            }
         }
         return result;
     }
@@ -914,12 +1361,406 @@ ${historyText}
         set(portraitRightEl, rightName);
     }
 
+    function startSeatingParade() {
+        if (!debateOverlay || !debateSeatingPlan?.length) return null;
+        if (typeof getSpriteUrl !== 'function') return null;
+
+        const SPEED       = 880;                                // px/s
+        const CHAR_SLOT_W = Math.round(window.innerWidth / 3); // matches main-view portrait spacing
+        const SPAWN_SECS  = (CHAR_SLOT_W + 180) / SPEED;       // seconds between spawns (+180px gap)
+        // Left edge of the screen's center slot — where the target must rest
+        const TARGET_X    = CHAR_SLOT_W;                       // == innerWidth/3
+        const MAX_ROT_DEG = 45;                                // cylinder warp max angle at screen edges
+        const W2          = window.innerWidth / 2;
+
+        // Returns the full CSS transform string for a slot at position x
+        function slotTransform(x) {
+            const centerX = x + CHAR_SLOT_W / 2;
+            const dist    = (centerX - W2) / W2;              // –1 … +1 across the screen
+            const rotY    = (-dist * MAX_ROT_DEG).toFixed(1);
+            return `translateX(${x}px) rotateY(${rotY}deg)`;
+        }
+
+        // Resolve the first speaker so the parade can decelerate onto them
+        let targetName;
+        if (currentState === TrialPhases.MASS_PANIC_DEBATE) {
+            // Try centre-column speaker; fall back to seating plan index 1 (mirrors updateMpdPortraits)
+            targetName = String(mpdScenarios?.[0]?.texts?.[1]?.speaker || '').trim() || null;
+            if (!targetName && debateSeatingPlan?.length) {
+                const living = debateSeatingPlan.filter(n => !isCharacterDead(n) && !isSilenced(n));
+                targetName = living[1] || living[0] || null;
+            }
+        } else {
+            targetName = String(preparedDebateSections?.[0]?.speakerName || '').trim() || null;
+        }
+        const targetSeatIdx = targetName ? findSeatIndex(targetName) : -1;
+
+        // Pre-fetch sprites for the two left-wrap neighbours of seating[0]
+        // (they scroll past just before seating[0] reappears in the loop)
+        const n = debateSeatingPlan.length;
+        if (n >= 2) {
+            const prefetch = n >= 3
+                ? [debateSeatingPlan[n - 2], debateSeatingPlan[n - 1]]
+                : [debateSeatingPlan[n - 1]];
+            prefetch.forEach(name => getCharSpriteUrl(name, 'neutral').catch(() => {}));
+        }
+
+        debateOverlay.classList.add('nsd-parade-active');
+        const container = document.createElement('div');
+        container.id = 'dangan-nsd-parade';
+        debateOverlay.appendChild(container);
+
+        let stopped        = false;
+        let frozen         = false;
+        let spawnIdx       = 0;
+        let lastTs         = null;
+        let sinceSpawn     = SPAWN_SECS; // fire a spawn on the first tick
+        let rafId          = null;
+        const active       = [];
+        let targetEntry    = null;
+        let decelStartDist = null;
+
+        async function spawnNext() {
+            if (stopped || frozen) return;
+            const idx  = spawnIdx % n;
+            const name = debateSeatingPlan[idx];
+            spawnIdx++;
+            const hpx    = portraitSlotHeightPx(name);
+            const startX = window.innerWidth + CHAR_SLOT_W;
+
+            const el = document.createElement('div');
+            el.className = 'nsd-parade-slot';
+            el.style.cssText = `width:${CHAR_SLOT_W}px;height:${hpx}px;`;
+            el.style.transform = slotTransform(startX);
+            const img = document.createElement('img');
+            el.appendChild(img);
+            container.appendChild(el);
+
+            const entry = { el, x: startX };
+            active.push(entry);
+
+            // Tag this entry as the deceleration target (first occurrence)
+            if (!targetEntry && targetSeatIdx >= 0 && idx === targetSeatIdx) {
+                targetEntry    = entry;
+                decelStartDist = startX - TARGET_X; // total distance to decelerate over
+            }
+
+            try {
+                const dead = isCharacterDead(name) || isSilenced(name);
+                let url = null;
+                if (dead) {
+                    url = await getCharSpriteUrl(name, 'dead').catch(() => null)
+                       || await getCharSpriteUrl(name, 'neutral').catch(() => null);
+                    if (url) img.classList.add('nsd-parade-dead');
+                } else {
+                    url = await getCharSpriteUrl(name, 'neutral').catch(() => null);
+                }
+                if (url && !stopped) img.src = url;
+            } catch {}
+        }
+
+        function tick(ts) {
+            if (stopped) return;
+            const rawDt = lastTs != null ? Math.min((ts - lastTs) / 1000, 0.1) : 0;
+            lastTs = ts;
+
+            // ── Deceleration / freeze logic ───────────────────────────────
+            let effectiveSpeed = SPEED;
+            if (targetEntry && !frozen) {
+                const dist = targetEntry.x - TARGET_X;
+                if (dist <= 0) {
+                    // Snap all sprites so the target lands exactly on TARGET_X
+                    const snap = TARGET_X - targetEntry.x;
+                    for (const s of active) {
+                        s.x += snap;
+                        s.el.style.transform = slotTransform(s.x);
+                    }
+                    frozen = true;
+                    rafId  = null;
+                    return; // stay frozen until stop() is called
+                }
+                // easeOutSqrt: speed tapers proportionally to sqrt(remaining fraction)
+                const frac = Math.min(1, dist / decelStartDist);
+                effectiveSpeed = Math.max(30, SPEED * Math.sqrt(frac));
+            }
+
+            // ── Move sprites ──────────────────────────────────────────────
+            const dt = rawDt;
+            for (let i = active.length - 1; i >= 0; i--) {
+                const s = active[i];
+                s.x -= effectiveSpeed * dt;
+                s.el.style.transform = slotTransform(s.x);
+                if (s.x < -CHAR_SLOT_W - 50) {
+                    s.el.remove();
+                    active.splice(i, 1);
+                }
+            }
+
+            // ── Spawn — continue until frozen ─────────────────────────────
+            sinceSpawn += dt;
+            if (sinceSpawn >= SPAWN_SECS) {
+                sinceSpawn = 0;
+                spawnNext();
+            }
+
+            rafId = requestAnimationFrame(tick);
+        }
+
+        rafId = requestAnimationFrame(tick);
+        return {
+            stop() {
+                stopped = true;
+                if (rafId) cancelAnimationFrame(rafId);
+                // Reveal portrait stage immediately, then fade parade out over 0.5s
+                debateOverlay?.classList.remove('nsd-parade-active');
+                container.style.transition = 'opacity 0.5s ease-out';
+                container.style.opacity    = '0';
+                setTimeout(() => container.remove(), 500);
+            },
+        };
+    }
+
+    // Quick parade animation played when the NSD speaker shifts to a new character.
+    // fromSpeakerName must be the PREVIOUS speaker (captured before portraitSpeaker is updated).
+    // Picks the shorter arc around the seating ring: forward = right-to-left, backward = left-to-right.
+    // targetEmotion is the speaking emotion for the new speaker; other characters use characterEmotions.
+    function startSpeakerShiftParade(fromSpeakerName, targetSpeakerName, targetEmotion) {
+        if (!debateOverlay || !debateSeatingPlan?.length) return;
+        if (typeof getSpriteUrl !== 'function') return;
+
+        // Cancel any in-progress shift parade before starting a new one
+        nsdShiftParadeStop?.();
+        nsdShiftParadeStop = null;
+
+        const SPEED       = 7200;                               // px/s — completes within ~0.5 seconds
+        const CHAR_SLOT_W = Math.round(window.innerWidth / 3);
+        const SPAWN_SECS  = (CHAR_SLOT_W + 180) / SPEED;
+        const TARGET_X    = CHAR_SLOT_W;                        // left edge of the centre slot
+        const MAX_ROT_DEG = 45;
+        const W2          = window.innerWidth / 2;
+
+        function slotTransform(x) {
+            const centerX = x + CHAR_SLOT_W / 2;
+            const dist    = (centerX - W2) / W2;
+            return `translateX(${x}px) rotateY(${(-dist * MAX_ROT_DEG).toFixed(1)}deg)`;
+        }
+
+        const n              = debateSeatingPlan.length;
+        const targetSeatIdx  = findSeatIndex(targetSpeakerName);
+        const currentSeatIdx = fromSpeakerName ? findSeatIndex(fromSpeakerName) : -1;
+
+        // Choose the shorter arc: forward (right→left) or backward (left→right)
+        const forwardSteps  = currentSeatIdx >= 0 && targetSeatIdx >= 0
+            ? (targetSeatIdx - currentSeatIdx + n) % n
+            : 1;
+        const backwardSteps = n - forwardSteps;
+        // scrollForward: slots enter from right, slide left (seats increment)
+        // scrollBackward: slots enter from left, slide right (seats decrement)
+        const scrollForward = forwardSteps <= backwardSteps;
+
+        // First seat to spawn is the one immediately after/before the current speaker
+        let spawnIdx = currentSeatIdx >= 0
+            ? scrollForward
+                ? (currentSeatIdx + 1 + n) % n
+                : (currentSeatIdx - 1 + n) % n
+            : 0;
+        // Spawn at most (arc length + 2) slots; extra 2 keep the screen filled while target decelerates.
+        // When this limit is reached we just stop spawning — the RAF continues until the target freezes.
+        const MAX_SPAWNS = (scrollForward ? forwardSteps : backwardSteps) + 2;
+        let spawnCount   = 0;
+
+        // Safety fallback: if the target was never found within a reasonable time, bail out
+        let fallbackTimer = setTimeout(() => cleanup(true), (MAX_SPAWNS * SPAWN_SECS + 3) * 1000);
+
+        // Slots start just off the screen edge (tight margin so travel distance fits ~1 s)
+        const startX = scrollForward ? window.innerWidth + 10 : -(CHAR_SLOT_W + 10);
+
+        // Build container first — we need to plant the current speaker's slot BEFORE hiding
+        // the portrait stage so there is no visual pop.
+        const container = document.createElement('div');
+        container.id = 'dangan-nsd-shift-parade';
+        container.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:12;overflow:hidden;perspective:1200px;';
+        debateOverlay.appendChild(container);
+
+        let stopped        = false;
+        let frozen         = false;
+        let lastTs         = null;
+        let sinceSpawn     = SPAWN_SECS; // fire a spawn immediately on first tick
+        let rafId          = null;
+        const active       = [];
+        let targetEntry    = null;
+        let decelStartDist = null;
+
+        // Plant the current speaker's slot at center using the already-loaded portrait image.
+        // This covers the portrait stage seamlessly before we hide it, so there is no pop.
+        if (fromSpeakerName) {
+            const hpx = portraitSlotHeightPx(fromSpeakerName);
+            const el  = document.createElement('div');
+            el.className     = 'nsd-parade-slot';
+            el.style.cssText = `width:${CHAR_SLOT_W}px;height:${hpx}px;`;
+            el.style.transform = slotTransform(TARGET_X);
+            const img = document.createElement('img');
+            // Re-use the already-loaded src — no async needed, no flicker
+            if (portraitImgEl?.src) img.src = portraitImgEl.src;
+            el.appendChild(img);
+            container.appendChild(el);
+            active.push({ el, x: TARGET_X });
+        }
+
+        // Portrait stage is now covered — safe to hide it without a visible pop
+        debateOverlay.classList.add('nsd-parade-active');
+
+        function cleanup(fade) {
+            if (stopped) return;
+            stopped = true;
+            clearTimeout(fallbackTimer);
+            if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+            debateOverlay?.classList.remove('nsd-parade-active');
+            if (fade) {
+                container.style.transition = 'opacity 0.1s ease-out';
+                container.style.opacity    = '0';
+                setTimeout(() => container.remove(), 100);
+            } else {
+                container.remove();
+            }
+        }
+
+        nsdShiftParadeStop = cleanup;
+
+        async function spawnNext() {
+            if (stopped || frozen) return;
+            if (spawnCount >= MAX_SPAWNS) return; // stop spawning; RAF still runs until target freezes
+            spawnCount++;
+
+            const idx  = ((spawnIdx % n) + n) % n;
+            spawnIdx   = scrollForward ? (spawnIdx + 1) : (spawnIdx - 1);
+            const name = debateSeatingPlan[idx];
+
+            const hpx = portraitSlotHeightPx(name);
+            const el  = document.createElement('div');
+            el.className = 'nsd-parade-slot';
+            el.style.cssText = `width:${CHAR_SLOT_W}px;height:${hpx}px;`;
+            el.style.transform = slotTransform(startX);
+            const img = document.createElement('img');
+            el.appendChild(img);
+            container.appendChild(el);
+
+            const entry = { el, x: startX };
+            active.push(entry);
+
+            if (!targetEntry && targetSeatIdx >= 0 && idx === targetSeatIdx) {
+                targetEntry    = entry;
+                decelStartDist = scrollForward
+                    ? startX - TARGET_X      // forward: large positive, shrinks as slot moves left
+                    : TARGET_X - startX;     // backward: large positive, shrinks as slot moves right
+            }
+
+            try {
+                const dead = isCharacterDead(name) || isSilenced(name);
+                // Use the target's active speaking emotion; others use their last-seen emotion
+                const emo  = (idx === targetSeatIdx)
+                    ? (targetEmotion || 'neutral')
+                    : (characterEmotions.get(name) || 'neutral');
+                let url = null;
+                if (dead) {
+                    url = await getCharSpriteUrl(name, 'dead').catch(() => null)
+                       || await getCharSpriteUrl(name, emo).catch(() => null);
+                    if (url) img.classList.add('nsd-parade-dead');
+                } else {
+                    url = await getCharSpriteUrl(name, emo).catch(() => null);
+                }
+                if (url && !stopped) img.src = url;
+            } catch {}
+        }
+
+        function tick(ts) {
+            if (stopped) return;
+            const rawDt = lastTs != null ? Math.min((ts - lastTs) / 1000, 0.1) : 0;
+            lastTs = ts;
+
+            let effectiveSpeed = SPEED;
+            if (targetEntry && !frozen) {
+                // dist = remaining distance to TARGET_X (always positive while approaching)
+                const dist = scrollForward
+                    ? targetEntry.x - TARGET_X
+                    : TARGET_X - targetEntry.x;
+                if (dist <= 0) {
+                    // Snap everything so target lands exactly at TARGET_X
+                    const snap = TARGET_X - targetEntry.x;
+                    for (const s of active) {
+                        s.x += snap;
+                        s.el.style.transform = slotTransform(s.x);
+                    }
+                    frozen = true;
+                    rafId  = null;
+                    // Brief hold, then fade out to reveal the updated portraits underneath
+                    setTimeout(() => cleanup(true), 40);
+                    return;
+                }
+                // easeOutSqrt: fast start, decelerate proportionally to sqrt(remaining fraction)
+                const frac = Math.min(1, dist / decelStartDist);
+                effectiveSpeed = Math.max(60, SPEED * Math.sqrt(frac));
+            }
+
+            const dt = rawDt;
+            for (let i = active.length - 1; i >= 0; i--) {
+                const s = active[i];
+                if (scrollForward) {
+                    s.x -= effectiveSpeed * dt;
+                    if (s.x < -CHAR_SLOT_W - 50) { s.el.remove(); active.splice(i, 1); continue; }
+                } else {
+                    s.x += effectiveSpeed * dt;
+                    if (s.x > window.innerWidth + 50) { s.el.remove(); active.splice(i, 1); continue; }
+                }
+                s.el.style.transform = slotTransform(s.x);
+            }
+
+            sinceSpawn += dt;
+            if (sinceSpawn >= SPAWN_SECS) {
+                sinceSpawn = 0;
+                spawnNext();
+            }
+
+            rafId = requestAnimationFrame(tick);
+        }
+
+        rafId = requestAnimationFrame(tick);
+    }
+
     function normalizeSeatName(name) {
         return String(name || '').trim().toLowerCase();
     }
 
     function firstToken(name) {
         return normalizeSeatName(name).split(/\s+/)[0] || '';
+    }
+
+    // Returns the player's name when the Prome VN Extension is active, otherwise null.
+    // Used by getCharSpriteUrl to resolve the player's sprite via Prome's sprite pack.
+    function getPlayerName() {
+        if (!getPromeInfo()) return null;
+        const ctx = window.SillyTavern?.getContext?.();
+        return ctx?.name1 || ctx?.user_name || ctx?.userName || ctx?.personaName || null;
+    }
+
+    // Sprite resolver that transparently handles the player character.
+    // getSpriteUrl uses the SillyTavern sprite API and has no knowledge of the
+    // Prome VN Extension's sprite pack, so the player's name would always return null.
+    // This wrapper intercepts the player and returns the Prome path directly.
+    async function getCharSpriteUrl(name, emo) {
+        if (typeof getSpriteUrl !== 'function') return null;
+        const promeInfo = getPromeInfo();
+        if (promeInfo) {
+            const playerName = getPlayerName();
+            if (playerName) {
+                const pKey   = normalizeSeatName(playerName);
+                const pFirst = firstToken(playerName);
+                if (normalizeSeatName(name) === pKey || firstToken(name) === pFirst) {
+                    return `/characters/${promeInfo.spritePack}/neutral.png`;
+                }
+            }
+        }
+        return getSpriteUrl(name, emo);
     }
 
     function buildSeatingPlan(names) {
@@ -954,6 +1795,20 @@ ${historyText}
         return unique;
     }
 
+    // Returns debateSeatingPlan, building it from the current group members if not yet set.
+    function getOrBuildSeatingPlan() {
+        if (!isGroupChat()) return debateSeatingPlan || [];
+        if (debateSeatingPlan?.length) return debateSeatingPlan;
+        const members = getChatCardMembers()
+            .map(m => m.name)
+            .filter(Boolean)
+            .filter(n => !isCharacterMuted(n));
+        const playerName = getPlayerName();
+        if (playerName) members.push(playerName);
+        if (members.length) debateSeatingPlan = buildSeatingPlan(members);
+        return debateSeatingPlan || [];
+    }
+
     function findSeatIndex(speakerName) {
         if (!debateSeatingPlan?.length) return -1;
         const needle      = normalizeSeatName(speakerName);
@@ -984,15 +1839,17 @@ ${historyText}
         mpdScenarios = savedMpdScenarios;
 
         if (currentState === TrialPhases.MASS_PANIC_DEBATE) {
+            document.body.classList.add('dangan-mpd-active');
             playPanicTrack?.();
         } else {
             playDebatesTrack?.();
         }
         suppressVisualizer?.();
 
-        if (!debateSeatingPlan?.length) {
+        if (!debateSeatingPlan?.length && isGroupChat()) {
             const isMpd = currentState === TrialPhases.MASS_PANIC_DEBATE;
             const groupMembers = getChatCardMembers().map(m => m.name).filter(Boolean)
+                .filter(n => !isCharacterMuted(n))
                 .filter(n => !isMpd || !isCharacterDead(n));
             let speakerNames;
             if (groupMembers.length) {
@@ -1004,6 +1861,8 @@ ${historyText}
             } else {
                 speakerNames = (preparedDebateSections || []).map(s => s.speakerName).filter(Boolean);
             }
+            const playerName = getPlayerName();
+            if (playerName) speakerNames.push(playerName);
             debateSeatingPlan = buildSeatingPlan(speakerNames);
             console.log('[Dangan][Trial] Seating plan generated:', debateSeatingPlan);
         } else {
@@ -1090,25 +1949,35 @@ ${historyText}
             let col0Name = String(firstScenario.texts?.[0]?.speaker || '').trim() || null;
             let col1Name = String(firstScenario.texts?.[1]?.speaker || '').trim() || null;
             let col2Name = String(firstScenario.texts?.[2]?.speaker || '').trim() || null;
+            // Ensure the player character never appears as a column speaker
+            const _pn = getPlayerName();
+            const _isPlayer = (n) => !!(_pn && n && (
+                normalizeSeatName(n) === normalizeSeatName(_pn) || firstToken(n) === firstToken(_pn)
+            ));
+            if (_isPlayer(col0Name)) col0Name = null;
+            if (_isPlayer(col1Name)) col1Name = null;
+            if (_isPlayer(col2Name)) col2Name = null;
             // Fall back to living seating-plan members when scenario speakers are blank
             if (!col0Name && !col1Name && !col2Name && debateSeatingPlan?.length) {
-                const living = debateSeatingPlan.filter(n => !isCharacterDead(n));
+                const living = debateSeatingPlan.filter(n => !isCharacterDead(n) && !isSilenced(n) && !_isPlayer(n));
                 col0Name = living[0] || null;
                 col1Name = living[1] || null;
                 col2Name = living[2] || null;
             }
+            // Lock speakers in for the entire debate
+            mpdColumnSpeakers = [col0Name, col1Name, col2Name];
             applyPortraitHeights(col1Name, col0Name, col2Name);
             const tok = ++portraitToken;
             const loadImg = async (el, name) => {
                 if (!el || !name) return;
                 try {
-                    const dead = isCharacterDead(name);
+                    const dead = isCharacterDead(name) || isSilenced(name);
                     let url = null, grayscale = false;
                     if (dead) {
-                        url = await getSpriteUrl(name, 'dead').catch(() => null);
-                        if (!url) { url = await getSpriteUrl(name, 'neutral'); grayscale = true; }
+                        url = await getCharSpriteUrl(name, 'dead').catch(() => null);
+                        if (!url) { url = await getCharSpriteUrl(name, 'neutral'); grayscale = true; }
                     } else {
-                        url = await getSpriteUrl(name, 'neutral');
+                        url = await getCharSpriteUrl(name, 'neutral');
                     }
                     if (tok !== portraitToken || !url || !el) return;
                     el.src = url;
@@ -1137,10 +2006,10 @@ ${historyText}
                     let url = null;
                     let grayscale = false;
                     if (dead) {
-                        url = await getSpriteUrl(name, 'dead').catch(() => null);
-                        if (!url) { url = await getSpriteUrl(name, emo); grayscale = true; }
+                        url = await getCharSpriteUrl(name, 'dead').catch(() => null);
+                        if (!url) { url = await getCharSpriteUrl(name, emo); grayscale = true; }
                     } else {
-                        url = await getSpriteUrl(name, emo);
+                        url = await getCharSpriteUrl(name, emo);
                     }
                     if (tok !== portraitToken || !url || !el) return;
                     el.src = url;
@@ -1155,8 +2024,19 @@ ${historyText}
         }
 
         debateOverlay.onmousemove = (e) => {
-            reticleEl.style.left = `${e.clientX}px`;
-            reticleEl.style.top = `${e.clientY}px`;
+            reticleEl.style.transform = `translate(${e.clientX}px, ${e.clientY}px) translate(-50%, -50%)`;
+            if (shiftRightPressed && isDebateActive()) {
+                const hit  = document.elementFromPoint(e.clientX, e.clientY);
+                const wpEl = hit?.closest?.('.dangan-weak-point');
+                if (wpEl) startAbsorb(wpEl);
+                else      cancelAbsorb();
+            }
+            if (lieHeld && isDebateActive()) {
+                const hit  = document.elementFromPoint(e.clientX, e.clientY);
+                const wpEl = hit?.closest?.('.dangan-weak-point');
+                if (wpEl) startLieAbsorb(wpEl);
+                else      cancelLieAbsorb();
+            }
         };
 
         debateOverlay.onwheel = (e) => { e.preventDefault(); };
@@ -1169,6 +2049,15 @@ ${historyText}
         const bulletCap = nsdBulletCount(currentDebateSections);
         nsdActiveBullets = selectNsdBullets(preparedDebateSections || [], bulletCap);
         selectedTruthBulletIndex = 0;
+
+        // Snapshot equipped skills for this entire debate run (covers both NSD and MPD)
+        const equipped = typeof getEquippedSkillsSnapshot === 'function' ? getEquippedSkillsSnapshot() : [];
+        mpdSkillSeatingPlanCopy = equipped.includes('shop_skill_seating_plan_copy');
+        mpdSkillBetaBlock       = equipped.includes('shop_skill_beta_block');
+
+        // Seating debug is hidden by default; only revealed when SEATING PLAN COPY is equipped
+        const seatingDbgEl = debateOverlay.querySelector('#dangan-seating-debug');
+        if (seatingDbgEl) seatingDbgEl.style.display = 'none';
 
         renderCylinder();
         if (currentState === TrialPhases.MASS_PANIC_DEBATE) {
@@ -1183,6 +2072,12 @@ ${historyText}
             if (currentState === TrialPhases.MASS_PANIC_DEBATE) {
                 startMassPanicDebatePlayback();
             } else {
+                // Reveal seating debug for NSD if skill is equipped
+                if (mpdSkillSeatingPlanCopy) {
+                    const dbgEl = debateOverlay?.querySelector('#dangan-seating-debug');
+                    if (dbgEl) dbgEl.style.display = '';
+                    updateSeatingDebug('');
+                }
                 startDebatePlayback(preparedDebateSections);
             }
         });
@@ -1193,6 +2088,7 @@ ${historyText}
             const src = getAssetUrl('nonstop-pre-intro.webm');
 
             if (debateOverlay) debateOverlay.classList.add('nsd-pre-intro');
+            paradeController = startSeatingParade();
 
             const overlay = document.createElement('div');
             overlay.id = 'dangan-nsd-pre-intro';
@@ -1251,8 +2147,11 @@ ${historyText}
 
             function startIntroCylSpin() {
                 if (introCylRaf) return;
-                function tick() {
-                    introCylAngle = (introCylAngle + 20 / 60) % 7200;
+                let lastTs = null;
+                function tick(now) {
+                    const dt = lastTs !== null ? Math.min((now - lastTs) / 1000, 0.1) : 1 / 60;
+                    lastTs = now;
+                    introCylAngle = (introCylAngle + 20 * dt) % 7200;
                     const img = introEl.querySelector('#dangan-bullet-intro-cyl-img');
                     if (!img) { introCylRaf = null; return; }
                     img.style.transform = `rotate(${introCylAngle}deg)`;
@@ -1416,7 +2315,6 @@ ${historyText}
             const introHiddenEls = [
                 '.dangan-trial-top-left',
                 '.dangan-trial-bottom-left',
-                '#dangan-seating-debug',
             ].map(sel => debateOverlay?.querySelector(sel)).filter(Boolean);
             introHiddenEls.forEach(el => { el.dataset.introDisplay = el.style.display; el.style.display = 'none'; });
 
@@ -1443,13 +2341,17 @@ ${historyText}
         const container = document.getElementById('dangan-truth-bullet-cylinder');
         if (!container) return;
 
+        // Cancel any running spin RAF before replacing innerHTML — the old img element
+        // will be destroyed, and the RAF closure holds a stale reference to it.
+        if (revolverSpinRaf) { cancelAnimationFrame(revolverSpinRaf); revolverSpinRaf = null; }
+
         const bullets = getDebateBullets();
         const n = bullets.length;
         const cur = bullets[selectedTruthBulletIndex];
         const above = bullets[((selectedTruthBulletIndex - 1) + n) % n];
         const below = bullets[(selectedTruthBulletIndex + 1) % n];
 
-        const bulletNumber = String(selectedTruthBulletIndex + 1).padStart(2, '0');
+        const bulletNumber = cur?.isTemporary ? 'XX' : String(selectedTruthBulletIndex + 1).padStart(2, '0');
 
         container.innerHTML = `
             <div class="dangan-cylinder-wrap">
@@ -1469,7 +2371,7 @@ ${historyText}
         `;
 
         applyCartridgeTheme(speedModifier);
-        if (!revolverSpinRaf) startRevolverSpin();
+        startRevolverSpin();
     }
 
     function showAdjacentBullets() {
@@ -1487,14 +2389,18 @@ ${historyText}
     }
 
     function startRevolverSpin() {
-        const BASE_SPIN = 20 / 60;
-        const LERP = 0.1;
-        function tick() {
+        const BASE_SPIN_DEG_S = 20; // degrees per second at normal speed
+        let lastTs = null;
+        const img = document.getElementById('dangan-cylinder-img'); // cache once
+        if (!img) return;
+        function tick(now) {
+            if (!img.isConnected) { revolverSpinRaf = null; return; }
+            const dt  = lastTs !== null ? Math.min((now - lastTs) / 1000, 0.1) : 1 / 60;
+            lastTs = now;
             const mod = speedModifier > 1.0 ? 2.0 : speedModifier < 1.0 ? 0.5 : 1.0;
-            revolverTarget += BASE_SPIN * mod;
-            revolverAngle += (revolverTarget - revolverAngle) * LERP;
-            const img = document.getElementById('dangan-cylinder-img');
-            if (!img) { revolverSpinRaf = null; return; }
+            revolverTarget += BASE_SPIN_DEG_S * mod * dt;
+            // Frame-rate-independent lerp: equivalent to 0.1 per frame at 60 fps
+            revolverAngle += (revolverTarget - revolverAngle) * (1 - Math.pow(0.9, dt * 60));
             img.style.transform = `skewX(8deg) skewY(14deg) rotate(${revolverAngle}deg)`;
             revolverSpinRaf = requestAnimationFrame(tick);
         }
@@ -1502,6 +2408,8 @@ ${historyText}
     }
 
     function startDebatePlayback(prepared) {
+        paradeController?.stop();
+        paradeController = null;
         if (playbackTimerId) window.clearTimeout(playbackTimerId);
         playbackTimerId = null;
 
@@ -1551,14 +2459,11 @@ ${historyText}
     }
 
     async function startMassPanicDebatePlayback() {
+        paradeController?.stop();
+        paradeController = null;
         if (!mpdScenarios?.length) return;
         const speakerEl = debateOverlay?.querySelector('#dangan-speaker-name');
         if (speakerEl) speakerEl.textContent = 'INAUDIBLE';
-
-        // Snapshot equipped skills for this debate run
-        const equipped = typeof getEquippedSkillsSnapshot === 'function' ? getEquippedSkillsSnapshot() : [];
-        mpdSkillBetaBlock       = equipped.includes('shop_skill_beta_block');
-        mpdSkillSeatingPlanCopy = equipped.includes('shop_skill_seating_plan_copy');
 
         // Seating Plan Copy — reveal debug seating circle and allow Tab
         if (mpdSkillSeatingPlanCopy) {
@@ -1633,18 +2538,28 @@ ${historyText}
         el.style.width = `${Math.round(cw * 0.82)}px`;
 
         const rawText    = stripSurroundingQuotes(String(text || ''));
-        const cleanedText = rawText.replace(/\[\[|\]\]/g, '');
+        const hasAgreeText = /\(\([^)]+\)\)/.test(rawText);
+        const cleanedText = rawText.replace(/\[\[|\]\]/g, '').replace(/\(\(|\)\)/g, '');
 
-        if (isWeakPoint) {
+        if (isWeakPoint || hasAgreeText) {
             let html = '', lastIndex = 0;
-            const wpRegex = /\[\[\s*([^\]]+?)\s*\]\]/gi;
+            // Mutual exclusivity: if agree marker present, strip any weak point brackets first
+            let renderText = rawText;
+            if (hasAgreeText && /\[\[[^\]]+\]\]/.test(renderText)) {
+                renderText = renderText.replace(/\[\[\s*([^\]]+?)\s*\]\]/g, '$1');
+            }
+            const tokenRegex = /\[\[\s*([^\]]+?)\s*\]\]|\(\(\s*([^)]+?)\s*\)\)/gi;
             let match;
-            while ((match = wpRegex.exec(rawText)) !== null) {
-                html += escapeHtml(rawText.slice(lastIndex, match.index));
-                html += `<span class="dangan-weak-point mpd-weak-point">${escapeHtml(stripWeakBrackets(match[1]))}</span>`;
+            while ((match = tokenRegex.exec(renderText)) !== null) {
+                html += escapeHtml(renderText.slice(lastIndex, match.index));
+                if (match[1] !== undefined) {
+                    html += `<span class="dangan-weak-point mpd-weak-point">${escapeHtml(match[1].trim())}</span>`;
+                } else {
+                    html += `<span class="dangan-agree-text">${escapeHtml(match[2].trim())}</span>`;
+                }
                 lastIndex = match.index + match[0].length;
             }
-            html += escapeHtml(rawText.slice(lastIndex));
+            html += escapeHtml(renderText.slice(lastIndex));
             el.innerHTML = html;
         } else {
             el.textContent = cleanedText;
@@ -1709,7 +2624,8 @@ ${historyText}
         if (wnPattern) {
             const count = wnPattern.count();
             for (let i = 0; i < count; i++) {
-                spawnWhiteNoise(whiteNoise, startX, startY, wnPattern.offsets ? wnPattern.offsets(i) : null);
+                const wnText = whiteNoise[i % whiteNoise.length];
+                spawnWhiteNoise(wnText, startX, startY, wnPattern.offsets ? wnPattern.offsets(i) : null);
             }
         }
 
@@ -1728,7 +2644,7 @@ ${historyText}
                     finish(); return;
                 }
 
-                const dt    = now - lastNow;
+                const dt    = Math.min(now - lastNow, 100);
                 const delta = dt * speedModifier;
                 lastNow  = now;
                 elapsed += delta;
@@ -1745,12 +2661,10 @@ ${historyText}
                 if (p < 0.12) opacity = p / 0.12;
                 else if (p > 0.86) opacity = Math.max(0, (1 - p) / 0.14);
 
-                el.style.left    = `${x}px`;
-                el.style.top     = `${y}px`;
                 el.style.opacity = String(opacity);
                 const shake  = isScreaming ? (Math.sin(now / 28) * 2.2) : 0;
                 const shakeY = isScreaming ? (Math.cos(now / 24) * 1.6) : 0;
-                el.style.transform = `translate(calc(-50% + ${shake}px), calc(-50% + ${shakeY}px)) rotate(${rot}deg) skewX(${skew}deg) scale(${scale})`;
+                el.style.transform = `translate(${x + shake}px, ${y + shakeY}px) translate(-50%, -50%) rotate(${rot}deg) scale(${scale})`;
 
                 if (p >= 1) {
                     el.remove();
@@ -1773,33 +2687,23 @@ ${historyText}
         });
     }
 
-    function updateMpdPortraits(scenario) {
+    function updateMpdPortraits(_scenario) {
         if (typeof getSpriteUrl !== 'function') return;
-        let col0Name = String(scenario.texts?.[0]?.speaker || '').trim() || null;
-        let col1Name = String(scenario.texts?.[1]?.speaker || '').trim() || null;
-        let col2Name = String(scenario.texts?.[2]?.speaker || '').trim() || null;
-
-        // When scenario speakers are blank (e.g. test scenarios), distribute
-        // living seating-plan members across the three columns.
-        if (!col0Name && !col1Name && !col2Name && debateSeatingPlan?.length) {
-            const living = debateSeatingPlan.filter(n => !isCharacterDead(n));
-            col0Name = living[0] || null;
-            col1Name = living[1] || null;
-            col2Name = living[2] || null;
-        }
-
+        // Speakers are locked in at debate start — never re-read from scenario
+        const [col0Name, col1Name, col2Name] = mpdColumnSpeakers;
         applyPortraitHeights(col1Name, col0Name, col2Name);
         const tok = ++portraitToken;
         const loadImg = async (el, name) => {
             if (!el || !name) return;
             try {
-                const dead = isCharacterDead(name);
+                const dead = isCharacterDead(name) || isSilenced(name);
                 let url = null, grayscale = false;
                 if (dead) {
-                    url = await getSpriteUrl(name, 'dead').catch(() => null);
-                    if (!url) { url = await getSpriteUrl(name, 'neutral'); grayscale = true; }
+                    url = await getCharSpriteUrl(name, 'dead').catch(() => null);
+                    if (!url) { url = await getCharSpriteUrl(name, 'neutral'); grayscale = true; }
                 } else {
-                    url = await getSpriteUrl(name, 'neutral');
+                    url = await getCharSpriteUrl(name, 'anger').catch(() => null);
+                    if (!url) url = await getCharSpriteUrl(name, 'neutral');
                 }
                 if (tok !== portraitToken || !url || !el) return;
                 el.src = url; el.style.display = 'block';
@@ -1811,6 +2715,20 @@ ${historyText}
         loadImg(portraitRightEl, col2Name);
     }
 
+    async function mpdSwapColumnEmotion(col, emotion) {
+        if (typeof getSpriteUrl !== 'function') return;
+        const name = mpdColumnSpeakers[col];
+        if (!name || isCharacterDead(name) || isSilenced(name)) return;
+        const els = [portraitLeftEl, portraitImgEl, portraitRightEl];
+        const el = els[col];
+        if (!el) return;
+        const tok = ++portraitToken;
+        const url = await getCharSpriteUrl(name, emotion).catch(() => null)
+            ?? await getCharSpriteUrl(name, 'neutral').catch(() => null);
+        if (tok !== portraitToken || !url || !el) return;
+        el.src = url;
+    }
+
     function mpdTriggerLock() {
         if (mpdLockActive || currentState !== TrialPhases.MASS_PANIC_DEBATE) return;
         mpdLockActive      = true;
@@ -1818,7 +2736,30 @@ ${historyText}
         mpdChainBreakCount = 0;
         mpdUpdateChainOverlays();
         mpdUpdateChainCounter();
+        new Audio(`${extensionFolderPath}/assets/sfx/trial/locking-column.wav`).play().catch(() => {});
         playSfx?.('chain_trigger');
+        void mpdSwapColumnEmotion(mpdFreeColumn, 'disgust');
+
+        // Column lock VFX: zoom+shake portrait img of the free (shootable) column
+        const _focusEls = [portraitLeftEl, portraitImgEl, portraitRightEl];
+        if (_focusEls[mpdFreeColumn]) _focusEls[mpdFreeColumn].classList.add('mpd-col-focus');
+
+        // Speed-lines radiating from centre of the free column
+        const _colDiv = debateOverlay?.querySelector(`#mpd-col-${mpdFreeColumn}`);
+        if (_colDiv) {
+            const slWrap = document.createElement('div');
+            slWrap.className = 'mpd-col-speedlines';
+            for (let i = 0; i < 36; i++) {
+                const sl = document.createElement('div');
+                sl.className = 'mpd-col-speedline';
+                sl.style.setProperty('--sl-angle', `${(i / 36 * 360).toFixed(1)}deg`);
+                sl.style.setProperty('--sl-h',     `${1 + Math.round(Math.random() * 2)}px`);
+                sl.style.setProperty('--sl-gap',   `${(14 + Math.random() * 10).toFixed(0)}%`);
+                sl.style.setProperty('--sl-delay', `${(Math.random() * 0.45).toFixed(2)}s`);
+                slWrap.appendChild(sl);
+            }
+            _colDiv.appendChild(slWrap);
+        }
     }
 
     function mpdBreakLock() {
@@ -1828,19 +2769,33 @@ ${historyText}
         mpdUpdateChainOverlays();
         mpdUpdateChainCounter();
         playSfx?.('chain_broken');
+
+        // Clean up column lock VFX
+        debateOverlay?.querySelectorAll('.mpd-col-focus').forEach(el => el.classList.remove('mpd-col-focus'));
+        debateOverlay?.querySelectorAll('.mpd-col-speedlines').forEach(el => el.remove());
         for (let c = 0; c < 3; c++) {
             const colEl = debateOverlay?.querySelector(`#mpd-col-${c}`);
             if (!colEl) continue;
             colEl.classList.add('mpd-chain-break-flash');
             setTimeout(() => colEl.classList.remove('mpd-chain-break-flash'), 450);
+            void mpdSwapColumnEmotion(c, 'anger');
         }
     }
 
     function mpdUpdateChainOverlays() {
+        const portraitSlots = [
+            debateOverlay?.querySelector('.dangan-portrait-left-slot'),
+            debateOverlay?.querySelector('.dangan-portrait-center-slot'),
+            debateOverlay?.querySelector('.dangan-portrait-right-slot'),
+        ];
         for (let c = 0; c < 3; c++) {
             const chain = debateOverlay?.querySelector(`#mpd-chain-${c}`);
             if (!chain) continue;
-            chain.classList.toggle('active', mpdLockActive && c !== mpdFreeColumn);
+            const locked = mpdLockActive && c !== mpdFreeColumn;
+            chain.classList.toggle('active', locked);
+            portraitSlots[c]?.classList.toggle('mpd-locked', locked);
+            const colEl = debateOverlay?.querySelector(`#mpd-col-${c}`);
+            colEl?.classList.toggle('mpd-key-col', mpdLockActive && c === mpdFreeColumn);
         }
         if (reticleEl) reticleEl.dataset.locked = mpdLockActive ? '1' : '0';
     }
@@ -1848,21 +2803,14 @@ ${historyText}
     function mpdUpdateChainCounter() {
         const counter = debateOverlay?.querySelector('#mpd-chain-counter');
         if (!counter) return;
-        // Without Beta Block the counter is never shown
-        if (!mpdSkillBetaBlock) { counter.style.display = 'none'; return; }
-        if (!mpdLockActive) {
-            // Beta Block pre-lock: show the full break count in the centre column
-            const cw = window.innerWidth / 3;
-            counter.style.left    = `${cw * 1.5}px`;
-            counter.style.display = 'block';
-            counter.textContent   = String(MPD_CHAIN_BREAKS_NEEDED);
-            return;
-        }
+        // Without Beta Block, or when no lock is active, never show the counter
+        if (!mpdSkillBetaBlock || !mpdLockActive) { counter.style.display = 'none'; return; }
+        // Lock is active: show remaining breaks needed above the free column
         const cw = window.innerWidth / 3;
         const cx = mpdFreeColumn * cw + cw / 2;
         counter.style.left    = `${cx}px`;
         counter.style.display = 'block';
-        counter.textContent   = String(MPD_CHAIN_BREAKS_NEEDED - mpdChainBreakCount);
+        counter.textContent   = String(mpdBreaksNeeded() - mpdChainBreakCount);
     }
 
     function mpdOnRPress() {
@@ -1880,7 +2828,7 @@ ${historyText}
             if (hoveredWhiteNoise) hitWhiteNoise(hoveredWhiteNoise);
             mpdChainBreakCount++;
             mpdUpdateChainCounter();
-            if (mpdChainBreakCount >= MPD_CHAIN_BREAKS_NEEDED) mpdBreakLock();
+            if (mpdChainBreakCount >= mpdBreaksNeeded()) mpdBreakLock();
         } else {
             // No lock — fire normally
             playSfx?.('wn_shooting');
@@ -2020,8 +2968,14 @@ ${historyText}
         updateSectionDots((debateSectionIndex % currentDebateSections) + 1, currentDebateSections);
 
         const emotion = part?.emotion || inferEmotionFromText(part?.text);
+        const prevSpeaker = portraitSpeaker; // capture before updateDebatePortraits sets it
         void updateDebatePortraits(speakerName, emotion);
         updateSeatingDebug(speakerName);
+
+        // Parade-scroll to the new speaker on section change (NSD only, not MPD)
+        if (prevSpeaker !== null && prevSpeaker !== speakerName) {
+            startSpeakerShiftParade(prevSpeaker, speakerName, emotion);
+        }
 
         showStatementChunk({
             text: part.text,
@@ -2068,17 +3022,17 @@ ${historyText}
             if (!el) return;
             if (!charName) { el.style.display = 'none'; return; }
             try {
-                const dead = isCharacterDead(charName);
+                const dead = isCharacterDead(charName) || isSilenced(charName);
                 let url = null;
                 let grayscale = false;
                 if (dead) {
-                    url = await getSpriteUrl(charName, 'dead').catch(() => null);
+                    url = await getCharSpriteUrl(charName, 'dead').catch(() => null);
                     if (!url) {
-                        url = await getSpriteUrl(charName, emoLabel);
+                        url = await getCharSpriteUrl(charName, emoLabel);
                         grayscale = true;
                     }
                 } else {
-                    url = await getSpriteUrl(charName, emoLabel);
+                    url = await getCharSpriteUrl(charName, emoLabel);
                 }
                 if (token !== portraitToken) return;
                 if (!url) { el.style.display = 'none'; return; }
@@ -2124,21 +3078,31 @@ ${historyText}
         const w = window.innerWidth || 1200;
         el.style.width = `${Math.min(Math.round(w * 0.82), 980)}px`;
         const rawText = stripSurroundingQuotes(String(text || ''));
-        const cleanedText = rawText.replace(/\[\[|\]\]/g, '');
+        const hasAgreeText = /\(\([^)]+\)\)/.test(rawText);
+        const cleanedText = rawText.replace(/\[\[|\]\]/g, '').replace(/\(\(|\)\)/g, '');
 
-        if (isWeakPoint) {
+        if (isWeakPoint || hasAgreeText) {
             // Walk the raw text, escape each plain segment once, wrap weak spans once.
             // Never call escapeHtml twice on the same content (avoids &amp;amp; etc.).
             let html = '';
             let lastIndex = 0;
-            const wpRegex = /\[\[\s*([^\]]+?)\s*\]\]/gi;
+            // Mutual exclusivity: if agree marker present, strip any weak point brackets first
+            let renderText = rawText;
+            if (hasAgreeText && /\[\[[^\]]+\]\]/.test(renderText)) {
+                renderText = renderText.replace(/\[\[\s*([^\]]+?)\s*\]\]/g, '$1');
+            }
+            const tokenRegex = /\[\[\s*([^\]]+?)\s*\]\]|\(\(\s*([^)]+?)\s*\)\)/gi;
             let match;
-            while ((match = wpRegex.exec(rawText)) !== null) {
-                html += escapeHtml(rawText.slice(lastIndex, match.index));
-                html += `<span class="dangan-weak-point">${escapeHtml(stripWeakBrackets(match[1]))}</span>`;
+            while ((match = tokenRegex.exec(renderText)) !== null) {
+                html += escapeHtml(renderText.slice(lastIndex, match.index));
+                if (match[1] !== undefined) {
+                    html += `<span class="dangan-weak-point">${escapeHtml(match[1].trim())}</span>`;
+                } else {
+                    html += `<span class="dangan-agree-text">${escapeHtml(match[2].trim())}</span>`;
+                }
                 lastIndex = match.index + match[0].length;
             }
-            html += escapeHtml(rawText.slice(lastIndex));
+            html += escapeHtml(renderText.slice(lastIndex));
             el.innerHTML = html;
         } else {
             el.textContent = cleanedText;
@@ -2217,7 +3181,8 @@ ${historyText}
         if (wnPattern) {
             const count = wnPattern.count();
             for (let i = 0; i < count; i++) {
-                spawnWhiteNoise(whiteNoise, startX, startY, wnPattern.offsets ? wnPattern.offsets(i) : null);
+                const wnText = whiteNoise[i % whiteNoise.length];
+                spawnWhiteNoise(wnText, startX, startY, wnPattern.offsets ? wnPattern.offsets(i) : null);
             }
         }
 
@@ -2235,8 +3200,8 @@ ${historyText}
                     return;
                 }
 
-                // Variable time step based on speedModifier
-                const dt = now - lastNow;
+                // Variable time step based on speedModifier (capped to prevent tab-switch jumps)
+                const dt = Math.min(now - lastNow, 100);
                 const delta = dt * speedModifier;
                 lastNow = now;
                 elapsed += delta;
@@ -2258,12 +3223,10 @@ ${historyText}
                 if (p < 0.12) opacity = p / 0.12;
                 else if (p > 0.86) opacity = Math.max(0, (1 - p) / 0.14);
 
-                el.style.left = `${x}px`;
-                el.style.top = `${y}px`;
                 el.style.opacity = String(opacity);
                 const shake = isScreaming ? (Math.sin(now / 28) * 2.2) : 0;
                 const shakeY = isScreaming ? (Math.cos(now / 24) * 1.6) : 0;
-                el.style.transform = `translate(calc(-50% + ${shake}px), calc(-50% + ${shakeY}px)) rotate(${rot}deg) skewX(${skew}deg) scale(${scale})`;
+                el.style.transform = `translate(${x + shake}px, ${y + shakeY}px) translate(-50%, -50%) rotate(${rot}deg) scale(${scale})`;
 
                 if (p >= 1) {
                     el.remove();
@@ -2417,6 +3380,40 @@ ${historyText}
         }
     }
 
+    // Single shared RAF loop drives all white-noise elements — eliminates N concurrent loops.
+    function runWnPool(now) {
+        let i = wnAnimPool.length;
+        while (i--) {
+            const it = wnAnimPool[i];
+            if (!document.body.contains(it.el)) { wnAnimPool.splice(i, 1); continue; }
+            if (!isDebateActive()) {
+                it.el.remove();
+                activeWhiteNoiseEls = activeWhiteNoiseEls.filter(n => n !== it.el);
+                if (hoveredWhiteNoise === it.el) hoveredWhiteNoise = null;
+                wnAnimPool.splice(i, 1); continue;
+            }
+            const dt = Math.min(now - it.lastNow, 100);
+            it.elapsed += dt * speedModifier;
+            it.lastNow = now;
+            const p   = Math.min(1, it.elapsed / it.duration);
+            const x   = it.startX + it.driftX * p;
+            const y   = it.startY + it.driftY * p;
+            const rot = it.rotStart + (it.elapsed / 1000) * it.rotSpeed;
+            let opacity = 1;
+            if (p < 0.08) opacity = p / 0.08;
+            else if (p > 0.88) opacity = Math.max(0, (1 - p) / 0.12);
+            it.el.style.opacity   = String(opacity);
+            it.el.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%) rotate(${rot}deg)`;
+            if (p >= 1) {
+                it.el.remove();
+                activeWhiteNoiseEls = activeWhiteNoiseEls.filter(n => n !== it.el);
+                if (hoveredWhiteNoise === it.el) hoveredWhiteNoise = null;
+                wnAnimPool.splice(i, 1);
+            }
+        }
+        wnPoolRafId = wnAnimPool.length ? requestAnimationFrame(runWnPool) : null;
+    }
+
     function spawnWhiteNoise(text, nearX, nearY, fixedOffset = null) {
         if (!text || !isDebateActive()) return;
         const el = document.createElement('div');
@@ -2438,53 +3435,15 @@ ${historyText}
         const rotStart = Math.random() * 16 - 8;
         const rotSpeed = Math.random() * 8 - 4;
 
-        el.style.left    = `${startX}px`;
-        el.style.top     = `${startY}px`;
-        el.style.opacity = '0';
-        el.style.transform = `translate(-50%, -50%) rotate(${rotStart}deg)`;
+        // Use transform-only positioning — no left/top changes (GPU composited).
+        el.style.opacity   = '0';
+        el.style.transform = `translate(${startX}px, ${startY}px) translate(-50%, -50%) rotate(${rotStart}deg)`;
 
         document.body.appendChild(el);
         activeWhiteNoiseEls.push(el);
 
-        let lastNow = performance.now();
-        let elapsed = 0;
-        let rafId   = 0;
-
-        const frame = (now) => {
-            if (!document.body.contains(el)) return;
-            if (!isDebateActive()) {
-                el.remove();
-                activeWhiteNoiseEls = activeWhiteNoiseEls.filter(n => n !== el);
-                if (hoveredWhiteNoise === el) hoveredWhiteNoise = null;
-                return;
-            }
-            const dt = now - lastNow;
-            elapsed += dt * speedModifier;
-            lastNow = now;
-
-            const p = Math.min(1, elapsed / duration);
-            const x = startX + driftX * p;
-            const y = startY + driftY * p;
-            const rot = rotStart + (elapsed / 1000) * rotSpeed;
-
-            let opacity = 1;
-            if (p < 0.08) opacity = p / 0.08;
-            else if (p > 0.88) opacity = Math.max(0, (1 - p) / 0.12);
-
-            el.style.left      = `${x}px`;
-            el.style.top       = `${y}px`;
-            el.style.opacity   = String(opacity);
-            el.style.transform = `translate(-50%, -50%) rotate(${rot}deg)`;
-
-            if (p >= 1) {
-                el.remove();
-                activeWhiteNoiseEls = activeWhiteNoiseEls.filter(n => n !== el);
-                if (hoveredWhiteNoise === el) hoveredWhiteNoise = null;
-                return;
-            }
-            rafId = requestAnimationFrame(frame);
-        };
-        rafId = requestAnimationFrame(frame);
+        wnAnimPool.push({ el, startX, startY, driftX, driftY, duration, rotStart, rotSpeed, lastNow: performance.now(), elapsed: 0 });
+        if (!wnPoolRafId) wnPoolRafId = requestAnimationFrame(runWnPool);
     }
 
     function resolveWeakPointAtClick(cx, cy) {
@@ -2554,7 +3513,7 @@ ${historyText}
         }
     }
 
-    function fireProjectile(bulletTitle, targetX, targetY, isPerjury) {
+    function fireProjectile(bulletTitle, targetX, targetY, isPerjury, firedBullet) {
         const el = document.createElement('div');
         el.className = 'dangan-nsd-projectile';
         el.textContent = bulletTitle;
@@ -2575,15 +3534,17 @@ ${historyText}
         let startTime = null;
         let done      = false;
 
-        function finish(hitEl) {
+        function finish(hitWp, hitAgree) {
             if (done) return;
             done = true;
             el.remove();
-            if (hitEl) {
-                const bullets = getDebateBullets();
-                const currentBullet = bullets[selectedTruthBulletIndex] || { title: 'TRUTH BULLET' };
+            const currentBullet = firedBullet || getDebateBullets()[selectedTruthBulletIndex] || { title: 'TRUTH BULLET' };
+            if (hitWp) {
                 playSfx?.('weak_spot_hit');
-                hitWeakPoint(hitEl, currentBullet, isPerjury);
+                hitWeakPoint(hitWp, currentBullet, isPerjury);
+            } else if (hitAgree) {
+                playSfx?.('weak_spot_hit');
+                hitAgreeText(hitAgree, currentBullet);
             } else {
                 playSfx?.('tbmiss');
                 if (isPointOnDebateText(targetX, targetY)) {
@@ -2607,20 +3568,18 @@ ${historyText}
             const scale = 2.6 - t * 2.5;   // 2.6 → 0.1
             const alpha = raw > 0.72 ? 1 - (raw - 0.72) / 0.28 : 1;
 
-            // left/top pin the first character (transform-origin: left center).
-            // rotate(angle) lays the text along the trajectory so the body trails
-            // toward the bottom-right off-screen and the first char leads to target.
-            el.style.left      = `${x}px`;
-            el.style.top       = `${y}px`;
-            el.style.transform = `translateY(-50%) rotate(${angle.toFixed(1)}deg) scale(${scale.toFixed(3)})`;
+            // Pure-transform positioning (GPU composited, no layout per frame).
+            // translate(x,y) moves the left edge to (x,y); translateY(-50%) centers vertically.
+            el.style.transform = `translate(${x}px, ${y}px) translateY(-50%) rotate(${angle.toFixed(1)}deg) scale(${scale.toFixed(3)})`;
             el.style.opacity   = alpha.toFixed(3);
 
             if (raw < 1) {
                 requestAnimationFrame(step);
             } else {
-                // Animation complete — check if the original click was on a weak point
-                const hitWp = resolveWeakPointAtClick(targetX, targetY);
-                finish(hitWp);
+                // Animation complete — check if the original click was on a weak point or agree text
+                const hitWp    = resolveWeakPointAtClick(targetX, targetY);
+                const hitAgree = !hitWp ? resolveAgreeTextAtClick(targetX, targetY) : null;
+                finish(hitWp, hitAgree);
             }
         }
 
@@ -2679,7 +3638,16 @@ ${historyText}
             }
         }
         showShotEffect(e.clientX, e.clientY);
-        fireProjectile(currentBullet.title, e.clientX, e.clientY, isPerjury);
+
+        // Consume the temporary bullet immediately on fire (regardless of hit/miss)
+        if (currentBullet.isTemporary) {
+            nsdActiveBullets         = bullets.filter(b => !b.isTemporary);
+            tempBullet               = null;
+            selectedTruthBulletIndex = 0;
+            renderCylinder();
+        }
+
+        fireProjectile(currentBullet.title, e.clientX, e.clientY, isPerjury, currentBullet);
         // shotCooldown is reset inside finish() when the projectile resolves
     }
 
@@ -2704,11 +3672,67 @@ ${historyText}
             setTimeout(() => parentStatement.remove(), 250);
         }
 
-        // 3. Show COUNTER or PERJURY banner
-        const bannerType = isPerjury ? 'perjury' : 'counter';
+        // 3. Award XP for completing the debate
+        const isMpd = currentState === TrialPhases.MASS_PANIC_DEBATE;
+        const xpKey = isMpd ? 'massPanicDebate' : 'nonStopDebate';
+        const xpAmount = xpRewards?.[xpKey] ?? (isMpd ? 18 : 15);
+        awardXp?.(xpAmount, isMpd ? 'mass panic debate completed' : 'non-stop debate completed');
+
+        // 4. Show COUNTER, PERJURY, or LIE banner
+        const bannerType = (isPerjury || currentBullet?.isLie) ? 'perjury' : 'counter';
         showTrialBanner(bannerType).then(() => {
             setState(TrialPhases.TRUTH_BULLET_EXPLANATION);
             showExplanationUI(currentBullet, wp.textContent);
+        });
+    }
+
+    function resolveAgreeTextAtClick(cx, cy) {
+        // 1. Direct element check
+        const topEl = document.elementFromPoint(cx, cy);
+        if (topEl?.classList.contains('dangan-agree-text')) return topEl;
+        const closest = topEl?.closest?.('.dangan-agree-text');
+        if (closest) return closest;
+
+        // 2. Rect-based fallback across all visible agree spans
+        const padding = 20;
+        for (const el of document.querySelectorAll('.dangan-agree-text')) {
+            const rect = el.getBoundingClientRect();
+            if (
+                cx >= rect.left   - padding &&
+                cx <= rect.right  + padding &&
+                cy >= rect.top    - padding &&
+                cy <= rect.bottom + padding
+            ) return el;
+        }
+        return null;
+    }
+
+    function hitAgreeText(agreeEl, currentBullet) {
+        const rect    = agreeEl.getBoundingClientRect();
+        const targetX = rect.left + rect.width  / 2;
+        const targetY = rect.top  + rect.height / 2;
+
+        playSfx?.(getSfx?.().hit || 'hit');
+
+        const parentStatement = agreeEl.closest('.dangan-floating-statement');
+        if (parentStatement) {
+            createBurstEffect(targetX, targetY);
+            parentStatement.style.transition = 'all 0.2s ease-out';
+            parentStatement.style.transform += ' scale(1.4)';
+            parentStatement.style.filter = 'brightness(3) blur(5px)';
+            parentStatement.style.opacity = '0';
+            setTimeout(() => parentStatement.remove(), 250);
+        }
+
+        const isMpd    = currentState === TrialPhases.MASS_PANIC_DEBATE;
+        const xpKey    = isMpd ? 'massPanicDebate' : 'nonStopDebate';
+        const xpAmount = xpRewards?.[xpKey] ?? (isMpd ? 18 : 15);
+        awardXp?.(xpAmount, isMpd ? 'mass panic debate completed' : 'non-stop debate completed');
+
+        const speakerName = gcpSlots[Math.round(gcpCurrentFloat)]?.name ?? null;
+        showTrialBanner('consent', { speakerName }).then(() => {
+            setState(TrialPhases.TRUTH_BULLET_EXPLANATION);
+            showExplanationUI(currentBullet, agreeEl.textContent, 'agree');
         });
     }
 
@@ -2742,39 +3766,110 @@ ${historyText}
         }
     }
 
-    async function showTrialBanner(type) {
+    async function showTrialBanner(type, { speakerName = null } = {}) {
         playSfx?.('countersfx');
 
-        const assetName = type === 'perjury' ? 'perjury.png' : 'counter.png';
+        const assetName = type === 'perjury' ? 'perjury.png' : type === 'consent' ? 'consent.png' : 'counter.png';
         const imgSrc    = getAssetUrl(assetName);
 
         // Prefill bar sweeps in from centre
         const prefill = document.createElement('div');
-        prefill.style.cssText = 'position:fixed;top:calc(33.33% - 10px);left:0;right:0;height:calc(33.34% + 20px);z-index:2147483646;background:#000;pointer-events:none;transform:scaleX(0);transform-origin:center;transition:transform 0.045s ease-out;';
-        document.body.appendChild(prefill);
-        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-        prefill.style.transform = 'scaleX(1)';
-        await new Promise(r => setTimeout(r, 55));
+        const prefillArea = type === 'perjury'
+            ? 'top:calc(23.33% - 10px);left:0px;right:0px;height:calc(50.34% + 20px);'
+            : type === 'consent'
+            ? 'top:calc(19.33% - 10px);left:0px;right:0px;height:calc(53.34% + 20px);'
+            : type === 'counter'
+            ? 'top:0;left:0px;right:0px;height:100%;'
+            : 'top:calc(33.33% - 10px);left:0;right:0;height:calc(33.34% + 20px);';
+        prefill.style.cssText = `position:fixed;${prefillArea}z-index:2147483646;background:#000;pointer-events:none;transform:scaleX(0);transform-origin:center;transition:transform 0.045s ease-out;`;
+        if (type !== 'counter') {
+            document.body.appendChild(prefill);
+            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+            prefill.style.transform = 'scaleX(1)';
+            await new Promise(r => setTimeout(r, 55));
+        }
 
         // Banner slides in from the left
         const bannerWrap = document.createElement('div');
-        bannerWrap.style.cssText = 'position:fixed;top:33.33%;left:0;right:0;height:33.34%;z-index:2147483647;pointer-events:none;overflow:hidden;';
+        const bannerArea = type === 'perjury'
+            ? 'top:23.33%;left:0px;right:0px;height:50%;overflow:hidden;'
+            : type === 'consent'
+            ? 'top:19.33%;left:0px;right:0px;height:53.34%;overflow:initial;'
+            : type === 'counter'
+            ? 'top:0;left:0px;right:0px;height:100%;overflow:hidden;'
+            : 'top:33.33%;left:0;right:0;height:33.34%;overflow:hidden;';
+        bannerWrap.style.cssText = `position:fixed;${bannerArea}z-index:2147483647;pointer-events:none;`;
         const inner = document.createElement('div');
-        inner.style.cssText = 'position:absolute;top:0;bottom:0;right:100%;width:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;transition:right 0.325s cubic-bezier(0.22,0.61,0.36,1);';
+        const innerStyle = type === 'consent'
+            ? 'position:absolute;top:-280px;bottom:-100px;right:100%;width:100%;height:fit-content;display:flex;align-items:center;justify-content:center;overflow:visible;transition:right 0.325s cubic-bezier(0.22,0.61,0.36,1);'
+            : type === 'counter'
+            ? 'position:absolute;top:0px;bottom:0px;right:100%;width:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;transition:right 0.325s cubic-bezier(0.22,0.61,0.36,1);'
+            : 'position:absolute;top:0;bottom:0;right:100%;width:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;transition:right 0.325s cubic-bezier(0.22,0.61,0.36,1);';
+        inner.style.cssText = innerStyle;
         const img = document.createElement('img');
         img.src = imgSrc;
         img.alt = type;
-        img.style.cssText = 'width:100%;height:100%;object-fit:cover;object-position:center;display:block;';
+        img.style.cssText = type === 'consent'
+            ? 'width:100%;height:100%;object-fit:fill;object-position:center center;display:block;'
+            : type === 'counter'
+            ? 'width:100%;height:100%;object-fit:cover;object-position:center center;display:block;'
+            : `width:100%;height:100%;object-fit:${type === 'perjury' ? 'cover' : 'contain'};object-position:center;display:block;`;
         inner.appendChild(img);
+
+        // Perjury banner: overlay player's remorse.png sprite, bottom half clipped
+        if (type === 'perjury') {
+            const promeInfo = getPromeInfo();
+            if (promeInfo?.spritePack) {
+                const spriteEl = document.createElement('img');
+                spriteEl.src = `/characters/${promeInfo.spritePack}/remorse.png`;
+                spriteEl.alt = '';
+                spriteEl.style.cssText = 'position:absolute;bottom:-850px;left:50%;transform:translateX(-50%);height:300%;width:auto;object-fit:contain;object-position:center bottom;pointer-events:none;filter:drop-shadow(rgba(255,255,255,1) 0px 0px 50px);';
+                inner.appendChild(spriteEl);
+            }
+        }
+
+        // Consent banner: speaker sprite slides in from right (lands left), player sprite from left (lands right)
+        let consentSpeakerEl = null;
+        let consentPlayerEl  = null;
+        if (type === 'consent') {
+            const promeInfo = getPromeInfo();
+            // clip-path clips the bottom half of each sprite independently
+            const spriteStyle = 'position:absolute;top:0;height:200%;width:auto;object-fit:contain;object-position:top center;pointer-events:none;z-index:1;-webkit-mask-image:linear-gradient(to bottom,black 30%,transparent 55%);mask-image:linear-gradient(to bottom,black 30%,transparent 55%);filter:drop-shadow(0 0 18px rgba(0,200,255,0.7));transition:transform 0.45s cubic-bezier(0.22,0.61,0.36,1);';
+
+            if (speakerName && typeof getSpriteUrl === 'function') {
+                const speakerUrl = await getSpriteUrl(speakerName, 'approval').catch(() => null);
+                if (speakerUrl) {
+                    consentSpeakerEl = document.createElement('img');
+                    consentSpeakerEl.src = speakerUrl;
+                    consentSpeakerEl.alt = '';
+                    consentSpeakerEl.style.cssText = spriteStyle + 'left:5%;transform:translateX(200%);';
+                }
+            }
+
+            if (promeInfo?.spritePack) {
+                consentPlayerEl = document.createElement('img');
+                consentPlayerEl.src = `/characters/${promeInfo.spritePack}/approval.png`;
+                consentPlayerEl.alt = '';
+                consentPlayerEl.style.cssText = spriteStyle + 'right:5%;transform:translateX(-200%);';
+            }
+        }
+
+        // inner (banner image) first, then sprites on top
         bannerWrap.appendChild(inner);
+        if (consentSpeakerEl) bannerWrap.appendChild(consentSpeakerEl);
+        if (consentPlayerEl)  bannerWrap.appendChild(consentPlayerEl);
         document.body.appendChild(bannerWrap);
 
         await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
         inner.style.right = '0%';
+        if (consentSpeakerEl) consentSpeakerEl.style.transform = 'translateX(0)';
+        if (consentPlayerEl)  consentPlayerEl.style.transform  = 'translateX(0)';
 
         // Voice line
         if (type === 'perjury') {
             playSfx?.(getSfx?.().vic_Monok_01_021 || 'vic_Monok_01_021');
+        } else if (type === 'consent') {
+            playSfx?.(getSfx?.().vic_Monok_01_022 || 'vic_Monok_01_022');
         } else {
             playSfx?.(getSfx?.().vic_Monok_01_022 || 'vic_Monok_01_022');
         }
@@ -2812,9 +3907,11 @@ ${historyText}
         breakOverlay.remove();
     }
 
-    function showExplanationUI(bullet, refutedText) {
+    function showExplanationUI(bullet, refutedText, mode = 'refute') {
         lastHitBullet = bullet;
         lastHitWeakPoint = refutedText;
+
+        const verb = mode === 'agree' ? 'agree with' : bullet?.isLie ? 'lie about' : 'refute';
 
         const notification = document.createElement('div');
         notification.id = 'dangan-trial-rebuttal-notif';
@@ -2823,7 +3920,7 @@ ${historyText}
             <div class="dangan-trial-notif-content">
                 <div class="rebuttal-header">REBUTTAL PHASE</div>
                 <div class="rebuttal-info">
-                    Using <strong>${bullet.title}</strong> to refute <em>"${refutedText}"</em>.
+                    Using <strong>${bullet.title}</strong> to ${verb} <em>"${refutedText}"</em>.
                 </div>
                 <div class="rebuttal-prompt">Explain your reasoning in the chat...</div>
             </div>
@@ -2989,9 +4086,14 @@ JUDGMENT RULES:
         hoveredWhiteNoise = null;
         clearWnSpaceTimers();
         
+        document.body.classList.remove('dangan-mpd-active');
         stopDebatesTrack?.();
         unsuppressVisualizer?.();
-        nsdActiveBullets = null;
+        nsdActiveBullets  = null;
+        tempBullet        = null;
+        shiftRightPressed = false;
+        if (scanningAudio) { scanningAudio.pause(); scanningAudio = null; }
+        cancelAbsorb();
         // MPD cleanup
         if (mpdLockTimer) { clearTimeout(mpdLockTimer); mpdLockTimer = null; }
         clearMpdRTimers();
@@ -3002,6 +4104,7 @@ JUDGMENT RULES:
             mpdColEls[c] = null;
         }
         mpdScenarios            = null;
+        mpdColumnSpeakers       = [null, null, null];
         mpdLockActive           = false;
         mpdFreeColumn           = -1;
         mpdChainBreakCount      = 0;
@@ -3022,14 +4125,24 @@ JUDGMENT RULES:
         seatingDebugMode = 'circle';
         lastSeatingDebugSpeaker = null;
 
+        paradeController?.stop();
+        paradeController = null;
+        nsdShiftParadeStop?.();
+        nsdShiftParadeStop = null;
         portraitImgEl = null;
         portraitLeftEl = null;
         portraitRightEl = null;
+        const lastDebateSpeaker = portraitSpeaker;
         portraitSpeaker = null;
         portraitToken++;
         const vnWrapper = document.querySelector('#visual-novel-wrapper');
         if (vnWrapper) vnWrapper.style.visibility = '';
         fadeInChatUI();
+        // Snap GCP to the last debate speaker so chat view resumes on them
+        if (lastDebateSpeaker) {
+            const snapIdx = findSeatIndex(lastDebateSpeaker);
+            if (snapIdx >= 0) gcpPositionSlots(snapIdx);
+        }
         characterEmotions = new Map();
         if (cutsceneOverlay) {
             cutsceneOverlay.remove();
@@ -3109,7 +4222,11 @@ JUDGMENT RULES:
                     emotion: inferEmotionFromText(p.text),
                 }));
                 
-                const section = { speakerName, statement, parts };
+                const bystanderNames = selectedSpeakers
+                    .map(s => s.name)
+                    .filter(n => n !== speakerName);
+                const whiteNoiseReactions = await generateWhiteNoiseReactions(statement, bystanderNames);
+                const section = { speakerName, statement, parts, whiteNoise: whiteNoiseReactions };
                 sections.push(section);
                 
                 // Update shared debate state for next section's context
@@ -3289,6 +4406,41 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
         return ensureSingleWeakPointMarker('...');
     }
 
+    // Generate 4 short bystander reactions to a debate statement.
+    // Returns a string[] or null if generation is unavailable or fails.
+    async function generateWhiteNoiseReactions(statement, bystanderNames) {
+        if (typeof generateTrialDialogue !== 'function') return null;
+
+        const nameList = bystanderNames.length
+            ? bystanderNames.slice(0, 6).join(', ')
+            : 'the other students';
+
+        const prompt = `You are generating background crowd noise for a Danganronpa-style class trial.
+The following statement was just made:
+"${stripSurroundingQuotes(statement)}"
+
+Write exactly 4 short, raw reactions from ${nameList} watching the debate.
+Rules:
+- Each reaction is 2–7 words. No names, no punctuation beyond ! ? ... or —
+- Make them varied: shocked, dismissive, panicked, muttering, angry, etc.
+- Output EXACTLY 4 lines, one reaction per line. Nothing else.`.trim();
+
+        try {
+            const out = String(
+                await generateTrialDialogue(prompt, { maxTokens: 80, temperature: 0.9 }) || ''
+            ).trim();
+
+            const lines = out
+                .split('\n')
+                .map(l => l.replace(/^\d+[.)]\s*/, '').replace(/^[-*•]\s*/, '').trim())
+                .filter(l => l.length >= 2 && l.length <= 60);
+
+            return lines.length >= 2 ? lines.slice(0, 6) : null;
+        } catch {
+            return null;
+        }
+    }
+
     function sanitizeDebateLine(text) {
         let t = String(text || '').replace(/\r?\n+/g, ' ').trim();
         t = t.replace(/^[^a-zA-Z0-9]*[A-Za-z0-9 _-]{1,32}:\s*/, '');
@@ -3364,16 +4516,23 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
     }
 
     function splitStatementIntoParts(statement) {
-        const raw = String(statement || '').trim().replace(/\s+/g, ' ');
+        let raw = String(statement || '').trim().replace(/\s+/g, ' ');
         if (!raw) return [];
+
+        // Mutual exclusivity: if both markers are present, agree wins — strip weak point brackets
+        if (/\[\[[^\]]+\]\]/.test(raw) && /\(\([^)]+\)\)/.test(raw)) {
+            raw = raw.replace(/\[\[\s*([^\]]+?)\s*\]\]/g, '$1');
+        }
 
         const weakMatch = raw.match(/\[\[([^\]]+)\]\]/);
         const weakToken = weakMatch ? String(weakMatch[1] || '').trim().replace(/\s+/g, ' ') : '';
+        const hasAgree  = /\(\([^)]+\)\)/.test(raw);
 
         return [{
             text: raw,
             isWeakPoint: Boolean(weakToken),
             weakMarkup: weakToken,
+            hasAgree,
         }];
     }
 
@@ -3741,10 +4900,23 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
         return Array.from(names);
     }
 
+    function isGroupChat() {
+        const ctx = window.SillyTavern?.getContext?.();
+        const groupId = ctx?.groupId ?? ctx?.group_id;
+        return groupId != null && groupId !== '';
+    }
+
     function isAssistantLikeName(name) {
         const n = normalizeLooseName(name);
         if (!n) return false;
-        return n === 'assistant' || n === 'sillytavern' || n === 'system';
+        return n === 'assistant' || n === 'sillytavern' || n === 'system' || n === 'narrator'
+            || n === 'prome user sprite (do not click)';
+    }
+
+    function getPromeInfo() {
+        const prome = extensionSettings?.['Prome-VN-Extension'];
+        if (!prome?.enableUserSprite || !prome?.userSprite) return null;
+        return { spritePack: prome.userSprite };
     }
 
     function isSpeakerCandidateChar(char, ctx) {
@@ -3755,6 +4927,8 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
         if (char.is_narrator === true || char.isNarrator === true) return false;
         if (char.disabled === true || char.is_disabled === true) return false;
         if (char.enabled === false || char.isEnabled === false) return false;
+        // Exclude Prome VN Extension dummy character
+        if (String(char.avatar || '').trim() === 'prome-user') return false;
 
         const name = String(char.name || '').trim();
         if (!name) return false;
@@ -3816,25 +4990,292 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
 
         if (savedState && savedState !== TrialPhases.IDLE) {
             console.log(`[Dangan][Trial] Restoring trial state for ${key}: ${savedState}`);
-            // Transition back to the saved state. 
+            // Transition back to the saved state.
             // Returning to PRE_DEBATE is safer after a refresh for stability.
             if (savedState === TrialPhases.NON_STOP_DEBATE || savedState === TrialPhases.MASS_PANIC_DEBATE) {
                 setState(TrialPhases.PRE_DEBATE);
             } else {
                 setState(savedState);
             }
+        } else {
+            // IDLE state — still sync UI so the panel appears if we're in a group chat
+            syncUI();
         }
     }
 
     // Call init on manager creation
     setTimeout(initFromPersistentState, 500);
 
+    // ── Group Chat Portrait Stage ─────────────────────────────────────────────
+
+    // Returns true when the named character is muted (disabled) in the current ST group.
+    function isCharacterMuted(charName) {
+        const ctx = window.SillyTavern?.getContext?.();
+        if (!ctx) return false;
+        const groupId = ctx.groupId ?? ctx.group_id;
+        if (!groupId) return false;
+        const allGroups = ctx.groups ?? window.groups ?? [];
+        const group = Array.isArray(allGroups) ? allGroups.find(g => g.id === groupId) : null;
+        if (!group?.disabled_members?.length) return false;
+        const chars = Array.isArray(ctx.characters) ? ctx.characters
+                    : Array.isArray(window.characters) ? window.characters : [];
+        const stChar = chars.find(c => normalizeSeatName(String(c?.name || '')) === normalizeSeatName(charName));
+        return stChar ? group.disabled_members.includes(stChar.avatar) : false;
+    }
+
+    const GCP_GAP        = 180;  // gap between characters
+    const GCP_MAX_ROT    = 20;   // maximum rotation of
+    const GCP_ANIM_SPEED = 14;   // peak slots per second
+    const GCP_MIN_SPEED  = 0.8;  // floor speed (slots/s) near target
+
+    function gcpSlotW() { return Math.round(window.innerWidth / 3); }
+
+    function gcpSlotTransform(x) {
+        const sw   = gcpSlotW();
+        const w2   = window.innerWidth / 2;
+        const dist = (x + sw / 2 - w2) / w2;
+        return `translateX(${x}px) rotateY(${(-dist * GCP_MAX_ROT).toFixed(1)}deg)`;
+    }
+
+    // Immediately position all slots at the given center index (suppresses CSS transition).
+    function gcpPositionSlots(centerFloat) {
+        if (!gcpSlots.length) return;
+        const sw    = gcpSlotW();
+        const total = sw + GCP_GAP;
+        const cx    = window.innerWidth / 2 - sw / 2;
+        gcpSlots.forEach((slot, i) => {
+            slot.el.style.transition = 'none';
+            slot.el.style.transform  = gcpSlotTransform(cx + (i - centerFloat) * total);
+        });
+        gcpCurrentFloat = centerFloat;
+    }
+
+    // Scroll to targetIdx — CSS transition on .dangan-gcp-slot handles the easing.
+    function gcpScrollTo(targetIdx) {
+        if (gcpCurrentFloat === targetIdx) return;
+        if (gcpAnimRafId) { cancelAnimationFrame(gcpAnimRafId); gcpAnimRafId = null; }
+        if (!gcpSlots.length) return;
+        const sw    = gcpSlotW();
+        const total = sw + GCP_GAP;
+        const cx    = window.innerWidth / 2 - sw / 2;
+        gcpSlots.forEach((slot, i) => {
+            slot.el.style.transition = ''; // restore CSS class transition
+            slot.el.style.transform  = gcpSlotTransform(cx + (i - targetIdx) * total);
+        });
+        gcpCurrentFloat = targetIdx;
+        gcpSeatingListRenderer?.();
+    }
+
+    // GCP-local index lookup — gcpSlots is a filtered subset of debateSeatingPlan.
+    function gcpFindIdx(name) {
+        const key   = normalizeSeatName(name);
+        const exact = gcpIndexMap.get(key);
+        if (exact !== undefined) return exact;
+        // First-token fallback
+        const first = firstToken(name);
+        for (const [k, v] of gcpIndexMap) {
+            if (firstToken(k) === first) return v;
+        }
+        return -1;
+    }
+
+    // Builds one DOM slot and registers it in gcpIndexMap at the given index.
+    function gcpMakeSlot(name, url, isDead, idx) {
+        const sw = gcpSlotW();
+        const el = document.createElement('div');
+        el.className = 'dangan-gcp-slot';
+        el.style.cssText = `width:${sw}px;height:${portraitSlotHeightPx(name)}px;`;
+        if (isDead) el.classList.add('gcp-dead');
+        const img = document.createElement('img');
+        img.alt = name;
+        if (url) img.src = url;
+        el.appendChild(img);
+        gcpStage.appendChild(el);
+        gcpIndexMap.set(normalizeSeatName(name), idx);
+        return { name, el, img };
+    }
+
+    async function initGroupChatPortraits() {
+        if (gcpStage || gcpInitializing) return;
+        gcpInitializing = true;
+        const ctx = window.SillyTavern?.getContext?.();
+        const isGroup = !!ctx?.groupId;
+
+        gcpStage = document.createElement('div');
+        gcpStage.id = 'dangan-group-chat-stage';
+        // If rebuilt while a debate is active, keep it hidden to avoid duplication
+        if (currentState !== TrialPhases.IDLE && currentState !== TrialPhases.PRE_DEBATE) {
+            gcpStage.style.display = 'none';
+        }
+        document.body.appendChild(gcpStage);
+        document.body.classList.add('dangan-gcp-active');
+        const initVisible = currentState === TrialPhases.IDLE || currentState === TrialPhases.PRE_DEBATE;
+        document.body.classList.toggle('dangan-gcp-visible', initVisible);
+        gcpIndexMap = new Map();
+        const stageRef = gcpStage; // capture ref to detect if destroyed mid-await
+
+
+        try {
+            if (isGroup) {
+                // ── Group chat: full seating plan with cylinder scroll ──
+                const plan = getOrBuildSeatingPlan();
+                if (!plan.length) { gcpStage.remove(); gcpStage = null; document.body.classList.remove('dangan-gcp-active'); return; }
+
+                // Resolve sprite URLs upfront; exclude muted-without-dead from the plan.
+                const resolved = await Promise.all(plan.map(async name => {
+                    const muted = isCharacterMuted(name);
+                    const dead  = isCharacterDead(name);
+                    if (muted || dead) {
+                        const deadUrl = await getSpriteUrl(name, 'dead').catch(() => null);
+                        if (muted && !deadUrl) return null; // muted + no dead sprite → exclude
+                        const url = deadUrl ?? await getSpriteUrl(name, 'neutral').catch(() => null);
+                        return { name, url, isDead: true };
+                    }
+                    const url = await getSpriteUrl(name, 'neutral').catch(() => null);
+                    return { name, url, isDead: false };
+                }));
+
+                // If destroyed by a concurrent call while we were awaiting sprites, abort.
+                if (gcpStage !== stageRef) return;
+
+                gcpSlots = resolved.filter(Boolean).map(({ name, url, isDead }, i) =>
+                    gcpMakeSlot(name, url, isDead, i));
+
+                // Mark the player's slot (Prome VN Extension) so it uses the Prome sprite.
+                // If the player is already in gcpSlots as a group member, update that slot in-place
+                // rather than pushing a duplicate.
+                const promeInfo = getPromeInfo();
+                if (promeInfo) {
+                    const playerName  = ctx.name1 || ctx.user_name || ctx.userName || ctx.personaName || 'Player';
+                    const playerKey   = normalizeSeatName(playerName);
+                    const playerFirst = firstToken(playerName);
+                    const playerUrl   = `/characters/${promeInfo.spritePack}/neutral.png`;
+                    const existingIdx = gcpSlots.findIndex(
+                        s => normalizeSeatName(s.name) === playerKey || firstToken(s.name) === playerFirst
+                    );
+                    if (existingIdx >= 0) {
+                        // Player already has a slot — just flag it and switch to Prome sprite
+                        gcpSlots[existingIdx].isPlayer = true;
+                        gcpSlots[existingIdx].img.src  = playerUrl;
+                    } else {
+                        // Player isn't in the group yet — add a fresh slot
+                        const playerSlot = gcpMakeSlot(playerName, playerUrl, false, gcpSlots.length);
+                        playerSlot.isPlayer = true;
+                        gcpSlots.push(playerSlot);
+                    }
+                }
+
+                // Apply last-known expressions from chat history so sprites don't all start neutral
+                const initialEmotions = buildInitialEmotions();
+                await Promise.all(gcpSlots.map(async slot => {
+                    if (slot.isDead || slot.isPlayer) return;
+                    const emotion = initialEmotions.get(slot.name);
+                    if (!emotion || emotion === 'neutral') return;
+                    const url = await getSpriteUrl(slot.name, emotion).catch(() => null);
+                    if (url && gcpStage === stageRef) slot.img.src = url;
+                }));
+
+                // Snap to last character speaker without animation
+                const lastMsg = [...(ctx?.chat || [])].reverse().find(m => !m.is_user && m.name);
+                const rawIdx  = lastMsg?.name ? gcpFindIdx(lastMsg.name) : -1;
+                const initIdx = rawIdx >= 0 ? rawIdx : Math.round(Math.max(0, Math.min(gcpCurrentFloat, gcpSlots.length - 1)));
+                gcpPositionSlots(initIdx);
+
+            } else {
+                // ── One-on-one chat: single centered sprite, height-scaled ──
+                // Use ctx.characterId — the most reliable source for 1-on-1 chats.
+                const charIdx = ctx?.characterId;
+                const name = (Array.isArray(ctx?.characters) && charIdx !== undefined)
+                    ? ctx.characters[charIdx]?.name
+                    : null;
+                if (!name) { gcpStage.remove(); gcpStage = null; document.body.classList.remove('dangan-gcp-active'); return; }
+
+                const url = await getSpriteUrl(name, 'neutral').catch(() => null);
+                if (gcpStage !== stageRef) return;
+                gcpSlots = [gcpMakeSlot(name, url, false, 0)];
+                gcpPositionSlots(0); // slot 0 centered, rotY = 0 (no cylinder warp)
+            }
+        } finally {
+            gcpInitializing = false;
+        }
+        // Notify Trial Controls seating list to re-render with the freshly built gcpSlots
+        gcpSeatingListRenderer?.();
+    }
+
+    function updateGroupChatSpeaker(speakerName) {
+        if (!gcpStage) {
+            initGroupChatPortraits().then(() => {
+                const idx = gcpFindIdx(speakerName);
+                if (idx >= 0) gcpScrollTo(idx);
+            });
+            return;
+        }
+
+        const isGroup = !!(window.SillyTavern?.getContext?.()?.groupId);
+
+        if (!isGroup) {
+            // 1-on-1: update slot 0's sprite if the name differs (no scrolling needed)
+            const slot = gcpSlots[0];
+            if (!slot) return;
+            if (normalizeSeatName(slot.name) !== normalizeSeatName(speakerName)) {
+                slot.name = speakerName;
+                slot.el.style.height = `${portraitSlotHeightPx(speakerName)}px`;
+                gcpIndexMap = new Map([[normalizeSeatName(speakerName), 0]]);
+                getSpriteUrl(speakerName, 'neutral')
+                    .then(url => { if (url) slot.img.src = url; })
+                    .catch(() => {});
+            }
+            return;
+        }
+
+        // Group chat: scroll to speaker; rebuild if missing from filtered plan
+        let idx = gcpFindIdx(speakerName);
+        if (idx < 0) {
+            const savedFloat = gcpCurrentFloat;
+            debateSeatingPlan = null;
+            destroyGroupChatPortraits();
+            gcpCurrentFloat = savedFloat;
+            initGroupChatPortraits().then(() => {
+                const newIdx = gcpFindIdx(speakerName);
+                if (newIdx >= 0) gcpScrollTo(newIdx);
+            });
+            return;
+        }
+
+        gcpScrollTo(idx);
+    }
+
+    function setGroupChatPortraitsVisible(visible) {
+        if (gcpStage) gcpStage.style.display = visible ? '' : 'none';
+        document.body.classList.toggle('dangan-gcp-visible', !!visible);
+    }
+
+    function destroyGroupChatPortraits() {
+        gcpInitializing = false; // unblock any init that was racing
+        if (gcpAnimRafId) { cancelAnimationFrame(gcpAnimRafId); gcpAnimRafId = null; }
+        gcpStage?.remove();
+        gcpStage    = null;
+        gcpSlots    = [];
+        gcpIndexMap = new Map();
+        document.body.classList.remove('dangan-gcp-active', 'dangan-gcp-visible');
+    }
+
+    // Apply a CSS class to the Effects overlay and targeted character slots.
+    // scope: 'speaker' → active speaker slot only | 'all' → every visible slot
     return {
         start: () => {
             setState(TrialPhases.PRE_DEBATE);
         },
         stop: () => {
             endTrial();
+        },
+        onChatChanged: () => {
+            // Remove the existing panel so it can rebuild with fresh members/context
+            document.getElementById('dangan-trial-pre-debate-notif')?.remove();
+            // Re-sync UI: shows panel if now in a group chat, hides if not
+            if (currentState === TrialPhases.IDLE || currentState === TrialPhases.PRE_DEBATE) {
+                syncUI();
+            }
         },
         startMassPanicDebate: (rawScenarios) => {
             mpdScenarios = parseMpdScenarios(rawScenarios || []);
@@ -3845,5 +5286,34 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
         getState: () => currentState,
         phases: TrialPhases,
         endTrial,
+        initGroupChatPortraits,
+        updateGroupChatSpeaker,
+        setGroupChatPortraitsVisible,
+        destroyGroupChatPortraits,
+        showCounterBanner: () => showTrialBanner('counter'),
+        getGcpInfo: () => ({
+            characters: gcpSlots.map(s => ({
+                name:   s.name,
+                src:    s.img?.src || null,
+                height: parseInt(s.el?.style.height) || 720,
+            })),
+            currentIndex: Math.round(gcpCurrentFloat),
+        }),
+        getGcpSpeakerImg:  () => gcpSlots[Math.round(gcpCurrentFloat)]?.img  ?? null,
+        getGcpSpeakerName: () => gcpSlots[Math.round(gcpCurrentFloat)]?.name ?? null,
+        getGcpPlayerImg:   () => gcpSlots.find(s => s.isPlayer)?.img ?? null,
+        markCharacterExecuted: async (characterName) => {
+            if (!characterName) return;
+            const key = normalizeSeatName(characterName);
+            const slot = gcpSlots.find(s => normalizeSeatName(s.name) === key);
+            if (slot) {
+                slot.isDead = true;
+                slot.el.classList.add('gcp-dead');
+                const deadUrl = await getSpriteUrl(characterName, 'dead').catch(() => null);
+                const url = deadUrl ?? await getSpriteUrl(characterName, 'neutral').catch(() => null);
+                if (url) slot.img.src = url;
+            }
+            gcpSeatingListRenderer?.();
+        },
     };
 }

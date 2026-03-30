@@ -53,6 +53,39 @@ export function initTruthBullets(providedDeps) {
     // Render them ASAP
     window.renderTruthBullets = renderTruthBullets;
 
+    // Sort button interactions — each button toggles between its two states when active;
+    // clicking an inactive button activates it and resets it to its A state.
+    // A states: latest, az  |  B states: oldest, za
+    const SORT_A_KEYS = new Set(['latest', 'az']);
+
+    $(document).on('mouseenter', '.truth-sort-btn', function () {
+        playSfx(sfx.hover);
+    });
+    $(document).on('click', '.truth-sort-btn', function () {
+        playSfx(sfx.click);
+        const $btn = $(this);
+
+        if (!$btn.hasClass('active')) {
+            // Activate and reset to A state
+            const labelA = $btn.data('label-a');
+            const sortA  = $btn.data('label-a') === 'SORT: LATEST' ? 'latest' : 'az';
+            $btn.data('sort', sortA).text(labelA);
+            currentSort = sortA;
+            $('.truth-sort-btn').removeClass('active');
+            $btn.addClass('active');
+        } else {
+            // Toggle between A and B
+            const cur  = $btn.data('sort');
+            const onA  = SORT_A_KEYS.has(cur);
+            const next = onA ? $btn.data('other') : (cur === 'oldest' ? 'latest' : 'az');
+            const label = onA ? $btn.data('label-b') : $btn.data('label-a');
+            $btn.data('sort', next).text(label);
+            currentSort = next;
+        }
+
+        renderTruthBullets();
+    });
+
     // Arrow key navigation for the truth bullet list
     document.addEventListener('keydown', (e) => {
         if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
@@ -84,6 +117,17 @@ export function getTruthBullets() {
 const truthBullets = [];
 const archivedTruthBullets = [];
 const truthBulletQueue = [];
+let currentSort = 'latest';
+
+function getSortedBullets(arr) {
+    const copy = [...arr];
+    switch (currentSort) {
+        case 'oldest': return copy;
+        case 'az':     return copy.sort((a, b) => a.title.localeCompare(b.title));
+        case 'za':     return copy.sort((a, b) => b.title.localeCompare(a.title));
+        default:       return copy.reverse(); // 'latest'
+    }
+}
 let truthBulletAnimating = false;
 let forcedTruthBulletSfxVariant = null;
 
@@ -215,7 +259,7 @@ function addTruthBullet(title, description = "", { grantMonocoins = true, grantX
     };
 
     truthBullets.push(bullet);
-    insertTruthBulletUI(bullet);
+    renderTruthBullets();
     queueTruthBulletAnimation(title);
     saveTruthBullets();
 
@@ -453,17 +497,8 @@ function archiveTruthBullet(id) {
     saveTruthBullets();
     deps.setPinHidden?.(bullet.locationId, true);
 
-    $(`.truth-item[data-id="${id}"]`).remove();
     $(".truth-details").removeAttr("style").empty();
-
-    if (!truthBullets.length) {
-        const $list = $(".truth-list-items");
-        if (!$list.find(".truth-archive-divider").length) {
-            $list.prepend(`<div class="truth-empty">NO TRUTH BULLETS FOUND</div>`);
-        }
-    }
-
-    insertArchivedTruthBulletUI(bullet);
+    renderTruthBullets();
 
     console.log(`[${extensionName}] Truth Bullet archived: ${bullet.title}`);
 }
@@ -477,17 +512,8 @@ function reloadArchivedBullet(id) {
     saveTruthBullets();
     deps.setPinHidden?.(bullet.locationId, false);
 
-    $(`.truth-archived-item[data-id="${id}"]`).remove();
     $(".truth-details").removeAttr("style").empty();
-
-    if (!archivedTruthBullets.length) {
-        $(".truth-archive-divider").remove();
-    }
-
-    // Remove "no bullets" placeholder if present
-    $(".truth-list-items .truth-empty").remove();
-
-    insertTruthBulletUI(bullet);
+    renderTruthBullets();
 
     console.log(`[${extensionName}] Truth Bullet reloaded from archive: ${bullet.title}`);
 }
@@ -500,13 +526,8 @@ function permanentlyDeleteArchivedBullet(id) {
     saveTruthBullets();
     deps.removePin?.(bullet.locationId);
 
-    $(`.truth-archived-item[data-id="${id}"]`).remove();
     $(".truth-details").removeAttr("style").empty();
-
-    // Remove divider if no archived bullets remain
-    if (!archivedTruthBullets.length) {
-        $(".truth-archive-divider").remove();
-    }
+    renderTruthBullets();
 
     console.log(`[${extensionName}] Archived Truth Bullet permanently deleted`);
 }
@@ -525,12 +546,12 @@ function renderTruthBullets() {
     if (!truthBullets.length) {
         $list.append(`<div class="truth-empty">NO TRUTH BULLETS FOUND</div>`);
     } else {
-        truthBullets.forEach(bullet => insertTruthBulletUI(bullet));
+        getSortedBullets(truthBullets).forEach(bullet => insertTruthBulletUI(bullet));
     }
 
     if (archivedTruthBullets.length) {
         $list.append(`<div class="truth-archive-divider">ARCHIVED</div>`);
-        archivedTruthBullets.forEach(bullet => insertArchivedTruthBulletUI(bullet));
+        getSortedBullets(archivedTruthBullets).forEach(bullet => insertArchivedTruthBulletUI(bullet));
     }
 }
 
