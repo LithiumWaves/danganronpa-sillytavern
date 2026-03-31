@@ -43,6 +43,14 @@ function hslToRgb(h, s, l) {
 
 function css(r, g, b) { return `rgb(${r},${g},${b})`; }
 
+// Darkens a colour string if its lightness exceeds maxL (0–100).
+function clampDark(colorStr, maxL = 65) {
+    const [r, g, b] = parseRgb(colorStr);
+    const [h, s, l] = rgbToHsl(r, g, b);
+    if (l <= maxL) return colorStr;
+    return css(...hslToRgb(h, s, maxL));
+}
+
 // Given 5 extracted dominant colours, derive the full palette for the screen.
 function buildPalette(colors) {
     const parsed = colors.map(parseRgb);
@@ -61,7 +69,7 @@ function buildPalette(colors) {
         bg:      css(...bgRgb),
         dot:     css(...dotRgb),
         accent:  css(...accentRgb),
-        bands:   colors,          // original 5 extracted colours
+        bands:   colors.map(c => clampDark(c, 65)),
     };
 }
 
@@ -97,20 +105,25 @@ function buildIntroStyles() {
     /* Character sprite */
     #dangan-intro-sprite {
         position: absolute;
-        bottom: 0; right: calc(6% + 50px);
+        bottom: 0; right: calc(16% + 50px);
         height: 94vh;
         width: auto;
         object-fit: contain;
         object-position: bottom right;
         pointer-events: none;
         z-index: 6;
-        filter: drop-shadow(-10px 0 24px rgba(0,0,0,0.45));
+        filter: drop-shadow(0px 0 0px rgba(0,0,0,1));
+        animation: dangan-intro-sprite-shadow 4s ease forwards;
+    }
+    @keyframes dangan-intro-sprite-shadow {
+        from { filter: drop-shadow(0px 0 0px rgba(0,0,0,1)); }
+        to   { filter: drop-shadow(50px 0 0px rgba(0,0,0,1)); }
     }
 
-    /* Text block — left-centre, tilted to match bands */
-    #dangan-intro-text {
+    /* Shared text block base */
+    .dangan-intro-text-block {
         position: absolute;
-        left: 6%; top: 50%;
+        left: 24%;
         transform: translateY(-50%) rotate(${BAND_ANGLE}deg);
         transform-origin: left center;
         pointer-events: none;
@@ -118,35 +131,42 @@ function buildIntroStyles() {
         max-width: 44%;
     }
 
-    #dangan-intro-name {
+    /* Name — top portion of the banner */
+    #dangan-intro-name-wrap {
+        top: 49%;
+    }
+
+    /* Ultimate — middle (largest) band */
+    #dangan-intro-ultimate-wrap {
+        top: 66%;
+        left: 27%;
+        display: flex;
+        flex-direction: row;
+        width: auto;
+        position: absolute;
+    }
+
+    /* Shared value style — same for name and ultimate text */
+    #dangan-intro-name,
+    #dangan-intro-ultimate {
         font-family: "Cinzel", "Impact", Georgia, serif;
         font-size: clamp(32px, 4vw, 58px);
         font-weight: 900;
-        color: #ffffff;
+        color: rgb(255 255 255);
         line-height: 1.1;
         letter-spacing: 2px;
-        text-shadow: 3px 3px 0 #000, -2px -2px 0 #000, 5px 5px 14px rgba(0,0,0,0.9);
-        margin-bottom: 14px;
-        word-break: break-word;
+        text-shadow: rgb(255 255 255) 0px 0px 12px;
     }
 
     #dangan-intro-ultimate-label {
         font-family: "Cinzel", "Impact", Georgia, serif;
-        font-size: 13px;
-        font-weight: 700;
-        letter-spacing: 4px;
-        text-transform: uppercase;
-        margin-bottom: 5px;
-    }
-
-    #dangan-intro-ultimate {
-        font-family: "Cinzel", "Impact", Georgia, serif;
-        font-size: clamp(18px, 2.2vw, 30px);
-        font-weight: 700;
-        color: #ffffff;
-        letter-spacing: 1px;
-        text-shadow: 2px 2px 0 #000, -1px -1px 0 #000, 0 0 18px rgba(255,255,255,0.45);
-        word-break: break-word;
+        font-size: clamp(32px, 4vw, 58px);
+        font-weight: 900;
+        color: rgb(255 255 255);
+        line-height: 1.1;
+        letter-spacing: 2px;
+        text-shadow: rgb(255 255 255) 0px 0px 12px;
+        margin-right: 15px;
     }
 
     /* Static diagonal stripe group */
@@ -277,30 +297,36 @@ export function createIntroduceCharacterController({ extensionFolderPath = '' } 
             overlay.appendChild(sprite);
         }
 
-        // Text
-        const textEl = document.createElement('div');
-        textEl.id = 'dangan-intro-text';
-
+        // Name block — top portion of the banner
+        const nameWrap = document.createElement('div');
+        nameWrap.id        = 'dangan-intro-name-wrap';
+        nameWrap.className = 'dangan-intro-text-block';
         const nameEl = document.createElement('div');
         nameEl.id          = 'dangan-intro-name';
         nameEl.textContent = name;
-        textEl.appendChild(nameEl);
+        nameWrap.appendChild(nameEl);
+        overlay.appendChild(nameWrap);
 
+        // Ultimate block — middle portion of the banner
         if (ultimate) {
+            const ultimateWrap = document.createElement('div');
+            ultimateWrap.id        = 'dangan-intro-ultimate-wrap';
+            ultimateWrap.className = 'dangan-intro-text-block';
+
             const labelEl = document.createElement('div');
-            labelEl.id          = 'dangan-intro-ultimate-label';
-            labelEl.textContent = 'Ultimate';
-            labelEl.style.color     = palette.accent;
-            labelEl.style.textShadow = `0 0 12px ${palette.accent}`;
-            textEl.appendChild(labelEl);
+            labelEl.id            = 'dangan-intro-ultimate-label';
+            labelEl.textContent   = 'Ultimate';
+            labelEl.style.color      = 'rgb(255 255 255)';
+            labelEl.style.textShadow = 'rgb(255 255 255) 0px 0px 12px';
+            ultimateWrap.appendChild(labelEl);
 
             const ultimateEl = document.createElement('div');
             ultimateEl.id          = 'dangan-intro-ultimate';
             ultimateEl.textContent = ultimate;
-            textEl.appendChild(ultimateEl);
-        }
+            ultimateWrap.appendChild(ultimateEl);
 
-        overlay.appendChild(textEl);
+            overlay.appendChild(ultimateWrap);
+        }
 
         // Diagonal stripe group
         const shadowWrap  = document.createElement('div');
@@ -326,6 +352,9 @@ export function createIntroduceCharacterController({ extensionFolderPath = '' } 
 
         await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
         overlay.style.opacity = '1';
+
+        const introAudio = new Audio(`${extensionFolderPath}/assets/sfx/ui/introduction.wav`);
+        introAudio.play().catch(() => {});
 
         await new Promise(r => setTimeout(r, 4000));
 

@@ -6568,14 +6568,22 @@ debugSTGlobals();
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'introduce',
-    callback: async () => {
+    callback: async (args) => {
         const name = trialManager?.getGcpSpeakerName?.() ?? null;
         if (!name) return '';
-        const ultimate  = lookupUltimateFromLorebook(name);
+        const ultimate  = args?.ultimate ?? lookupUltimateFromLorebook(name);
         const spriteUrl = await getSpriteUrl(name, 'neutral').catch(() => null);
         await introduceCharacterController?.run({ name, ultimate, spriteUrl });
         return '';
     },
+    namedArgumentList: [
+        SlashCommandNamedArgument.fromProps({
+            name: 'ultimate',
+            description: 'Override the Ultimate title (e.g. ultimate=Gymnast)',
+            typeList: [ARGUMENT_TYPE.STRING],
+            isRequired: false,
+        }),
+    ],
     helpString: 'Shows a 4-second character introduction screen for the current speaker.',
 }));
 

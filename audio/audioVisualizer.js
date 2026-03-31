@@ -168,6 +168,13 @@ export function createAudioVisualizerController({ getAudioElement, assetsBasePat
 
             src.connect(analyser);
             analyser.connect(audioCtx.destination);
+
+            // Resume immediately if the browser suspends the context (e.g. when a
+            // new Audio() SFX fires and triggers an audio-focus / autoplay check).
+            audioCtx.addEventListener('statechange', () => {
+                if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+            });
+
             return true;
         } catch (e) {
             console.warn('[Dangan][BGMDisplay]', e.message);

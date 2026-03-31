@@ -45,7 +45,9 @@ export function isIgnoredCharacter(name) {
 }
 
 export function lookupUltimateFromLorebook(characterName) {
-    const entries = window.world_info?.entries;
+    const ctxEntries = window.SillyTavern?.getContext?.()?.worldInfoData?.entries
+        ?? window.SillyTavern?.getContext?.()?.world_info?.entries;
+    const entries = ctxEntries ?? window.world_info?.entries;
     if (!Array.isArray(entries)) return null;
 
     const normalized = normalizeName(characterName);
