@@ -5,18 +5,26 @@ const POLL_INTERVAL_MS = 500;
 const elementSources = new WeakMap();
 
 
-export function createAudioVisualizerController({ getAudioElement, assetsBasePath, getGameState }) {
-    let audioCtx    = null;
-    let analyser    = null;
-    let fftData     = null;
-    let rafId       = null;
-    let pollTimer   = null;
-    let root        = null;
-    let canvasEl    = null;
-    let ctx         = null;
-    let titleEl     = null;
-    let isVisible   = false;
-    let suppressed  = false;
+// Play modes cycle: sequential → shuffle → loop
+const PLAY_MODES = ['sequential', 'shuffle', 'loop'];
+const MODE_ICONS  = { sequential: '&#x2192;', shuffle: '&#x21C4;', loop: '&#x21BB;' };
+const MODE_LABELS = { sequential: 'Play sequentially', shuffle: 'Shuffle', loop: 'Loop track' };
+
+export function createAudioVisualizerController({ getAudioElement, assetsBasePath, getGameState, onPrev, onTogglePause, onNext, onShuffle, getPlayMode, onSetPlayMode, getIsPaused, getPlaylistLabel }) {
+    let audioCtx        = null;
+    let analyser        = null;
+    let fftData         = null;
+    let rafId           = null;
+    let pollTimer       = null;
+    let root            = null;
+    let canvasEl        = null;
+    let ctx             = null;
+    let titleEl         = null;
+    let pauseBtnEl      = null;
+    let modeBtnEl       = null;
+    let playlistLabelEl = null;
+    let isVisible       = false;
+    let suppressed      = false;
 
     // Layer element references for swapping
     let imgClock        = null;
@@ -61,6 +69,15 @@ export function createAudioVisualizerController({ getAudioElement, assetsBasePat
                 <img src="${base}/text-scroller.png" alt="" draggable="false" />
                 <div class="dbgm-titlebar-text-container"><span class="dbgm-titlebar-text"></span></div>
             </div>
+            <div class="dbgm-controls" aria-label="BGM controls">
+                <span class="dbgm-playlist-label" aria-live="polite"></span>
+                <div class="dbgm-ctrl-btns">
+                    <button class="dbgm-ctrl-btn dbgm-mode-btn" data-action="mode" aria-label="Play mode: sequential">&#x2192;</button>
+                    <button class="dbgm-ctrl-btn" data-action="prev" aria-label="Previous track">&#x23EE;</button>
+                    <button class="dbgm-ctrl-btn dbgm-ctrl-pause" data-action="pause" aria-label="Pause">&#x23F8;</button>
+                    <button class="dbgm-ctrl-btn" data-action="next" aria-label="Next track">&#x23ED;</button>
+                </div>
+            </div>
         `;
 
         document.body.appendChild(root);
@@ -73,9 +90,36 @@ export function createAudioVisualizerController({ getAudioElement, assetsBasePat
         imgScroller = root.querySelector('.dbgm-scroller img');
         canvasEl    = root.querySelector('.dbgm-canvas');
         titleEl     = root.querySelector('.dbgm-titlebar-text');
+        pauseBtnEl      = root.querySelector('.dbgm-ctrl-pause');
+        modeBtnEl       = root.querySelector('.dbgm-mode-btn');
+        playlistLabelEl = root.querySelector('.dbgm-playlist-label');
+
+        root.querySelector('[data-action="prev"]').addEventListener('click', () => onPrev?.());
+        root.querySelector('[data-action="pause"]').addEventListener('click', () => onTogglePause?.());
+        root.querySelector('[data-action="next"]').addEventListener('click', () => {
+            const mode = getPlayMode?.() ?? 'sequential';
+            if (mode === 'shuffle') onShuffle?.();
+            else onNext?.(); // sequential and loop both advance to the next track on manual press
+        });
+        modeBtnEl.addEventListener('click', () => {
+            const current = getPlayMode?.() ?? 'sequential';
+            const next = PLAY_MODES[(PLAY_MODES.indexOf(current) + 1) % PLAY_MODES.length];
+            onSetPlayMode?.(next);
+            updateModeBtn();
+        });
+
+        updateModeBtn();
 
         syncCanvasSize();
         window.addEventListener('resize', syncCanvasSize);
+    }
+
+    function updateModeBtn() {
+        if (!modeBtnEl) return;
+        const mode = getPlayMode?.() ?? 'sequential';
+        modeBtnEl.innerHTML = MODE_ICONS[mode] ?? MODE_ICONS.sequential;
+        modeBtnEl.setAttribute('aria-label', MODE_LABELS[mode] ?? 'Play mode');
+        modeBtnEl.classList.toggle('dbgm-mode-active', mode !== 'sequential');
     }
 
     function syncCanvasSize() {
@@ -102,6 +146,10 @@ export function createAudioVisualizerController({ getAudioElement, assetsBasePat
 
         const timeOfDay = isNight ? 'night' : 'morning';
         imgMorning.src = `${base}/${prefix}-${timeOfDay}.png`;
+
+        // Phase classes drive the playlist label colour via CSS.
+        root?.classList.toggle('dbgm-phase-investigation', !!isInvestigation);
+        root?.classList.toggle('dbgm-phase-night',         !isInvestigation && !!isNight);
     }
 
     // ── Song title ─────────────────────────────────────────────
@@ -141,6 +189,10 @@ export function createAudioVisualizerController({ getAudioElement, assetsBasePat
 
         name = name.replace(/^asset:\s*/i, '');
         titleEl.textContent = name;
+
+        if (playlistLabelEl) {
+            playlistLabelEl.textContent = getPlaylistLabel?.() ?? '';
+        }
     }
 
     // ── Audio context ──────────────────────────────────────────
@@ -275,14 +327,21 @@ export function createAudioVisualizerController({ getAudioElement, assetsBasePat
 
     function poll() {
         const el = getAudioElement();
-        if (!el || el.paused || el.ended) {
+        if (!el || el.ended) {
             setVisible(false);
+            return;
+        }
+        if (el.paused) {
+            // Stay visible while paused so controls remain accessible
+            if (!isVisible) return;
+            if (pauseBtnEl) pauseBtnEl.innerHTML = '&#x23F5;'; // ▶
             return;
         }
         if (!ensureAnalyser(el)) {
             setVisible(false);
             return;
         }
+        if (pauseBtnEl) pauseBtnEl.innerHTML = '&#x23F8;'; // ⏸
         updateTitle();
         updateAssets();
         setVisible(true);

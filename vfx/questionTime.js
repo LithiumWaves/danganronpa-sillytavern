@@ -586,9 +586,9 @@ export function createQuestionTimeController({ extensionFolderPath = '', awardMo
         const banner = document.getElementById("dangan-qt-banner");
         const inner  = document.getElementById("dangan-qt-banner-inner");
 
-        // Player approval.png sprite overlay
+        // Player approval sprite overlay
         if (typeof getPlayerSpriteUrl === 'function') {
-            const spriteUrl = getPlayerSpriteUrl('approval');
+            const spriteUrl = await getPlayerSpriteUrl('approval');
             if (spriteUrl) {
                 const spriteEl = document.createElement('img');
                 spriteEl.src = spriteUrl;

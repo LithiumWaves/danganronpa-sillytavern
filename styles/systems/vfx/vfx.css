@@ -737,6 +737,78 @@
     color: #c4e8ff;
 }
 
+/* Height selector in main modal */
+.monopad-vfx-height-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: "Rajdhani", monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: rgba(188, 215, 255, 0.8);
+    text-transform: uppercase;
+    margin-top: 5px;
+}
+
+.monopad-vfx-height-btns {
+    display: flex;
+    gap: 3px;
+}
+
+.monopad-vfx-height-btn {
+    font-family: "Rajdhani", monospace;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    padding: 2px 7px;
+    border-radius: 3px;
+    border: 1px solid rgba(117, 241, 255, 0.25);
+    background: rgba(5, 14, 25, 0.7);
+    color: rgba(188, 215, 255, 0.5);
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: border-color 0.12s, color 0.12s, background 0.12s;
+}
+
+.monopad-vfx-height-btn.active,
+.monopad-vfx-height-btn:hover {
+    border-color: rgba(70, 220, 255, 0.75);
+    color: #9ee8ff;
+    background: rgba(10, 30, 55, 0.85);
+}
+
+/* Preview height tabs */
+.monopad-vfx-preview-height-tabs {
+    position: absolute;
+    top: 6px;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    gap: 3px;
+    z-index: 2;
+    pointer-events: all;
+}
+
+.monopad-vfx-preview-height-tab {
+    font-family: "Rajdhani", monospace;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    padding: 2px 7px;
+    border-radius: 3px;
+    border: 1px solid rgba(117, 241, 255, 0.25);
+    background: rgba(4, 6, 14, 0.88);
+    color: rgba(188, 215, 255, 0.5);
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: border-color 0.12s, color 0.12s;
+}
+
+.monopad-vfx-preview-height-tab.active,
+.monopad-vfx-preview-height-tab:hover {
+    border-color: rgba(70, 220, 255, 0.75);
+    color: #9ee8ff;
+}
+
 /* Stage column */
 .monopad-vfx-preview-stage-col {
     flex: 1;

@@ -377,9 +377,9 @@ export function createQuestionTruthController({ extensionFolderPath = '', getTru
         const banner = document.getElementById("dangan-qtt-banner");
         const inner  = document.getElementById("dangan-qtt-banner-inner");
 
-        // Player approval.png sprite overlay
+        // Player approval sprite overlay
         if (typeof getPlayerSpriteUrl === 'function') {
-            const spriteUrl = getPlayerSpriteUrl('approval');
+            const spriteUrl = await getPlayerSpriteUrl('approval');
             if (spriteUrl) {
                 const spriteEl = document.createElement('img');
                 spriteEl.src = spriteUrl;

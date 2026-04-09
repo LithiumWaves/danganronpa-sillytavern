@@ -1,5 +1,12 @@
 
 
+@font-face {
+    font-family: 'Quickend';
+    src: url('../assets/fonts/quickend.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+}
+
 /* Register SmartTheme color variables so they can be CSS-transitioned */
 @property --SmartThemeChatTintColor        { syntax: '<color>'; inherits: true; initial-value: rgba(0,0,0,0); }
 @property --SmartThemeBlurTintColor        { syntax: '<color>'; inherits: true; initial-value: rgba(0,0,0,0); }
@@ -204,6 +211,7 @@ body.dangan-theme-investigation #dangan_monopad_button {
 .monopad-title {
     font-size: 14px;
     letter-spacing: 2px;
+    cursor: pointer;
 }
 
 
@@ -2788,6 +2796,7 @@ body.dangan-hide-hopes-peak-branding .settings-header-cog {
 
 .settings-lang-toggle {
     display: flex;
+    margin: 0 12px;
     gap: 4px;
 }
 
@@ -2815,6 +2824,40 @@ body.dangan-hide-hopes-peak-branding .settings-header-cog {
 }
 
 .ml-12 { margin-left: 12px; }
+
+/* Branding Extras / Announcement Customisation */
+.settings-announ-custom-row.is-hidden {
+    display: none;
+}
+
+.settings-announ-row {
+    padding-top: 4px;
+    padding-bottom: 4px;
+}
+
+.settings-announ-custom-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 12px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+}
+
+.settings-announ-text-input {
+    width: 100%;
+    min-height: 52px;
+    background: rgba(9, 20, 34, 0.85);
+    border: 1px solid rgba(126, 173, 255, 0.35);
+    border-radius: 5px;
+    color: #d7e2f4;
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    line-height: 1.4;
+    padding: 6px 8px;
+    resize: vertical;
+}
 
 /* BGM Track Tabs */
 .bgm-tracks-tabs {
@@ -3612,6 +3655,16 @@ body.dangan-hide-hopes-peak-branding .settings-header-cog {
     display: block;
 }
 
+body.dangan-hide-hopes-peak-branding .items-monocoin-label {
+    font-size: 0;
+}
+
+body.dangan-hide-hopes-peak-branding .items-monocoin-label::after {
+    content: 'COINS';
+    font-size: 10px;
+    letter-spacing: 0.11em;
+}
+
 .items-coin-value {
     font-size: 14px;
     font-weight: 700;
@@ -4079,6 +4132,32 @@ body.dangan-hide-hopes-peak-branding .monopad-welcome-crest,
 body.dangan-hide-hopes-peak-branding .social-no-char-crest,
 body.dangan-hide-hopes-peak-branding .monopad-welcome-kicker {
     display: none !important;
+}
+
+.monopad-welcome-cylinder {
+    display: none;
+    position: absolute;
+    width: min(56vw, 430px);
+    height: min(56vw, 430px);
+    left: 50%;
+    top: 52%;
+    object-fit: contain;
+    opacity: 0.75;
+    filter:
+        brightness(0) invert(1)
+        sepia(1) saturate(5) hue-rotate(200deg)
+        brightness(0.5)
+        drop-shadow(0 0 30px rgba(30, 80, 200, 0.9));
+    animation: monopad-cylinder-spin 24s linear infinite;
+}
+
+@keyframes monopad-cylinder-spin {
+    from { transform: translate(-50%, -50%) rotate(0deg); }
+    to   { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+body.dangan-hide-hopes-peak-branding .monopad-welcome-cylinder {
+    display: block !important;
 }
 
 .items-search-input {
@@ -7986,12 +8065,13 @@ body.dangan-trial-vn-chat-hidden #chat {
     display: inline-flex;
     padding: 3px 9px;
     border-radius: 999px;
-    font-size: 25px;
+    font-size: 35px;
     letter-spacing: 0.08em;
     color: var(--dangan-nameplate-text-color);
-    font-family: "Boldonse", "Orbitron", "Rajdhani", monospace;
+    font-family: "Quickend", "Boldonse", "Orbitron", "Rajdhani", monospace;
+    text-transform: uppercase;
     position: absolute;
-    top: -45px;
+    top: -30px;
     animation: dangan-nameplate-glow-pulse 2.8s ease-in-out infinite;
 }
 
@@ -9284,6 +9364,78 @@ body.dangan-theme-night .dbgm-wisps img {
     white-space: nowrap;
     text-shadow: none;
     animation: dbgm-marquee 10s linear infinite;
+}
+
+/* ── BGM playback controls ── */
+.dbgm-controls {
+    position: absolute;
+    bottom: -26px;
+    left: -10px;
+    right: 7px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 6px 0 18px;
+    background: rgba(0, 0, 0, 0.55);
+    transform: skewX(20deg);
+    pointer-events: auto;
+    z-index: 8;
+}
+
+.dbgm-playlist-label {
+    font-size: 9px;
+    letter-spacing: 0.07em;
+    font-style: italic;
+    color: #9be8ff;
+    font-family: inherit;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+    transition: color 0.4s ease;
+}
+#dangan-bgm-display.dbgm-phase-night .dbgm-playlist-label {
+    color: #93ff2c;
+}
+#dangan-bgm-display.dbgm-phase-investigation .dbgm-playlist-label {
+    color: rgba(255, 20, 180, 0.90);
+}
+
+.dbgm-ctrl-btns {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.dbgm-ctrl-btn {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.80);
+    font-size: 13px;
+    line-height: 1;
+    padding: 2px 5px;
+    cursor: pointer;
+    border-radius: 3px;
+    transition: color 0.15s, background 0.15s;
+    pointer-events: auto;
+    user-select: none;
+}
+
+.dbgm-ctrl-btn:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.dbgm-ctrl-btn:active {
+    background: rgba(255, 255, 255, 0.22);
+}
+
+.dbgm-mode-btn {
+    margin-right: 4px;
 }
 
 /* ── BDA Cinematic Editor ─────────────────────────────────────────────────── */

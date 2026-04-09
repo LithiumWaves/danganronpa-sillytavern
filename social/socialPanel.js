@@ -59,6 +59,7 @@ export function createSocialPanelController({
     getUserAvatarUrl,
     getPromeSpritePack,
     getMonopadSetting,
+    onCharacterDead = null,
 }) {
     let statusFilters = new Set(); // empty = show all statuses
     let overlaysHidden = false;
@@ -137,6 +138,7 @@ export function createSocialPanelController({
             if (!char.isPlayer) saveCharacters();
             applyStampState(char.dead, char.missing, char.mastermind);
             renderNoCharacterOverlay();
+            if (char.dead && !char.isPlayer) onCharacterDead?.(char.name);
         });
 
         $missingBtn.off("click.missing").on("click.missing", () => {

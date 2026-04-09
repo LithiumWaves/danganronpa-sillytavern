@@ -193,11 +193,11 @@
 
 /* MPD weak point — same style as NSD .dangan-weak-point */
 .mpd-weak-point {
-    background: linear-gradient(to bottom, #ffd966, #ff5500);
+    background: linear-gradient(to bottom, #ffcd03, #ff8605);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
-    text-shadow: 0 0 10px rgba(255, 120, 0, 0.6);
+    text-shadow: 0 0 10px rgba(255, 150, 5, 0.6);
     pointer-events: auto;
     cursor: crosshair;
 }

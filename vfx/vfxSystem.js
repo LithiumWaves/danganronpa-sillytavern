@@ -10,6 +10,18 @@ const VFX_SFX_BASE = `${extensionFolderPath}/assets/sfx/reactions/`;
 let expressionTargetFn = null;
 export function setExpressionTarget(fn) { expressionTargetFn = fn; }
 
+// Suppresses VFX/SFX during GCP initial sprite load so expressions that fire
+// from the MutationObserver while portraits are being set up don't play sounds.
+let vfxGcpLoadSuppressed = false;
+export function setVfxGcpLoadSuppressed(val) { vfxGcpLoadSuppressed = !!val; }
+
+// When a group chat GCP stage is active, the expression mirror fires
+// triggerVfxOnElement per-character with correct folder-matched targets.
+// Suppress the observer's generic triggerVfx path to prevent it targeting
+// the stale gcpCurrentFloat (previous speaker) at the same time.
+let vfxGcpGroupActive = false;
+export function setVfxGcpGroupActive(val) { vfxGcpGroupActive = !!val; }
+
 const VFX_MAP = {
     realization:   { css: "dr-vfx-realization",   duration: 1000, sfx: "realization.wav" },
     surprise:      { css: "dr-vfx-surprise",       duration: 1000, sfx: "surprise.wav"   },
@@ -286,9 +298,60 @@ const VFX_DEFAULT_HTML = {
 </div>`,
 };
 
+// Head-anchor percentages: how far from the top of the sprite the head region sits.
+// Stars/hearts/drops use calc(33% ...) in the default HTML — that value gets replaced
+// at render time with the per-character height anchor so particles always appear near
+// the head regardless of whether the sprite is chibi, standard, or full-body tall.
+const HEIGHT_PROFILES = {
+    small:  { anchorTop: 35, image: `${extensionFolderPath}/assets/images/heights/small.png`  },
+    medium: { anchorTop: 22, image: `${extensionFolderPath}/assets/images/heights/medium.png` },
+    tall:   { anchorTop: 14, image: `${extensionFolderPath}/assets/images/heights/tall.png`   },
+};
+const HEIGHT_DEFAULT = 'medium';
+
 let vfxObserver = null;
 let vfxLastExpression = null;
 let currentPreviewEmotion = null;
+let currentPreviewHeight = null; // null = CHARACTER tab (use saved height)
+
+// ── Web Audio context for SFX (separate pipeline from Dynamic Audio / #audio_bgm) ──
+let _vfxAudioCtx = null;
+const _vfxBufferCache = new Map();
+
+function _getVfxAudioCtx() {
+    if (!_vfxAudioCtx || _vfxAudioCtx.state === 'closed') {
+        _vfxAudioCtx = new AudioContext();
+    }
+    return _vfxAudioCtx;
+}
+
+async function _playVfxSfx(url, volume) {
+    try {
+        const ctx = _getVfxAudioCtx();
+        if (ctx.state === 'suspended') await ctx.resume();
+
+        let buffer = _vfxBufferCache.get(url);
+        if (!buffer) {
+            const response = await fetch(url);
+            const arrayBuffer = await response.arrayBuffer();
+            buffer = await ctx.decodeAudioData(arrayBuffer);
+            _vfxBufferCache.set(url, buffer);
+        }
+
+        const source = ctx.createBufferSource();
+        const gain = ctx.createGain();
+        gain.gain.value = Math.max(0, Math.min(1, volume));
+        source.buffer = buffer;
+        source.connect(gain);
+        gain.connect(ctx.destination);
+        source.start();
+    } catch (err) {
+        // Fallback: plain Audio element (won't interfere in most cases)
+        const audio = new Audio(url);
+        audio.volume = Math.max(0, Math.min(1, volume));
+        audio.play().catch(() => {});
+    }
+}
 
 // ── Settings storage (per-character, keyed by this_chid) ─────────────────────
 
@@ -313,6 +376,16 @@ function setVfxSettings(settings) {
     }
     extension_settings[extensionName].vfxSettings[this_chid ?? "__global__"] = settings;
     saveSettingsDebounced();
+}
+
+function getCharacterHeight() {
+    return getVfxSettings().height ?? HEIGHT_DEFAULT;
+}
+
+function setCharacterHeight(height) {
+    const s = getVfxSettings();
+    s.height = height;
+    setVfxSettings(s);
 }
 
 // ── Per-emotion helpers ───────────────────────────────────────────────────────
@@ -345,10 +418,17 @@ function sfxForEmotion(expression) {
 
 // ── Custom CSS helpers ────────────────────────────────────────────────────────
 
-function getEmotionHtml(emotion) {
+function getEmotionHtml(emotion, height = null) {
     const emo = getVfxSettings().emotions[emotion] || {};
     // undefined = no override, fall back to default; "" = user explicitly cleared (no overlay)
-    return emo.customHtml !== undefined ? emo.customHtml : (VFX_DEFAULT_HTML[emotion] || "");
+    const raw = emo.customHtml !== undefined ? emo.customHtml : (VFX_DEFAULT_HTML[emotion] || "");
+    // Replace the canonical 33% head anchor with the height-specific value.
+    // Works for both default and custom HTML — custom HTML can use calc(33% ...) as
+    // the standard anchor and it will be automatically adjusted.
+    const resolvedHeight = height ?? getCharacterHeight();
+    const anchor = HEIGHT_PROFILES[resolvedHeight]?.anchorTop ?? HEIGHT_PROFILES[HEIGHT_DEFAULT].anchorTop;
+    if (anchor === 33) return raw;
+    return raw.replace(/calc\(33%/g, `calc(${anchor}%`);
 }
 
 function saveEmotionHtml(emotion, html) {
@@ -450,7 +530,7 @@ function applyEmotionCss(emotion) {
 
 // ── Effect playback ───────────────────────────────────────────────────────────
 
-function playOnElement(expression, $img, { ignoreMute = false, htmlTarget = null } = {}) {
+function playOnElement(expression, $img, { ignoreMute = false, htmlTarget = null, height = null } = {}) {
     const def = VFX_MAP[expression];
     if (!def) return;
 
@@ -463,7 +543,7 @@ function playOnElement(expression, $img, { ignoreMute = false, htmlTarget = null
 
     // Inject custom HTML overlay if defined — htmlTarget overrides the default
     // live-trigger behaviour (used by preview to inject into the stage column)
-    const customHtml = getEmotionHtml(expression);
+    const customHtml = getEmotionHtml(expression, height);
     if (customHtml) {
         if (htmlTarget) {
             // Preview: inject directly into the provided container
@@ -481,14 +561,13 @@ function playOnElement(expression, $img, { ignoreMute = false, htmlTarget = null
     if (ignoreMute || !isMutedForEmotion(expression)) {
         const sfxFile = sfxForEmotion(expression);
         if (sfxFile) {
-            const audio = new Audio(`${VFX_SFX_BASE}${sfxFile}`);
-            audio.volume = volumeForEmotion(expression);
-            audio.play().catch(() => {});
+            _playVfxSfx(`${VFX_SFX_BASE}${sfxFile}`, volumeForEmotion(expression));
         }
     }
 }
 
 function triggerVfx(expression) {
+    if (vfxGcpLoadSuppressed) return;
     if (!isEnabledForEmotion(expression)) return;
     if (!VFX_MAP[expression]) return;
     // Small delay to let the expression swap animation settle
@@ -501,7 +580,35 @@ function triggerVfx(expression) {
     }, 250);
 }
 
+// Fire VFX/SFX on a specific element — used by the expression mirror for group chats
+// so each character's expression update targets only their own portrait slot.
+// Setting vfxLastExpression here prevents the MutationObserver from double-firing
+// triggerVfx for the same expression immediately after.
+export function triggerVfxOnElement(expression, imgEl) {
+    if (vfxGcpLoadSuppressed) return;
+    if (!isEnabledForEmotion(expression)) return;
+    if (!VFX_MAP[expression]) return;
+    vfxLastExpression = expression;
+    setTimeout(() => {
+        const $img = $(imgEl);
+        if (!$img.length) return;
+        applyEmotionCss(expression);
+        playOnElement(expression, $img);
+    }, 250);
+}
+
 // ── MutationObserver ──────────────────────────────────────────────────────────
+
+// Extract an expression name from an image src URL — used as a reliable
+// fallback when data-expression is stale (ST's VN-mode clone/swap does not
+// propagate data-expression to the replacement clone element).
+function expressionFromSrc(src) {
+    if (!src) return "";
+    try {
+        const fname = new URL(src, location.href).pathname.split("/").pop() || "";
+        return fname.replace(/\.[^.]+$/, "").toLowerCase();
+    } catch { return ""; }
+}
 
 function setupObserver() {
     if (vfxObserver) { vfxObserver.disconnect(); vfxObserver = null; }
@@ -514,17 +621,33 @@ function setupObserver() {
             if (m.type === "childList") {
                 for (const node of m.addedNodes) {
                     if (node.nodeType === 1 && node.matches?.("img.expression")) {
-                        expression = (node.getAttribute("data-expression") || "").toLowerCase();
+                        // data-expression may be stale on VN-mode clones — prefer src filename
+                        const fromSrc = expressionFromSrc(node.src);
+                        const fromAttr = (node.getAttribute("data-expression") || "").toLowerCase();
+                        expression = (fromSrc && VFX_MAP[fromSrc]) ? fromSrc : fromAttr;
                         break;
                     }
                 }
             } else if (m.type === "attributes" && m.target.matches?.("img.expression")) {
-                expression = (m.target.getAttribute("data-expression") || "").toLowerCase();
+                if (m.attributeName === "src") {
+                    // src changed — use filename, fall back to data-expression
+                    const fromSrc = expressionFromSrc(m.target.src);
+                    const fromAttr = (m.target.getAttribute("data-expression") || "").toLowerCase();
+                    expression = (fromSrc && VFX_MAP[fromSrc]) ? fromSrc : fromAttr;
+                } else {
+                    // data-expression changed directly (non-VN solo path)
+                    expression = (m.target.getAttribute("data-expression") || "").toLowerCase();
+                }
             }
 
             if (expression && expression !== vfxLastExpression) {
                 vfxLastExpression = expression;
-                triggerVfx(expression);
+                // In a group chat the expression mirror fires triggerVfxOnElement
+                // per-character with the correct folder-matched target.  Skip the
+                // generic triggerVfx path here to avoid it targeting the stale
+                // gcpCurrentFloat (which still points to the previous speaker
+                // at the time this observer fires).
+                if (!vfxGcpGroupActive) triggerVfx(expression);
             }
         }
     });
@@ -533,7 +656,7 @@ function setupObserver() {
         subtree: true,
         childList: true,
         attributes: true,
-        attributeFilter: ["data-expression"],
+        attributeFilter: ["data-expression", "src"],
     });
 }
 
@@ -557,6 +680,9 @@ function playPreviewAnimation(emotion) {
     }
     styleEl.textContent = buildLiveCss(emotion, css);
 
+    // Resolve the height for this preview play — null means CHARACTER (use saved)
+    const resolvedHeight = currentPreviewHeight ?? getCharacterHeight();
+
     // Sync HTML from editor into the settings temporarily so playOnElement picks it up
     const htmlEditorEl = document.getElementById("monopad-vfx-preview-html-editor");
     const htmlEditorValue = htmlEditorEl?.value || "";
@@ -569,7 +695,7 @@ function playPreviewAnimation(emotion) {
     $img.removeClass(VFX_ALL_CLASSES);
     void $img[0].offsetWidth;
 
-    playOnElement(emotion, $img, { ignoreMute: false, htmlTarget: ".monopad-vfx-preview-stage-col" });
+    playOnElement(emotion, $img, { ignoreMute: false, htmlTarget: ".monopad-vfx-preview-stage-col", height: resolvedHeight });
 
     // Restore the original saved HTML value (we only used editor value for preview)
     if (savedHtml !== undefined) {
@@ -603,6 +729,12 @@ function openPreview(emotion) {
         $previewImg[0].src = currentSrc;
     }
 
+    // Reset height tab to CHARACTER
+    currentPreviewHeight = null;
+    document.querySelectorAll(".monopad-vfx-preview-height-tab").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.previewHeight === "character");
+    });
+
     const overlay = document.getElementById("monopad-vfx-preview-overlay");
     overlay.classList.add("open");
     overlay.setAttribute("aria-hidden", "false");
@@ -630,6 +762,11 @@ function renderModal() {
     const charLabel = groupId ? "GROUP CHAT" : (name2 || "—");
 
     document.getElementById("monopad-vfx-char-name").textContent = `FOR "${charLabel}"`;
+
+    const currentHeight = getCharacterHeight();
+    document.querySelectorAll(".monopad-vfx-height-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.height === currentHeight);
+    });
 
     const masterBtn = document.getElementById("monopad-vfx-master-toggle");
     if (masterBtn) {
@@ -783,9 +920,42 @@ export function initVfxSystem() {
         const emotion = $(this).data("emotion");
         const sfxFile = sfxForEmotion(emotion);
         if (!sfxFile) return;
-        const audio = new Audio(`${VFX_SFX_BASE}${sfxFile}`);
-        audio.volume = volumeForEmotion(emotion);
-        audio.play().catch(() => {});
+        _playVfxSfx(`${VFX_SFX_BASE}${sfxFile}`, volumeForEmotion(emotion));
+    });
+
+    // ── Character height selector ──
+    $(document).on("click.dr-vfx", ".monopad-vfx-height-btn", function () {
+        const height = $(this).data("height");
+        if (!height) return;
+        setCharacterHeight(height);
+        $(".monopad-vfx-height-btn").removeClass("active");
+        $(this).addClass("active");
+    });
+
+    // ── Preview height tabs ──
+    $(document).on("click.dr-vfx", ".monopad-vfx-preview-height-tab", function () {
+        const tab = $(this).data("previewHeight");
+        currentPreviewHeight = (tab === "character") ? null : tab;
+        $(".monopad-vfx-preview-height-tab").removeClass("active");
+        $(this).addClass("active");
+
+        // Swap preview image: height tabs use silhouettes, CHARACTER tab uses actual sprite
+        const $img = $("#monopad-vfx-preview-img");
+        if (currentPreviewHeight && HEIGHT_PROFILES[currentPreviewHeight]) {
+            $img[0].src = HEIGHT_PROFILES[currentPreviewHeight].image;
+        } else {
+            // Restore character sprite
+            const currentSrc = $("#expression-image").attr("src") || "";
+            const emotion = currentPreviewEmotion || "";
+            const previewSrc = currentSrc
+                ? currentSrc.replace(/\/[^/]+(\.[^/.]+)$/, `/${emotion}$1`)
+                : "";
+            $img[0].src = previewSrc || currentSrc;
+        }
+
+        if (currentPreviewEmotion) {
+            setTimeout(() => playPreviewAnimation(currentPreviewEmotion), 80);
+        }
     });
 
     // ── Accordion toggles ──

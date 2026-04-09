@@ -415,7 +415,10 @@ function showTruthBulletDetails(bullet, isArchived) {
         });
     }
 
-    $details.find(".truth-show-on-map-button").on("click", () => {
+    $details.find(".truth-show-on-map-button").on("mouseenter", () => {
+        playSfx(sfx.hover);
+    }).on("click", () => {
+        playSfx(sfx.click);
         deps.navigateToMapPin?.(bullet.locationId);
     });
 

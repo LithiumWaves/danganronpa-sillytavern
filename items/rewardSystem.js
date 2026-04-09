@@ -1,4 +1,4 @@
-export function createRewardSystem({ extensionName, extensionFolderPath, extension_settings, saveSettingsDebounced, monocoinRewards, xpRewards, getItemsPanelController, increaseTrust }) {
+export function createRewardSystem({ extensionName, extensionFolderPath, extension_settings, saveSettingsDebounced, monocoinRewards, xpRewards, getItemsPanelController, increaseTrust, getCoinLabel = () => 'MONOCOINS' }) {
     let monocoinToastTimeout = null;
     let xpPopupTimeout = null;
     let levelUpPopupTimeout = null;
@@ -47,13 +47,28 @@ export function createRewardSystem({ extensionName, extensionFolderPath, extensi
     function ensureLevelBar() {
         let bar = document.getElementById('dangan-level-bar');
         if (bar) return bar;
+
+        // Outer wrapper aligns chapter label + level bar with the BGM display bottom
+        let wrapper = document.getElementById('dangan-hud-topright');
+        if (!wrapper) {
+            wrapper = document.createElement('div');
+            wrapper.id = 'dangan-hud-topright';
+
+            const chapterLabel = document.createElement('div');
+            chapterLabel.id = 'dangan-chapter-label';
+            chapterLabel.textContent = 'PROLOGUE';
+            wrapper.appendChild(chapterLabel);
+
+            document.body.appendChild(wrapper);
+        }
+
         bar = document.createElement('div');
         bar.id = 'dangan-level-bar';
         bar.innerHTML = `
             <span class="dlvl-label">LVL <span class="dlvl-num">1</span></span>
             <div class="dlvl-track"><div class="dlvl-fill"></div></div>
         `;
-        document.body.appendChild(bar);
+        wrapper.appendChild(bar);
         return bar;
     }
 
@@ -114,7 +129,7 @@ export function createRewardSystem({ extensionName, extensionFolderPath, extensi
         const toast = ensureMonocoinToast();
         const text = toast.querySelector(".monocoin-toast-text");
         if (text) {
-            text.textContent = `+${amount} MONOCOINS`;
+            text.textContent = `+${amount} ${getCoinLabel()}`;
         }
 
         toast.classList.remove("show");
@@ -219,7 +234,7 @@ export function createRewardSystem({ extensionName, extensionFolderPath, extensi
         // Show toast with negative prefix and red styling
         const toast = ensureMonocoinToast();
         const text = toast.querySelector(".monocoin-toast-text");
-        if (text) text.textContent = `-${penalty} MONOCOINS`;
+        if (text) text.textContent = `-${penalty} ${getCoinLabel()}`;
         toast.classList.remove("show");
         void toast.offsetWidth;
         toast.classList.add("show");

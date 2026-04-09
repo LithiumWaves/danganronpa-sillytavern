@@ -20,7 +20,7 @@ import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "./core/monokumaLes
 import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers } from "./monokuma/announcementController.js";
 import { createClassTrialMenuController } from "./trial/menu/classTrialMenu.js";
 import { createTrialManager, TrialPhases } from "./trial/trialManager.js";
-import { initVfxSystem, onVfxChatChanged, setExpressionTarget } from "./vfx/vfxSystem.js";
+import { initVfxSystem, onVfxChatChanged, setExpressionTarget, setVfxGcpLoadSuppressed, setVfxGcpGroupActive, triggerVfxOnElement } from "./vfx/vfxSystem.js";
 import { createBdaCinematicEditor } from "./vfx/bdaCinematicEditor.js";
 import { createExecutionCinematicEditor } from "./vfx/executionCinematicEditor.js";
 import { createVoteResultsController } from "./vfx/voteResults.js";
@@ -302,6 +302,497 @@ function resetDayCounter({ source = "manual" } = {}) {
     applyTimeContextToGeneration();
     console.log(`[${extensionName}] Time tracker reset to DAY 1 / DAYTIME (source: ${source}).`);
     return true;
+}
+
+// ── Chapter tracking ──────────────────────────────────────────────────────────
+
+function getChapterLabel() {
+    const idx = Number(getMonopadSetting('chapterIndex') ?? 0);
+    if (idx <= 0) return 'PROLOGUE';
+    if (idx >= 10) return 'EPILOGUE';
+    return `CHAPTER ${idx}`;
+}
+
+function updateChapterDisplay() {
+    const el = document.getElementById('dangan-chapter-label');
+    if (el) el.textContent = getChapterLabel();
+}
+
+// ── Chapter Journal ───────────────────────────────────────────────────────────
+
+const CHAPTER_JOURNAL_LABELS = {
+    0: 'PROLOGUE',
+    10: 'EPILOGUE',
+};
+function getChapterJournalLabel(idx) {
+    if (idx <= 0) return 'PROLOGUE';
+    if (idx >= 10) return 'EPILOGUE';
+    return `CHAPTER ${idx}`;
+}
+
+function getChapterJournalData(idx) {
+    const settings = extension_settings[extensionName] ||= {};
+    settings.chapterJournal ||= {};
+    settings.chapterJournal[idx] ||= { name: '', notes: '', listSummary: '', detailedSummary: '' };
+    return settings.chapterJournal[idx];
+}
+
+function saveChapterJournalData(idx, patch) {
+    const data = getChapterJournalData(idx);
+    Object.assign(data, patch);
+    saveSettingsDebounced();
+}
+
+function _journalFilterMsg(msg) {
+    if (!msg.mes?.trim()) return false;
+    if (msg.is_system) return false;
+    const name = (msg.name || '').trim().toLowerCase();
+    if (name === 'assistant') return false;
+    return true;
+}
+
+function _journalFormatMsg(msg) {
+    const name = msg.name?.trim() || (msg.is_user ? 'Player' : 'Character');
+    return `[${name}]: ${msg.mes.trim()}`;
+}
+
+async function getAllChatsForJournal() {
+    const ctx = window.SillyTavern?.getContext?.();
+    if (!ctx) return { sections: [], totalMessages: 0 };
+
+    const sections = [];
+
+    // 1. All individual character chats
+    const characters = Array.isArray(ctx.characters) ? ctx.characters : [];
+    let charChatCount = 0;
+
+    for (const char of characters) {
+        if (!char.avatar) continue;
+        try {
+            const listResp = await fetch('/api/characters/chats', {
+                method: 'POST',
+                headers: getRequestHeaders(),
+                body: JSON.stringify({ avatar_url: char.avatar, simple: true }),
+            });
+            if (!listResp.ok) continue;
+            const chatList = await listResp.json();
+            if (!Array.isArray(chatList) || !chatList.length) continue;
+
+            for (const chatEntry of chatList) {
+                const fileId = chatEntry.file_id || (chatEntry.file_name || '').replace('.jsonl', '');
+                if (!fileId) continue;
+                try {
+                    const msgResp = await fetch('/api/chats/get', {
+                        method: 'POST',
+                        headers: getRequestHeaders(),
+                        body: JSON.stringify({ avatar_url: char.avatar, file_name: fileId }),
+                    });
+                    if (!msgResp.ok) continue;
+                    const messages = await msgResp.json();
+                    if (Array.isArray(messages)) {
+                        const lines = messages.filter(_journalFilterMsg).map(_journalFormatMsg);
+                        if (lines.length) {
+                            sections.push({ label: `CHAT: ${char.name}`, lines });
+                            charChatCount += lines.length;
+                        }
+                    }
+                } catch (e) {
+                    console.warn(`[${extensionName}] Could not fetch chat ${fileId} for ${char.name}`, e);
+                }
+            }
+        } catch (e) {
+            console.warn(`[${extensionName}] Could not fetch chat list for ${char.name}`, e);
+        }
+    }
+
+    // 2. All group chats
+    let groupChatCount = 0;
+    try {
+        const groupsResp = await fetch('/api/groups/all', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+        });
+        if (groupsResp.ok) {
+            const groups = await groupsResp.json();
+            for (const group of (Array.isArray(groups) ? groups : [])) {
+                const groupName = group.name || group.id || 'Group';
+                const chatIds = Array.isArray(group.chats) ? group.chats
+                    : (group.chat_id ? [group.chat_id] : []);
+                for (const chatId of chatIds) {
+                    try {
+                        const msgResp = await fetch('/api/chats/group/get', {
+                            method: 'POST',
+                            headers: getRequestHeaders(),
+                            body: JSON.stringify({ id: chatId }),
+                        });
+                        if (!msgResp.ok) continue;
+                        const messages = await msgResp.json();
+                        if (Array.isArray(messages)) {
+                            const lines = messages.filter(_journalFilterMsg).map(_journalFormatMsg);
+                            if (lines.length) {
+                                sections.push({ label: `GROUP CHAT: ${groupName}`, lines });
+                                groupChatCount += lines.length;
+                            }
+                        }
+                    } catch (e) {
+                        console.warn(`[${extensionName}] Could not fetch group chat ${chatId}`, e);
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        console.warn(`[${extensionName}] Could not fetch groups`, e);
+    }
+
+    const totalMessages = charChatCount + groupChatCount;
+    console.log(`[${extensionName}] Journal collected ${charChatCount} messages from character chats, ${groupChatCount} from group chats (${sections.length} sections total)`);
+
+    return { sections, totalMessages };
+}
+
+let chaptersActiveIdx = 0;
+let chaptersActiveSummaryType = 'list'; // 'list' | 'detail'
+let chaptersGenerationPending = null;   // null | { transcript, type }
+let chaptersResponseTokens = 1500;      // current slider value, persists across re-renders
+let chaptersDepthLevel = 3;             // 0–6 index into CHAPTERS_DEPTH_LEVELS
+let chaptersEstTokens = 0;              // transcript token estimate from last collection
+
+const CHAPTERS_DEPTH_LEVELS = ['TLDR', 'Brief', 'Short', 'Average', 'Long', 'Detailed', 'Extensive'];
+
+const CHAPTERS_DEPTH_INSTRUCTIONS = [
+    // 0 — TLDR
+    'Be extremely concise. Cover ONLY the most critical plot points — murders, trials, key revelations, and decisive character actions. Ruthlessly cut anything that is not directly plot-critical. Your goal is maximum compression.',
+    // 1 — Brief
+    'Be brief. Cover key story events and important beats only. Skip minor interactions, small talk, and anything that does not meaningfully advance the plot or a character relationship.',
+    // 2 — Short
+    'Be concise but cover the main events and important character moments. Omit minor details and flavour exchanges.',
+    // 3 — Average
+    'Cover all notable events with moderate detail. Include important interactions, character moments, and the context behind major decisions.',
+    // 4 — Long
+    'Cover all significant events in good detail, including character interactions, emotional beats, and the reasoning behind key developments.',
+    // 5 — Detailed
+    'Cover all events thoroughly with full detail. Include character motivations, nuances, the significance of every development, and meaningful dialogue exchanges.',
+    // 6 — Extensive
+    'Cover EVERYTHING without omission. Every interaction, every exchange, every detail — no matter how seemingly minor — must be included. Nothing should be left out.',
+];
+
+// Fraction of input estTokens used as the response-length ceiling per depth level.
+// A floor ensures useful output even on tiny transcripts.
+//            TLDR   Brief  Short  Avg    Long   Detail Ext
+const CHAPTERS_DEPTH_FRACTIONS = [0.03,  0.06,  0.12,  0.22,  0.40,  0.65,  1.0];
+const CHAPTERS_DEPTH_FLOORS    = [800,   1000,  1500,  2000,  3000,  5000,  8000];
+
+function getDepthMaxTokens(estTokens, depthLevel) {
+    const fraction = CHAPTERS_DEPTH_FRACTIONS[depthLevel] ?? 1.0;
+    const floor    = CHAPTERS_DEPTH_FLOORS[depthLevel]    ?? 500;
+    return Math.min(estTokens, Math.max(floor, Math.round(estTokens * fraction)));
+}
+
+function _applyDepthToTokensSlider(newDepthLevel) {
+    if (!chaptersEstTokens) return;
+    const newMax = getDepthMaxTokens(chaptersEstTokens, newDepthLevel);
+    const sliderEl   = document.getElementById('chapters-tokens-slider');
+    const valueEl    = document.getElementById('chapters-tokens-value');
+    if (!sliderEl) return;
+    sliderEl.max = newMax;
+    chaptersResponseTokens = Math.min(chaptersResponseTokens, newMax);
+    sliderEl.value = chaptersResponseTokens;
+    if (valueEl) valueEl.textContent = `${chaptersResponseTokens.toLocaleString()} TOKENS`;
+}
+
+function renderChaptersPanel() {
+    const stripEl = document.getElementById('chapters-tab-strip');
+    const bodyEl = document.getElementById('chapters-body');
+    if (!stripEl || !bodyEl) return;
+
+    // Any re-render (chapter switch, toggle switch) discards pending confirmation and stale estimate
+    chaptersGenerationPending = null;
+    chaptersEstTokens = 0;
+
+    const currentChapterIdx = Number(getMonopadSetting('chapterIndex') ?? 0);
+
+    // Build completed chapter list: all chapters up to and including current
+    const completedIdxs = [];
+    // Always include prologue (0)
+    completedIdxs.push(0);
+    for (let i = 1; i <= Math.min(currentChapterIdx, 9); i++) {
+        completedIdxs.push(i);
+    }
+    if (currentChapterIdx >= 10) completedIdxs.push(10);
+
+    // Clamp active idx to valid range
+    if (!completedIdxs.includes(chaptersActiveIdx)) {
+        chaptersActiveIdx = completedIdxs[completedIdxs.length - 1] ?? 0;
+    }
+
+    // Render tab strip
+    stripEl.innerHTML = '';
+    for (const idx of completedIdxs) {
+        const btn = document.createElement('button');
+        btn.className = 'chapters-tab-btn' + (idx === chaptersActiveIdx ? ' active' : '');
+        btn.type = 'button';
+        btn.textContent = getChapterJournalLabel(idx);
+        btn.addEventListener('click', () => {
+            chaptersActiveIdx = idx;
+            renderChaptersPanel();
+        });
+        stripEl.appendChild(btn);
+    }
+
+    // Render body for active chapter
+    const data = getChapterJournalData(chaptersActiveIdx);
+    const chapterLabel = getChapterJournalLabel(chaptersActiveIdx);
+
+    const isList = chaptersActiveSummaryType === 'list';
+    const activeContent = isList ? data.listSummary : data.detailedSummary;
+
+    bodyEl.innerHTML = `
+        <div class="chapters-name-row">
+            <span class="chapters-name-prefix">${chapterLabel} —</span>
+            <input
+                class="chapters-name-input"
+                id="chapters-name-input"
+                type="text"
+                placeholder="Enter chapter subtitle…"
+                value="${(data.name || '').replace(/"/g, '&quot;')}"
+                maxlength="80"
+            />
+        </div>
+
+        <div class="chapters-divider"></div>
+
+        <div>
+            <div class="chapters-section-label">NOTES / DIARY</div>
+            <textarea class="chapters-notes-textarea" id="chapters-notes-textarea" placeholder="Write your notes or diary entry for this chapter…">${data.notes || ''}</textarea>
+        </div>
+
+        <div class="chapters-sliders-wrap" id="chapters-sliders-wrap" style="display:none">
+            <div class="chapters-tokens-row">
+                <span class="chapters-section-label">DEPTH</span>
+                <input
+                    type="range"
+                    class="chapters-tokens-slider"
+                    id="chapters-depth-slider"
+                    min="0"
+                    max="6"
+                    step="1"
+                    value="${chaptersDepthLevel}"
+                />
+                <span class="chapters-tokens-value" id="chapters-depth-value">${CHAPTERS_DEPTH_LEVELS[chaptersDepthLevel]}</span>
+            </div>
+            <div class="chapters-tokens-row">
+                <span class="chapters-section-label">RESPONSE LENGTH</span>
+                <input
+                    type="range"
+                    class="chapters-tokens-slider"
+                    id="chapters-tokens-slider"
+                    min="100"
+                    max="3000"
+                    step="50"
+                    value="${Math.min(chaptersResponseTokens, 3000)}"
+                />
+                <span class="chapters-tokens-value" id="chapters-tokens-value">${chaptersResponseTokens.toLocaleString()} TOKENS</span>
+            </div>
+        </div>
+
+        <div class="chapters-divider"></div>
+
+        <div class="chapters-summary-section">
+            <div class="chapters-summary-header">
+                <div class="chapters-summary-toggle">
+                    <button class="chapters-toggle-btn${isList ? ' active' : ''}" id="chapters-toggle-list" type="button">LIST</button>
+                    <button class="chapters-toggle-btn${!isList ? ' active' : ''}" id="chapters-toggle-detail" type="button">DETAILED</button>
+                </div>
+                <button class="chapters-generate-btn" id="chapters-gen-btn" type="button">FETCH</button>
+            </div>
+            <div class="chapters-summary-box${activeContent ? '' : ' is-empty'}" id="chapters-summary-box">${activeContent || 'No summary generated yet.'}</div>
+            <div class="chapters-summary-status" id="chapters-summary-status"></div>
+        </div>
+    `;
+
+    // Wire up name input
+    const nameInput = document.getElementById('chapters-name-input');
+    if (nameInput) {
+        nameInput.addEventListener('input', () => {
+            saveChapterJournalData(chaptersActiveIdx, { name: nameInput.value });
+        });
+    }
+
+    // Wire up notes textarea
+    const notesTextarea = document.getElementById('chapters-notes-textarea');
+    if (notesTextarea) {
+        notesTextarea.addEventListener('input', () => {
+            saveChapterJournalData(chaptersActiveIdx, { notes: notesTextarea.value });
+        });
+    }
+
+    // Wire up depth slider
+    const depthSlider = document.getElementById('chapters-depth-slider');
+    const depthValue = document.getElementById('chapters-depth-value');
+    if (depthSlider) {
+        depthSlider.addEventListener('input', () => {
+            chaptersDepthLevel = Number(depthSlider.value);
+            if (depthValue) depthValue.textContent = CHAPTERS_DEPTH_LEVELS[chaptersDepthLevel];
+            _applyDepthToTokensSlider(chaptersDepthLevel);
+        });
+    }
+
+    // Wire up response-length slider
+    const slider = document.getElementById('chapters-tokens-slider');
+    const tokensValue = document.getElementById('chapters-tokens-value');
+    if (slider) {
+        slider.addEventListener('input', () => {
+            chaptersResponseTokens = Number(slider.value);
+            if (tokensValue) tokensValue.textContent = `${chaptersResponseTokens.toLocaleString()} TOKENS`;
+        });
+    }
+
+    // Wire up summary type toggle
+    document.getElementById('chapters-toggle-list')?.addEventListener('click', () => {
+        chaptersActiveSummaryType = 'list';
+        renderChaptersPanel();
+    });
+    document.getElementById('chapters-toggle-detail')?.addEventListener('click', () => {
+        chaptersActiveSummaryType = 'detail';
+        renderChaptersPanel();
+    });
+
+    // Wire up generate button
+    document.getElementById('chapters-gen-btn')?.addEventListener('click', () => generateChapterSummary(chaptersActiveSummaryType));
+}
+
+// Always re-query by ID so stale references after re-renders never silently fail
+function _chaptersSetStatus(msg) {
+    const el = document.getElementById('chapters-summary-status');
+    if (el) el.textContent = msg;
+}
+// Yield one paint frame so the browser can render the status update
+function _chaptersYield() {
+    return new Promise(r => setTimeout(r, 30));
+}
+
+async function generateChapterSummary(type) {
+    const isDetail = type === 'detail';
+
+    // ── Step 2: user clicked CONFIRM — fire the generation ───────────────────
+    if (chaptersGenerationPending && chaptersGenerationPending.type === type) {
+        const { transcript } = chaptersGenerationPending;
+        chaptersGenerationPending = null;
+
+        const btn = document.getElementById('chapters-gen-btn');
+        const box = document.getElementById('chapters-summary-box');
+        if (btn) { btn.textContent = 'FETCH'; btn.disabled = true; }
+        _chaptersSetStatus('GENERATING…');
+        await _chaptersYield();
+
+        try {
+            const chapterLabel = getChapterJournalLabel(chaptersActiveIdx);
+            const depthLabel = CHAPTERS_DEPTH_LEVELS[chaptersDepthLevel];
+            const depthInstruction = CHAPTERS_DEPTH_INSTRUCTIONS[chaptersDepthLevel];
+
+            let prompt;
+            if (isDetail) {
+                prompt = `You are writing a story journal entry for a Danganronpa-style roleplay game.
+Chapter: ${chapterLabel}
+Depth: ${depthLabel}
+
+${depthInstruction}
+
+Read the chat log below and write a narrative summary of what actually happened in the story during this chapter. Write in past tense, third person. Do NOT mention the interface, menus, buttons, or anything outside the story. Ignore out-of-character or system-like messages.
+
+CHAT LOG:
+${transcript}
+
+JOURNAL ENTRY:`;
+            } else {
+                prompt = `You are writing a story journal entry for a Danganronpa-style roleplay game.
+Chapter: ${chapterLabel}
+Depth: ${depthLabel}
+
+${depthInstruction}
+
+Read the chat log below and output ONLY a bulleted list of in-story events in the order they occurred. Each bullet should be one concise sentence. Use "•" as the bullet character. No introduction, no conclusion, no text outside the bullets. Do NOT mention the interface, menus, or anything out-of-character.
+
+CHAT LOG:
+${transcript}
+
+BULLET LIST:`;
+            }
+
+            const ctx = window.SillyTavern?.getContext?.();
+            if (!ctx?.generateRaw) throw new Error("SillyTavern API not available");
+
+            const result = await ctx.generateRaw({
+                prompt,
+                responseLength: chaptersResponseTokens,
+            });
+
+            if (result) {
+                const key = isDetail ? 'detailedSummary' : 'listSummary';
+                saveChapterJournalData(chaptersActiveIdx, { [key]: result });
+                if (box) { box.textContent = result; box.classList.remove('is-empty'); }
+                _chaptersSetStatus('FETCHED.');
+                setTimeout(() => _chaptersSetStatus(''), 2500);
+            } else {
+                _chaptersSetStatus('NO RESULT RETURNED.');
+            }
+        } catch (err) {
+            console.error(`[${extensionName}] Chapter summary generation failed:`, err);
+            _chaptersSetStatus(`ERROR: ${err.message}`);
+        } finally {
+            const btn2 = document.getElementById('chapters-gen-btn');
+            if (btn2) btn2.disabled = false;
+        }
+        return;
+    }
+
+    // ── Step 1: collect chats, show estimate, wait for CONFIRM ───────────────
+    chaptersGenerationPending = null;
+    const btn = document.getElementById('chapters-gen-btn');
+    if (btn) btn.disabled = true;
+    _chaptersSetStatus('COLLECTING CHATS…');
+    await _chaptersYield();
+
+    try {
+        const { sections, totalMessages } = await getAllChatsForJournal();
+
+        if (!totalMessages) {
+            _chaptersSetStatus('NO CHAT MESSAGES FOUND.');
+            if (btn) btn.disabled = false;
+            return;
+        }
+
+        const transcript = sections
+            .map(s => `=== ${s.label} ===\n${s.lines.join('\n')}`)
+            .join('\n\n');
+
+        const estTokens = Math.round(transcript.length / 4);
+        chaptersEstTokens = estTokens;
+        const depthMax = getDepthMaxTokens(estTokens, chaptersDepthLevel);
+
+        _chaptersSetStatus(`${totalMessages} MESSAGES · ${sections.length} CHATS · ~${estTokens.toLocaleString()} EST. TOKENS`);
+
+        // Reveal sliders; set tokens max from depth cap and default to that cap
+        const tokensRowEl = document.getElementById('chapters-sliders-wrap');
+        const sliderEl = document.getElementById('chapters-tokens-slider');
+        const tokensValueEl = document.getElementById('chapters-tokens-value');
+        if (tokensRowEl) tokensRowEl.style.display = '';
+        if (sliderEl) {
+            sliderEl.max = depthMax;
+            chaptersResponseTokens = depthMax;
+            sliderEl.value = depthMax;
+            if (tokensValueEl) tokensValueEl.textContent = `${depthMax.toLocaleString()} TOKENS`;
+        }
+        await _chaptersYield();
+
+        chaptersGenerationPending = { transcript, type };
+
+        if (btn) { btn.textContent = 'CONFIRM'; btn.disabled = false; }
+    } catch (err) {
+        console.error(`[${extensionName}] Chapter summary collection failed:`, err);
+        _chaptersSetStatus(`ERROR: ${err.message}`);
+        if (btn) btn.disabled = false;
+    }
 }
 
 window.getMonopadTimeTracker = function () {
@@ -688,7 +1179,7 @@ function trySetSillyTavernVisualNovelMode(enabled) {
 }
 
 function createVnModeController() {
-    const CHUNK_SIZE = 300;
+    const CHUNK_SIZE = 750;
     const VN_POSITION_KEY = `${extensionName}-vn-box-position`;
     const VN_STREAMING_KEY = `${extensionName}-vn-streaming-enabled`;
     let chunkIndex = 0;
@@ -1331,37 +1822,56 @@ function createVnModeController() {
         const normalized = String(text || '').replace(/\s+/g, ' ').trim();
         if (!normalized) return [];
 
-        const chunks = [];
-        let remaining = normalized;
-        const min = CHUNK_SIZE * 0.4;
+        // Collect split positions based on sentence-boundary rules:
+        //   ."  — single period immediately followed by a quote  → split AFTER the quote
+        //   ".  — quote immediately followed by a single period  → split AFTER the period
+        // "Single" means the period is not part of an ellipsis (not preceded or followed
+        // by another dot). Patterns with a space between period and quote (`. "` / `" .`)
+        // are intentionally ignored — the quote there is an opening quote, not a closer.
+        const splitPositions = [];
+        for (let i = 0; i < normalized.length - 1; i++) {
+            const c    = normalized[i];
+            const next = normalized[i + 1];
+            const prev = i > 0 ? normalized[i - 1] : '';
 
-        while (remaining.length > CHUNK_SIZE) {
-            let splitAt = -1;
-
-            // 1. Prefer splitting after a closing " (end of a dialogue line)
-            const quoteAt = remaining.lastIndexOf('"', CHUNK_SIZE);
-            if (quoteAt >= min) splitAt = quoteAt;
-
-            // 2. Fall back to sentence end (.)
-            if (splitAt < min) {
-                const dotAt = remaining.lastIndexOf('.', CHUNK_SIZE);
-                if (dotAt >= min) splitAt = dotAt;
+            if (c === '.' && next === '"') {
+                // ." — skip if this dot is part of an ellipsis (..)
+                if (prev !== '.') splitPositions.push(i + 2); // include ." in this chunk
+            } else if (c === '"' && next === '.') {
+                // ". — skip if the following dot leads into an ellipsis
+                const afterDot = i + 2 < normalized.length ? normalized[i + 2] : '';
+                if (afterDot !== '.') splitPositions.push(i + 2); // include ". in this chunk
             }
-
-            // 3. Fall back to last space
-            if (splitAt < min) {
-                const spaceAt = remaining.lastIndexOf(' ', CHUNK_SIZE);
-                if (spaceAt >= 1) splitAt = spaceAt;
-            }
-
-            // 4. Hard cut
-            if (splitAt < 1) splitAt = CHUNK_SIZE;
-
-            chunks.push(remaining.slice(0, splitAt + 1).trim());
-            remaining = remaining.slice(splitAt + 1).trim();
         }
 
-        if (remaining) chunks.push(remaining);
+        // Build natural sentences from split positions (or treat whole text as one sentence).
+        const sentences = [];
+        let start = 0;
+        for (const pos of splitPositions) {
+            const s = normalized.slice(start, pos).trim();
+            if (s) sentences.push(s);
+            start = pos;
+        }
+        const last = normalized.slice(start).trim();
+        if (last) sentences.push(last);
+
+        // Second pass: hard-cap each sentence at CHUNK_SIZE on a word boundary.
+        // This ensures no chunk ever exceeds the limit even if no ." / ". exists.
+        const chunks = [];
+        for (const sentence of sentences) {
+            if (sentence.length <= CHUNK_SIZE) {
+                chunks.push(sentence);
+                continue;
+            }
+            let rem = sentence;
+            while (rem.length > CHUNK_SIZE) {
+                const spaceAt = rem.lastIndexOf(' ', CHUNK_SIZE);
+                const cutAt   = spaceAt > 0 ? spaceAt : CHUNK_SIZE;
+                chunks.push(rem.slice(0, cutAt + 1).trim());
+                rem = rem.slice(cutAt + 1).trim();
+            }
+            if (rem) chunks.push(rem);
+        }
         return chunks;
     }
 
@@ -2267,18 +2777,28 @@ function stopShopTrack() {
 }
 
 const BGM_TRACK_TABS = [
-    { key: "daytime",            settingKey: "daytimeTracks",         listId: "daytime-tracks-list",            selectedId: "daytime-selected-list" },
-    { key: "nighttime",          settingKey: "nighttimeTracks",       listId: "nighttime-tracks-list",          selectedId: "nighttime-selected-list" },
-    { key: "investigation",      settingKey: "investigationTracks",   listId: "investigation-tracks-list",      selectedId: "investigation-selected-list" },
-    { key: "shop",               settingKey: "shopTracks",            listId: "shop-tracks-list",               selectedId: "shop-selected-list" },
-    { key: "trial-general",      settingKey: "trialGeneralTracks",      listId: "trial-general-tracks-list",      selectedId: "trial-general-selected-list" },
-    { key: "trial-preparation",  settingKey: "trialPreparationTracks",  listId: "trial-preparation-tracks-list",  selectedId: "trial-preparation-selected-list" },
-    { key: "trial-debates",      settingKey: "trialDebatesTracks",      listId: "trial-debates-tracks-list",      selectedId: "trial-debates-selected-list" },
-    { key: "trial-scrum",        settingKey: "trialScrumTracks",      listId: "trial-scrum-tracks-list",        selectedId: "trial-scrum-selected-list" },
-    { key: "trial-pta",          settingKey: "trialPtaTracks",        listId: "trial-pta-tracks-list",          selectedId: "trial-pta-selected-list" },
-    { key: "trial-panic",        settingKey: "trialPanicTracks",      listId: "trial-panic-tracks-list",        selectedId: "trial-panic-selected-list" },
-    { key: "trial-reenactment",  settingKey: "trialReenactmentTracks",listId: "trial-reenactment-tracks-list",  selectedId: "trial-reenactment-selected-list" },
-    { key: "trial-closing",      settingKey: "trialClosingTracks",    listId: "trial-closing-tracks-list",      selectedId: "trial-closing-selected-list" },
+    { key: "daytime",                settingKey: "daytimeTracks",             listId: "daytime-tracks-list",                selectedId: "daytime-selected-list" },
+    { key: "nighttime",              settingKey: "nighttimeTracks",           listId: "nighttime-tracks-list",              selectedId: "nighttime-selected-list" },
+    { key: "investigation",          settingKey: "investigationTracks",       listId: "investigation-tracks-list",          selectedId: "investigation-selected-list" },
+    { key: "shop",                   settingKey: "shopTracks",                listId: "shop-tracks-list",                   selectedId: "shop-selected-list" },
+    { key: "trial-general",          settingKey: "trialGeneralTracks",        listId: "trial-general-tracks-list",          selectedId: "trial-general-selected-list" },
+    { key: "trial-preparation",      settingKey: "trialPreparationTracks",    listId: "trial-preparation-tracks-list",      selectedId: "trial-preparation-selected-list" },
+    { key: "trial-debates",          settingKey: "trialDebatesTracks",        listId: "trial-debates-tracks-list",          selectedId: "trial-debates-selected-list" },
+    { key: "trial-panic",            settingKey: "trialPanicTracks",          listId: "trial-panic-tracks-list",            selectedId: "trial-panic-selected-list" },
+    { key: "trial-scrum",            settingKey: "trialScrumTracks",          listId: "trial-scrum-tracks-list",            selectedId: "trial-scrum-selected-list" },
+    { key: "trial-hangman",          settingKey: "trialHangmanTracks",        listId: "trial-hangman-tracks-list",          selectedId: "trial-hangman-selected-list" },
+    { key: "trial-rebuttal",         settingKey: "trialRebuttalTracks",       listId: "trial-rebuttal-tracks-list",         selectedId: "trial-rebuttal-selected-list" },
+    { key: "trial-mindmine",         settingKey: "trialMindMineTracks",       listId: "trial-mindmine-tracks-list",         selectedId: "trial-mindmine-selected-list" },
+    { key: "trial-interjection",     settingKey: "trialInterjectionTracks",   listId: "trial-interjection-tracks-list",     selectedId: "trial-interjection-selected-list" },
+    { key: "trial-suspect-choice",   settingKey: "trialSuspectChoiceTracks",  listId: "trial-suspect-choice-tracks-list",   selectedId: "trial-suspect-choice-selected-list" },
+    { key: "pta-phase1",             settingKey: "ptaPhase1Tracks",           listId: "pta-phase1-tracks-list",             selectedId: "pta-phase1-selected-list" },
+    { key: "pta-phase2",             settingKey: "ptaPhase2Tracks",           listId: "pta-phase2-tracks-list",             selectedId: "pta-phase2-selected-list" },
+    { key: "pta-phase3",             settingKey: "ptaPhase3Tracks",           listId: "pta-phase3-tracks-list",             selectedId: "pta-phase3-selected-list" },
+    // legacy keys — no longer shown in UI but kept so existing saved tracks still load
+    { key: "trial-pta",              settingKey: "trialPtaTracks",            listId: "trial-pta-tracks-list",              selectedId: "trial-pta-selected-list" },
+    { key: "trial-reenactment",      settingKey: "trialReenactmentTracks",    listId: "trial-reenactment-tracks-list",      selectedId: "trial-reenactment-selected-list" },
+    { key: "trial-closing",          settingKey: "trialClosingTracks",        listId: "trial-closing-tracks-list",          selectedId: "trial-closing-selected-list" },
+    { key: "trial-voting",           settingKey: "trialVotingTracks",         listId: "trial-voting-tracks-list",           selectedId: "trial-voting-selected-list" },
 ];
 
 let cachedBgmPaths = null;
@@ -2303,46 +2823,192 @@ async function fetchBgmPaths() {
     return cachedBgmPaths;
 }
 
-function playTrackFromSetting(settingKey) {
-    const tracks = getMonopadSetting(settingKey) || [];
-    if (!tracks.length) return;
+// ── BGM playlist state (for prev / next controls) ─────────────────────────
+let bgmCurrentSettingKey = null;
+let bgmCurrentList       = [];
+let bgmCurrentIndex      = -1;
+let bgmPlayMode          = 'loop'; // 'loop' | 'shuffle' | 'sequential'
+let _bgmEndedHandler     = null;   // ref to current ended listener for cleanup
 
-    const path = tracks[Math.floor(Math.random() * tracks.length)];
+const BGM_PLAYLIST_LABELS = {
+    daytimeTracks:           'DAYTIME',
+    nighttimeTracks:         'NIGHTTIME',
+    investigationTracks:     'INVESTIGATION',
+    shopTracks:              'SHOP',
+    trialGeneralTracks:      'GENERAL',
+    trialPreparationTracks:  'TRIAL PREP',
+    trialDebatesTracks:      'NON-STOP DEBATE',
+    trialPanicTracks:        'MASS PANIC DEBATE',
+    trialScrumTracks:        'SCRUM DEBATE',
+    trialHangmanTracks:      'HANGMAN\'S GAMBIT',
+    trialRebuttalTracks:     'REBUTTAL SHOWDOWN',
+    trialMindMineTracks:     'MIND MINE',
+    trialInterjectionTracks: 'INTERJECTION',
+    trialSuspectChoiceTracks:'SUSPECT CHOICE',
+    ptaPhase1Tracks:         'PHASE 1',
+    ptaPhase2Tracks:         'PHASE 2',
+    ptaPhase3Tracks:         'PHASE 3',
+};
+
+const BGM_PLAYLIST_PARENTS = {
+    daytimeTracks:           'PHASES',
+    nighttimeTracks:         'PHASES',
+    investigationTracks:     'PHASES',
+    shopTracks:              'LOCATIONS',
+    trialPreparationTracks:  'LOCATIONS',
+    trialGeneralTracks:      'TRIAL',
+    trialDebatesTracks:      'TRIAL',
+    trialPanicTracks:        'TRIAL',
+    trialScrumTracks:        'TRIAL',
+    trialHangmanTracks:      'TRIAL',
+    trialRebuttalTracks:     'TRIAL',
+    trialMindMineTracks:     'TRIAL',
+    trialInterjectionTracks: 'TRIAL',
+    trialSuspectChoiceTracks:'TRIAL',
+    ptaPhase1Tracks:         'PANIC TALK ACTION',
+    ptaPhase2Tracks:         'PANIC TALK ACTION',
+    ptaPhase3Tracks:         'PANIC TALK ACTION',
+};
+
+function playBgmPath(path, settingKey = null) {
     if (!path) return;
 
-    // Route through Dynamic Audio extension if available — shows in its UI
-    const $bgmSelect = $("#audio_bgm_select");
-    if ($bgmSelect.length) {
-        if (!$bgmSelect.find(`option[value="${path}"]`).length) {
-            const name = path.split("/").pop().replace(/\.[^/.]+$/, "");
-            $bgmSelect.append(new Option(`asset: ${name}`, path));
-        }
-        $bgmSelect.val(path).trigger("change");
-        // Ensure the track loops regardless of the user's BGM lock setting
-        $("#audio_bgm").prop("loop", true);
-        console.log(`[Dangan][BGM] Handing off to Dynamic Audio (${settingKey}): ${path}`);
-        return;
-    }
-
-    // Fallback: direct audio if Dynamic Audio extension not loaded
+    // Play on our own independent element — DA cannot interfere with this element.
     if (investigationTrackAudio) {
         investigationTrackAudio.pause();
         investigationTrackAudio = null;
     }
-
     investigationTrackAudio = new Audio(path);
-    investigationTrackAudio.loop = true;
+    investigationTrackAudio.loop = (bgmPlayMode === 'loop');
+    if (bgmPlayMode !== 'loop') bgmAttachEndedListener(investigationTrackAudio);
     investigationTrackAudio.volume = Number(getMonopadSetting("monopadVolume") ?? 50) / 100;
     investigationTrackAudio.play().catch(e =>
-        console.warn(`[Dangan][BGM] Track play failed (${settingKey}):`, e)
+        console.warn(`[Dangan][BGM] Track play failed (${settingKey ?? "?"}):`, e)
     );
-    console.log(`[Dangan][BGM] Playing track (direct) (${settingKey}): ${path}`);
+
+    // Seed DA's internal lastBgmPath by triggering it to "select" our track.
+    // DA's polling worker checks: if chosen path === lastBgmPath → return early (no el.load/play).
+    // With lastBgmPath seeded to our path and bgm_locked=true pointing at our path,
+    // every future worker poll exits without touching #audio_bgm.
+    const $bgmSelect = $('#audio_bgm_select');
+    if ($bgmSelect.length) {
+        if (!$bgmSelect.find(`option[value="${path}"]`).length) {
+            const name = path.split('/').pop().replace(/\.[^/.]+$/, '');
+            $bgmSelect.append($('<option>').val(path).text(`asset: ${name}`).attr('data-dangan-bgm', '1'));
+        }
+        // Set bgm_selected first so onBGMSelectChange picks it up correctly.
+        const daSettings = extension_settings['audio'];
+        if (daSettings) {
+            daSettings.bgm_selected = path;
+            daSettings.bgm_locked = true;
+        }
+        // Trigger DA: it sets lastBgmPath=path and plays on #audio_bgm.
+        $bgmSelect.val(path).trigger('change');
+        // Silence #audio_bgm — our investigationTrackAudio is the real source.
+        setTimeout(() => {
+            const daEl = document.getElementById('audio_bgm');
+            if (daEl instanceof HTMLAudioElement) daEl.pause();
+        }, 400);
+    }
+
+    console.log(`[Dangan][BGM] Playing track (${settingKey ?? "?"}): ${path}`);
+}
+
+function playTrackFromSetting(settingKey) {
+    const tracks = getMonopadSetting(settingKey) || [];
+    if (!tracks.length) return;
+
+    const idx = Math.floor(Math.random() * tracks.length);
+    bgmCurrentSettingKey = settingKey;
+    bgmCurrentList       = [...tracks];
+    bgmCurrentIndex      = idx;
+
+    playBgmPath(tracks[idx], settingKey);
+}
+
+function bgmPlayPrev() {
+    if (!bgmCurrentList.length) return;
+    bgmCurrentIndex = (bgmCurrentIndex - 1 + bgmCurrentList.length) % bgmCurrentList.length;
+    playBgmPath(bgmCurrentList[bgmCurrentIndex], bgmCurrentSettingKey);
+}
+
+function bgmPlayNext() {
+    if (!bgmCurrentList.length) return;
+    bgmCurrentIndex = (bgmCurrentIndex + 1) % bgmCurrentList.length;
+    playBgmPath(bgmCurrentList[bgmCurrentIndex], bgmCurrentSettingKey);
+}
+
+function bgmPlayShuffle() {
+    if (!bgmCurrentList.length) return;
+    bgmCurrentIndex = Math.floor(Math.random() * bgmCurrentList.length);
+    playBgmPath(bgmCurrentList[bgmCurrentIndex], bgmCurrentSettingKey);
+}
+
+function bgmAttachEndedListener(audioEl) {
+    if (_bgmEndedHandler) audioEl.removeEventListener('ended', _bgmEndedHandler);
+    _bgmEndedHandler = () => {
+        _bgmEndedHandler = null;
+        if (bgmPlayMode === 'shuffle') bgmPlayShuffle();
+        else if (bgmPlayMode === 'sequential') bgmPlayNext();
+    };
+    audioEl.addEventListener('ended', _bgmEndedHandler, { once: true });
+}
+
+function bgmTogglePause() {
+    const audioEl = document.getElementById("audio_bgm");
+    if (audioEl instanceof HTMLAudioElement) {
+        if (audioEl.paused) audioEl.play().catch(() => {});
+        else audioEl.pause();
+        return;
+    }
+    if (investigationTrackAudio) {
+        if (investigationTrackAudio.paused) investigationTrackAudio.play().catch(() => {});
+        else investigationTrackAudio.pause();
+    }
 }
 
 function playInvestigationTrack() { playTrackFromSetting("investigationTracks"); }
 function playDaytimeTrack()       { playTrackFromSetting("daytimeTracks"); }
 function playNighttimeTrack()     { playTrackFromSetting("nighttimeTracks"); }
 function playTrialTrack()         { playTrackFromSetting("trialGeneralTracks"); }
+
+/** Returns true when a real character or group chat is active (not the default Assistant chat). */
+function isInCharacterChat() {
+    const ctx = window.SillyTavern?.getContext?.();
+    if (!ctx) return false;
+    const char = ctx.characters?.[ctx.characterId];
+    // Group chat → always a real chat.
+    if (ctx.groupId) return true;
+    // No character selected → temporary assistant chat.
+    if (ctx.characterId == null) return false;
+    // ST's permanent Assistant character keeps name 'Assistant' (neutralCharacterName).
+    // Also catches avatar key 'assistant' if the avatar hasn't been changed.
+    if (ctx.name2 === 'Assistant') return false;
+    if (char?.avatar === 'assistant') return false;
+    return true;
+}
+
+function _stopAllBgm() {
+    if (investigationTrackAudio) {
+        investigationTrackAudio.pause();
+        investigationTrackAudio = null;
+    }
+    const daEl = document.getElementById('audio_bgm');
+    if (daEl instanceof HTMLAudioElement && !daEl.paused) {
+        daEl.pause();
+    }
+    audioVisualizer.hide();
+}
+
+function playPhaseTrack() {
+    if (investigationUnderway) {
+        playInvestigationTrack();
+    } else if (ensureTimeTrackerState().phase === TIME_PHASE_NIGHT) {
+        playNighttimeTrack();
+    } else {
+        playDaytimeTrack();
+    }
+}
 
 function stopInvestigationTrack() {
     // Stop direct audio fallback if it was used
@@ -2522,7 +3188,6 @@ async function triggerTrialStartFromMapPin() {
     if (!accepted) return false;
 
     console.log("[Dangan][Trial] Begin Class Trial selected from map pin.");
-    playTrialTrack();
     trialManager?.start();
     return true;
 }
@@ -3643,6 +4308,66 @@ function applyImageVisibilitySettings() {
             ? `${extensionFolderPath}/assets/icons/smartphone.svg`
             : `${extensionFolderPath}/assets/images/ui/hopes-peak-crest.png`;
     }
+    const brandingExtras = document.getElementById("dangan-branding-extras");
+    if (brandingExtras) brandingExtras.style.display = hideBranding ? 'block' : 'none';
+}
+
+const ANNOUN_TYPES = ['DAY_ANNOUN', 'NIGHT_ANNOUN', 'BDA'];
+const ANNOUN_FIELDS = ['image', 'voice', 'text'];
+
+function getLecternUrl() {
+    const mode = getMonopadSetting('customLecternMode');
+    const data = getMonopadSetting('customLecternData');
+    if (mode === 'custom' && data) return data;
+    const base = extensionFolderPath || `scripts/extensions/third-party/${extensionName}`;
+    return `${base}/assets/classtrial/lectern.webp`;
+}
+
+function applyAnnouncementCustomisationUI() {
+    const brandingExtras = document.getElementById("dangan-branding-extras");
+    if (brandingExtras) {
+        const hideBranding = !!getMonopadSetting('hideHopesPeakBranding');
+        brandingExtras.style.display = hideBranding ? 'block' : 'none';
+    }
+    const tab = extension_settings[extensionName] ?? {};
+    for (const type of ANNOUN_TYPES) {
+        for (const field of ANNOUN_FIELDS) {
+            const mode = tab[`announcementMode_${field}_${type}`] ?? 'default';
+            // Mode buttons active state
+            document.querySelectorAll(`[data-announ-type="${type}"][data-announ-field="${field}"]`).forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.announValue === mode);
+            });
+            // Custom row visibility
+            const row = document.getElementById(`dangan-announ-row-${field}-${type}`);
+            if (row) row.classList.toggle('is-hidden', mode !== 'custom');
+            // File name label
+            if (field !== 'text') {
+                const nameEl = document.getElementById(`dangan-file-name-${field}-${type}`);
+                if (nameEl) {
+                    const data = tab[`announcementData_${field}_${type}`];
+                    nameEl.textContent = data ? 'Custom file loaded' : 'No file chosen';
+                }
+            }
+            // Text area value
+            if (field === 'text') {
+                const ta = document.getElementById(`dangan-text-${type}`);
+                if (ta) ta.value = tab[`announcementData_text_${type}`] ?? '';
+            }
+        }
+    }
+}
+
+function applyLecternUI() {
+    const mode = getMonopadSetting('customLecternMode') ?? 'default';
+    document.querySelectorAll('[data-lectern-value]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.lecternValue === mode);
+    });
+    const row = document.getElementById('dangan-lectern-custom-row');
+    if (row) row.classList.toggle('is-hidden', mode !== 'custom');
+    const nameEl = document.getElementById('dangan-lectern-file-name');
+    if (nameEl) {
+        nameEl.textContent = getMonopadSetting('customLecternData') ? 'Custom file loaded' : 'No file chosen';
+    }
 }
 
 function applyDynamicTheme() {
@@ -4024,7 +4749,7 @@ function applySettingsTabUI() {
     }
 
     const lang = String(tab.monokumaLanguage ?? "EN");
-    $(".settings-lang-btn").removeClass("active");
+    $(".settings-lang-btn[data-lang]").removeClass("active");
     $(`.settings-lang-btn[data-lang="${lang}"]`).addClass("active");
 
     renderAllBgmTrackTabs();
@@ -4081,6 +4806,8 @@ function applySettingsTabUI() {
     applyDynamicTheme();
     renderTimeTrackerUi();
     vnModeController?.setEnabled?.(!!tab.vnModeEnabled);
+    applyAnnouncementCustomisationUI();
+    applyLecternUI();
 }
 
 function saveCharacters() {
@@ -5479,6 +6206,18 @@ jQuery(async () => {
                 audioVisualizer.hide();
                 await fadeOutAndPauseBgm(500);
             },
+            getCustomOverrides: (type) => {
+                if (!getMonopadSetting('hideHopesPeakBranding')) return {};
+                const tab = extension_settings[extensionName] ?? {};
+                const imageMode = tab[`announcementMode_image_${type}`] ?? 'default';
+                const voiceMode = tab[`announcementMode_voice_${type}`] ?? 'default';
+                const textMode  = tab[`announcementMode_text_${type}`]  ?? 'default';
+                return {
+                    image: imageMode === 'custom' ? (tab[`announcementData_image_${type}`] ?? null) : null,
+                    voice: voiceMode === 'custom' ? (tab[`announcementData_voice_${type}`] ?? null) : null,
+                    text:  textMode  === 'custom' ? (tab[`announcementData_text_${type}`]  ?? null) : null,
+                };
+            },
         });
 
         // SillyTavern may re-mount portions of the DOM after extension load.
@@ -5588,6 +6327,7 @@ jQuery(async () => {
             xpRewards: XP_REWARDS,
             getItemsPanelController: () => itemsPanelController,
             increaseTrust,
+            getCoinLabel: () => getMonopadSetting('hideHopesPeakBranding') ? 'COINS' : 'MONOCOINS',
         });
 
         socialPanelController = createSocialPanelController({
@@ -5607,6 +6347,7 @@ jQuery(async () => {
                 return (prome?.enableUserSprite && prome?.userSprite) ? prome.userSprite : null;
             },
             getMonopadSetting,
+            onCharacterDead: (name) => trialManager?.markCharacterExecuted(name),
         });
 
         try {
@@ -5696,6 +6437,11 @@ jQuery(async () => {
             closeMonopadPanel();
         });
 
+$(".monopad-title").on("click", function () {
+    playSfx(sfx.click);
+    setActiveMonopadTab("welcome");
+});
+
 $(".monopad-icon").on("click", function () {
     playSfx(sfx.click);
 
@@ -5718,6 +6464,10 @@ if (tab === "truth" && window.renderTruthBullets) {
 
     if (tab === "map") {
         mapPanelController?.renderMapPanel();
+    }
+
+    if (tab === "chapters") {
+        renderChaptersPanel();
     }
 });
 
@@ -5946,6 +6696,89 @@ $(".monopad-icon").on("mouseenter", function () {
             mapPanelController?.handleSettingsChanged?.();
         });
 
+        // Announcement customisation mode buttons (DEFAULT / CUSTOM toggles)
+        $(document).on("click", "[data-announ-type][data-announ-field][data-announ-value]", function () {
+            const type  = this.dataset.announType;
+            const field = this.dataset.announField;
+            const value = this.dataset.announValue;
+            if (!type || !field || !value) return;
+
+            // Update active state on sibling buttons
+            document.querySelectorAll(`[data-announ-type="${type}"][data-announ-field="${field}"]`).forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.announValue === value);
+            });
+
+            // Show/hide the custom input row
+            const row = document.getElementById(`dangan-announ-row-${field}-${type}`);
+            if (row) row.classList.toggle('is-hidden', value !== 'custom');
+
+            setMonopadSetting(`announcementMode_${field}_${type}`, value);
+            saveSettingsDebounced();
+        });
+
+        // Announcement customisation file picker buttons
+        $(document).on("click", "[id^='dangan-pick-image-'],[id^='dangan-pick-voice-']", function () {
+            const isImage = this.id.startsWith('dangan-pick-image-');
+            const type = this.id.replace(isImage ? 'dangan-pick-image-' : 'dangan-pick-voice-', '');
+            const fileInput = document.getElementById(`dangan-file-${isImage ? 'image' : 'voice'}-${type}`);
+            fileInput?.click();
+        });
+
+        // Announcement customisation file input change — read as data URL
+        $(document).on("change", "[id^='dangan-file-image-'],[id^='dangan-file-voice-']", function () {
+            const isImage = this.id.startsWith('dangan-file-image-');
+            const type = this.id.replace(isImage ? 'dangan-file-image-' : 'dangan-file-voice-', '');
+            const field = isImage ? 'image' : 'voice';
+            const file = this.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                setMonopadSetting(`announcementData_${field}_${type}`, e.target.result);
+                const nameEl = document.getElementById(`dangan-file-name-${field}-${type}`);
+                if (nameEl) nameEl.textContent = file.name;
+                saveSettingsDebounced();
+            };
+            reader.readAsDataURL(file);
+        });
+
+        // Class Trial podium (lectern) mode toggle
+        $(document).on("click", "[data-lectern-value]", function () {
+            const value = String(this.dataset.lecternValue || 'default');
+            document.querySelectorAll('[data-lectern-value]').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.lecternValue === value);
+            });
+            const row = document.getElementById('dangan-lectern-custom-row');
+            if (row) row.classList.toggle('is-hidden', value !== 'custom');
+            setMonopadSetting('customLecternMode', value);
+            saveSettingsDebounced();
+        });
+
+        // Class Trial podium (lectern) file picker
+        $(document).on("click", "#dangan-lectern-pick", () => {
+            document.getElementById('dangan-lectern-file')?.click();
+        });
+
+        $(document).on("change", "#dangan-lectern-file", function () {
+            const file = this.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                setMonopadSetting('customLecternData', e.target.result);
+                const nameEl = document.getElementById('dangan-lectern-file-name');
+                if (nameEl) nameEl.textContent = file.name;
+                saveSettingsDebounced();
+            };
+            reader.readAsDataURL(file);
+        });
+
+        // Announcement customisation text area
+        $(document).on("input", "[id^='dangan-text-']", function () {
+            const type = this.id.replace('dangan-text-', '');
+            if (!ANNOUN_TYPES.includes(type)) return;
+            setMonopadSetting(`announcementData_text_${type}`, this.value);
+            saveSettingsDebounced();
+        });
+
         $("#dangan_crt_slider").on("input", e => {
             const value = Number(e.target.value);
             setMonopadSetting("crtIntensity", Number.isFinite(value) ? value : 35);
@@ -5977,10 +6810,10 @@ $(".monopad-icon").on("mouseenter", function () {
             if (shopTrackAudio) shopTrackAudio.volume = vol / 100;
         });
 
-        $(document).on("click", ".settings-lang-btn", function () {
+        $(document).on("click", ".settings-lang-btn[data-lang]", function () {
             const lang = String(this.dataset.lang || "EN");
             setMonopadSetting("monokumaLanguage", lang);
-            $(".settings-lang-btn").removeClass("active");
+            $(".settings-lang-btn[data-lang]").removeClass("active");
             $(`.settings-lang-btn[data-lang="${lang}"]`).addClass("active");
         });
 
@@ -6163,6 +6996,24 @@ $(".monopad-icon").on("mouseenter", function () {
             if (statusEl) statusEl.textContent = "Time tracker reset to DAY 1.";
         });
 
+        $("#dangan_reset_chapter").on("click", async function () {
+            const statusEl = document.getElementById("dangan_reset_chapter_status");
+            const confirmed = await openMonopadConfirmDialog({
+                title: "RESET CHAPTER",
+                message: "Reset the chapter indicator back to PROLOGUE?",
+                confirmLabel: "RESET",
+                cancelLabel: "CANCEL",
+            });
+            if (!confirmed) {
+                if (statusEl) statusEl.textContent = "Reset cancelled.";
+                return;
+            }
+            setMonopadSetting('chapterIndex', 0);
+            saveSettingsDebounced();
+            updateChapterDisplay();
+            if (statusEl) statusEl.textContent = "Chapter reset to PROLOGUE.";
+        });
+
 loadSettings();
 ensureTimeTrackerState();
 renderTimeTrackerUi();
@@ -6200,9 +7051,69 @@ const audioVisualizer = createAudioVisualizerController({
         isInvestigation: investigationUnderway,
         isNight: ensureTimeTrackerState().phase === TIME_PHASE_NIGHT,
     }),
+    onPrev:          () => bgmPlayPrev(),
+    onTogglePause:   () => bgmTogglePause(),
+    onNext:          () => bgmPlayNext(),
+    onShuffle:       () => bgmPlayShuffle(),
+    getPlayMode:     () => bgmPlayMode,
+    onSetPlayMode:   (mode) => {
+        bgmPlayMode = mode;
+        // Immediately sync loop attribute on whichever element is currently playing
+        const isLoop = mode === 'loop';
+        const dynEl = document.getElementById('audio_bgm');
+        if (dynEl instanceof HTMLAudioElement) dynEl.loop = isLoop;
+        if (investigationTrackAudio) investigationTrackAudio.loop = isLoop;
+    },
+    getIsPaused: () => {
+        const audioEl = document.getElementById('audio_bgm');
+        if (audioEl instanceof HTMLAudioElement) return audioEl.paused;
+        return investigationTrackAudio?.paused ?? true;
+    },
+    getPlaylistLabel: () => {
+        const key = bgmCurrentSettingKey;
+        if (!key) return '';
+        const label  = BGM_PLAYLIST_LABELS[key]  ?? '';
+        const parent = BGM_PLAYLIST_PARENTS[key] ?? '';
+        return parent ? `${parent} - ${label}` : label;
+    },
 });
 audioVisualizer.init();
+
+// Immediately suppress the visualizer if we're in the Assistant chat with the setting off.
+if (!getMonopadSetting('bgmOutsideChats') && !isInCharacterChat()) {
+    audioVisualizer.suppress();
+}
+
+// Intercept any play() call on #audio_bgm or our own investigationTrackAudio in the
+// capture phase — this fires before the audio actually starts, giving us a zero-latency
+// block. Unsuppress the visualizer once we've confirmed the initial state is settled.
+document.addEventListener('play', (e) => {
+    if (getMonopadSetting('bgmOutsideChats') || isInCharacterChat()) return;
+    const daEl = document.getElementById('audio_bgm');
+    if (e.target === daEl || e.target === investigationTrackAudio) {
+        e.target.pause();
+        audioVisualizer.hide();
+    }
+}, true);
+
+setTimeout(() => audioVisualizer.unsuppress(), 1000);
+
+// Auto-start BGM for the current phase on load (character/group chats only).
+setTimeout(() => {
+    if (!getMonopadSetting('bgmOutsideChats') && !isInCharacterChat()) return;
+    if (investigationTrackAudio && !investigationTrackAudio.paused) return; // already playing
+    playPhaseTrack();
+}, 2000);
+
+// Poll to enforce the setting while the user navigates between chats.
+// CHAT_CHANGED doesn't fire when going to/from the Assistant chat.
+setInterval(() => {
+    if (getMonopadSetting('bgmOutsideChats')) return;
+    if (!isInCharacterChat()) _stopAllBgm();
+}, 2000);
+
 rewards?.renderProgressionUi?.();
+updateChapterDisplay();
 itemsPanelController.loadInventoryState();
 applySettingsTabUI();
 applyImageVisibilitySettings();
@@ -6258,6 +7169,7 @@ debugSTGlobals();
             extensionSettings: extension_settings,
             extensionFolderPath,
             saveSettingsDebounced,
+            getLecternUrl,
             vnModeController,
             getTruthBullets,
             generateTrialDialogue,
@@ -6269,9 +7181,14 @@ debugSTGlobals();
             playDebatesTrack: () => playTrackFromSetting('trialDebatesTracks'),
             stopDebatesTrack: () => fadeOutAndPauseBgm(600),
             playPanicTrack: () => playTrackFromSetting('trialPanicTracks'),
+            playTrialGeneralTrack: () => playTrialTrack(),
             suppressVisualizer: () => audioVisualizer.suppress(),
             unsuppressVisualizer: () => audioVisualizer.unsuppress(),
-            onStartHangmansGambit: () => hangmansGambitController?.run({ question: 'Identify the culprit', answer: 'BLACKENED', time: 60, health: 3, difficulty: 2 }),
+            onStartHangmansGambit: () => {
+                playTrackFromSetting('trialHangmanTracks');
+                hangmansGambitController?.run({ question: 'Identify the culprit', answer: 'BLACKENED', time: 60, health: 3, difficulty: 2 })
+                    ?.then(() => trialManager?.resumeAfterActivity?.());
+            },
             onStartPanicTalkAction: async () => {
                 // Resolve the current speaker as the PTA enemy
                 const speakerName = trialManager?.getGcpSpeakerName?.() ?? null;
@@ -6303,26 +7220,50 @@ debugSTGlobals();
                     BG,
                     mainSprite,
                     defeatSprite,
-                });
+                    getPhaseTrack: (phaseNum) => {
+                        const key = `ptaPhase${phaseNum}Tracks`;
+                        const tracks = getMonopadSetting(key) || [];
+                        if (!tracks.length) return null;
+                        return tracks[Math.floor(Math.random() * tracks.length)] || null;
+                    },
+                })?.then(() => trialManager?.resumeAfterActivity?.());
             },
             onStartInterjection: ({ characterName } = {}) => {
-                const bgmPath = `${(extensionFolderPath || '').replace(/\\/g, '/')}/assets/bgm/New Classmates of the Dead.mp3`;
-                const $bgmSelect = $('#audio_bgm_select');
-                if ($bgmSelect.length) {
-                    if (!$bgmSelect.find(`option[value="${bgmPath}"]`).length) {
-                        $bgmSelect.append(new Option('asset: New Classmates of the Dead', bgmPath));
+                const interjectionTracks = getMonopadSetting('trialInterjectionTracks') || [];
+                if (interjectionTracks.length) {
+                    playTrackFromSetting('trialInterjectionTracks');
+                } else {
+                    // fallback to bundled track
+                    const bgmPath = `${(extensionFolderPath || '').replace(/\\/g, '/')}/assets/bgm/New Classmates of the Dead.mp3`;
+                    const $bgmSelect = $('#audio_bgm_select');
+                    if ($bgmSelect.length) {
+                        if (!$bgmSelect.find(`option[value="${bgmPath}"]`).length) {
+                            $bgmSelect.append(new Option('asset: New Classmates of the Dead', bgmPath));
+                        }
+                        $bgmSelect.val(bgmPath).trigger('change');
                     }
-                    $bgmSelect.val(bgmPath).trigger('change');
                 }
                 interjectionRunner?.run({ characterName })
-                    ?.then(() => triggerInterjectorResponse(characterName));
+                    ?.then(() => triggerInterjectorResponse(characterName))
+                    ?.then(() => trialManager?.resumeAfterActivity?.());
             },
-            onStartVotingTime: () => voteResultsController?.run({}),
-            onStartQuestionTime: () => questionTimeController?.run({ title: 'Who is the blackened?', time: 30, answers: ['Suspect A', 'Suspect B', 'Suspect C', 'Suspect D'], correct: 1 }),
-            onStartQuestionTruth: () => questionTruthController?.run({ question: 'What is the key piece of evidence?', answer: '' }),
-            onStartChoosing: ({ characters = [], startIdx = 0 } = {}) => chooseCharacterController?.run({ characters, startIdx }),
+            onStartVotingTime: () => voteResultsController?.run({})
+                ?.then(() => trialManager?.resumeAfterActivity?.()),
+            onStartQuestionTime: () => questionTimeController?.run({ title: 'Who is the blackened?', time: 30, answers: ['Suspect A', 'Suspect B', 'Suspect C', 'Suspect D'], correct: 1 })
+                ?.then(() => trialManager?.resumeAfterActivity?.()),
+            onStartQuestionTruth: () => questionTruthController?.run({ question: 'What is the key piece of evidence?', answer: '' })
+                ?.then(() => trialManager?.resumeAfterActivity?.()),
+            onStartChoosing: ({ characters = [], startIdx = 0 } = {}) => {
+                playTrackFromSetting('trialSuspectChoiceTracks');
+                chooseCharacterController?.run({ characters, startIdx })
+                    ?.then(() => trialManager?.resumeAfterActivity?.());
+            },
             onStartMassPanicDebate: () => trialManager?.startMassPanicDebate(MPD_TEST_SCENARIOS.slice(0, 6)),
-            onStartRebuttalShowdown: (params) => rebuttalShowdownController?.run(params),
+            onStartRebuttalShowdown: (params) => {
+                playTrackFromSetting('trialRebuttalTracks');
+                rebuttalShowdownController?.run(params)
+                    ?.then(() => trialManager?.resumeAfterActivity?.());
+            },
             onStartPunishmentTime: async ({ characterName } = {}) => {
                 if (!characterName) return;
                 try {
@@ -6341,6 +7282,7 @@ debugSTGlobals();
                 } catch (err) {
                     console.warn('[danganronpa] onStartPunishmentTime failed:', err);
                 }
+                trialManager?.resumeAfterActivity?.();
             },
             getEquippedSkillsSnapshot,
             attachDraggablePositioning,
@@ -6364,8 +7306,15 @@ debugSTGlobals();
 
     console.log(`[${extensionName}] 🚀 Extension fully loaded.`);
 
-    // Initialize the group chat portrait stage once ST has settled
-    setTimeout(() => trialManager?.initGroupChatPortraits?.(), 1500);
+    // Suppress expression VFX/SFX on initial load until the user sends a message.
+    setVfxGcpLoadSuppressed(true);
+    // Initialize the group chat portrait stage once ST has settled, then lift
+    // the VFX suppression after a grace period so initial expression loads don't play SFX.
+    setTimeout(async () => {
+        await trialManager?.initGroupChatPortraits?.();
+        setVfxGcpGroupActive(!!(window.SillyTavern?.getContext?.()?.groupId));
+        setTimeout(() => setVfxGcpLoadSuppressed(false), 1500);
+    }, 1500);
 
     try {
         // Hook into multiple events for maximum reliability
@@ -6377,6 +7326,8 @@ debugSTGlobals();
             
             const msg = chat[mesId] || chat.find(m => m.mesId === mesId) || chat[chat.length - 1];
             if (msg && (msg.is_user || msg.force_user)) {
+                // User sent a message — lift VFX suppression early if still active
+                setVfxGcpLoadSuppressed(false);
                 console.log(`[${extensionName}] 💬 User message detected: "${msg.mes?.slice(0, 30)}..."`);
                 const text = msg.mes;
                 setTimeout(() => {
@@ -6408,16 +7359,48 @@ debugSTGlobals();
         };
         eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, handleCharacterMessage);
 
-        // On chat change, rebuild the stage (group ↔ 1-on-1 may differ) then snap to latest speaker
+        // On chat change, rebuild the stage (group ↔ 1-on-1 may differ) then snap to latest speaker.
+        // Suppress VFX/SFX for the duration of the init + a grace period so the expressions
+        // that fire as ST re-renders the chat don't play sounds — then lift automatically.
         eventSource.on(event_types.CHAT_CHANGED, () => {
+            setVfxGcpLoadSuppressed(true);
+            setVfxGcpGroupActive(false); // reset until new chat's GCP init completes
             trialManager?.destroyGroupChatPortraits?.();
             setTimeout(async () => {
                 trialManager?.onChatChanged?.();
                 await trialManager?.initGroupChatPortraits?.();
                 const ctx = window.SillyTavern?.getContext?.();
+                setVfxGcpGroupActive(!!(ctx?.groupId));
                 const lastMsg = [...(ctx?.chat || [])].reverse().find(m => !m.is_user && m.name);
                 if (lastMsg?.name) trialManager?.updateGroupChatSpeaker?.(lastMsg.name);
+                // Grace period for ST's post-load expression updates to settle, then re-enable VFX/SFX.
+                setTimeout(() => setVfxGcpLoadSuppressed(false), 1500);
             }, 300);
+
+            // Dynamic Audio fires its own CHAT_CHANGED handler and restarts #audio_bgm.
+            // If we own the BGM (investigationTrackAudio is active), silence DA's element
+            // after it settles so only our track plays.
+            if (investigationTrackAudio) {
+                setTimeout(() => {
+                    const daEl = document.getElementById('audio_bgm');
+                    if (daEl instanceof HTMLAudioElement && !daEl.paused) daEl.pause();
+                }, 500);
+            }
+
+            // BGM in-chat-only: start or stop depending on whether we're entering or leaving a chat.
+            if (!getMonopadSetting('bgmOutsideChats')) {
+                setTimeout(() => {
+                    if (isInCharacterChat()) {
+                        // Entering a chat — start phase track if nothing is playing.
+                        if (!investigationTrackAudio || investigationTrackAudio.paused) {
+                            playPhaseTrack();
+                        }
+                    } else {
+                        // Leaving chat — stop BGM and hide visualizer.
+                        _stopAllBgm();
+                    }
+                }, 600);
+            }
         });
 
         console.log(`[${extensionName}] ✅ Chat hooks initialized.`);
@@ -6425,10 +7408,12 @@ debugSTGlobals();
         console.error(`[${extensionName}] ❌ Chat hooks failed:`, e);
     }
 
-    // Mirror /emote expression changes to the active GCP portrait slot.
-    // ST may either append a new <img> (childList) or update an existing one's src (attributes),
-    // so we watch both. We also debounce to avoid rapid VFX/SFX sequences applying
-    // multiple expressions in a row to the same portrait.
+    // Mirror expression changes to the correct GCP portrait slot.
+    // We observe document.body for img.expression mutations — the same scope the VFX
+    // system uses — so we catch /emote changes regardless of which container ST places
+    // the expression images in (VN wrapper, expression holder, inline in chat, etc.).
+    // Group chats: route each src to the matching character's slot via folder comparison.
+    // Solo chats:  debounce and apply to the single speaker slot.
     (function setupExpressionMirror() {
         let _pendingExprSrc = null;
         let _exprDebounceTimer = null;
@@ -6443,44 +7428,82 @@ debugSTGlobals();
             speakerImg.src = src;
         }
 
-        function onExpressionImg(imgNode) {
-            const src = imgNode.getAttribute?.('src') || imgNode.src;
-            if (!src) return;
-            // Route Prome user sprite changes directly to the player slot (no debounce needed)
-            if (imgNode.closest?.('#expression-prome-user')) {
+        function onExpressionChange(imgEl) {
+            // Guard: skip if src attribute isn't set yet (element just added to DOM),
+            // or if src resolves to the page URL (browsers return location.href when
+            // the src attribute is absent, which would load the whole ST page as an image).
+            const srcAttr = imgEl.getAttribute?.('src');
+            if (!srcAttr) return;
+            const src = imgEl.src;
+            if (!src || src === location.href) return;
+
+            // Prome user sprite → player slot
+            if (imgEl.closest?.('#expression-prome-user')) {
                 const playerImg = trialManager?.getGcpPlayerImg?.();
                 if (playerImg) playerImg.src = src;
                 return;
             }
-            // Debounce: only apply the last expression in a rapid burst so VFX/SFX sequences
-            // don't stack multiple emotion changes onto the same portrait at once.
+
+            // Group chat: match to the specific character's slot by URL folder.
+            // We fire VFX/SFX here directly via triggerVfxOnElement so that:
+            //   a) the animation targets the correct portrait (not just gcpCurrentFloat), and
+            //   b) /emote works even when it only updates src and not data-expression
+            //      (which would leave the vfxSystem's data-expression observer silent).
+            const isGroup = !!(window.SillyTavern?.getContext?.()?.groupId);
+            if (isGroup) {
+                const targetImg = trialManager?.getGcpImgForExpressionSrc?.(src);
+                if (targetImg) {
+                    if (!targetImg.closest('.dangan-gcp-slot')?.classList.contains('gcp-dead')) {
+                        targetImg.src = src;
+                        // ST's setImage does a clone-swap in VN mode: the original img is
+                        // removed and a clone gets the new src but inherits the OLD
+                        // data-expression. Reading data-expression here would give "neutral"
+                        // (stale) even when the src is "fear.png". Use the src filename
+                        // as the primary expression source; fall back to data-expression.
+                        let expression = '';
+                        try {
+                            const fname = new URL(src, location.href).pathname.split('/').pop() || '';
+                            expression = fname.replace(/\.[^.]+$/, '').toLowerCase();
+                        } catch { /* ignore bad src */ }
+                        if (!expression) {
+                            expression = (imgEl.getAttribute?.('data-expression') || '').toLowerCase();
+                        }
+                        if (expression) triggerVfxOnElement(expression, targetImg);
+                    }
+                    return;
+                }
+                // targetImg is null → GCP not yet initialised; fall through to debounce
+                // so the expression is buffered and applied once the stage is ready.
+            }
+
+            // Solo chat: debounce
             _pendingExprSrc = src;
             clearTimeout(_exprDebounceTimer);
             _exprDebounceTimer = setTimeout(flushExpression, 80);
         }
 
-        function tryAttach() {
-            const vnWrapper  = document.getElementById('expression-wrapper');
-            const exprHolder = document.getElementById('expression-holder');
-            if (!vnWrapper && !exprHolder) { setTimeout(tryAttach, 500); return; }
-
-            const mo = new MutationObserver(mutations => {
-                for (const m of mutations) {
-                    if (m.type === 'childList') {
-                        for (const node of m.addedNodes) {
-                            if (node.nodeName === 'IMG') onExpressionImg(node);
+        new MutationObserver(mutations => {
+            // Deduplicate: collect each changed img.expression once per batch so we
+            // always read final attribute values (src + data-expression both settled).
+            const changedImgs = new Set();
+            for (const m of mutations) {
+                if (m.type === 'childList') {
+                    for (const node of m.addedNodes) {
+                        if (node.nodeType === 1 && node.matches?.('img.expression')) {
+                            changedImgs.add(/** @type {HTMLImageElement} */ (node));
                         }
-                    } else if (m.type === 'attributes' && m.target.nodeName === 'IMG') {
-                        // /emote updates an existing <img>'s src attribute rather than replacing the node
-                        onExpressionImg(/** @type {HTMLImageElement} */ (m.target));
                     }
+                } else if (m.type === 'attributes' && m.target.matches?.('img.expression')) {
+                    changedImgs.add(/** @type {HTMLImageElement} */ (m.target));
                 }
-            });
-            const opts = { subtree: true, childList: true, attributes: true, attributeFilter: ['src'] };
-            if (vnWrapper)  mo.observe(vnWrapper,  opts);
-            if (exprHolder) mo.observe(exprHolder, opts);
-        }
-        tryAttach();
+            }
+            for (const imgEl of changedImgs) onExpressionChange(imgEl);
+        }).observe(document.body, {
+            subtree: true,
+            childList: true,
+            attributes: true,
+            attributeFilter: ['data-expression', 'src'],
+        });
     })();
 
     bdaCinematicEditor = createBdaCinematicEditor({
@@ -6535,10 +7558,10 @@ debugSTGlobals();
         },
     });
 
-    const getPlayerSpriteUrl = (emotion) => {
+    const getPlayerSpriteUrl = async (emotion) => {
         const prome = extension_settings?.['Prome-VN-Extension'];
         if (!prome?.enableUserSprite || !prome?.userSprite) return null;
-        return `/characters/${prome.userSprite}/${emotion}.png`;
+        return getSpriteUrl(prome.userSprite, emotion).catch(() => null);
     };
     questionTimeController   = createQuestionTimeController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, getPlayerSpriteUrl });
     questionTruthController  = createQuestionTruthController({ extensionFolderPath, getTruthBullets: getTruthBulletsSnapshot, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, getPlayerSpriteUrl });
@@ -6556,7 +7579,7 @@ debugSTGlobals();
         onWin: () => trialManager?.showCounterBanner?.(),
     });
     interjectionRunner = createInterjectionCinematicRunner({ extensionFolderPath, getSpriteUrl });
-    chooseCharacterController    = createChooseCharacterController({ extensionFolderPath, getSpriteUrl, getPlayerSpriteUrl });
+    chooseCharacterController    = createChooseCharacterController({ extensionFolderPath, getLecternUrl, getSpriteUrl, getPlayerSpriteUrl, playSfx, getSfx: () => sfx });
     introduceCharacterController = createIntroduceCharacterController({ extensionFolderPath });
     } catch (error) {
         bootstrapDebugUi();
@@ -6588,9 +7611,34 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'nextchapter',
+    callback: () => {
+        const current = Number(getMonopadSetting('chapterIndex') ?? 0);
+        if (current < 9) {
+            setMonopadSetting('chapterIndex', current + 1);
+            saveSettingsDebounced();
+            updateChapterDisplay();
+        }
+        return '';
+    },
+    helpString: 'Advances the chapter: PROLOGUE → CHAPTER 1 → CHAPTER 2 → … → CHAPTER 9.',
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'epiloguechapter',
+    callback: () => {
+        setMonopadSetting('chapterIndex', 10);
+        saveSettingsDebounced();
+        updateChapterDisplay();
+        return '';
+    },
+    helpString: 'Sets the chapter display to EPILOGUE.',
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'choose',
     callback: async () => {
-        const info = trialManager?.getGcpInfo?.() ?? { characters: [], currentIndex: 0 };
+        const info = await trialManager?.getGcpInfo?.() ?? { characters: [], currentIndex: 0 };
         await chooseCharacterController?.run({ characters: info.characters, startIdx: info.currentIndex });
         return '';
     },

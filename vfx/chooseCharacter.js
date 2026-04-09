@@ -43,6 +43,41 @@ function buildChooseStyles() {
         display: block;
         filter: drop-shadow(0 0 12px rgba(0,0,0,0.7));
     }
+    .choose-slot-horse {
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 380px !important;
+        height: 98px !important;
+        object-fit: fill !important;
+        filter: drop-shadow(0 4px 12px rgba(0,0,0,0.6)) !important;
+        pointer-events: none;
+        z-index: 0;
+    }
+    .choose-slot img:not([class]) {
+        position: relative;
+        z-index: 1;
+        width: auto !important;
+        height: 100% !important;
+        object-fit: unset !important;
+        max-width: none;
+    }
+    .choose-slot.has-horse > img:not(.choose-slot-horse):not(.choose-slot-lectern) {
+        transform: translateY(-98px);
+    }
+    .choose-slot-lectern {
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: auto !important;
+        height: 500px !important;
+        object-fit: unset !important;
+        filter: drop-shadow(0 4px 12px rgba(0,0,0,0.6)) !important;
+        pointer-events: none;
+        z-index: 2;
+    }
     #choose-reticule {
         position: absolute;
         pointer-events: none;
@@ -174,10 +209,14 @@ function buildHoldOnStyles() {
 
 export function createChooseCharacterController({
     extensionFolderPath = '',
+    getLecternUrl = null,
     getSpriteUrl = null,
     getPlayerSpriteUrl = null,
+    playSfx = null,
+    getSfx = null,
 } = {}) {
     const base = (extensionFolderPath || '').replace(/\\/g, '/');
+    const _getLecternUrl = () => (getLecternUrl ? getLecternUrl() : `${base}/assets/classtrial/lectern.webp`);
 
     async function playHoldOnCinematic() {
         if (!document.getElementById(HOLDON_STYLE_ID)) {
@@ -283,26 +322,50 @@ export function createChooseCharacterController({
             return `translateX(${x}px) rotateY(${(-dist * MAX_ROT).toFixed(1)}deg)`;
         }
 
-        function slotX(i, centerIdx) {
-            return window.innerWidth / 2 - SLOT_W / 2 + (i - centerIdx) * (SLOT_W + GAP);
+        function circOffset(i, centerIdx) {
+            const n = slots.length;
+            let offset = i - centerIdx;
+            if (n > 1) {
+                if (offset > n / 2)  offset -= n;
+                if (offset < -n / 2) offset += n;
+            }
+            return offset;
+        }
+
+        function slotX(offset) {
+            return window.innerWidth / 2 - SLOT_W / 2 + offset * (SLOT_W + GAP);
         }
 
         // Build character slots
-        // characters entries are either strings or { name, src, height } objects
+        // characters entries are either strings or { name, src, height, hasHorse } objects
         const slots = [];
         for (let i = 0; i < characters.length; i++) {
-            const entry  = characters[i];
-            const name   = (typeof entry === 'string') ? entry : (entry?.name ?? '');
-            const src    = (typeof entry === 'object' && entry?.src)    ? entry.src    : null;
-            const height = (typeof entry === 'object' && entry?.height) ? entry.height : DEFAULT_H;
+            const entry    = characters[i];
+            const name     = (typeof entry === 'string') ? entry : (entry?.name ?? '');
+            const src      = (typeof entry === 'object' && entry?.src)      ? entry.src      : null;
+            const height   = (typeof entry === 'object' && entry?.height)   ? entry.height   : DEFAULT_H;
+            const hasHorse = (typeof entry === 'object' && entry?.hasHorse) ? entry.hasHorse : false;
 
             const el = document.createElement('div');
             el.className = 'choose-slot';
             el.style.width  = `${SLOT_W}px`;
             el.style.height = `${height}px`;
+            if (hasHorse) {
+                el.classList.add('has-horse');
+                const horse = document.createElement('img');
+                horse.className = 'choose-slot-horse';
+                horse.src = `${base}/assets/classtrial/gymnastics-horse.png`;
+                horse.alt = '';
+                el.appendChild(horse);
+            }
             const img = document.createElement('img');
             img.alt = name;
             el.appendChild(img);
+            const lectern = document.createElement('img');
+            lectern.className = 'choose-slot-lectern';
+            lectern.src = _getLecternUrl();
+            lectern.alt = '';
+            el.appendChild(lectern);
             stage.appendChild(el);
             slots.push({ el, img, name, height });
 
@@ -360,14 +423,37 @@ export function createChooseCharacterController({
 
         function updatePositions(animate) {
             const n = slots.length;
+            const jumpers = [];
+
             slots.forEach((slot, i) => {
-                if (!animate) slot.el.style.transition = 'none';
-                else slot.el.style.transition = '';
-                slot.el.style.transform = slotTransform(slotX(i, currentIdx));
-                // Center slot gets highest z-index; further slots go behind
-                const dist = Math.abs(i - currentIdx);
+                const newOff  = circOffset(i, currentIdx);
+                const prevOff = slot._circOff ?? newOff;
+                slot._circOff = newOff;
+
+                const dist = Math.abs(newOff);
                 slot.el.style.zIndex = String(n - dist);
+
+                if (animate && Math.abs(newOff - prevOff) > 1) {
+                    // Slot jumped across the ring boundary — teleport to entry side first
+                    const farOff = newOff > prevOff ? newOff + n : newOff - n;
+                    slot.el.style.transition = 'none';
+                    slot.el.style.transform  = slotTransform(slotX(farOff));
+                    jumpers.push({ slot, newOff });
+                } else {
+                    if (!animate) slot.el.style.transition = 'none';
+                    else          slot.el.style.transition = '';
+                    slot.el.style.transform = slotTransform(slotX(newOff));
+                }
             });
+
+            if (jumpers.length) {
+                // Force a reflow so the teleport position is committed before animating
+                slots[0].el.offsetHeight;
+                for (const { slot, newOff } of jumpers) {
+                    slot.el.style.transition = '';
+                    slot.el.style.transform  = slotTransform(slotX(newOff));
+                }
+            }
 
             // Reticule: square, horizontally centered on the center slot,
             // vertically centered within the visible character area (bottom 70px is banner)
@@ -392,10 +478,21 @@ export function createChooseCharacterController({
         // Initial positions — no animation
         updatePositions(false);
 
+        let lastHoverTime = 0;
+        function playNavigateSfx() {
+            const sfx = getSfx?.();
+            if (!sfx?.hover || typeof playSfx !== 'function') return;
+            const now = Date.now();
+            if (now - lastHoverTime < 80) return;
+            lastHoverTime = now;
+            playSfx(sfx.hover);
+        }
+
         function navigate(dir) {
             if (resolved) return;
             currentIdx = (currentIdx + dir + characters.length) % characters.length;
             updatePositions(true);
+            playNavigateSfx();
         }
 
         function onLeftClick()  { navigate(-1); }
@@ -416,6 +513,7 @@ export function createChooseCharacterController({
                 else if (e.key === 'Enter') {
                     resolved = true;
                     const chosen = slots[currentIdx]?.name ?? null;
+                    new Audio(`${base}/assets/sfx/minigames/final-shot.wav`).play().catch(() => {});
                     cleanup();
                     setTimeout(() => playHoldOnCinematic(), 1000);
                     resolve(chosen);

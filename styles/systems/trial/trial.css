@@ -28,6 +28,7 @@
     align-items: flex-end;
     justify-content: center;
     will-change: transform;
+    isolation: isolate;
 }
 
 .nsd-parade-slot img {
@@ -39,6 +40,46 @@
 
 .nsd-parade-slot img.nsd-parade-dead {
     filter: grayscale(1) brightness(0.55);
+}
+
+.nsd-parade-horse {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 380px !important;
+    height: 98px !important;
+    object-fit: fill !important;
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.6)) !important;
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* Sprite only (no class attr) sits above the horse — height is the binding dimension */
+.nsd-parade-slot img:not([class]) {
+    position: relative;
+    z-index: 1;
+    width: auto !important;
+    height: 100% !important;
+    object-fit: unset !important;
+    max-width: none;
+}
+
+.nsd-parade-slot.has-horse > img:not(.nsd-parade-horse):not(.nsd-parade-lectern) {
+    transform: translateY(-98px);
+}
+
+.nsd-parade-lectern {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: auto !important;
+    height: 500px !important;
+    object-fit: unset !important;
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.6)) !important;
+    pointer-events: none;
+    z-index: 2;
 }
 
 #dangan-nonstop-debate-overlay {
@@ -120,14 +161,11 @@
 /* ── Agreement (blue) text in NSD/MPD statements ────────────────────────── */
 
 .dangan-agree-text {
-    color: #00e5ff;
-    font-weight: bold;
-    text-shadow:
-        0 0 8px  rgba(0, 200, 255, 0.85),
-        0 0 20px rgba(0, 150, 255, 0.55),
-        2px 2px 4px #000;
-    pointer-events: auto;
-    cursor: crosshair;
+    background: linear-gradient(to bottom, #b6faff, #05e6ff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 0 10px rgba(5, 213, 255, 0.6);
 }
 
 .dangan-trial-top-left {
@@ -315,8 +353,8 @@
     position: fixed;
     top: 76px;
     right: 20px;
-    background: rgba(0, 0, 0, 0.8);
-    border: 2px solid #00ffff;
+    background: var(--SmartThemeChatTintColor);
+    border: 2px solid var(--SmartThemeBorderColor);
     color: white;
     padding: 15px;
     font-family: 'Noto Sans JP', sans-serif;
@@ -324,8 +362,10 @@
     letter-spacing: 0.01em;
     font-weight: 700;
     z-index: 9998;
-    animation: slideInRight 0.5s ease-out;
-    max-width: 350px;
+    border-radius: 12px;
+    animation: slideInRight 0.5s ease-out, trialNotifPulse 3s ease-in-out infinite;
+    width: max-content;
+    max-width: calc(100vw - 40px);
 }
 
 .dangan-trial-notif-drag-handle {
@@ -365,13 +405,48 @@
     color: #00ffff;
 }
 
-/* Body wrapper — hidden when collapsed; grid lays out buttons 2-per-row */
+/* Body wrapper — hidden when collapsed; horizontal flex row of groups */
 .dangan-trial-notif-body {
     overflow: hidden;
     transition: opacity 0.2s ease;
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.dangan-trial-btn-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.dangan-trial-group-label {
+    font-size: 10px;
+    font-weight: bold;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #aaa;
+}
+
+/* 4-column grid for Minigames (7 buttons → 4+3) */
+.dangan-trial-btn-group--minigames .dangan-trial-btn-row {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0 8px;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+}
+
+/* 2-column grid for Actions (4 buttons → 2+2) */
+.dangan-trial-btn-group--actions .dangan-trial-btn-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+}
+
+/* Seating plan sits alongside the button groups */
+.dangan-trial-btn-group--seating {
+    flex: 1;
+    min-width: 0;
 }
 
 .dangan-trial-notification.collapsed .dangan-trial-notif-body {
@@ -421,6 +496,11 @@
     color: #00ffff;
 }
 
+@keyframes trialNotifPulse {
+    0%, 100% { box-shadow: 0 0 8px 1px var(--SmartThemeBorderColor); }
+    50%       { box-shadow: 0 0 22px 5px var(--SmartThemeBorderColor); }
+}
+
 @keyframes slideInRight {
     from { transform: translateX(100%); }
     to { transform: translateX(0); }
@@ -429,11 +509,11 @@
 .dangan-trial-start-btn {
     color: black;
     border: none;
-    padding: 5px 10px;
-    margin-top: 10px;
+    padding: 4px;
+    font-size: 8px;
+    border-radius: 5px;
     cursor: pointer;
     font-weight: bold;
-    display: block;
     width: 100%;
     text-align: center;
     box-sizing: border-box;
@@ -575,6 +655,16 @@
     color: rgba(255, 140, 210, 0.7);
 }
 
+.dangan-seating-dead-chip {
+    border-color: rgba(200, 40, 40, 0.55);
+    background: rgba(120, 10, 10, 0.25);
+    color: #ffaaaa;
+}
+
+.dangan-seating-dead-chip .seat-num {
+    color: rgba(255, 100, 100, 0.7);
+}
+
 .dangan-seating-plan-empty {
     font-size: 9px;
     color: rgba(255, 255, 255, 0.35);
@@ -610,11 +700,11 @@
 }
 
 .dangan-weak-point {
-    background: linear-gradient(to bottom, #ffd966, #ff5500);
+    background: linear-gradient(to bottom, #ffcd03, #ff8605);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
-    text-shadow: 0 0 10px rgba(255, 120, 0, 0.6);
+    text-shadow: 0 0 10px rgba(255, 150, 5, 0.6);
 }
 
 .dangan-weak-point:hover {
@@ -1044,13 +1134,13 @@
     font-family: 'Noto Sans JP', sans-serif;
     font-size: 32px;
     font-weight: 900;
-    background: linear-gradient(to bottom, #ffd6ee, #cc0055);
+    background: linear-gradient(to bottom, #FFE8E8, #F808C0);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
     text-shadow:
-        0 0 8px  rgba(187, 75, 131, 0.9),
-        0 0 20px rgba(160, 65, 112, 0.5);
+        0 0 8px  rgba(248, 8, 192, 0.9),
+        0 0 20px rgba(200, 10, 150, 0.5);
     pointer-events: none;
     z-index: 2147483645;
     white-space: nowrap;
@@ -1244,6 +1334,8 @@
 }
 
 .dangan-portrait-slot {
+    position: relative;
+    isolation: isolate;
     width: 480px;
     height: 720px; /* overridden per-character by JS */
     flex-shrink: 0;
@@ -1258,6 +1350,48 @@
     object-fit: contain;
     display: none;
     filter: drop-shadow(0 0 12px rgba(0, 0, 0, 0.7));
+}
+
+.dangan-portrait-horse {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 380px !important;
+    height: 98px !important;
+    object-fit: fill !important;
+    display: none !important;
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.6)) !important;
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* Sprite only (no class attr) sits above the horse — height is the binding dimension */
+.dangan-portrait-slot img:not([class]) {
+    position: relative;
+    z-index: 1;
+    width: auto !important;
+    height: 100% !important;
+    object-fit: unset !important;
+    max-width: none;
+}
+
+.dangan-portrait-slot.has-horse > img:not(.dangan-portrait-horse):not(.dangan-portrait-lectern) {
+    transform: translateY(-98px);
+}
+
+.dangan-portrait-lectern {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: auto !important;
+    height: 500px !important;
+    object-fit: unset !important;
+    display: block !important;
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.6)) !important;
+    pointer-events: none;
+    z-index: 2;
 }
 
 #dangan-nonstop-cutscene {

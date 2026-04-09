@@ -25,6 +25,7 @@ export function createTrialManager(deps) {
         playDebatesTrack,
         stopDebatesTrack,
         playPanicTrack,
+        playTrialGeneralTrack,
         suppressVisualizer,
         unsuppressVisualizer,
         onStartHangmansGambit,
@@ -42,6 +43,7 @@ export function createTrialManager(deps) {
         applyCustomUiPosition,
         awardXp,
         xpRewards,
+        getLecternUrl,
     } = deps;
 
     function getAssetUrl(name) {
@@ -50,6 +52,7 @@ export function createTrialManager(deps) {
     }
 
     let currentState = TrialPhases.IDLE;
+    let trialActive  = false;  // true only while a trial is in progress; false after /end-trial
     let currentDebateSections = 0;
     let selectedTruthBulletIndex = 0;
     let debateOverlay = null;
@@ -72,7 +75,8 @@ export function createTrialManager(deps) {
     let portraitEmotion = null;
     let debateSeatingPlan = null;
     let paradeController  = null;
-    let characterEmotions = new Map();
+    let characterEmotions  = new Map();
+    let characterSpriteUrls = new Map(); // name → last successfully-resolved portrait URL
     let lastHitBullet = null;
     let lastHitWeakPoint = null;
     let rebuttalPromptActive = false;
@@ -121,6 +125,9 @@ export function createTrialManager(deps) {
     let gcpAnimRafId    = null;      // RAF id for scroll animation
     let gcpInitializing = false;     // true while initGroupChatPortraits is awaiting sprites
     let gcpSeatingListRenderer = null; // callback set by Trial Controls to stay in sync with rebuilds
+    let gcpBgLoopEl     = null;      // repeating background overlay for seamless circular pan
+    let gcpBgImgWidth   = 0;         // rendered px width of background image at current viewport height
+    let gcpBgCurrentPx  = 0;        // current background-position-x in pixels (for wrap detection)
     let nsdShiftParadeStop = null;   // stop fn for in-progress speaker-shift parade (NSD only)
 
     // Shared white-noise animation pool — one RAF loop drives all active elements.
@@ -841,10 +848,21 @@ ${historyText}
         switch (currentState) {
             case TrialPhases.IDLE:
                 cleanupDebateUI();
-                if (isGroupChat()) showPreDebateNotification();
+                if (trialActive && isGroupChat()) {
+                    // Resume general trial BGM after debates end; delay to let stopDebatesTrack fade out first.
+                    // Re-check both guards inside the callback — chat may change before the timer fires.
+                    setTimeout(() => { if (trialActive && isGroupChat()) playTrialGeneralTrack?.(); }, 750);
+                }
+                if (isGroupChat() && trialActive) showPreDebateNotification();
                 break;
             case TrialPhases.PRE_DEBATE:
                 cleanupDebateUI();
+                // Resume/start general trial BGM when chatting between debates.
+                // Only play in a group chat — trials never occur outside one.
+                // Re-check both guards inside the callback: chat may change before the timer fires.
+                if (trialActive && isGroupChat()) {
+                    setTimeout(() => { if (trialActive && isGroupChat()) playTrialGeneralTrack?.(); }, 750);
+                }
                 if (isGroupChat()) showPreDebateNotification();
                 break;
             case TrialPhases.NON_STOP_DEBATE:
@@ -866,6 +884,9 @@ ${historyText}
     function showPreDebateNotification() {
         if (document.getElementById('dangan-trial-pre-debate-notif')) return;
 
+        const equippedNow = typeof getEquippedSkillsSnapshot === 'function' ? getEquippedSkillsSnapshot() : [];
+        const hasSeatingPlanCopy = equippedNow.includes('shop_skill_seating_plan_copy');
+
         const notification = document.createElement('div');
         notification.id = 'dangan-trial-pre-debate-notif';
         notification.className = 'dangan-trial-notification';
@@ -873,31 +894,43 @@ ${historyText}
             <div class="dangan-trial-notif-content">
                 <div class="dangan-trial-notif-drag-handle">
                     <span class="dangan-trial-notif-drag-icon">⠿</span>
-                    <span>Discussion is ongoing...</span>
+                    <span>The Class Trial is ongoing...</span>
                     <button class="dangan-trial-collapse-btn" title="Collapse panel">▼</button>
                 </div>
                 <div class="dangan-trial-notif-body">
-                    <button id="dangan-start-nonstop-btn"   class="dangan-trial-start-btn" style="display:none">START NON-STOP DEBATE</button>
-                    <button id="dangan-start-mpdebate-btn" class="dangan-trial-start-btn" style="display:none">START MASS PANIC DEBATE</button>
-                    <button id="dangan-start-hangman-btn"  class="dangan-trial-start-btn" style="display:none">START HANGMAN'S GAMBIT</button>
-                    <button id="dangan-start-pta-btn"        class="dangan-trial-start-btn" style="display:none">START PANIC TALK ACTION</button>
-                    <button id="dangan-start-interject-btn" class="dangan-trial-start-btn" style="display:none">START INTERJECTION</button>
-                    <button id="dangan-start-rebuttal-btn"  class="dangan-trial-start-btn" style="display:none">START REBUTTAL SHOWDOWN</button>
-                    <button id="dangan-start-voting-btn"        class="dangan-trial-start-btn" style="display:none">START VOTING TIME</button>
-                    <button id="dangan-start-punishment-btn"   class="dangan-trial-start-btn" style="display:none">START PUNISHMENT TIME</button>
-                    <button id="dangan-start-qtime-btn"        class="dangan-trial-start-btn" style="display:none">START QUESTION TIME</button>
-                    <button id="dangan-start-qtruth-btn"       class="dangan-trial-start-btn" style="display:none">START QUESTION TRUTH</button>
-                    <button id="dangan-start-choosing-btn"     class="dangan-trial-start-btn" style="display:none">START CHOOSING</button>
-                    ${isGroupChat() ? `
-                    <div class="dangan-seating-plan-section">
-                        <div class="dangan-seating-plan-header">
-                            <span>SEATING PLAN</span>
-                            <div class="dangan-seating-plan-actions">
-                                <button id="dangan-seating-shuffle-btn" class="dangan-seating-action-btn">SHUFFLE</button>
-                                <button id="dangan-seating-reset-btn"   class="dangan-seating-action-btn dangan-seating-reset-btn">RESET</button>
-                            </div>
+                    <div class="dangan-trial-btn-group dangan-trial-btn-group--minigames">
+                        <span class="dangan-trial-group-label">Minigames</span>
+                        <div class="dangan-trial-btn-row">
+                            <button id="dangan-start-nonstop-btn"  class="dangan-trial-start-btn" style="display:none">START NON-STOP DEBATE</button>
+                            <button id="dangan-start-mpdebate-btn" class="dangan-trial-start-btn" style="display:none">START MASS PANIC DEBATE</button>
+                            <button id="dangan-start-hangman-btn"  class="dangan-trial-start-btn" style="display:none">START HANGMAN'S GAMBIT</button>
+                            <button id="dangan-start-pta-btn"      class="dangan-trial-start-btn" style="display:none">START PANIC TALK ACTION</button>
+                            <button id="dangan-start-rebuttal-btn" class="dangan-trial-start-btn" style="display:none">START REBUTTAL SHOWDOWN</button>
+                            <button id="dangan-start-qtime-btn"    class="dangan-trial-start-btn" style="display:none">START QUESTION TIME</button>
+                            <button id="dangan-start-qtruth-btn"   class="dangan-trial-start-btn" style="display:none">START QUESTION TRUTH</button>
                         </div>
-                        <div id="dangan-seating-plan-list" class="dangan-seating-plan-list"></div>
+                    </div>
+                    <div class="dangan-trial-btn-group dangan-trial-btn-group--actions">
+                        <span class="dangan-trial-group-label">Actions</span>
+                        <div class="dangan-trial-btn-row">
+                            <button id="dangan-start-interject-btn"  class="dangan-trial-start-btn" style="display:none">START AN INTERJECTION</button>
+                            <button id="dangan-start-choosing-btn"   class="dangan-trial-start-btn" style="display:none">START CHOOSING TIME</button>
+                            <button id="dangan-start-voting-btn"     class="dangan-trial-start-btn" style="display:none">START VOTING TIME</button>
+                            <button id="dangan-start-punishment-btn" class="dangan-trial-start-btn" style="display:none">START PUNISHMENT TIME</button>
+                        </div>
+                    </div>
+                    ${isGroupChat() ? `
+                    <div class="dangan-trial-btn-group dangan-trial-btn-group--seating"${hasSeatingPlanCopy ? '' : ' style="display:none"'}>
+                        <div class="dangan-seating-plan-section">
+                            <div class="dangan-seating-plan-header">
+                                <span>SEATING PLAN</span>
+                                <div class="dangan-seating-plan-actions">
+                                    <button id="dangan-seating-shuffle-btn" class="dangan-seating-action-btn">SHUFFLE</button>
+                                    <button id="dangan-seating-reset-btn"   class="dangan-seating-action-btn dangan-seating-reset-btn">RESET</button>
+                                </div>
+                            </div>
+                            <div id="dangan-seating-plan-list" class="dangan-seating-plan-list"></div>
+                        </div>
                     </div>` : ''}
                 </div>
             </div>
@@ -943,7 +976,9 @@ ${historyText}
             const speakerIdx = gcpSlots.length ? Math.round(gcpCurrentFloat) : -1;
             listEl.innerHTML = displayPlan.map((name, i) => {
                 const first = (name.split(' ')[0] || name).substring(0, 10);
-                const cls = i === speakerIdx ? ' dangan-seating-speaker-chip' : '';
+                const isSpeaker = i === speakerIdx;
+                const isDead    = isCharacterDead(name);
+                const cls = isSpeaker ? ' dangan-seating-speaker-chip' : isDead ? ' dangan-seating-dead-chip' : '';
                 return `<span class="dangan-seating-plan-chip${cls}"><span class="seat-num">${i + 1}.</span>${first}</span>`;
             }).join('');
         }
@@ -1057,16 +1092,21 @@ ${historyText}
             notification.remove();
             onStartQuestionTruth?.();
         };
-        notification.querySelector('#dangan-start-choosing-btn').onclick = () => {
+        notification.querySelector('#dangan-start-choosing-btn').onclick = async () => {
             notification.remove();
-            onStartChoosing?.({
-                characters: gcpSlots.map(s => ({
-                    name:   s.name,
-                    src:    s.img?.src || null,
-                    height: parseInt(s.el?.style.height) || 720,
-                })),
-                startIdx: Math.round(gcpCurrentFloat),
-            });
+            const characters = await Promise.all(gcpSlots.map(async s => ({
+                name:     s.name,
+                // characterSpriteUrls is keyed by normalised name and first token to survive
+                // NSD speaker-name abbreviations ("Sonia" vs "Sonia Nevermind")
+                src:      characterSpriteUrls.get(normalizeSeatName(s.name))
+                       || characterSpriteUrls.get(firstToken(s.name))
+                       || await getCharSpriteUrl(s.name, characterEmotions.get(s.name) || 'neutral').catch(() => null)
+                       || s.img?.src
+                       || null,
+                height:   parseInt(s.el?.style.height) || 720,
+                hasHorse: needsGymnasticsHorse(s.name),
+            })));
+            onStartChoosing?.({ characters, startIdx: Math.round(gcpCurrentFloat) });
         };
     }
 
@@ -1341,8 +1381,15 @@ ${historyText}
     // Returns slot height in px proportional to character height.
     // Reference: 170 cm → BASE_PORTRAIT_PX. Range kept wide (0.55 – 1.45×)
     // so extreme heights (e.g. 130 cm vs 198 cm) look visually distinct.
-    const BASE_PORTRAIT_PX = 720;
-    const AVG_HEIGHT_CM    = 170;
+    const BASE_PORTRAIT_PX         = 720;
+    const AVG_HEIGHT_CM            = 170;
+    const GYMNASTICS_HORSE_MAX_CM  = 145;  // characters below this height get the gymnastics horse
+
+    function needsGymnasticsHorse(name) {
+        const cm = getCharacterHeightCm(name);
+        return cm !== null && cm < GYMNASTICS_HORSE_MAX_CM;
+    }
+
     function portraitSlotHeightPx(name) {
         const cm = getCharacterHeightCm(name);
         if (!cm) return BASE_PORTRAIT_PX;
@@ -1355,6 +1402,10 @@ ${historyText}
             const slot = imgEl?.parentElement;
             if (!slot) return;
             slot.style.height = `${portraitSlotHeightPx(charName)}px`;
+            const hasHorse = needsGymnasticsHorse(charName);
+            const horse = slot.querySelector('.dangan-portrait-horse');
+            if (horse) horse.style.setProperty('display', hasHorse ? 'block' : 'none', 'important');
+            slot.classList.toggle('has-horse', hasHorse);
         };
         set(portraitImgEl,   centerName);
         set(portraitLeftEl,  leftName);
@@ -1432,8 +1483,19 @@ ${historyText}
             el.className = 'nsd-parade-slot';
             el.style.cssText = `width:${CHAR_SLOT_W}px;height:${hpx}px;`;
             el.style.transform = slotTransform(startX);
+            if (needsGymnasticsHorse(name)) {
+                el.classList.add('has-horse');
+                const horse = document.createElement('img');
+                horse.className = 'nsd-parade-horse';
+                horse.src = getAssetUrl('gymnastics-horse.png');
+                el.appendChild(horse);
+            }
             const img = document.createElement('img');
             el.appendChild(img);
+            const lectern0 = document.createElement('img');
+            lectern0.className = 'nsd-parade-lectern';
+            lectern0.src = (getLecternUrl ? getLecternUrl() : getAssetUrl('lectern.webp'));
+            el.appendChild(lectern0);
             container.appendChild(el);
 
             const entry = { el, x: startX };
@@ -1599,10 +1661,21 @@ ${historyText}
             el.className     = 'nsd-parade-slot';
             el.style.cssText = `width:${CHAR_SLOT_W}px;height:${hpx}px;`;
             el.style.transform = slotTransform(TARGET_X);
+            if (needsGymnasticsHorse(fromSpeakerName)) {
+                el.classList.add('has-horse');
+                const horse = document.createElement('img');
+                horse.className = 'nsd-parade-horse';
+                horse.src = getAssetUrl('gymnastics-horse.png');
+                el.appendChild(horse);
+            }
             const img = document.createElement('img');
             // Re-use the already-loaded src — no async needed, no flicker
             if (portraitImgEl?.src) img.src = portraitImgEl.src;
             el.appendChild(img);
+            const lectern1 = document.createElement('img');
+            lectern1.className = 'nsd-parade-lectern';
+            lectern1.src = (getLecternUrl ? getLecternUrl() : getAssetUrl('lectern.webp'));
+            el.appendChild(lectern1);
             container.appendChild(el);
             active.push({ el, x: TARGET_X });
         }
@@ -1641,8 +1714,19 @@ ${historyText}
             el.className = 'nsd-parade-slot';
             el.style.cssText = `width:${CHAR_SLOT_W}px;height:${hpx}px;`;
             el.style.transform = slotTransform(startX);
+            if (needsGymnasticsHorse(name)) {
+                el.classList.add('has-horse');
+                const horse = document.createElement('img');
+                horse.className = 'nsd-parade-horse';
+                horse.src = getAssetUrl('gymnastics-horse.png');
+                el.appendChild(horse);
+            }
             const img = document.createElement('img');
             el.appendChild(img);
+            const lectern2 = document.createElement('img');
+            lectern2.className = 'nsd-parade-lectern';
+            lectern2.src = (getLecternUrl ? getLecternUrl() : getAssetUrl('lectern.webp'));
+            el.appendChild(lectern2);
             container.appendChild(el);
 
             const entry = { el, x: startX };
@@ -1663,8 +1747,7 @@ ${historyText}
                     : (characterEmotions.get(name) || 'neutral');
                 let url = null;
                 if (dead) {
-                    url = await getCharSpriteUrl(name, 'dead').catch(() => null)
-                       || await getCharSpriteUrl(name, emo).catch(() => null);
+                    url = await getCharSpriteUrl(name, 'dead').catch(() => null);
                     if (url) img.classList.add('nsd-parade-dead');
                 } else {
                     url = await getCharSpriteUrl(name, emo).catch(() => null);
@@ -1756,10 +1839,11 @@ ${historyText}
                 const pKey   = normalizeSeatName(playerName);
                 const pFirst = firstToken(playerName);
                 if (normalizeSeatName(name) === pKey || firstToken(name) === pFirst) {
-                    return `/characters/${promeInfo.spritePack}/neutral.png`;
+                    return getSpriteUrl(promeInfo.spritePack, emo);
                 }
             }
         }
+        if (isCharacterDead(name)) return getSpriteUrl(name, 'dead');
         return getSpriteUrl(name, emo);
     }
 
@@ -1802,7 +1886,7 @@ ${historyText}
         const members = getChatCardMembers()
             .map(m => m.name)
             .filter(Boolean)
-            .filter(n => !isCharacterMuted(n));
+            .filter(n => !isCharacterMuted(n) || isCharacterDead(n));
         const playerName = getPlayerName();
         if (playerName) members.push(playerName);
         if (members.length) debateSeatingPlan = buildSeatingPlan(members);
@@ -1849,8 +1933,7 @@ ${historyText}
         if (!debateSeatingPlan?.length && isGroupChat()) {
             const isMpd = currentState === TrialPhases.MASS_PANIC_DEBATE;
             const groupMembers = getChatCardMembers().map(m => m.name).filter(Boolean)
-                .filter(n => !isCharacterMuted(n))
-                .filter(n => !isMpd || !isCharacterDead(n));
+                .filter(n => !isCharacterMuted(n) || isCharacterDead(n));
             let speakerNames;
             if (groupMembers.length) {
                 speakerNames = groupMembers;
@@ -1906,13 +1989,19 @@ ${historyText}
             </div>
             <div class="dangan-trial-portrait-stage">
                 <div class="dangan-portrait-slot dangan-portrait-neighbor-slot dangan-portrait-left-slot">
+                    <img class="dangan-portrait-horse" src="${getAssetUrl('gymnastics-horse.png')}" alt="" />
                     <img id="dangan-portrait-left-img" alt="" />
+                    <img class="dangan-portrait-lectern" src="${(getLecternUrl ? getLecternUrl() : getAssetUrl('lectern.webp'))}" alt="" />
                 </div>
                 <div class="dangan-portrait-slot dangan-portrait-center-slot">
+                    <img class="dangan-portrait-horse" src="${getAssetUrl('gymnastics-horse.png')}" alt="" />
                     <img id="dangan-trial-portrait-img" alt="" />
+                    <img class="dangan-portrait-lectern" src="${(getLecternUrl ? getLecternUrl() : getAssetUrl('lectern.webp'))}" alt="" />
                 </div>
                 <div class="dangan-portrait-slot dangan-portrait-neighbor-slot dangan-portrait-right-slot">
+                    <img class="dangan-portrait-horse" src="${getAssetUrl('gymnastics-horse.png')}" alt="" />
                     <img id="dangan-portrait-right-img" alt="" />
+                    <img class="dangan-portrait-lectern" src="${(getLecternUrl ? getLecternUrl() : getAssetUrl('lectern.webp'))}" alt="" />
                 </div>
             </div>
             <div class="dangan-trial-bottom-left" id="dangan-truth-bullet-cylinder"></div>
@@ -1971,18 +2060,11 @@ ${historyText}
             const loadImg = async (el, name) => {
                 if (!el || !name) return;
                 try {
-                    const dead = isCharacterDead(name) || isSilenced(name);
-                    let url = null, grayscale = false;
-                    if (dead) {
-                        url = await getCharSpriteUrl(name, 'dead').catch(() => null);
-                        if (!url) { url = await getCharSpriteUrl(name, 'neutral'); grayscale = true; }
-                    } else {
-                        url = await getCharSpriteUrl(name, 'neutral');
-                    }
+                    const url = await getCharSpriteUrl(name, 'neutral').catch(() => null);
                     if (tok !== portraitToken || !url || !el) return;
                     el.src = url;
                     el.style.display = 'block';
-                    el.style.filter = grayscale ? 'grayscale(1) brightness(0.6)' : '';
+                    el.style.filter = '';
                 } catch {}
             };
             loadImg(portraitLeftEl,  col0Name);
@@ -2002,19 +2084,11 @@ ${historyText}
             const loadImg = async (el, name, emo) => {
                 if (!el || !name) return;
                 try {
-                    const dead = isCharacterDead(name);
-                    let url = null;
-                    let grayscale = false;
-                    if (dead) {
-                        url = await getCharSpriteUrl(name, 'dead').catch(() => null);
-                        if (!url) { url = await getCharSpriteUrl(name, emo); grayscale = true; }
-                    } else {
-                        url = await getCharSpriteUrl(name, emo);
-                    }
+                    const url = await getCharSpriteUrl(name, emo).catch(() => null);
                     if (tok !== portraitToken || !url || !el) return;
                     el.src = url;
                     el.style.display = 'block';
-                    el.style.filter = grayscale ? 'grayscale(1) brightness(0.6)' : '';
+                    el.style.filter = '';
                 } catch {}
             };
             applyPortraitHeights(firstName, firstLeft, firstRight);
@@ -2696,18 +2770,12 @@ ${historyText}
         const loadImg = async (el, name) => {
             if (!el || !name) return;
             try {
-                const dead = isCharacterDead(name) || isSilenced(name);
-                let url = null, grayscale = false;
-                if (dead) {
-                    url = await getCharSpriteUrl(name, 'dead').catch(() => null);
-                    if (!url) { url = await getCharSpriteUrl(name, 'neutral'); grayscale = true; }
-                } else {
-                    url = await getCharSpriteUrl(name, 'anger').catch(() => null);
-                    if (!url) url = await getCharSpriteUrl(name, 'neutral');
-                }
+                const emo = isCharacterDead(name) || isSilenced(name) ? 'dead' : 'anger';
+                let url = await getCharSpriteUrl(name, emo).catch(() => null);
+                if (!url && emo === 'anger') url = await getCharSpriteUrl(name, 'neutral').catch(() => null);
                 if (tok !== portraitToken || !url || !el) return;
                 el.src = url; el.style.display = 'block';
-                el.style.filter = grayscale ? 'grayscale(1) brightness(0.6)' : '';
+                el.style.filter = '';
             } catch {}
         };
         loadImg(portraitLeftEl,  col0Name);
@@ -3024,13 +3092,9 @@ ${historyText}
             try {
                 const dead = isCharacterDead(charName) || isSilenced(charName);
                 let url = null;
-                let grayscale = false;
+                const grayscale = false;
                 if (dead) {
                     url = await getCharSpriteUrl(charName, 'dead').catch(() => null);
-                    if (!url) {
-                        url = await getCharSpriteUrl(charName, emoLabel);
-                        grayscale = true;
-                    }
                 } else {
                     url = await getCharSpriteUrl(charName, emoLabel);
                 }
@@ -3039,6 +3103,10 @@ ${historyText}
                 el.src = url;
                 el.style.display = 'block';
                 el.style.filter = grayscale ? 'grayscale(1) brightness(0.6)' : '';
+                // Store under both normalized full-name and first-token so lookups succeed
+                // even when the NSD speaker name ("Sonia") differs from the GCP slot name ("Sonia Nevermind")
+                characterSpriteUrls.set(normalizeSeatName(charName), url);
+                characterSpriteUrls.set(firstToken(charName), url);
             } catch {
                 if (token !== portraitToken) return;
                 el.style.display = 'none';
@@ -3820,11 +3888,14 @@ ${historyText}
         if (type === 'perjury') {
             const promeInfo = getPromeInfo();
             if (promeInfo?.spritePack) {
-                const spriteEl = document.createElement('img');
-                spriteEl.src = `/characters/${promeInfo.spritePack}/remorse.png`;
-                spriteEl.alt = '';
-                spriteEl.style.cssText = 'position:absolute;bottom:-850px;left:50%;transform:translateX(-50%);height:300%;width:auto;object-fit:contain;object-position:center bottom;pointer-events:none;filter:drop-shadow(rgba(255,255,255,1) 0px 0px 50px);';
-                inner.appendChild(spriteEl);
+                const remorsUrl = await getSpriteUrl(promeInfo.spritePack, 'remorse').catch(() => null);
+                if (remorsUrl) {
+                    const spriteEl = document.createElement('img');
+                    spriteEl.src = remorsUrl;
+                    spriteEl.alt = '';
+                    spriteEl.style.cssText = 'position:absolute;bottom:-850px;left:50%;transform:translateX(-50%);height:300%;width:auto;object-fit:contain;object-position:center bottom;pointer-events:none;filter:drop-shadow(rgba(255,255,255,1) 0px 0px 50px);';
+                    inner.appendChild(spriteEl);
+                }
             }
         }
 
@@ -3847,10 +3918,13 @@ ${historyText}
             }
 
             if (promeInfo?.spritePack) {
-                consentPlayerEl = document.createElement('img');
-                consentPlayerEl.src = `/characters/${promeInfo.spritePack}/approval.png`;
-                consentPlayerEl.alt = '';
-                consentPlayerEl.style.cssText = spriteStyle + 'right:5%;transform:translateX(-200%);';
+                const approvalUrl = await getSpriteUrl(promeInfo.spritePack, 'approval').catch(() => null);
+                if (approvalUrl) {
+                    consentPlayerEl = document.createElement('img');
+                    consentPlayerEl.src = approvalUrl;
+                    consentPlayerEl.alt = '';
+                    consentPlayerEl.style.cssText = spriteStyle + 'right:5%;transform:translateX(-200%);';
+                }
             }
         }
 
@@ -4129,6 +4203,28 @@ JUDGMENT RULES:
         paradeController = null;
         nsdShiftParadeStop?.();
         nsdShiftParadeStop = null;
+        // Snapshot final portrait URLs before they're invalidated by the token increment.
+        // The last active speaker's updateDebatePortraits call may still be awaiting getSpriteUrl
+        // when cleanupDebateUI runs, causing the token check to abort the cache write.
+        // Reading .src from the live elements captures whatever the browser already loaded.
+        if (portraitSpeaker) {
+            const cSrc = portraitImgEl?.src;
+            const lSrc = portraitLeftEl?.src;
+            const rSrc = portraitRightEl?.src;
+            if (cSrc) {
+                characterSpriteUrls.set(normalizeSeatName(portraitSpeaker), cSrc);
+                characterSpriteUrls.set(firstToken(portraitSpeaker), cSrc);
+            }
+            const { left: lName, right: rName } = getSeatingNeighbors(portraitSpeaker);
+            if (lSrc && lName) {
+                characterSpriteUrls.set(normalizeSeatName(lName), lSrc);
+                characterSpriteUrls.set(firstToken(lName), lSrc);
+            }
+            if (rSrc && rName) {
+                characterSpriteUrls.set(normalizeSeatName(rName), rSrc);
+                characterSpriteUrls.set(firstToken(rName), rSrc);
+            }
+        }
         portraitImgEl = null;
         portraitLeftEl = null;
         portraitRightEl = null;
@@ -4964,8 +5060,12 @@ Rules:
     function endTrial() {
         console.log('[Dangan][Trial] Ending trial and clearing persistent state.');
         persistentDebateHistory = [];
+        trialActive      = false;
+        debateSeatingPlan = null;
+        destroyGroupChatPortraits();
+        document.getElementById('dangan-trial-pre-debate-notif')?.remove();
         setState(TrialPhases.IDLE);
-        
+
         // Clear from extension settings (per chat/group)
         if (typeof saveSettingsDebounced === 'function') {
             const key = getTrialPersistenceKey();
@@ -4980,15 +5080,21 @@ Rules:
     function initFromPersistentState() {
         const key = getTrialPersistenceKey();
         const saved = extensionSettings[extensionName]?.trials?.[key];
-        
+
         const savedState = saved?.currentTrialState;
         const savedHistory = saved?.persistentDebateHistory;
+
+        // Always reset — prevents stale trialActive from a previous chat leaking in
+        trialActive = false;
+        currentState = TrialPhases.IDLE;
+        persistentDebateHistory = [];
 
         if (Array.isArray(savedHistory)) {
             persistentDebateHistory = savedHistory;
         }
 
         if (savedState && savedState !== TrialPhases.IDLE) {
+            trialActive = true;
             console.log(`[Dangan][Trial] Restoring trial state for ${key}: ${savedState}`);
             // Transition back to the saved state.
             // Returning to PRE_DEBATE is safer after a refresh for stability.
@@ -5037,6 +5143,79 @@ Rules:
         return `translateX(${x}px) rotateY(${(-dist * GCP_MAX_ROT).toFixed(1)}deg)`;
     }
 
+    // Circular shortest-path difference: how many slots is slot i from the center?
+    function gcpCircularDiff(i, centerIdx) {
+        const n = gcpSlots.length;
+        if (n <= 1) return i - centerIdx;
+        let d = i - centerIdx;
+        if (d >  n / 2) d -= n;
+        if (d < -n / 2) d += n;
+        return d;
+    }
+
+    // Create a full-screen background overlay that tiles the current #bg1 image
+    // horizontally so the panorama can loop seamlessly as the carousel wraps.
+    function gcpBuildBgLoop() {
+        const bg1 = document.getElementById('bg1');
+        if (!bg1 || gcpBgLoopEl) return;
+        const bgImg = bg1.style.backgroundImage || getComputedStyle(bg1).backgroundImage;
+        if (!bgImg || bgImg === 'none') return;
+
+        gcpBgLoopEl = document.createElement('div');
+        gcpBgLoopEl.id = 'dangan-gcp-bg-loop';
+        gcpBgLoopEl.style.backgroundImage = bgImg;
+        gcpBgCurrentPx = 0;
+        document.body.insertBefore(gcpBgLoopEl, bg1.nextSibling);
+
+        // Probe image natural size → rendered width at current viewport height → pixel offsets
+        const urlMatch = bgImg.match(/url\(["']?([^"')]+)["']?\)/);
+        if (urlMatch) {
+            const probe = new Image();
+            probe.onload = () => {
+                if (!gcpBgLoopEl) return;
+                gcpBgImgWidth = Math.ceil(probe.naturalWidth * window.innerHeight / probe.naturalHeight);
+                // Set explicit pixel background-size so the browser tiles at exactly
+                // the same interval as our pan math — eliminates sub-pixel seam gaps.
+                gcpBgLoopEl.style.backgroundSize = `${gcpBgImgWidth}px 100%`;
+                gcpPanBackground(Math.round(gcpCurrentFloat), false);
+            };
+            probe.src = urlMatch[1];
+        }
+    }
+
+    // Pan the background overlay.  animate=false snaps immediately; animate=true transitions.
+    function gcpPanBackground(idx, animate = true) {
+        const bg = gcpBgLoopEl;
+        if (!bg) return;
+        const n = gcpSlots.length;
+        if (n <= 1) return;
+
+        if (gcpBgImgWidth > 0) {
+            const pxPerSlot = gcpBgImgWidth / n;
+            const targetPx  = -(idx * pxPerSlot);
+
+            // Wrap detection: if the short circular path crosses the image seam,
+            // snap the element to an equivalent tile position, then animate the
+            // short distance so the jump is invisible.
+            if (animate && Math.abs(targetPx - gcpBgCurrentPx) > gcpBgImgWidth / 2) {
+                const snapPx = gcpBgCurrentPx + (targetPx > gcpBgCurrentPx ? gcpBgImgWidth : -gcpBgImgWidth);
+                bg.classList.remove('dangan-gcp-pan');
+                bg.style.backgroundPositionX = `${snapPx.toFixed(1)}px`;
+                void bg.offsetWidth; // flush style to suppress transition on snap
+                gcpBgCurrentPx = snapPx;
+            }
+
+            bg.classList.toggle('dangan-gcp-pan', animate);
+            bg.style.backgroundPositionX = `${targetPx.toFixed(1)}px`;
+            gcpBgCurrentPx = targetPx;
+        } else {
+            // Percentage fallback before probe image loads
+            const pct = (idx / Math.max(1, n - 1)) * 100;
+            bg.classList.toggle('dangan-gcp-pan', animate);
+            bg.style.backgroundPositionX = `${pct.toFixed(2)}%`;
+        }
+    }
+
     // Immediately position all slots at the given center index (suppresses CSS transition).
     function gcpPositionSlots(centerFloat) {
         if (!gcpSlots.length) return;
@@ -5045,9 +5224,116 @@ Rules:
         const cx    = window.innerWidth / 2 - sw / 2;
         gcpSlots.forEach((slot, i) => {
             slot.el.style.transition = 'none';
-            slot.el.style.transform  = gcpSlotTransform(cx + (i - centerFloat) * total);
+            slot.el.style.transform  = gcpSlotTransform(cx + gcpCircularDiff(i, centerFloat) * total);
         });
         gcpCurrentFloat = centerFloat;
+        gcpPanBackground(Math.round(centerFloat), false);
+    }
+
+    // Returns the names of members currently in this group chat.
+    // Uses multiple strategies so we get the actual group members — not the full roster.
+    function getGroupChatMemberNames() {
+        const ctx = window.SillyTavern?.getContext?.();
+        if (!ctx) return [];
+        if (!ctx.groupId && !ctx.group_id) return [];
+
+        const allChars = [
+            ...(Array.isArray(ctx.characters)    ? ctx.characters    : []),
+            ...(Array.isArray(window.characters) ? window.characters : []),
+        ];
+
+        const nameFromAvatar = (avatar) => {
+            if (!avatar) return null;
+            const ch = allChars.find(c => c?.avatar === avatar);
+            return ch?.name ? String(ch.name).trim() : null;
+        };
+
+        // Strategy 1 — Prome VN Extension expression holders.
+        // Prome populates #visual-novel-wrapper with exactly the current group's members
+        // and stamps each holder with data-avatar="CharacterName.png".
+        // window.groups is not a global in SillyTavern 1.16, so this is the most
+        // reliable way to enumerate the current group without the full character roster.
+        const promeHolders = document.querySelectorAll('#visual-novel-wrapper [data-avatar]');
+        if (promeHolders.length) {
+            const names = [];
+            const seen  = new Set();
+            for (const el of promeHolders) {
+                const avatar = el.getAttribute('data-avatar');
+                if (!avatar || avatar === 'prome-user' || seen.has(avatar)) continue;
+                seen.add(avatar);
+                const name = nameFromAvatar(avatar);
+                if (name) names.push(name);
+            }
+            if (names.length) return names;
+        }
+
+        // Strategy 2 — groups list from context or global (ctx.groups is available even
+        // when window.groups is module-internal in ST 1.16).
+        const groupId  = String(ctx.groupId ?? ctx.group_id ?? '').trim();
+        const allGroups = [
+            ...(Array.isArray(ctx.groups)          ? ctx.groups          : []),
+            ...(Array.isArray(window.groups)        ? window.groups       : []),
+            ...(Array.isArray(window.group_chats)   ? window.group_chats  : []),
+            ...(Array.isArray(window.groupChats)    ? window.groupChats   : []),
+        ];
+        const group = allGroups.find(g => String(g?.id ?? '').trim() === groupId);
+        if (group) {
+            const names = (Array.isArray(group.members) ? group.members : [])
+                .map(nameFromAvatar).filter(Boolean);
+            if (names.length) return names;
+        }
+
+        // Strategy 3 — ST context group object.
+        const ctxGroup = ctx.group ?? ctx.groupChat ?? ctx.group_chat;
+        if (ctxGroup && Array.isArray(ctxGroup.members)) {
+            const names = ctxGroup.members.map(nameFromAvatar).filter(Boolean);
+            if (names.length) return names;
+        }
+
+        // Strategy 4 — scan chat history for unique senders.
+        // Characters who have spoken are definitely group members regardless of
+        // how many Prome holders have been populated.
+        if (Array.isArray(ctx.chat) && ctx.chat.length) {
+            const names = [...new Set(
+                ctx.chat
+                    .filter(m => !m.is_user && m.name)
+                    .map(m => String(m.name).trim())
+                    .filter(Boolean)
+            )];
+            if (names.length) return names;
+        }
+
+        return [];
+    }
+
+    // Flat layout for non-trial group chats: all sprites visible at once, side by side.
+    // Slot width shrinks to fit all n characters across the viewport with no overlap.
+    // Height scaling is applied via transform:scale on the img (immune to CSS cascade /
+    // flex percentage resolution quirks), growing each character upward from their feet.
+    function gcpPositionSlotsFlat() {
+        const n  = gcpSlots.length;
+        if (!n) return;
+        // Each slot gets an equal share of the viewport; capped at the carousel width
+        // for single-character chats.
+        const sw = n > 1 ? Math.floor(window.innerWidth / n) : gcpSlotW();
+        // Left edge of the leftmost slot, so the group is centred.
+        const cx = window.innerWidth / 2 - (n * sw) / 2;
+
+        gcpSlots.forEach((slot, i) => {
+            const scale = (slot.heightPx || BASE_PORTRAIT_PX) / BASE_PORTRAIT_PX;
+            const x     = cx + i * sw;
+
+            slot.el.style.width      = `${sw}px`;
+            slot.el.style.height     = `${BASE_PORTRAIT_PX}px`;
+            slot.el.style.transition = 'none';
+            slot.el.style.transform  = gcpSlotTransform(x);
+
+            // Scale via the scaleWrap so VFX animation classes on img never
+            // override the character's base proportional size.
+            slot.scaleWrap.style.transformOrigin = 'center bottom';
+            slot.scaleWrap.style.transform       = `scale(${scale.toFixed(3)})`;
+        });
+        gcpCurrentFloat = (n - 1) / 2;
     }
 
     // Scroll to targetIdx — CSS transition on .dangan-gcp-slot handles the easing.
@@ -5058,11 +5344,65 @@ Rules:
         const sw    = gcpSlotW();
         const total = sw + GCP_GAP;
         const cx    = window.innerWidth / 2 - sw / 2;
-        gcpSlots.forEach((slot, i) => {
-            slot.el.style.transition = ''; // restore CSS class transition
-            slot.el.style.transform  = gcpSlotTransform(cx + (i - targetIdx) * total);
+
+        // Signed circular travel distance (shortest path).
+        const travelDelta = gcpCircularDiff(targetIdx, Math.round(gcpCurrentFloat));
+
+        // Helper: does this slot animate naturally (same direction as the scroll)?
+        // A slot is on-path when its actual shift (newDiff − oldDiff) exactly matches
+        // the expected shift (−travelDelta).  Any wrapped slot has a shift of
+        // (−travelDelta ± n) ≠ 0, so it fails this check and gets snapped instead
+        // of animating across the visible area.  No tolerance is needed because all
+        // diffs are integers and the natural shift is always exactly −travelDelta.
+        const isOnPath = (oldDiff, newDiff) =>
+            (newDiff - oldDiff) === -travelDelta;
+
+        // Snapshot per-slot diffs before mutating gcpCurrentFloat.
+        const slotData = gcpSlots.map((slot, i) => ({
+            slot,
+            oldDiff: gcpCircularDiff(i, Math.round(gcpCurrentFloat)),
+            newDiff: gcpCircularDiff(i, targetIdx),
+        }));
+
+        // Pass 1 — snap off-path slots instantly (no transition).
+        slotData.forEach(({ slot, oldDiff, newDiff }) => {
+            if (isOnPath(oldDiff, newDiff)) return;
+            slot.el.style.transition = 'none';
+            slot.el.style.transform  = gcpSlotTransform(cx + newDiff * total);
         });
+
+        // Reflow 1 — commits the snapped off-path positions AND the existing
+        // on-path positions so the browser records them as the animation "from" baseline.
+        void gcpStage.offsetWidth;
+
+        // Enable transitions on on-path slots only.
+        // Off-path slots stay at transition:'none' for now so the next reflow doesn't
+        // accidentally queue a transition for them.
+        slotData.forEach(({ slot, oldDiff, newDiff }) => {
+            if (isOnPath(oldDiff, newDiff)) slot.el.style.transition = '';
+        });
+
+        // Reflow 2 — forces the browser to commit "transition now active + current
+        // position" as the start state for on-path slots.  Without this second flush,
+        // changing transition and transform in the same microtask collapses them into
+        // one style update and the browser skips the animation.
+        void gcpStage.offsetWidth;
+
+        // Write new transforms for on-path slots — transitions fire immediately because
+        // the browser already has a committed "from" snapshot from reflow 2.
+        // Restore transition on off-path slots so they animate on future scrolls.
+        // Do NOT touch transition on on-path slots here — re-setting it would cause
+        // the browser to re-snapshot the "from" position and skip the animation.
+        slotData.forEach(({ slot, oldDiff, newDiff }) => {
+            if (isOnPath(oldDiff, newDiff)) {
+                slot.el.style.transform = gcpSlotTransform(cx + newDiff * total);
+            } else {
+                slot.el.style.transition = '';
+            }
+        });
+
         gcpCurrentFloat = targetIdx;
+        gcpPanBackground(targetIdx, true);
         gcpSeatingListRenderer?.();
     }
 
@@ -5086,13 +5426,33 @@ Rules:
         el.className = 'dangan-gcp-slot';
         el.style.cssText = `width:${sw}px;height:${portraitSlotHeightPx(name)}px;`;
         if (isDead) el.classList.add('gcp-dead');
+        if (trialActive && isGroupChat() && needsGymnasticsHorse(name)) {
+            el.classList.add('has-horse');
+            const horse = document.createElement('img');
+            horse.className = 'dangan-gcp-horse';
+            horse.src = getAssetUrl('gymnastics-horse.png');
+            horse.alt = '';
+            el.appendChild(horse);
+        }
         const img = document.createElement('img');
         img.alt = name;
         if (url) img.src = url;
-        el.appendChild(img);
+        // scaleWrap isolates the height-proportional scale transform so that VFX
+        // animation classes added to img never override the character's base scale.
+        const scaleWrap = document.createElement('div');
+        scaleWrap.className = 'dangan-gcp-scale-wrap';
+        scaleWrap.appendChild(img);
+        el.appendChild(scaleWrap);
+        if (trialActive && isGroupChat()) {
+            const lectern = document.createElement('img');
+            lectern.className = 'dangan-gcp-lectern';
+            lectern.src = (getLecternUrl ? getLecternUrl() : getAssetUrl('lectern.webp'));
+            lectern.alt = '';
+            el.appendChild(lectern);
+        }
         gcpStage.appendChild(el);
         gcpIndexMap.set(normalizeSeatName(name), idx);
-        return { name, el, img };
+        return { name, el, img, scaleWrap, heightPx: portraitSlotHeightPx(name) };
     }
 
     async function initGroupChatPortraits() {
@@ -5117,8 +5477,11 @@ Rules:
 
         try {
             if (isGroup) {
-                // ── Group chat: full seating plan with cylinder scroll ──
-                const plan = getOrBuildSeatingPlan();
+                // ── Group chat: sprite strip ──
+                // Trial: use the cached/built seating plan (all characters, carousel).
+                // Non-trial: read directly from window.groups so we only load the actual
+                // members of this specific group, not the full character roster.
+                const plan = trialActive ? getOrBuildSeatingPlan() : getGroupChatMemberNames();
                 if (!plan.length) { gcpStage.remove(); gcpStage = null; document.body.classList.remove('dangan-gcp-active'); return; }
 
                 // Resolve sprite URLs upfront; exclude muted-without-dead from the plan.
@@ -5129,7 +5492,7 @@ Rules:
                         const deadUrl = await getSpriteUrl(name, 'dead').catch(() => null);
                         if (muted && !deadUrl) return null; // muted + no dead sprite → exclude
                         const url = deadUrl ?? await getSpriteUrl(name, 'neutral').catch(() => null);
-                        return { name, url, isDead: true };
+                        return { name, url, isDead: dead };
                     }
                     const url = await getSpriteUrl(name, 'neutral').catch(() => null);
                     return { name, url, isDead: false };
@@ -5142,16 +5505,26 @@ Rules:
                     gcpMakeSlot(name, url, isDead, i));
 
                 // Mark the player's slot (Prome VN Extension) so it uses the Prome sprite.
+                // Only shown during Class Trials — non-trial group chats don't show the player.
                 // If the player is already in gcpSlots as a group member, update that slot in-place
                 // rather than pushing a duplicate.
-                const promeInfo = getPromeInfo();
+                const promeInfo = trialActive ? getPromeInfo() : null;
                 if (promeInfo) {
                     const playerName  = ctx.name1 || ctx.user_name || ctx.userName || ctx.personaName || 'Player';
                     const playerKey   = normalizeSeatName(playerName);
                     const playerFirst = firstToken(playerName);
-                    const playerUrl   = `/characters/${promeInfo.spritePack}/neutral.png`;
+                    const playerUrl   = await getSpriteUrl(promeInfo.spritePack, 'neutral').catch(() => null);
+                    // Also match by Prome sprite pack name — the player may be using a
+                    // character's sprites (e.g. "Gundham Tanaka") while their persona name
+                    // differs (e.g. "Dawn"), which would otherwise create a duplicate slot.
+                    // Sprite packs often use hyphenated folder names ("gundham-tanaka"),
+                    // so normalise hyphens/underscores to spaces before token-matching.
+                    const spritePackNorm = promeInfo.spritePack.replace(/[-_]/g, ' ');
+                    const spriteKey      = normalizeSeatName(spritePackNorm);
+                    const spriteFirst    = firstToken(spritePackNorm);
                     const existingIdx = gcpSlots.findIndex(
                         s => normalizeSeatName(s.name) === playerKey || firstToken(s.name) === playerFirst
+                          || normalizeSeatName(s.name) === spriteKey  || firstToken(s.name) === spriteFirst
                     );
                     if (existingIdx >= 0) {
                         // Player already has a slot — just flag it and switch to Prome sprite
@@ -5179,7 +5552,41 @@ Rules:
                 const lastMsg = [...(ctx?.chat || [])].reverse().find(m => !m.is_user && m.name);
                 const rawIdx  = lastMsg?.name ? gcpFindIdx(lastMsg.name) : -1;
                 const initIdx = rawIdx >= 0 ? rawIdx : Math.round(Math.max(0, Math.min(gcpCurrentFloat, gcpSlots.length - 1)));
-                gcpPositionSlots(initIdx);
+                if (trialActive) {
+                    gcpBuildBgLoop();
+                    gcpPositionSlots(initIdx);
+                } else {
+                    gcpPositionSlotsFlat();
+                    // Apply initial dim: highlight last speaker, dim everyone else
+                    if (lastMsg?.name) {
+                        const speakerKey = normalizeSeatName(lastMsg.name);
+                        for (const slot of gcpSlots) {
+                            slot.el.classList.toggle('dangan-gcp-dim', normalizeSeatName(slot.name) !== speakerKey);
+                        }
+                    }
+                    // Safety net: Prome may still be populating holders when we first build.
+                    // Watch #visual-novel-wrapper for new [data-avatar] insertions and rebuild
+                    // if the count grows beyond what we loaded.
+                    const vnWrapper = document.getElementById('visual-novel-wrapper');
+                    if (vnWrapper) {
+                        const builtCount = gcpSlots.length;
+                        const observer = new MutationObserver(() => {
+                            const promeCount = vnWrapper.querySelectorAll(
+                                '[data-avatar]:not([data-avatar="prome-user"])'
+                            ).length;
+                            if (promeCount > builtCount) {
+                                observer.disconnect();
+                                const savedFloat = gcpCurrentFloat;
+                                destroyGroupChatPortraits();
+                                gcpCurrentFloat = savedFloat;
+                                initGroupChatPortraits();
+                            }
+                        });
+                        observer.observe(vnWrapper, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-avatar'] });
+                        // Disconnect after 8 s — Prome will have finished by then.
+                        setTimeout(() => observer.disconnect(), 8000);
+                    }
+                }
 
             } else {
                 // ── One-on-one chat: single centered sprite, height-scaled ──
@@ -5206,7 +5613,7 @@ Rules:
         if (!gcpStage) {
             initGroupChatPortraits().then(() => {
                 const idx = gcpFindIdx(speakerName);
-                if (idx >= 0) gcpScrollTo(idx);
+                if (idx >= 0 && trialActive) gcpScrollTo(idx);
             });
             return;
         }
@@ -5228,21 +5635,71 @@ Rules:
             return;
         }
 
-        // Group chat: scroll to speaker; rebuild if missing from filtered plan
+        // Detect whether the speaker is the human player.
+        // In a non-trial group chat the player has no slot in gcpIndexMap (slots are only
+        // created for trials), so a normal name-lookup would return -1 and trigger a
+        // needless rebuild that leaves all sprites undimmed.
+        const pCtx = window.SillyTavern?.getContext?.();
+        const pName = pCtx?.name1 || pCtx?.user_name || pCtx?.userName || pCtx?.personaName || '';
+        const speakerIsPlayer = !!(pName && normalizeSeatName(speakerName) === normalizeSeatName(pName));
+
+        if (speakerIsPlayer) {
+            if (!trialActive) {
+                // Non-trial: no player slot — dim every character slot to show nobody is speaking.
+                for (const slot of gcpSlots) {
+                    slot.el.classList.add('dangan-gcp-dim');
+                }
+                return;
+            }
+            // Trial: the player slot is marked with isPlayer; look it up by flag to avoid
+            // persona-name vs character-name mismatches tripping the rebuild path.
+            const playerSlotIdx = gcpSlots.findIndex(s => s.isPlayer);
+            if (playerSlotIdx >= 0) {
+                gcpScrollTo(playerSlotIdx);
+                return;
+            }
+            // Player slot not yet in stage — fall through to normal lookup / rebuild.
+        }
+
+        // Group chat: scroll to speaker (trial) or rebuild if missing from filtered plan
         let idx = gcpFindIdx(speakerName);
         if (idx < 0) {
             const savedFloat = gcpCurrentFloat;
-            debateSeatingPlan = null;
+            if (trialActive) debateSeatingPlan = null;
             destroyGroupChatPortraits();
             gcpCurrentFloat = savedFloat;
             initGroupChatPortraits().then(() => {
                 const newIdx = gcpFindIdx(speakerName);
-                if (newIdx >= 0) gcpScrollTo(newIdx);
+                if (newIdx >= 0 && trialActive) gcpScrollTo(newIdx);
             });
             return;
         }
 
-        gcpScrollTo(idx);
+        if (trialActive) {
+            gcpScrollTo(idx);
+        } else {
+            // Non-trial: no scrolling, but track the speaker index so that
+            // getGcpImgForExpressionSrc's folder-match fallback (gcpCurrentFloat)
+            // always points to the active speaker — making /emote work correctly.
+            gcpCurrentFloat = idx;
+            // Dim every slot except the current speaker to highlight who is talking.
+            const speakerKey = normalizeSeatName(speakerName);
+            for (const slot of gcpSlots) {
+                slot.el.classList.toggle('dangan-gcp-dim', normalizeSeatName(slot.name) !== speakerKey);
+            }
+        }
+
+        // Ensure every dead/silenced slot shows its dead sprite.
+        // getSpriteUrl may fail at init time (sprite list not yet cached) so we retry lazily here.
+        for (const slot of gcpSlots) {
+            if (slot.isPlayer) continue;
+            if (isCharacterDead(slot.name) || isSilenced(slot.name)) {
+                getCharSpriteUrl(slot.name, 'dead')
+                    .then(url => { if (url && slot.img) slot.img.src = url; })
+                    .catch(() => {});
+                if (!slot.el.classList.contains('gcp-dead')) slot.el.classList.add('gcp-dead');
+            }
+        }
     }
 
     function setGroupChatPortraitsVisible(visible) {
@@ -5254,9 +5711,13 @@ Rules:
         gcpInitializing = false; // unblock any init that was racing
         if (gcpAnimRafId) { cancelAnimationFrame(gcpAnimRafId); gcpAnimRafId = null; }
         gcpStage?.remove();
-        gcpStage    = null;
-        gcpSlots    = [];
-        gcpIndexMap = new Map();
+        gcpStage      = null;
+        gcpSlots      = [];
+        gcpIndexMap   = new Map();
+        gcpBgLoopEl?.remove();
+        gcpBgLoopEl   = null;
+        gcpBgImgWidth = 0;
+        gcpBgCurrentPx = 0;
         document.body.classList.remove('dangan-gcp-active', 'dangan-gcp-visible');
     }
 
@@ -5264,6 +5725,7 @@ Rules:
     // scope: 'speaker' → active speaker slot only | 'all' → every visible slot
     return {
         start: () => {
+            trialActive = true;
             setState(TrialPhases.PRE_DEBATE);
         },
         stop: () => {
@@ -5272,10 +5734,9 @@ Rules:
         onChatChanged: () => {
             // Remove the existing panel so it can rebuild with fresh members/context
             document.getElementById('dangan-trial-pre-debate-notif')?.remove();
-            // Re-sync UI: shows panel if now in a group chat, hides if not
-            if (currentState === TrialPhases.IDLE || currentState === TrialPhases.PRE_DEBATE) {
-                syncUI();
-            }
+            // Reload persistent state for the new chat — resets trialActive and currentState
+            // so lecterns/horses don't bleed in from a previous trial chat
+            initFromPersistentState();
         },
         startMassPanicDebate: (rawScenarios) => {
             mpdScenarios = parseMpdScenarios(rawScenarios || []);
@@ -5284,6 +5745,13 @@ Rules:
         debugStartNonStopDebateWithLines,
         onMessageSent,
         getState: () => currentState,
+        // Call this when an external activity (interjection, PTA, minigame, etc.) has
+        // finished so the controls panel is restored. No-op if a debate is still running.
+        resumeAfterActivity: () => {
+            if (!trialActive) return;
+            if (currentState === TrialPhases.NON_STOP_DEBATE || currentState === TrialPhases.MASS_PANIC_DEBATE) return;
+            setState(TrialPhases.PRE_DEBATE);
+        },
         phases: TrialPhases,
         endTrial,
         initGroupChatPortraits,
@@ -5291,17 +5759,47 @@ Rules:
         setGroupChatPortraitsVisible,
         destroyGroupChatPortraits,
         showCounterBanner: () => showTrialBanner('counter'),
-        getGcpInfo: () => ({
-            characters: gcpSlots.map(s => ({
-                name:   s.name,
-                src:    s.img?.src || null,
-                height: parseInt(s.el?.style.height) || 720,
-            })),
+        getGcpInfo: async () => ({
+            characters: await Promise.all(gcpSlots.map(async s => ({
+                name:     s.name,
+                src:      characterSpriteUrls.get(normalizeSeatName(s.name))
+                       || characterSpriteUrls.get(firstToken(s.name))
+                       || await getCharSpriteUrl(s.name, characterEmotions.get(s.name) || 'neutral').catch(() => null)
+                       || s.img?.src
+                       || null,
+                height:   parseInt(s.el?.style.height) || 720,
+                hasHorse: needsGymnasticsHorse(s.name),
+            }))),
             currentIndex: Math.round(gcpCurrentFloat),
         }),
         getGcpSpeakerImg:  () => gcpSlots[Math.round(gcpCurrentFloat)]?.img  ?? null,
         getGcpSpeakerName: () => gcpSlots[Math.round(gcpCurrentFloat)]?.name ?? null,
         getGcpPlayerImg:   () => gcpSlots.find(s => s.isPlayer)?.img ?? null,
+        // Match an expression image src to the specific GCP slot whose sprite folder
+        // matches the incoming URL. This routes /emote and AI expression changes to
+        // the right character in a group chat rather than blindly updating whoever is
+        // currently centered. Falls back to the current speaker if no folder match.
+        getGcpImgForExpressionSrc: (src) => {
+            if (!gcpSlots.length) return null;
+            try {
+                const parts = new URL(src, location.href).pathname.split('/').filter(Boolean);
+                if (parts.length >= 2) {
+                    const srcFolder = decodeURIComponent(parts[parts.length - 2]).toLowerCase();
+                    for (const slot of gcpSlots) {
+                        if (slot.isDead || !slot.img?.src) continue;
+                        try {
+                            const slotParts = new URL(slot.img.src, location.href).pathname.split('/').filter(Boolean);
+                            if (slotParts.length >= 2) {
+                                const slotFolder = decodeURIComponent(slotParts[slotParts.length - 2]).toLowerCase();
+                                if (slotFolder === srcFolder) return slot.img;
+                            }
+                        } catch { /* ignore bad slot src */ }
+                    }
+                }
+            } catch { /* ignore bad src */ }
+            // Fallback: current centered speaker
+            return gcpSlots[Math.round(gcpCurrentFloat)]?.img ?? null;
+        },
         markCharacterExecuted: async (characterName) => {
             if (!characterName) return;
             const key = normalizeSeatName(characterName);
@@ -5310,8 +5808,7 @@ Rules:
                 slot.isDead = true;
                 slot.el.classList.add('gcp-dead');
                 const deadUrl = await getSpriteUrl(characterName, 'dead').catch(() => null);
-                const url = deadUrl ?? await getSpriteUrl(characterName, 'neutral').catch(() => null);
-                if (url) slot.img.src = url;
+                if (deadUrl) slot.img.src = deadUrl;
             }
             gcpSeatingListRenderer?.();
         },

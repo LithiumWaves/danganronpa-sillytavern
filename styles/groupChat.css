@@ -3,6 +3,25 @@
    Reuses the same seating plan and cylinder-warp maths as the NSD parade.
    ─────────────────────────────────────────────────────────────────────────── */
 
+/* Tiling background overlay — sits above #bg1, tiles the same image horizontally
+   so the panorama can pan and loop seamlessly as the carousel rotates. */
+#dangan-gcp-bg-loop {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: -80px;   /* overshoot to hide skew edge gaps */
+    right: -80px;
+    background-size: auto 100%; /* overridden by JS once image is probed */
+    background-repeat: repeat-x;
+    background-position-y: center;
+    z-index: 0;
+    pointer-events: none;
+}
+
+#dangan-gcp-bg-loop.dangan-gcp-pan {
+    transition: background-position-x 0.5s ease-in-out;
+}
+
 #dangan-group-chat-stage {
     position: fixed;
     inset: 0;
@@ -32,9 +51,66 @@
     display: block;
 }
 
-.dangan-gcp-slot.gcp-dead img {
-    filter: grayscale(1) brightness(0.55);
+/* Scale wrapper — isolates character height-scale from VFX animation transforms */
+.dangan-gcp-scale-wrap {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
 }
+
+/* Non-trial speaker highlight: dim non-speaking slots */
+.dangan-gcp-slot img:not(.dangan-gcp-horse):not(.dangan-gcp-lectern) {
+    transition: filter 0.4s ease;
+}
+.dangan-gcp-slot.dangan-gcp-dim img:not(.dangan-gcp-horse):not(.dangan-gcp-lectern) {
+    filter: brightness(0.45) drop-shadow(0 0 8px rgba(0, 0, 0, 0.5));
+}
+
+.dangan-gcp-horse {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 380px !important;
+    height: 98px !important;
+    object-fit: fill !important;
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.6)) !important;
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* Sprite sits above the horse. Height: 100% so slot height (which varies by
+   character cm) is always the binding dimension — taller chars appear taller.
+   Matches regardless of VFX classes so animations don't break sizing. */
+.dangan-gcp-slot img:not(.dangan-gcp-horse):not(.dangan-gcp-lectern) {
+    position: relative;
+    z-index: 1;
+    width: auto !important;
+    height: 100% !important;
+    object-fit: unset !important;
+    max-width: none;
+    transform-origin: center bottom;
+}
+
+.dangan-gcp-slot.has-horse .dangan-gcp-scale-wrap {
+    transform: translateY(-98px);
+}
+
+.dangan-gcp-lectern {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: auto !important;
+    height: 500px !important;
+    object-fit: unset !important;
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.6)) !important;
+    pointer-events: none;
+    z-index: 2;
+}
+
 
 /* Hide SillyTavern's native VN expression holders when our stage is active.
    Uses a body class (toggled by JS) instead of :has() — :has() forces the browser
