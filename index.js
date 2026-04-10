@@ -26,6 +26,7 @@ import { createQuestionTimeController } from "./vfx/questionTime.js";
 import { createQuestionTruthController } from "./vfx/questionTruth.js";
 import { createHangmansGambitController } from "./vfx/hangmansGambit.js";
 import { createPanicTalkActionController } from "./vfx/panicTalkAction.js";
+import { createScrumDebateController } from "./vfx/scrumDebate.js";
 import { MPD_TEST_SCENARIOS } from "./vfx/massPanicDebate.js";
 import { createAudioVisualizerController } from "./audio/audioVisualizer.js";
 import { user_avatar } from "../../../personas.js";
@@ -59,6 +60,7 @@ let questionTimeController    = null;
 let questionTruthController   = null;
 let hangmansGambitController    = null;
 let panicTalkActionController   = null;
+let scrumDebateController      = null;
 
 const openRouterSettings = createOpenRouterSettingsManager({
     extensionName,
@@ -6063,6 +6065,7 @@ debugSTGlobals();
     questionTruthController  = createQuestionTruthController({ extensionFolderPath, getTruthBullets: getTruthBulletsSnapshot, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme });
     hangmansGambitController  = createHangmansGambitController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, pauseDynamicAudio: fadeOutAndPauseBgm, resumeDynamicAudio: resumeBgmAfterHG, playBgm: playHGBgm });
     panicTalkActionController = createPanicTalkActionController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme });
+    scrumDebateController     = createScrumDebateController({ extensionFolderPath, awardMonocoins, deductMonocoins });
     } catch (error) {
         bootstrapDebugUi();
         console.error(`[${extensionName}] ❌ Load failed:`, error);
@@ -6250,6 +6253,15 @@ makeMpdTestCommand('startMassPanicDebateTestSmall',      3,  'SM');
 makeMpdTestCommand('startMassPanicDebateTestMedium',     6,  'MD');
 makeMpdTestCommand('startMassPanicDebateTestLarge',      9,  'LG');
 makeMpdTestCommand('startMassPanicDebateTestExtraLarge', 12, 'XL');
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'scrum-debate',
+    callback: async () => {
+        await scrumDebateController?.run();
+        return '';
+    },
+    helpString: 'Starts the Scrum Debate minigame. Two teams clash over contradictory theories; match each opposing key point with the correct rebuttal, then mash to finish each exchange.',
+}));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'body-discovered',
