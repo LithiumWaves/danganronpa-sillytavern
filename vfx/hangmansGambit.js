@@ -424,7 +424,7 @@ body.hg-shaking { animation: hgScreenShake 80ms steps(2,end) infinite; }
     position: fixed;
     top: 33.33%; left: 0; right: 0; height: 33.34%;
     z-index: 2147483647;
-    pointer-events: none; overflow: hidden;
+    pointer-events: none; overflow: visible;
     opacity: 1; transition: opacity 0.5s ease;
     border-top: 6px solid #000;
     border-bottom: 6px solid #000;
@@ -590,6 +590,7 @@ export function createHangmansGambitController({
     pauseDynamicAudio    = null,
     resumeDynamicAudio   = null,
     playBgm              = null,
+    getPlayerSpriteUrl   = null,
 } = {}) {
 
     let _bgmAudio = null;
@@ -655,10 +656,23 @@ export function createHangmansGambitController({
         const banner = document.getElementById("dangan-hg-banner");
         const inner  = document.getElementById("dangan-hg-banner-inner");
 
+        // Player approval sprite overlay
+        if (typeof getPlayerSpriteUrl === 'function') {
+            const spriteUrl = await getPlayerSpriteUrl('approval');
+            if (spriteUrl) {
+                const spriteEl = document.createElement('img');
+                spriteEl.src = spriteUrl;
+                spriteEl.alt = '';
+                spriteEl.style.cssText = 'position:absolute;bottom:-1520px;left:70%;transform:translateX(-50%);height:650%;width:auto;object-fit:contain;object-position:center bottom;pointer-events:none;filter:drop-shadow(rgb(255,255,255) 0px 0px 50px);';
+                inner.appendChild(spriteEl);
+            }
+        }
+
         await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
         inner.style.transition = "left 0.325s cubic-bezier(0.22,0.61,0.36,1)";
         inner.style.left = "0%";
         await new Promise(r => setTimeout(r, 350));
+
         await new Promise(r => setTimeout(r, 3000));
 
         banner.style.opacity = "0";

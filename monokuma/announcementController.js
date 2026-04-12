@@ -82,7 +82,7 @@ export function parseMonokumaAnnouncementMarkers(rawText = "") {
     return markers;
 }
 
-export function createMonokumaAnnouncementController({ extensionFolderPath, shouldPlayAudio = () => true, getVolume = () => 0.65, getLanguage = () => "EN", onBefore = null } = {}) {
+export function createMonokumaAnnouncementController({ extensionFolderPath, shouldPlayAudio = () => true, getVolume = () => 0.65, getLanguage = () => "EN", onBefore = null, getCustomOverrides = null } = {}) {
     let uiMounted = false;
     let queue = Promise.resolve();
 
@@ -593,6 +593,57 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         const overlay = mountBodyDiscoveryOverlay();
         if (!overlay) return;
 
+        // ── Hide ST UI for the duration of the cinematic ─────────────────────
+        const BDA_UI_SELECTORS = [
+            '#top-bar', '#top-settings-holder',
+            '#left-nav-panel', '#right-nav-panel',
+            '#sheld', '#chat', '#send_form', '#rightSendForm',
+            '#expression-wrapper',
+            '#dangan-vn-overlay', '#dangan-group-chat-stage',
+            '#dangan-trial-pre-debate-notif', '#dangan_monopad_button', '#dangan-level-bar',
+        ];
+        const bdaHiddenEls = new Map();
+
+        function bdaFadeOutUI() {
+            for (const sel of BDA_UI_SELECTORS) {
+                const el = document.querySelector(sel);
+                if (!el) continue;
+                bdaHiddenEls.set(sel, el.style.display || '');
+                // Use setProperty with !important so CSS-class rules can't override us.
+                // No transition — the BDA overlay has no solid background, so any fade
+                // delay leaves UI visible through the semi-transparent noise layer.
+                el.style.setProperty('transition', 'none', 'important');
+                el.style.setProperty('opacity', '0', 'important');
+                el.style.setProperty('pointer-events', 'none', 'important');
+            }
+            const vnWrapper = document.querySelector('#visual-novel-wrapper');
+            if (vnWrapper) vnWrapper.style.visibility = 'hidden';
+        }
+
+        function bdaFadeInUI() {
+            for (const sel of BDA_UI_SELECTORS) {
+                const el = document.querySelector(sel);
+                if (!el) continue;
+                el.style.display = bdaHiddenEls.get(sel) ?? '';
+                el.style.removeProperty('pointer-events');
+                // Start at 0 then kick off the transition on the next two frames so the
+                // browser registers a from-state before animating to the natural opacity.
+                el.style.setProperty('opacity', '0', 'important');
+                el.style.removeProperty('transition');
+                requestAnimationFrame(() => requestAnimationFrame(() => {
+                    el.style.setProperty('transition', 'opacity 0.4s ease', 'important');
+                    el.style.removeProperty('opacity');
+                    // Clean up our transition override once it's done
+                    el.addEventListener('transitionend', () => el.style.removeProperty('transition'), { once: true });
+                }));
+            }
+            bdaHiddenEls.clear();
+            const vnWrapper = document.querySelector('#visual-novel-wrapper');
+            if (vnWrapper) vnWrapper.style.visibility = '';
+        }
+
+        bdaFadeOutUI();
+
         overlay.classList.add("active");
         overlay.setAttribute("aria-hidden", "false");
 
@@ -818,6 +869,8 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         if (staticEl) staticEl.style.opacity = "";
         overlay.classList.remove("active");
         overlay.setAttribute("aria-hidden", "true");
+
+        bdaFadeInUI();
     }
 
     async function runBodyDiscoverySequence({ cinematic = null } = {}) {
@@ -919,6 +972,8 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         const lang = String(getLanguage() || "JP").toUpperCase();
         const resolvedTranscript = config.transcriptByLang?.[lang] ?? config.transcript;
 
+        const overrides = typeof getCustomOverrides === 'function' ? (getCustomOverrides(type) ?? {}) : {};
+
         mountUi();
         const root = getRoot();
         if (!root) return;
@@ -938,10 +993,16 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
 
         const screenImg = screen.querySelector("img");
         if (screenImg) {
-            screenImg.src = config.gif
-                ? `${extensionFolderPath}/assets/monokuma/${config.gif}`
-                : `${extensionFolderPath}/assets/monokuma/mono_announ.png`;
+            if (overrides.image) {
+                screenImg.src = overrides.image;
+            } else {
+                screenImg.src = config.gif
+                    ? `${extensionFolderPath}/assets/monokuma/${config.gif}`
+                    : `${extensionFolderPath}/assets/monokuma/mono_announ.png`;
+            }
         }
+
+        const finalTranscript = overrides.text || resolvedTranscript;
 
         label.textContent = config.label;
         sting.classList.remove("active");
@@ -962,14 +1023,21 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         await delay(180);
         screen.classList.add("ready");
 
-        const voiceEntry = getAudio()[`${type}_VOICE`];
-        const voiceTracks = Array.isArray(voiceEntry) ? voiceEntry : [voiceEntry];
+        let voiceTracks;
+        if (overrides.voice) {
+            const customAudio = new Audio(overrides.voice);
+            customAudio.preload = 'auto';
+            voiceTracks = [customAudio];
+        } else {
+            const voiceEntry = getAudio()[`${type}_VOICE`];
+            voiceTracks = Array.isArray(voiceEntry) ? voiceEntry : [voiceEntry];
+        }
         const totalVoiceDurationMs = voiceTracks.reduce((sum, t) => {
             return sum + (Number.isFinite(t?.duration) ? Math.round(t.duration * 1000) : 0);
         }, 0);
         const voiceDurationMs = totalVoiceDurationMs > 0
             ? Math.max(2200, totalVoiceDurationMs)
-            : Math.max(2200, Math.round((resolvedTranscript?.length || 60) * 45));
+            : Math.max(2200, Math.round((finalTranscript?.length || 60) * 45));
 
         async function playVoiceTracks() {
             for (const track of voiceTracks) {
@@ -982,7 +1050,7 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         screen.classList.add("speaking");
         await Promise.all([
             playVoiceTracks(),
-            revealDialogue(dialogue, resolvedTranscript, dialogueDurationMs),
+            revealDialogue(dialogue, finalTranscript, dialogueDurationMs),
         ]);
 
         await delay(220);

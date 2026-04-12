@@ -1001,13 +1001,18 @@ function createTrialDiscussionController() {
 
     function startAutoSync() {
         if (pollId) return;
+        let lastPoll = 0;
         const tick = () => {
             const phase = trialController?.getState?.()?.phase || null;
             if (phase !== lastPhase) {
                 sync();
             }
         };
-        pollId = window.setInterval(tick, 250);
+        const rafLoop = (now) => {
+            if (now - lastPoll >= 250) { lastPoll = now; tick(); }
+            pollId = requestAnimationFrame(rafLoop);
+        };
+        pollId = requestAnimationFrame(rafLoop);
     }
 
     return {
@@ -1436,6 +1441,7 @@ function createTrialIntroUiController() {
 
     function startAutoSync() {
         if (pollId) return;
+        let lastPoll = 0;
 
         const tick = () => {
             if (!trialController) {
@@ -1453,7 +1459,11 @@ function createTrialIntroUiController() {
             }
         };
 
-        pollId = window.setInterval(tick, 250);
+        const rafLoop = (now) => {
+            if (now - lastPoll >= 250) { lastPoll = now; tick(); }
+            pollId = requestAnimationFrame(rafLoop);
+        };
+        pollId = requestAnimationFrame(rafLoop);
         document.addEventListener("visibilitychange", tick);
         window.addEventListener('resize', tick);
         window.addEventListener('orientationchange', tick);
@@ -1718,7 +1728,7 @@ async function tryResolvePendingGiftForMessage(msgEl, rawText) {
     pendingGiftResolutionInFlight = false;
 }
 
-async function generateIsolated(prompt, { allowDialogue = false } = {}) {
+async function generateIsolated(prompt, { allowDialogue = false, maxTokens = 300 } = {}) {
     const fullPrompt = `
 You are an analysis engine.
 You do NOT roleplay.
@@ -1730,7 +1740,7 @@ ${prompt}
 
     if (isOpenRouterGenerationEnabled()) {
         return generateWithOpenRouter(fullPrompt, {
-            maxTokens: 300,
+            maxTokens,
             temperature: 0.25,
             topP: 0.9,
             stop: ["USER:", "ASSISTANT:", "###"]
@@ -1748,10 +1758,7 @@ ${prompt}
 
     const result = await ctx.generateRaw({
         prompt: fullPrompt,
-        max_tokens: 300,
-        temperature: 0.25,
-        top_p: 0.9,
-        stop: ["USER:", "ASSISTANT:", "###"]
+        responseLength: maxTokens,
     });
 
     return (result || "").trim();
@@ -1773,46 +1780,27 @@ if (hasRealData && char.social?.notes) {
 
     const sourceText = getCharacterSourceText(char.name);
 
-    const prompt = `
-TASK:
-Analyze the character and produce a concise analytical profile.
+    const prompt = `Extract a character profile for "${char.name}" from the Danganronpa game series.
+Use the SOURCE below if available. If the source says "NO SOURCE DATA AVAILABLE", use your own knowledge of the Danganronpa games.
+Output ONLY these 6 lines, no extra text:
+ultimate: <role>
+height: <height in cm if known, else "unknown">
+measurements: <measurements if known, else "unknown">
+personality: <3-4 traits, comma-separated>
+likes: <2-3 items, comma-separated>
+dislikes: <2-3 items, comma-separated>
 
-You are NOT summarizing.
-You are NOT copying phrasing.
-You are performing trait abstraction.
-
-Rules:
-- Do NOT roleplay
-- Do NOT quote the source text
-- Do NOT reuse wording from the character card
-- Use neutral, third-person analytical language
-- Combine similar traits into categories
-- Remove redundancy
-
-Return the data EXACTLY in this format:
-
-ultimate: <profession or role>
-height: <approximate or inferred>
-measurements: <approximate or inferred>
-personality: <3–5 concise analytical traits>
-likes: <short list of interests or motivations>
-dislikes: <short list of aversions or conflicts>
-
-Use commas to separate items.
-Use neutral psychological descriptors.
-If unsure, infer conservatively.
-
-SOURCE DATA:
-${sourceText}
-`.trim();
+SOURCE:
+${sourceText.slice(0, 800)}`.trim();
 
     try {
-        const result = (await generateIsolated(prompt)) || "";
+        const result = (await generateIsolated(prompt, { maxTokens: 200 })) || "";
+        console.log("[Dangan][Social] Raw generation result:", JSON.stringify(result));
         const lines = result
     .split("\n")
     .map(l => l.trim())
     .filter(Boolean);
-        
+
 const map = {};
 
 lines.forEach(line => {
@@ -1842,7 +1830,19 @@ saveCharacters();
 return char.social.notes;
     } catch (err) {
         console.error("[Dangan][Social] Generation failed:", err);
-        return "ultimate: unknown\nheight: unknown\nmeasurements: unknown\npersonality: unknown";
+        char.social = {
+            profile: {
+                ultimate: "unknown",
+                height: "unknown",
+                measurements: "unknown",
+                personality: "unknown",
+                likes: "unknown",
+                dislikes: "unknown"
+            },
+            notes: "",
+            generatedAt: Date.now()
+        };
+        return "";
     }
 }
 
@@ -4103,6 +4103,10 @@ jQuery(async () => {
             getActiveSocialCharacterId: () => activeSocialCharacterId,
             setActiveSocialCharacterId: value => {
                 activeSocialCharacterId = value;
+            },
+            getPromeSpritePack: () => {
+                const prome = extension_settings?.['Prome-VN-Extension'];
+                return (prome?.enableUserSprite && prome?.userSprite) ? prome.userSprite : null;
             },
         });
 

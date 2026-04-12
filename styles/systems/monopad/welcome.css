@@ -22,6 +22,10 @@
     animation: monopad-grid-drift 22s linear infinite;
 }
 
+.monopad-welcome-cylinder {
+    display: none;
+}
+
 .monopad-welcome-crest {
     position: absolute;
     width: min(56vw, 430px);

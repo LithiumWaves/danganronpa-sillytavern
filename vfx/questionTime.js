@@ -208,7 +208,7 @@ function buildStyles() {
         top: 33.33%; left: 0; right: 0; height: 33.34%;
         z-index: 2147483647;
         pointer-events: none;
-        overflow: hidden;
+        overflow: visible;
         opacity: 1;
         transition: opacity 0.5s ease;
         border-top: 6px solid #000;
@@ -322,7 +322,7 @@ function buildBanner(extensionFolderPath = '') {
     </div>`;
 }
 
-export function createQuestionTimeController({ extensionFolderPath = '', awardMonocoins = null, deductMonocoins = null, restoreTheme = null } = {}) {
+export function createQuestionTimeController({ extensionFolderPath = '', awardMonocoins = null, deductMonocoins = null, restoreTheme = null, getPlayerSpriteUrl = null } = {}) {
 
     function destroy() {
         document.getElementById(QT_ID)?.remove();
@@ -586,6 +586,18 @@ export function createQuestionTimeController({ extensionFolderPath = '', awardMo
         const banner = document.getElementById("dangan-qt-banner");
         const inner  = document.getElementById("dangan-qt-banner-inner");
 
+        // Player approval sprite overlay
+        if (typeof getPlayerSpriteUrl === 'function') {
+            const spriteUrl = await getPlayerSpriteUrl('approval');
+            if (spriteUrl) {
+                const spriteEl = document.createElement('img');
+                spriteEl.src = spriteUrl;
+                spriteEl.alt = '';
+                spriteEl.style.cssText = 'position:absolute;bottom:-1520px;left:70%;transform:translateX(-50%);height:650%;width:auto;object-fit:contain;object-position:center bottom;pointer-events:none;filter:drop-shadow(rgb(255,255,255) 0px 0px 50px);';
+                inner.appendChild(spriteEl);
+            }
+        }
+
         // Two-frame delay so the initial `left: 100%` is painted before we transition
         await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
@@ -595,6 +607,7 @@ export function createQuestionTimeController({ extensionFolderPath = '', awardMo
 
         // Wait for slide to complete, then linger for 3 seconds
         await new Promise(r => setTimeout(r, 350));
+
         await new Promise(r => setTimeout(r, 3000));
 
         // Fade out

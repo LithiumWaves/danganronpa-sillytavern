@@ -33,7 +33,79 @@
         transparent 100%
     );
     pointer-events: none;
-    z-index: 25;
+    z-index: 5;
+}
+
+/* Locked column darkening */
+.mpd-column:has(.mpd-chain-overlay.active) {
+    filter: brightness(0.25);
+}
+
+/* ── Column red spotlights (always on) ───────────────────────────────── */
+
+.mpd-column::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(ellipse 80% 120% at 50% -5%,
+            rgba(200, 0, 0, 0.75) 0%,
+            rgba(180, 0, 0, 0.49) 30%,
+            rgba(140, 0, 0, 0.23) 55%,
+            transparent 75%
+        ),
+        radial-gradient(ellipse 80% 120% at 50% 105%,
+            rgba(200, 0, 0, 0.75) 0%,
+            rgba(180, 0, 0, 0.49) 30%,
+            rgba(140, 0, 0, 0.23) 55%,
+            transparent 75%
+        );
+    pointer-events: none;
+    z-index: 22;
+    animation: mpd-red-spotlight-pulse 1.1s ease-in-out infinite alternate;
+}
+
+@keyframes mpd-red-spotlight-pulse {
+    0%   { opacity: 0.55; }
+    100% { opacity: 0.75; }
+}
+
+.mpd-column.mpd-key-col::before {
+    display: none;
+}
+
+/* ── Key column spotlight ────────────────────────────────────────────── */
+
+/* Shown on the free (shootable) column while a lock is active */
+.mpd-column.mpd-key-col::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(ellipse 80% 120% at 50% -5%,
+            rgba(255, 240, 0, 1.0) 0%,
+            rgba(255, 200, 0, 0.65) 30%,
+            rgba(255, 160, 0, 0.30) 55%,
+            transparent 75%
+        ),
+        radial-gradient(ellipse 80% 120% at 50% 105%,
+            rgba(255, 240, 0, 1.0) 0%,
+            rgba(255, 200, 0, 0.65) 30%,
+            rgba(255, 160, 0, 0.30) 55%,
+            transparent 75%
+        );
+    pointer-events: none;
+    z-index: 22;
+    animation: mpd-spotlight-pulse 1.1s ease-in-out infinite alternate;
+}
+
+@keyframes mpd-spotlight-pulse {
+    0%   { opacity: 0.92; }
+    100% { opacity: 1.0; }
+}
+
+.dangan-portrait-slot.mpd-locked {
+    filter: brightness(0.25);
 }
 
 /* ── Chain overlay ───────────────────────────────────────────────────── */
@@ -105,9 +177,11 @@
 .mpd-statement {
     position: absolute;
     color: white;
-    font-family: 'Poor Richard', 'Orbitron', sans-serif;
+    font-family: "Noto Sans JP", sans-serif;
+    font-weight: 900;
     font-size: 22px;
-    line-height: 1.35;
+    letter-spacing: 0.03em;
+    line-height: 1;
     text-shadow:
         2px 2px 4px #000,
         0 0 14px rgba(255, 60, 60, 0.55);
@@ -117,30 +191,22 @@
     z-index: 15;
 }
 
-/* MPD weak point overrides the default cyan NSD style with red */
+/* MPD weak point — same style as NSD .dangan-weak-point */
 .mpd-weak-point {
-    color: #ff4040 !important;
-    font-weight: bold;
-    text-decoration: underline;
-    text-underline-offset: 3px;
-    text-shadow:
-        0 0 12px rgba(255, 0, 0, 0.95),
-        2px 2px 4px #000 !important;
+    background: linear-gradient(to bottom, #ffcd03, #ff8605);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 0 10px rgba(255, 150, 5, 0.6);
     pointer-events: auto;
     cursor: crosshair;
-    animation: mpd-wp-pulse 0.8s ease-in-out infinite alternate;
-}
-
-@keyframes mpd-wp-pulse {
-    0%   { text-shadow: 0 0 8px  rgba(255, 0, 0, 0.7),  2px 2px 4px #000; }
-    100% { text-shadow: 0 0 20px rgba(255, 80, 0, 1.0), 2px 2px 4px #000; }
 }
 
 /* ── Chain-break countdown badge ─────────────────────────────────────── */
 
 #mpd-chain-counter {
     position: absolute;
-    top: calc(42% - 200px);
+    top: calc(42% - 230px);
     transform: translate(-50%, -50%);
     font-family: 'Orbitron', sans-serif;
     font-size: 80px;
@@ -208,4 +274,60 @@
 #dangan-start-mpdebate-btn {
     background: #8b0000;
     color: #fff;
+}
+
+/* ── Column lock: focus zoom + shake on target portrait img ──────────── */
+.mpd-col-focus {
+    animation: mpd-col-focus-anim 0.52s ease-out forwards !important;
+}
+
+@keyframes mpd-col-focus-anim {
+    0%   { transform: translateX(0);   }
+    8%   { transform: translateX(-6px); }
+    18%  { transform: translateX(6px);  }
+    28%  { transform: translateX(-4px); }
+    38%  { transform: translateX(4px);  }
+    48%  { transform: translateX(-2px); }
+    58%  { transform: translateX(0);    }
+    100% { transform: translateX(0);    }
+}
+
+/* Speed-lines container within an MPD column */
+.mpd-col-speedlines {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 4;
+}
+
+.mpd-col-speedline {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    height: var(--sl-h, 2px);
+    width: 150%;
+    background: linear-gradient(
+        to right,
+        transparent 0%,
+        transparent var(--sl-gap, 18%),
+        rgba(255, 255, 255, 0.85) calc(var(--sl-gap, 18%) + 3%),
+        rgba(255, 255, 255, 0) 100%
+    );
+    transform-origin: 0 50%;
+    transform: rotate(var(--sl-angle, 0deg));
+    animation: mpd-sl-pulse 0.55s ease-in-out var(--sl-delay, 0s) infinite alternate;
+}
+
+@keyframes mpd-sl-pulse {
+    0%   { opacity: 0.55; }
+    100% { opacity: 1.0;  }
+}
+
+/* Hide monopad button and level indicator during Non-Stop Debate and Mass Panic Debate */
+body.dangan-nsd-running #dangan_monopad_button,
+body.dangan-nsd-running #dangan-level-bar,
+body.dangan-mpd-active #dangan_monopad_button,
+body.dangan-mpd-active #dangan-level-bar {
+    display: none !important;
 }

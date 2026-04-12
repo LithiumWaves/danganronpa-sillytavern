@@ -792,6 +792,12 @@ function buildStyles() {
     object-fit: contain;
     object-position: center center;
     display: block;
+    animation: pta-sprite-glow 2.7s ease-in-out infinite;
+}
+@keyframes pta-sprite-glow {
+    0%   { filter: drop-shadow(0 0 2px rgba(255, 80, 180, 0.55)); }
+    50%  { filter: drop-shadow(0 0 7px rgba(255, 80, 180, 1)) drop-shadow(0 0 13px rgba(255, 80, 180, 0.5)); }
+    100% { filter: drop-shadow(0 0 2px rgba(255, 80, 180, 0.55)); }
 }
 @keyframes pta-sprite-flash {
     0%   { filter: brightness(1); }
@@ -853,6 +859,7 @@ export function createPanicTalkActionController({
         clairvoyance = false,
         mainSprite = null,
         defeatSprite = null,
+        getPhaseTrack = null,
     }) {
         destroy();
 
@@ -1109,7 +1116,8 @@ export function createPanicTalkActionController({
                     try { bgmAudio.pause(); bgmAudio.src = ''; } catch(_) {}
                     bgmAudio = null;
                 }
-                const src = `${extensionFolderPath}/assets/bgm/Panic Talk Action Phase ${phaseNum}.mp3`;
+                const customSrc = getPhaseTrack?.(phaseNum) ?? null;
+                const src = customSrc || `${extensionFolderPath}/assets/bgm/Panic Talk Action Phase ${phaseNum}.mp3`;
                 bgmAudio = new Audio(src);
                 bgmAudio.loop = (phaseNum === 3);
                 bgmAudio.volume = 0.7;

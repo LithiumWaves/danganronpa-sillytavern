@@ -1,3 +1,52 @@
+// Canonical heights (cm), mirrors trialManager — first/last name tokens, lowercase
+const REPORT_KNOWN_HEIGHTS_CM = new Map([
+    ['monokuma',  75],
+    ['saionji', 130], ['hiyoko',   130],
+    ['hanamura', 133], ['teruteru', 133],
+    ['kuzuryu',  157], ['fuyuhiko', 157],
+    ['nanami',   160], ['chiaki',   160],
+    ['mioda',    164], ['ibuki',    164],
+    ['koizumi',  165], ['mahiru',   165],
+    ['tsumiki',  165], ['mikan',    165],
+    ['soda',     172], ['kazuichi', 172],
+    ['pekoyama', 172], ['peko',     172],
+    ['nevermind',174], ['sonia',    174],
+    ['owari',    176], ['akane',    176],
+    ['hinata',   179], ['hajime',   179],
+    ['komaeda',  180], ['nagito',   180],
+    ['tanaka',   182], ['gundham',  182],
+    ['togami',   185], ['byakuya',  185],
+    ['nidai',    198], ['nekomaru', 198],
+]);
+
+function parseReportHeightCm(raw) {
+    if (!raw) return null;
+    const s = String(raw).trim();
+    const cmMatch = s.match(/(\d+(?:\.\d+)?)\s*cm/i);
+    if (cmMatch) return parseFloat(cmMatch[1]);
+    const ftInMatch = s.match(/(\d+)\s*(?:ft|'|′|feet)\s*(\d+)?\s*(?:in|"|″)?/i);
+    if (ftInMatch) {
+        const ft = parseInt(ftInMatch[1]) || 0;
+        const inches = parseInt(ftInMatch[2]) || 0;
+        return Math.round(ft * 30.48 + inches * 2.54);
+    }
+    return null;
+}
+
+function getReportCharacterHeightCm(name) {
+    if (!name) return null;
+    const needle = String(name).trim().toLowerCase();
+    for (const token of needle.split(/\s+/)) {
+        if (REPORT_KNOWN_HEIGHTS_CM.has(token)) return REPORT_KNOWN_HEIGHTS_CM.get(token);
+    }
+    return null;
+}
+
+function applyReportSpriteHeight(cm, $sprite) {
+    const scale = cm ? Math.min(1.45, Math.max(0.55, cm / 170)) : 1;
+    $sprite.css("height", `${Math.round(scale * 75)}%`);
+}
+
 export function createSocialPanelController({
     characters,
     saveCharacters,
@@ -8,6 +57,9 @@ export function createSocialPanelController({
     getSpriteUrl,
     getUserName,
     getUserAvatarUrl,
+    getPromeSpritePack,
+    getMonopadSetting,
+    onCharacterDead = null,
 }) {
     let statusFilters = new Set(); // empty = show all statuses
     let overlaysHidden = false;
@@ -86,6 +138,7 @@ export function createSocialPanelController({
             if (!char.isPlayer) saveCharacters();
             applyStampState(char.dead, char.missing, char.mastermind);
             renderNoCharacterOverlay();
+            if (char.dead && !char.isPlayer) onCharacterDead?.(char.name);
         });
 
         $missingBtn.off("click.missing").on("click.missing", () => {
@@ -106,11 +159,23 @@ export function createSocialPanelController({
         const $sprite = $report.find("#report-sprite-img");
         $sprite[0].src = "";
         $sprite[0].style.display = "none";
+        const useTalent = !char.isPlayer && getMonopadSetting?.('talentImagesForAnalysis');
+        // Apply height scaling — skip for talent images since they aren't full-body sprites
+        if (useTalent) {
+            $sprite.css("height", "75%");
+        } else {
+            applyReportSpriteHeight(getReportCharacterHeightCm(char.name), $sprite);
+        }
         applyStampState(char.dead, char.missing, char.mastermind);
         const spriteOpenedId = char.id;
+        const promePack = getPromeSpritePack?.();
         const spritePromise = char.isPlayer
-            ? Promise.resolve(getUserAvatarUrl?.() || "")
-            : Promise.resolve(getSpriteUrl?.(char.name));
+            ? Promise.resolve(promePack
+                ? `/characters/${promePack}/neutral.png`
+                : (getUserAvatarUrl?.() || ""))
+            : useTalent
+                ? getSpriteUrl?.(char.name, 'panictalkaction').catch(() => getSpriteUrl?.(char.name))
+                : Promise.resolve(getSpriteUrl?.(char.name));
         spritePromise.then(spriteUrl => {
             if (getActiveSocialCharacterId() !== spriteOpenedId) return;
             if (!spriteUrl) return;
@@ -171,6 +236,7 @@ export function createSocialPanelController({
 
             if (!profile) {
                 console.warn("[Dangan][Social] Profile missing after generation");
+                $report.find(".notes-content").text("ANALYSIS FAILED");
                 return;
             }
 
@@ -181,6 +247,12 @@ export function createSocialPanelController({
             $("#stat-dislikes").text(profile.dislikes || "—");
 
             $report.find(".notes-content").text("ANALYSIS COMPLETE");
+
+            // Refine sprite height from profile if canonical table had no entry
+            if (!getReportCharacterHeightCm(char.name)) {
+                const cm = parseReportHeightCm(profile.height);
+                if (cm) applyReportSpriteHeight(cm, $report.find("#report-sprite-img"));
+            }
         });
     }
 

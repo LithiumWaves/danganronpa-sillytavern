@@ -4,13 +4,22 @@
  * Parse raw scenario objects, detecting which column holds the weak spot
  * from [[...]] markup. If no column has one, assign one at random.
  */
+// Normalise whiteNoise to a non-empty string array, or null.
+function normalizeWhiteNoise(wn) {
+    if (!wn) return null;
+    const arr = Array.isArray(wn)
+        ? wn.map(s => String(s || '').trim()).filter(Boolean)
+        : [String(wn).trim()].filter(Boolean);
+    return arr.length ? arr : null;
+}
+
 export function parseScenarios(rawScenarios) {
     return rawScenarios.map(s => {
         let weakSpotColumn = -1;
         const texts = (s.texts || []).map((t, col) => {
             const hasWeak = /\[\[.*?\]\]/.test(String(t.text || ''));
             if (hasWeak && weakSpotColumn === -1) weakSpotColumn = col;
-            return { text: String(t.text || ''), speaker: String(t.speaker || ''), whiteNoise: t.whiteNoise || null, isWeakPoint: hasWeak };
+            return { text: String(t.text || ''), speaker: String(t.speaker || ''), whiteNoise: normalizeWhiteNoise(t.whiteNoise), isWeakPoint: hasWeak };
         });
         if (weakSpotColumn === -1 && texts.length) {
             weakSpotColumn = Math.floor(Math.random() * texts.length);
@@ -26,7 +35,7 @@ export const MPD_TEST_SCENARIOS = [
     {
         texts: [
             { text: "There's no way anyone could have entered without a key!", speaker: "" },
-            { text: "[[The security footage was tampered with before we arrived.]]", speaker: "", whiteNoise: "SIGNAL LOST" },
+            { text: "[[The security footage was tampered with before we arrived.]]", speaker: "", whiteNoise: ["How could you even know though..?!", "That's impossible!", "Wait, seriously?!", "I don't buy that..."] },
             { text: "I was with someone the entire time — ask them!", speaker: "" },
         ],
     },
@@ -34,12 +43,12 @@ export const MPD_TEST_SCENARIOS = [
         texts: [
             { text: "That testimony completely contradicts what we heard earlier!", speaker: "" },
             { text: "None of you were even near the scene when it happened...", speaker: "" },
-            { text: "[[The weapon was never found, which changes everything!]]", speaker: "", whiteNoise: "DATA CORRUPTED" },
+            { text: "[[The weapon was never found, which changes everything!]]", speaker: "", whiteNoise: ["Sure, sure...", "Oh come on!", "That doesn't prove anything", "Ughhh..."] },
         ],
     },
     {
         texts: [
-            { text: "[[The time of death puts your whole argument in question.]]", speaker: "", whiteNoise: "ERROR — WHITE NOISE" },
+            { text: "[[The time of death puts your whole argument in question.]]", speaker: "", whiteNoise: ["Shut up, shut up, shut up!", "No no no!", "They're wrong!", "I can't listen to this"] },
             { text: "I never touched the door handle — check for fingerprints!", speaker: "" },
             { text: "There were two sets of footprints leading away from the scene.", speaker: "" },
         ],
@@ -47,7 +56,7 @@ export const MPD_TEST_SCENARIOS = [
     {
         texts: [
             { text: "Why would anyone risk exposure like that so carelessly?", speaker: "" },
-            { text: "[[Someone must have planned this murder well in advance!]]", speaker: "", whiteNoise: "╳ ╳ ╳  interference  ╳ ╳ ╳" },
+            { text: "[[Someone must have planned this murder well in advance!]]", speaker: "", whiteNoise: ["I don't care!!", "Stop making sense!", "La la la la la!", "This is too much..."] },
             { text: "The motive doesn't make sense for any of us here!", speaker: "" },
         ],
     },
@@ -55,12 +64,12 @@ export const MPD_TEST_SCENARIOS = [
         texts: [
             { text: "I heard a loud noise coming from the hallway around that time!", speaker: "" },
             { text: "The body wasn't discovered until after the morning announcement.", speaker: "" },
-            { text: "[[It's impossible for one person to have done all of this alone.]]", speaker: "", whiteNoise: "Static interference..." },
+            { text: "[[It's impossible for one person to have done all of this alone.]]", speaker: "", whiteNoise: ["AAAAAGHHH!!", "Stop!!", "I can't take this!", "Someone shut them up!"] },
         ],
     },
     {
         texts: [
-            { text: "[[Someone in this room is lying to protect themselves right now!]]", speaker: "", whiteNoise: "SIGNAL LOST — SIGNAL LOST" },
+            { text: "[[Someone in this room is lying to protect themselves right now!]]", speaker: "", whiteNoise: ["Just roll over and DIE!", "LIAR!!", "That's YOU!", "Disgusting..."] },
             { text: "None of the windows were broken — so how did they escape?", speaker: "" },
             { text: "The real killer is trying to frame an innocent person here!", speaker: "" },
         ],
@@ -69,12 +78,12 @@ export const MPD_TEST_SCENARIOS = [
         texts: [
             { text: "That's a complete lie and everyone in this room knows it!", speaker: "" },
             { text: "There's a witness — someone saw the whole thing and stayed quiet.", speaker: "" },
-            { text: "[[The evidence you're pointing to doesn't prove anything at all!]]", speaker: "", whiteNoise: "White Noise — do not trust this" },
+            { text: "[[The evidence you're pointing to doesn't prove anything at all!]]", speaker: "", whiteNoise: ["Fuck off!", "That's a stretch...", "Wrong!", "Give me a break"] },
         ],
     },
     {
         texts: [
-            { text: "[[That argument only holds if you ignore everything before noon!]]", speaker: "", whiteNoise: "ERROR — DATA CORRUPTED" },
+            { text: "[[That argument only holds if you ignore everything before noon!]]", speaker: "", whiteNoise: ["Grr...", "I hate this", "They're not wrong...", "Ugh, fine"] },
             { text: "The victim had no enemies — or so everyone was told.", speaker: "" },
             { text: "I saw someone near the storage room just before the body was found.", speaker: "" },
         ],
@@ -82,7 +91,7 @@ export const MPD_TEST_SCENARIOS = [
     {
         texts: [
             { text: "There's no logical reason for anyone here to do this!", speaker: "" },
-            { text: "[[The locked room proves the killer must still be inside!]]", speaker: "", whiteNoise: "WARNING — WARNING" },
+            { text: "[[The locked room proves the killer must still be inside!]]", speaker: "", whiteNoise: ["No no no no!", "That's not right!", "Wait... really?", "I'm scared..."] },
             { text: "Everything that happened that morning was planned to the minute.", speaker: "" },
         ],
     },
@@ -90,12 +99,12 @@ export const MPD_TEST_SCENARIOS = [
         texts: [
             { text: "Someone had access to the restricted area that night.", speaker: "" },
             { text: "The alibi falls apart the moment you check the timestamps.", speaker: "" },
-            { text: "[[Only one person here could have known about the passageway.]]", speaker: "", whiteNoise: "╳ ╳ ╳  NOISE  ╳ ╳ ╳" },
+            { text: "[[Only one person here could have known about the passageway.]]", speaker: "", whiteNoise: ["I can't hear you!", "LALALA", "This is wrong!", "Stop it stop it"] },
         ],
     },
     {
         texts: [
-            { text: "[[That contradiction is the key to everything — don't let it go!]]", speaker: "", whiteNoise: "SIGNAL LOST" },
+            { text: "[[That contradiction is the key to everything — don't let it go!]]", speaker: "", whiteNoise: ["Oh just shut up primadonna!", "ENOUGH!", "Sit down!", "Who asked you?!"] },
             { text: "I refuse to believe anyone here is capable of something like this.", speaker: "" },
             { text: "All the evidence was moved before we had the chance to examine it.", speaker: "" },
         ],
@@ -103,7 +112,7 @@ export const MPD_TEST_SCENARIOS = [
     {
         texts: [
             { text: "The noise I heard was too precise to have been an accident.", speaker: "" },
-            { text: "[[Someone staged this entire scene to look like a different crime.]]", speaker: "", whiteNoise: "Static interference detected..." },
+            { text: "[[Someone staged this entire scene to look like a different crime.]]", speaker: "", whiteNoise: ["I bet it was Fuyuhiko...", "That's crazy talk", "No way...", "Could be anyone!"] },
             { text: "There's only one explanation that fits all the evidence we have!", speaker: "" },
         ],
     },

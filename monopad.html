@@ -55,6 +55,12 @@
                     src="scripts/extensions/third-party/danganronpa-extension/assets/images/ui/hopes-peak-crest.png"
                     alt="Hope's Peak Academy crest"
                 />
+                <img
+                    class="monopad-welcome-cylinder"
+                    src="scripts/extensions/third-party/danganronpa-extension/assets/images/minigames/revolver-cylinder.png"
+                    alt=""
+                    aria-hidden="true"
+                />
                 <div class="monopad-welcome-content">
                     <div class="monopad-welcome-kicker">HOPE'S PEAK ACADEMY</div>
                     <div class="monopad-welcome-message">WELCOME, <span id="monopad_welcome_user">STUDENT</span></div>
@@ -67,6 +73,10 @@
                 <div class="truth-container">
                     <div class="truth-list">
                         <div class="truth-list-header"><img src="scripts/extensions/third-party/danganronpa-extension/assets/icons/bullets.svg" alt="" class="truth-header-icon">TRUTH BULLETS</div>
+                        <div class="truth-sort-bar">
+                            <button class="truth-sort-btn active" data-sort="latest" data-other="oldest" data-label-a="SORT: LATEST" data-label-b="SORT: OLDEST">SORT: LATEST</button>
+                            <button class="truth-sort-btn" data-sort="az" data-other="za" data-label-a="SORT: A–Z" data-label-b="SORT: Z–A">SORT: A–Z</button>
+                        </div>
                         <div class="truth-list-items"></div>
                     </div>
 
@@ -188,7 +198,7 @@
                         <div class="items-coin-box" title="Monocoins counter">
                             <img src="scripts/extensions/third-party/danganronpa-extension/assets/images/ui/monocoin.png" alt="" class="items-coin-icon">
                             <div class="items-coin-text">
-                                <span class="items-coin-label">MONOCOINS</span>
+                                <span class="items-coin-label items-monocoin-label">MONOCOINS</span>
                                 <span class="items-coin-value" id="items-monocoin-value">0</span>
                             </div>
                         </div>
@@ -332,6 +342,16 @@
                 </div>
             </div>
 
+<!-- CHAPTER JOURNAL -->
+<div class="monopad-panel-content chapters-panel" data-panel="chapters">
+    <div class="chapters-shell">
+        <div class="chapters-tab-strip" id="chapters-tab-strip"></div>
+        <div class="chapters-body" id="chapters-body">
+            <div class="chapters-empty">NO CHAPTERS RECORDED YET.</div>
+        </div>
+    </div>
+</div>
+
 <!-- SETTINGS -->
 <div class="monopad-panel-content settings-panel" data-panel="settings">
     <div class="settings-shell">
@@ -386,7 +406,7 @@
                 </div>
 
                 <div class="settings-item">
-                    <span class="settings-label">MONOKUMA LANGUAGE</span>
+                    <span class="settings-label">ANNOUNCEMENT VOICE LANGUAGE</span>
                     <div class="settings-lang-toggle">
                         <button class="settings-lang-btn" data-lang="EN" type="button">EN</button>
                         <button class="settings-lang-btn active" data-lang="JP" type="button">JP</button>
@@ -411,62 +431,64 @@
                     </div>
                 </div>
 
+                <div class="settings-item">
+                    <span class="settings-label">PLAY BGM IN ASSISTANT CHAT</span>
+                    <button class="settings-toggle" data-setting="bgmOutsideChats"></button>
+                </div>
+
                 <div class="settings-item settings-item-stack">
                     <span class="settings-label">BGM TRACKS</span>
                     <div class="settings-note">Select tracks that play after each phase starts. Multiple selections pick randomly. No selections plays no audio.</div>
                     <div class="bgm-tracks-tabs">
-                        <button class="bgm-tracks-tab active" data-tab="daytime">DAYTIME</button>
-                        <button class="bgm-tracks-tab" data-tab="nighttime">NIGHTTIME</button>
-                        <button class="bgm-tracks-tab" data-tab="investigation">INVESTIGATION</button>
-                        <button class="bgm-tracks-tab" data-tab="shop">SHOP</button>
+                        <button class="bgm-tracks-tab active" data-tab="phases">PHASES</button>
+                        <button class="bgm-tracks-tab" data-tab="locations">LOCATIONS</button>
                         <button class="bgm-tracks-tab" data-tab="trial">TRIAL</button>
+                        <button class="bgm-tracks-tab" data-tab="pta">PANIC TALK ACTION</button>
                     </div>
-                    <div class="bgm-tracks-panel active" data-tab="daytime">
-                        <div class="investigation-tracks-wrap">
-                            <div id="daytime-tracks-list" class="investigation-tracks-list"></div>
-                            <div id="daytime-selected-list" class="investigation-selected-list">
-                                <div class="investigation-selected-empty">NONE SELECTED</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="bgm-tracks-panel" data-tab="nighttime">
-                        <div class="investigation-tracks-wrap">
-                            <div id="nighttime-tracks-list" class="investigation-tracks-list"></div>
-                            <div id="nighttime-selected-list" class="investigation-selected-list">
-                                <div class="investigation-selected-empty">NONE SELECTED</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="bgm-tracks-panel" data-tab="investigation">
-                        <div class="investigation-tracks-wrap">
-                            <div id="investigation-tracks-list" class="investigation-tracks-list"></div>
-                            <div id="investigation-selected-list" class="investigation-selected-list">
-                                <div class="investigation-selected-empty">NONE SELECTED</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="bgm-tracks-panel" data-tab="shop">
-                        <div class="investigation-tracks-wrap">
-                            <div id="shop-tracks-list" class="investigation-tracks-list"></div>
-                            <div id="shop-selected-list" class="investigation-selected-list">
-                                <div class="investigation-selected-empty">NONE SELECTED</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="bgm-tracks-panel" data-tab="trial">
+
+                    <!-- PHASES -->
+                    <div class="bgm-tracks-panel active" data-tab="phases">
                         <div class="bgm-tracks-subtabs">
-                            <button class="bgm-tracks-subtab active" data-subtab="trial-general">GENERAL</button>
-                            <button class="bgm-tracks-subtab" data-subtab="trial-preparation">PREPARATION</button>
-                            <button class="bgm-tracks-subtab" data-subtab="trial-debates">DEBATES</button>
-                            <button class="bgm-tracks-subtab" data-subtab="trial-scrum">SCRUM</button>
-                            <button class="bgm-tracks-subtab" data-subtab="trial-panic">PANIC</button>
-                            <button class="bgm-tracks-subtab" data-subtab="trial-reenactment">RE-ENACTMENT</button>
-                            <button class="bgm-tracks-subtab" data-subtab="trial-closing">CLOSING</button>
+                            <button class="bgm-tracks-subtab active" data-subtab="daytime">DAYTIME</button>
+                            <button class="bgm-tracks-subtab" data-subtab="nighttime">NIGHTTIME</button>
+                            <button class="bgm-tracks-subtab" data-subtab="investigation">INVESTIGATION</button>
                         </div>
-                        <div class="bgm-tracks-subpanel active" data-subtab="trial-general">
+                        <div class="bgm-tracks-subpanel active" data-subtab="daytime">
                             <div class="investigation-tracks-wrap">
-                                <div id="trial-general-tracks-list" class="investigation-tracks-list"></div>
-                                <div id="trial-general-selected-list" class="investigation-selected-list">
+                                <div id="daytime-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="daytime-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bgm-tracks-subpanel" data-subtab="nighttime">
+                            <div class="investigation-tracks-wrap">
+                                <div id="nighttime-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="nighttime-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bgm-tracks-subpanel" data-subtab="investigation">
+                            <div class="investigation-tracks-wrap">
+                                <div id="investigation-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="investigation-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- LOCATIONS -->
+                    <div class="bgm-tracks-panel" data-tab="locations">
+                        <div class="bgm-tracks-subtabs">
+                            <button class="bgm-tracks-subtab active" data-subtab="shop">SHOP</button>
+                            <button class="bgm-tracks-subtab" data-subtab="trial-preparation">TRIAL PREPARATION</button>
+                        </div>
+                        <div class="bgm-tracks-subpanel active" data-subtab="shop">
+                            <div class="investigation-tracks-wrap">
+                                <div id="shop-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="shop-selected-list" class="investigation-selected-list">
                                     <div class="investigation-selected-empty">NONE SELECTED</div>
                                 </div>
                             </div>
@@ -479,18 +501,33 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="bgm-tracks-subpanel" data-subtab="trial-debates">
+                    </div>
+
+                    <!-- TRIAL -->
+                    <div class="bgm-tracks-panel" data-tab="trial">
+                        <div class="bgm-tracks-subtabs">
+                            <button class="bgm-tracks-subtab active" data-subtab="trial-general">GENERAL</button>
+                            <button class="bgm-tracks-subtab" data-subtab="trial-debates">NON-STOP DEBATES</button>
+                            <button class="bgm-tracks-subtab" data-subtab="trial-panic">MASS PANIC DEBATES</button>
+                            <button class="bgm-tracks-subtab" data-subtab="trial-scrum">SCRUM DEBATES</button>
+                            <button class="bgm-tracks-subtab" data-subtab="trial-hangman">HANGMAN'S GAMBIT</button>
+                            <button class="bgm-tracks-subtab" data-subtab="trial-rebuttal">REBUTTAL SHOWDOWN</button>
+                            <button class="bgm-tracks-subtab" data-subtab="trial-mindmine">MIND MINE</button>
+                            <button class="bgm-tracks-subtab" data-subtab="trial-interjection">INTERJECTION</button>
+                            <button class="bgm-tracks-subtab" data-subtab="trial-suspect-choice">SUSPECT CHOICE</button>
+                        </div>
+                        <div class="bgm-tracks-subpanel active" data-subtab="trial-general">
                             <div class="investigation-tracks-wrap">
-                                <div id="trial-debates-tracks-list" class="investigation-tracks-list"></div>
-                                <div id="trial-debates-selected-list" class="investigation-selected-list">
+                                <div id="trial-general-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="trial-general-selected-list" class="investigation-selected-list">
                                     <div class="investigation-selected-empty">NONE SELECTED</div>
                                 </div>
                             </div>
                         </div>
-                        <div class="bgm-tracks-subpanel" data-subtab="trial-scrum">
+                        <div class="bgm-tracks-subpanel" data-subtab="trial-debates">
                             <div class="investigation-tracks-wrap">
-                                <div id="trial-scrum-tracks-list" class="investigation-tracks-list"></div>
-                                <div id="trial-scrum-selected-list" class="investigation-selected-list">
+                                <div id="trial-debates-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="trial-debates-selected-list" class="investigation-selected-list">
                                     <div class="investigation-selected-empty">NONE SELECTED</div>
                                 </div>
                             </div>
@@ -503,18 +540,83 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="bgm-tracks-subpanel" data-subtab="trial-reenactment">
+                        <div class="bgm-tracks-subpanel" data-subtab="trial-scrum">
                             <div class="investigation-tracks-wrap">
-                                <div id="trial-reenactment-tracks-list" class="investigation-tracks-list"></div>
-                                <div id="trial-reenactment-selected-list" class="investigation-selected-list">
+                                <div id="trial-scrum-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="trial-scrum-selected-list" class="investigation-selected-list">
                                     <div class="investigation-selected-empty">NONE SELECTED</div>
                                 </div>
                             </div>
                         </div>
-                        <div class="bgm-tracks-subpanel" data-subtab="trial-closing">
+                        <div class="bgm-tracks-subpanel" data-subtab="trial-hangman">
                             <div class="investigation-tracks-wrap">
-                                <div id="trial-closing-tracks-list" class="investigation-tracks-list"></div>
-                                <div id="trial-closing-selected-list" class="investigation-selected-list">
+                                <div id="trial-hangman-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="trial-hangman-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bgm-tracks-subpanel" data-subtab="trial-rebuttal">
+                            <div class="investigation-tracks-wrap">
+                                <div id="trial-rebuttal-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="trial-rebuttal-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bgm-tracks-subpanel" data-subtab="trial-mindmine">
+                            <div class="investigation-tracks-wrap">
+                                <div id="trial-mindmine-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="trial-mindmine-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bgm-tracks-subpanel" data-subtab="trial-interjection">
+                            <div class="investigation-tracks-wrap">
+                                <div id="trial-interjection-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="trial-interjection-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bgm-tracks-subpanel" data-subtab="trial-suspect-choice">
+                            <div class="investigation-tracks-wrap">
+                                <div id="trial-suspect-choice-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="trial-suspect-choice-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- PANIC TALK ACTION -->
+                    <div class="bgm-tracks-panel" data-tab="pta">
+                        <div class="bgm-tracks-subtabs">
+                            <button class="bgm-tracks-subtab active" data-subtab="pta-phase1">PHASE 1</button>
+                            <button class="bgm-tracks-subtab" data-subtab="pta-phase2">PHASE 2</button>
+                            <button class="bgm-tracks-subtab" data-subtab="pta-phase3">PHASE 3</button>
+                        </div>
+                        <div class="bgm-tracks-subpanel active" data-subtab="pta-phase1">
+                            <div class="investigation-tracks-wrap">
+                                <div id="pta-phase1-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="pta-phase1-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bgm-tracks-subpanel" data-subtab="pta-phase2">
+                            <div class="investigation-tracks-wrap">
+                                <div id="pta-phase2-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="pta-phase2-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bgm-tracks-subpanel" data-subtab="pta-phase3">
+                            <div class="investigation-tracks-wrap">
+                                <div id="pta-phase3-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="pta-phase3-selected-list" class="investigation-selected-list">
                                     <div class="investigation-selected-empty">NONE SELECTED</div>
                                 </div>
                             </div>
@@ -566,9 +668,167 @@
                     <button class="settings-toggle" data-setting="hideGiftImages"></button>
                 </div>
 
+                <div class="settings-item settings-item-stack settings-announ-row">
+                    <span class="settings-label">CLASS TRIAL PODIUM</span>
+                    <div class="settings-lang-toggle">
+                        <button class="settings-lang-btn active" id="dangan-lectern-btn-default" data-lectern-value="default" type="button">DEFAULT</button>
+                        <button class="settings-lang-btn" id="dangan-lectern-btn-custom" data-lectern-value="custom" type="button">CUSTOM</button>
+                    </div>
+                    <div class="settings-announ-custom-row is-hidden" id="dangan-lectern-custom-row">
+                        <button type="button" class="settings-small-button" id="dangan-lectern-pick">CHOOSE IMAGE</button>
+                        <input type="file" accept="image/*" id="dangan-lectern-file" style="display:none" />
+                        <span class="settings-note" id="dangan-lectern-file-name">No file chosen</span>
+                    </div>
+                </div>
+
                 <div class="settings-item">
                     <span class="settings-label">HIDE HOPE'S PEAK BRANDING</span>
                     <button class="settings-toggle" data-setting="hideHopesPeakBranding"></button>
+                </div>
+
+                <!-- Announcement customisation — only visible when Hide Hope's Peak Branding is ON -->
+                <div id="dangan-branding-extras" style="display:none">
+
+                    <div class="bgm-tracks-panel active">
+                        <div class="bgm-tracks-subtabs">
+                            <button class="bgm-tracks-subtab active" data-subtab="DAY_ANNOUN" type="button">DAYTIME</button>
+                            <button class="bgm-tracks-subtab" data-subtab="NIGHT_ANNOUN" type="button">NIGHTTIME</button>
+                            <button class="bgm-tracks-subtab" data-subtab="BDA" type="button">BODY DISCOVERY</button>
+                        </div>
+
+                        <!-- DAYTIME panel -->
+                        <div class="bgm-tracks-subpanel active" data-subtab="DAY_ANNOUN">
+
+                            <div class="settings-item settings-item-stack settings-announ-row">
+                                <span class="settings-label">IMAGE</span>
+                                <div class="settings-lang-toggle">
+                                    <button class="settings-lang-btn active" data-announ-type="DAY_ANNOUN" data-announ-field="image" data-announ-value="default" type="button">DEFAULT</button>
+                                    <button class="settings-lang-btn" data-announ-type="DAY_ANNOUN" data-announ-field="image" data-announ-value="custom" type="button">CUSTOM</button>
+                                </div>
+                                <div class="settings-announ-custom-row is-hidden" id="dangan-announ-row-image-DAY_ANNOUN">
+                                    <button type="button" class="settings-small-button" id="dangan-pick-image-DAY_ANNOUN">CHOOSE IMAGE</button>
+                                    <input type="file" accept="image/*" id="dangan-file-image-DAY_ANNOUN" style="display:none" />
+                                    <span class="settings-note" id="dangan-file-name-image-DAY_ANNOUN">No file chosen</span>
+                                </div>
+                            </div>
+
+                            <div class="settings-item settings-item-stack settings-announ-row">
+                                <span class="settings-label">VOICE LINE</span>
+                                <div class="settings-lang-toggle">
+                                    <button class="settings-lang-btn active" data-announ-type="DAY_ANNOUN" data-announ-field="voice" data-announ-value="default" type="button">DEFAULT</button>
+                                    <button class="settings-lang-btn" data-announ-type="DAY_ANNOUN" data-announ-field="voice" data-announ-value="custom" type="button">CUSTOM</button>
+                                </div>
+                                <div class="settings-announ-custom-row is-hidden" id="dangan-announ-row-voice-DAY_ANNOUN">
+                                    <button type="button" class="settings-small-button" id="dangan-pick-voice-DAY_ANNOUN">CHOOSE AUDIO</button>
+                                    <input type="file" accept="audio/*" id="dangan-file-voice-DAY_ANNOUN" style="display:none" />
+                                    <span class="settings-note" id="dangan-file-name-voice-DAY_ANNOUN">No file chosen</span>
+                                </div>
+                            </div>
+
+                            <div class="settings-item settings-item-stack settings-announ-row">
+                                <span class="settings-label">TEXT</span>
+                                <div class="settings-lang-toggle">
+                                    <button class="settings-lang-btn active" data-announ-type="DAY_ANNOUN" data-announ-field="text" data-announ-value="default" type="button">DEFAULT</button>
+                                    <button class="settings-lang-btn" data-announ-type="DAY_ANNOUN" data-announ-field="text" data-announ-value="custom" type="button">CUSTOM</button>
+                                </div>
+                                <div class="settings-announ-custom-row is-hidden" id="dangan-announ-row-text-DAY_ANNOUN">
+                                    <textarea class="settings-announ-text-input" id="dangan-text-DAY_ANNOUN" placeholder="Enter custom daytime announcement text..."></textarea>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <!-- NIGHTTIME panel -->
+                        <div class="bgm-tracks-subpanel" data-subtab="NIGHT_ANNOUN">
+
+                            <div class="settings-item settings-item-stack settings-announ-row">
+                                <span class="settings-label">IMAGE</span>
+                                <div class="settings-lang-toggle">
+                                    <button class="settings-lang-btn active" data-announ-type="NIGHT_ANNOUN" data-announ-field="image" data-announ-value="default" type="button">DEFAULT</button>
+                                    <button class="settings-lang-btn" data-announ-type="NIGHT_ANNOUN" data-announ-field="image" data-announ-value="custom" type="button">CUSTOM</button>
+                                </div>
+                                <div class="settings-announ-custom-row is-hidden" id="dangan-announ-row-image-NIGHT_ANNOUN">
+                                    <button type="button" class="settings-small-button" id="dangan-pick-image-NIGHT_ANNOUN">CHOOSE IMAGE</button>
+                                    <input type="file" accept="image/*" id="dangan-file-image-NIGHT_ANNOUN" style="display:none" />
+                                    <span class="settings-note" id="dangan-file-name-image-NIGHT_ANNOUN">No file chosen</span>
+                                </div>
+                            </div>
+
+                            <div class="settings-item settings-item-stack settings-announ-row">
+                                <span class="settings-label">VOICE LINE</span>
+                                <div class="settings-lang-toggle">
+                                    <button class="settings-lang-btn active" data-announ-type="NIGHT_ANNOUN" data-announ-field="voice" data-announ-value="default" type="button">DEFAULT</button>
+                                    <button class="settings-lang-btn" data-announ-type="NIGHT_ANNOUN" data-announ-field="voice" data-announ-value="custom" type="button">CUSTOM</button>
+                                </div>
+                                <div class="settings-announ-custom-row is-hidden" id="dangan-announ-row-voice-NIGHT_ANNOUN">
+                                    <button type="button" class="settings-small-button" id="dangan-pick-voice-NIGHT_ANNOUN">CHOOSE AUDIO</button>
+                                    <input type="file" accept="audio/*" id="dangan-file-voice-NIGHT_ANNOUN" style="display:none" />
+                                    <span class="settings-note" id="dangan-file-name-voice-NIGHT_ANNOUN">No file chosen</span>
+                                </div>
+                            </div>
+
+                            <div class="settings-item settings-item-stack settings-announ-row">
+                                <span class="settings-label">TEXT</span>
+                                <div class="settings-lang-toggle">
+                                    <button class="settings-lang-btn active" data-announ-type="NIGHT_ANNOUN" data-announ-field="text" data-announ-value="default" type="button">DEFAULT</button>
+                                    <button class="settings-lang-btn" data-announ-type="NIGHT_ANNOUN" data-announ-field="text" data-announ-value="custom" type="button">CUSTOM</button>
+                                </div>
+                                <div class="settings-announ-custom-row is-hidden" id="dangan-announ-row-text-NIGHT_ANNOUN">
+                                    <textarea class="settings-announ-text-input" id="dangan-text-NIGHT_ANNOUN" placeholder="Enter custom nighttime announcement text..."></textarea>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <!-- BODY DISCOVERY panel -->
+                        <div class="bgm-tracks-subpanel" data-subtab="BDA">
+
+                            <div class="settings-item settings-item-stack settings-announ-row">
+                                <span class="settings-label">IMAGE</span>
+                                <div class="settings-lang-toggle">
+                                    <button class="settings-lang-btn active" data-announ-type="BDA" data-announ-field="image" data-announ-value="default" type="button">DEFAULT</button>
+                                    <button class="settings-lang-btn" data-announ-type="BDA" data-announ-field="image" data-announ-value="custom" type="button">CUSTOM</button>
+                                </div>
+                                <div class="settings-announ-custom-row is-hidden" id="dangan-announ-row-image-BDA">
+                                    <button type="button" class="settings-small-button" id="dangan-pick-image-BDA">CHOOSE IMAGE</button>
+                                    <input type="file" accept="image/*" id="dangan-file-image-BDA" style="display:none" />
+                                    <span class="settings-note" id="dangan-file-name-image-BDA">No file chosen</span>
+                                </div>
+                            </div>
+
+                            <div class="settings-item settings-item-stack settings-announ-row">
+                                <span class="settings-label">VOICE LINE</span>
+                                <div class="settings-lang-toggle">
+                                    <button class="settings-lang-btn active" data-announ-type="BDA" data-announ-field="voice" data-announ-value="default" type="button">DEFAULT</button>
+                                    <button class="settings-lang-btn" data-announ-type="BDA" data-announ-field="voice" data-announ-value="custom" type="button">CUSTOM</button>
+                                </div>
+                                <div class="settings-announ-custom-row is-hidden" id="dangan-announ-row-voice-BDA">
+                                    <button type="button" class="settings-small-button" id="dangan-pick-voice-BDA">CHOOSE AUDIO</button>
+                                    <input type="file" accept="audio/*" id="dangan-file-voice-BDA" style="display:none" />
+                                    <span class="settings-note" id="dangan-file-name-voice-BDA">No file chosen</span>
+                                </div>
+                            </div>
+
+                            <div class="settings-item settings-item-stack settings-announ-row">
+                                <span class="settings-label">TEXT</span>
+                                <div class="settings-lang-toggle">
+                                    <button class="settings-lang-btn active" data-announ-type="BDA" data-announ-field="text" data-announ-value="default" type="button">DEFAULT</button>
+                                    <button class="settings-lang-btn" data-announ-type="BDA" data-announ-field="text" data-announ-value="custom" type="button">CUSTOM</button>
+                                </div>
+                                <div class="settings-announ-custom-row is-hidden" id="dangan-announ-row-text-BDA">
+                                    <textarea class="settings-announ-text-input" id="dangan-text-BDA" placeholder="Enter custom body discovery announcement text..."></textarea>
+                                </div>
+                            </div>
+
+                        </div><!-- end BDA panel -->
+
+                    </div><!-- end bgm-tracks-panel -->
+
+                </div><!-- end dangan-branding-extras -->
+
+                <div class="settings-item">
+                    <span class="settings-label">USE TALENT IMAGES FOR CHARACTER ANALYSIS PAGE</span>
+                    <button class="settings-toggle" data-setting="talentImagesForAnalysis"></button>
                 </div>
 
             </section>
@@ -585,12 +845,21 @@
                     <div class="settings-note">Visual and audio effects on character expressions. Character-specific.</div>
                 </div>
 
+
                 <div class="settings-item settings-item-stack">
                     <span class="settings-label">BODY DISCOVERY CINEMATICS</span>
                     <div class="settings-ai-actions">
                         <button id="dangan_configure_deaths" class="settings-small-button" type="button">CONFIGURE DEATHS</button>
                     </div>
                     <div class="settings-note">Create named cinematics for <code>/body-discovered name=&lt;name&gt;</code>. Set background segments, camera pins, shake and static effects.</div>
+                </div>
+
+                <div class="settings-item settings-item-stack">
+                    <span class="settings-label">EXECUTION CINEMATICS</span>
+                    <div class="settings-ai-actions">
+                        <button id="dangan_configure_executions" class="settings-small-button" type="button">CONFIGURE EXECUTIONS</button>
+                    </div>
+                    <div class="settings-note">Create execution cinematics for <code>/execute name=&lt;name&gt;</code>. Upload an MP4 or build a cinematic with custom images and audio. Marks the character dead on completion.</div>
                 </div>
             </section>
 
@@ -613,6 +882,14 @@
                         <span id="dangan_reset_day_counter_status" class="settings-note"></span>
                     </div>
                     <div class="settings-note">Resets time tracker to DAY 1 / DAYTIME.</div>
+                </div>
+                <div class="settings-item settings-item-stack">
+                    <span class="settings-label">CHAPTER DATA</span>
+                    <div class="settings-ai-actions">
+                        <button id="dangan_reset_chapter" class="settings-small-button" type="button">RESET TO PROLOGUE</button>
+                        <span id="dangan_reset_chapter_status" class="settings-note"></span>
+                    </div>
+                    <div class="settings-note">Resets the chapter indicator back to PROLOGUE.</div>
                 </div>
                 <div class="settings-item settings-item-stack">
                     <label class="settings-label" for="dangan_reward_difficulty">REWARD DIFFICULTY</label>
@@ -684,6 +961,7 @@
                 <button class="monopad-icon" data-tab="map"><img src="scripts/extensions/third-party/danganronpa-extension/assets/icons/compass.svg" alt="Map" class="monopad-tab-icon"></button>
                 <button class="monopad-icon" data-tab="skills"><img src="scripts/extensions/third-party/danganronpa-extension/assets/icons/present.svg" alt="Items" class="monopad-tab-icon"></button>
                 <button class="monopad-icon" data-tab="social"><img src="scripts/extensions/third-party/danganronpa-extension/assets/icons/character.svg" alt="Social" class="monopad-tab-icon"></button>
+                <button class="monopad-icon" data-tab="chapters"><img src="scripts/extensions/third-party/danganronpa-extension/assets/icons/book.svg" alt="Chapters" class="monopad-tab-icon"></button>
                 <button class="monopad-icon" data-tab="settings"><img src="scripts/extensions/third-party/danganronpa-extension/assets/icons/cog.svg" alt="Settings" class="monopad-tab-icon"></button>
             </div>
         </div>
@@ -717,6 +995,7 @@
             </div>
         </div>
 
+
         <div id="monopad-vfx-overlay" class="monopad-vfx-overlay" aria-hidden="true">
             <div class="monopad-vfx-window" role="dialog" aria-modal="true" aria-labelledby="monopad-vfx-title">
                 <div class="monopad-vfx-header">
@@ -728,6 +1007,14 @@
                         <div class="monopad-vfx-master-row">
                             <span>ALL ANIMATIONS</span>
                             <button id="monopad-vfx-master-toggle" class="on" type="button">ON</button>
+                        </div>
+                        <div class="monopad-vfx-height-row">
+                            <span>HEIGHT</span>
+                            <div class="monopad-vfx-height-btns">
+                                <button class="monopad-vfx-height-btn" data-height="small" type="button">SMALL</button>
+                                <button class="monopad-vfx-height-btn active" data-height="medium" type="button">MEDIUM</button>
+                                <button class="monopad-vfx-height-btn" data-height="tall" type="button">TALL</button>
+                            </div>
                         </div>
                         <button id="monopad-vfx-close" class="monopad-vfx-close" type="button" aria-label="Close VFX settings">✕</button>
                     </div>
@@ -789,6 +1076,12 @@
                         </div>
                     </div>
                     <div class="monopad-vfx-preview-stage-col">
+                        <div class="monopad-vfx-preview-height-tabs">
+                            <button class="monopad-vfx-preview-height-tab active" data-preview-height="character" type="button">CHARACTER</button>
+                            <button class="monopad-vfx-preview-height-tab" data-preview-height="small" type="button">SMALL</button>
+                            <button class="monopad-vfx-preview-height-tab" data-preview-height="medium" type="button">MEDIUM</button>
+                            <button class="monopad-vfx-preview-height-tab" data-preview-height="tall" type="button">TALL</button>
+                        </div>
                         <img id="monopad-vfx-preview-img" class="monopad-vfx-preview-img" alt="Character expression" />
                     </div>
                 </div>
