@@ -187,7 +187,6 @@
     text-transform: uppercase;
     color: #00ffff;
     text-shadow: 0 0 15px rgba(0, 255, 255, 0.6), 2px 2px 0px rgba(0, 0, 0, 0.8);
-    background: rgba(0, 255, 255, 0.15);
     padding: 5px 20px;
 }
 
@@ -353,6 +352,8 @@
     position: fixed;
     top: 76px;
     right: 20px;
+    height: auto;
+    max-height: 130px;
     background: var(--SmartThemeChatTintColor);
     border: 2px solid var(--SmartThemeBorderColor);
     color: white;
@@ -1482,4 +1483,88 @@
 @keyframes danganCutsceneOut {
     0% { opacity: 1; }
     100% { opacity: 0; }
+}
+
+/* ── Trial Context Panel ─────────────────────────────────────────────────── */
+
+#dangan-trial-context-panel.dangan-trial-notification {
+    right: auto;
+    left: 20px;
+    top: 76px;
+    min-width: 220px;
+    max-width: 320px;
+    width: max-content;
+}
+
+.dangan-context-body {
+    flex-direction: column !important;
+    gap: 8px !important;
+    margin-top: 8px;
+}
+
+.dangan-context-section {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.dangan-context-goal {
+    font-size: 12px;
+    color: #e0e0e0;
+    line-height: 1.4;
+    white-space: normal;
+    word-break: break-word;
+}
+
+.dangan-context-no-suspects {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.4);
+    font-style: italic;
+}
+
+.dangan-context-suspects {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    width: 100%;
+}
+
+.dangan-context-suspect-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 6px;
+}
+
+.dangan-context-suspect-name {
+    font-size: 11px;
+    color: #e0e0e0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dangan-context-suspect-bar-wrap {
+    width: 80px;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 3px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.dangan-context-suspect-bar {
+    height: 100%;
+    background: linear-gradient(90deg, rgba(0,200,255,0.9), rgba(0,255,200,0.7));
+    border-radius: 3px;
+    transition: width 0.4s ease;
+}
+
+.dangan-context-suspect-pct {
+    font-size: 10px;
+    color: rgba(0, 255, 220, 0.85);
+    font-weight: bold;
+    text-align: right;
+    min-width: 30px;
+    flex-shrink: 0;
 }

@@ -92,9 +92,9 @@ function buildIntroStyles() {
         top: -18%; right: -10%;
         width: 65%;
         aspect-ratio: 1;
-        pointer-events: none;
         object-fit: contain;
         opacity: 0.18;
+        pointer-events: none;
         animation: dangan-intro-cylinder-spin 12s linear infinite;
     }
     @keyframes dangan-intro-cylinder-spin {

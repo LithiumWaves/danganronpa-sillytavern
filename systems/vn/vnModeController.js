@@ -181,6 +181,7 @@ function createVnModeController() {
         <div class="dangan-vn-frame" role="dialog" aria-live="polite" aria-label="Dangan Visual Novel dialogue">
             <div class="dangan-vn-controls">
                 <button type="button" class="dangan-vn-control dangan-vn-transcript-toggle" id="dangan-vn-transcript-toggle" aria-label="Open transcript" title="Open transcript">TRANSCRIPT</button>
+                <button type="button" class="dangan-vn-control dangan-vn-clear-chat" id="dangan-vn-clear-chat" aria-label="Clear all chat messages" title="Clear all chat messages">🗑️</button>
                 <button type="button" class="dangan-vn-control dangan-vn-lock" id="dangan-vn-lock" aria-label="Unlock Visual Novel box movement" title="Unlock Visual Novel box movement">🔒</button>
             </div>
             <div class="dangan-vn-header">
@@ -212,6 +213,7 @@ function createVnModeController() {
 
     const frameEl = host.querySelector('.dangan-vn-frame');
     const lockBtnEl = host.querySelector('#dangan-vn-lock');
+    const clearChatBtnEl = host.querySelector('#dangan-vn-clear-chat');
     const transcriptToggleEl = host.querySelector('#dangan-vn-transcript-toggle');
     const transcriptEl = host.querySelector('#dangan-vn-transcript');
     const transcriptCloseEl = host.querySelector('#dangan-vn-transcript-close');
@@ -822,6 +824,20 @@ function createVnModeController() {
         setMoveUnlocked(true);
     });
 
+    clearChatBtnEl?.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const confirmed = window.confirm('Clear all messages from this chat? This cannot be undone.');
+        if (!confirmed) return;
+        const ctx = window.SillyTavern?.getContext?.();
+        if (typeof ctx?.clearChat === 'function') {
+            await ctx.clearChat({ clearData: true });
+            if (typeof ctx.saveChat === 'function') {
+                await ctx.saveChat();
+            }
+        }
+    });
+
     transcriptToggleEl?.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -864,6 +880,7 @@ function createVnModeController() {
         if (!moveUnlocked || event.button !== 0 || !frameEl) return;
         const target = event.target;
         if (target instanceof Element && target.closest('.dangan-vn-lock')) return;
+        if (target instanceof Element && target.closest('.dangan-vn-clear-chat')) return;
 
         isDragging = true;
         movedDuringPointer = false;
@@ -910,6 +927,7 @@ function createVnModeController() {
         }
         const target = event.target;
         if (target instanceof Element && target.closest('.dangan-vn-lock')) return;
+        if (target instanceof Element && target.closest('.dangan-vn-clear-chat')) return;
         if (target instanceof Element && target.closest('.dangan-vn-transcript-toggle')) return;
         if (target instanceof Element && target.closest('.dangan-vn-nav-button')) return;
         advance();

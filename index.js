@@ -14,7 +14,7 @@ import { createSocialPanelController } from "./social/socialPanel.js";
 import { extractUltimateFromNotes, isIgnoredCharacter, lookupUltimateFromLorebook, normalizeList, normalizeName } from "./social/characterUtils.js";
 import { createMapPanelController } from "./map/mapPanel.js";
 import { getLocationPromptReference, resolveLocationIdFromText } from "./map/locationPresence.js";
-import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
+import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, TRIAL_CONTEXT_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "./core/monokumaLessonScript.js";
 import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers } from "./monokuma/announcementController.js";
@@ -1216,6 +1216,7 @@ function createVnModeController() {
                 <button type="button" class="dangan-vn-control dangan-vn-transcript-toggle" id="dangan-vn-transcript-toggle" aria-label="Open transcript" title="Open transcript">TRANSCRIPT</button>
                 <button type="button" class="dangan-vn-control dangan-vn-extra-actions" id="dangan-vn-extra-actions" aria-label="Message actions" title="Message actions">···</button>
                 <button type="button" class="dangan-vn-control dangan-vn-edit-message" id="dangan-vn-edit-message" aria-label="Edit current message" title="Edit current message">✏</button>
+                <button type="button" class="dangan-vn-control dangan-vn-clear-chat" id="dangan-vn-clear-chat" aria-label="Clear all chat messages" title="Clear all chat messages">🗑</button>
                 <button type="button" class="dangan-vn-control dangan-vn-lock" id="dangan-vn-lock" aria-label="Unlock Visual Novel box movement" title="Unlock Visual Novel box movement">🔒</button>
             </div>
             <div class="dangan-vn-header">
@@ -1263,6 +1264,7 @@ function createVnModeController() {
     const regenerateBtnEl = host.querySelector('#dangan-vn-regenerate');
     const extraActionsBtnEl = host.querySelector('#dangan-vn-extra-actions');
     const editMessageBtnEl = host.querySelector('#dangan-vn-edit-message');
+    const clearChatBtnEl = host.querySelector('#dangan-vn-clear-chat');
     const latestButtonBaseLabel = '⤓ Latest';
 
 
@@ -1998,6 +2000,23 @@ function createVnModeController() {
         setMoveUnlocked(true);
     });
 
+    clearChatBtnEl?.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const confirmed = window.confirm('Clear all messages from this chat? This cannot be undone.');
+        if (!confirmed) return;
+        const ctx = window.SillyTavern?.getContext?.();
+        if (typeof ctx?.clearChat === 'function') {
+            await ctx.clearChat({ clearData: true });
+            if (typeof ctx.saveChat === 'function') {
+                await ctx.saveChat();
+            }
+            messageIndex = 0;
+            chunkIndex = 0;
+            renderCurrent();
+        }
+    });
+
     streamToggleEl?.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -2226,6 +2245,7 @@ function createVnModeController() {
         if (!moveUnlocked || event.button !== 0 || !frameEl) return;
         const target = event.target;
         if (target instanceof Element && target.closest('.dangan-vn-lock')) return;
+        if (target instanceof Element && target.closest('.dangan-vn-clear-chat')) return;
 
         isDragging = true;
         movedDuringPointer = false;
@@ -2272,6 +2292,9 @@ function createVnModeController() {
         }
         const target = event.target;
         if (target instanceof Element && target.closest('.dangan-vn-lock')) return;
+        if (target instanceof Element && target.closest('.dangan-vn-clear-chat')) return;
+        if (target instanceof Element && target.closest('.dangan-vn-edit-message')) return;
+        if (target instanceof Element && target.closest('.dangan-vn-extra-actions')) return;
         if (target instanceof Element && target.closest('.dangan-vn-transcript-toggle')) return;
         if (target instanceof Element && target.closest('.dangan-vn-stream-toggle')) return;
         if (target instanceof Element && target.closest('.dangan-vn-nav-button')) return;
@@ -2372,8 +2395,6 @@ function createVnModeController() {
                 }
             } else if (hadMessageCountChange && messages.length > previousCount && wasAtTailBeforeNewMessage) {
                 renderCurrent();
-            } else if (messageIndex >= maxIndex || (wasAtTailBeforeNewMessage && !hadMessageCountChange)) {
-                jumpToLatest();
             } else {
                 renderCurrent();
             }
@@ -2957,15 +2978,16 @@ function bgmAttachEndedListener(audioEl) {
 }
 
 function bgmTogglePause() {
+    // Prioritise the extension's own element — matches getAudioElement() priority.
+    if (investigationTrackAudio) {
+        if (investigationTrackAudio.paused) investigationTrackAudio.play().catch(() => {});
+        else investigationTrackAudio.pause();
+        return;
+    }
     const audioEl = document.getElementById("audio_bgm");
     if (audioEl instanceof HTMLAudioElement) {
         if (audioEl.paused) audioEl.play().catch(() => {});
         else audioEl.pause();
-        return;
-    }
-    if (investigationTrackAudio) {
-        if (investigationTrackAudio.paused) investigationTrackAudio.play().catch(() => {});
-        else investigationTrackAudio.pause();
     }
 }
 
@@ -4032,6 +4054,19 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
             monokumaAnnouncementController?.trigger(marker.type);
         });
 
+        // ---- Trial Context ----
+        for (const match of rawText.matchAll(TRIAL_CONTEXT_REGEX)) {
+            const topic    = match[1]?.trim() || '';
+            const goal     = match[2]?.trim() || '';
+            const suspects = (match[3]?.trim() || '').split(',').map(s => {
+                const [name, pctRaw] = s.trim().split(':');
+                const chance = parseInt(pctRaw ?? '') || 0;
+                return name?.trim() ? { name: name.trim(), chance } : null;
+            }).filter(Boolean).slice(0, 3);
+            trialManager?.setTrialContext?.(topic, goal, suspects);
+            break; // only process the first match per message
+        }
+
         // ---- Marker Cleanup ----
        if (/[Vv]3[Cc]\s*[|｜]/.test(rawText)) {
     const walker = document.createTreeWalker(
@@ -4473,7 +4508,8 @@ async function fadeInAndResumeBgm(durationMs = 600) {
     }
 }
 
-let _hgPreviousBgmSelectVal = null;
+let _hgPreviousBgmSelectVal      = null;
+let _hgPreviousInvestigationAudio = null; // investigationTrackAudio saved across scrum/HG BGM switch
 
 function playHGBgm() {
     const $sel = $('#audio_bgm_select');
@@ -4489,17 +4525,124 @@ function playHGBgm() {
     return audioEl;
 }
 
+function playBgmForScrum(path) {
+    const $sel = $('#audio_bgm_select');
+    if (!$sel.length) return;
+    // Only save the pre-scrum state the first time — subsequent switches (e.g. Final Push)
+    // must not overwrite it, or teardown will restore the wrong track/audio element.
+    if (!_hgPreviousBgmSelectVal) {
+        _hgPreviousBgmSelectVal = $sel.val();
+        // Detach investigationTrackAudio so the visualizer falls back to #audio_bgm while
+        // the scrum BGM (played via DA on #audio_bgm) is active.  It is restored on teardown.
+        _hgPreviousInvestigationAudio = investigationTrackAudio;
+        investigationTrackAudio = null;
+    }
+    if (!$sel.find(`option[value="${CSS.escape ? path : path}"]`).length) {
+        $sel.append(new Option(path.split('/').pop().replace(/\.[^.]+$/, ''), path));
+    }
+    $sel.val(path).trigger('change');
+    const audioEl = document.getElementById('audio_bgm');
+    if (audioEl) audioEl.loop = true;
+}
+
+// Find a track in ST's audio_bgm_select by display name (case-insensitive substring match).
+// Returns the option value (file path) if found, otherwise null.
+function findBgmTrackByName(name) {
+    const $sel = $('#audio_bgm_select');
+    if (!$sel.length) return null;
+    const lower = name.toLowerCase();
+    let found = null;
+    $sel.find('option').each(function () {
+        if ($(this).text().toLowerCase().includes(lower)) {
+            found = $(this).val();
+            return false; // break
+        }
+    });
+    return found;
+}
+
 function resumeBgmAfterHG() {
     const $sel = $('#audio_bgm_select');
     if (!$sel.length || !_hgPreviousBgmSelectVal) {
-        _hgPreviousBgmSelectVal = null;
+        _hgPreviousBgmSelectVal          = null;
+        _hgPreviousInvestigationAudio    = null;
         return;
     }
-    const savedVal = _hgPreviousBgmSelectVal;
-    _hgPreviousBgmSelectVal = null;
+    const savedVal      = _hgPreviousBgmSelectVal;
+    const savedInvAudio = _hgPreviousInvestigationAudio;
+    _hgPreviousBgmSelectVal          = null;
+    _hgPreviousInvestigationAudio    = null;
+
     const audioEl = document.getElementById('audio_bgm');
     if (audioEl) audioEl.loop = false;
-    $sel.val(savedVal).trigger('change');
+
+    if (savedInvAudio) {
+        // Restore our own audio element — the visualizer watches this, so resuming it
+        // immediately makes the play/pause button reflect the correct playing state.
+        investigationTrackAudio = savedInvAudio;
+        investigationTrackAudio.play().catch(() => {});
+        // Seed DA's select so its worker doesn't clobber our track on the next poll.
+        $sel.val(savedVal).trigger('change');
+        // Silence #audio_bgm — investigationTrackAudio is the real source.
+        setTimeout(() => {
+            const daEl = document.getElementById('audio_bgm');
+            if (daEl instanceof HTMLAudioElement) daEl.pause();
+        }, 400);
+    } else {
+        // No investigationTrackAudio was active before the scrum — restore via DA only.
+        $sel.val(savedVal).trigger('change');
+    }
+}
+
+async function onScrumDebateWin(playerTheory) {
+    const theory = (playerTheory || '').trim();
+
+    // Inject the prompt immediately so it's ready when generation fires
+    const ctx = window.SillyTavern?.getContext?.();
+    const setPrompt = ctx?.setExtensionPrompt || window.setExtensionPrompt;
+    if (typeof setPrompt === 'function') {
+        const prompt = theory
+            ? `[SCRUM DEBATE RESULT]\nProving without a shadow of a doubt that ${theory}`
+            : `[SCRUM DEBATE RESULT]\nThe player's team has proven their argument beyond any doubt.`;
+        setPrompt('dangan_scrum_result', prompt, 0, 1, true, 'system');
+    }
+
+    // Wait for the scrum overlay to fully close (750 ms teardown delay + 310 ms CSS fade)
+    await new Promise(r => setTimeout(r, 1200));
+
+    // Show the rebuttal-style notification
+    const notif = document.createElement('div');
+    notif.id = 'dangan-scrum-win-notif';
+    notif.className = 'dangan-trial-notification rebuttal-active';
+    notif.innerHTML = `
+        <div class="dangan-trial-notif-content">
+            <div class="rebuttal-header">SCRUM DEBATE VICTORY</div>
+            <div class="rebuttal-info">
+                Proving without a shadow of a doubt that <em id="dangan-scrum-win-theory"></em>
+            </div>
+        </div>`;
+    document.body.appendChild(notif);
+    if (theory) notif.querySelector('#dangan-scrum-win-theory').textContent = theory;
+
+    // Do NOT trigger AI generation here — wait for the user to send their own message.
+    // The extension prompt is already set; it will be included in whatever the AI generates
+    // in response to the user's next message.
+
+    // Dismiss the notification when the user sends their next message.
+    const onUserSend = () => {
+        notif.remove();
+        eventSource.removeListener(event_types.MESSAGE_SENT, onUserSend);
+    };
+    eventSource.on(event_types.MESSAGE_SENT, onUserSend);
+
+    // Clear the extension prompt once the AI has responded to that message.
+    const onAiResponded = () => {
+        const ctx2 = window.SillyTavern?.getContext?.();
+        const sp = ctx2?.setExtensionPrompt || window.setExtensionPrompt;
+        if (typeof sp === 'function') sp('dangan_scrum_result', '', 0, 0, false, 'system');
+        eventSource.removeListener(event_types.CHARACTER_MESSAGE_RENDERED, onAiResponded);
+    };
+    eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, onAiResponded);
 }
 
 async function runMonokumaLessonStep(step, state) {
@@ -7041,12 +7184,21 @@ window.startClassTrial = async () => {
     return triggerTrialStartFromMapPin();
 };
 
+/**
+ * Update the Trial Context panel with the current topic, goal, and top suspects.
+ * @param {string} topic    - What is currently being discussed (e.g. "Discussing the Blackout")
+ * @param {string} goal     - The trial's overarching goal (e.g. "Who killed Byakuya?")
+ * @param {Array<{name:string,chance:number}>} suspects - Up to 3 suspects with % likelihood
+ */
+window.setTrialContext = (topic, goal, suspects) => {
+    trialManager?.setTrialContext?.(topic, goal, suspects);
+};
+
 const audioVisualizer = createAudioVisualizerController({
     getAudioElement: () => {
-        if (investigationTrackAudio && !investigationTrackAudio.paused) return investigationTrackAudio;
+        if (investigationTrackAudio) return investigationTrackAudio;
         const bgm = document.getElementById('audio_bgm');
-        if (bgm instanceof HTMLAudioElement) return bgm;
-        return investigationTrackAudio ?? null;
+        return bgm instanceof HTMLAudioElement ? bgm : null;
     },
     assetsBasePath: extensionFolderPath,
     getGameState: () => ({
@@ -7286,6 +7438,7 @@ debugSTGlobals();
                 }
                 trialManager?.resumeAfterActivity?.();
             },
+            onStartScrumDebate: () => scrumDebateController?.run(),
             getEquippedSkillsSnapshot,
             attachDraggablePositioning,
             applyCustomUiPosition,
@@ -7569,7 +7722,7 @@ debugSTGlobals();
     questionTruthController  = createQuestionTruthController({ extensionFolderPath, getTruthBullets: getTruthBulletsSnapshot, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, getPlayerSpriteUrl });
     hangmansGambitController  = createHangmansGambitController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, pauseDynamicAudio: fadeOutAndPauseBgm, resumeDynamicAudio: resumeBgmAfterHG, playBgm: playHGBgm, getPlayerSpriteUrl });
     panicTalkActionController = createPanicTalkActionController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme });
-    scrumDebateController     = createScrumDebateController({ extensionFolderPath, awardMonocoins, deductMonocoins });
+    scrumDebateController     = createScrumDebateController({ extensionFolderPath, awardMonocoins, deductMonocoins, getTruthBullets: getTruthBulletsSnapshot, pauseCurrentBgm: fadeOutAndPauseBgm, resumeCurrentBgm: resumeBgmAfterHG, getScrumTracks: () => extension_settings[extensionName]?.trialScrumTracks ?? [], playBgm: playBgmForScrum, getFinalPushTrack: () => findBgmTrackByName('Class Trial - Insurrection'), onWin: onScrumDebateWin, getSpriteUrl, isCharacterDead: (name) => characters.get(normalizeName(name))?.dead === true, getPlayerSpriteUrl, getPlayerName: getActivePersonaName, getCharacterHeightCm });
     rebuttalShowdownController = createRebuttalShowdownController({
         extensionFolderPath, getTruthBullets: getTruthBulletsSnapshot,
         awardMonocoins, deductMonocoins, getSpriteUrl,
@@ -7639,7 +7792,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'choose',
+    name: 'suspectchoosing',
     callback: async () => {
         const info = await trialManager?.getGcpInfo?.() ?? { characters: [], currentIndex: 0 };
         await chooseCharacterController?.run({ characters: info.characters, startIdx: info.currentIndex });
@@ -7649,7 +7802,18 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'end-trial',
+    name: 'setclasstrialgoal',
+    callback: (_, value) => {
+        const goal = (value ?? '').trim();
+        trialManager?.setTrialContext?.(undefined, goal, undefined);
+        return '';
+    },
+    helpString: 'Sets the overall goal displayed in the Trial Context panel (e.g. <tt>/setclasstrialgoal Who killed Byakuya?</tt>).',
+    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'The trial goal text', typeList: [ARGUMENT_TYPE.STRING], isRequired: true })],
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'endtrial',
     callback: async () => {
         console.log('[Dangan] Manual trial termination requested.');
         trialManager?.endTrial();
@@ -7659,7 +7823,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'nonstop-debate',
+    name: 'nonstopdebate',
     callback: async (args, value) => {
         const lines = [];
         for (let i = 1; i <= 8; i++) {
@@ -7673,7 +7837,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             trialManager?.debugStartNonStopDebateWithLines(lines);
             return '';
         }
-        toastr.info('Please provide at least one line: /nonstop-debate s1-q="Your line"');
+        toastr.info('Please provide at least one line: /nonstopdebate s1-q="Your line"');
         return '';
     },
     namedArguments: [
@@ -7793,11 +7957,11 @@ function buildMpdScenariosFromArgs(args, maxScenarios = 8) {
 }
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'mass-panic-debate',
+    name: 'masspanicdebate',
     callback: async (args) => {
         const scenarios = buildMpdScenariosFromArgs(args, 8);
         if (!scenarios.length) {
-            toastr.info('Provide at least one full scenario: /mass-panic-debate sc1-c1-q="..." sc1-c2-q="..." sc1-c3-q="..."');
+            toastr.info('Provide at least one full scenario: /masspanicdebate sc1-c1-q="..." sc1-c2-q="..." sc1-c3-q="..."');
             return '';
         }
         trialManager?.startMassPanicDebate(scenarios);
@@ -7829,7 +7993,7 @@ makeMpdTestCommand('startMassPanicDebateTestLarge',      9,  'LG');
 makeMpdTestCommand('startMassPanicDebateTestExtraLarge', 12, 'XL');
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'scrum-debate',
+    name: 'scrumdebate',
     callback: async () => {
         await scrumDebateController?.run();
         return '';
@@ -7838,7 +8002,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'body-discovered',
+    name: 'bodydiscovery',
     callback: async (args) => {
         const bgName = String(args.bg || '').trim();
         const cinematicName = String(args.cinematic || '').trim();
@@ -7891,7 +8055,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'execute',
+    name: 'punishmenttime',
     callback: async (args) => {
         const charName = String(args.name || '').trim();
         if (!charName) return '';
@@ -7923,19 +8087,19 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'pass-time',
+    name: 'passtime',
     callback: async () => { await passTimeToNight({ source: 'slash_command' }); return ''; },
     helpString: 'Triggers the nighttime announcement, shows a Night Time Start banner, then switches to the Night theme.',
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'go-to-sleep',
+    name: 'gotosleep',
     callback: async () => { await sleepToNextDay({ source: 'slash_command' }); return ''; },
     helpString: 'Advances to the next day, plays the daytime announcement, shows a Free Time Start banner, then switches to the Day theme.',
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'give-truth-bullet',
+    name: 'givetruthbullet',
     callback: (args, description) => {
         const name = String(args.name || '').trim();
         const desc = String(description || '').trim();
@@ -7963,7 +8127,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'vote',
+    name: 'votingtime',
     callback: async (args) => {
         const guess  = String(args.guess  || '').trim() || null;
         const result = String(args.result || '').trim() || null;
@@ -7988,7 +8152,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'question-time',
+    name: 'questiontime',
     callback: async (args) => {
         const title   = String(args.title   || '').trim();
         const time    = Math.max(1, Number(args.time)   || 30);
@@ -8020,7 +8184,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'question-truth',
+    name: 'questiontruth',
     callback: async (args) => {
         const question = String(args.question || '').trim();
         const answer   = String(args.answer   || '').trim();
@@ -8042,7 +8206,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'hangmans-gambit',
+    name: 'hangmansgambit',
     callback: async (args) => {
         const question   = String(args.question   || '').trim();
         const answer     = String(args.answer     || '').trim();
@@ -8068,7 +8232,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'rebuttal-showdown',
+    name: 'rebuttalshowdown',
     callback: async () => {
         await rebuttalShowdownController?.run();
         return '';
@@ -8091,7 +8255,7 @@ async function triggerInterjectorResponse(characterName) {
 }
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'interject',
+    name: 'interjection',
     callback: async (args) => {
         const ctx  = window.SillyTavern?.getContext?.();
         const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
@@ -8165,7 +8329,7 @@ const RS_SIZES = {
 
 for (const cfg of Object.values(RS_SIZES)) {
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-        name: `rebuttal-showdown-${cfg.suffix}`,
+        name: `rebuttalshowdown-${cfg.suffix}`,
         callback: async (args) => {
             const { opponentName, playerName } = rsGetContext(args);
             const phaseOneLines = rsBuildPhaseOneLines(args, cfg.maxLines);
@@ -8195,7 +8359,7 @@ for (const cfg of Object.values(RS_SIZES)) {
 }
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'pta',
+    name: 'panictalkaction',
     callback: async (args) => {
         const enemyHp  = Math.max(1, Number(args.enemyHp)  || 100);
         const playerHp = Math.max(1, Number(args.playerHp) || 100);
@@ -8303,7 +8467,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'end-trial',
+    name: 'endtrial',
     callback: async () => {
         console.log('[Dangan] Manual trial termination requested.');
         trialManager?.endTrial();

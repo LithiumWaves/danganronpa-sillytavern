@@ -38,6 +38,7 @@ export function createTrialManager(deps) {
         onStartMassPanicDebate,
         onStartRebuttalShowdown,
         onStartPunishmentTime,
+        onStartScrumDebate,
         getEquippedSkillsSnapshot,
         attachDraggablePositioning,
         applyCustomUiPosition,
@@ -81,6 +82,8 @@ export function createTrialManager(deps) {
     let lastHitWeakPoint = null;
     let rebuttalPromptActive = false;
     let persistentDebateHistory = [];
+    let trialContext = { topic: '', goal: '', suspects: [] };
+    // suspects: [{ name: string, chance: number }]  (chance is 0–100)
     let speedModifier = 1.0;
     let revolverAngle  = 0;
     let revolverTarget = 0;
@@ -854,6 +857,7 @@ ${historyText}
                     setTimeout(() => { if (trialActive && isGroupChat()) playTrialGeneralTrack?.(); }, 750);
                 }
                 if (isGroupChat() && trialActive) showPreDebateNotification();
+                if (isGroupChat() && trialActive) showContextPanel();
                 break;
             case TrialPhases.PRE_DEBATE:
                 cleanupDebateUI();
@@ -864,6 +868,7 @@ ${historyText}
                     setTimeout(() => { if (trialActive && isGroupChat()) playTrialGeneralTrack?.(); }, 750);
                 }
                 if (isGroupChat()) showPreDebateNotification();
+                if (isGroupChat()) showContextPanel();
                 break;
             case TrialPhases.NON_STOP_DEBATE:
                 setupNonStopDebate();
@@ -881,6 +886,105 @@ ${historyText}
         }
     }
 
+    function updateControlPanelTopic() {
+        const label = document.querySelector('#dangan-trial-pre-debate-notif .dangan-trial-topic-label');
+        if (!label) return;
+        label.textContent = trialContext.topic
+            ? `The Class is debating ${trialContext.topic}`
+            : 'The Class Trial is ongoing...';
+    }
+
+    function updateContextPanel() {
+        const panel = document.getElementById('dangan-trial-context-panel');
+        if (!panel) return;
+
+        const goalEl     = panel.querySelector('.dangan-context-goal');
+        const suspectsEl = panel.querySelector('.dangan-context-suspects');
+
+        if (goalEl)  goalEl.textContent  = trialContext.goal  || '—';
+
+        if (suspectsEl) {
+            if (!trialContext.suspects.length) {
+                suspectsEl.innerHTML = '<span class="dangan-context-no-suspects">No suspects identified</span>';
+            } else {
+                suspectsEl.innerHTML = trialContext.suspects.slice(0, 3).map(s => `
+                    <div class="dangan-context-suspect-row">
+                        <span class="dangan-context-suspect-name">${s.name}</span>
+                        <div class="dangan-context-suspect-bar-wrap">
+                            <div class="dangan-context-suspect-bar" style="width:${Math.max(0, Math.min(100, s.chance))}%"></div>
+                        </div>
+                        <span class="dangan-context-suspect-pct">${s.chance}%</span>
+                    </div>`).join('');
+            }
+        }
+    }
+
+    function showContextPanel() {
+        if (document.getElementById('dangan-trial-context-panel')) {
+            updateContextPanel();
+            return;
+        }
+
+        const panel = document.createElement('div');
+        panel.id = 'dangan-trial-context-panel';
+        panel.className = 'dangan-trial-notification dangan-context-panel';
+        panel.innerHTML = `
+            <div class="dangan-trial-notif-content">
+                <div class="dangan-trial-notif-drag-handle">
+                    <span class="dangan-trial-notif-drag-icon">⠿</span>
+                    <span>Trial Context</span>
+                    <button class="dangan-trial-collapse-btn" title="Collapse panel">▼</button>
+                </div>
+                <div class="dangan-trial-notif-body dangan-context-body">
+                    <div class="dangan-context-section">
+                        <span class="dangan-trial-group-label">Trial Goal</span>
+                        <span class="dangan-context-goal">—</span>
+                    </div>
+                    <div class="dangan-context-section">
+                        <span class="dangan-trial-group-label">Suspects</span>
+                        <div class="dangan-context-suspects"></div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(panel);
+
+        applyCustomUiPosition?.(panel, 'dangan-trial-context-pos');
+        attachDraggablePositioning?.(panel, {
+            storageKey: 'dangan-trial-context-pos',
+            handleSelector: '.dangan-trial-notif-drag-handle',
+        });
+
+        const collapseBtn = panel.querySelector('.dangan-trial-collapse-btn');
+        collapseBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isCollapsed = panel.classList.toggle('collapsed');
+            collapseBtn.textContent = isCollapsed ? '▲' : '▼';
+            collapseBtn.title = isCollapsed ? 'Expand panel' : 'Collapse panel';
+        });
+
+        updateContextPanel();
+    }
+
+    function saveTrialContext() {
+        if (typeof saveSettingsDebounced !== 'function') return;
+        const key = getTrialPersistenceKey();
+        if (!extensionSettings[extensionName].trials)      extensionSettings[extensionName].trials      = {};
+        if (!extensionSettings[extensionName].trials[key]) extensionSettings[extensionName].trials[key] = {};
+        extensionSettings[extensionName].trials[key].trialTopic = trialContext.topic;
+        extensionSettings[extensionName].trials[key].trialGoal  = trialContext.goal;
+        saveSettingsDebounced();
+    }
+
+    function setTrialContext(topic, goal, suspects) {
+        if (topic    !== undefined) trialContext.topic    = topic    || '';
+        if (goal     !== undefined) trialContext.goal     = goal     || '';
+        if (suspects !== undefined) trialContext.suspects = Array.isArray(suspects) ? suspects.slice(0, 3) : [];
+        saveTrialContext();
+        updateControlPanelTopic();
+        updateContextPanel();
+    }
+
     function showPreDebateNotification() {
         if (document.getElementById('dangan-trial-pre-debate-notif')) return;
 
@@ -894,7 +998,7 @@ ${historyText}
             <div class="dangan-trial-notif-content">
                 <div class="dangan-trial-notif-drag-handle">
                     <span class="dangan-trial-notif-drag-icon">⠿</span>
-                    <span>The Class Trial is ongoing...</span>
+                    <span class="dangan-trial-topic-label">${trialContext.topic ? `The Class is debating ${trialContext.topic}` : 'The Class Trial is ongoing...'}</span>
                     <button class="dangan-trial-collapse-btn" title="Collapse panel">▼</button>
                 </div>
                 <div class="dangan-trial-notif-body">
@@ -908,6 +1012,7 @@ ${historyText}
                             <button id="dangan-start-rebuttal-btn" class="dangan-trial-start-btn" style="display:none">START REBUTTAL SHOWDOWN</button>
                             <button id="dangan-start-qtime-btn"    class="dangan-trial-start-btn" style="display:none">START QUESTION TIME</button>
                             <button id="dangan-start-qtruth-btn"   class="dangan-trial-start-btn" style="display:none">START QUESTION TRUTH</button>
+                            <button id="dangan-start-scrum-btn"    class="dangan-trial-start-btn" style="display:none">START SCRUM DEBATE</button>
                         </div>
                     </div>
                     <div class="dangan-trial-btn-group dangan-trial-btn-group--actions">
@@ -1091,6 +1196,10 @@ ${historyText}
         notification.querySelector('#dangan-start-qtruth-btn').onclick = () => {
             notification.remove();
             onStartQuestionTruth?.();
+        };
+        notification.querySelector('#dangan-start-scrum-btn').onclick = () => {
+            notification.remove();
+            onStartScrumDebate?.();
         };
         notification.querySelector('#dangan-start-choosing-btn').onclick = async () => {
             notification.remove();
@@ -5064,6 +5173,8 @@ Rules:
         debateSeatingPlan = null;
         destroyGroupChatPortraits();
         document.getElementById('dangan-trial-pre-debate-notif')?.remove();
+        document.getElementById('dangan-trial-context-panel')?.remove();
+        trialContext = { topic: '', goal: '', suspects: [] };
         setState(TrialPhases.IDLE);
 
         // Clear from extension settings (per chat/group)
@@ -5072,6 +5183,8 @@ Rules:
             if (extensionSettings[extensionName].trials && extensionSettings[extensionName].trials[key]) {
                 extensionSettings[extensionName].trials[key].currentTrialState = TrialPhases.IDLE;
                 extensionSettings[extensionName].trials[key].persistentDebateHistory = [];
+                extensionSettings[extensionName].trials[key].trialTopic = '';
+                extensionSettings[extensionName].trials[key].trialGoal  = '';
                 saveSettingsDebounced();
             }
         }
@@ -5088,10 +5201,14 @@ Rules:
         trialActive = false;
         currentState = TrialPhases.IDLE;
         persistentDebateHistory = [];
+        trialContext = { topic: '', goal: '', suspects: [] };
 
         if (Array.isArray(savedHistory)) {
             persistentDebateHistory = savedHistory;
         }
+
+        if (saved?.trialTopic) trialContext.topic = saved.trialTopic;
+        if (saved?.trialGoal)  trialContext.goal  = saved.trialGoal;
 
         if (savedState && savedState !== TrialPhases.IDLE) {
             trialActive = true;
@@ -5420,6 +5537,47 @@ Rules:
     }
 
     // Builds one DOM slot and registers it in gcpIndexMap at the given index.
+    // Sync already-loaded Prome expression imgs into GCP slots that have no sprite yet.
+    // Called after the stage is built to catch expressions that fired before we were ready.
+    function gcpSyncFromPromeExpressions() {
+        if (!gcpSlots.length) return;
+        // Query both the standard VN wrapper and any Prome [data-avatar] portrait holders.
+        // The latter covers the common case where Prome fires expressions into named containers
+        // (e.g. <div data-avatar="akane-owari"><img class="expression" ...>).
+        document.querySelectorAll(
+            '#visual-novel-wrapper img.expression, #expression-holder img.expression, [data-avatar] img.expression'
+        ).forEach(imgEl => {
+            const srcAttr = imgEl.getAttribute?.('src');
+            if (!srcAttr) return;
+            const src = imgEl.src;
+            if (!src || src === location.href) return;
+            if (imgEl.closest?.('#expression-prome-user')) return;
+            // Prefer the data-avatar attribute (most reliable Prome identifier); fall back to URL folder.
+            const dataAvatar = imgEl.closest?.('[data-avatar]')?.getAttribute?.('data-avatar');
+            const folderHint = dataAvatar
+                ? dataAvatar.toLowerCase().replace(/[-_]/g, ' ').trim()
+                : (() => {
+                    try {
+                        const parts = new URL(src, location.href).pathname.split('/').filter(Boolean);
+                        if (parts.length < 2) return null;
+                        return decodeURIComponent(parts[parts.length - 2]).toLowerCase().replace(/[-_]/g, ' ').trim();
+                    } catch { return null; }
+                })();
+            if (!folderHint) return;
+            const folderFirst = firstToken(folderHint);
+            for (const slot of gcpSlots) {
+                if (slot.isDead || slot.isPlayer) continue;
+                // Only fill slots with no src yet — don't override successfully loaded sprites
+                if (slot.img?.getAttribute?.('src')) continue;
+                const slotName = normalizeSeatName(slot.name);
+                if (slotName === folderHint || (folderFirst === folderHint && firstToken(slot.name) === folderFirst)) {
+                    if (!slot.el.classList.contains('gcp-dead')) slot.img.src = src;
+                    break;
+                }
+            }
+        });
+    }
+
     function gcpMakeSlot(name, url, isDead, idx) {
         const sw = gcpSlotW();
         const el = document.createElement('div');
@@ -5452,7 +5610,7 @@ Rules:
         }
         gcpStage.appendChild(el);
         gcpIndexMap.set(normalizeSeatName(name), idx);
-        return { name, el, img, scaleWrap, heightPx: portraitSlotHeightPx(name) };
+        return { name, el, img, scaleWrap, heightPx: portraitSlotHeightPx(name), isDead: !!isDead };
     }
 
     async function initGroupChatPortraits() {
@@ -5485,16 +5643,19 @@ Rules:
                 if (!plan.length) { gcpStage.remove(); gcpStage = null; document.body.classList.remove('dangan-gcp-active'); return; }
 
                 // Resolve sprite URLs upfront; exclude muted-without-dead from the plan.
+                console.log(`[Dangan][GCP] Building stage — plan (${plan.length}):`, plan);
                 const resolved = await Promise.all(plan.map(async name => {
                     const muted = isCharacterMuted(name);
                     const dead  = isCharacterDead(name);
                     if (muted || dead) {
                         const deadUrl = await getSpriteUrl(name, 'dead').catch(() => null);
-                        if (muted && !deadUrl) return null; // muted + no dead sprite → exclude
+                        if (muted && !deadUrl) { console.log(`[Dangan][GCP] "${name}" muted+no dead sprite → excluded`); return null; }
                         const url = deadUrl ?? await getSpriteUrl(name, 'neutral').catch(() => null);
+                        console.log(`[Dangan][GCP] "${name}" (dead=${dead}, muted=${muted}) → ${url ?? 'null'}`);
                         return { name, url, isDead: dead };
                     }
                     const url = await getSpriteUrl(name, 'neutral').catch(() => null);
+                    console.log(`[Dangan][GCP] "${name}" → ${url ?? 'null'}`);
                     return { name, url, isDead: false };
                 }));
 
@@ -5555,8 +5716,13 @@ Rules:
                 if (trialActive) {
                     gcpBuildBgLoop();
                     gcpPositionSlots(initIdx);
+                    gcpSyncFromPromeExpressions();
+                    // Delayed second sync: Prome may still be resolving expression imgs when we first build.
+                    setTimeout(() => gcpSyncFromPromeExpressions(), 600);
                 } else {
                     gcpPositionSlotsFlat();
+                    gcpSyncFromPromeExpressions();
+                    setTimeout(() => gcpSyncFromPromeExpressions(), 600);
                     // Apply initial dim: highlight last speaker, dim everyone else
                     if (lastMsg?.name) {
                         const speakerKey = normalizeSeatName(lastMsg.name);
@@ -5601,6 +5767,7 @@ Rules:
                 if (gcpStage !== stageRef) return;
                 gcpSlots = [gcpMakeSlot(name, url, false, 0)];
                 gcpPositionSlots(0); // slot 0 centered, rotY = 0 (no cylinder warp)
+                gcpSyncFromPromeExpressions();
             }
         } finally {
             gcpInitializing = false;
@@ -5700,6 +5867,15 @@ Rules:
                 if (!slot.el.classList.contains('gcp-dead')) slot.el.classList.add('gcp-dead');
             }
         }
+
+        // Retry sprite load for the current speaker if their slot has no src yet.
+        // This covers the common case where getSpriteUrl returned null at init time.
+        const speakerSlot = gcpSlots[Math.round(gcpCurrentFloat)];
+        if (speakerSlot && !speakerSlot.isDead && !speakerSlot.isPlayer && !speakerSlot.img?.getAttribute?.('src')) {
+            getCharSpriteUrl(speakerSlot.name, characterEmotions.get(speakerSlot.name) || 'neutral')
+                .then(url => { if (url && speakerSlot.img && !speakerSlot.img.getAttribute('src')) speakerSlot.img.src = url; })
+                .catch(() => {});
+        }
     }
 
     function setGroupChatPortraitsVisible(visible) {
@@ -5734,6 +5910,7 @@ Rules:
         onChatChanged: () => {
             // Remove the existing panel so it can rebuild with fresh members/context
             document.getElementById('dangan-trial-pre-debate-notif')?.remove();
+            document.getElementById('dangan-trial-context-panel')?.remove();
             // Reload persistent state for the new chat — resets trialActive and currentState
             // so lecterns/horses don't bleed in from a previous trial chat
             initFromPersistentState();
@@ -5753,6 +5930,7 @@ Rules:
             setState(TrialPhases.PRE_DEBATE);
         },
         phases: TrialPhases,
+        setTrialContext,
         endTrial,
         initGroupChatPortraits,
         updateGroupChatSpeaker,
@@ -5784,16 +5962,31 @@ Rules:
             try {
                 const parts = new URL(src, location.href).pathname.split('/').filter(Boolean);
                 if (parts.length >= 2) {
-                    const srcFolder = decodeURIComponent(parts[parts.length - 2]).toLowerCase();
+                    // Raw folder for URL-to-URL comparison (Pass 1); normalized for name comparison (Pass 2).
+                    const srcFolderRaw  = decodeURIComponent(parts[parts.length - 2]).toLowerCase();
+                    // Normalize hyphens/underscores to spaces so "akane-owari" matches slot name "akane owari"
+                    const srcFolder     = srcFolderRaw.replace(/[-_]/g, ' ').trim();
+                    // Pass 1: folder-match using the slot's existing src URL (works once sprites are loaded)
                     for (const slot of gcpSlots) {
                         if (slot.isDead || !slot.img?.src) continue;
                         try {
                             const slotParts = new URL(slot.img.src, location.href).pathname.split('/').filter(Boolean);
                             if (slotParts.length >= 2) {
                                 const slotFolder = decodeURIComponent(slotParts[slotParts.length - 2]).toLowerCase();
-                                if (slotFolder === srcFolder) return slot.img;
+                                if (slotFolder === srcFolderRaw) return slot.img;
                             }
                         } catch { /* ignore bad slot src */ }
+                    }
+                    // Pass 2: name-match for slots that have no src yet (sprites not pre-loaded via getSpriteUrl).
+                    // Hyphens/underscores already normalized above; compare against the lowercased seat name.
+                    const srcFirst = firstToken(srcFolder);
+                    for (const slot of gcpSlots) {
+                        if (slot.isDead) continue;
+                        const slotName = normalizeSeatName(slot.name);
+                        if (slotName === srcFolder) return slot.img;
+                        // First-token fallback: only when srcFolder is a single word (e.g. "akane"),
+                        // to avoid ambiguous matches between characters with the same first name.
+                        if (srcFirst === srcFolder && firstToken(slot.name) === srcFirst) return slot.img;
                     }
                 }
             } catch { /* ignore bad src */ }

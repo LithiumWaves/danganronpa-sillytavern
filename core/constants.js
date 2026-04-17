@@ -198,3 +198,4 @@ export const SOCIAL_UP_REGEX = /V3C\|\s*SOCIAL_UP:\s*([^\n\r]+)/g;
 export const SOCIAL_DOWN_REGEX = /V3C\|\s*SOCIAL_DOWN:\s*([^\n\r]+)/g;
 export const INVESTIGATION_START_REGEX = /V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/gi;
 export const TRIAL_START_REGEX = /V3C\s*[|｜]\s*TRIAL(?:\s*[_\-]?\s*)START\b/gi;
+export const TRIAL_CONTEXT_REGEX = /V3C\|\s*TRIAL_CONTEXT:\s*([^|\n\r]+?)(?:\|\|\s*([^|\n\r]+?))?(?:\|\|\s*([^\n\r]+))?$/gm;
