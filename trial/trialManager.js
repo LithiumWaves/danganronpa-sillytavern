@@ -39,6 +39,7 @@ export function createTrialManager(deps) {
         onStartRebuttalShowdown,
         onStartPunishmentTime,
         onStartScrumDebate,
+        onStartMindMine,
         getEquippedSkillsSnapshot,
         attachDraggablePositioning,
         applyCustomUiPosition,
@@ -128,10 +129,13 @@ export function createTrialManager(deps) {
     let gcpAnimRafId    = null;      // RAF id for scroll animation
     let gcpInitializing = false;     // true while initGroupChatPortraits is awaiting sprites
     let gcpSeatingListRenderer = null; // callback set by Trial Controls to stay in sync with rebuilds
+    let gcpLastCamIdx   = null;      // slot index for which we last fired the camera shot
     let gcpBgLoopEl     = null;      // repeating background overlay for seamless circular pan
     let gcpBgImgWidth   = 0;         // rendered px width of background image at current viewport height
     let gcpBgCurrentPx  = 0;        // current background-position-x in pixels (for wrap detection)
     let nsdShiftParadeStop = null;   // stop fn for in-progress speaker-shift parade (NSD only)
+    let camShotIdx = 0;
+    const CAM_SHOTS = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l'];
 
     // Shared white-noise animation pool — one RAF loop drives all active elements.
     let wnAnimPool  = [];
@@ -149,6 +153,10 @@ export function createTrialManager(deps) {
 
     function isSilenced(name) {
         return silencedSeats.has(normalizeSeatName(String(name || '')));
+    }
+
+    function isMonokuma(name) {
+        return normalizeSeatName(name) === 'monokuma';
     }
 
     // ── Mass Panic Debate state ───────────────────────────────────────────────
@@ -253,9 +261,10 @@ export function createTrialManager(deps) {
             setupNSDListeners();
         }
 
-        // Hide group chat portraits during active debates; show during idle/pre-debate
-        const gcpVisible = newState === TrialPhases.IDLE || newState === TrialPhases.PRE_DEBATE;
-        const gcpWasVisible = oldState === TrialPhases.IDLE || oldState === TrialPhases.PRE_DEBATE;
+        // Hide GCP only during actual debate overlays (NSD/MPD); keep visible during
+        // IDLE, PRE_DEBATE, TRUTH_BULLET_EXPLANATION, etc.
+        const gcpVisible    = newState !== TrialPhases.NON_STOP_DEBATE && newState !== TrialPhases.MASS_PANIC_DEBATE;
+        const gcpWasVisible = oldState !== TrialPhases.NON_STOP_DEBATE && oldState !== TrialPhases.MASS_PANIC_DEBATE;
         if (gcpVisible !== gcpWasVisible) {
             setGroupChatPortraitsVisible(gcpVisible);
         }
@@ -815,8 +824,14 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
         if (currentState === TrialPhases.IDLE) {
             setPrompt('dangan_debate_history', '', 0, 0, false, 'system');
             setPrompt('dangan_rebuttal_judgment', '', 0, 0, false, 'system');
+            setPrompt('dangan_monokuma_rules', '', 0, 0, false, 'system');
             return;
         }
+
+        // Monokuma observes but does not initiate — inject a standing rule whenever trial is active
+        setPrompt('dangan_monokuma_rules',
+            '[CLASS TRIAL RULE] Monokuma is present in the courtroom as an observer and referee, but he does NOT speak or interject spontaneously. He only responds if directly addressed or asked a question. He never participates in Non-stop Debates, Mass Panic Debates, Rebuttal Showdowns, or Scrum Debates.',
+            0, 2, true, 'system');
 
         // Always save persistent history to settings for page refreshes (per chat/group)
         if (typeof saveSettingsDebounced === 'function') {
@@ -941,7 +956,10 @@ ${historyText}
                         <span class="dangan-context-goal">—</span>
                     </div>
                     <div class="dangan-context-section">
-                        <span class="dangan-trial-group-label">Suspects</span>
+                        <div class="dangan-context-suspects-header">
+                            <span class="dangan-trial-group-label">Suspects</span>
+                            <button class="dangan-suspect-refresh-btn" title="Refresh suspect analysis">↻</button>
+                        </div>
                         <div class="dangan-context-suspects"></div>
                     </div>
                 </div>
@@ -1005,23 +1023,25 @@ ${historyText}
                     <div class="dangan-trial-btn-group dangan-trial-btn-group--minigames">
                         <span class="dangan-trial-group-label">Minigames</span>
                         <div class="dangan-trial-btn-row">
-                            <button id="dangan-start-nonstop-btn"  class="dangan-trial-start-btn" style="display:none">START NON-STOP DEBATE</button>
-                            <button id="dangan-start-mpdebate-btn" class="dangan-trial-start-btn" style="display:none">START MASS PANIC DEBATE</button>
-                            <button id="dangan-start-hangman-btn"  class="dangan-trial-start-btn" style="display:none">START HANGMAN'S GAMBIT</button>
-                            <button id="dangan-start-pta-btn"      class="dangan-trial-start-btn" style="display:none">START PANIC TALK ACTION</button>
-                            <button id="dangan-start-rebuttal-btn" class="dangan-trial-start-btn" style="display:none">START REBUTTAL SHOWDOWN</button>
-                            <button id="dangan-start-qtime-btn"    class="dangan-trial-start-btn" style="display:none">START QUESTION TIME</button>
-                            <button id="dangan-start-qtruth-btn"   class="dangan-trial-start-btn" style="display:none">START QUESTION TRUTH</button>
-                            <button id="dangan-start-scrum-btn"    class="dangan-trial-start-btn" style="display:none">START SCRUM DEBATE</button>
+                            <button id="dangan-start-nonstop-btn"  class="dangan-trial-start-btn" style="display:none">NON-STOP DEBATE</button>
+                            <button id="dangan-start-mpdebate-btn" class="dangan-trial-start-btn" style="display:none">MASS PANIC DEBATE</button>
+                            <button id="dangan-start-hangman-btn"  class="dangan-trial-start-btn" style="display:none">HANGMAN'S GAMBIT</button>
+                            <button id="dangan-start-pta-btn"      class="dangan-trial-start-btn" style="display:none">PANIC TALK ACTION</button>
+                            <button id="dangan-start-rebuttal-btn" class="dangan-trial-start-btn" style="display:none">REBUTTAL SHOWDOWN</button>
+                            <button id="dangan-start-qtime-btn"    class="dangan-trial-start-btn" style="display:none">QUESTION TIME</button>
+                            <button id="dangan-start-qtruth-btn"   class="dangan-trial-start-btn" style="display:none">QUESTION TRUTH</button>
+                            <button id="dangan-start-scrum-btn"    class="dangan-trial-start-btn" style="display:none">SCRUM DEBATE</button>
+                            <button id="dangan-start-mindmine-btn" class="dangan-trial-start-btn" style="display:none">MIND MINE</button>
                         </div>
                     </div>
                     <div class="dangan-trial-btn-group dangan-trial-btn-group--actions">
                         <span class="dangan-trial-group-label">Actions</span>
                         <div class="dangan-trial-btn-row">
-                            <button id="dangan-start-interject-btn"  class="dangan-trial-start-btn" style="display:none">START AN INTERJECTION</button>
-                            <button id="dangan-start-choosing-btn"   class="dangan-trial-start-btn" style="display:none">START CHOOSING TIME</button>
-                            <button id="dangan-start-voting-btn"     class="dangan-trial-start-btn" style="display:none">START VOTING TIME</button>
-                            <button id="dangan-start-punishment-btn" class="dangan-trial-start-btn" style="display:none">START PUNISHMENT TIME</button>
+                            <button id="dangan-start-interject-btn"  class="dangan-trial-start-btn" style="display:none">INTERJECTION</button>
+                            <button id="dangan-start-choosing-btn"   class="dangan-trial-start-btn" style="display:none">CHOOSING TIME</button>
+                            <button id="dangan-start-voting-btn"     class="dangan-trial-start-btn" style="display:none">VOTING TIME</button>
+                            <button id="dangan-start-punishment-btn" class="dangan-trial-start-btn" style="display:none">PUNISHMENT TIME</button>
+                            <button id="dangan-start-showcg-btn"     class="dangan-trial-start-btn" style="display:none">SHOW CG</button>
                         </div>
                     </div>
                     ${isGroupChat() ? `
@@ -1066,9 +1086,10 @@ ${historyText}
             // chars for debate purposes, which would cause seat numbers to diverge from the GCP.
             // GCP slots are the source of truth when active; fall back to the provided plan.
             // Either way, the player (Prome user sprite) is never a gcpSlot — append manually.
-            let displayPlan = gcpSlots.length
+            let displayPlan = (gcpSlots.length
                 ? gcpSlots.map(s => s.name)
-                : (plan ? [...plan] : []);
+                : (plan ? [...plan] : []))
+                .filter(n => !isMonokuma(n));
             const playerName = getPlayerName();
             if (playerName && !displayPlan.some(n => normalizeSeatName(n) === normalizeSeatName(playerName))) {
                 displayPlan.push(playerName);
@@ -1201,6 +1222,10 @@ ${historyText}
             notification.remove();
             onStartScrumDebate?.();
         };
+        notification.querySelector('#dangan-start-mindmine-btn').onclick = () => {
+            notification.remove();
+            onStartMindMine?.();
+        };
         notification.querySelector('#dangan-start-choosing-btn').onclick = async () => {
             notification.remove();
             const characters = await Promise.all(gcpSlots.map(async s => ({
@@ -1217,6 +1242,177 @@ ${historyText}
             })));
             onStartChoosing?.({ characters, startIdx: Math.round(gcpCurrentFloat) });
         };
+        notification.querySelector('#dangan-start-showcg-btn').onclick = () => {
+            showCgPicker();
+        };
+    }
+
+    function showCgPicker() {
+        document.getElementById('dangan-cg-picker')?.remove();
+
+        const bgs = Array.from(document.querySelectorAll('.bg_example'));
+        if (!bgs.length) return;
+
+        const items = bgs.map(el => {
+            const bgfile   = el.getAttribute('bgfile') || '';
+            const label    = bgfile.split('/').pop().replace(/\.[^.]+$/, '') || bgfile;
+            const imgEl    = el.querySelector('.bg_example_img');
+            const thumb    = imgEl ? window.getComputedStyle(imgEl).backgroundImage : 'none';
+            const isCustom = el.getAttribute('custom') === 'true';
+            const cssUrl   = el.dataset?.url
+                          || el.getAttribute('data-url')
+                          || (thumb && thumb !== 'none' ? thumb : null)
+                          || (isCustom ? `url("${bgfile}")` : `url("backgrounds/${encodeURIComponent(bgfile)}")`);
+            return { label, thumb, cssUrl };
+        }).filter(item => item.cssUrl);
+
+        if (!items.length) return;
+
+        let selectedFilter = null; // null | 'sepia' | 'grayscale'
+
+        // ── Build shell (no grid items yet) ──────────────────────────────────
+        const picker = document.createElement('div');
+        picker.id = 'dangan-cg-picker';
+
+        const inner = document.createElement('div');
+        inner.className = 'dangan-cg-picker-inner';
+
+        // Header
+        const header = document.createElement('div');
+        header.className = 'dangan-cg-picker-header';
+        header.innerHTML = `<span class="dangan-cg-picker-title">CHOOSE CG</span>`;
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'dangan-cg-picker-close';
+        closeBtn.textContent = '✕';
+        closeBtn.onclick = () => picker.remove();
+        header.appendChild(closeBtn);
+
+        // Filter toggles
+        const filterRow = document.createElement('div');
+        filterRow.className = 'dangan-cg-picker-filters';
+        ['sepia', 'grayscale'].forEach(f => {
+            const btn = document.createElement('button');
+            btn.className = 'dangan-cg-filter-btn';
+            btn.textContent = f.toUpperCase();
+            btn.dataset.filter = f;
+            btn.onclick = () => {
+                if (selectedFilter === f) {
+                    selectedFilter = null;
+                    btn.classList.remove('active');
+                } else {
+                    selectedFilter = f;
+                    filterRow.querySelectorAll('.dangan-cg-filter-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                }
+            };
+            filterRow.appendChild(btn);
+        });
+
+        // Search
+        const searchRow = document.createElement('div');
+        searchRow.className = 'dangan-cg-picker-search-row';
+        const searchInput = document.createElement('input');
+        searchInput.className = 'dangan-cg-search';
+        searchInput.type = 'text';
+        searchInput.placeholder = 'Search backgrounds…';
+        searchRow.appendChild(searchInput);
+
+        // Grid
+        const grid = document.createElement('div');
+        grid.className = 'dangan-cg-picker-grid';
+
+        inner.appendChild(header);
+        inner.appendChild(filterRow);
+        inner.appendChild(searchRow);
+        inner.appendChild(grid);
+        picker.appendChild(inner);
+        document.body.appendChild(picker);
+
+        // ── Render grid items ─────────────────────────────────────────────────
+        // Items are created programmatically so backgroundImage is set via .style
+        // (not innerHTML) — avoids quote-in-attribute corruption of the URL string.
+        function renderItems() {
+            grid.innerHTML = '';
+            const query = searchInput.value.trim().toLowerCase();
+            const visible = query ? items.filter(it => it.label.toLowerCase().includes(query)) : items;
+            if (!visible.length) {
+                const empty = document.createElement('div');
+                empty.className = 'dangan-cg-no-results';
+                empty.textContent = 'No backgrounds found';
+                grid.appendChild(empty);
+                return;
+            }
+            visible.forEach(item => {
+                const cell = document.createElement('div');
+                cell.className = 'dangan-cg-pick-item';
+
+                const thumb = document.createElement('div');
+                thumb.className = 'dangan-cg-pick-thumb';
+                if (item.thumb && item.thumb !== 'none') thumb.style.backgroundImage = item.thumb;
+
+                const lbl = document.createElement('span');
+                lbl.className = 'dangan-cg-pick-label';
+                lbl.textContent = item.label;
+
+                cell.appendChild(thumb);
+                cell.appendChild(lbl);
+                cell.onclick = () => { picker.remove(); showCgOverlay(item.cssUrl, selectedFilter); };
+                grid.appendChild(cell);
+            });
+        }
+
+        renderItems();
+        searchInput.addEventListener('input', renderItems);
+
+        picker.addEventListener('click', e => { if (e.target === picker) picker.remove(); });
+    }
+
+    function showCgOverlay(bgCssUrl, filter = null) {
+        document.getElementById('dangan-cg-overlay')?.remove();
+        document.querySelector('.dangan-cg-dismiss-btn')?.remove();
+
+        // These UI elements sit at z:50–9998 normally; the CG is at 2147483646, so
+        // temporarily raise them to 2147483647 so they stay visible above the CG.
+        const ABOVE_CG = [
+            '#top-bar',
+            '#top-settings-holder',
+            '#sheld',
+            '#dangan-hud-topright',
+            '#dangan-bgm-display',
+            '#dangan-vn-overlay',
+            '#dangan-trial-pre-debate-notif',
+            '#dangan-trial-context-panel',
+        ];
+        const saved = ABOVE_CG.flatMap(sel =>
+            Array.from(document.querySelectorAll(sel)).map(el => {
+                const orig = el.style.zIndex;
+                el.style.zIndex = '2147483647';
+                return { el, orig };
+            })
+        );
+
+        // Dismiss button must be a direct body child so its stacking context
+        // sits at z:2147483647, above the boosted UI elements that would otherwise
+        // swallow clicks if the button were nested inside the overlay (z:2147483646).
+        const dismissBtn = document.createElement('button');
+        dismissBtn.className = 'dangan-cg-dismiss-btn';
+        dismissBtn.textContent = '✕ DISMISS';
+
+        const cleanup = () => {
+            overlay.remove();
+            dismissBtn.remove();
+            saved.forEach(({ el, orig }) => { el.style.zIndex = orig; });
+        };
+        dismissBtn.onclick = cleanup;
+
+        const overlay = document.createElement('div');
+        overlay.id = 'dangan-cg-overlay';
+        overlay.style.backgroundImage = bgCssUrl;
+        if (filter === 'sepia')     overlay.classList.add('dangan-cg-sepia');
+        if (filter === 'grayscale') overlay.classList.add('dangan-cg-grayscale');
+
+        document.body.appendChild(overlay);
+        document.body.appendChild(dismissBtn);
     }
 
     async function startNonStopDebate() {
@@ -1247,15 +1443,15 @@ ${historyText}
         }).filter(e => e.text) : [];
         if (!list.length) return false;
 
-        const speakers = getChatCardMembers().map(s => s.name).filter(Boolean).filter(n => !isCharacterDead(n) && !isSilenced(n));
+        const speakers = getChatCardMembers().map(s => s.name).filter(Boolean).filter(n => !isCharacterDead(n) && !isCharacterMissing(n) && !isSilenced(n) && !isMonokuma(n));
         const speakerPool = speakers.length ? speakers : ['???'];
 
         persistentDebateHistory = [];
         debateSeatingPlan = null;
         currentDebateSections = Math.min(24, Math.max(1, list.length));
         preparedDebateSections = list.slice(0, currentDebateSections).map(({ text, speaker, whiteNoise }) => {
-            // If an explicit speaker is dead, pick a living one instead
-            const speakerName = (speaker && !isCharacterDead(speaker))
+            // If an explicit speaker is dead or is Monokuma, pick a living one instead
+            const speakerName = (speaker && !isCharacterDead(speaker) && !isCharacterMissing(speaker) && !isMonokuma(speaker))
                 ? speaker
                 : speakerPool[Math.floor(Math.random() * speakerPool.length)];
             const isAgree  = /\(\([^)]+\)\)/.test(text);
@@ -1585,6 +1781,7 @@ ${historyText}
             const idx  = spawnIdx % n;
             const name = debateSeatingPlan[idx];
             spawnIdx++;
+            if (isCharacterMissing(name)) return;
             const hpx    = portraitSlotHeightPx(name);
             const startX = window.innerWidth + CHAR_SLOT_W;
 
@@ -1817,6 +2014,7 @@ ${historyText}
             const idx  = ((spawnIdx % n) + n) % n;
             spawnIdx   = scrollForward ? (spawnIdx + 1) : (spawnIdx - 1);
             const name = debateSeatingPlan[idx];
+            if (isCharacterMissing(name)) return;
 
             const hpx = portraitSlotHeightPx(name);
             const el  = document.createElement('div');
@@ -1935,6 +2133,47 @@ ${historyText}
         return ctx?.name1 || ctx?.user_name || ctx?.userName || ctx?.personaName || null;
     }
 
+    function showMonokumaOverlay(emo) {
+        let overlay = document.getElementById('dangan-monokuma-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'dangan-monokuma-overlay';
+            const img = document.createElement('img');
+            img.alt = 'Monokuma';
+            overlay.appendChild(img);
+            document.body.appendChild(overlay);
+            void overlay.offsetWidth; // flush so opacity:0 is committed before transition fires
+        }
+        const img = overlay.querySelector('img');
+        if (img) {
+            getCharSpriteUrl('Monokuma', emo || 'neutral')
+                .then(url => { if (url && img) img.src = url; })
+                .catch(() => {});
+        }
+        if (trialActive) applyCamShot(overlay, gcpBgLoopEl);
+        document.body.classList.add('dangan-mono-speaker');
+    }
+
+    function hideMonokumaOverlay() {
+        document.body.classList.remove('dangan-mono-speaker');
+        // Don't remove the element — keep it for re-use and so the fade-out transition plays.
+    }
+
+    function getMonokumaStaticUrl(emo) {
+        const base = extensionFolderPath || `scripts/extensions/third-party/${extensionName}`;
+        const emoMap = {
+            angry: 'monokuma_angry', rage: 'monokuma_angry', furious: 'monokuma_angry',
+            cheerful: 'monokuma_cheerful', happy: 'monokuma_cheerful', joy: 'monokuma_whimsyjoy',
+            laughing: 'monokuma_laugh', laugh: 'monokuma_laugh', amused: 'monokuma_laugh',
+            confused: 'monokuma_confused', surprised: 'monokuma_confused',
+            sad: 'monokuma_sad', crying: 'monokuma_sad',
+            nervous: 'monokuma_sweating', anxious: 'monokuma_sweating', sweating: 'monokuma_sweating',
+            thinking: 'monokuma_eto', smug: 'monokuma_tadam',
+        };
+        const file = emoMap[String(emo || '').toLowerCase()] || 'monokuma_idle';
+        return `${base}/assets/monokuma/${file}.png`;
+    }
+
     // Sprite resolver that transparently handles the player character.
     // getSpriteUrl uses the SillyTavern sprite API and has no knowledge of the
     // Prome VN Extension's sprite pack, so the player's name would always return null.
@@ -1953,6 +2192,11 @@ ${historyText}
             }
         }
         if (isCharacterDead(name)) return getSpriteUrl(name, 'dead');
+        // Monokuma: try standard sprites first, fall back to bundled emotion sprite
+        if (isMonokuma(name)) {
+            const url = await getSpriteUrl(name, emo).catch(() => null);
+            return url ?? getMonokumaStaticUrl(emo);
+        }
         return getSpriteUrl(name, emo);
     }
 
@@ -2038,20 +2282,22 @@ ${historyText}
             playDebatesTrack?.();
         }
         suppressVisualizer?.();
+        document.getElementById('dangan-chapter-label')?.style.setProperty('display', 'none');
+        document.getElementById('dangan-trial-context-panel')?.style.setProperty('display', 'none');
 
         if (!debateSeatingPlan?.length && isGroupChat()) {
             const isMpd = currentState === TrialPhases.MASS_PANIC_DEBATE;
             const groupMembers = getChatCardMembers().map(m => m.name).filter(Boolean)
-                .filter(n => !isCharacterMuted(n) || isCharacterDead(n));
+                .filter(n => (!isCharacterMuted(n) || isCharacterDead(n)) && !isMonokuma(n));
             let speakerNames;
             if (groupMembers.length) {
                 speakerNames = groupMembers;
             } else if (isMpd) {
                 speakerNames = [...new Set(
                     (mpdScenarios || []).flatMap(s => (s.texts || []).map(t => t.speaker)).filter(Boolean)
-                )];
+                )].filter(n => !isMonokuma(n));
             } else {
-                speakerNames = (preparedDebateSections || []).map(s => s.speakerName).filter(Boolean);
+                speakerNames = (preparedDebateSections || []).map(s => s.speakerName).filter(Boolean).filter(n => !isMonokuma(n));
             }
             const playerName = getPlayerName();
             if (playerName) speakerNames.push(playerName);
@@ -2168,6 +2414,7 @@ ${historyText}
             const tok = ++portraitToken;
             const loadImg = async (el, name) => {
                 if (!el || !name) return;
+                if (isCharacterMissing(name)) { el.style.display = 'none'; return; }
                 try {
                     const url = await getCharSpriteUrl(name, 'neutral').catch(() => null);
                     if (tok !== portraitToken || !url || !el) return;
@@ -2192,6 +2439,7 @@ ${historyText}
 
             const loadImg = async (el, name, emo) => {
                 if (!el || !name) return;
+                if (isCharacterMissing(name)) { el.style.display = 'none'; return; }
                 try {
                     const url = await getCharSpriteUrl(name, emo).catch(() => null);
                     if (tok !== portraitToken || !url || !el) return;
@@ -2699,7 +2947,7 @@ ${historyText}
 
     // Column-scoped copy of showStatementChunk — positions statement in column `col`,
     // uses per-column element/animation tracking, same NSD visual flair throughout.
-    function showMpdStatementInColumn(col, { text, isWeakPoint, whiteNoise }) {
+    function showMpdStatementInColumn(col, { text, isWeakPoint, whiteNoise, speaker }) {
         if (!debateOverlay) return Promise.resolve();
 
         // Cancel any existing animation in this column
@@ -2719,6 +2967,7 @@ ${historyText}
         const el = document.createElement('div');
         el.className = 'dangan-floating-statement mpd-statement';
         el.style.width = `${Math.round(cw * 0.82)}px`;
+        if (speaker) el.dataset.speakerName = String(speaker);
 
         const rawText    = stripSurroundingQuotes(String(text || ''));
         const hasAgreeText = /\(\([^)]+\)\)/.test(rawText);
@@ -2878,6 +3127,7 @@ ${historyText}
         const tok = ++portraitToken;
         const loadImg = async (el, name) => {
             if (!el || !name) return;
+            if (isCharacterMissing(name)) { el.style.display = 'none'; return; }
             try {
                 const emo = isCharacterDead(name) || isSilenced(name) ? 'dead' : 'anger';
                 let url = await getCharSpriteUrl(name, emo).catch(() => null);
@@ -3160,6 +3410,7 @@ ${historyText}
             laneY: getLaneY(debatePartIndex),
             weakMarkup: part.weakMarkup,
             whiteNoise: part.isWeakPoint ? (section.whiteNoise || null) : null,
+            speakerName,
         }).then(() => {
             if (currentState !== TrialPhases.NON_STOP_DEBATE) return;
             debatePartIndex++;
@@ -3169,6 +3420,39 @@ ${historyText}
             }
             playbackTimerId = window.setTimeout(playNextChunk, 1200);
         });
+    }
+
+    const REALIZATION_SHOTS = ['b', 'k', 'l', 'd', 'e'];
+    let realizationShotIdx = 0;
+
+    const EMOTION_FX = {
+        realization: (elements) => {
+            const flash = document.createElement('div');
+            flash.className = 'dangan-emotion-flash-white';
+            document.body.appendChild(flash);
+            flash.addEventListener('animationend', () => flash.remove(), { once: true });
+            const shot = REALIZATION_SHOTS[realizationShotIdx % REALIZATION_SHOTS.length];
+            realizationShotIdx++;
+            applySpecificCamShot(shot, ...elements);
+        },
+    };
+
+    function triggerEmotionFx(emotion, ...elements) {
+        EMOTION_FX[emotion?.toLowerCase?.()]?.(elements);
+    }
+
+    function applySpecificCamShot(shot, ...elements) {
+        const valid = elements.filter(Boolean);
+        if (!valid.length) return;
+        for (const el of valid) for (const s of CAM_SHOTS) el.classList.remove(`dangan-portrait-cam-${s}`);
+        void valid[0].offsetWidth;
+        for (const el of valid) el.classList.add(`dangan-portrait-cam-${shot}`);
+    }
+
+    function applyCamShot(...elements) {
+        const shot = CAM_SHOTS[camShotIdx % CAM_SHOTS.length];
+        camShotIdx++;
+        applySpecificCamShot(shot, ...elements);
     }
 
     async function updateDebatePortraits(speakerName, emotion) {
@@ -3187,8 +3471,17 @@ ${historyText}
         portraitSpeaker = name;
         portraitEmotion = emo;
 
+        const mono = isMonokuma(name);
         const { left: leftName, right: rightName } = getSeatingNeighbors(name);
+        // Monokuma appears solo: no neighbours, no lectern
+        const effectiveLeft  = mono ? null : leftName;
+        const effectiveRight = mono ? null : rightName;
         const token = ++portraitToken;
+
+        if (speakerChanged) {
+            const centerLectern = debateOverlay?.querySelector('.dangan-portrait-center-slot .dangan-portrait-lectern');
+            if (centerLectern) centerLectern.style.display = mono ? 'none' : '';
+        }
 
         if (typeof getSpriteUrl !== 'function') {
             [portraitImgEl, portraitLeftEl, portraitRightEl].forEach(el => { if (el) el.style.display = 'none'; });
@@ -3198,6 +3491,7 @@ ${historyText}
         const updateImg = async (el, charName, emoLabel) => {
             if (!el) return;
             if (!charName) { el.style.display = 'none'; return; }
+            if (isCharacterMissing(charName)) { el.style.display = 'none'; return; }
             try {
                 const dead = isCharacterDead(charName) || isSilenced(charName);
                 let url = null;
@@ -3223,17 +3517,23 @@ ${historyText}
         };
 
         const updates = [updateImg(portraitImgEl, name, emo)];
+        const sceneEls = [
+            debateOverlay?.querySelector('.dangan-trial-portrait-stage'),
+            debateOverlay?.querySelector('#dangan-nsd-speedlines'),
+        ];
         if (speakerChanged) {
-            const leftEmo  = characterEmotions.get(leftName)  || 'neutral';
-            const rightEmo = characterEmotions.get(rightName) || 'neutral';
-            applyPortraitHeights(name, leftName, rightName);
-            updates.push(updateImg(portraitLeftEl,  leftName,  leftEmo));
-            updates.push(updateImg(portraitRightEl, rightName, rightEmo));
+            applyCamShot(...sceneEls);
+            const leftEmo  = characterEmotions.get(effectiveLeft)  || 'neutral';
+            const rightEmo = characterEmotions.get(effectiveRight) || 'neutral';
+            applyPortraitHeights(name, effectiveLeft, effectiveRight);
+            updates.push(updateImg(portraitLeftEl,  effectiveLeft,  leftEmo));
+            updates.push(updateImg(portraitRightEl, effectiveRight, rightEmo));
         }
+        triggerEmotionFx(emo, ...sceneEls);
         await Promise.all(updates);
     }
 
-    function showStatementChunk({ text, isWeakPoint, laneY, weakMarkup, whiteNoise }) {
+    function showStatementChunk({ text, isWeakPoint, laneY, weakMarkup, whiteNoise, speakerName }) {
         if (!debateOverlay) return Promise.resolve();
 
         if (playbackTimerId) window.clearTimeout(playbackTimerId);
@@ -3254,6 +3554,7 @@ ${historyText}
         el.className = 'dangan-floating-statement dangan-statement-single';
         const w = window.innerWidth || 1200;
         el.style.width = `${Math.min(Math.round(w * 0.82), 980)}px`;
+        if (speakerName) el.dataset.speakerName = String(speakerName);
         const rawText = stripSurroundingQuotes(String(text || ''));
         const hasAgreeText = /\(\([^)]+\)\)/.test(rawText);
         const cleanedText = rawText.replace(/\[\[|\]\]/g, '').replace(/\(\(|\)\)/g, '');
@@ -3906,7 +4207,9 @@ ${historyText}
         const xpAmount = xpRewards?.[xpKey] ?? (isMpd ? 18 : 15);
         awardXp?.(xpAmount, isMpd ? 'mass panic debate completed' : 'non-stop debate completed');
 
-        const speakerName = gcpSlots[Math.round(gcpCurrentFloat)]?.name ?? null;
+        const speakerName = parentStatement?.dataset?.speakerName
+            || gcpSlots[Math.round(gcpCurrentFloat)]?.name
+            || null;
         showTrialBanner('consent', { speakerName }).then(() => {
             setState(TrialPhases.TRUTH_BULLET_EXPLANATION);
             showExplanationUI(currentBullet, agreeEl.textContent, 'agree');
@@ -3954,7 +4257,7 @@ ${historyText}
         const prefillArea = type === 'perjury'
             ? 'top:calc(23.33% - 10px);left:0px;right:0px;height:calc(50.34% + 20px);'
             : type === 'consent'
-            ? 'top:calc(19.33% - 10px);left:0px;right:0px;height:calc(53.34% + 20px);'
+            ? 'top:calc(19.33% - 10px + 150px);left:0px;right:0px;height:calc(53.34% + 20px);'
             : type === 'counter'
             ? 'top:0;left:0px;right:0px;height:100%;'
             : 'top:calc(33.33% - 10px);left:0;right:0;height:calc(33.34% + 20px);';
@@ -3971,7 +4274,7 @@ ${historyText}
         const bannerArea = type === 'perjury'
             ? 'top:23.33%;left:0px;right:0px;height:50%;overflow:hidden;'
             : type === 'consent'
-            ? 'top:19.33%;left:0px;right:0px;height:53.34%;overflow:initial;'
+            ? 'top:calc(19.33% + 150px);left:0px;right:0px;height:53.34%;overflow:initial;'
             : type === 'counter'
             ? 'top:0;left:0px;right:0px;height:100%;overflow:hidden;'
             : 'top:33.33%;left:0;right:0;height:33.34%;overflow:hidden;';
@@ -4272,6 +4575,8 @@ JUDGMENT RULES:
         document.body.classList.remove('dangan-mpd-active');
         stopDebatesTrack?.();
         unsuppressVisualizer?.();
+        document.getElementById('dangan-chapter-label')?.style.removeProperty('display');
+        document.getElementById('dangan-trial-context-panel')?.style.removeProperty('display');
         nsdActiveBullets  = null;
         tempBullet        = null;
         shiftRightPressed = false;
@@ -4894,6 +5199,20 @@ Rules:
         return false;
     }
 
+    function isCharacterMissing(name) {
+        const needle      = normalizeLooseName(name);
+        const needleFirst = needle.split(/\s+/)[0];
+        if (characters instanceof Map) {
+            for (const char of characters.values()) {
+                if (!char.missing) continue;
+                const memberName  = normalizeLooseName(String(char.name || ''));
+                const memberFirst = memberName.split(/\s+/)[0];
+                if (memberName === needle || memberFirst === needleFirst) return true;
+            }
+        }
+        return false;
+    }
+
     function getChatCardMembers() {
         const ctx = window.SillyTavern?.getContext?.();
         if (!ctx) return [];
@@ -5215,7 +5534,9 @@ Rules:
             console.log(`[Dangan][Trial] Restoring trial state for ${key}: ${savedState}`);
             // Transition back to the saved state.
             // Returning to PRE_DEBATE is safer after a refresh for stability.
-            if (savedState === TrialPhases.NON_STOP_DEBATE || savedState === TrialPhases.MASS_PANIC_DEBATE) {
+            if (savedState === TrialPhases.NON_STOP_DEBATE
+             || savedState === TrialPhases.MASS_PANIC_DEBATE
+             || savedState === TrialPhases.TRUTH_BULLET_EXPLANATION) {
                 setState(TrialPhases.PRE_DEBATE);
             } else {
                 setState(savedState);
@@ -5246,7 +5567,7 @@ Rules:
         return stChar ? group.disabled_members.includes(stChar.avatar) : false;
     }
 
-    const GCP_GAP        = 180;  // gap between characters
+    const GCP_GAP        = 60;   // gap between characters
     const GCP_MAX_ROT    = 20;   // maximum rotation of
     const GCP_ANIM_SPEED = 14;   // peak slots per second
     const GCP_MIN_SPEED  = 0.8;  // floor speed (slots/s) near target
@@ -5453,74 +5774,88 @@ Rules:
         gcpCurrentFloat = (n - 1) / 2;
     }
 
-    // Scroll to targetIdx — CSS transition on .dangan-gcp-slot handles the easing.
+    // Scroll to targetIdx using a JS RAF loop so all slots move as a unit.
+    // Every frame derives each slot's position from a single animated offset value,
+    // which eliminates the "stuck neighbor" artifact that independent per-slot CSS
+    // transitions produce (neighbors would reach the edge and stall while the center
+    // was still animating in from off-screen).
+    //
+    // Off-path slots (those that would travel the long way around the ring) are placed
+    // off-screen on the correct side at the start of the animation so they flow in from
+    // outside rather than teleporting mid-scroll.  gcpCircularDiff is only called once
+    // per slot at setup time — never during the tick — which prevents the discontinuity
+    // that occurs when centerFloat crosses the n/2 ring boundary.
     function gcpScrollTo(targetIdx) {
         if (gcpCurrentFloat === targetIdx) return;
         if (gcpAnimRafId) { cancelAnimationFrame(gcpAnimRafId); gcpAnimRafId = null; }
         if (!gcpSlots.length) return;
+
+        const startFloat  = gcpCurrentFloat;
+        const travelDelta = gcpCircularDiff(targetIdx, Math.round(startFloat));
+        if (travelDelta === 0) { gcpCurrentFloat = targetIdx; return; }
+
+        const DURATION  = 1700; // ms — same feel as old CSS transition
+        const startTime = performance.now();
+        const easeOut   = t => 1 - Math.pow(1 - t, 3);
+
         const sw    = gcpSlotW();
         const total = sw + GCP_GAP;
         const cx    = window.innerWidth / 2 - sw / 2;
 
-        // Signed circular travel distance (shortest path).
-        const travelDelta = gcpCircularDiff(targetIdx, Math.round(gcpCurrentFloat));
-
-        // Helper: does this slot animate naturally (same direction as the scroll)?
-        // A slot is on-path when its actual shift (newDiff − oldDiff) exactly matches
-        // the expected shift (−travelDelta).  Any wrapped slot has a shift of
-        // (−travelDelta ± n) ≠ 0, so it fails this check and gets snapped instead
-        // of animating across the visible area.  No tolerance is needed because all
-        // diffs are integers and the natural shift is always exactly −travelDelta.
-        const isOnPath = (oldDiff, newDiff) =>
-            (newDiff - oldDiff) === -travelDelta;
-
-        // Snapshot per-slot diffs before mutating gcpCurrentFloat.
-        const slotData = gcpSlots.map((slot, i) => ({
-            slot,
-            oldDiff: gcpCircularDiff(i, Math.round(gcpCurrentFloat)),
-            newDiff: gcpCircularDiff(i, targetIdx),
-        }));
-
-        // Pass 1 — snap off-path slots instantly (no transition).
-        slotData.forEach(({ slot, oldDiff, newDiff }) => {
-            if (isOnPath(oldDiff, newDiff)) return;
-            slot.el.style.transition = 'none';
-            slot.el.style.transform  = gcpSlotTransform(cx + newDiff * total);
+        // Pre-compute each slot's starting diff (in slot-widths from center).
+        // On-path slots use their actual fractional start position.
+        // Off-path slots are placed one full ring further in the scroll direction so they
+        // enter from off-screen on the correct side instead of teleporting.
+        const startDiffs = gcpSlots.map((_, i) => {
+            const endDiff   = gcpCircularDiff(i, targetIdx);
+            const startDiff = gcpCircularDiff(i, startFloat);
+            // On-path: plain subtraction lands exactly on endDiff (no ring wrap needed).
+            return (startDiff - travelDelta === endDiff) ? startDiff : endDiff + travelDelta;
         });
 
-        // Reflow 1 — commits the snapped off-path positions AND the existing
-        // on-path positions so the browser records them as the animation "from" baseline.
-        void gcpStage.offsetWidth;
+        let lastRoundedIdx = Math.round(startFloat);
 
-        // Enable transitions on on-path slots only.
-        // Off-path slots stay at transition:'none' for now so the next reflow doesn't
-        // accidentally queue a transition for them.
-        slotData.forEach(({ slot, oldDiff, newDiff }) => {
-            if (isOnPath(oldDiff, newDiff)) slot.el.style.transition = '';
-        });
+        function tick(now) {
+            const rawT   = Math.min(1, (now - startTime) / DURATION);
+            const offset = travelDelta * easeOut(rawT);
 
-        // Reflow 2 — forces the browser to commit "transition now active + current
-        // position" as the start state for on-path slots.  Without this second flush,
-        // changing transition and transform in the same microtask collapses them into
-        // one style update and the browser skips the animation.
-        void gcpStage.offsetWidth;
+            gcpSlots.forEach((slot, i) => {
+                slot.el.style.transition = 'none';
+                slot.el.style.transform  = gcpSlotTransform(cx + (startDiffs[i] - offset) * total);
+            });
+            gcpCurrentFloat = startFloat + travelDelta * easeOut(rawT);
 
-        // Write new transforms for on-path slots — transitions fire immediately because
-        // the browser already has a committed "from" snapshot from reflow 2.
-        // Restore transition on off-path slots so they animate on future scrolls.
-        // Do NOT touch transition on on-path slots here — re-setting it would cause
-        // the browser to re-snapshot the "from" position and skip the animation.
-        slotData.forEach(({ slot, oldDiff, newDiff }) => {
-            if (isOnPath(oldDiff, newDiff)) {
-                slot.el.style.transform = gcpSlotTransform(cx + newDiff * total);
-            } else {
-                slot.el.style.transition = '';
+            const roundedIdx = Math.round(gcpCurrentFloat);
+            if (roundedIdx !== lastRoundedIdx) {
+                lastRoundedIdx = roundedIdx;
+                gcpSeatingListRenderer?.();
             }
-        });
 
-        gcpCurrentFloat = targetIdx;
+            if (rawT < 1) {
+                gcpAnimRafId = requestAnimationFrame(tick);
+                return;
+            }
+
+            // Snap to exact integer positions and restore CSS transitions.
+            gcpAnimRafId = null;
+            gcpCurrentFloat = targetIdx;
+            gcpSlots.forEach((slot, i) => {
+                slot.el.style.transform  = gcpSlotTransform(cx + gcpCircularDiff(i, targetIdx) * total);
+                slot.el.style.transition = '';
+            });
+            gcpSeatingListRenderer?.();
+        }
+
+        // Fire camera, background pan, and seating list immediately so the UI
+        // responds at once rather than waiting for the animation to finish.
+        if (trialActive && targetIdx !== gcpLastCamIdx) {
+            gcpLastCamIdx = targetIdx;
+            applyCamShot(gcpStage, gcpBgLoopEl);
+        }
         gcpPanBackground(targetIdx, true);
         gcpSeatingListRenderer?.();
+
+        gcpAnimRafId = requestAnimationFrame(tick);
     }
 
     // GCP-local index lookup — gcpSlots is a filtered subset of debateSeatingPlan.
@@ -5566,7 +5901,7 @@ Rules:
             if (!folderHint) return;
             const folderFirst = firstToken(folderHint);
             for (const slot of gcpSlots) {
-                if (slot.isDead || slot.isPlayer) continue;
+                if (slot.isDead || slot.isPlayer || slot.isMissing) continue;
                 // Only fill slots with no src yet — don't override successfully loaded sprites
                 if (slot.img?.getAttribute?.('src')) continue;
                 const slotName = normalizeSeatName(slot.name);
@@ -5578,12 +5913,13 @@ Rules:
         });
     }
 
-    function gcpMakeSlot(name, url, isDead, idx) {
+    function gcpMakeSlot(name, url, isDead, idx, isMissing = false) {
         const sw = gcpSlotW();
         const el = document.createElement('div');
         el.className = 'dangan-gcp-slot';
         el.style.cssText = `width:${sw}px;height:${portraitSlotHeightPx(name)}px;`;
         if (isDead) el.classList.add('gcp-dead');
+        if (isMissing) el.classList.add('gcp-missing');
         if (trialActive && isGroupChat() && needsGymnasticsHorse(name)) {
             el.classList.add('has-horse');
             const horse = document.createElement('img');
@@ -5594,7 +5930,8 @@ Rules:
         }
         const img = document.createElement('img');
         img.alt = name;
-        if (url) img.src = url;
+        if (url && !isMissing) img.src = url;
+        if (isMissing) img.style.display = 'none';
         // scaleWrap isolates the height-proportional scale transform so that VFX
         // animation classes added to img never override the character's base scale.
         const scaleWrap = document.createElement('div');
@@ -5610,7 +5947,7 @@ Rules:
         }
         gcpStage.appendChild(el);
         gcpIndexMap.set(normalizeSeatName(name), idx);
-        return { name, el, img, scaleWrap, heightPx: portraitSlotHeightPx(name), isDead: !!isDead };
+        return { name, el, img, scaleWrap, heightPx: portraitSlotHeightPx(name), isDead: !!isDead, isMissing: !!isMissing };
     }
 
     async function initGroupChatPortraits() {
@@ -5621,13 +5958,15 @@ Rules:
 
         gcpStage = document.createElement('div');
         gcpStage.id = 'dangan-group-chat-stage';
-        // If rebuilt while a debate is active, keep it hidden to avoid duplication
-        if (currentState !== TrialPhases.IDLE && currentState !== TrialPhases.PRE_DEBATE) {
+        // If rebuilt while an actual debate (NSD/MPD) is running, keep it hidden to avoid
+        // duplicating the debate overlay. Other non-IDLE states (TRUTH_BULLET_EXPLANATION
+        // etc.) still want the carousel visible underneath.
+        if (currentState === TrialPhases.NON_STOP_DEBATE || currentState === TrialPhases.MASS_PANIC_DEBATE) {
             gcpStage.style.display = 'none';
         }
         document.body.appendChild(gcpStage);
         document.body.classList.add('dangan-gcp-active');
-        const initVisible = currentState === TrialPhases.IDLE || currentState === TrialPhases.PRE_DEBATE;
+        const initVisible = currentState !== TrialPhases.NON_STOP_DEBATE && currentState !== TrialPhases.MASS_PANIC_DEBATE;
         document.body.classList.toggle('dangan-gcp-visible', initVisible);
         gcpIndexMap = new Map();
         const stageRef = gcpStage; // capture ref to detect if destroyed mid-await
@@ -5645,8 +5984,13 @@ Rules:
                 // Resolve sprite URLs upfront; exclude muted-without-dead from the plan.
                 console.log(`[Dangan][GCP] Building stage — plan (${plan.length}):`, plan);
                 const resolved = await Promise.all(plan.map(async name => {
-                    const muted = isCharacterMuted(name);
-                    const dead  = isCharacterDead(name);
+                    const muted   = isCharacterMuted(name);
+                    const dead    = isCharacterDead(name);
+                    const missing = isCharacterMissing(name);
+                    if (missing) {
+                        console.log(`[Dangan][GCP] "${name}" missing → no sprite`);
+                        return { name, url: null, isDead: false, isMissing: true };
+                    }
                     if (muted || dead) {
                         const deadUrl = await getSpriteUrl(name, 'dead').catch(() => null);
                         if (muted && !deadUrl) { console.log(`[Dangan][GCP] "${name}" muted+no dead sprite → excluded`); return null; }
@@ -5654,7 +5998,8 @@ Rules:
                         console.log(`[Dangan][GCP] "${name}" (dead=${dead}, muted=${muted}) → ${url ?? 'null'}`);
                         return { name, url, isDead: dead };
                     }
-                    const url = await getSpriteUrl(name, 'neutral').catch(() => null);
+                    let url = await getSpriteUrl(name, 'neutral').catch(() => null);
+                    if (!url && isMonokuma(name)) url = getMonokumaStaticUrl('neutral');
                     console.log(`[Dangan][GCP] "${name}" → ${url ?? 'null'}`);
                     return { name, url, isDead: false };
                 }));
@@ -5662,8 +6007,8 @@ Rules:
                 // If destroyed by a concurrent call while we were awaiting sprites, abort.
                 if (gcpStage !== stageRef) return;
 
-                gcpSlots = resolved.filter(Boolean).map(({ name, url, isDead }, i) =>
-                    gcpMakeSlot(name, url, isDead, i));
+                gcpSlots = resolved.filter(r => r && !isMonokuma(r.name)).map(({ name, url, isDead, isMissing }, i) =>
+                    gcpMakeSlot(name, url, isDead, i, isMissing));
 
                 // Mark the player's slot (Prome VN Extension) so it uses the Prome sprite.
                 // Only shown during Class Trials — non-trial group chats don't show the player.
@@ -5675,6 +6020,7 @@ Rules:
                     const playerKey   = normalizeSeatName(playerName);
                     const playerFirst = firstToken(playerName);
                     const playerUrl   = await getSpriteUrl(promeInfo.spritePack, 'neutral').catch(() => null);
+                    if (gcpStage !== stageRef) return;
                     // Also match by Prome sprite pack name — the player may be using a
                     // character's sprites (e.g. "Gundham Tanaka") while their persona name
                     // differs (e.g. "Dawn"), which would otherwise create a duplicate slot.
@@ -5702,7 +6048,7 @@ Rules:
                 // Apply last-known expressions from chat history so sprites don't all start neutral
                 const initialEmotions = buildInitialEmotions();
                 await Promise.all(gcpSlots.map(async slot => {
-                    if (slot.isDead || slot.isPlayer) return;
+                    if (slot.isDead || slot.isPlayer || slot.isMissing) return;
                     const emotion = initialEmotions.get(slot.name);
                     if (!emotion || emotion === 'neutral') return;
                     const url = await getSpriteUrl(slot.name, emotion).catch(() => null);
@@ -5777,6 +6123,19 @@ Rules:
     }
 
     function updateGroupChatSpeaker(speakerName) {
+        // ── Monokuma: always handled via overlay, never via carousel ──────────
+        if (isMonokuma(speakerName)) {
+            const monoEmo = characterEmotions.get(speakerName) || characterEmotions.get('Monokuma') || 'neutral';
+            showMonokumaOverlay(monoEmo);
+            // Kick off GCP init in the background so the carousel is ready when
+            // another character speaks next.
+            if (!gcpStage) initGroupChatPortraits();
+            return;
+        }
+
+        // Any non-Monokuma speaker: dismiss the overlay and restore the carousel.
+        hideMonokumaOverlay();
+
         if (!gcpStage) {
             initGroupChatPortraits().then(() => {
                 const idx = gcpFindIdx(speakerName);
@@ -5871,7 +6230,7 @@ Rules:
         // Retry sprite load for the current speaker if their slot has no src yet.
         // This covers the common case where getSpriteUrl returned null at init time.
         const speakerSlot = gcpSlots[Math.round(gcpCurrentFloat)];
-        if (speakerSlot && !speakerSlot.isDead && !speakerSlot.isPlayer && !speakerSlot.img?.getAttribute?.('src')) {
+        if (speakerSlot && !speakerSlot.isDead && !speakerSlot.isPlayer && !speakerSlot.isMissing && !speakerSlot.img?.getAttribute?.('src')) {
             getCharSpriteUrl(speakerSlot.name, characterEmotions.get(speakerSlot.name) || 'neutral')
                 .then(url => { if (url && speakerSlot.img && !speakerSlot.img.getAttribute('src')) speakerSlot.img.src = url; })
                 .catch(() => {});
@@ -5884,7 +6243,10 @@ Rules:
     }
 
     function destroyGroupChatPortraits() {
+        hideMonokumaOverlay();
+        document.getElementById('dangan-monokuma-overlay')?.remove();
         gcpInitializing = false; // unblock any init that was racing
+        gcpLastCamIdx   = null;
         if (gcpAnimRafId) { cancelAnimationFrame(gcpAnimRafId); gcpAnimRafId = null; }
         gcpStage?.remove();
         gcpStage      = null;
@@ -5931,6 +6293,7 @@ Rules:
         },
         phases: TrialPhases,
         setTrialContext,
+        getTrialContext: () => ({ ...trialContext, suspects: trialContext.suspects.slice() }),
         endTrial,
         initGroupChatPortraits,
         updateGroupChatSpeaker,
@@ -5964,6 +6327,11 @@ Rules:
                 if (parts.length >= 2) {
                     // Raw folder for URL-to-URL comparison (Pass 1); normalized for name comparison (Pass 2).
                     const srcFolderRaw  = decodeURIComponent(parts[parts.length - 2]).toLowerCase();
+                    // Monokuma is handled via overlay; route his expression to the overlay img
+                    // so it updates there instead of falling through to a carousel slot.
+                    if (srcFolderRaw === 'monokuma') {
+                        return document.getElementById('dangan-monokuma-overlay')?.querySelector('img') ?? null;
+                    }
                     // Normalize hyphens/underscores to spaces so "akane-owari" matches slot name "akane owari"
                     const srcFolder     = srcFolderRaw.replace(/[-_]/g, ' ').trim();
                     // Pass 1: folder-match using the slot's existing src URL (works once sprites are loaded)
@@ -5981,7 +6349,7 @@ Rules:
                     // Hyphens/underscores already normalized above; compare against the lowercased seat name.
                     const srcFirst = firstToken(srcFolder);
                     for (const slot of gcpSlots) {
-                        if (slot.isDead) continue;
+                        if (slot.isDead || slot.isMissing) continue;
                         const slotName = normalizeSeatName(slot.name);
                         if (slotName === srcFolder) return slot.img;
                         // First-token fallback: only when srcFolder is a single word (e.g. "akane"),

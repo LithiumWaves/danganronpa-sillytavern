@@ -1935,6 +1935,81 @@ body.dangan-theme-investigation #dangan_monopad_button {
     white-space: normal;
 }
 
+/* ── Stats edit bar ──────────────────────────────────────────────────────── */
+.social-report:not(.has-character) .stats-edit-bar {
+    display: none;
+}
+
+.stats-edit-bar {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.report-edit-btn,
+.report-save-btn,
+.report-cancel-btn {
+    padding: 4px 12px;
+    background: rgba(8, 3, 14, 0.85);
+    font-family: "Orbitron", monospace;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.report-edit-btn,
+.report-cancel-btn {
+    border: 1px solid rgba(150, 180, 255, 0.4);
+    color: rgba(180, 210, 255, 0.75);
+}
+
+.report-edit-btn:hover,
+.report-cancel-btn:hover {
+    border-color: rgba(180, 210, 255, 0.7);
+    color: #c0d8ff;
+    background: rgba(20, 30, 60, 0.85);
+}
+
+.report-save-btn {
+    border: 1px solid rgba(60, 200, 80, 0.5);
+    color: rgba(80, 220, 100, 0.8);
+}
+
+.report-save-btn:hover {
+    border-color: rgba(80, 255, 100, 0.75);
+    color: #80ff9a;
+    background: rgba(8, 40, 12, 0.95);
+}
+
+.stat-edit-input {
+    background: rgba(20, 30, 50, 0.9);
+    border: 1px solid rgba(150, 180, 255, 0.35);
+    border-radius: 3px;
+    color: #c8d8ff;
+    font-family: "Rajdhani", sans-serif;
+    font-size: 14px;
+    padding: 2px 5px;
+    width: 100%;
+    box-sizing: border-box;
+    outline: none;
+}
+
+.stat-edit-input:focus {
+    border-color: rgba(150, 180, 255, 0.8);
+}
+
+.report-ultimate .stat-edit-input {
+    font-family: "Orbitron", "Rajdhani", monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    display: inline-block;
+    width: auto;
+    min-width: 140px;
+    vertical-align: middle;
+}
+
 #trust-rankup-overlay {
     position: fixed;
     inset: 0;
@@ -8087,7 +8162,8 @@ body.dangan-trial-vn-chat-hidden #chat {
 .dangan-vn-text-wrap {
     min-height: 82px;
     max-height: min(34vh, 280px);
-    overflow: auto;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
     padding-right: 2px;
 }
 
@@ -8920,6 +8996,12 @@ body.dangan-vn-compose-docked-active .autoComplete-detailsWrap {
 
 .social-list-item-user:hover .social-name {
     color: #80ff9a;
+}
+
+.social-list-item-active .social-name,
+.social-list-item-active.social-list-item-user .social-name {
+    color: #5bc8ff !important;
+    font-weight: 600;
 }
 
 /* Player detail view */

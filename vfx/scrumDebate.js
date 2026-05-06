@@ -114,6 +114,14 @@ function buildStyles(extPath) {
     pointer-events: none; user-select: none; overflow: hidden;
 }
 #${SD_ID}.sd-on { opacity: 1; pointer-events: auto; }
+#${SD_ID}.sd-on::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(100, 0, 180, 0.28);
+    pointer-events: none;
+    z-index: 50;
+}
 #${SD_ID} * { box-sizing: border-box; }
 
 /* Background zoom layer */

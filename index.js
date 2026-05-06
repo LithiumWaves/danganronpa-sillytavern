@@ -24,13 +24,16 @@ import { initVfxSystem, onVfxChatChanged, setExpressionTarget, setVfxGcpLoadSupp
 import { createBdaCinematicEditor } from "./vfx/bdaCinematicEditor.js";
 import { createExecutionCinematicEditor } from "./vfx/executionCinematicEditor.js";
 import { createVoteResultsController } from "./vfx/voteResults.js";
+import { createVotingScreenController } from "./vfx/votingScreen.js";
 import { createQuestionTimeController } from "./vfx/questionTime.js";
 import { createQuestionTruthController } from "./vfx/questionTruth.js";
 import { createHangmansGambitController } from "./vfx/hangmansGambit.js";
 import { createPanicTalkActionController } from "./vfx/panicTalkAction.js";
 import { createScrumDebateController } from "./vfx/scrumDebate.js";
+import { createMindMineController } from "./vfx/mindMine.js";
 import { createChooseCharacterController } from "./vfx/chooseCharacter.js";
 import { createIntroduceCharacterController } from "./vfx/introduceCharacter.js";
+import { createChapterEndRosterController } from "./vfx/chapterEndRoster.js";
 import { createRebuttalShowdownController, createInterjectionCinematicRunner } from "./vfx/rebuttalShowdown.js";
 import { MPD_TEST_SCENARIOS } from "./vfx/massPanicDebate.js";
 import { createAudioVisualizerController } from "./audio/audioVisualizer.js";
@@ -62,15 +65,19 @@ let vfxCleanup = null;
 let bdaCinematicEditor = null;
 let executionCinematicEditor = null;
 let voteResultsController   = null;
+let votingScreenController  = null;
 let questionTimeController    = null;
 let questionTruthController   = null;
 let hangmansGambitController    = null;
 let panicTalkActionController   = null;
 let scrumDebateController      = null;
+let mindMineController         = null;
 let rebuttalShowdownController  = null;
 let interjectionRunner          = null;
 let chooseCharacterController   = null;
 let introduceCharacterController = null;
+let chapterEndRosterController   = null;
+let audioVisualizer              = null;
 
 const openRouterSettings = createOpenRouterSettingsManager({
     extensionName,
@@ -1826,25 +1833,40 @@ function createVnModeController() {
         const normalized = String(text || '').replace(/\s+/g, ' ').trim();
         if (!normalized) return [];
 
-        // Collect split positions based on sentence-boundary rules:
-        //   ."  — single period immediately followed by a quote  → split AFTER the quote
-        //   ".  — quote immediately followed by a single period  → split AFTER the period
-        // "Single" means the period is not part of an ellipsis (not preceded or followed
-        // by another dot). Patterns with a space between period and quote (`. "` / `" .`)
-        // are intentionally ignored — the quote there is an opening quote, not a closer.
+        // Split on sentence-ending punctuation:
+        //   ."  !"  ?"  — punctuation + closing quote → split after the quote (always)
+        //   ".          — closing quote + single period → split after the period (always)
+        //   .  !  ?     — bare punctuation outside of speech marks → split after it
+        //                 (bare . also skips ellipses: not preceded or followed by another dot)
         const splitPositions = [];
-        for (let i = 0; i < normalized.length - 1; i++) {
+        let inQuotes = false;
+        for (let i = 0; i < normalized.length; i++) {
             const c    = normalized[i];
-            const next = normalized[i + 1];
             const prev = i > 0 ? normalized[i - 1] : '';
+            const next = i + 1 < normalized.length ? normalized[i + 1] : '';
+
+            if (c === '"') {
+                inQuotes = !inQuotes;
+                // ". — closing quote then single period → split after the period
+                if (next === '.') {
+                    const afterDot = i + 2 < normalized.length ? normalized[i + 2] : '';
+                    if (afterDot !== '.') splitPositions.push(i + 2);
+                }
+                continue;
+            }
 
             if (c === '.' && next === '"') {
-                // ." — skip if this dot is part of an ellipsis (..)
-                if (prev !== '.') splitPositions.push(i + 2); // include ." in this chunk
-            } else if (c === '"' && next === '.') {
-                // ". — skip if the following dot leads into an ellipsis
-                const afterDot = i + 2 < normalized.length ? normalized[i + 2] : '';
-                if (afterDot !== '.') splitPositions.push(i + 2); // include ". in this chunk
+                // ." — skip if this dot is part of an ellipsis
+                if (prev !== '.') splitPositions.push(i + 2);
+            } else if ((c === '!' || c === '?') && next === '"') {
+                // !" / ?" — always split after the closing quote
+                splitPositions.push(i + 2);
+            } else if (!inQuotes) {
+                if (c === '.' && prev !== '.' && next !== '.') {
+                    splitPositions.push(i + 1);
+                } else if (c === '!' || c === '?') {
+                    splitPositions.push(i + 1);
+                }
             }
         }
 
@@ -2041,18 +2063,21 @@ function createVnModeController() {
     prevBtnEl?.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
+        playSfx(sfx.message_move);
         retreat();
     });
 
     nextBtnEl?.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
+        playSfx(sfx.message_move);
         advance();
     });
 
     latestBtnEl?.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
+        playSfx(sfx.message_move);
         jumpToLatest();
     });
 
@@ -3021,7 +3046,7 @@ function _stopAllBgm() {
     if (daEl instanceof HTMLAudioElement && !daEl.paused) {
         daEl.pause();
     }
-    audioVisualizer.hide();
+    audioVisualizer?.hide();
 }
 
 function playPhaseTrack() {
@@ -4511,6 +4536,20 @@ async function fadeInAndResumeBgm(durationMs = 600) {
 let _hgPreviousBgmSelectVal      = null;
 let _hgPreviousInvestigationAudio = null; // investigationTrackAudio saved across scrum/HG BGM switch
 
+function playMindMineBgm() {
+    const $sel = $('#audio_bgm_select');
+    if (!$sel.length) return;
+    _hgPreviousBgmSelectVal = _hgPreviousBgmSelectVal ?? $sel.val();
+    const track = findBgmTrackByName('DX Growth Plan');
+    const path  = track ?? `${(extensionFolderPath || '').replace(/\\/g, '/')}/assets/bgm/DX Growth Plan.mp3`;
+    if (!$sel.find(`option[value="${path}"]`).length) {
+        $sel.append(new Option('DX Growth Plan', path));
+    }
+    $sel.val(path).trigger('change');
+    const audioEl = document.getElementById('audio_bgm');
+    if (audioEl) audioEl.loop = true;
+}
+
 function playHGBgm() {
     const $sel = $('#audio_bgm_select');
     if (!$sel.length) return null;
@@ -4592,6 +4631,48 @@ function resumeBgmAfterHG() {
         // No investigationTrackAudio was active before the scrum — restore via DA only.
         $sel.val(savedVal).trigger('change');
     }
+}
+
+async function onMindMineWin(sentence) {
+    const text = (sentence || '').trim();
+
+    const ctx = window.SillyTavern?.getContext?.();
+    const setPrompt = ctx?.setExtensionPrompt || window.setExtensionPrompt;
+    if (typeof setPrompt === 'function' && text) {
+        setPrompt('dangan_mindmine_result',
+            `[MIND MINE RESULT]\nA point of relevance is ${text}...`,
+            0, 1, true, 'system');
+    }
+
+    // Wait for the minigame overlay to finish closing (endGame 2 s delay + CSS fade)
+    await new Promise(r => setTimeout(r, 2500));
+
+    const notif = document.createElement('div');
+    notif.id = 'dangan-mindmine-win-notif';
+    notif.className = 'dangan-trial-notification rebuttal-active';
+    notif.innerHTML = `
+        <div class="dangan-trial-notif-content">
+            <div class="rebuttal-header">MIND MINE COMPLETE</div>
+            <div class="rebuttal-info">
+                A point of relevance is <em id="dangan-mindmine-win-theory"></em>...
+            </div>
+        </div>`;
+    document.body.appendChild(notif);
+    if (text) notif.querySelector('#dangan-mindmine-win-theory').textContent = text;
+
+    const onUserSend = () => {
+        notif.remove();
+        eventSource.removeListener(event_types.MESSAGE_SENT, onUserSend);
+    };
+    eventSource.on(event_types.MESSAGE_SENT, onUserSend);
+
+    const onAiResponded = () => {
+        const ctx2 = window.SillyTavern?.getContext?.();
+        const sp = ctx2?.setExtensionPrompt || window.setExtensionPrompt;
+        if (typeof sp === 'function') sp('dangan_mindmine_result', '', 0, 0, false, 'system');
+        eventSource.removeListener(event_types.CHARACTER_MESSAGE_RENDERED, onAiResponded);
+    };
+    eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, onAiResponded);
 }
 
 async function onScrumDebateWin(playerTheory) {
@@ -6413,6 +6494,7 @@ jQuery(async () => {
         close: document.getElementById("monopad_sfx_close"),
         click: document.getElementById("monopad_sfx_click"),
         hover: document.getElementById("monopad_sfx_hover"),
+        message_move: document.getElementById("monopad_sfx_message_move"),
         monocoin_insert: document.getElementById("monopad_sfx_monocoin_insert"),
         monochine_jingle: document.getElementById("monopad_sfx_monochine_jingle"),
         monochine_turn: document.getElementById("monopad_sfx_monochine_turn"),
@@ -7194,7 +7276,7 @@ window.setTrialContext = (topic, goal, suspects) => {
     trialManager?.setTrialContext?.(topic, goal, suspects);
 };
 
-const audioVisualizer = createAudioVisualizerController({
+audioVisualizer = createAudioVisualizerController({
     getAudioElement: () => {
         if (investigationTrackAudio) return investigationTrackAudio;
         const bgm = document.getElementById('audio_bgm');
@@ -7317,6 +7399,73 @@ debugSTGlobals();
     vfxCleanup = initVfxSystem();
     setExpressionTarget(() => trialManager?.getGcpSpeakerImg?.() ?? document.getElementById('expression-image'));
 
+    function promptForBlackened(suggested = '') {
+        return new Promise(resolve => {
+            const modal = document.createElement('div');
+            modal.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.88);display:flex;align-items:center;justify-content:center;font-family:"Orbitron","Arial Black",sans-serif;';
+            const val = JSON.stringify(suggested);
+            modal.innerHTML = `
+                <div style="background:#0d0808;border:2px solid #cc1100;box-shadow:0 0 32px rgba(200,0,0,0.4);padding:32px 40px;max-width:420px;width:90%;text-align:center;">
+                    <div style="color:#ff4444;font-size:1em;font-weight:900;letter-spacing:3px;margin-bottom:20px;text-transform:uppercase;text-shadow:0 0 10px #ff2200;">Who is the Blackened?</div>
+                    <input id="vt-bl-input" type="text" value=${val}
+                        style="width:100%;background:#111;border:1px solid #662200;color:#fff;padding:9px 14px;font-size:1em;font-family:inherit;margin-bottom:18px;box-sizing:border-box;outline:none;"
+                        placeholder="Enter suspect name…">
+                    <button id="vt-bl-confirm"
+                        style="background:#cc1100;color:#fff;border:none;padding:10px 32px;font-family:inherit;font-weight:900;font-size:0.9em;letter-spacing:2px;cursor:pointer;text-transform:uppercase;box-shadow:0 0 12px rgba(200,0,0,0.5);">
+                        CONFIRM
+                    </button>
+                </div>`;
+            document.body.appendChild(modal);
+            const input = modal.querySelector('#vt-bl-input');
+            const btn   = modal.querySelector('#vt-bl-confirm');
+            input.select();
+            input.focus();
+            const confirm = () => { const v = input.value.trim(); modal.remove(); resolve(v || null); };
+            btn.addEventListener('click', confirm);
+            input.addEventListener('keydown', e => { if (e.key === 'Enter') confirm(); });
+        });
+    }
+
+    function updateSuspectsFromChat() {
+        if (!trialManager) return;
+        const ctx  = window.SillyTavern?.getContext?.();
+        const chat = ctx?.chat;
+        if (!Array.isArray(chat)) return;
+
+        const livingNames = [...characters.values()]
+            .filter(c => !c.dead && !c.missing)
+            .map(c => c.name);
+        if (livingNames.length < 2) return;
+
+        const recent = chat.slice(-30).filter(m => !m.is_system && m.mes);
+        if (recent.length === 0) return;
+
+        // Score each character by weighted mention count, skipping self-mentions
+        const scores = Object.fromEntries(livingNames.map(n => [n, 0]));
+        recent.forEach((msg, i) => {
+            const weight  = (i + 1) / recent.length; // newer = closer to 1
+            const text    = String(msg.mes  || '').toLowerCase();
+            const speaker = String(msg.name || '').toLowerCase();
+            for (const name of livingNames) {
+                if (speaker === name.toLowerCase()) continue;
+                const token = name.split(' ')[0].toLowerCase();
+                const hits  = (text.match(new RegExp(`\\b${token}\\b`, 'g')) ?? []).length;
+                scores[name] += hits * weight;
+            }
+        });
+
+        const total = Object.values(scores).reduce((a, b) => a + b, 0);
+        if (total < 0.5) return;
+
+        const suspects = Object.entries(scores)
+            .filter(([, v]) => v > 0)
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 3)
+            .map(([name, score]) => ({ name, chance: Math.round(score / total * 100) }));
+
+        if (suspects.length > 0) trialManager.setTrialContext(undefined, undefined, suspects);
+    }
+
     try {
         trialManager = createTrialManager({
             extensionName,
@@ -7401,8 +7550,30 @@ debugSTGlobals();
                     ?.then(() => triggerInterjectorResponse(characterName))
                     ?.then(() => trialManager?.resumeAfterActivity?.());
             },
-            onStartVotingTime: () => voteResultsController?.run({})
-                ?.then(() => trialManager?.resumeAfterActivity?.()),
+            onStartVotingTime: async () => {
+                const topSuspect = trialManager?.getTrialContext?.()?.suspects?.[0]?.name ?? '';
+                const correctBlackened = await promptForBlackened(topSuspect);
+                const result = await votingScreenController?.run() ?? {};
+                if (result.error) {
+                    trialManager?.resumeAfterActivity?.();
+                    return;
+                }
+                const guess = result.guess ?? null;
+
+                // Convert vote tallies → top-3 suspects with percentage share
+                const votes      = result.votes ?? {};
+                const totalVotes = Object.values(votes).reduce((a, b) => a + b, 0);
+                if (totalVotes > 0) {
+                    const suspects = Object.entries(votes)
+                        .sort(([, a], [, b]) => b - a)
+                        .slice(0, 3)
+                        .map(([name, count]) => ({ name, chance: Math.round(count / totalVotes * 100) }));
+                    trialManager?.setTrialContext(undefined, undefined, suspects);
+                }
+
+                await voteResultsController?.run({ guess, result: correctBlackened });
+                trialManager?.resumeAfterActivity?.();
+            },
             onStartQuestionTime: () => questionTimeController?.run({ title: 'Who is the blackened?', time: 30, answers: ['Suspect A', 'Suspect B', 'Suspect C', 'Suspect D'], correct: 1 })
                 ?.then(() => trialManager?.resumeAfterActivity?.()),
             onStartQuestionTruth: () => questionTruthController?.run({ question: 'What is the key piece of evidence?', answer: '' })
@@ -7439,6 +7610,7 @@ debugSTGlobals();
                 trialManager?.resumeAfterActivity?.();
             },
             onStartScrumDebate: () => scrumDebateController?.run(),
+            onStartMindMine:    () => mindMineController?.run(),
             getEquippedSkillsSnapshot,
             attachDraggablePositioning,
             applyCustomUiPosition,
@@ -7496,6 +7668,7 @@ debugSTGlobals();
                     } else {
                         console.warn(`[${extensionName}] ⚠️ trialManager not initialized yet.`);
                     }
+                    updateSuspectsFromChat();
                 }, 250);
             }
         };
@@ -7511,8 +7684,15 @@ debugSTGlobals();
             if (msg && !msg.is_user && msg.name) {
                 trialManager?.updateGroupChatSpeaker?.(msg.name);
             }
+            updateSuspectsFromChat();
         };
         eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, handleCharacterMessage);
+
+        document.addEventListener('click', e => {
+            const btn = e.target.closest('.dangan-suspect-refresh-btn');
+            if (!btn) return;
+            updateSuspectsFromChat();
+        });
 
         // On chat change, rebuild the stage (group ↔ 1-on-1 may differ) then snap to latest speaker.
         // Suppress VFX/SFX for the duration of the init + a grace period so the expressions
@@ -7528,6 +7708,7 @@ debugSTGlobals();
                 setVfxGcpGroupActive(!!(ctx?.groupId));
                 const lastMsg = [...(ctx?.chat || [])].reverse().find(m => !m.is_user && m.name);
                 if (lastMsg?.name) trialManager?.updateGroupChatSpeaker?.(lastMsg.name);
+                updateSuspectsFromChat();
                 // Grace period for ST's post-load expression updates to settle, then re-enable VFX/SFX.
                 setTimeout(() => setVfxGcpLoadSuppressed(false), 1500);
             }, 300);
@@ -7627,6 +7808,13 @@ debugSTGlobals();
                     }
                     return;
                 }
+                // targetImg is null — either GCP not yet initialised, or Monokuma whose
+                // overlay img doesn't exist yet.  In either case, if this src belongs to
+                // Monokuma skip it entirely (the overlay handles his expressions directly).
+                try {
+                    const _parts = new URL(src, location.href).pathname.split('/').filter(Boolean);
+                    if (_parts.length >= 2 && decodeURIComponent(_parts[_parts.length - 2]).toLowerCase() === 'monokuma') return;
+                } catch { /* ignore bad src */ }
                 // targetImg is null → GCP not yet initialised; fall through to debounce
                 // so the expression is buffered and applied once the stage is ready.
             }
@@ -7686,6 +7874,67 @@ debugSTGlobals();
         executionCinematicEditor?.open();
     });
 
+    votingScreenController = createVotingScreenController({
+        extensionFolderPath,
+        getCharacters: () => {
+            const chars = [...characters.values()];
+            const playerName = getActivePersonaName();
+            if (playerName && playerName !== 'STUDENT') {
+                chars.push({ name: playerName, isPlayer: true, dead: false, missing: false });
+            }
+            return chars;
+        },
+        getUserAvatarUrl: getActiveUserAvatarUrl,
+        getSpriteUrl: (charName) => getSpriteUrl(charName, 'panictalkaction'),
+        getPlayerName: getActivePersonaName,
+        generateVotes: async (livingNames, playerName) => {
+            const npcs = livingNames.filter(n => n !== playerName);
+            if (!npcs.length) return {};
+
+            // Include recent chat context so the AI can make an informed vote
+            const ctx = window.SillyTavern?.getContext?.();
+            const recentLines = Array.isArray(ctx?.chat)
+                ? ctx.chat.slice(-10)
+                    .filter(m => !m.is_system && m.mes)
+                    .map(m => `${m.name || 'Unknown'}: ${String(m.mes || '').replace(/\n/g, ' ').slice(0, 250)}`)
+                    .join('\n')
+                : '';
+
+            const candidates = livingNames.join(', ');
+            const contextBlock = recentLines ? `\n[Recent trial discussion]\n${recentLines}\n` : '';
+            const prompt = `[Class Trial – Voting Time]${contextBlock}\nStudents casting votes: ${npcs.join(', ')}\nCandidates for blackened: ${candidates}\n\nBased on the evidence, each student casts exactly one vote. List every student's vote:\n${npcs.map(n => `${n}:`).join('\n')}\n`;
+
+            try {
+                const raw = await generateTrialDialogue(prompt, {
+                    maxTokens: 400,
+                    temperature: 0.8,
+                    stop: ['\n\n\n', '---'],
+                });
+                const tally = {};
+                for (const line of raw.split('\n')) {
+                    const m = line.match(/^([^:]+):\s*(.+)/);
+                    if (!m) continue;
+                    const voter    = m[1].trim();
+                    const votedRaw = m[2].trim().replace(/["""'']/g, '').split(/[,.(]/)[0].trim();
+                    // Only count lines where the voter is an NPC
+                    const isNpc = npcs.some(n =>
+                        n.toLowerCase() === voter.toLowerCase() ||
+                        voter.toLowerCase().includes(n.toLowerCase()));
+                    if (!isNpc) continue;
+                    const found = livingNames.find(n =>
+                        n.toLowerCase() === votedRaw.toLowerCase() ||
+                        votedRaw.toLowerCase().includes(n.toLowerCase()) ||
+                        n.toLowerCase().includes(votedRaw.toLowerCase()));
+                    if (found) tally[found] = (tally[found] || 0) + 1;
+                }
+                return tally;
+            } catch (e) {
+                console.warn('[VotingScreen] generateVotes failed:', e);
+                return {};
+            }
+        },
+    });
+
     voteResultsController = createVoteResultsController({
         extensionFolderPath,
         getCharacters: () => {
@@ -7722,6 +7971,21 @@ debugSTGlobals();
     questionTruthController  = createQuestionTruthController({ extensionFolderPath, getTruthBullets: getTruthBulletsSnapshot, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, getPlayerSpriteUrl });
     hangmansGambitController  = createHangmansGambitController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, pauseDynamicAudio: fadeOutAndPauseBgm, resumeDynamicAudio: resumeBgmAfterHG, playBgm: playHGBgm, getPlayerSpriteUrl });
     panicTalkActionController = createPanicTalkActionController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme });
+    mindMineController        = createMindMineController({
+        extensionFolderPath,
+        pauseCurrentBgm: fadeOutAndPauseBgm,
+        resumeCurrentBgm: resumeBgmAfterHG,
+        playBgm: playMindMineBgm,
+        onWin: onMindMineWin,
+        onStart: () => {
+            document.getElementById('dangan-trial-context-panel')?.style.setProperty('display', 'none');
+            document.getElementById('dangan_monopad_button')?.style.setProperty('display', 'none');
+        },
+        onEnd: () => {
+            document.getElementById('dangan-trial-context-panel')?.style.removeProperty('display');
+            document.getElementById('dangan_monopad_button')?.style.removeProperty('display');
+        },
+    });
     scrumDebateController     = createScrumDebateController({ extensionFolderPath, awardMonocoins, deductMonocoins, getTruthBullets: getTruthBulletsSnapshot, pauseCurrentBgm: fadeOutAndPauseBgm, resumeCurrentBgm: resumeBgmAfterHG, getScrumTracks: () => extension_settings[extensionName]?.trialScrumTracks ?? [], playBgm: playBgmForScrum, getFinalPushTrack: () => findBgmTrackByName('Class Trial - Insurrection'), onWin: onScrumDebateWin, getSpriteUrl, isCharacterDead: (name) => characters.get(normalizeName(name))?.dead === true, getPlayerSpriteUrl, getPlayerName: getActivePersonaName, getCharacterHeightCm });
     rebuttalShowdownController = createRebuttalShowdownController({
         extensionFolderPath, getTruthBullets: getTruthBulletsSnapshot,
@@ -7737,6 +8001,18 @@ debugSTGlobals();
     interjectionRunner = createInterjectionCinematicRunner({ extensionFolderPath, getSpriteUrl });
     chooseCharacterController    = createChooseCharacterController({ extensionFolderPath, getLecternUrl, getSpriteUrl, getPlayerSpriteUrl, playSfx, getSfx: () => sfx });
     introduceCharacterController = createIntroduceCharacterController({ extensionFolderPath });
+    chapterEndRosterController   = createChapterEndRosterController({
+        extensionFolderPath,
+        getCharacters:        () => characters,
+        getSpriteUrl,
+        getCharacterHeightCm,
+        getPlayerSpriteUrl,
+        getPlayerName:        getActivePersonaName,
+        findBgmTrackByName,
+        fadeOutAndPauseBgm,
+        playBgmPath,
+        getMonopadVolume:     () => getMonopadSetting('monopadVolume') ?? 50,
+    });
     } catch (error) {
         bootstrapDebugUi();
         console.error(`[${extensionName}] ❌ Load failed:`, error);
@@ -7778,6 +8054,23 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         return '';
     },
     helpString: 'Advances the chapter: PROLOGUE → CHAPTER 1 → CHAPTER 2 → … → CHAPTER 9.',
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'endchapter',
+    callback: async () => {
+        const current   = Number(getMonopadSetting('chapterIndex') ?? 0);
+        const fromLabel = getChapterJournalLabel(current);
+        const toLabel   = getChapterJournalLabel(current + 1);
+        await chapterEndRosterController?.run({ fromLabel, toLabel });
+        if (current < 9) {
+            setMonopadSetting('chapterIndex', current + 1);
+            saveSettingsDebounced();
+            updateChapterDisplay();
+        }
+        return '';
+    },
+    helpString: 'Shows the chapter-end survivor roster screen with Trial End music, then advances the chapter.',
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
@@ -8002,6 +8295,22 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'mindmine',
+    callback: async (args) => {
+        const raw  = String(args?.sentence ?? args?._ ?? '').trim();
+        const sArr = raw ? raw.split('|').map(s => s.trim()).filter(Boolean) : [];
+        const time = parseInt(args?.time, 10) || 120;
+        await mindMineController?.run({ sentences: sArr, timeLimit: time });
+        return '';
+    },
+    helpString: 'Starts the Mind Mine block-clearing puzzle. Optional named args: sentence="s1|s2|s3" (pipe-separated sentences to uncover), time=120 (seconds).',
+    namedArgumentList: [
+        SlashCommandNamedArgument.fromProps({ name: 'sentence', description: 'Pipe-separated sentences the player must uncover', typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'time',     description: 'Time limit in seconds (default 120)',               typeList: [ARGUMENT_TYPE.NUMBER], isRequired: false }),
+    ],
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'bodydiscovery',
     callback: async (args) => {
         const bgName = String(args.bg || '').trim();
@@ -8134,17 +8443,29 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         await voteResultsController?.run({ guess, result });
         return '';
     },
-    helpString: 'Spins the class trial vote roulette. guess=&lt;name&gt; is who was voted for (required). result=&lt;name&gt; is the actual blackened (optional, random if omitted). Fails if guess ≠ result.',
+    helpString: 'Spins the class trial vote roulette. guess=&lt;name&gt; is who was voted for. result=&lt;name&gt; is the actual blackened (optional, random if omitted). Fails if guess ≠ result.',
     namedArgumentList: [
         SlashCommandNamedArgument.fromProps({
             name: 'guess',
             description: 'The character that was voted for (partial name match)',
             typeList: [ARGUMENT_TYPE.STRING],
-            isRequired: true,
+            isRequired: false,
         }),
         SlashCommandNamedArgument.fromProps({
             name: 'result',
             description: 'The actual blackened character (partial name match). Random if omitted.',
+            typeList: [ARGUMENT_TYPE.STRING],
+            isRequired: false,
+        }),
+        SlashCommandNamedArgument.fromProps({
+            name: 'characters',
+            description: 'Comma-separated list of all characters in the vote (informational)',
+            typeList: [ARGUMENT_TYPE.STRING],
+            isRequired: false,
+        }),
+        SlashCommandNamedArgument.fromProps({
+            name: 'votes',
+            description: 'Vote tally, e.g. "Name:2,OtherName:1" (informational)',
             typeList: [ARGUMENT_TYPE.STRING],
             isRequired: false,
         }),

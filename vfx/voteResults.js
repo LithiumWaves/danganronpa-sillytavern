@@ -144,9 +144,10 @@ export function createVoteResultsController({ getCharacters, getSpriteUrl, getUs
         // Load portraits
         const imageUrls = await Promise.all(allChars.map(async char => {
             try {
-                return char.isPlayer
-                    ? (getUserAvatarUrl?.() || null)
-                    : (await getSpriteUrl?.(char.name) ?? null);
+                if (char.isPlayer) {
+                    return (await getSpriteUrl?.(char.name).catch(() => null)) || getUserAvatarUrl?.() || null;
+                }
+                return await getSpriteUrl?.(char.name) ?? null;
             } catch { return null; }
         }));
 

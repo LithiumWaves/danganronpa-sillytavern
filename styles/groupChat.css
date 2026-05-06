@@ -16,10 +16,11 @@
     background-position-y: center;
     z-index: 0;
     pointer-events: none;
+    transform-origin: center 80%;
 }
 
 #dangan-gcp-bg-loop.dangan-gcp-pan {
-    transition: background-position-x 0.5s ease-in-out;
+    transition: background-position-x 0.5s ease-in-out, opacity 0.55s ease;
 }
 
 #dangan-group-chat-stage {
@@ -30,6 +31,7 @@
     z-index: 5;
     perspective: 1200px;
     perspective-origin: 50% 100%;
+    transform-origin: center 80%;
 }
 
 .dangan-gcp-slot {
@@ -133,6 +135,48 @@ body.dangan-gcp-active #expression-wrapper {
 body.dangan-gcp-active #expression-prome-user {
     display: none !important;
     pointer-events: none !important;
+}
+
+/* ── Monokuma solo overlay ───────────────────────────────────────────────────
+   When Monokuma speaks, the carousel and background fade out and a dedicated
+   overlay shows only his sprite centred on screen.
+   Uses a body class (dangan-mono-speaker) toggled by JS to avoid :has(). */
+
+/* Fade the entire carousel stage and panoramic background out */
+#dangan-group-chat-stage {
+    transition: opacity 0.55s ease;
+}
+#dangan-gcp-bg-loop {
+    transition: opacity 0.55s ease;
+}
+body.dangan-mono-speaker #dangan-group-chat-stage {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Overlay: sits above the stage, invisible by default */
+#dangan-monokuma-overlay {
+    position: fixed;
+    inset: 0;
+    bottom: 30%;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 6;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+    transform-origin: center 80%;
+}
+body.dangan-mono-speaker #dangan-monokuma-overlay {
+    opacity: 1;
+}
+#dangan-monokuma-overlay img {
+    height: 250px;
+    width: auto;
+    object-fit: contain;
+    filter: drop-shadow(0 0 24px rgba(0, 0, 0, 0.85));
+    display: block;
 }
 
 

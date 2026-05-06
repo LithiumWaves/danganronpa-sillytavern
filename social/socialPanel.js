@@ -92,6 +92,15 @@ export function createSocialPanelController({
         setActiveSocialCharacterId(char.id);
         const $report = $(".social-report");
         if (!$report.length) return;
+
+        // Highlight active entry in sidebar list
+        const $listItems = $(`.monopad-panel-content[data-panel="social"] .social-list-items`);
+        $listItems.find(".social-list-item").removeClass("social-list-item-active");
+        if (char.isPlayer) {
+            $listItems.find(".social-list-item-user").addClass("social-list-item-active");
+        } else {
+            $listItems.find(`.social-list-item[data-char-id="${char.id}"]`).addClass("social-list-item-active");
+        }
         $report.addClass("has-character");
         $report.toggleClass("player-view", !!char.isPlayer);
 
@@ -170,9 +179,12 @@ export function createSocialPanelController({
         const spriteOpenedId = char.id;
         const promePack = getPromeSpritePack?.();
         const spritePromise = char.isPlayer
-            ? Promise.resolve(promePack
-                ? `/characters/${promePack}/neutral.png`
-                : (getUserAvatarUrl?.() || ""))
+            ? (promePack
+                ? getSpriteUrl?.(promePack, 'panictalkaction').catch(() => `/characters/${promePack}/neutral.png`)
+                : (char.name
+                    ? getSpriteUrl?.(char.name, 'panictalkaction')
+                        .catch(() => Promise.resolve(getSpriteUrl?.(char.name) || getUserAvatarUrl?.() || ""))
+                    : Promise.resolve(getUserAvatarUrl?.() || "")))
             : useTalent
                 ? getSpriteUrl?.(char.name, 'panictalkaction').catch(() => getSpriteUrl?.(char.name))
                 : Promise.resolve(getSpriteUrl?.(char.name));
@@ -184,16 +196,17 @@ export function createSocialPanelController({
             $sprite[0].src = spriteUrl;
         });
 
-        const liveUltimate =
-            lookupUltimateFromLorebook(char.name) || char.ultimate || (char.isPlayer ? "player character" : "unknown");
+        const liveUltimate = char.isPlayer
+            ? (char.ultimate || lookupUltimateFromLorebook(char.name) || "player character")
+            : (lookupUltimateFromLorebook(char.name) || char.ultimate || "unknown");
 
         char.ultimate = liveUltimate;
         if (!char.isPlayer) saveCharacters();
 
         $report.find(".report-ultimate").text(
             char.ultimate
-                ? `ULTIMATE: ${char.ultimate.toUpperCase()}`
-                : "ULTIMATE: —"
+                ? `ULTIMATE ${char.ultimate.toUpperCase()}`
+                : "ULTIMATE —"
         );
 
         const trust = char.trustLevel ?? 1;
@@ -227,6 +240,65 @@ export function createSocialPanelController({
 
         $report.find(".notes-content").text("ANALYZING...");
 
+        // ── Edit stats ────────────────────────────────────────────────────────
+        const $editBtn   = $report.find('#report-edit-stats-btn');
+        const $saveBtn   = $report.find('#report-save-stats-btn');
+        const $cancelBtn = $report.find('#report-cancel-stats-btn');
+
+        $editBtn.show();
+        $saveBtn.hide();
+        $cancelBtn.hide();
+
+        const STAT_FIELDS = [
+            { id: 'stat-height',       key: 'height'       },
+            { id: 'stat-measurements', key: 'measurements' },
+            { id: 'stat-personality',  key: 'personality'  },
+            { id: 'stat-likes',        key: 'likes'        },
+            { id: 'stat-dislikes',     key: 'dislikes'     },
+        ];
+
+        $editBtn.off('click.edit').on('click.edit', () => {
+            const profile = char.social?.profile || {};
+            const $ultimateInput = $('<input class="stat-edit-input" id="edit-ultimate" />').val(char.ultimate || '');
+            $report.find('.report-ultimate').empty().append(`ULTIMATE `, $ultimateInput);
+            STAT_FIELDS.forEach(({ id, key }) => {
+                $report.find(`#${id}`).empty().append($('<input class="stat-edit-input" />').val(profile[key] || ''));
+            });
+            $editBtn.hide();
+            $saveBtn.show();
+            $cancelBtn.show();
+        });
+
+        $saveBtn.off('click.save').on('click.save', () => {
+            char.ultimate = ($report.find('#edit-ultimate').val() || '').trim() || 'unknown';
+            if (!char.social) char.social = {};
+            if (!char.social.profile) char.social.profile = {};
+            char.social.profile.ultimate = char.ultimate;
+            STAT_FIELDS.forEach(({ id, key }) => {
+                char.social.profile[key] = ($report.find(`#${id}`).find('input').val() || '').trim();
+            });
+            if (!char.isPlayer) saveCharacters();
+            $report.find('.report-ultimate').text(`ULTIMATE ${char.ultimate.toUpperCase()}`);
+            STAT_FIELDS.forEach(({ id, key }) => {
+                $report.find(`#${id}`).text(char.social.profile[key] || '—');
+            });
+            $editBtn.show();
+            $saveBtn.hide();
+            $cancelBtn.hide();
+        });
+
+        $cancelBtn.off('click.cancel').on('click.cancel', () => {
+            const profile = char.social?.profile || {};
+            $report.find('.report-ultimate').text(`ULTIMATE ${(char.ultimate || '???').toUpperCase()}`);
+            STAT_FIELDS.forEach(({ id, key }) => {
+                $report.find(`#${id}`).text(profile[key] || '—');
+            });
+            $editBtn.show();
+            $saveBtn.hide();
+            $cancelBtn.hide();
+        });
+        // ── End edit stats ────────────────────────────────────────────────────
+
         const openedId = char.id;
 
         generateCharacterNotes(char).then(() => {
@@ -240,11 +312,11 @@ export function createSocialPanelController({
                 return;
             }
 
-            $("#stat-height").text(profile.height || "—");
-            $("#stat-measurements").text(profile.measurements || "—");
-            $("#stat-personality").text(profile.personality || "—");
-            $("#stat-likes").text(profile.likes || "—");
-            $("#stat-dislikes").text(profile.dislikes || "—");
+            $report.find("#stat-height").text(profile.height || "—");
+            $report.find("#stat-measurements").text(profile.measurements || "—");
+            $report.find("#stat-personality").text(profile.personality || "—");
+            $report.find("#stat-likes").text(profile.likes || "—");
+            $report.find("#stat-dislikes").text(profile.dislikes || "—");
 
             $report.find(".notes-content").text("ANALYSIS COMPLETE");
 
@@ -460,8 +532,9 @@ export function createSocialPanelController({
 
         const userName = getUserName?.();
         if (userName) {
+            const isActive = activeId === "player";
             const $userItem = $(`
-                <div class="social-list-item social-list-item-user">
+                <div class="social-list-item social-list-item-user${isActive ? " social-list-item-active" : ""}">
                     <span class="social-name">${userName.toUpperCase()}</span>
                 </div>
             `);
@@ -475,8 +548,9 @@ export function createSocialPanelController({
         }
 
         for (const [key, char] of characters.entries()) {
+            const isActive = char.id === activeId;
             const $item = $(`
-                <div class="social-list-item">
+                <div class="social-list-item${isActive ? " social-list-item-active" : ""}" data-char-id="${char.id}">
                     <span class="social-name">${char.name.toUpperCase()}</span>
                     <span class="social-delete" title="Remove">✕</span>
                 </div>

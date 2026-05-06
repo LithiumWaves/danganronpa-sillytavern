@@ -1822,7 +1822,7 @@ char.social = {
     generatedAt: Date.now()
 };
 
-if (char.social.profile.ultimate !== "unknown") {
+if (char.social.profile.ultimate !== "unknown" && !char.isPlayer) {
     char.ultimate = char.social.profile.ultimate;
 }
 

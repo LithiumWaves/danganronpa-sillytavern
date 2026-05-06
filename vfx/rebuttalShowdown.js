@@ -78,6 +78,14 @@ function buildStyles() {
         user-select: none;
     }
     #${RS_ID}.rs-on { opacity: 1; }
+    #${RS_ID}.rs-on::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 140, 30, 0.28);
+        pointer-events: none;
+        z-index: 50;
+    }
     #${RS_ID} * { box-sizing: border-box; }
     .rs-top {
         position: absolute;
@@ -1195,6 +1203,16 @@ function buildStyles() {
         0%   { opacity: 0.55; }
         100% { opacity: 0.75; }
     }
+    @keyframes rsPortraitCamLeft {
+        0%   { transform: scale(1.0)  translateX(18px) translateY(0px); }
+        40%  { transform: scale(1.12) translateX(-10px) translateY(-8px); }
+        100% { transform: scale(1.06) translateX(6px)  translateY(4px); }
+    }
+    @keyframes rsPortraitCamRight {
+        0%   { transform: scale(1.0)  translateX(-18px) translateY(0px); }
+        40%  { transform: scale(1.12) translateX(10px)  translateY(-8px); }
+        100% { transform: scale(1.06) translateX(-6px)  translateY(4px); }
+    }
     .rs-portrait {
         position: absolute;
         top: 0;
@@ -1217,9 +1235,13 @@ function buildStyles() {
     }
     #rs-portrait-left img {
         filter: drop-shadow(0 0 18px rgba(180,0,0,0.65));
+        transform-origin: center bottom;
+        animation: rsPortraitCamLeft 13s ease-in-out infinite alternate;
     }
     #rs-portrait-right img {
         filter: drop-shadow(0 0 18px rgba(0,40,220,0.6));
+        transform-origin: center bottom;
+        animation: rsPortraitCamRight 11s ease-in-out 2s infinite alternate;
     }
     .rs-portrait-name {
         position: absolute;
@@ -1356,7 +1378,7 @@ export function createRebuttalShowdownController({
     getCharacterHeightCm = null,
     onWin = null,
 } = {}) {
-    const RS_UI_SELECTORS = ['#top-bar', '#top-settings-holder', '#sheld', '#right-nav-panel', '#dangan-vn-overlay', '#dangan-group-chat-stage', '#dangan-trial-pre-debate-notif', '#dangan_monopad_button', '#dangan-level-bar'];
+    const RS_UI_SELECTORS = ['#top-bar', '#top-settings-holder', '#sheld', '#right-nav-panel', '#dangan-vn-overlay', '#dangan-group-chat-stage', '#dangan-trial-pre-debate-notif', '#dangan_monopad_button', '#dangan-level-bar', '#dangan-bgm-display', '#dangan-chapter-label', '#dangan-trial-context-panel'];
     const rsHiddenEls = new Map();
 
     function fadeOutChatUI() {

@@ -95,6 +95,16 @@
     cursor: crosshair;
 }
 
+/* Blue hue during Non-Stop Debate (not during Mass Panic which uses its own red overlay) */
+#dangan-nonstop-debate-overlay:not(.mpd-active)::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 60, 180, 0.28);
+    pointer-events: none;
+    z-index: 50;
+}
+
 #dangan-trial-reticle {
     position: absolute;
     left: 0;
@@ -437,10 +447,10 @@
     gap: 6px;
 }
 
-/* 2-column grid for Actions (4 buttons → 2+2) */
+/* 3-column grid for Actions (5 buttons → 3+2) */
 .dangan-trial-btn-group--actions .dangan-trial-btn-row {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 6px;
 }
 
@@ -573,6 +583,11 @@
 
 #dangan-start-choosing-btn {
     background: #cc1133;
+    color: white;
+}
+
+#dangan-start-showcg-btn {
+    background: #ff6600;
     color: white;
 }
 
@@ -1322,6 +1337,7 @@
     z-index: 10;
     overflow: visible;
     perspective: 1200px;
+    transform-origin: center 80%;
 }
 
 .dangan-portrait-left-slot {
@@ -1485,6 +1501,339 @@
     100% { opacity: 0; }
 }
 
+/* ── Cinematic portrait camera shots ─────────────────────────────────────
+   10 variants cycle on each speaker change.  Range spans glacial creeps
+   (20s+) through fast punches (3–5s) and cardinal-direction slides.     */
+
+/* A — Glacial push-in with lateral drift (slow, deliberate) */
+@keyframes danganCamA {
+    from { transform: scale(1.0)  translateX(20px); }
+    to   { transform: scale(1.10) translateX(-14px); }
+}
+/* B — Fast punch zoom (aggressive snap in) */
+@keyframes danganCamB {
+    from { transform: scale(1.0)  translateX(0); }
+    to   { transform: scale(1.08) translateX(0); }
+}
+/* C — Slow dramatic pull-back (starts close, retreats past 1:1) */
+@keyframes danganCamC {
+    from { transform: scale(1.08) translateX(-10px); }
+    to   { transform: scale(0.95) translateX(16px); }
+}
+/* D — Hard slide from left */
+@keyframes danganCamD {
+    from { transform: scale(1.05) translateX(-40px); }
+    to   { transform: scale(1.0)  translateX(0); }
+}
+/* E — Hard slide from right */
+@keyframes danganCamE {
+    from { transform: scale(1.05) translateX(40px); }
+    to   { transform: scale(1.0)  translateX(0); }
+}
+/* F — Sweep pan left across the scene */
+@keyframes danganCamF {
+    from { transform: scale(1.04) translateX(30px); }
+    to   { transform: scale(1.04) translateX(-30px); }
+}
+/* G — Sweep pan right across the scene */
+@keyframes danganCamG {
+    from { transform: scale(1.04) translateX(-30px); }
+    to   { transform: scale(1.04) translateX(30px); }
+}
+/* H — Drop from above (scene descends into frame) */
+@keyframes danganCamH {
+    from { transform: scale(1.10) translateY(-45px); }
+    to   { transform: scale(1.0)  translateY(0); }
+}
+/* I — Rise from below (scene lifts up into frame) */
+@keyframes danganCamI {
+    from { transform: scale(1.10) translateY(45px); }
+    to   { transform: scale(1.0)  translateY(0); }
+}
+/* J — Slow orbital drift (complex compound movement) */
+@keyframes danganCamJ {
+    0%   { transform: scale(1.0)  translateX(22px)  translateY(12px); }
+    50%  { transform: scale(1.10) translateX(-18px) translateY(-10px); }
+    100% { transform: scale(1.05) translateX(12px)  translateY(6px); }
+}
+
+/* K — Face crash-zoom sliding in from left.
+   transform-origin near the top so the zoom centres on the face, not the feet. */
+@keyframes danganCamK {
+    from { transform: scale(1.0)  translateX(-55px); }
+    to   { transform: scale(1.8)  translateX(0); }
+}
+/* L — Same crash-zoom from the right. */
+@keyframes danganCamL {
+    from { transform: scale(1.0)  translateX(55px); }
+    to   { transform: scale(1.8)  translateX(0); }
+}
+/* A–J: zoom-origin stays at the feet (characters scale upward) */
+.dangan-portrait-cam-a { animation: danganCamA 20s ease-in-out  forwards; }
+.dangan-portrait-cam-b { animation: danganCamB  3s ease-out      forwards; }
+.dangan-portrait-cam-c { animation: danganCamC 16s ease-in-out  forwards; }
+.dangan-portrait-cam-d { animation: danganCamD  4s ease-out      forwards; }
+.dangan-portrait-cam-e { animation: danganCamE  4s ease-out      forwards; }
+.dangan-portrait-cam-f { animation: danganCamF 12s ease-in-out  forwards; }
+.dangan-portrait-cam-g { animation: danganCamG 12s ease-in-out  forwards; }
+.dangan-portrait-cam-h { animation: danganCamH  5s ease-out      forwards; }
+.dangan-portrait-cam-i { animation: danganCamI  5s ease-out      forwards; }
+.dangan-portrait-cam-j { animation: danganCamJ 24s ease-in-out  forwards; }
+
+/* K–L: crash-zoom to face — override origin so the lens centres on the face */
+.dangan-portrait-cam-k,
+.dangan-portrait-cam-l { transform-origin: center 5%; }
+.dangan-portrait-cam-k { animation: danganCamK  5s cubic-bezier(0.25,0.46,0.45,0.94) forwards; }
+.dangan-portrait-cam-l { animation: danganCamL  5s cubic-bezier(0.25,0.46,0.45,0.94) forwards; }
+
+
+/* ── Emotion-triggered VFX ───────────────────────────────────────────────
+   These are appended to document.body as short-lived overlay divs so they
+   sit above every scene element (characters, horses, podiums, background)
+   without conflicting with any existing filter/animation on those nodes.  */
+
+@keyframes danganEmotionFlashWhite {
+    0%   { opacity: 0;    }
+    6%   { opacity: 0.92; }
+    28%  { opacity: 0.55; }
+    100% { opacity: 0;    }
+}
+.dangan-emotion-flash-white {
+    position: fixed;
+    inset: 0;
+    background: white;
+    pointer-events: none;
+    z-index: 2147483645;
+    animation: danganEmotionFlashWhite 1.1s ease-out forwards;
+}
+
+/* ── Show CG overlay ─────────────────────────────────────────────────────── */
+
+@keyframes danganCgFadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+#dangan-cg-overlay {
+    position: fixed;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    z-index: 2147483646;
+    pointer-events: auto;
+    animation: danganCgFadeIn 0.55s ease-out forwards;
+}
+
+.dangan-cg-dismiss-btn {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2147483647;
+    background: rgba(0, 0, 0, 0.72);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    padding: 8px 22px;
+    font-size: 11px;
+    font-family: 'Noto Sans JP', sans-serif;
+    font-weight: bold;
+    letter-spacing: 0.12em;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    white-space: nowrap;
+}
+
+.dangan-cg-dismiss-btn:hover {
+    background: rgba(0, 0, 0, 0.92);
+    border-color: rgba(255, 255, 255, 0.55);
+}
+
+/* ── CG picker modal ─────────────────────────────────────────────────────── */
+
+#dangan-cg-overlay.dangan-cg-sepia     { filter: sepia(1); }
+#dangan-cg-overlay.dangan-cg-grayscale { filter: grayscale(1); }
+
+#dangan-cg-picker {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.dangan-cg-picker-inner {
+    background: var(--SmartThemeChatTintColor, rgba(16, 16, 24, 0.98));
+    border: 2px solid rgba(0, 255, 255, 0.3);
+    border-radius: 12px;
+    width: min(960px, 95vw);
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.dangan-cg-picker-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(0, 255, 255, 0.18);
+    flex-shrink: 0;
+}
+
+.dangan-cg-picker-title {
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 0.2em;
+    color: #00ffff;
+}
+
+.dangan-cg-picker-close {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    transition: color 0.15s;
+}
+
+.dangan-cg-picker-close:hover {
+    color: white;
+}
+
+/* Filter toggles */
+.dangan-cg-picker-filters {
+    display: flex;
+    gap: 8px;
+    padding: 8px 14px;
+    border-bottom: 1px solid rgba(0, 255, 255, 0.1);
+    flex-shrink: 0;
+}
+
+.dangan-cg-filter-btn {
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 9px;
+    font-weight: bold;
+    letter-spacing: 0.12em;
+    padding: 4px 14px;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: transparent;
+    color: rgba(255, 255, 255, 0.55);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.dangan-cg-filter-btn:hover {
+    border-color: rgba(0, 255, 255, 0.45);
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.dangan-cg-filter-btn.active {
+    background: rgba(0, 255, 255, 0.18);
+    border-color: #00ffff;
+    color: #00ffff;
+}
+
+/* Search bar */
+.dangan-cg-picker-search-row {
+    padding: 8px 14px;
+    border-bottom: 1px solid rgba(0, 255, 255, 0.1);
+    flex-shrink: 0;
+}
+
+.dangan-cg-search {
+    width: 100%;
+    box-sizing: border-box;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(0, 255, 255, 0.22);
+    border-radius: 4px;
+    color: white;
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 11px;
+    padding: 6px 10px;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.dangan-cg-search:focus { border-color: #00ffff; }
+
+.dangan-cg-search::placeholder { color: rgba(255, 255, 255, 0.28); }
+
+/* 5-column grid */
+.dangan-cg-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+    padding: 10px;
+    overflow-y: auto;
+}
+
+/* Each cell: thumbnail fills the cell, label slides in on hover */
+.dangan-cg-pick-item {
+    position: relative;
+    cursor: pointer;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 2px solid transparent;
+    transition: border-color 0.15s;
+}
+
+.dangan-cg-pick-item:hover {
+    border-color: #00ffff;
+}
+
+.dangan-cg-pick-thumb {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-color: rgba(255, 255, 255, 0.06);
+}
+
+/* Label hidden by default; fades in on hover like ST's BG picker */
+.dangan-cg-pick-label {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 4px 6px;
+    background: rgba(0, 0, 0, 0.72);
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 9px;
+    letter-spacing: 0.05em;
+    color: rgba(255, 255, 255, 0.9);
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.dangan-cg-pick-item:hover .dangan-cg-pick-label {
+    opacity: 1;
+}
+
+.dangan-cg-no-results {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 24px;
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.4);
+    letter-spacing: 0.08em;
+}
+
 /* ── Trial Context Panel ─────────────────────────────────────────────────── */
 
 #dangan-trial-context-panel.dangan-trial-notification {
@@ -1494,6 +1843,8 @@
     min-width: 220px;
     max-width: 320px;
     width: max-content;
+    max-height: none;
+    height: auto;
 }
 
 .dangan-context-body {
@@ -1567,4 +1918,27 @@
     text-align: right;
     min-width: 30px;
     flex-shrink: 0;
+}
+
+.dangan-context-suspects-header {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.dangan-suspect-refresh-btn {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: rgba(0, 255, 255, 0.5);
+    font-size: 13px;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+    flex-shrink: 0;
+    transition: color 0.15s;
+}
+
+.dangan-suspect-refresh-btn:hover {
+    color: #00ffff;
 }
