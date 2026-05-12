@@ -70,6 +70,7 @@ export const defaultSettings = {
     dynamicThemes: true,
     hideTruthBulletImages: false,
     hideGiftImages: false,
+    minigameTutorialsEnabled: true,
     talentImagesForAnalysis: false,
     monopadButtonEnabled: true,
     welcomeSeen: false,

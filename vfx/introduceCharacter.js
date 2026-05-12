@@ -83,7 +83,28 @@ function buildIntroStyles() {
         pointer-events: none;
         user-select: none;
         overflow: hidden;
-        background-size: 7px 7px;
+    }
+
+    /* Chrome wrap — everything that should be hue-shifted lives here.
+       Sprite is intentionally a sibling so it keeps its natural color. */
+    #dangan-intro-chrome {
+        position: absolute;
+        inset: 0;
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+    }
+
+    /* Foreground decoration image — replaces the rendered diagonal stripe bands */
+    #dangan-intro-fg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center;
+        pointer-events: none;
+        z-index: 4;
     }
 
     /* Revolver cylinder — top-right, spinning clockwise */
@@ -105,7 +126,8 @@ function buildIntroStyles() {
     /* Character sprite */
     #dangan-intro-sprite {
         position: absolute;
-        bottom: 0; right: calc(16% + 50px);
+        bottom: 0;
+        right: calc(66% + 50px);
         height: 94vh;
         width: auto;
         object-fit: contain;
@@ -123,8 +145,8 @@ function buildIntroStyles() {
     /* Shared text block base */
     .dangan-intro-text-block {
         position: absolute;
-        left: 24%;
-        transform: translateY(-50%) rotate(${BAND_ANGLE}deg);
+        left: 49%;
+        transform: translateY(5%) rotate(13deg);
         transform-origin: left center;
         pointer-events: none;
         z-index: 6;
@@ -138,18 +160,17 @@ function buildIntroStyles() {
 
     /* Ultimate — middle (largest) band */
     #dangan-intro-ultimate-wrap {
-        top: 66%;
-        left: 27%;
+        top: 59%;
+        left: 48%;
         display: flex;
         flex-direction: row;
         width: auto;
         position: absolute;
     }
 
-    /* Shared value style — same for name and ultimate text */
-    #dangan-intro-name,
-    #dangan-intro-ultimate {
-        font-family: "Cinzel", "Impact", Georgia, serif;
+    /* Name — uses the Quickend stack with a coloured first letter */
+    #dangan-intro-name {
+        font-family: "Quickend", "Boldonse", "Orbitron", "Rajdhani", monospace;
         font-size: clamp(32px, 4vw, 58px);
         font-weight: 900;
         color: rgb(255 255 255);
@@ -157,55 +178,29 @@ function buildIntroStyles() {
         letter-spacing: 2px;
         text-shadow: rgb(255 255 255) 0px 0px 12px;
     }
+    #dangan-intro-name::first-letter {
+        color: rgb(255, 55, 196);
+        text-shadow: 0 0 12px rgba(255, 55, 196, 0.85);
+    }
 
-    #dangan-intro-ultimate-label {
-        font-family: "Cinzel", "Impact", Georgia, serif;
+    /* Ultimate label + value — black text with a coloured glow */
+    #dangan-intro-ultimate-label,
+    #dangan-intro-ultimate {
+        font-family: "Limelight", "Cinzel", "Impact", Georgia, serif;
         font-size: clamp(32px, 4vw, 58px);
         font-weight: 900;
-        color: rgb(255 255 255);
+        color: #000;
         line-height: 1.1;
         letter-spacing: 2px;
-        text-shadow: rgb(255 255 255) 0px 0px 12px;
+        text-shadow:
+            0 0 8px  rgba(255, 55, 196, 0.95),
+            0 0 18px rgba(255, 55, 196, 0.65),
+            0 0 32px rgba(255, 55, 196, 0.40);
+    }
+    #dangan-intro-ultimate-label {
         margin-right: 15px;
     }
 
-    /* Static diagonal stripe group */
-    #dangan-intro-shadow-wrap {
-        position: absolute; inset: 0;
-        pointer-events: none;
-        z-index: 4;
-    }
-    #dangan-intro-shadow-inner {
-        position: absolute;
-        top: -80%; left: -20%;
-        width: 140%; height: 260%;
-        transform: rotate(${BAND_ANGLE}deg);
-        transform-origin: center center;
-    }
-    #dangan-intro-band-group {
-        position: absolute;
-        top: 50%; left: 0; right: 0;
-        transform: translateY(-50%);
-        display: flex;
-        flex-direction: column;
-    }
-    .intro-band { flex-shrink: 0; }
-    .intro-band:first-child::before,
-    .intro-band:last-child::after {
-        content: '';
-        display: block;
-        height: 20px;
-        background: inherit;
-        clip-path: polygon(
-            0% 0%, 2% 55%, 5% 15%, 8% 75%, 12% 28%, 16% 68%, 20% 8%,
-            24% 62%, 28% 22%, 32% 72%, 36% 12%, 40% 52%, 44% 5%,
-            48% 68%, 52% 18%, 56% 78%, 60% 28%, 64% 62%, 68% 8%,
-            72% 72%, 76% 22%, 80% 58%, 84% 8%, 88% 68%, 92% 18%,
-            96% 52%, 100% 25%, 100% 100%, 0% 100%
-        );
-        margin-top: -1px;
-    }
-    .intro-band:first-child::before { transform: scaleY(-1); }
     `;
 }
 
@@ -268,27 +263,31 @@ export function createIntroduceCharacterController({ extensionFolderPath = '' } 
             document.head.appendChild(styleEl);
         }
 
-        // Extract colours before building DOM so everything is themed on first paint
-        const fallback = ['rgb(13,13,13)', 'rgb(160,30,100)', 'rgb(70,110,160)', 'rgb(230,230,230)', 'rgb(30,30,60)'];
-        const extracted = spriteUrl ? (await extractDominantColors(spriteUrl, 5)) : null;
-        const palette   = buildPalette(extracted ?? fallback);
-
         const overlay = document.createElement('div');
         overlay.id = INTRO_ID;
         overlay.style.opacity    = '0';
         overlay.style.transition = 'opacity 0.25s ease';
-        overlay.style.backgroundColor = palette.bg;
-        overlay.style.backgroundImage =
-            `radial-gradient(circle, ${palette.dot} 1.5px, transparent 1.5px)`;
 
-        // Revolver cylinder
+        // Chrome wrap holds everything that should be hue-shifted (bg, fg,
+        // cylinder, text). The sprite sits OUTSIDE this wrap as a sibling so
+        // it keeps its natural colors.
+        const chromeWrap = document.createElement('div');
+        chromeWrap.id = 'dangan-intro-chrome';
+        chromeWrap.style.backgroundImage = `url("${extensionFolderPath}/assets/images/ui/intro-bg.png")`;
+        // Debug: random hue-shift each invocation so themes are easy to eyeball.
+        const introHue = Math.floor(Math.random() * 360);
+        chromeWrap.style.filter = `hue-rotate(${introHue}deg)`;
+        console.log(`[Dangan][Intro] hue-rotate: ${introHue}deg`);
+        overlay.appendChild(chromeWrap);
+
+        // Revolver cylinder (hue-shifted)
         const cylinder = document.createElement('img');
         cylinder.id  = 'dangan-intro-cylinder';
         cylinder.src = `${extensionFolderPath}/assets/images/minigames/revolver-cylinder.png`;
         cylinder.alt = '';
-        overlay.appendChild(cylinder);
+        chromeWrap.appendChild(cylinder);
 
-        // Character sprite
+        // Character sprite (NOT hue-shifted — appended to overlay, not chrome)
         if (spriteUrl) {
             const sprite = document.createElement('img');
             sprite.id  = 'dangan-intro-sprite';
@@ -296,6 +295,13 @@ export function createIntroduceCharacterController({ extensionFolderPath = '' } 
             sprite.alt = name;
             overlay.appendChild(sprite);
         }
+
+        // Foreground decoration image (hue-shifted)
+        const fg = document.createElement('img');
+        fg.id = 'dangan-intro-fg';
+        fg.src = `${extensionFolderPath}/assets/images/ui/intro-fg.png`;
+        fg.alt = '';
+        chromeWrap.appendChild(fg);
 
         // Name block — top portion of the banner
         const nameWrap = document.createElement('div');
@@ -305,7 +311,7 @@ export function createIntroduceCharacterController({ extensionFolderPath = '' } 
         nameEl.id          = 'dangan-intro-name';
         nameEl.textContent = name;
         nameWrap.appendChild(nameEl);
-        overlay.appendChild(nameWrap);
+        chromeWrap.appendChild(nameWrap);
 
         // Ultimate block — middle portion of the banner
         if (ultimate) {
@@ -316,8 +322,6 @@ export function createIntroduceCharacterController({ extensionFolderPath = '' } 
             const labelEl = document.createElement('div');
             labelEl.id            = 'dangan-intro-ultimate-label';
             labelEl.textContent   = 'Ultimate';
-            labelEl.style.color      = 'rgb(255 255 255)';
-            labelEl.style.textShadow = 'rgb(255 255 255) 0px 0px 12px';
             ultimateWrap.appendChild(labelEl);
 
             const ultimateEl = document.createElement('div');
@@ -325,32 +329,46 @@ export function createIntroduceCharacterController({ extensionFolderPath = '' } 
             ultimateEl.textContent = ultimate;
             ultimateWrap.appendChild(ultimateEl);
 
-            overlay.appendChild(ultimateWrap);
+            chromeWrap.appendChild(ultimateWrap);
         }
-
-        // Diagonal stripe group
-        const shadowWrap  = document.createElement('div');
-        shadowWrap.id     = 'dangan-intro-shadow-wrap';
-        const shadowInner = document.createElement('div');
-        shadowInner.id    = 'dangan-intro-shadow-inner';
-        const bandGroup   = document.createElement('div');
-        bandGroup.id      = 'dangan-intro-band-group';
-
-        palette.bands.forEach((color, i) => {
-            const band = document.createElement('div');
-            band.className    = 'intro-band';
-            band.style.background = color;
-            band.style.height = `${BAND_HEIGHTS[i] ?? 60}px`;
-            bandGroup.appendChild(band);
-        });
-
-        shadowInner.appendChild(bandGroup);
-        shadowWrap.appendChild(shadowInner);
-        overlay.appendChild(shadowWrap);
 
         document.body.appendChild(overlay);
 
         await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+        // Auto-shrink: if the rotated text wraps go off the viewport, drop the
+        // font-size one px at a time until they fit (down to a sensible floor).
+        const fitToViewport = (textEls, wrapEl, minPx = 18) => {
+            if (!wrapEl || !textEls.length) return;
+            for (const el of textEls) el.style.whiteSpace = 'nowrap';
+            let safety = 80;
+            const margin = 20;
+            while (safety-- > 0) {
+                const rect = wrapEl.getBoundingClientRect();
+                const fits =
+                    rect.right  <= window.innerWidth  - margin &&
+                    rect.left   >= margin &&
+                    rect.bottom <= window.innerHeight - margin &&
+                    rect.top    >= margin;
+                if (fits) break;
+                const sizes = textEls.map(el => parseFloat(getComputedStyle(el).fontSize));
+                if (Math.min(...sizes) <= minPx) break;
+                textEls.forEach((el, i) => {
+                    el.style.fontSize = `${Math.max(minPx, sizes[i] - 1)}px`;
+                });
+            }
+        };
+        const nameElForFit = overlay.querySelector('#dangan-intro-name');
+        const nameWrapForFit = overlay.querySelector('#dangan-intro-name-wrap');
+        if (nameElForFit && nameWrapForFit) fitToViewport([nameElForFit], nameWrapForFit);
+        const ultLabel = overlay.querySelector('#dangan-intro-ultimate-label');
+        const ultValue = overlay.querySelector('#dangan-intro-ultimate');
+        const ultWrap  = overlay.querySelector('#dangan-intro-ultimate-wrap');
+        if (ultValue && ultWrap) {
+            const targets = ultLabel ? [ultLabel, ultValue] : [ultValue];
+            fitToViewport(targets, ultWrap);
+        }
+
         overlay.style.opacity = '1';
 
         const introAudio = new Audio(`${extensionFolderPath}/assets/sfx/ui/introduction.wav`);

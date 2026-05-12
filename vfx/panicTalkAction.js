@@ -36,7 +36,8 @@ function randomDialogType() {
     return 'blue';
 }
 
-function buildStyles() {
+function buildStyles({ extensionFolderPath = '' } = {}) {
+    const panelImg = `${extensionFolderPath}/assets/images/minigames/pta-panel.png`;
     return `
 #${PTA_ID} {
     position: fixed; inset: 0;
@@ -78,12 +79,33 @@ function buildStyles() {
     position: absolute;
     z-index: 16;
     pointer-events: all;
-    background: rgba(18, 0, 36, 0.92);
-    border: 1.5px solid rgba(200, 80, 255, 0.65);
-    border-radius: 7px;
-    padding: 10px 14px;
-    animation: ptaBarrierPulse 1.8s ease-in-out infinite;
+    padding: 28px 42px;
+    /* Decorative frame; the actual visual border comes from the ::before
+     * pseudo, which uses panel.png and is flipped per-corner via transform. */
+    background: transparent;
+    border: none;
+    border-radius: 0;
 }
+.pta-panel::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: url("${panelImg}");
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    pointer-events: none;
+    z-index: -1;
+    transform-origin: center;
+}
+/* Default orientation lives in the top-left corner. */
+#pta-panel-tl::before { transform: none; }
+/* Bottom-left: flipped vertically. */
+#pta-panel-bl::before { transform: scaleY(-1); }
+/* Top-right: mirrored horizontally. */
+#pta-panel-tr::before,
+#pta-timer-area::before { transform: scaleX(-1); }
+/* Bottom-right: mirrored AND flipped vertically. */
+#pta-panel-br::before { transform: scale(-1, -1); }
 #pta-panel-tl {
     top: 16px; left: 16px;
     min-width: 240px;
@@ -98,6 +120,47 @@ function buildStyles() {
 #pta-panel-br {
     bottom: 16px; right: 16px;
     min-width: 240px;
+}
+/* Global PTA timer — top-right corner. Width is locked so individual digit
+ * widths in Orbitron can't reflow the panel; numeric text is left-aligned
+ * inside that fixed box. */
+#pta-timer-area {
+    position: absolute;
+    top: 16px; right: 16px;
+    width: 260px;
+    min-width: 0;
+    text-align: left;
+    color: #ffaa00;
+    z-index: 7;
+    pointer-events: none;
+    font-family: "Orbitron", "Impact", monospace;
+}
+#pta-timer-label {
+    font-size: 11px; letter-spacing: 3px;
+    color: rgba(255, 180, 100, 0.7);
+    margin-bottom: 2px;
+    text-align: left;
+}
+#pta-timer {
+    display: block;
+    width: 100%;
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: #ffaa00;
+    text-shadow: 0 0 10px #ff8800, 0 0 3px #ffcc00;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    line-height: 1;
+    text-align: left;
+    /* Fall back to a true monospace if Orbitron's tabular figures aren't
+     * available so each digit / colon occupies the same cell width. */
+    font-family: "Orbitron", "Courier New", ui-monospace, monospace;
+}
+#pta-timer.pta-urgent {
+    color: #ff1111;
+    text-shadow: 0 0 14px rgba(255, 0, 0, 1);
+    animation: ptaBlink 0.45s ease-in-out infinite;
 }
 @keyframes ptaBarrierPulse {
     0%,100% {
@@ -693,6 +756,18 @@ function buildStyles() {
     color: rgba(200, 170, 230, 0.9);
     box-shadow: none;
 }
+.pta-tp-btn.pta-tp-never {
+    background: rgba(12, 0, 22, 0.65);
+    border-color: rgba(110, 110, 120, 0.3);
+    color: rgba(190, 180, 200, 0.7);
+    font-style: italic;
+    box-shadow: none;
+}
+.pta-tp-btn.pta-tp-never:hover {
+    background: rgba(40, 20, 60, 0.55);
+    border-color: rgba(170, 170, 180, 0.55);
+    color: rgba(230, 220, 240, 0.92);
+}
 
 /* ─── Tutorial modal ─────────────────────────────────── */
 #pta-tutorial-modal {
@@ -816,6 +891,8 @@ export function createPanicTalkActionController({
     awardMonocoins,
     deductMonocoins,
     restoreTheme,
+    isTutorialPromptEnabled = () => true,
+    disableTutorialPrompt   = () => {},
 }) {
     let overlayEl       = null;
     let spawnTimer      = null;
@@ -891,7 +968,7 @@ export function createPanicTalkActionController({
         // ── Build DOM ────────────────────────────────────────────
         const styleEl = document.createElement('style');
         styleEl.id    = PTA_STYLE;
-        styleEl.textContent = buildStyles();
+        styleEl.textContent = buildStyles({ extensionFolderPath });
         document.head.appendChild(styleEl);
 
 
@@ -929,6 +1006,11 @@ export function createPanicTalkActionController({
                         <div class="pta-bar-fill" id="pta-player-fill" style="width:100%"></div>
                     </div>
                 </div>
+            </div>
+
+            <div id="pta-timer-area" class="pta-panel">
+                <div id="pta-timer-label">TIME</div>
+                <div id="pta-timer">01:30:000</div>
             </div>
 
             <div id="pta-grid">
@@ -992,6 +1074,43 @@ export function createPanicTalkActionController({
             const damageFlash   = overlayEl.querySelector('#pta-damage-flash');
             const failFlash     = overlayEl.querySelector('#pta-final-fail-flash');
             const finalTimerEl = overlayEl.querySelector('#pta-final-timer');
+
+            // ── Global PTA timer (bottom-right) ──────────────────
+            // Counts the player's overall budget for the whole confrontation.
+            // Hitting 0 ends the game as a loss.
+            const PTA_TIMER_MS = 90_000; // 90 s — adjust if needed
+            const globalTimerEl = overlayEl.querySelector('#pta-timer');
+            let globalTimerRaf   = null;
+            let globalTimerStart = 0;
+            function tickGlobalTimer(now) {
+                if (isResolved) return;
+                const remaining = Math.max(0, PTA_TIMER_MS - (now - globalTimerStart));
+                if (globalTimerEl) {
+                    const mins   = Math.floor(remaining / 60000);
+                    const secs   = Math.floor((remaining % 60000) / 1000);
+                    const millis = Math.floor(remaining % 1000);
+                    globalTimerEl.textContent =
+                        String(mins).padStart(2,'0') + ':' +
+                        String(secs).padStart(2,'0') + ':' +
+                        String(millis).padStart(3,'0');
+                    globalTimerEl.classList.toggle('pta-urgent', remaining < 10_000);
+                }
+                if (remaining <= 0) {
+                    globalTimerRaf = null;
+                    endGame(false);
+                    return;
+                }
+                globalTimerRaf = requestAnimationFrame(tickGlobalTimer);
+            }
+            function startGlobalTimer() {
+                cancelAnimationFrame(globalTimerRaf);
+                globalTimerStart = performance.now();
+                globalTimerRaf   = requestAnimationFrame(tickGlobalTimer);
+            }
+            function stopGlobalTimer() {
+                if (globalTimerRaf) cancelAnimationFrame(globalTimerRaf);
+                globalTimerRaf = null;
+            }
 
             // ── Final timer animation ─────────────────────────────
             let timerRafId   = null;
@@ -1700,6 +1819,7 @@ export function createPanicTalkActionController({
                 finalCountdownTimer = null;
                 stopHeartbeat();
                 stopTimerAnimation();
+                stopGlobalTimer();
                 clearAllDialogs();
                 if (bgmAudio) { try { bgmAudio.pause(); bgmAudio.src = ''; } catch(_) {} bgmAudio = null; }
 
@@ -1797,6 +1917,10 @@ export function createPanicTalkActionController({
 
             // ── Tutorial prompt / modal ───────────────────────────
             function showTutorialPrompt() {
+                // User has disabled tutorial prompts in settings — proceed
+                // as if they'd chosen "No, let's go!".
+                if (!isTutorialPromptEnabled()) return Promise.resolve(false);
+
                 return new Promise(resolve => {
                     const el = document.createElement('div');
                     el.id = 'pta-tutorial-prompt';
@@ -1807,6 +1931,7 @@ export function createPanicTalkActionController({
                         <div class="pta-tp-buttons">
                             <button class="pta-tp-btn pta-tp-yes">Yes, please!</button>
                             <button class="pta-tp-btn pta-tp-no">No, let's go!</button>
+                            <button class="pta-tp-btn pta-tp-never">No, and don't remind me</button>
                         </div>
                     `;
                     document.body.appendChild(el);
@@ -1817,6 +1942,11 @@ export function createPanicTalkActionController({
                         setTimeout(() => { el.remove(); resolve(true); }, 300);
                     });
                     el.querySelector('.pta-tp-no').addEventListener('click', () => {
+                        el.classList.remove('pta-tp-on');
+                        setTimeout(() => { el.remove(); resolve(false); }, 300);
+                    });
+                    el.querySelector('.pta-tp-never').addEventListener('click', () => {
+                        try { disableTutorialPrompt(); } catch {}
                         el.classList.remove('pta-tp-on');
                         setTimeout(() => { el.remove(); resolve(false); }, 300);
                     });
@@ -1856,6 +1986,7 @@ export function createPanicTalkActionController({
                 playPhaseMusic(1);
                 startSpawnLoop();
                 scheduleSpriteMoveStep();
+                startGlobalTimer();
             }
 
             (async () => {

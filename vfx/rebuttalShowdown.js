@@ -1382,6 +1382,7 @@ export function createRebuttalShowdownController({
     const rsHiddenEls = new Map();
 
     function fadeOutChatUI() {
+        document.body.classList.add('dangan-minigame-active');
         for (const sel of RS_UI_SELECTORS) {
             const el = document.querySelector(sel);
             if (!el) continue;
@@ -1396,6 +1397,7 @@ export function createRebuttalShowdownController({
     }
 
     function fadeInChatUI() {
+        document.body.classList.remove('dangan-minigame-active');
         for (const sel of RS_UI_SELECTORS) {
             const el = document.querySelector(sel);
             if (!el) continue;
@@ -2859,12 +2861,23 @@ export function createRebuttalShowdownController({
             imgEl.style.transform = 'translateY(110vh)';
             wrap.appendChild(imgEl);
 
-            // Load opponent disapproval sprite (best-effort — cinematic still plays without it)
+            // Load opponent interjection sprite (best-effort — cinematic still plays without it).
+            // Prefer a dedicated `interjection` sprite, then fall back to
+            // disapproval → anger → neutral. getSpriteUrl silently falls
+            // back to neutral when a label is missing, so we compare each
+            // resolved URL against the neutral URL to detect a real match
+            // and only fall through to the next preference otherwise.
             let spriteEl = null;
             if (opponentName && typeof getSpriteUrl === 'function') {
-                const spriteUrl = await getSpriteUrl(opponentName, 'disapproval').catch(() => null)
-                               ?? await getSpriteUrl(opponentName, 'anger').catch(() => null)
-                               ?? await getSpriteUrl(opponentName, 'neutral').catch(() => null);
+                const neutralUrl = await getSpriteUrl(opponentName, 'neutral').catch(() => null);
+                const tryLabel = async (label) => {
+                    const url = await getSpriteUrl(opponentName, label).catch(() => null);
+                    return (url && url !== neutralUrl) ? url : null;
+                };
+                const spriteUrl = (await tryLabel('interjection'))
+                              ?? (await tryLabel('disapproval'))
+                              ?? (await tryLabel('anger'))
+                              ?? neutralUrl;
                 if (spriteUrl) {
                     spriteEl = document.createElement('img');
                     spriteEl.className = 'rs-interjection-sprite';
@@ -3137,6 +3150,14 @@ export function createInterjectionCinematicRunner({ extensionFolderPath = '', ge
             will-change: opacity;
             filter: drop-shadow(0 0 28px rgba(255,180,0,0.8)) drop-shadow(0 0 60px rgba(255,100,0,0.5));
         }
+/* Dedicated 'interjection' sprite is usually a tighter head crop, so it
+         * gets its own positioning + size instead of the full 130vh canvas. */
+        #dangan-interject-wrap .rs-interjection-sprite.rs-interjection-sprite-dedicated {
+            height: 85vh;
+            top: 179px;
+            left: 224px;
+            transform: rotate(5deg);
+        }
         `;
     }
 
@@ -3147,6 +3168,10 @@ export function createInterjectionCinematicRunner({ extensionFolderPath = '', ge
             styleEl.textContent = buildInterjectionStyles();
             document.head.appendChild(styleEl);
         }
+
+        // Tear down any previous overlay (e.g. one left frozen for styling)
+        // so we never end up with duplicate #dangan-interject-wrap nodes.
+        document.getElementById('dangan-interject-wrap')?.remove();
 
         const wrap = document.createElement('div');
         wrap.id = 'dangan-interject-wrap';
@@ -3167,12 +3192,32 @@ export function createInterjectionCinematicRunner({ extensionFolderPath = '', ge
 
         let spriteEl = null;
         if (characterName && typeof getSpriteUrl === 'function') {
-            const spriteUrl = await getSpriteUrl(characterName, 'disapproval').catch(() => null)
-                           ?? await getSpriteUrl(characterName, 'anger').catch(() => null)
-                           ?? await getSpriteUrl(characterName, 'neutral').catch(() => null);
+            // Prefer a dedicated `interjection` sprite if the character has
+            // one; otherwise fall back to disapproval → anger → neutral.
+            // NOTE: getSpriteUrl silently falls back to the character's
+            // neutral sprite when the requested label is missing, so we
+            // detect a "true" interjection sprite by checking the returned
+            // URL differs from the neutral sprite's URL.
+            const neutralUrl      = await getSpriteUrl(characterName, 'neutral').catch(() => null);
+            const interjectionUrl = await getSpriteUrl(characterName, 'interjection').catch(() => null);
+            const hasDedicated    = !!interjectionUrl && interjectionUrl !== neutralUrl;
+
+            let spriteUrl = null;
+            let isDedicated = false;
+            if (hasDedicated) {
+                spriteUrl   = interjectionUrl;
+                isDedicated = true;
+            } else {
+                spriteUrl = await getSpriteUrl(characterName, 'disapproval').catch(() => null);
+                if (!spriteUrl || spriteUrl === neutralUrl) {
+                    const anger = await getSpriteUrl(characterName, 'anger').catch(() => null);
+                    if (anger && anger !== neutralUrl) spriteUrl = anger;
+                }
+                if (!spriteUrl) spriteUrl = neutralUrl;
+            }
             if (spriteUrl) {
                 spriteEl = document.createElement('img');
-                spriteEl.className = 'rs-interjection-sprite';
+                spriteEl.className = 'rs-interjection-sprite' + (isDedicated ? ' rs-interjection-sprite-dedicated' : '');
                 spriteEl.src = spriteUrl;
                 spriteEl.alt = '';
                 containerEl.appendChild(spriteEl);
@@ -3200,6 +3245,22 @@ export function createInterjectionCinematicRunner({ extensionFolderPath = '', ge
                 setTimeout(res, SLIDE_IN_MS + 16);
             }));
         });
+
+        // ── Debug freeze (TEMPORARY) ──────────────────────────────────
+        // Pause here instead of holding / fading out so the interjection
+        // chrome stays visible for styling. The wrap also gets a
+        // `data-frozen` attr and accepts pointer events long enough for a
+        // single click anywhere to dismiss it. Set DANGAN_DEBUG_FREEZE_INTERJECTION
+        // to `false` (or remove this block) to restore normal playback.
+        const DEBUG_FREEZE_INTERJECTION = true;
+        if (DEBUG_FREEZE_INTERJECTION) {
+            wrap.setAttribute('data-frozen', '1');
+            wrap.style.pointerEvents = 'auto';
+            wrap.style.cursor        = 'pointer';
+            wrap.addEventListener('click', () => wrap.remove(), { once: true });
+            console.log('[Dangan][Interjection] Frozen for debugging — click anywhere on the overlay to dismiss.');
+            return; // skip hold + fade-out + remove
+        }
 
         // Phase 2: brief hold
         await new Promise(res => setTimeout(res, HOLD_MS));

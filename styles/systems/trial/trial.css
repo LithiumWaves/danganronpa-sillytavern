@@ -133,7 +133,9 @@
     filter: hue-rotate(160deg) brightness(1.6) drop-shadow(0 0 14px #00ccff);
 }
 
-/* Clockwise progress ring driven by JS --absorb-progress (0–1) */
+/* Clockwise progress ring driven by JS --absorb-progress (0–1).
+   Parent has filter: hue-rotate(160deg), so apply inverse to keep the
+   blue ring blue in the final output. */
 #dangan-trial-reticle.absorb-charging::before {
     content: '';
     position: absolute;
@@ -143,6 +145,7 @@
         rgba(0, 200, 255, 0.85) calc(var(--absorb-progress, 0) * 360deg),
         rgba(0, 200, 255, 0.12) 0
     );
+    filter: hue-rotate(-160deg);
     pointer-events: none;
 }
 
@@ -156,7 +159,8 @@
     filter: hue-rotate(280deg) brightness(1.6) drop-shadow(0 0 14px #cc00ff);
 }
 
-#dangan-trial-reticle.lie-absorb-charging::before {
+#dangan-trial-reticle.lie-absorb-charging::before,
+#dangan-trial-reticle.lie-mode.absorb-charging::before {
     content: '';
     position: absolute;
     inset: -12px;
@@ -164,7 +168,10 @@
     background: conic-gradient(
         rgba(180, 0, 255, 0.85) calc(var(--lie-progress, 0) * 360deg),
         rgba(180, 0, 255, 0.12) 0
-    );
+    ) !important;
+    /* Parent has hue-rotate(280deg) from .lie-mode/.lie-absorb-charging,
+       so apply inverse here to keep the purple ring purple. */
+    filter: hue-rotate(-280deg) !important;
     pointer-events: none;
 }
 
@@ -188,6 +195,22 @@
     flex-direction: column;
     gap: 4px;
     z-index: 10;
+    padding: 16px 28px;
+    isolation: isolate;
+}
+.dangan-trial-top-left::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 500px;
+    height: 108px; /* 500 × (199/922) keeps the PNG aspect ratio */
+    background-image: url('../../../assets/classtrial/speaker-scenario-bar.png');
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    z-index: -1;
+    pointer-events: none;
+    filter: var(--speaker-bar-filter, none);
 }
 
 #dangan-speaker-name {
@@ -197,20 +220,20 @@
     text-transform: uppercase;
     color: #00ffff;
     text-shadow: 0 0 15px rgba(0, 255, 255, 0.6), 2px 2px 0px rgba(0, 0, 0, 0.8);
-    padding: 5px 20px;
+    padding: 0px 20px 5px;
 }
 
 #dangan-section-dots {
     display: grid;
-    grid-template-columns: repeat(12, 10px);
-    gap: 8px;
-    padding-left: 24px;
-    padding-top: 4px;
+    grid-template-columns: repeat(12, 8.25px);
+    gap: 6px;
+    padding-left: 36px;
+    margin-top: -7px;
 }
 
 .dangan-section-dot {
-    width: 10px;
-    height: 10px;
+    width: 8.25px;
+    height: 8.25px;
     border-radius: 50%;
     background: rgba(180, 180, 180, 0.35);
     border: 1px solid rgba(255, 255, 255, 0.2);
@@ -251,7 +274,22 @@
     position: relative;
     width: 406px;
     height: 406px;
-    z-index: 0;
+}
+
+/* Truth-bullets background bar — sits between the revolver cylinder
+   (z auto, painted first) and the bullet cartridges / number index. */
+.dangan-tb-bar-bg {
+    position: absolute;
+    left: 0;
+    top: 12%;
+    transform: translateY(-50%);
+    width: clamp(450px, 52vw, 450px);
+    height: auto;
+    z-index: 1;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-drag: none;
+    transform: rotate(1deg);
 }
 
 .dangan-cylinder-index {
@@ -287,6 +325,61 @@
     transition: filter 0.25s ease;
 }
 
+/* ─── Lie armed (loaded) — invert the screen, except the bullets area. ─── */
+body.dangan-nsd-lie-armed {
+    transition: filter 0.4s ease;
+    filter: invert(1);
+}
+/* Counter-invert the truth-bullets area so it appears normal. Body invert is
+   applied AFTER the child's own filter, so applying invert(1) here cancels it. */
+body.dangan-nsd-lie-armed .dangan-trial-bottom-left {
+    filter: invert(1);
+}
+/* While the lie is armed, recolor the truth-bullets bar to purple. */
+body.dangan-nsd-lie-armed .dangan-tb-bar-bg {
+    filter: hue-rotate(135deg) saturate(1.5);
+}
+
+/* ─── Lie loading state on the active cartridge ─── */
+.dangan-bullet-cartridge.lie-loading {
+    background: linear-gradient(
+        90deg,
+        rgba(40,  0, 60,  0.97)  0%,
+        rgba(100, 0, 160, 0.98) 22%,
+        rgba(160, 0, 230, 0.99) 55%,
+        rgba(140, 0, 200, 0.98) 80%,
+        rgba(100, 0, 160, 0.97) 100%
+    ) !important;
+    box-shadow:
+        inset 0 2px 0 rgba(200, 100, 255, 0.18),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.3),
+        0 0 18px rgba(160, 0, 255, 0.45),
+        4px 8px 28px rgba(0, 0, 0, 0.75) !important;
+    border-color: rgba(160, 0, 255, 0.4) !important;
+}
+.lie-loading-dots {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 4px;
+}
+.lie-loading-dots > span {
+    display: block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: rgba(230, 195, 255, 0.95);
+    box-shadow: 0 0 8px rgba(180, 0, 255, 0.75);
+    opacity: 0.3;
+    animation: lieLoadingDotPulse 0.9s ease-in-out infinite;
+}
+.lie-loading-dots > span:nth-child(2) { animation-delay: 0.15s; }
+.lie-loading-dots > span:nth-child(3) { animation-delay: 0.30s; }
+@keyframes lieLoadingDotPulse {
+    0%, 100% { opacity: 0.25; transform: scale(1); }
+    50%      { opacity: 1;    transform: scale(1.25); }
+}
+
 /* ─── Truth Bullet Cartridge (main NSD view) ─── */
 .dangan-bullet-cartridge {
     position: absolute;
@@ -296,7 +389,7 @@
     height: 36px;
     min-width: 340px;
     padding: 0 58px 0 48px;
-    z-index: 1;
+    z-index: 2;
     display: flex;
     align-items: center;
     background: linear-gradient(
@@ -835,50 +928,182 @@
     to   { transform: translateX(calc(-100vw - 500px)); }
 }
 
-/* ─── Concentrate resource bar ──────────── */
-#dangan-concentrate-bar-wrap {
-    padding-left: 24px;
-    margin-top: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
+/* ─── NSD damage feedback ─────────────────────────────────────────────── */
+#dangan-nsd-damage-flash {
+    position: fixed; inset: 0;
+    z-index: 2147483646;
+    pointer-events: none;
+    background: rgba(255, 0, 0, 0.38);
+    opacity: 0;
+    transition: opacity 0.08s;
 }
-#dangan-concentrate-bar-label {
-    font-family: 'Orbitron', monospace;
-    font-size: 8px;
-    font-weight: 700;
-    letter-spacing: 2px;
-    color: rgba(255, 100, 200, 0.55);
-    text-shadow: 0 0 6px rgba(255, 50, 180, 0.4);
+#dangan-nsd-damage-flash.flash { opacity: 1; }
+
+body.dangan-nsd-shaking { animation: danganNsdScreenShake 80ms steps(2, end) infinite; }
+@keyframes danganNsdScreenShake {
+    0%   { translate: 0   0; }
+    14%  { translate: -6px  3px; }
+    28%  { translate:  5px -3px; }
+    42%  { translate: -4px  4px; }
+    57%  { translate:  6px -3px; }
+    71%  { translate: -5px  3px; }
+    85%  { translate:  4px -2px; }
+    100% { translate: 0   0; }
 }
-#dangan-concentrate-bar-track {
-    width: 140px;
-    height: 6px;
-    background: rgba(80, 0, 40, 0.3);
-    border: 1px solid rgba(255, 0, 150, 0.25);
-    border-radius: 3px;
-    overflow: hidden;
+
+/* ─── NSD time-limit timer (bottom-right) ─────────────────────────────── */
+#dangan-nsd-timer-wrap {
+    position: fixed;
+    bottom: 18px;
+    right: 18px;
+    z-index: 41;
+    pointer-events: none;
+    width: clamp(220px, 22vw, 380px);
+    aspect-ratio: 840 / 137;
 }
-#dangan-concentrate-bar-fill {
-    height: 100%;
+.dangan-nsd-timer-bar-bg {
+    position: absolute;
+    inset: 0;
     width: 100%;
-    background: #ff69b4;
-    box-shadow: 0 0 8px rgba(255, 105, 180, 0.7);
-    border-radius: 3px;
-    transform-origin: left center;
-    will-change: transform;
-    transition: transform 80ms linear;
+    height: 100%;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-drag: none;
 }
-#dangan-concentrate-bar-fill.nsd-bt-depleted {
-    background: rgba(120, 0, 60, 0.35);
-    box-shadow: none;
+#dangan-nsd-timer {
+    position: absolute;
+    top: 50%;
+    left: 77px;
+    transform: translateY(-50%);
+    font-family: "Orbitron", "Impact", monospace;
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: #ffaa00;
+    text-shadow: 0 0 10px #ff8800, 0 0 3px #ffcc00;
+    z-index: 1;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    text-align: left;
 }
-#dangan-concentrate-bar-fill.nsd-bt-active {
+#dangan-nsd-timer.hg-urgent {
+    color: #ff1111;
+    text-shadow: 0 0 14px rgba(255, 0, 0, 1);
+    animation: danganNsdTimerBlink 0.45s ease-in-out infinite;
+}
+@keyframes danganNsdTimerBlink {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.3; }
+}
+
+/* ─── Status bar PNG (sits behind both gauges) ────────────────────────── */
+#dangan-nsd-status-bar {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    width: clamp(320px, 30vw, 320px);
+    height: auto;
+    aspect-ratio: 770 / 442;
+    z-index: 39;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+/* ─── Hearts health gauge (top-right, above the stars) ────────────────── */
+#dangan-nsd-hearts {
+    position: fixed;
+    top: 37px;
+    right: 16px;
+    width: clamp(220px, 20vw, 230px);
+    aspect-ratio: 420.62 / 162.12;
+    z-index: 40;
+    pointer-events: none;
+}
+#dangan-nsd-hearts .hearts-bg,
+#dangan-nsd-hearts .hearts-fg-wrap,
+#dangan-nsd-hearts .hearts-fg {
+    position: absolute;
+    inset: 0;
+}
+#dangan-nsd-hearts .hearts-bg,
+#dangan-nsd-hearts .hearts-fg {
+    -webkit-mask-repeat: no-repeat;
+            mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+            mask-position: center;
+    -webkit-mask-size: contain;
+            mask-size: contain;
+}
+#dangan-nsd-hearts .hearts-bg {
+    background: #000;
+}
+#dangan-nsd-hearts .hearts-fg-wrap {
+    filter:
+        drop-shadow(0 0 6px  rgba(255,  55, 196, 0.90))
+        drop-shadow(0 0 14px rgba(255,  55, 196, 0.55));
+    transition: filter 0.18s ease;
+}
+#dangan-nsd-hearts .hearts-fg {
+    background: #ff37c4;
+    clip-path: inset(0 calc(100% - var(--gauge-pct, 100%)) 0 0);
+    transition: clip-path 180ms ease;
+}
+
+/* ─── Concentrate stars gauge (top-right, drains right→left) ──────────── */
+#dangan-concentrate-stars {
+    position: fixed;
+    top: 110px; /* below hearts gauge */
+    right: 46px;
+    width: clamp(200px, 26vw, 200px);
+    aspect-ratio: 831.39 / 183.14;
+    z-index: 40;
+    pointer-events: none;
+}
+#dangan-concentrate-stars .stars-bg,
+#dangan-concentrate-stars .stars-fg-wrap,
+#dangan-concentrate-stars .stars-fg {
+    position: absolute;
+    inset: 0;
+}
+#dangan-concentrate-stars .stars-bg,
+#dangan-concentrate-stars .stars-fg {
+    -webkit-mask-repeat: no-repeat;
+            mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+            mask-position: center;
+    -webkit-mask-size: contain;
+            mask-size: contain;
+}
+/* Black layer: always full silhouette, never glows. */
+#dangan-concentrate-stars .stars-bg {
+    background: #000;
+}
+/* Wrapper holds the glow — paint order is filter → mask, so the mask must
+   live on the CHILD and the filter on the PARENT for drop-shadow to trace
+   the star outlines rather than the underlying rectangle. */
+#dangan-concentrate-stars .stars-fg-wrap {
+    filter:
+        drop-shadow(0 0 6px  rgba(43, 209, 79, 0.90))
+        drop-shadow(0 0 14px rgba(43, 209, 79, 0.55));
+    transition: filter 0.18s ease;
+}
+/* Green layer: clipped to the filled portion so only the still-green stars
+   render at all (and therefore only those carry the parent's drop-shadow). */
+#dangan-concentrate-stars .stars-fg {
+    background: #2bd14f;
+    clip-path: inset(0 calc(100% - var(--gauge-pct, 100%)) 0 0);
+    transition: clip-path 80ms linear;
+}
+#dangan-concentrate-stars.nsd-bt-depleted .stars-fg-wrap {
+    filter: none;
+}
+#dangan-concentrate-stars.nsd-bt-active .stars-fg-wrap {
     animation: nsdConcentratePulse 0.38s ease-in-out infinite;
 }
 @keyframes nsdConcentratePulse {
-    0%, 100% { background: #ff69b4; box-shadow: 0 0 6px rgba(255,105,180,0.7); }
-    50%       { background: #ffb3de; box-shadow: 0 0 18px rgba(255,180,220,1), 0 0 30px rgba(255,100,180,0.6); }
+    0%, 100% { filter: drop-shadow(0 0 6px  rgba(43, 209, 79, 0.90)) drop-shadow(0 0 14px rgba(43, 209, 79, 0.55)); }
+    50%      { filter: drop-shadow(0 0 18px rgba(80, 255, 120, 0.95)) drop-shadow(0 0 30px rgba(43, 209, 79, 0.60)); }
 }
 
 /* ─── Truth Bullet Intro Screen ────── */
@@ -1394,7 +1619,8 @@
 }
 
 .dangan-portrait-slot.has-horse > img:not(.dangan-portrait-horse):not(.dangan-portrait-lectern) {
-    transform: translateY(-98px);
+    --horse-y: -98px;
+    transform: translateY(var(--horse-y, 0px));
 }
 
 .dangan-portrait-lectern {
@@ -1557,17 +1783,6 @@
     100% { transform: scale(1.05) translateX(12px)  translateY(6px); }
 }
 
-/* K — Face crash-zoom sliding in from left.
-   transform-origin near the top so the zoom centres on the face, not the feet. */
-@keyframes danganCamK {
-    from { transform: scale(1.0)  translateX(-55px); }
-    to   { transform: scale(1.8)  translateX(0); }
-}
-/* L — Same crash-zoom from the right. */
-@keyframes danganCamL {
-    from { transform: scale(1.0)  translateX(55px); }
-    to   { transform: scale(1.8)  translateX(0); }
-}
 /* A–J: zoom-origin stays at the feet (characters scale upward) */
 .dangan-portrait-cam-a { animation: danganCamA 20s ease-in-out  forwards; }
 .dangan-portrait-cam-b { animation: danganCamB  3s ease-out      forwards; }
@@ -1579,13 +1794,6 @@
 .dangan-portrait-cam-h { animation: danganCamH  5s ease-out      forwards; }
 .dangan-portrait-cam-i { animation: danganCamI  5s ease-out      forwards; }
 .dangan-portrait-cam-j { animation: danganCamJ 24s ease-in-out  forwards; }
-
-/* K–L: crash-zoom to face — override origin so the lens centres on the face */
-.dangan-portrait-cam-k,
-.dangan-portrait-cam-l { transform-origin: center 5%; }
-.dangan-portrait-cam-k { animation: danganCamK  5s cubic-bezier(0.25,0.46,0.45,0.94) forwards; }
-.dangan-portrait-cam-l { animation: danganCamL  5s cubic-bezier(0.25,0.46,0.45,0.94) forwards; }
-
 
 /* ── Emotion-triggered VFX ───────────────────────────────────────────────
    These are appended to document.body as short-lived overlay divs so they

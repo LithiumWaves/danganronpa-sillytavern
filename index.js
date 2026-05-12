@@ -325,6 +325,7 @@ function getChapterLabel() {
 function updateChapterDisplay() {
     const el = document.getElementById('dangan-chapter-label');
     if (el) el.textContent = getChapterLabel();
+    trialManager?.refreshTrialBadge?.();
 }
 
 // ── Chapter Journal ───────────────────────────────────────────────────────────
@@ -4564,6 +4565,128 @@ function playHGBgm() {
     return audioEl;
 }
 
+function showHangmanLoadingState() {
+    return showMinigameLoadingState("Loading Hangman's Gambit", { command: '/hangmansgambit' });
+}
+
+function showMinigameLoadingState(label = 'Loading', { command = null } = {}) {
+    // Fullscreen overlay shown while the LLM is generating content for a
+    // minigame. Fades in on mount and exposes hide() + setProgress(pct).
+    // setProgress is optional — callers with a single-shot generation
+    // (like Hangman's Gambit, one generateRaw call) can omit it and just
+    // get the indeterminate three-dot pulse. `command` adds a gray hint
+    // pointing the user at the slash-command alternative.
+    document.getElementById('hg-loading-state')?.remove();
+    const el = document.createElement('div');
+    el.id = 'hg-loading-state';
+    const safeLabel   = String(label).replace(/[<>&]/g, '');
+    const safeCommand = command ? String(command).replace(/[<>&"']/g, '') : '';
+    const hintHtml = safeCommand
+        ? `<div class="hg-loading-hint">Taking too long to load? You can create your own using <span class="hg-loading-cmd">${safeCommand}</span></div>`
+        : '';
+    el.innerHTML = `
+        <div class="hg-loading-text">${safeLabel}</div>
+        ${hintHtml}
+        <div class="hg-loading-dots"><span></span><span></span><span></span></div>
+        <div class="hg-loading-progress" style="display:none">0%</div>
+    `;
+    el.style.cssText = `
+        position: fixed; inset: 0;
+        z-index: 2147483647;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        gap: 22px;
+        background: rgba(0, 6, 24, 0.92);
+        color: #44ff88;
+        font-family: "Orbitron", "Impact", monospace;
+        font-size: 18px; letter-spacing: 3px; text-transform: uppercase;
+        text-shadow: 0 0 10px rgba(80, 255, 130, 0.7);
+        pointer-events: auto;
+        opacity: 0;
+        transition: opacity 320ms ease;
+    `;
+    const dotsCss = `
+        #hg-loading-state .hg-loading-dots {
+            display: inline-flex;
+            align-items: center;
+            gap: 14px;
+        }
+        #hg-loading-state .hg-loading-dots > span {
+            display: block;
+            width: 16px; height: 16px;
+            border-radius: 50%;
+            background: #44ff88;
+            box-shadow: 0 0 14px rgba(80, 255, 130, 0.85),
+                        0 0 26px rgba(40, 220, 80, 0.5);
+            opacity: 0.3;
+            animation: hgLoadingDotPulse 0.9s ease-in-out infinite;
+        }
+        #hg-loading-state .hg-loading-dots > span:nth-child(2) { animation-delay: 0.15s; }
+        #hg-loading-state .hg-loading-dots > span:nth-child(3) { animation-delay: 0.30s; }
+        @keyframes hgLoadingDotPulse {
+            0%, 100% { opacity: 0.25; transform: scale(1); }
+            50%      { opacity: 1;    transform: scale(1.25); }
+        }
+        #hg-loading-state .hg-loading-progress {
+            font-family: "Orbitron", "Impact", monospace;
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: 4px;
+            color: #44ff88;
+            text-shadow: 0 0 10px rgba(80, 255, 130, 0.7),
+                         0 0 22px rgba(40, 220, 80, 0.45);
+            font-variant-numeric: tabular-nums;
+            min-width: 110px;
+            text-align: center;
+        }
+        #hg-loading-state .hg-loading-hint {
+            margin-top: -8px;
+            font-family: "Noto Sans", "Inter", sans-serif;
+            font-size: 13px;
+            font-weight: 400;
+            letter-spacing: 1px;
+            text-transform: none;
+            color: rgba(190, 200, 210, 0.65);
+            text-shadow: none;
+            text-align: center;
+            max-width: 520px;
+            line-height: 1.5;
+        }
+        #hg-loading-state .hg-loading-hint .hg-loading-cmd {
+            color: rgba(220, 230, 240, 0.85);
+            font-family: "Orbitron", "Inter", monospace;
+            font-weight: 600;
+        }
+    `;
+    let styleEl = document.getElementById('hg-loading-state-style');
+    if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'hg-loading-state-style';
+        styleEl.textContent = dotsCss;
+        document.head.appendChild(styleEl);
+    }
+    document.body.appendChild(el);
+    // Two-frame nudge so the initial opacity:0 commits before the transition.
+    requestAnimationFrame(() => requestAnimationFrame(() => { el.style.opacity = '1'; }));
+
+    el.hide = () => {
+        el.style.opacity = '0';
+        window.setTimeout(() => el.remove(), 340);
+    };
+    // Callers with a known total can show a numeric percentage by calling
+    // setProgress(0..1). The dots stay visible above the percentage so the
+    // animation continues while the number ticks up.
+    el.setProgress = (frac) => {
+        const pct = Math.max(0, Math.min(100, Math.round(Number(frac) * 100)));
+        const progEl = el.querySelector('.hg-loading-progress');
+        if (progEl) {
+            progEl.style.display = '';
+            progEl.textContent = `${pct}%`;
+        }
+    };
+    return el;
+}
+
 function playBgmForScrum(path) {
     const $sel = $('#audio_bgm_select');
     if (!$sel.length) return;
@@ -7473,6 +7596,7 @@ debugSTGlobals();
             extensionFolderPath,
             saveSettingsDebounced,
             getLecternUrl,
+            deductMonocoins,
             vnModeController,
             getTruthBullets,
             generateTrialDialogue,
@@ -7487,9 +7611,64 @@ debugSTGlobals();
             playTrialGeneralTrack: () => playTrialTrack(),
             suppressVisualizer: () => audioVisualizer.suppress(),
             unsuppressVisualizer: () => audioVisualizer.unsuppress(),
-            onStartHangmansGambit: () => {
-                playTrackFromSetting('trialHangmanTracks');
-                hangmansGambitController?.run({ question: 'Identify the culprit', answer: 'BLACKENED', time: 60, health: 3, difficulty: 2 })
+            showMinigameLoadingState,
+            onStartHangmansGambit: async () => {
+                // Show a loading overlay and silence whatever BGM was
+                // playing before the click. The controller starts the HG
+                // OST itself from inside playBgm after the tutorial closes,
+                // so the pre-game window stays quiet.
+                const loadingEl = showHangmanLoadingState();
+                fadeOutAndPauseBgm().catch(() => {});
+
+                // Generate a contextual question/answer from the trial context.
+                // Falls back to the generic culprit prompt if generation fails
+                // or the model returns something that doesn't match the
+                // single-word, A-Z, 5-10-letter constraint.
+                let question = 'Identify the culprit';
+                let answer   = 'BLACKENED';
+                try {
+                    const ctx = trialManager?.getTrialContext?.() ?? {};
+                    const topic    = String(ctx.topic || '').trim() || 'a mysterious crime';
+                    const goal     = String(ctx.goal  || '').trim() || 'find the culprit';
+                    const suspects = (Array.isArray(ctx.suspects) ? ctx.suspects : [])
+                        .map(s => s?.name).filter(Boolean).join(', ') || 'unknown';
+
+                    const prompt = `You are generating a Hangman's Gambit puzzle for a Danganronpa-style class trial.
+
+TRIAL CONTEXT
+Topic: ${topic}
+Goal: ${goal}
+Suspects: ${suspects}
+
+Generate ONE puzzle: a short question relevant to this trial, with a single-word answer.
+
+REQUIREMENTS
+- Question is 4–12 words and ends with a question mark.
+- Answer is a SINGLE English word, 5–10 letters, UPPERCASE, letters A–Z only (no spaces, hyphens, numbers, or punctuation).
+- The answer must plausibly answer the question.
+
+Respond in EXACTLY this format and nothing else:
+QUESTION: <your question>
+ANSWER: <UPPERCASEWORD>`;
+
+                    const out = await generateTrialDialogue(prompt, { maxTokens: 80, temperature: 0.85 });
+                    const qMatch = out.match(/QUESTION:\s*(.+)/i);
+                    const aMatch = out.match(/ANSWER:\s*([A-Za-z]+)/i);
+                    if (qMatch && aMatch) {
+                        const cleanAnswer = aMatch[1].toUpperCase().replace(/[^A-Z]/g, '');
+                        const cleanQuestion = qMatch[1].trim().replace(/^["']|["']$/g, '');
+                        if (cleanAnswer.length >= 5 && cleanAnswer.length <= 10 && cleanQuestion.length > 0) {
+                            question = cleanQuestion;
+                            answer   = cleanAnswer;
+                        }
+                    }
+                } catch (err) {
+                    console.warn('[danganronpa] Failed to generate Hangman puzzle, using fallback:', err);
+                } finally {
+                    loadingEl?.hide?.();
+                }
+
+                hangmansGambitController?.run({ question, answer, time: 120, health: 7, difficulty: 2 })
                     ?.then(() => trialManager?.resumeAfterActivity?.());
             },
             onStartPanicTalkAction: async () => {
@@ -7517,9 +7696,119 @@ debugSTGlobals();
                     BG = isCustom ? encodeURI(bgfile) : `backgrounds/${encodeURIComponent(bgfile)}`;
                 }
 
+                // Loading overlay + soft progress while the LLM drafts the
+                // suspect's defensive dialogs and the four cardinal-direction
+                // sentences that form the Final Argument.
+                const loadingEl = showMinigameLoadingState('Loading Panic Talk Action', { command: '/panictalkaction' });
+                loadingEl?.setProgress?.(0);
+                let softProgress = 0;
+                const softInterval = window.setInterval(() => {
+                    softProgress = Math.min(0.95, softProgress + (0.95 - softProgress) * 0.08);
+                    loadingEl?.setProgress?.(softProgress);
+                }, 200);
+
+                // Fallback content matches the prior stub.
+                let dialogs            = ['You\'re wrong!', 'That\'s impossible!', 'I won\'t let you expose the truth!'];
+                let NSolution          = '';
+                let SSolution          = '';
+                let ESolution          = '';
+                let WSolution          = '';
+                let FinalSolution      = '';
+                let FinalSolutionQuote = '';
+
+                try {
+                    const ctx = trialManager?.getTrialContext?.() ?? {};
+                    const topic    = String(ctx.topic || '').trim() || 'a mysterious crime';
+                    const goal     = String(ctx.goal  || '').trim() || 'find the culprit';
+                    const suspects = (Array.isArray(ctx.suspects) ? ctx.suspects : [])
+                        .map(s => s?.name).filter(Boolean).join(', ') || 'unknown';
+                    const enemy = speakerName || 'the suspect';
+
+                    const prompt = `You are scripting a Panic Talk Action — a Danganronpa-style 1-on-1 confrontation between the player and a panicking suspect.
+
+TRIAL CONTEXT
+Topic: ${topic}
+Goal: ${goal}
+Suspects: ${suspects}
+Accused (PTA opponent): ${enemy}
+
+The minigame works like this:
+1. ${enemy} shouts defensive STATEMENTS while the player attacks. The player breaks each statement in turn.
+2. Once ${enemy} is cornered, the FINAL ARGUMENT begins: four pieces of evidence/logic appear on the cardinal directions (NORTH / SOUTH / EAST / WEST).
+3. The player must press those directions in the correct ORDER. Pressing them in order reconstructs the accusation. The final press triggers the climactic QUOTE.
+
+Generate ALL of the following.
+
+REQUIREMENTS
+- 9 STATEMENTS (defensive shouts from ${enemy}, each 4–12 words, in double quotes, in character). They should escalate from deflection → outright denial → desperation.
+- 4 cardinal sentences (NORTH / SOUTH / EAST / WEST), each at MOST 4 words (1–4 words inclusive), NO quotes. They are short fragments that, when assembled in the correct order, form a coherent accusation against ${enemy}, drawing on the trial context.
+- ORDER: a 4-character string that is a permutation of N, S, E, W (e.g. ESNW) — the correct sequence in which the cardinals should be pressed so the four sentences read as a coherent argument.
+- QUOTE: a single dramatic accusation line (6–14 words, NO double quotes inside), the player's climactic finishing accusation against ${enemy}.
+
+Respond in EXACTLY this format and nothing else (no blank lines, no labels other than these):
+STATEMENT: "<line 1>"
+STATEMENT: "<line 2>"
+STATEMENT: "<line 3>"
+STATEMENT: "<line 4>"
+STATEMENT: "<line 5>"
+STATEMENT: "<line 6>"
+STATEMENT: "<line 7>"
+STATEMENT: "<line 8>"
+STATEMENT: "<line 9>"
+NORTH: <north sentence>
+SOUTH: <south sentence>
+EAST: <east sentence>
+WEST: <west sentence>
+ORDER: <4-letter permutation of NSEW>
+QUOTE: <climactic accusation>`;
+
+                    const out = await generateTrialDialogue(prompt, { maxTokens: 600, temperature: 0.85 });
+
+                    const statementMatches = [...out.matchAll(/STATEMENT:\s*(.+)/gi)]
+                        .map(m => m[1].trim().replace(/^["']|["']$/g, ''))
+                        .filter(Boolean);
+                    const grab = (key) => {
+                        const m = out.match(new RegExp(`^${key}:\\s*(.+)$`, 'mi'));
+                        return m ? m[1].trim().replace(/^["']|["']$/g, '') : '';
+                    };
+                    // Hard-cap each cardinal at 4 words even if the model
+                    // ignores the prompt — keeps the on-screen button labels
+                    // from overflowing.
+                    const capWords = (s) => s.split(/\s+/).filter(Boolean).slice(0, 4).join(' ');
+                    const north = capWords(grab('NORTH'));
+                    const south = capWords(grab('SOUTH'));
+                    const east  = capWords(grab('EAST'));
+                    const west  = capWords(grab('WEST'));
+                    const order = grab('ORDER').toUpperCase().replace(/[^NSEW]/g, '');
+                    const quote = grab('QUOTE');
+
+                    const validOrder = order.length === 4
+                        && new Set(order).size === 4
+                        && [...'NSEW'].every(c => order.includes(c));
+
+                    if (statementMatches.length >= 3 && north && south && east && west && validOrder && quote) {
+                        // PTA caps at 11 statements; trim if the model over-shot.
+                        dialogs            = statementMatches.slice(0, 11);
+                        NSolution          = north;
+                        SSolution          = south;
+                        ESolution          = east;
+                        WSolution          = west;
+                        FinalSolution      = order;
+                        FinalSolutionQuote = quote;
+                    }
+                } catch (err) {
+                    console.warn('[danganronpa] Failed to generate Panic Talk Action, using fallback:', err);
+                } finally {
+                    window.clearInterval(softInterval);
+                    loadingEl?.setProgress?.(1);
+                    loadingEl?.hide?.();
+                }
+
                 panicTalkActionController?.run({
                     enemyHp: 100, playerHp: 100, phases: 3,
-                    dialogs: ['You\'re wrong!', 'That\'s impossible!', 'I won\'t let you expose the truth!'],
+                    dialogs,
+                    NSolution, SSolution, ESolution, WSolution,
+                    FinalSolution, FinalSolutionQuote,
                     BG,
                     mainSprite,
                     defeatSprite,
@@ -7574,10 +7863,172 @@ debugSTGlobals();
                 await voteResultsController?.run({ guess, result: correctBlackened });
                 trialManager?.resumeAfterActivity?.();
             },
-            onStartQuestionTime: () => questionTimeController?.run({ title: 'Who is the blackened?', time: 30, answers: ['Suspect A', 'Suspect B', 'Suspect C', 'Suspect D'], correct: 1 })
-                ?.then(() => trialManager?.resumeAfterActivity?.()),
-            onStartQuestionTruth: () => questionTruthController?.run({ question: 'What is the key piece of evidence?', answer: '' })
-                ?.then(() => trialManager?.resumeAfterActivity?.()),
+            onStartQuestionTime: async () => {
+                // Show a loading overlay while the LLM drafts a question + 4
+                // answers from the current trial context. Falls back to a
+                // generic suspect picker if generation fails or the model
+                // returns something we can't parse cleanly.
+                const loadingEl = showMinigameLoadingState('Loading Question Time', { command: '/questiontime' });
+                loadingEl?.setProgress?.(0);
+                // Question Time is one generateRaw call, so there's no true
+                // segment-by-segment progress. Drive a soft asymptotic
+                // approach toward 95% so the user gets a moving number, then
+                // snap to 100% in the finally block when generation lands.
+                let softProgress = 0;
+                const softInterval = window.setInterval(() => {
+                    softProgress = Math.min(0.95, softProgress + (0.95 - softProgress) * 0.08);
+                    loadingEl?.setProgress?.(softProgress);
+                }, 200);
+
+                let title   = 'Who is the blackened?';
+                let answers = ['Suspect A', 'Suspect B', 'Suspect C', 'Suspect D'];
+                let correct = 0;
+                try {
+                    const ctx = trialManager?.getTrialContext?.() ?? {};
+                    const topic    = String(ctx.topic || '').trim() || 'a mysterious crime';
+                    const goal     = String(ctx.goal  || '').trim() || 'find the culprit';
+                    const suspects = (Array.isArray(ctx.suspects) ? ctx.suspects : [])
+                        .map(s => s?.name).filter(Boolean).join(', ') || 'unknown';
+
+                    const prompt = `You are generating a Question Time round for a Danganronpa-style class trial.
+
+TRIAL CONTEXT
+Topic: ${topic}
+Goal: ${goal}
+Suspects: ${suspects}
+
+Generate ONE multiple-choice question about a SPECIFIC DETAIL of the case, with EXACTLY four answers. One answer must be correct.
+
+REQUIREMENTS
+- The question must ask about a detail of the case — for example: a piece of evidence, the murder weapon, the time/place/method, an alibi, an inconsistency in testimony, a motive, an object found at the scene, who was last seen with the victim, etc.
+- DO NOT ask "Who is the killer?", "Who is the blackened?", "Who did it?", "Who is the culprit?", or any direct variant of those. Naming a suspect should not be the question — it can only ever be one of the answers when it relates to a specific detail (e.g. "Who was seen entering the storage room?").
+- Question is 6–16 words and ends with a question mark.
+- Exactly 4 answers, each 1–6 words, distinct, none beginning with a label like "A)" or "1.".
+- Mark the correct answer with a leading "*" character.
+- The other three answers should be plausible distractors that could fit the same kind of detail (e.g. four possible weapons, four possible times, four possible locations).
+
+Respond in EXACTLY this format and nothing else:
+QUESTION: <your question>
+ANSWER: <answer>
+ANSWER: *<correct answer>
+ANSWER: <answer>
+ANSWER: <answer>`;
+
+                    const out = await generateTrialDialogue(prompt, { maxTokens: 160, temperature: 0.85 });
+                    const qMatch  = out.match(/QUESTION:\s*(.+)/i);
+                    const aMatches = [...out.matchAll(/ANSWER:\s*(.+)/gi)].map(m => m[1].trim());
+                    if (qMatch && aMatches.length >= 4) {
+                        const cleanQuestion = qMatch[1].trim().replace(/^["']|["']$/g, '');
+                        const four = aMatches.slice(0, 4);
+                        const correctIdx = four.findIndex(a => /^\*/.test(a));
+                        const cleaned = four.map(a => a.replace(/^\*\s*/, '').trim()).filter(Boolean);
+                        if (cleaned.length === 4 && correctIdx >= 0 && cleanQuestion.length > 0) {
+                            title   = cleanQuestion;
+                            answers = cleaned;
+                            correct = correctIdx;
+                        }
+                    }
+                } catch (err) {
+                    console.warn('[danganronpa] Failed to generate Question Time, using fallback:', err);
+                } finally {
+                    window.clearInterval(softInterval);
+                    loadingEl?.setProgress?.(1);
+                    loadingEl?.hide?.();
+                }
+
+                questionTimeController?.run({ title, time: 30, answers, correct })
+                    ?.then(() => trialManager?.resumeAfterActivity?.());
+            },
+            onStartQuestionTruth: async () => {
+                // Generate a question whose correct answer is exactly one of
+                // the player's collected Truth Bullet titles.  Falls back to
+                // the prior stub if generation fails or there are no bullets
+                // to pick from.
+                const loadingEl = showMinigameLoadingState('Loading Question Truth', { command: '/questiontruth' });
+                loadingEl?.setProgress?.(0);
+                let softProgress = 0;
+                const softInterval = window.setInterval(() => {
+                    softProgress = Math.min(0.95, softProgress + (0.95 - softProgress) * 0.08);
+                    loadingEl?.setProgress?.(softProgress);
+                }, 200);
+
+                let question = 'What is the key piece of evidence?';
+                let answer   = '';
+                let time     = 60; // floor; the model may extend this if it picks a harder question
+                try {
+                    const bullets = (getTruthBulletsSnapshot() || [])
+                        .filter(b => b && typeof b.title === 'string' && b.title.trim().length)
+                        .slice(0, 24);
+
+                    if (bullets.length === 0) {
+                        console.warn('[danganronpa] Question Truth: no Truth Bullets — using fallback.');
+                    } else {
+                        const ctx = trialManager?.getTrialContext?.() ?? {};
+                        const topic = String(ctx.topic || '').trim() || 'the current case';
+                        const bulletList = bullets.map((b, i) => {
+                            const title = String(b.title || '').trim();
+                            const desc  = String(b.description || '').trim().replace(/\s+/g, ' ');
+                            return `${i + 1}. TITLE: ${title}\n   DESCRIPTION: ${desc || '(no description)'}`;
+                        }).join('\n');
+
+                        const prompt = `You are generating a "Question Truth" round for a Danganronpa-style class trial about: ${topic}.
+
+The player has collected these Truth Bullets — each has a TITLE and a DESCRIPTION:
+
+${bulletList}
+
+Generate ONE multiple-truth question whose correct answer is the EXACT TITLE of one of the Truth Bullets above.
+
+REQUIREMENTS
+- Pick ONE of the Truth Bullets to be the answer. Use its TITLE verbatim — same words, same capitalisation, no rephrasing.
+- The question must ask about a specific detail found in that bullet's DESCRIPTION (e.g. what was discovered, what an item proves, what a witness saw, etc.).
+- The question must be answerable using JUST THE TITLE — the title alone must be a sensible, complete answer.
+- DO NOT ask vague trial-wide questions like "Who is the murderer?", "Who is the blackened?", or "What happened?" unless the answer matches a bullet title exactly.
+- DO NOT ask a question that requires extra context beyond the bullet's title to answer.
+- Question is 6–18 words and ends with a question mark.
+- Choose a fair TIME LIMIT for the player to answer, in WHOLE seconds. The MINIMUM is 60; you may set a higher value (up to 180) if the question genuinely requires more thought — e.g. when there are many similarly-titled bullets, or the player must cross-reference details. Default to 60 unless you have a clear reason to extend.
+
+Respond in EXACTLY this format and nothing else:
+QUESTION: <your question>
+ANSWER: <exact TITLE of one Truth Bullet from the list above>
+TIME: <whole-second integer, minimum 60, maximum 180>`;
+
+                        const out = await generateTrialDialogue(prompt, { maxTokens: 180, temperature: 0.8 });
+                        const qMatch = out.match(/QUESTION:\s*(.+)/i);
+                        const aMatch = out.match(/ANSWER:\s*(.+)/i);
+                        const tMatch = out.match(/TIME:\s*(\d+)/i);
+                        if (qMatch && aMatch) {
+                            const candidateQ = qMatch[1].trim().replace(/^["']|["']$/g, '');
+                            const candidateA = aMatch[1].trim().replace(/^["']|["']$/g, '');
+                            // Validate the answer matches a real bullet title (case-insensitive)
+                            // and replace it with the canonical-cased title.
+                            const matched = bullets.find(b => b.title.trim().toLowerCase() === candidateA.toLowerCase());
+                            if (matched && candidateQ.length > 0) {
+                                question = candidateQ;
+                                answer   = matched.title.trim();
+                                if (tMatch) {
+                                    // Clamp model-provided TIME to [60, 180] whole seconds.
+                                    const candidateT = parseInt(tMatch[1], 10);
+                                    if (Number.isFinite(candidateT)) {
+                                        time = Math.max(60, Math.min(180, candidateT));
+                                    }
+                                }
+                            } else {
+                                console.warn('[danganronpa] Question Truth: model answer did not match any bullet title, using fallback.');
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.warn('[danganronpa] Failed to generate Question Truth, using fallback:', err);
+                } finally {
+                    window.clearInterval(softInterval);
+                    loadingEl?.setProgress?.(1);
+                    loadingEl?.hide?.();
+                }
+
+                questionTruthController?.run({ question, answer, time })
+                    ?.then(() => trialManager?.resumeAfterActivity?.());
+            },
             onStartChoosing: ({ characters = [], startIdx = 0 } = {}) => {
                 playTrackFromSetting('trialSuspectChoiceTracks');
                 chooseCharacterController?.run({ characters, startIdx })
@@ -7609,7 +8060,8 @@ debugSTGlobals();
                 }
                 trialManager?.resumeAfterActivity?.();
             },
-            onStartScrumDebate: () => scrumDebateController?.run(),
+            onStartScrumDebate: () => scrumDebateController?.run()
+                ?.then(() => trialManager?.resumeAfterActivity?.()),
             onStartMindMine:    () => mindMineController?.run(),
             getEquippedSkillsSnapshot,
             attachDraggablePositioning,
@@ -7969,8 +8421,12 @@ debugSTGlobals();
     };
     questionTimeController   = createQuestionTimeController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, getPlayerSpriteUrl });
     questionTruthController  = createQuestionTruthController({ extensionFolderPath, getTruthBullets: getTruthBulletsSnapshot, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, getPlayerSpriteUrl });
-    hangmansGambitController  = createHangmansGambitController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, pauseDynamicAudio: fadeOutAndPauseBgm, resumeDynamicAudio: resumeBgmAfterHG, playBgm: playHGBgm, getPlayerSpriteUrl });
-    panicTalkActionController = createPanicTalkActionController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme });
+    const tutorialPromptDeps = {
+        isTutorialPromptEnabled: () => getMonopadSetting('minigameTutorialsEnabled') !== false,
+        disableTutorialPrompt:   () => setMonopadSetting('minigameTutorialsEnabled', false),
+    };
+    hangmansGambitController  = createHangmansGambitController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, pauseDynamicAudio: fadeOutAndPauseBgm, resumeDynamicAudio: resumeBgmAfterHG, playBgm: playHGBgm, getPlayerSpriteUrl, ...tutorialPromptDeps });
+    panicTalkActionController = createPanicTalkActionController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, ...tutorialPromptDeps });
     mindMineController        = createMindMineController({
         extensionFolderPath,
         pauseCurrentBgm: fadeOutAndPauseBgm,
@@ -7984,6 +8440,7 @@ debugSTGlobals();
         onEnd: () => {
             document.getElementById('dangan-trial-context-panel')?.style.removeProperty('display');
             document.getElementById('dangan_monopad_button')?.style.removeProperty('display');
+            trialManager?.resumeAfterActivity?.();
         },
     });
     scrumDebateController     = createScrumDebateController({ extensionFolderPath, awardMonocoins, deductMonocoins, getTruthBullets: getTruthBulletsSnapshot, pauseCurrentBgm: fadeOutAndPauseBgm, resumeCurrentBgm: resumeBgmAfterHG, getScrumTracks: () => extension_settings[extensionName]?.trialScrumTracks ?? [], playBgm: playBgmForScrum, getFinalPushTrack: () => findBgmTrackByName('Class Trial - Insurrection'), onWin: onScrumDebateWin, getSpriteUrl, isCharacterDead: (name) => characters.get(normalizeName(name))?.dead === true, getPlayerSpriteUrl, getPlayerName: getActivePersonaName, getCharacterHeightCm });
@@ -8531,8 +8988,8 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     callback: async (args) => {
         const question   = String(args.question   || '').trim();
         const answer     = String(args.answer     || '').trim();
-        const time       = Math.max(5,  Number(args.time)       || 60);
-        const health     = Math.max(1,  Number(args.health)     || 3);
+        const time       = Math.max(120, Number(args.time)      || 120);
+        const health     = Math.max(1,  Number(args.health)     || 7);
         const difficulty = Math.min(5, Math.max(1, Number(args.difficulty) || 2));
         if (!question || !answer) {
             console.warn('[HangmansGambit] question and answer are required.');

@@ -46,6 +46,8 @@ export function createTrialManager(deps) {
         awardXp,
         xpRewards,
         getLecternUrl,
+        deductMonocoins,
+        showMinigameLoadingState,
     } = deps;
 
     function getAssetUrl(name) {
@@ -92,6 +94,85 @@ export function createTrialManager(deps) {
     let seatingDebugMode = 'circle'; // 'circle' | 'line'
     let lastSeatingDebugSpeaker = null;
     let btCharge = 1.0;
+    const NSD_HEALTH_MAX = 3;
+    const NSD_BREAK_PENALTY = 50;
+    const NSD_TIMER_DURATION_MS = 60_000;
+    let nsdTimerStartTs = 0;
+
+    function updateNsdTimer(nowMs) {
+        const remaining = Math.max(0, NSD_TIMER_DURATION_MS - (nowMs - nsdTimerStartTs));
+        const el = document.getElementById('dangan-nsd-timer');
+        if (el) {
+            const mins   = Math.floor(remaining / 60000);
+            const secs   = Math.floor((remaining % 60000) / 1000);
+            const millis = Math.floor(remaining % 1000);
+            el.textContent =
+                String(mins).padStart(2, '0') + ':' +
+                String(secs).padStart(2, '0') + ':' +
+                String(millis).padStart(3, '0');
+            el.classList.toggle('hg-urgent', remaining < 10000);
+        }
+        if (remaining <= 0 && !nsdBreakTriggered) {
+            nsdBreakTriggered = true;
+            // Treat timeout as full damage — wipe HP, flash/shake/SFX,
+            // then break. nsdBreakTriggered gate ensures the monocoin
+            // deduction inside triggerNsdBreak only ever fires once.
+            nsdHealth = 0;
+            const heartsEl = document.getElementById('dangan-nsd-hearts');
+            if (heartsEl) heartsEl.style.setProperty('--gauge-pct', `${NSD_HP_TO_GAUGE[0]}%`);
+            triggerNsdDamageFx();
+            triggerNsdBreak();
+        }
+    }
+    // Discrete HP → gauge-pct mapping. Steps are aligned to the heart positions
+    // in hearts.svg so each remaining HP shows a fully-on heart and the gauge
+    // only reads as fully empty when HP is exactly 0.
+    const NSD_HP_TO_GAUGE = [0, 35, 75, 100];
+    let nsdHealth = NSD_HEALTH_MAX;
+    let nsdBreakTriggered = false;
+
+    function deductNsdHealth() {
+        if (nsdHealth <= 0) return;
+        nsdHealth = Math.max(0, nsdHealth - 1);
+        const el = document.getElementById('dangan-nsd-hearts');
+        if (el) el.style.setProperty('--gauge-pct', `${NSD_HP_TO_GAUGE[nsdHealth]}%`);
+        triggerNsdDamageFx();
+        if (nsdHealth === 0 && !nsdBreakTriggered) {
+            nsdBreakTriggered = true;
+            triggerNsdBreak();
+        }
+    }
+
+    function triggerNsdDamageFx() {
+        playSfx?.('wn_damage');
+        let flash = document.getElementById('dangan-nsd-damage-flash');
+        if (!flash) {
+            flash = document.createElement('div');
+            flash.id = 'dangan-nsd-damage-flash';
+            document.body.appendChild(flash);
+        }
+        flash.classList.remove('flash');
+        requestAnimationFrame(() => {
+            flash.classList.add('flash');
+            window.setTimeout(() => flash.classList.remove('flash'), 200);
+        });
+
+        document.body.classList.remove('dangan-nsd-shaking');
+        void document.body.offsetWidth;
+        document.body.classList.add('dangan-nsd-shaking');
+        window.setTimeout(() => {
+            document.body.classList.remove('dangan-nsd-shaking');
+        }, 1000);
+    }
+
+    function triggerNsdBreak() {
+        try { deductMonocoins?.(NSD_BREAK_PENALTY, 'Debate break (health depleted)'); } catch {}
+        window.setTimeout(() => {
+            if (isDebateActive()) {
+                setState(TrialPhases.PRE_DEBATE);
+            }
+        }, 600);
+    }
     let btConcentrateActive = false;
     let btConcentrateRaf = null;
     let btLastTs = null;
@@ -115,6 +196,18 @@ export function createTrialManager(deps) {
     let lieAbsorbRafId    = null;
     let lieScanningAudio  = null;
     let lieGenerationPromise = null; // kicked off at scan start, awaited at completion
+    let nsdLieLoading = false;       // true while awaiting the generated lie
+    let nsdIntroPlaying = false;     // true during pre-intro + bullet intro — blocks fires
+
+    function showLieLoadingState() {
+        const activeCartridge = document.querySelector('.dangan-bullet-cartridge--active');
+        if (!activeCartridge) return;
+        activeCartridge.classList.add('lie-loading');
+        const nameEl = activeCartridge.querySelector('.dangan-bullet-cartridge-name');
+        if (nameEl) {
+            nameEl.innerHTML = `<span class="lie-loading-dots"><span></span><span></span><span></span></span>`;
+        }
+    }
     let btSlowmoAudio = null;
     let ffAudio = null;
     let nsdKeyAC = null;
@@ -134,8 +227,8 @@ export function createTrialManager(deps) {
     let gcpBgImgWidth   = 0;         // rendered px width of background image at current viewport height
     let gcpBgCurrentPx  = 0;        // current background-position-x in pixels (for wrap detection)
     let nsdShiftParadeStop = null;   // stop fn for in-progress speaker-shift parade (NSD only)
-    let camShotIdx = 0;
-    const CAM_SHOTS = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l'];
+    let lastCamShot = null;
+    const CAM_SHOTS = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'];
 
     // Shared white-noise animation pool — one RAF loop drives all active elements.
     let wnAnimPool  = [];
@@ -375,6 +468,7 @@ export function createTrialManager(deps) {
         // Perjury logic (NSD only)
         window.addEventListener('mousedown', (e) => {
             if (currentState !== TrialPhases.NON_STOP_DEBATE) return;
+            if (nsdIntroPlaying) return;
             if (e.button !== 0) return; // Left click only
 
             clearTimeout(perjuryChargeTimer);
@@ -470,6 +564,7 @@ export function createTrialManager(deps) {
     // ── Weak-point absorption ─────────────────────────────────────────────────
 
     function startAbsorb(wpEl) {
+        if (nsdIntroPlaying) return;
         if (absorbTarget === wpEl) return;
         cancelAbsorb();
         absorbTarget    = wpEl;
@@ -551,6 +646,7 @@ export function createTrialManager(deps) {
     // ── Lie-scan absorption ────────────────────────────────────────────────────
 
     function startLieAbsorb(wpEl) {
+        if (nsdIntroPlaying) return;
         if (lieAbsorbTarget === wpEl) return;
         cancelLieAbsorb();
         lieAbsorbTarget    = wpEl;
@@ -601,11 +697,18 @@ export function createTrialManager(deps) {
         new Audio(`${extensionFolderPath}/assets/sfx/trial/scanned-lie.wav`).play().catch(() => {});
         showAbsorbFlash();
 
+        // Lock fires + recolor the active cartridge purple with pulsing dots
+        // while we wait for the model to return the lie text.
+        nsdLieLoading = true;
+        showLieLoadingState();
+
         const lieText = await (lieGenerationPromise ?? generateLieFromWeakPoint(
             (wpEl.textContent || '').replace(/^\[+|\]+$/g, '').trim() || 'unknown claim'
         ));
 
+        nsdLieLoading = false;
         tempBullet = { title: lieText, text: lieText, isTemporary: true, isLie: true };
+        document.body.classList.add('dangan-nsd-lie-armed');
 
         const current = getDebateBullets();
         nsdActiveBullets = [...current, tempBullet];
@@ -699,6 +802,20 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
                 if (indexEl) { indexEl.style.color = ''; indexEl.style.textShadow = ''; }
             }
         }
+
+        // Hue-shift the blue chrome bars to match the cartridge theme:
+        // slow-mo → pink, fast-forward → yellow, normal → no filter.
+        const blueChromeFilter =
+            mod > 1.0 ? 'hue-rotate(220deg) saturate(1.5) brightness(1.05)' :
+            mod < 1.0 ? 'hue-rotate(135deg) saturate(1.5) brightness(1.05)' :
+            '';
+        document.querySelectorAll('.dangan-tb-bar-bg, #dangan-nsd-status-bar').forEach(el => {
+            el.style.filter = blueChromeFilter;
+        });
+        // Top-left speaker-scenario-bar lives on a pseudo-element, so push
+        // the value through a CSS custom property instead.
+        const topLeftEl = document.querySelector('.dangan-trial-top-left');
+        if (topLeftEl) topLeftEl.style.setProperty('--speaker-bar-filter', blueChromeFilter || 'none');
     }
 
     function updateSpeedModifier() {
@@ -770,7 +887,7 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
     function startConcentrateLoop() {
         btLastTs = null;
         // Cache element once — avoids a DOM query every frame
-        const fill = document.getElementById('dangan-concentrate-bar-fill');
+        const fill = document.getElementById('dangan-concentrate-stars');
         function tick(ts) {
             if (!btLastTs) btLastTs = ts;
             const dt = Math.min((ts - btLastTs) / 1000, 0.1);
@@ -803,15 +920,390 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
                     btSlowmoAudio = null;
                 }
             }
-            // scaleX instead of width — compositor-only, zero layout work
+            // Drive the green→black gradient via a CSS variable so the
+            // stars-shaped mask reveals less green as btCharge drains.
             if (fill) {
-                fill.style.transform = `scaleX(${btCharge})`;
+                fill.style.setProperty('--gauge-pct', `${btCharge * 100}%`);
                 fill.classList.toggle('nsd-bt-active',   btConcentrateActive);
                 fill.classList.toggle('nsd-bt-depleted', btCharge <= 0.01);
+            }
+            // Time limit — runs in both NSD and MPD
+            if (isDebateActive()) {
+                updateNsdTimer(ts);
             }
             btConcentrateRaf = requestAnimationFrame(tick);
         }
         btConcentrateRaf = requestAnimationFrame(tick);
+    }
+
+    let trialSpeakerObserver = null;
+    let trialSpeakerLastName = '';
+    let trialSpeakerToken = 0;
+    let inputResizeObserver = null;
+    let inputWindowResizeHandler = null;
+    let inputPollIntervalId = null;
+
+    function isPlaceholderSpeakerName(name) {
+        const v = String(name || '').trim().toUpperCase();
+        return !v || v === '—' || v === '-' || v === 'SYSTEM' || v === 'UNKNOWN';
+    }
+
+    async function refreshTrialSpeakerSticker(rawName) {
+        const sticker = document.getElementById('dangan-trial-speaker-sticker');
+        if (!sticker) return;
+        const name = String(rawName || '').trim();
+
+        if (isPlaceholderSpeakerName(name)) {
+            sticker.classList.remove('visible');
+            sticker.querySelector('.dgn-speaker-img').style.backgroundImage = '';
+            trialSpeakerLastName = '';
+            return;
+        }
+
+        if (name === trialSpeakerLastName) return;
+        trialSpeakerLastName = name;
+        const myToken = ++trialSpeakerToken;
+
+        sticker.querySelector('.dgn-speaker-name').textContent = name;
+        sticker.classList.add('visible');
+
+        try {
+            // 'mugshot' isn't in ST's registered emotion list, so getSpriteUrl
+            // can't find it — even when the file exists. Probe the direct
+            // /characters/<name>/mugshot.png path first, then fall back to neutral.
+            const mugshotUrl = `/characters/${encodeURIComponent(name)}/mugshot.png`;
+            const mugshotExists = await new Promise(resolve => {
+                const probe = new Image();
+                probe.onload = () => resolve(true);
+                probe.onerror = () => resolve(false);
+                probe.src = mugshotUrl;
+            });
+            const url = mugshotExists
+                ? mugshotUrl
+                : await getCharSpriteUrl(name, 'neutral').catch(() => null);
+            if (myToken !== trialSpeakerToken) return;
+            const imgEl = sticker.querySelector('.dgn-speaker-img');
+            imgEl.style.backgroundImage = url ? `url("${url.replace(/"/g, '\\"')}")` : '';
+        } catch {}
+    }
+
+    function getChapterBadgeText() {
+        const idx = Number(extensionSettings?.[extensionName]?.chapterIndex ?? 0);
+        if (idx <= 0) return '0';
+        if (idx >= 10) return 'X';
+        return String(idx);
+    }
+
+    function refreshTrialBadge() {
+        const numEl = document.querySelector('#dangan-trial-badge .dgn-badge-num');
+        if (numEl) numEl.textContent = getChapterBadgeText();
+    }
+
+    function mountTrialAesthetic() {
+        // Trials only happen inside group chats. If we're on the Assistant /
+        // welcome screen or a single-character chat, don't mount the aesthetic
+        // even if trialActive is true for some other group's persisted state.
+        if (!isGroupChat()) return;
+        document.body.classList.add('dangan-trial-active');
+        applyTrialTheme(getCurrentTrialTheme());
+
+        if (!document.getElementById('dangan-trial-frame')) {
+            const frame = document.createElement('div');
+            frame.id = 'dangan-trial-frame';
+            frame.setAttribute('aria-hidden', 'true');
+            const base = extensionFolderPath || `scripts/extensions/third-party/${extensionName}`;
+            frame.innerHTML = `<img class="dgn-frame-img" src="${base}/assets/classtrial/frame-overlay.png" alt="" draggable="false" />`;
+            document.body.appendChild(frame);
+        }
+
+        // BGM accordion header — wraps the existing #dangan-bgm-display so it can collapse.
+        installBgmAccordion();
+
+        if (!document.getElementById('dangan-trial-badge')) {
+            const badge = document.createElement('div');
+            badge.id = 'dangan-trial-badge';
+            badge.setAttribute('aria-hidden', 'true');
+            badge.innerHTML = `
+                <div class="dgn-badge-num-wrap">
+                    <div class="dgn-badge-moon"></div>
+                    <div class="dgn-badge-num">${getChapterBadgeText()}</div>
+                </div>
+                <div class="dgn-badge-label">Class<br>Trial</div>
+            `;
+            document.body.appendChild(badge);
+        }
+
+        if (!document.getElementById('dangan-trial-speaker-sticker')) {
+            const sticker = document.createElement('div');
+            sticker.id = 'dangan-trial-speaker-sticker';
+            sticker.setAttribute('aria-hidden', 'true');
+            sticker.innerHTML = `
+                <div class="dgn-speaker-img" aria-hidden="true"></div>
+                <div class="dgn-speaker-name"></div>
+            `;
+            document.body.appendChild(sticker);
+        }
+
+        // Subscribe to VN nameplate updates so the sticker follows the active speaker.
+        const speakerNameEl = document.getElementById('dangan-vn-name');
+        if (speakerNameEl && !trialSpeakerObserver) {
+            trialSpeakerObserver = new MutationObserver(() => {
+                refreshTrialSpeakerSticker(speakerNameEl.textContent);
+            });
+            trialSpeakerObserver.observe(speakerNameEl, { childList: true, characterData: true, subtree: true });
+            refreshTrialSpeakerSticker(speakerNameEl.textContent);
+        }
+
+        // Track the actual top edge of #send_form (relative to the viewport
+        // bottom) and expose it as --dgn-input-height. The VN dialogue frame's
+        // bottom uses this var, so on any viewport size the dialogue sits flush
+        // on top of the input — no detachment, no overlap.
+        const sendForm = document.getElementById('send_form');
+        if (sendForm && !inputResizeObserver && typeof ResizeObserver === 'function') {
+            let lastValue = -1;
+            const updateInputHeight = () => {
+                const rect = sendForm.getBoundingClientRect();
+                const distFromBottom = Math.max(0, Math.round(window.innerHeight - rect.top));
+                if (distFromBottom > 0 && distFromBottom !== lastValue) {
+                    lastValue = distFromBottom;
+                    document.documentElement.style.setProperty('--dgn-input-height', `${distFromBottom}px`);
+                }
+            };
+            inputResizeObserver = new ResizeObserver(updateInputHeight);
+            inputResizeObserver.observe(sendForm);
+            inputWindowResizeHandler = updateInputHeight;
+            window.addEventListener('resize', inputWindowResizeHandler);
+            // ResizeObserver only fires on size changes — not on position changes.
+            // ST's flex layout can move #send_form vertically without resizing it
+            // (e.g. on chat scroll, sidebar toggles, attachment drawer). Poll so
+            // the dialogue's bottom stays glued to the input's actual top edge.
+            inputPollIntervalId = setInterval(updateInputHeight, 250);
+            updateInputHeight();
+        }
+    }
+
+    function unmountTrialAesthetic() {
+        document.body.classList.remove('dangan-trial-active');
+        for (const t of TRIAL_THEMES) document.body.classList.remove(`dangan-trial-theme-${t}`);
+        document.getElementById('dangan-trial-frame')?.remove();
+        document.getElementById('dangan-trial-badge')?.remove();
+        document.getElementById('dangan-trial-speaker-sticker')?.remove();
+        uninstallBgmAccordion();
+        if (trialSpeakerObserver) {
+            trialSpeakerObserver.disconnect();
+            trialSpeakerObserver = null;
+        }
+        if (inputResizeObserver) {
+            inputResizeObserver.disconnect();
+            inputResizeObserver = null;
+        }
+        if (inputWindowResizeHandler) {
+            window.removeEventListener('resize', inputWindowResizeHandler);
+            inputWindowResizeHandler = null;
+        }
+        if (inputPollIntervalId) {
+            clearInterval(inputPollIntervalId);
+            inputPollIntervalId = null;
+        }
+        document.documentElement.style.removeProperty('--dgn-input-height');
+        trialSpeakerLastName = '';
+    }
+
+    const TRIAL_THEMES = [
+        'pink-concerto',
+        'silver-rock',
+        'spring-metal',
+        'crimson-jazz',
+        'sapphire-elegy',
+        'violet-waltz',
+        'gold-beat',
+        'emerald-blues',
+        'scarlet-tango',
+    ];
+
+    function getCurrentTrialTheme() {
+        const t = String(extensionSettings?.[extensionName]?.trialUiTheme || 'pink-concerto').toLowerCase();
+        return TRIAL_THEMES.includes(t) ? t : 'pink-concerto';
+    }
+
+    function applyTrialTheme(theme) {
+        const next = TRIAL_THEMES.includes(theme) ? theme : 'pink-concerto';
+        for (const t of TRIAL_THEMES) {
+            document.body.classList.toggle(`dangan-trial-theme-${t}`, t === next);
+        }
+        if (extensionSettings?.[extensionName]) {
+            extensionSettings[extensionName].trialUiTheme = next;
+            if (typeof saveSettingsDebounced === 'function') saveSettingsDebounced();
+        }
+    }
+
+    function installBgmAccordion() {
+        const bgm = document.getElementById('dangan-bgm-display');
+        if (!bgm) {
+            // Visualizer hasn't mounted yet — try again shortly
+            setTimeout(installBgmAccordion, 250);
+            return;
+        }
+        if (document.getElementById('dangan-bgm-panel')) return;
+
+        const wrapper = document.createElement('div');
+        wrapper.id = 'dangan-bgm-panel';
+        wrapper.className = 'dgn-side-panel collapsed';
+
+        const header = document.createElement('button');
+        header.type = 'button';
+        header.className = 'dgn-side-panel-header';
+        header.setAttribute('aria-expanded', 'false');
+        header.setAttribute('aria-controls', 'dangan-bgm-display');
+        header.innerHTML = `<span>FX PANEL</span><span class="dgn-side-panel-chev" aria-hidden="true">▾</span>`;
+        header.addEventListener('click', () => {
+            const collapsed = wrapper.classList.toggle('collapsed');
+            header.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        });
+
+        // Theme selector — sits below the music controls.
+        const fxSection = document.createElement('div');
+        fxSection.id = 'dangan-fx-theme-section';
+        fxSection.className = 'dgn-fx-section';
+        const currentTheme = getCurrentTrialTheme();
+        fxSection.innerHTML = `
+            <div class="dgn-fx-divider" aria-hidden="true"></div>
+            <div class="dgn-fx-theme-row">
+                <label for="dgn-fx-theme-select" class="dgn-fx-theme-label">UI Theme</label>
+                <select id="dgn-fx-theme-select" class="dgn-fx-theme-select">
+                    <option value="pink-concerto">Pink Concerto</option>
+                    <option value="silver-rock">Silver Rock</option>
+                    <option value="spring-metal">Spring Metal</option>
+                    <option value="crimson-jazz">Crimson Jazz</option>
+                    <option value="sapphire-elegy">Sapphire Elegy</option>
+                    <option value="violet-waltz">Violet Waltz</option>
+                    <option value="gold-beat">Gold Beat</option>
+                    <option value="emerald-blues">Emerald Blues</option>
+                    <option value="scarlet-tango">Scarlet Tango</option>
+                </select>
+            </div>
+            <div class="dgn-fx-divider" aria-hidden="true"></div>
+            <div class="dgn-fx-commands-row">
+                <button type="button" id="dgn-fx-commands-btn" class="dgn-fx-commands-btn">View Commands</button>
+            </div>
+        `;
+
+        // Slot the bgm-display inside the wrapper as its body, and the theme
+        // selector below it.
+        bgm.parentNode.insertBefore(wrapper, bgm);
+        wrapper.appendChild(header);
+        wrapper.appendChild(bgm);
+        wrapper.appendChild(fxSection);
+
+        const select = fxSection.querySelector('select');
+        select.value = currentTheme;
+        select.addEventListener('change', (e) => applyTrialTheme(e.target.value));
+
+        fxSection.querySelector('#dgn-fx-commands-btn').addEventListener('click', showCommandsModal);
+    }
+
+    const TRIAL_COMMANDS = [
+        {
+            heading: 'Cinematics & Chapters',
+            items: [
+                { cmd: '/bodydiscovery', desc: 'Plays the body discovery static/shake vignette, then the Body Discovery announcement, then triggers Investigation mode and switches to the Investigation theme.', opts: ['bg — Background image to switch to under the static effect (partial name match)', 'cinematic — Name of a configured Body Discovery cinematic to play instead of the default sequence'] },
+                { cmd: '/punishmenttime', desc: 'Plays the execution cinematic for the named character, then marks them as dead in the Monopad roster.', opts: ['name (required) — Character name; must match both a configured execution cinematic and a registered character'] },
+                { cmd: '/introduce', desc: 'Shows a 4-second character introduction screen for the current SillyTavern speaker.', opts: ['ultimate — Override the Ultimate title shown on the card (auto-detected from lorebook by default)'] },
+                { cmd: '/nextchapter', desc: 'Advances the Chapter counter one step (PROLOGUE → CHAPTER 1 → … → CHAPTER 9).' },
+                { cmd: '/epiloguechapter', desc: 'Sets the Chapter display to EPILOGUE.' },
+                { cmd: '/passtime', desc: 'Triggers the nighttime announcement, shows a Night Time Start banner, and switches to the Night theme.' },
+                { cmd: '/gotosleep', desc: 'Advances to the next day, plays the daytime announcement, shows a Free Time Start banner, and switches to the Day theme.' },
+            ],
+        },
+        {
+            heading: 'Class Trial',
+            items: [
+                { cmd: '/startclasstrial', desc: 'Begin a Class Trial in the current group chat. Converts the chat into a Class Trial chat.' },
+                { cmd: '/endtrial', desc: 'Immediately ends the current Class Trial and clears all persistent trial state.' },
+                { cmd: '/setclasstrialgoal', desc: 'Sets the overall objective text shown in the Trial Context panel.', opts: ['(unnamed, required) — The goal text, e.g. /setclasstrialgoal Who killed Byakuya?'] },
+                { cmd: '/givetruthbullet', desc: 'Manually adds a Truth Bullet to the Monopad. Add an image via the Truth Bullet Monopad tab afterwards.', opts: ['name (required) — Truth Bullet title; quote if it contains spaces', '(unnamed, required) — The Truth Bullet description'] },
+                { cmd: '/suspectchoosing', desc: 'Opens the character selection screen to single out a suspect. Arrow keys to navigate, Enter to confirm.' },
+                { cmd: '/votingtime', desc: 'Spins the class trial vote roulette. A correct guess awards XP; an incorrect one triggers failure.', opts: ['guess (required) — The character that was voted for (partial name match)', 'result — The actual blackened character (omit to pick randomly)'] },
+            ],
+        },
+        {
+            heading: 'Minigames',
+            items: [
+                { cmd: '/nonstopdebate', desc: 'Force-starts a Non-Stop Debate with manually provided lines. Each line supports [[weak spot]] and ((agreement)) markup.', opts: ['s1-q … s8-q (at least one required) — Dialogue lines for sections 1–8', '(unnamed) — Shorthand for a single-line debate'] },
+                { cmd: '/masspanicdebate', desc: 'Starts a Mass Panic Debate with up to 8 scenarios. Each scenario requires all three columns; mark the weak spot in one column with [[brackets]].', opts: ['sc1-c1-q … sc8-c3-q (at least one full scenario) — Dialogue text', 'sc1-c1-speaker … sc8-c3-speaker — Speaker name per column'] },
+                { cmd: '/interjection', desc: 'Plays the rebuttal interjection cinematic, switches BGM to “New Classmates of the Dead”, then the interjector replies.', opts: ['character — Character name for the interjection sprite (defaults to last speaker)'] },
+                { cmd: '/rebuttalshowdown', desc: 'Starts a Rebuttal Showdown — cut through scrolling statements, then land the correct Truth Blade on the weak point.', opts: ['opponent — Opponent character name (defaults to last speaker)', 'player — Player character name (defaults to Prome player profile)', 's1-q … sN-q — Statement phrases (auto-split into chunks)'] },
+                { cmd: '/scrumdebate', desc: 'Starts a Scrum Debate. The group splits into two teams; debunk each opposing claim with the correct Truth Bullet, then win the final tug-of-war.' },
+                { cmd: '/panictalkaction', desc: 'Starts a Panic Talk Action boss-fight against the current speaker. At least one dialog line is required.', opts: ['dialogA … dialogK (at least one) — Up to 11 dialogue lines', 'enemyHp / playerHp — Starting HP (default 100)', 'phases — Number of phases 1–3 (default 3)', 'nSolution / sSolution / eSolution / wSolution — Direction prompt answer words', 'finalSolution — Final answer (shown uppercased)', 'finalSolutionQuote — Quote line accompanying the final solution', 'bg — Background image (partial name match)'] },
+                { cmd: '/hangmansgambit', desc: 'Starts a Hangman’s Gambit — letters scroll across the screen; stock a letter, match it against the current target position to reveal it.', opts: ['question (required) — Title or prompt', 'answer (required) — Word or phrase to unscramble', 'time — Time limit in seconds (default 60)', 'health — Health points (default 3)', 'difficulty — 1–5 (default 2)'] },
+                { cmd: '/questiontime', desc: 'Timed four-answer multiple choice question. Correct answer triggers GOT IT and awards XP.', opts: ['title (required) — Question text', 'time (required) — Time limit in seconds', 'a1 … a4 (required) — Four answer options', 'correct (required) — Index 1–4 of the correct answer'] },
+                { cmd: '/questiontruth', desc: 'Displays the Truth Bullet list and asks the player to pick the correct one. Correct answer awards Monocoins and GOT IT.', opts: ['question (required) — Statement or prompt', 'answer (required) — Title of the correct Truth Bullet (exact match)', 'time — Optional time limit in seconds'] },
+            ],
+        },
+    ];
+
+    function showCommandsModal() {
+        if (document.getElementById('dgn-commands-modal')) return;
+
+        const modal = document.createElement('div');
+        modal.id = 'dgn-commands-modal';
+        modal.className = 'dgn-commands-modal';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+
+        const sections = TRIAL_COMMANDS.map(group => {
+            const items = group.items.map(it => {
+                const opts = it.opts && it.opts.length
+                    ? `<ul class="dgn-cmd-opts">${it.opts.map(o => `<li>${escapeHtml(o)}</li>`).join('')}</ul>`
+                    : '';
+                return `
+                    <div class="dgn-cmd-item">
+                        <div class="dgn-cmd-name"><code>${escapeHtml(it.cmd)}</code></div>
+                        <div class="dgn-cmd-desc">${escapeHtml(it.desc)}</div>
+                        ${opts}
+                    </div>
+                `;
+            }).join('');
+            return `
+                <section class="dgn-cmd-group">
+                    <h3 class="dgn-cmd-group-title">${escapeHtml(group.heading)}</h3>
+                    ${items}
+                </section>
+            `;
+        }).join('');
+
+        modal.innerHTML = `
+            <div class="dgn-commands-backdrop"></div>
+            <div class="dgn-commands-card" role="document">
+                <div class="dgn-commands-header">
+                    <span>Slash Commands</span>
+                    <button type="button" class="dgn-commands-close" aria-label="Close">✕</button>
+                </div>
+                <div class="dgn-commands-body">${sections}</div>
+            </div>
+        `;
+
+        const close = () => {
+            modal.remove();
+            document.removeEventListener('keydown', onKeydown);
+        };
+        const onKeydown = (e) => { if (e.key === 'Escape') close(); };
+
+        modal.querySelector('.dgn-commands-close').addEventListener('click', close);
+        modal.querySelector('.dgn-commands-backdrop').addEventListener('click', close);
+        document.addEventListener('keydown', onKeydown);
+
+        document.body.appendChild(modal);
+    }
+
+    function uninstallBgmAccordion() {
+        const wrapper = document.getElementById('dangan-bgm-panel');
+        const bgm = document.getElementById('dangan-bgm-display');
+        if (wrapper && bgm) {
+            // Move bgm-display back out of the wrapper before removing it
+            wrapper.parentNode.insertBefore(bgm, wrapper);
+            wrapper.remove();
+        }
     }
 
     function syncPrompt() {
@@ -905,20 +1397,49 @@ ${historyText}
         const label = document.querySelector('#dangan-trial-pre-debate-notif .dangan-trial-topic-label');
         if (!label) return;
         label.textContent = trialContext.topic
-            ? `The Class is debating ${trialContext.topic}`
-            : 'The Class Trial is ongoing...';
+            ? `Debating: ${trialContext.topic}`
+            : 'TRIAL PANEL';
     }
 
     function updateContextPanel() {
-        const panel = document.getElementById('dangan-trial-context-panel');
-        if (!panel) return;
+        const hosts = [
+            document.getElementById('dangan-trial-context-panel'),
+            document.getElementById('dangan-trial-pre-debate-notif'),
+        ].filter(Boolean);
+        if (!hosts.length) return;
 
-        const goalEl     = panel.querySelector('.dangan-context-goal');
-        const suspectsEl = panel.querySelector('.dangan-context-suspects');
+        for (const host of hosts) {
+            const goalEl     = host.querySelector('.dangan-context-goal');
+            const suspectsEl = host.querySelector('.dangan-context-suspects');
 
-        if (goalEl)  goalEl.textContent  = trialContext.goal  || '—';
+            if (goalEl) {
+                const goalText = trialContext.goal || '';
+                goalEl.textContent = goalText || (host.id === 'dangan-trial-context-panel' ? '—' : '');
+            }
 
-        if (suspectsEl) {
+            if (!suspectsEl) continue;
+
+            if (host.classList.contains('dgn-suspects-grid') || suspectsEl.classList.contains('dgn-suspects-grid')) {
+                if (!trialContext.suspects.length) {
+                    suspectsEl.innerHTML = '<div class="dgn-suspects-empty">No suspects identified</div>';
+                } else {
+                    suspectsEl.innerHTML = trialContext.suspects.slice(0, 3).map(s => {
+                        const pct = Math.max(0, Math.min(100, Number(s.chance) || 0));
+                        const portraitSrc = `/characters/${encodeURIComponent(s.name)}.png`;
+                        return `
+                            <div class="dgn-suspect-cell" data-suspect-name="${escapeHtml(s.name)}">
+                                <div class="dgn-suspect-portrait" aria-hidden="true">
+                                    <img src="${portraitSrc}" alt="" onerror="this.style.opacity=0">
+                                </div>
+                                <div class="dgn-suspect-name">${escapeHtml(s.name)}</div>
+                                <div class="dgn-suspect-pct">${pct}%</div>
+                            </div>`;
+                    }).join('');
+                }
+                continue;
+            }
+
+            // Legacy left-side panel (kept for compat)
             if (!trialContext.suspects.length) {
                 suspectsEl.innerHTML = '<span class="dangan-context-no-suspects">No suspects identified</span>';
             } else {
@@ -933,6 +1454,7 @@ ${historyText}
             }
         }
     }
+
 
     function showContextPanel() {
         if (document.getElementById('dangan-trial-context-panel')) {
@@ -1011,41 +1533,50 @@ ${historyText}
 
         const notification = document.createElement('div');
         notification.id = 'dangan-trial-pre-debate-notif';
-        notification.className = 'dangan-trial-notification';
+        notification.className = 'dangan-trial-notification dgn-side-panel collapsed';
         notification.innerHTML = `
             <div class="dangan-trial-notif-content">
-                <div class="dangan-trial-notif-drag-handle">
+                <div class="dangan-trial-notif-drag-handle dgn-side-panel-header">
                     <span class="dangan-trial-notif-drag-icon">⠿</span>
-                    <span class="dangan-trial-topic-label">${trialContext.topic ? `The Class is debating ${trialContext.topic}` : 'The Class Trial is ongoing...'}</span>
-                    <button class="dangan-trial-collapse-btn" title="Collapse panel">▼</button>
+                    <span class="dangan-trial-topic-label">${trialContext.topic ? `Debating: ${trialContext.topic}` : 'TRIAL PANEL'}</span>
+                    <span class="dgn-side-panel-chev" aria-hidden="true">▾</span>
                 </div>
                 <div class="dangan-trial-notif-body">
-                    <div class="dangan-trial-btn-group dangan-trial-btn-group--minigames">
-                        <span class="dangan-trial-group-label">Minigames</span>
-                        <div class="dangan-trial-btn-row">
-                            <button id="dangan-start-nonstop-btn"  class="dangan-trial-start-btn" style="display:none">NON-STOP DEBATE</button>
-                            <button id="dangan-start-mpdebate-btn" class="dangan-trial-start-btn" style="display:none">MASS PANIC DEBATE</button>
-                            <button id="dangan-start-hangman-btn"  class="dangan-trial-start-btn" style="display:none">HANGMAN'S GAMBIT</button>
-                            <button id="dangan-start-pta-btn"      class="dangan-trial-start-btn" style="display:none">PANIC TALK ACTION</button>
-                            <button id="dangan-start-rebuttal-btn" class="dangan-trial-start-btn" style="display:none">REBUTTAL SHOWDOWN</button>
-                            <button id="dangan-start-qtime-btn"    class="dangan-trial-start-btn" style="display:none">QUESTION TIME</button>
-                            <button id="dangan-start-qtruth-btn"   class="dangan-trial-start-btn" style="display:none">QUESTION TRUTH</button>
-                            <button id="dangan-start-scrum-btn"    class="dangan-trial-start-btn" style="display:none">SCRUM DEBATE</button>
-                            <button id="dangan-start-mindmine-btn" class="dangan-trial-start-btn" style="display:none">MIND MINE</button>
-                        </div>
+                    <div class="dgn-trial-section dgn-trial-section--goal">
+                        <h3 class="dgn-trial-section-title">Goal</h3>
+                        <div class="dgn-trial-goal-text dangan-context-goal"></div>
                     </div>
-                    <div class="dangan-trial-btn-group dangan-trial-btn-group--actions">
-                        <span class="dangan-trial-group-label">Actions</span>
-                        <div class="dangan-trial-btn-row">
-                            <button id="dangan-start-interject-btn"  class="dangan-trial-start-btn" style="display:none">INTERJECTION</button>
-                            <button id="dangan-start-choosing-btn"   class="dangan-trial-start-btn" style="display:none">CHOOSING TIME</button>
-                            <button id="dangan-start-voting-btn"     class="dangan-trial-start-btn" style="display:none">VOTING TIME</button>
-                            <button id="dangan-start-punishment-btn" class="dangan-trial-start-btn" style="display:none">PUNISHMENT TIME</button>
-                            <button id="dangan-start-showcg-btn"     class="dangan-trial-start-btn" style="display:none">SHOW CG</button>
+                    <div class="dgn-trial-section dgn-trial-section--suspects">
+                        <div class="dgn-suspects-header">
+                            <h3 class="dgn-trial-section-title" style="margin:0">Suspects</h3>
+                            <button class="dangan-suspect-refresh-btn" title="Refresh suspect analysis">↻</button>
+                        </div>
+                        <div class="dgn-suspects-grid dangan-context-suspects"></div>
+                    </div>
+                    <div class="dgn-trial-section dgn-trial-section--controls">
+                        <h3 class="dgn-trial-section-title">Controls</h3>
+                        <div class="dgn-controls-loading" aria-live="polite" aria-label="Loading controls">
+                            <span></span><span></span><span></span>
+                        </div>
+                        <div class="dgn-controls-grid dangan-trial-btn-group--minigames">
+                            <button id="dangan-start-nonstop-btn"  class="dangan-trial-start-btn" style="display:none">Start Non-Stop Debate</button>
+                            <button id="dangan-start-hangman-btn"  class="dangan-trial-start-btn" style="display:none">Start Hangman's Gambit</button>
+                            <button id="dangan-start-mpdebate-btn" class="dangan-trial-start-btn" style="display:none">Start Mass Panic Debate</button>
+                            <button id="dangan-start-rebuttal-btn" class="dangan-trial-start-btn" style="display:none">Start Rebuttal Showdown</button>
+                            <button id="dangan-start-scrum-btn"    class="dangan-trial-start-btn" style="display:none">Start Scrum Debate</button>
+                            <button id="dangan-start-mindmine-btn" class="dangan-trial-start-btn" style="display:none">Start Mind Mine</button>
+                            <button id="dangan-start-pta-btn"      class="dangan-trial-start-btn" style="display:none">Start Panic Talk Action</button>
+                            <button id="dangan-start-qtime-btn"    class="dangan-trial-start-btn" style="display:none">Start Question Time</button>
+                            <button id="dangan-start-qtruth-btn"   class="dangan-trial-start-btn" style="display:none">Start Question Truth</button>
+                            <button id="dangan-start-interject-btn"  class="dangan-trial-start-btn" style="display:none">Trigger an Interjection</button>
+                            <button id="dangan-start-choosing-btn"   class="dangan-trial-start-btn" style="display:none">Start Choosing Time</button>
+                            <button id="dangan-start-voting-btn"     class="dangan-trial-start-btn" style="display:none">Start Voting Time</button>
+                            <button id="dangan-start-punishment-btn" class="dangan-trial-start-btn" style="display:none">Start Punishment Time</button>
+                            <button id="dangan-start-showcg-btn"     class="dangan-trial-start-btn" style="display:none">Show CG</button>
                         </div>
                     </div>
                     ${isGroupChat() ? `
-                    <div class="dangan-trial-btn-group dangan-trial-btn-group--seating"${hasSeatingPlanCopy ? '' : ' style="display:none"'}>
+                    <div class="dgn-trial-section dangan-trial-btn-group--seating"${hasSeatingPlanCopy ? '' : ' style="display:none"'}>
                         <div class="dangan-seating-plan-section">
                             <div class="dangan-seating-plan-header">
                                 <span>SEATING PLAN</span>
@@ -1062,19 +1593,19 @@ ${historyText}
         `;
         document.body.appendChild(notification);
 
-        applyCustomUiPosition?.(notification, 'dangan-trial-panel-pos');
-        attachDraggablePositioning?.(notification, {
-            storageKey: 'dangan-trial-panel-pos',
-            handleSelector: '.dangan-trial-notif-drag-handle',
-        });
+        // Trial panel is non-draggable — it locks to the top-right corner via CSS.
+        // Clear any stale inline position that a previous draggable session may
+        // have written so the CSS top:0/right:0 takes effect cleanly.
+        notification.style.left = '';
+        notification.style.top = '';
+        notification.style.right = '';
+        notification.style.bottom = '';
 
-        // Collapse / expand toggle
-        const collapseBtn = notification.querySelector('.dangan-trial-collapse-btn');
-        collapseBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const isCollapsed = notification.classList.toggle('collapsed');
-            collapseBtn.textContent = isCollapsed ? '▲' : '▼';
-            collapseBtn.title = isCollapsed ? 'Expand panel' : 'Collapse panel';
+        // Collapse / expand toggle — click anywhere on the header, but
+        // suppress when the user is mid-drag (drag.js fires no click).
+        const headerEl = notification.querySelector('.dgn-side-panel-header');
+        headerEl.addEventListener('click', () => {
+            notification.classList.toggle('collapsed');
         });
 
         function renderSeatingList(plan) {
@@ -1167,6 +1698,7 @@ ${historyText}
         // Show debate buttons after 5 seconds
         setTimeout(() => {
             notification.querySelectorAll('.dangan-trial-start-btn').forEach(btn => btn.style.display = 'block');
+            notification.querySelector('.dgn-trial-section--controls')?.classList.add('loaded');
         }, 5000);
 
         notification.querySelector('#dangan-start-nonstop-btn').onclick = () => {
@@ -1175,7 +1707,7 @@ ${historyText}
         };
         notification.querySelector('#dangan-start-mpdebate-btn').onclick = () => {
             notification.remove();
-            onStartMassPanicDebate?.();
+            void startMassPanicDebateGenerated();
         };
         notification.querySelector('#dangan-start-hangman-btn').onclick = () => {
             notification.remove();
@@ -1245,6 +1777,33 @@ ${historyText}
         notification.querySelector('#dangan-start-showcg-btn').onclick = () => {
             showCgPicker();
         };
+
+        // Render goal/suspects into the merged panel
+        updateContextPanel();
+
+        // Inline-edit the goal text on click. Enter saves, Escape reverts.
+        const goalEl = notification.querySelector('.dangan-context-goal');
+        if (goalEl) {
+            goalEl.setAttribute('contenteditable', 'plaintext-only');
+            goalEl.setAttribute('spellcheck', 'false');
+            goalEl.title = 'Click to edit goal';
+            goalEl.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    goalEl.blur();
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    goalEl.textContent = trialContext.goal || '';
+                    goalEl.blur();
+                }
+            });
+            goalEl.addEventListener('blur', () => {
+                const next = goalEl.textContent.trim();
+                if (next !== (trialContext.goal || '')) {
+                    setTrialContext(undefined, next, undefined);
+                }
+            });
+        }
     }
 
     function showCgPicker() {
@@ -1416,9 +1975,14 @@ ${historyText}
     }
 
     async function startNonStopDebate() {
-        const count = Math.floor(Math.random() * (8 - 3 + 1)) + 3;
+        const count = Math.floor(Math.random() * (8 - 4 + 1)) + 4;
+        const loadingEl = showMinigameLoadingState?.('Loading Non-Stop Debate', { command: '/nonstopdebate' });
+        loadingEl?.setProgress?.(0);
         try {
-            const sections = await buildDebateSections({ sectionsCount: count });
+            const sections = await buildDebateSections({
+                sectionsCount: count,
+                onProgress: (frac) => loadingEl?.setProgress?.(frac),
+            });
             if (Array.isArray(sections) && sections.length > 0) {
                 const lines = sections.map(s => ({ text: s.statement, speaker: s.speakerName, whiteNoise: s.whiteNoise }));
                 debugStartNonStopDebateWithLines(lines);
@@ -1427,6 +1991,30 @@ ${historyText}
             }
         } catch (e) {
             console.warn('[Dangan][Trial] Debate section generation failed:', e);
+        } finally {
+            loadingEl?.hide?.();
+        }
+    }
+
+    async function startMassPanicDebateGenerated() {
+        const count = Math.floor(Math.random() * (6 - 4 + 1)) + 4;
+        const loadingEl = showMinigameLoadingState?.('Loading Mass Panic Debate', { command: '/masspanicdebate' });
+        loadingEl?.setProgress?.(0);
+        try {
+            const scenarios = await buildMpdScenarios({
+                scenarioCount: count,
+                onProgress: (frac) => loadingEl?.setProgress?.(frac),
+            });
+            if (Array.isArray(scenarios) && scenarios.length > 0) {
+                mpdScenarios = parseMpdScenarios(scenarios);
+                setState(TrialPhases.MASS_PANIC_DEBATE);
+            } else {
+                console.warn('[Dangan][Trial] MPD generation returned empty scenarios.');
+            }
+        } catch (e) {
+            console.warn('[Dangan][Trial] MPD generation failed:', e);
+        } finally {
+            loadingEl?.hide?.();
         }
     }
 
@@ -1497,6 +2085,7 @@ ${historyText}
     const nsdHiddenEls = new Map(); // selector → original display value
 
     function fadeOutChatUI() {
+        document.body.classList.add('dangan-minigame-active');
         for (const sel of NSD_UI_SELECTORS) {
             const el = document.querySelector(sel);
             if (!el) continue;
@@ -1509,6 +2098,7 @@ ${historyText}
     }
 
     function fadeInChatUI() {
+        document.body.classList.remove('dangan-minigame-active');
         for (const sel of NSD_UI_SELECTORS) {
             const el = document.querySelector(sel);
             if (!el) continue;
@@ -2335,12 +2925,6 @@ ${historyText}
             <div class="dangan-trial-top-left">
                 <div id="dangan-speaker-name">...</div>
                 <div id="dangan-section-dots"></div>
-                <div id="dangan-concentrate-bar-wrap">
-                    <div id="dangan-concentrate-bar-label">CONCENTRATE</div>
-                    <div id="dangan-concentrate-bar-track">
-                        <div id="dangan-concentrate-bar-fill"></div>
-                    </div>
-                </div>
             </div>
             <div class="dangan-trial-portrait-stage">
                 <div class="dangan-portrait-slot dangan-portrait-neighbor-slot dangan-portrait-left-slot">
@@ -2372,6 +2956,69 @@ ${historyText}
         const wnFlashEl = document.createElement('div');
         wnFlashEl.id = 'dangan-wn-press-flash';
         debateOverlay.appendChild(wnFlashEl);
+
+        // Status bar PNG — sits BEHIND the hearts and stars gauges.
+        const statusBar = document.createElement('img');
+        statusBar.id = 'dangan-nsd-status-bar';
+        statusBar.src = `${extensionFolderPath}/assets/classtrial/status-bar.png`;
+        statusBar.alt = '';
+        statusBar.draggable = false;
+        debateOverlay.appendChild(statusBar);
+
+        // Concentrate stars — top-right gauge that drains right→left, green→black.
+        // The black layer is just a masked silhouette underneath. The green
+        // layer wraps a masked inner div so the parent's drop-shadow filter
+        // runs AFTER the mask shapes it into stars (CSS paint order is
+        // filter → mask, so we need the mask on the child and filter on the
+        // parent for the glow to actually trace the star outlines).
+        const starsGauge = document.createElement('div');
+        starsGauge.id = 'dangan-concentrate-stars';
+        starsGauge.innerHTML = `
+            <div class="stars-bg"></div>
+            <div class="stars-fg-wrap">
+                <div class="stars-fg"></div>
+            </div>
+        `;
+        const starsUrl = `${extensionFolderPath}/assets/classtrial/stars.svg`;
+        const starsMaskUrl = `url("${starsUrl}")`;
+        for (const sel of ['.stars-bg', '.stars-fg']) {
+            const el = starsGauge.querySelector(sel);
+            el.style.webkitMaskImage = starsMaskUrl;
+            el.style.maskImage       = starsMaskUrl;
+        }
+        starsGauge.style.setProperty('--gauge-pct', '100%');
+        debateOverlay.appendChild(starsGauge);
+
+        // Hearts health gauge — sits above the stars, drains left per WN hit.
+        nsdHealth = NSD_HEALTH_MAX;
+        nsdBreakTriggered = false;
+        nsdTimerStartTs = performance.now();
+
+        // NSD time-limit timer (bottom-left). Uses Hangman's Gambit font/colors.
+        const timerWrap = document.createElement('div');
+        timerWrap.id = 'dangan-nsd-timer-wrap';
+        timerWrap.innerHTML = `
+            <img class="dangan-nsd-timer-bar-bg" src="${extensionFolderPath}/assets/classtrial/timer-bar.png" alt="" draggable="false"/>
+            <div id="dangan-nsd-timer">01:00:000</div>
+        `;
+        debateOverlay.appendChild(timerWrap);
+        const heartsGauge = document.createElement('div');
+        heartsGauge.id = 'dangan-nsd-hearts';
+        heartsGauge.innerHTML = `
+            <div class="hearts-bg"></div>
+            <div class="hearts-fg-wrap">
+                <div class="hearts-fg"></div>
+            </div>
+        `;
+        const heartsUrl = `${extensionFolderPath}/assets/classtrial/hearts.svg`;
+        const heartsMaskUrl = `url("${heartsUrl}")`;
+        for (const sel of ['.hearts-bg', '.hearts-fg']) {
+            const el = heartsGauge.querySelector(sel);
+            el.style.webkitMaskImage = heartsMaskUrl;
+            el.style.maskImage       = heartsMaskUrl;
+        }
+        heartsGauge.style.setProperty('--gauge-pct', '100%');
+        debateOverlay.appendChild(heartsGauge);
 
         document.body.appendChild(debateOverlay);
         fadeOutChatUI();
@@ -2499,7 +3146,9 @@ ${historyText}
         }
         startConcentrateLoop();
 
+        nsdIntroPlaying = true;
         playNsdPreIntro().then(() => showBulletIntroScreen()).then(() => {
+            nsdIntroPlaying = false;
             if (currentState === TrialPhases.MASS_PANIC_DEBATE) {
                 startMassPanicDebatePlayback();
             } else {
@@ -2746,6 +3395,10 @@ ${historyText}
             const introHiddenEls = [
                 '.dangan-trial-top-left',
                 '.dangan-trial-bottom-left',
+                '#dangan-concentrate-stars',
+                '#dangan-nsd-hearts',
+                '#dangan-nsd-status-bar',
+                '#dangan-nsd-timer-wrap',
             ].map(sel => debateOverlay?.querySelector(sel)).filter(Boolean);
             introHiddenEls.forEach(el => { el.dataset.introDisplay = el.style.display; el.style.display = 'none'; });
 
@@ -2790,6 +3443,7 @@ ${historyText}
                      src="${extensionFolderPath}/assets/images/minigames/revolver-cylinder.png" alt=""/>
                 <div class="dangan-cylinder-index">${bulletNumber}</div>
             </div>
+            <img class="dangan-tb-bar-bg" src="${extensionFolderPath}/assets/classtrial/truth-bullets-bar.png" alt="" draggable="false"/>
             <div class="dangan-bullet-cartridge dangan-bullet-cartridge--adj dangan-bullet-cartridge--above">
                 <span class="dangan-bullet-cartridge-name">${above?.title || ''}</span>
             </div>
@@ -3241,6 +3895,7 @@ ${historyText}
     }
 
     function mpdOnRPress() {
+        if (nsdIntroPlaying) return;
         if (mpdLockActive) {
             const col = Math.max(0, Math.min(2, Math.floor((lastCursorX / window.innerWidth) * 3)));
             if (col !== mpdFreeColumn) {
@@ -3422,7 +4077,7 @@ ${historyText}
         });
     }
 
-    const REALIZATION_SHOTS = ['b', 'k', 'l', 'd', 'e'];
+    const REALIZATION_SHOTS = ['b', 'd', 'e'];
     let realizationShotIdx = 0;
 
     const EMOTION_FX = {
@@ -3444,14 +4099,23 @@ ${historyText}
     function applySpecificCamShot(shot, ...elements) {
         const valid = elements.filter(Boolean);
         if (!valid.length) return;
+        console.log(`[Dangan][Trial] camera shot: ${String(shot || '').toUpperCase()}`);
         for (const el of valid) for (const s of CAM_SHOTS) el.classList.remove(`dangan-portrait-cam-${s}`);
         void valid[0].offsetWidth;
         for (const el of valid) el.classList.add(`dangan-portrait-cam-${shot}`);
     }
 
     function applyCamShot(...elements) {
-        const shot = CAM_SHOTS[camShotIdx % CAM_SHOTS.length];
-        camShotIdx++;
+        // Random shot, but never the same letter twice in a row.
+        let shot;
+        if (CAM_SHOTS.length <= 1) {
+            shot = CAM_SHOTS[0];
+        } else {
+            do {
+                shot = CAM_SHOTS[Math.floor(Math.random() * CAM_SHOTS.length)];
+            } while (shot === lastCamShot);
+        }
+        lastCamShot = shot;
         applySpecificCamShot(shot, ...elements);
     }
 
@@ -3806,6 +4470,7 @@ ${historyText}
     }
 
     function doWnSpaceFire() {
+        if (nsdIntroPlaying) return;
         playSfx?.('wn_shooting');
         showWnPressFlash();
         showWnBurst(lastCursorX, lastCursorY);
@@ -4020,13 +4685,21 @@ ${historyText}
             if (hitWp) {
                 playSfx?.('weak_spot_hit');
                 hitWeakPoint(hitWp, currentBullet, isPerjury);
+                // Successful hit — leave shotCooldown locked so spam-clicks
+                // can't fire further bullets until the next debate setup.
+                return;
             } else if (hitAgree) {
                 playSfx?.('weak_spot_hit');
                 hitAgreeText(hitAgree, currentBullet);
+                return;
             } else {
                 playSfx?.('tbmiss');
                 if (isPointOnDebateText(targetX, targetY)) {
                     playSfx?.('rejected_shot');
+                }
+                // Lie missed the weak spot — drop the inversion overlay.
+                if (currentBullet?.isLie) {
+                    document.body.classList.remove('dangan-nsd-lie-armed');
                 }
             }
             shotCooldown = false;
@@ -4098,7 +4771,29 @@ ${historyText}
 
     function handleShoot(e, isPerjury = false) {
         if (shotCooldown) return;
+        if (nsdIntroPlaying) return; // block fires until the debate intro fully finishes
+        if (nsdLieLoading) return; // block fires while the lie is generating
         shotCooldown = true;
+
+        // Health: deduct one point if the user fired a Truth Bullet while
+        // hovering on a White Noise (NSD + MPD). Re-check rects at click time
+        // since white noise drifts via RAF — a stationary cursor with a WN
+        // drifting onto it won't have hoveredWhiteNoise updated by mousemove.
+        if (isDebateActive()) {
+            let wnAtClick = hoveredWhiteNoise;
+            if (!wnAtClick && activeWhiteNoiseEls.length) {
+                const cx = e.clientX, cy = e.clientY;
+                for (const el of activeWhiteNoiseEls) {
+                    if (!document.body.contains(el) || el.classList.contains('breaking')) continue;
+                    const r = el.getBoundingClientRect();
+                    if (cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom) {
+                        wnAtClick = el;
+                        break;
+                    }
+                }
+            }
+            if (wnAtClick) deductNsdHealth();
+        }
 
         const bullets = getDebateBullets();
         const currentBullet = bullets[selectedTruthBulletIndex] || { title: 'TRUTH BULLET' };
@@ -4550,6 +5245,11 @@ JUDGMENT RULES:
     }
 
     function cleanupDebateUI() {
+        // Fresh debate session — release the per-hit shot lock so the player
+        // can fire again in the next round.
+        shotCooldown = false;
+        nsdIntroPlaying = false;
+        document.body.classList.remove('dangan-nsd-lie-armed');
         if (playbackTimerId) {
             window.clearTimeout(playbackTimerId);
             playbackTimerId = null;
@@ -4694,7 +5394,7 @@ JUDGMENT RULES:
         });
     }
 
-    async function buildDebateSections({ sectionsCount }) {
+    async function buildDebateSections({ sectionsCount, onProgress }) {
         const context = getContextMessagesForTrial();
         const speakers = pickSpeakersFromContext(context);
         const usableSpeakers = speakers.length ? speakers : [{ name: '???', weight: 1 }];
@@ -4753,6 +5453,7 @@ JUDGMENT RULES:
             } catch (e) {
                 console.error(`[Dangan][Trial] Error generating section ${i + 1}:`, e);
             }
+            try { onProgress?.((i + 1) / sectionsCount); } catch {}
         }
         
         // Sync prompt immediately after building sections
@@ -4949,6 +5650,166 @@ Rules:
         } catch {
             return null;
         }
+    }
+
+    // Build an array of Mass Panic Debate scenarios via the same LLM pipeline
+    // we use for NSD. Each scenario is { texts: [{text, speaker, whiteNoise?}, x3] }
+    // with one column wrapped in [[…]] to mark the weak point.
+    async function buildMpdScenarios({ scenarioCount, onProgress }) {
+        const context = getContextMessagesForTrial();
+        const speakers = pickSpeakersFromContext(context);
+        const usableSpeakers = speakers.filter(s => s && s.name) ;
+        if (usableSpeakers.length < 3) return null;
+
+        const poolSize = Math.min(usableSpeakers.length, Math.max(3, Math.min(8, scenarioCount + 2)));
+        const speakerPool = sampleWeightedWithoutReplacement(usableSpeakers, poolSize);
+        if (speakerPool.length < 3) return null;
+
+        // Reset persistent history for the new debate
+        persistentDebateHistory = [];
+        const scenarios = [];
+        const debateSoFar = [];
+
+        for (let i = 0; i < scenarioCount; i++) {
+            // Pick 3 distinct speakers for this scenario, weighted by pool weight
+            const pickPool = speakerPool.slice();
+            const speakerTrio = [];
+            for (let p = 0; p < 3 && pickPool.length; p++) {
+                const total = pickPool.reduce((sum, s) => sum + (s.weight || 1), 0);
+                let r = Math.random() * total;
+                let chosenIdx = 0;
+                for (let j = 0; j < pickPool.length; j++) {
+                    r -= (pickPool[j].weight || 1);
+                    if (r <= 0) { chosenIdx = j; break; }
+                }
+                speakerTrio.push(pickPool[chosenIdx]);
+                pickPool.splice(chosenIdx, 1);
+            }
+            if (speakerTrio.length < 3) break;
+
+            const weakColumn = Math.floor(Math.random() * 3);
+            const debateSoFarText = debateSoFar.length
+                ? debateSoFar.map(line => `- ${line}`).join('\n')
+                : '';
+
+            try {
+                const lines = await generateMpdScenarioStatements({
+                    speakerTrio,
+                    weakColumn,
+                    debateSoFarText,
+                    context,
+                    scenarioIndex: i,
+                    scenarioCount,
+                });
+                if (!lines || lines.length !== 3) {
+                    console.warn(`[Dangan][Trial] MPD scenario ${i + 1} returned ${lines?.length || 0} lines — skipping.`);
+                    continue;
+                }
+
+                const texts = lines.map((text, col) => ({
+                    text,
+                    speaker: speakerTrio[col].name,
+                    isWeakPoint: col === weakColumn,
+                }));
+
+                // White-noise reactions for the weak-point column only.
+                const weakText = lines[weakColumn];
+                const bystanderNames = speakerPool
+                    .map(s => s.name)
+                    .filter(n => !speakerTrio.find(t => t.name === n));
+                const whiteNoise = await generateWhiteNoiseReactions(weakText, bystanderNames);
+                if (whiteNoise) texts[weakColumn].whiteNoise = whiteNoise;
+
+                scenarios.push({ texts });
+
+                // Push spoken dialogue to debate history (sans the [[…]] markers).
+                lines.forEach((text, col) => {
+                    const stripped = String(text || '').replace(/\[\[/g, '').replace(/\]\]/g, '');
+                    const spoken = stripSurroundingQuotes(extractDialogueOnly(stripped) || stripped);
+                    if (spoken) {
+                        const line = `${speakerTrio[col].name}: ${spoken}`;
+                        debateSoFar.push(line);
+                        persistentDebateHistory.push(line);
+                    }
+                });
+                while (debateSoFar.length > 6) debateSoFar.shift();
+            } catch (e) {
+                console.error(`[Dangan][Trial] Error generating MPD scenario ${i + 1}:`, e);
+            }
+            try { onProgress?.((i + 1) / scenarioCount); } catch {}
+        }
+
+        syncPrompt();
+        return scenarios;
+    }
+
+    // One LLM call → 3 simultaneous shouted lines for an MPD scenario; the
+    // weakColumn slot gets wrapped in [[…]] so it's flagged as the weak spot.
+    async function generateMpdScenarioStatements({ speakerTrio, weakColumn, debateSoFarText, context, scenarioIndex, scenarioCount }) {
+        const contextLines = context
+            .slice(-12)
+            .map(m => `${m.isUser ? 'YOU' : m.name}: ${m.text}`)
+            .join('\n');
+
+        const speakerList = speakerTrio
+            .map((s, i) => `Column ${i + 1}: ${s.name}${i === weakColumn ? '  ← WEAK-POINT speaker' : ''}`)
+            .join('\n');
+
+        const prompt = `
+You are scripting a Danganronpa-style Mass Panic Debate. Three students shout over each other simultaneously — one of them lets slip the weak point that drives the debate.
+
+SCENARIO ${scenarioIndex + 1} / ${scenarioCount}
+
+SPEAKERS (left → right column order):
+${speakerList}
+
+Rules:
+- Output EXACTLY 3 lines, one per column in order, no labels, no numbering, no blank lines.
+- Each line is a single spoken sentence (6–18 words), in double quotes.
+- Stay in character for each speaker. Lines should feel like they're being shouted simultaneously — overlapping accusations, panic, deflection.
+- Column ${weakColumn + 1}'s line is the WEAK POINT. Wrap its FULL sentence (inside the quotes) in [[double brackets]]. Example: "[[The locked door proves the killer is still in this room!]]"
+- The other two lines must NOT contain [[…]] markers.
+- No narration, no actions, no inner thoughts, no speaker labels.
+
+DEBATE SO FAR (most recent lines):
+${debateSoFarText || 'NONE'}
+
+RECENT CHAT CONTEXT:
+${contextLines}
+`.trim();
+
+        if (typeof generateTrialDialogue !== 'function') return null;
+
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const out = String(
+                await generateTrialDialogue(prompt, {
+                    maxTokens: 220,
+                    temperature: 0.78 + attempt * 0.08,
+                }) || ''
+            ).trim();
+
+            const rawLines = out
+                .split('\n')
+                .map(l => l.replace(/^\s*\d+[.)]\s*/, '').replace(/^\s*[-*•]\s*/, '').trim())
+                .filter(l => l.length > 0)
+                .slice(0, 3);
+            if (rawLines.length !== 3) continue;
+
+            // Ensure exactly one [[…]] and it's on the weak-point line.
+            const stripMarkers = (s) => s.replace(/\[\[/g, '').replace(/\]\]/g, '');
+            const finalLines = rawLines.map((line, i) => {
+                let body = stripMarkers(line);
+                // Pull text out of surrounding quotes for inner wrapping, then re-quote.
+                const inner = extractDialogueOnly(body) || stripSurroundingQuotes(body);
+                if (!inner) return null;
+                if (i === weakColumn) return `"[[${inner.replace(/^\[\[|\]\]$/g, '')}]]"`;
+                return `"${inner}"`;
+            });
+
+            if (finalLines.every(Boolean)) return finalLines;
+        }
+
+        return null;
     }
 
     function sanitizeDebateLine(text) {
@@ -5490,6 +6351,7 @@ Rules:
         persistentDebateHistory = [];
         trialActive      = false;
         debateSeatingPlan = null;
+        unmountTrialAesthetic();
         destroyGroupChatPortraits();
         document.getElementById('dangan-trial-pre-debate-notif')?.remove();
         document.getElementById('dangan-trial-context-panel')?.remove();
@@ -5518,6 +6380,7 @@ Rules:
 
         // Always reset — prevents stale trialActive from a previous chat leaking in
         trialActive = false;
+        unmountTrialAesthetic();
         currentState = TrialPhases.IDLE;
         persistentDebateHistory = [];
         trialContext = { topic: '', goal: '', suspects: [] };
@@ -5531,6 +6394,7 @@ Rules:
 
         if (savedState && savedState !== TrialPhases.IDLE) {
             trialActive = true;
+            mountTrialAesthetic();
             console.log(`[Dangan][Trial] Restoring trial state for ${key}: ${savedState}`);
             // Transition back to the saved state.
             // Returning to PRE_DEBATE is safer after a refresh for stability.
@@ -5549,6 +6413,18 @@ Rules:
 
     // Call init on manager creation
     setTimeout(initFromPersistentState, 500);
+
+    // Safety poll: keep the trial aesthetic in sync even when CHAT_CHANGED
+    // doesn't fire (e.g. navigating to/from the Assistant chat).
+    setInterval(() => {
+        const shouldShow = trialActive && isGroupChat();
+        const isShown = document.body.classList.contains('dangan-trial-active');
+        if (isShown && !shouldShow) {
+            unmountTrialAesthetic();
+        } else if (!isShown && shouldShow) {
+            mountTrialAesthetic();
+        }
+    }, 1500);
 
     // ── Group Chat Portrait Stage ─────────────────────────────────────────────
 
@@ -6264,6 +7140,7 @@ Rules:
     return {
         start: () => {
             trialActive = true;
+            mountTrialAesthetic();
             setState(TrialPhases.PRE_DEBATE);
         },
         stop: () => {
@@ -6284,6 +7161,7 @@ Rules:
         debugStartNonStopDebateWithLines,
         onMessageSent,
         getState: () => currentState,
+        refreshTrialBadge,
         // Call this when an external activity (interjection, PTA, minigame, etc.) has
         // finished so the controls panel is restored. No-op if a debate is still running.
         resumeAfterActivity: () => {

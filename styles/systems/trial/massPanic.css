@@ -282,14 +282,14 @@
 }
 
 @keyframes mpd-col-focus-anim {
-    0%   { transform: translateX(0);   }
-    8%   { transform: translateX(-6px); }
-    18%  { transform: translateX(6px);  }
-    28%  { transform: translateX(-4px); }
-    38%  { transform: translateX(4px);  }
-    48%  { transform: translateX(-2px); }
-    58%  { transform: translateX(0);    }
-    100% { transform: translateX(0);    }
+    0%   { transform: translate(0,    var(--horse-y, 0px)); }
+    8%   { transform: translate(-6px, var(--horse-y, 0px)); }
+    18%  { transform: translate(6px,  var(--horse-y, 0px)); }
+    28%  { transform: translate(-4px, var(--horse-y, 0px)); }
+    38%  { transform: translate(4px,  var(--horse-y, 0px)); }
+    48%  { transform: translate(-2px, var(--horse-y, 0px)); }
+    58%  { transform: translate(0,    var(--horse-y, 0px)); }
+    100% { transform: translate(0,    var(--horse-y, 0px)); }
 }
 
 /* Speed-lines container within an MPD column */

@@ -75,10 +75,23 @@ function buildStyles() {
         margin-bottom: clamp(2px, 0.5vh, 6px);
         line-height: 1;
     }
+    /* Slightly larger leading "A" — adds visual emphasis to the heading. */
+    .qt-answer-heading > span:first-child {
+        font-size: 1.18em;
+    }
+    .qt-answer-heading > span {
+        transition: color 90ms linear, text-shadow 90ms linear;
+    }
     .qta-green  { color: #44ff88; text-shadow: 0 0 8px #44ff88, 0 0 22px #00ee55, 0 0 50px #00aa33; }
     .qta-yellow { color: #ffee00; text-shadow: 0 0 8px #ffee00, 0 0 22px #ddbb00, 0 0 50px #aa8800; }
     .qta-pink   { color: #ff44cc; text-shadow: 0 0 8px #ff44cc, 0 0 22px #ee00aa, 0 0 50px #bb0077; }
     .qta-blue   { color: #44aaff; text-shadow: 0 0 8px #44aaff, 0 0 22px #0077ee, 0 0 50px #0044aa; }
+    /* Flicker state — each letter independently snaps to muted grey, then
+     * back to its neon colour at random intervals. */
+    .qt-answer-heading > span.qta-flicker {
+        color: rgba(170, 170, 180, 0.55) !important;
+        text-shadow: none !important;
+    }
 
     .qt-title {
         font-size: clamp(10px, 1.4vh, 16px);
@@ -247,24 +260,78 @@ function buildStyles() {
         display: block;
     }
 
-    /* Health display */
+    /* Health display — NSD-style: status-bar.png graphic pinned to the
+     * viewport's top-right, with the SVG-masked hearts gauge overlaid
+     * above it (pink, drains right→left) and an all-black stars silhouette
+     * below the hearts. */
     .qt-health {
-        display: flex;
-        gap: 6px;
-        margin-top: 12px;
-        font-size: 20px;
-        line-height: 1;
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        width: clamp(320px, 30vw, 320px);
+        aspect-ratio: 770 / 442;
+        pointer-events: none;
+        z-index: 6;
     }
-    .qt-heart {
-        color: #ff2244;
-        text-shadow: 0 0 8px rgba(255, 30, 60, 0.8), 0 0 20px rgba(255, 0, 50, 0.4);
-        transition: opacity 0.2s ease, filter 0.2s ease;
+    .qt-status-bar {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        pointer-events: none;
+        user-select: none;
+        -webkit-user-drag: none;
+        z-index: 1;
     }
-    .qt-heart.qt-heart-lost {
-        opacity: 0.2;
-        filter: grayscale(1);
-        text-shadow: none;
+    .qt-hp-gauge,
+    .qt-stars-gauge {
+        position: absolute;
+        pointer-events: none;
+        z-index: 2;
     }
+    /* Positions converted from NSD viewport-pixel offsets to fractions of
+     * the 320 × ~183.6 status-bar bounding box, matching Question Truth. */
+    .qt-hp-gauge {
+        top: 14.7%;
+        right: 1.875%;
+        width: 71.875%;
+        aspect-ratio: 420.62 / 162.12;
+    }
+    .qt-stars-gauge {
+        top: 54.5%;
+        right: 11.25%;
+        width: 62.5%;
+        aspect-ratio: 831.39 / 183.14;
+    }
+    .qt-hp-bg, .qt-hp-fg-wrap, .qt-hp-fg,
+    .qt-stars-bg {
+        position: absolute;
+        inset: 0;
+    }
+    .qt-hp-bg, .qt-hp-fg,
+    .qt-stars-bg {
+        -webkit-mask-repeat: no-repeat;
+                mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+                mask-position: center;
+        -webkit-mask-size: contain;
+                mask-size: contain;
+    }
+    .qt-hp-bg      { background: #000; }
+    .qt-hp-fg-wrap {
+        filter:
+            drop-shadow(0 0 6px  rgba(255,  55, 196, 0.9))
+            drop-shadow(0 0 14px rgba(255,  55, 196, 0.55));
+        transition: filter 0.18s ease;
+    }
+    .qt-hp-fg      {
+        background: #ff37c4;
+        clip-path: inset(0 calc(100% - var(--gauge-pct, 100%)) 0 0);
+        transition: clip-path 180ms ease;
+    }
+    /* Stars row: silhouette only — never glows or fills with colour. */
+    .qt-stars-bg   { background: #000; }
 
     /* Wrong (eliminated) option */
     .qt-option.qt-wrong {
@@ -340,7 +407,9 @@ export function createQuestionTimeController({ extensionFolderPath = '', awardMo
 
         const MAX_HEALTH = 4;
         let health = MAX_HEALTH;
-        const heartHTML = '<span class="qt-heart">❤</span>'.repeat(MAX_HEALTH);
+        const heartsMaskUrl = `url("${extensionFolderPath}/assets/classtrial/hearts.svg")`;
+        const starsMaskUrl  = `url("${extensionFolderPath}/assets/classtrial/stars.svg")`;
+        const healthPct = () => Math.max(0, Math.min(100, (health / MAX_HEALTH) * 100));
 
         const overlay = document.createElement("div");
         overlay.id = QT_ID;
@@ -357,12 +426,60 @@ export function createQuestionTimeController({ extensionFolderPath = '', awardMo
                         </div>
                     `).join('')}
                 </div>
-                <div class="qt-health">${heartHTML}</div>
+            </div>
+            <div class="qt-health">
+                <img class="qt-status-bar" src="${extensionFolderPath}/assets/classtrial/status-bar.png" alt="" draggable="false"/>
+                <div class="qt-hp-gauge">
+                    <div class="qt-hp-bg"></div>
+                    <div class="qt-hp-fg-wrap"><div class="qt-hp-fg"></div></div>
+                </div>
+                <div class="qt-stars-gauge">
+                    <div class="qt-stars-bg"></div>
+                </div>
             </div>
             <div id="qt-timer">00:${String(Math.floor(time)).padStart(2,'0')}:000</div>`;
 
         document.body.appendChild(overlay);
         requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add("qt-on")));
+
+        // Apply the NSD heart + star SVG masks once the gauge elements are
+        // in the DOM, then seed the gauge at full HP.
+        for (const sel of ['.qt-hp-bg', '.qt-hp-fg']) {
+            const el = overlay.querySelector(sel);
+            if (!el) continue;
+            el.style.webkitMaskImage = heartsMaskUrl;
+            el.style.maskImage       = heartsMaskUrl;
+        }
+        const starsBgEl = overlay.querySelector('.qt-stars-bg');
+        if (starsBgEl) {
+            starsBgEl.style.webkitMaskImage = starsMaskUrl;
+            starsBgEl.style.maskImage       = starsMaskUrl;
+        }
+        const hpGaugeEl = overlay.querySelector('.qt-hp-gauge');
+        if (hpGaugeEl) hpGaugeEl.style.setProperty('--gauge-pct', `${healthPct()}%`);
+
+        // ── ANSWER heading: random neon → grey flicker per letter ────────
+        // Each span is scheduled independently. When fired, the letter
+        // snaps to the grey state (.qta-flicker) for 60–140 ms before
+        // returning to its base neon colour.  Idle gap is 300–2200 ms so
+        // the heading rarely flickers more than one or two letters at once
+        // but every letter still gets hit over time.  Stops rescheduling
+        // when the overlay is no longer in the DOM.
+        const headingSpans = overlay.querySelectorAll('.qt-answer-heading > span');
+        function scheduleFlicker(span) {
+            const idleGap = 300 + Math.random() * 1900;
+            setTimeout(() => {
+                if (!span.isConnected) return;
+                span.classList.add('qta-flicker');
+                const onTime = 60 + Math.random() * 80;
+                setTimeout(() => {
+                    if (!span.isConnected) return;
+                    span.classList.remove('qta-flicker');
+                    scheduleFlicker(span);
+                }, onTime);
+            }, idleGap);
+        }
+        headingSpans.forEach(scheduleFlicker);
 
         const totalMs   = time * 1000;
         let startTs  = null;
@@ -441,9 +558,8 @@ export function createQuestionTimeController({ extensionFolderPath = '', awardMo
             }
 
             function updateHealthDisplay() {
-                overlay.querySelectorAll(".qt-heart").forEach((el, i) => {
-                    el.classList.toggle("qt-heart-lost", i >= health);
-                });
+                const gauge = overlay.querySelector('.qt-hp-gauge');
+                if (gauge) gauge.style.setProperty('--gauge-pct', `${healthPct()}%`);
             }
 
             function triggerDamage() {
@@ -593,7 +709,7 @@ export function createQuestionTimeController({ extensionFolderPath = '', awardMo
                 const spriteEl = document.createElement('img');
                 spriteEl.src = spriteUrl;
                 spriteEl.alt = '';
-                spriteEl.style.cssText = 'position:absolute;bottom:-1520px;left:70%;transform:translateX(-50%);height:650%;width:auto;object-fit:contain;object-position:center bottom;pointer-events:none;filter:drop-shadow(rgb(255,255,255) 0px 0px 50px);';
+                spriteEl.style.cssText = 'position:absolute;bottom:-1370px;left:70%;transform:translateX(-50%);height:650%;width:auto;object-fit:contain;object-position:center bottom;pointer-events:none;filter:drop-shadow(rgb(255,255,255) 0px 0px 50px);';
                 inner.appendChild(spriteEl);
             }
         }
@@ -608,7 +724,22 @@ export function createQuestionTimeController({ extensionFolderPath = '', awardMo
         // Wait for slide to complete, then linger for 3 seconds
         await new Promise(r => setTimeout(r, 350));
 
-        await new Promise(r => setTimeout(r, 3000));
+        // ── Debug freeze (TEMPORARY) ──────────────────────────────────
+        // Pause here instead of lingering / fading out so the Got It!
+        // banner stays on-screen for styling.  Pointer-events flip to
+        // `auto` and the wrap accepts a single click to dismiss; flip
+        // DEBUG_FREEZE_GOT_IT_BANNER to `false` to restore normal playback.
+        const DEBUG_FREEZE_GOT_IT_BANNER = true;
+        if (DEBUG_FREEZE_GOT_IT_BANNER) {
+            banner.setAttribute('data-frozen', '1');
+            banner.style.pointerEvents = 'auto';
+            banner.style.cursor        = 'pointer';
+            await new Promise(resolveClick => {
+                banner.addEventListener('click', () => resolveClick(), { once: true });
+            });
+        } else {
+            await new Promise(r => setTimeout(r, 3000));
+        }
 
         // Fade out
         banner.style.transition = "opacity 0.5s ease";

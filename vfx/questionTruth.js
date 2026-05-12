@@ -10,7 +10,8 @@ function ensureNotoSansJP() {
     }
 }
 
-function buildStyles() {
+function buildStyles({ extensionFolderPath = '' } = {}) {
+    const panelImg = `${extensionFolderPath}/assets/images/minigames/pta-panel.png`;
     return `
     #${QTT_ID} {
         position: fixed;
@@ -62,22 +63,51 @@ function buildStyles() {
         }
     }
 
-    /* Timer bar */
+    /* Timer panel — bottom-right, framed by panel.png (mirrored + flipped
+     * so the decorative corner artwork points inward). */
+    #qtt-timer-area {
+        position: absolute;
+        bottom: 16px; right: 16px;
+        width: 280px;
+        padding: 38px 38px;
+        z-index: 6;
+        pointer-events: none;
+    }
+    #qtt-timer-area::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image: url("${panelImg}");
+        background-size: 100% 100%;
+        background-repeat: no-repeat;
+        transform: scale(-1, -1);
+        transform-origin: center;
+        pointer-events: none;
+        z-index: -1;
+    }
+    #qtt-timer-label {
+        font-family: "Orbitron", "Impact", monospace;
+        font-size: 11px;
+        letter-spacing: 3px;
+        color: rgba(255, 180, 100, 0.7);
+        margin-bottom: 4px;
+    }
     #qtt-timer {
-        position: absolute; left: 80%; top: 1.5%; z-index: 2;
-        text-align: center;
-        font-size: clamp(16px, 3vh, 36px);
+        font-family: "Orbitron", "Courier New", ui-monospace, monospace;
+        font-size: 28px;
         font-weight: 700;
-        letter-spacing: 6px;
-        color: #ffcc00;
-        text-shadow: 0 0 12px #ffaa00, 0 0 3px #ffdd00;
-        padding: clamp(6px, 1.2vh, 16px) 0;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-        flex-shrink: 0;
+        letter-spacing: 3px;
+        color: #ffaa00;
+        text-shadow: 0 0 12px #ff8800, 0 0 3px #ffcc00;
+        font-variant-numeric: tabular-nums;
+        font-feature-settings: "tnum" 1;
+        text-align: left;
+        line-height: 1;
+        white-space: nowrap;
     }
     #qtt-timer.qtt-urgent {
         color: #ff3300;
-        text-shadow: 0 0 12px #ff0000, 0 0 3px #ff5500;
+        text-shadow: 0 0 14px #ff0000, 0 0 3px #ff5500;
         animation: qttBlink 0.45s ease-in-out infinite;
     }
     @keyframes qttBlink { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
@@ -168,10 +198,50 @@ function buildStyles() {
     .qtt-question-text {
         font-size: clamp(14px, 2.6vh, 32px);
         font-weight: 400;
-        font-family: "Noto Sans JP", sans-serif;
+        font-family: "Quickend", "Boldonse", "Orbitron", "Rajdhani", monospace;
         color: rgba(255, 255, 255, 0.95);
         line-height: 1.45;
         letter-spacing: 0.01em;
+    }
+
+    /* Hint button — sits beneath the question text, left-aligned. Reveals
+     * the answer as "A-b" (uppercase first letter, lowercase last) on click. */
+    .qtt-hint-btn {
+        display: inline-block;
+        margin-top: clamp(10px, 1.6vh, 18px);
+        padding: 6px 16px;
+        font-family: "Quickend", "Boldonse", "Orbitron", "Rajdhani", monospace;
+        font-size: clamp(11px, 1.4vh, 14px);
+        letter-spacing: 3px;
+        color: #ffcc00;
+        background: rgba(40, 20, 0, 0.7);
+        border: 1px solid rgba(255, 200, 0, 0.6);
+        border-radius: 4px;
+        text-shadow: 0 0 10px rgba(255, 200, 0, 0.55);
+        box-shadow: 0 0 14px rgba(255, 180, 0, 0.25);
+        cursor: pointer;
+        pointer-events: auto;
+        transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+    }
+    .qtt-hint-btn:hover {
+        background: rgba(70, 35, 0, 0.85);
+        border-color: rgba(255, 220, 80, 0.95);
+        color: #ffe080;
+    }
+    .qtt-hint-btn[disabled] {
+        cursor: default;
+        opacity: 0.85;
+    }
+    .qtt-hint-display {
+        display: inline-block;
+        margin-top: clamp(10px, 1.6vh, 18px);
+        padding: 6px 16px;
+        font-family: "Quickend", "Boldonse", "Orbitron", "Rajdhani", monospace;
+        font-size: clamp(11px, 1.4vh, 14px);
+        letter-spacing: 6px;
+        font-weight: 700;
+        color: #ffcc00;
+        text-shadow: 0 0 12px rgba(255, 200, 0, 0.75);
     }
 
     /* Detail section */
@@ -298,25 +368,87 @@ function buildStyles() {
         opacity: 0.88;
     }
 
-    /* Health display */
+    /* Health display — NSD-style: a status-bar.png graphic in the top-right
+     * with SVG-masked hearts (pink, drains right→left) overlaid above it,
+     * and an all-black stars silhouette below the hearts. */
     .qtt-health {
-        display: flex;
-        gap: 6px;
-        padding: clamp(6px, 1vh, 10px) 16px;
-        border-bottom: 1px solid rgba(255, 0, 255, 0.2);
-        font-size: 18px;
-        flex-shrink: 0;
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        width: clamp(320px, 30vw, 320px);
+        aspect-ratio: 770 / 442;
+        pointer-events: none;
+        z-index: 5;
     }
-    .qtt-heart {
-        color: #ff2244;
-        text-shadow: 0 0 8px rgba(255, 30, 60, 0.8), 0 0 20px rgba(255, 0, 50, 0.4);
-        transition: opacity 0.2s ease, filter 0.2s ease;
+    .qtt-status-bar {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        pointer-events: none;
+        user-select: none;
+        -webkit-user-drag: none;
+        z-index: 1;
     }
-    .qtt-heart.qtt-heart-lost {
-        opacity: 0.2;
-        filter: grayscale(1);
-        text-shadow: none;
+    .qtt-hp-gauge,
+    .qtt-stars-gauge {
+        position: absolute;
+        pointer-events: none;
+        z-index: 2;
     }
+    /* Hearts + stars positions mirror NSD viewport-pixel offsets, converted
+     * to percentages of the 320 × ~183.6 status-bar bounding box.
+     *   NSD status-bar: top:10  right:10 width:320
+     *   NSD hearts    : top:37  right:16 width:230
+     *     → top  = (37  − 10) / 183.6 ≈ 14.7%
+     *       right = (16  − 10) / 320  ≈  1.875%
+     *       width = 230 / 320         =  71.875%
+     *   NSD stars     : top:110 right:46 width:200
+     *     → top  = (110 − 10) / 183.6 ≈ 54.5%
+     *       right = (46  − 10) / 320  =  11.25%
+     *       width = 200 / 320         =  62.5% */
+    .qtt-hp-gauge {
+        top: 14.7%;
+        right: 1.875%;
+        width: 71.875%;
+        aspect-ratio: 420.62 / 162.12;
+    }
+    .qtt-stars-gauge {
+        top: 54.5%;
+        right: 11.25%;
+        width: 62.5%;
+        aspect-ratio: 831.39 / 183.14;
+    }
+
+    .qtt-hp-bg, .qtt-hp-fg-wrap, .qtt-hp-fg,
+    .qtt-stars-bg {
+        position: absolute;
+        inset: 0;
+    }
+    .qtt-hp-bg, .qtt-hp-fg,
+    .qtt-stars-bg {
+        -webkit-mask-repeat: no-repeat;
+                mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+                mask-position: center;
+        -webkit-mask-size: contain;
+                mask-size: contain;
+    }
+    .qtt-hp-bg     { background: #000; }
+    .qtt-hp-fg-wrap {
+        filter:
+            drop-shadow(0 0 6px  rgba(255,  55, 196, 0.9))
+            drop-shadow(0 0 14px rgba(255,  55, 196, 0.55));
+        transition: filter 0.18s ease;
+    }
+    .qtt-hp-fg     {
+        background: #ff37c4;
+        clip-path: inset(0 calc(100% - var(--gauge-pct, 100%)) 0 0);
+        transition: clip-path 180ms ease;
+    }
+    /* Stars row: silhouette only — never glows or fills with colour. */
+    .qtt-stars-bg  { background: #000; }
 
     body.qtt-shaking { animation: qttScreenShake 80ms steps(2, end) infinite; }
     @keyframes qttScreenShake {
@@ -384,7 +516,7 @@ export function createQuestionTruthController({ extensionFolderPath = '', getTru
                 const spriteEl = document.createElement('img');
                 spriteEl.src = spriteUrl;
                 spriteEl.alt = '';
-                spriteEl.style.cssText = 'position:absolute;bottom:-1520px;left:70%;transform:translateX(-50%);height:650%;width:auto;object-fit:contain;object-position:center bottom;pointer-events:none;filter:drop-shadow(rgb(255,255,255) 0px 0px 50px);';
+                spriteEl.style.cssText = 'position:absolute;bottom:-1370px;left:70%;transform:translateX(-50%);height:650%;width:auto;object-fit:contain;object-position:center bottom;pointer-events:none;filter:drop-shadow(rgb(255,255,255) 0px 0px 50px);';
                 inner.appendChild(spriteEl);
             }
         }
@@ -413,7 +545,7 @@ export function createQuestionTruthController({ extensionFolderPath = '', getTru
 
         const styleEl = document.createElement("style");
         styleEl.id = QTT_STYLE;
-        styleEl.textContent = buildStyles();
+        styleEl.textContent = buildStyles({ extensionFolderPath });
         document.head.appendChild(styleEl);
 
         const hasTimer = time > 0;
@@ -421,20 +553,39 @@ export function createQuestionTruthController({ extensionFolderPath = '', getTru
 
         const MAX_HEALTH = 5;
         let health = MAX_HEALTH;
-        const heartHTML = '<span class="qtt-heart">❤</span>'.repeat(MAX_HEALTH);
+        const heartsMaskUrl = `url("${extensionFolderPath}/assets/classtrial/hearts.svg")`;
+        const starsMaskUrl  = `url("${extensionFolderPath}/assets/classtrial/stars.svg")`;
+        // NSD hearts svg has 3 hearts; for our 5-HP scale we just map the ratio
+        // directly onto the clip-path percentage.
+        const healthPct = () => Math.max(0, Math.min(100, (health / MAX_HEALTH) * 100));
+        const healthHTML = `
+            <img class="qtt-status-bar" src="${extensionFolderPath}/assets/classtrial/status-bar.png" alt="" draggable="false"/>
+            <div class="qtt-hp-gauge">
+                <div class="qtt-hp-bg"></div>
+                <div class="qtt-hp-fg-wrap"><div class="qtt-hp-fg"></div></div>
+            </div>
+            <div class="qtt-stars-gauge">
+                <div class="qtt-stars-bg"></div>
+            </div>
+        `;
 
         const overlay = document.createElement("div");
         overlay.id = QTT_ID;
         overlay.innerHTML = `
             <img class="qtt-revolver" src="${extensionFolderPath}/assets/images/minigames/revolver-cylinder.png" alt=""/>
-            ${hasTimer ? `<div id="qtt-timer">00:${String(Math.floor(time)).padStart(2,'0')}:000</div>` : ''}
+            ${hasTimer ? `
+                <div id="qtt-timer-area">
+                    <div id="qtt-timer-label">TIME</div>
+                    <div id="qtt-timer">00:${String(Math.floor(time)).padStart(2,'0')}:000</div>
+                </div>
+            ` : ''}
+            <div class="qtt-health">${healthHTML}</div>
             <div class="qtt-body">
                 <div class="qtt-list-panel">
                     <div class="qtt-list-header">
                         <img class="qtt-list-header-icon" src="${extensionFolderPath}/assets/icons/bullets.svg" alt=""/>
                         TRUTH BULLETS
                     </div>
-                    <div class="qtt-health">${heartHTML}</div>
                     <div class="qtt-list-items">
                         ${bullets.length
                             ? bullets.map((b, i) => `<div class="qtt-bullet-item" data-idx="${i}"><img class="qtt-bullet-icon" src="${extensionFolderPath}/assets/icons/artillery-shell.svg" alt=""/>${b.title}</div>`).join('')
@@ -445,6 +596,7 @@ export function createQuestionTruthController({ extensionFolderPath = '', getTru
                 <div class="qtt-right-panel">
                     <div class="qtt-question-section">
                         <div class="qtt-question-text">${question}</div>
+                        <button type="button" class="qtt-hint-btn" id="qtt-hint-btn">HINT</button>
                     </div>
                     <div class="qtt-detail-section">
                         <div class="qtt-detail-placeholder">SELECT A TRUTH BULLET</div>
@@ -454,6 +606,22 @@ export function createQuestionTruthController({ extensionFolderPath = '', getTru
 
         document.body.appendChild(overlay);
         requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add("qtt-on")));
+
+        // Apply the NSD heart + star SVG masks now that the gauge elements
+        // exist in the DOM, then seed the gauge at full HP.
+        for (const sel of ['.qtt-hp-bg', '.qtt-hp-fg']) {
+            const el = overlay.querySelector(sel);
+            if (!el) continue;
+            el.style.webkitMaskImage = heartsMaskUrl;
+            el.style.maskImage       = heartsMaskUrl;
+        }
+        const starsBgEl = overlay.querySelector('.qtt-stars-bg');
+        if (starsBgEl) {
+            starsBgEl.style.webkitMaskImage = starsMaskUrl;
+            starsBgEl.style.maskImage       = starsMaskUrl;
+        }
+        const hpGaugeEl = overlay.querySelector('.qtt-hp-gauge');
+        if (hpGaugeEl) hpGaugeEl.style.setProperty('--gauge-pct', `${healthPct()}%`);
 
         if (!bullets.length) return null;
 
@@ -468,6 +636,34 @@ export function createQuestionTruthController({ extensionFolderPath = '', getTru
 
         // Normalise answer for comparison
         const answerNorm = answer.trim().toLowerCase();
+
+        // Hint button — reveals the answer as "A-b" (uppercase first letter,
+        // lowercase last letter, separated by a dash). One-shot: the button
+        // is replaced in place with the revealed text once clicked.
+        const hintBtn = overlay.querySelector('#qtt-hint-btn');
+        if (hintBtn) {
+            const rawAnswer = String(answer || '').trim();
+            // Strip whitespace/punctuation so we always grab actual letters
+            // (e.g. "The Locked Door" → "T-r", not "T- ").
+            const letters = rawAnswer.replace(/[^A-Za-z0-9]/g, '');
+            if (letters.length >= 1) {
+                hintBtn.addEventListener('click', () => {
+                    if (resolved) return;
+                    const first = letters.charAt(0).toUpperCase();
+                    const last  = letters.length > 1
+                        ? letters.charAt(letters.length - 1).toLowerCase()
+                        : '?';
+                    const display = document.createElement('span');
+                    display.className = 'qtt-hint-display';
+                    display.textContent = `${first}-${last}`;
+                    hintBtn.replaceWith(display);
+                });
+            } else {
+                hintBtn.disabled = true;
+                hintBtn.style.opacity = '0.35';
+                hintBtn.style.cursor  = 'default';
+            }
+        }
         function triggerIncorrectEffects() {
             deductMonocoins?.(5, "question truth wrong answer");
             const wrongAudio = new Audio(`${extensionFolderPath}/assets/monokuma/incorrect-answer.wav`);
@@ -546,9 +742,8 @@ export function createQuestionTruthController({ extensionFolderPath = '', getTru
             }
 
             function updateHealthDisplay() {
-                overlay.querySelectorAll(".qtt-heart").forEach((el, i) => {
-                    el.classList.toggle("qtt-heart-lost", i >= health);
-                });
+                const gauge = overlay.querySelector('.qtt-hp-gauge');
+                if (gauge) gauge.style.setProperty('--gauge-pct', `${healthPct()}%`);
             }
 
             function triggerDamage() {
@@ -571,6 +766,7 @@ export function createQuestionTruthController({ extensionFolderPath = '', getTru
                     if (rafId) cancelAnimationFrame(rafId);
                     if (spinRafId) cancelAnimationFrame(spinRafId);
                     document.removeEventListener("keydown", onKey);
+                    window.removeEventListener("keydown", onArrowSuppress, { capture: true });
                     dismiss();
                     awardMonocoins?.(5, "question truth correct answer");
                     showGotItBanner().then(() => resolve(true));
@@ -582,6 +778,7 @@ export function createQuestionTruthController({ extensionFolderPath = '', getTru
                         if (rafId) cancelAnimationFrame(rafId);
                         if (spinRafId) cancelAnimationFrame(spinRafId);
                         document.removeEventListener("keydown", onKey);
+                        window.removeEventListener("keydown", onArrowSuppress, { capture: true });
                         dismiss();
                         triggerIncorrectEffects();
                         resolve(false);
@@ -599,6 +796,20 @@ export function createQuestionTruthController({ extensionFolderPath = '', getTru
                     case "Enter":     e.preventDefault(); playClick(); selectCurrent(); break;
                 }
             }
+
+            // Suppress left/right arrows entirely while Question Truth is on
+            // screen — they're not used by this minigame and would otherwise
+            // leak through to other listeners (trial speaker swap, NSD nav, etc.).
+            // Capture-phase listener with stopImmediatePropagation so it runs
+            // before any other handler can react.
+            function onArrowSuppress(e) {
+                if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                }
+            }
+            window.addEventListener("keydown", onArrowSuppress, { capture: true });
 
             // Timer tick
             if (hasTimer) {
@@ -624,6 +835,7 @@ export function createQuestionTruthController({ extensionFolderPath = '', getTru
                             resolved = true;
                             if (spinRafId) cancelAnimationFrame(spinRafId);
                             document.removeEventListener("keydown", onKey);
+                            window.removeEventListener("keydown", onArrowSuppress, { capture: true });
                             dismiss();
                             triggerIncorrectEffects();
                             resolve(null);

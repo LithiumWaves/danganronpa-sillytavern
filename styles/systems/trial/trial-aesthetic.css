@@ -1,0 +1,1046 @@
+/* ──────────────────────────────────────────────────────────────────────────
+   Class Trial — magenta-neon aesthetic
+   Active only while body.dangan-trial-active.
+   Built to mirror the Danganronpa class-trial chamber: thin neon frame,
+   vertical right-side TRIAL PANEL, crescent badge, top title bar.
+   ────────────────────────────────────────────────────────────────────────── */
+
+body.dangan-trial-active {
+    --dgn-neon-rgb: 255, 55, 196;
+    --dgn-neon: rgb(var(--dgn-neon-rgb));
+    --dgn-neon-soft: rgba(var(--dgn-neon-rgb), 0.55);
+    --dgn-neon-faint: rgba(var(--dgn-neon-rgb), 0.22);
+    --dgn-panel-bg: rgba(8, 2, 14, 0.86);
+    --dgn-panel-border: rgba(var(--dgn-neon-rgb), 0.85);
+    --dgn-panel-glow: 0 0 12px rgba(var(--dgn-neon-rgb), 0.55), inset 0 0 22px rgba(var(--dgn-neon-rgb), 0.12);
+    --dgn-panel-header-gradient: linear-gradient(180deg, rgba(var(--dgn-neon-rgb), 0.18) 0%, rgba(var(--dgn-neon-rgb), 0.04) 100%);
+    --dgn-panel-header-gradient-hover: linear-gradient(180deg, rgba(var(--dgn-neon-rgb), 0.28) 0%, rgba(var(--dgn-neon-rgb), 0.08) 100%);
+    --dgn-overlay-filter: none;
+}
+
+/* ── Decorative crossing-lines frame (top-left & top-right) ─────────────── */
+
+#dangan-trial-frame {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9990;
+    overflow: hidden;
+}
+
+#dangan-trial-frame .dgn-frame-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+    opacity: 0.65;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+/* ── During NSD: lift the speaker name / section dots / concentrate bar
+       above the character sprites. Both share z-index 10 by default; bump
+       the .dangan-trial-top-left container so its trio paints on top. ─── */
+body.dangan-trial-active.dangan-nsd-running .dangan-trial-top-left {
+    z-index: 30 !important;
+}
+
+/* ── Hide trial chrome while a minigame is running ───────────────────────── */
+
+body.dangan-trial-active.dangan-minigame-active #dangan-trial-frame,
+body.dangan-trial-active.dangan-minigame-active #dangan-bgm-panel,
+body.dangan-trial-active.dangan-minigame-active #dangan-bgm-display,
+body.dangan-trial-active.dangan-minigame-active #dangan-trial-badge,
+body.dangan-trial-active.dangan-minigame-active #dangan-trial-speaker-sticker,
+body.dangan-trial-active.dangan-nsd-running    #dangan-trial-frame,
+body.dangan-trial-active.dangan-nsd-running    #dangan-bgm-panel,
+body.dangan-trial-active.dangan-nsd-running    #dangan-bgm-display,
+body.dangan-trial-active.dangan-nsd-running    #dangan-trial-badge,
+body.dangan-trial-active.dangan-nsd-running    #dangan-trial-speaker-sticker,
+body.dangan-trial-active.dangan-mpd-active     #dangan-trial-frame,
+body.dangan-trial-active.dangan-mpd-active     #dangan-bgm-panel,
+body.dangan-trial-active.dangan-mpd-active     #dangan-bgm-display,
+body.dangan-trial-active.dangan-mpd-active     #dangan-trial-badge,
+body.dangan-trial-active.dangan-mpd-active     #dangan-trial-speaker-sticker,
+body.dangan-trial-active.dangan-rs-active      #dangan-trial-frame,
+body.dangan-trial-active.dangan-rs-active      #dangan-bgm-panel,
+body.dangan-trial-active.dangan-rs-active      #dangan-bgm-display,
+body.dangan-trial-active.dangan-rs-active      #dangan-trial-badge,
+body.dangan-trial-active.dangan-rs-active      #dangan-trial-speaker-sticker {
+    display: none !important;
+}
+
+/* ── Hide chapter/level/etc. indicators that conflict with the trial UI ─── */
+
+body.dangan-trial-active #dangan-chapter-label,
+body.dangan-trial-active #dangan-level-bar,
+body.dangan-trial-active .dangan-vn-nameplate {
+    display: none !important;
+}
+
+/* Right nav panel — always render above all trial chrome and modals */
+body.dangan-trial-active #right-nav-panel {
+    z-index: 10010 !important;
+}
+
+/* Monopad launcher circle — pink during trial */
+body.dangan-trial-active #dangan_monopad_button {
+    border-color: var(--dgn-panel-border) !important;
+    box-shadow:
+        0 0 12px rgba(var(--dgn-neon-rgb), 0.55),
+        0 0 24px rgba(var(--dgn-neon-rgb), 0.30) !important;
+}
+
+/* ── SillyTavern topbar — stack above the frame overlay + theme to match ── */
+
+/* #top-bar is an empty sibling element in this build; hide its decoration
+   so it doesn't render as a duplicated banner above the icon holder. */
+body.dangan-trial-active #top-bar {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* #top-settings-holder is the visible icon pill — theme + lift above frame. */
+body.dangan-trial-active #top-settings-holder {
+    position: relative !important;
+    z-index: 9994 !important;
+    width: 1036px !important;
+    height: 36px !important;
+    background: var(--dgn-panel-bg) !important;
+    border: 1.5px solid var(--dgn-panel-border) !important;
+    border-radius: 0 !important;
+    box-shadow: var(--dgn-panel-glow) !important;
+    box-sizing: border-box !important;
+}
+
+/* ── "1 CLASS TRIAL" crescent badge ──────────────────────────────────────── */
+
+#dangan-trial-badge {
+    position: fixed;
+    top: 130px;
+    left: 53px;
+    width: 92px;
+    height: 110px;
+    z-index: 9992;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 4px;
+    font-family: 'Boldonse', 'Orbitron', serif;
+    color: var(--dgn-neon);
+    text-shadow: 0 0 6px var(--dgn-neon-soft), 0 0 14px var(--dgn-neon-faint);
+}
+
+#dangan-trial-badge .dgn-badge-num-wrap {
+    position: relative;
+    width: 78px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+#dangan-trial-badge .dgn-badge-moon {
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(circle at 70% 50%, transparent 38%, var(--dgn-neon) 39%, var(--dgn-neon) 40%, transparent 41%);
+    filter: drop-shadow(0 0 4px var(--dgn-neon)) drop-shadow(0 0 10px var(--dgn-neon-soft));
+    opacity: 0.95;
+}
+#dangan-trial-badge .dgn-badge-num {
+    position: relative;
+    font-size: 50px;
+    line-height: 1;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    z-index: 1;
+    transform: translateX(10px) rotate(-15deg);
+    transform-origin: center;
+}
+#dangan-trial-badge .dgn-badge-label {
+    width: 100%;
+    font-size: 13px;
+    line-height: 1.05;
+    text-align: right;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 600;
+}
+
+/* ── Speaker flank-sticker (left edge, tilted, with neutral sprite) ─────── */
+
+#dangan-trial-speaker-sticker {
+    position: fixed;
+    top: 30%;
+    left: 28px;
+    transform: translateY(-50%) rotate(-8deg);
+    width: 229px;
+    height: min(560px, 70vh);
+    z-index: 9993;
+    pointer-events: none;
+    display: flex;
+    align-items: stretch;
+    justify-content: flex-start;
+    opacity: 0;
+    transition: opacity 0.35s ease, transform 0.35s ease;
+    --dgn-speaker-cyan: #6ce6ff;
+    --dgn-speaker-cyan-soft: rgba(108, 230, 255, 0.55);
+}
+
+#dangan-trial-speaker-sticker.visible {
+    opacity: 1;
+    transform: translateY(-50%) rotate(0deg) translateX(0);
+}
+
+#dangan-trial-speaker-sticker .dgn-speaker-img {
+    position: absolute;
+    inset: 0 -20px 0 30px;
+    background-position: center bottom;
+    background-repeat: no-repeat;
+    background-size: contain;
+    filter:
+        drop-shadow(0 0 8px rgba(108, 230, 255, 0.45))
+        drop-shadow(0 0 18px rgba(108, 230, 255, 0.30));
+    -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.95) 80%, rgba(0,0,0,0.0) 100%);
+            mask-image: linear-gradient(180deg, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.95) 80%, rgba(0,0,0,0.0) 100%);
+}
+
+#dangan-trial-speaker-sticker .dgn-speaker-name {
+    position: absolute;
+    bottom: calc(15% - 170px);
+    left: 100px;
+    width: min-content;
+    max-width: calc(100vw - 120px);
+    font-family: "Quickend", "Boldonse", "Orbitron", "Rajdhani", monospace;
+    font-size: 30px;
+    line-height: 1.05;
+    color: var(--dgn-neon);
+    text-shadow:
+        0 0 6px rgba(var(--dgn-neon-rgb), 0.55),
+        0 0 16px rgba(var(--dgn-neon-rgb), 0.40),
+        2px 3px 0 rgba(0, 0, 0, 0.55);
+    font-weight: 700;
+    text-transform: capitalize;
+    letter-spacing: 0;
+    word-break: normal;
+    overflow-wrap: normal;
+    white-space: normal;
+    text-align: center;
+    pointer-events: none;
+}
+
+#dangan-trial-speaker-sticker .dgn-speaker-name::first-letter {
+    color: var(--dgn-speaker-cyan);
+    text-shadow:
+        0 0 6px var(--dgn-speaker-cyan-soft),
+        0 0 18px rgba(108, 230, 255, 0.55),
+        2px 3px 0 rgba(0, 0, 0, 0.55);
+}
+
+/* ── TRIAL PANEL (right side, merged context + controls) ─────────────────── */
+
+body.dangan-trial-active #dangan-trial-pre-debate-notif.dangan-trial-notification {
+    top: 0;
+    right: 0;
+    padding: 0;
+    max-height: none;
+    animation: none;
+    box-sizing: border-box;
+}
+
+/* Flatten the legacy content wrapper so the structure mirrors BGM:
+   panel > header + body, with no inert div in between affecting layout. */
+body.dangan-trial-active #dangan-trial-pre-debate-notif .dangan-trial-notif-content {
+    display: contents;
+}
+
+/* Hide the legacy left-side context panel — we merge it into the right panel */
+body.dangan-trial-active #dangan-trial-context-panel {
+    display: none !important;
+}
+
+/* Header — drag handle doubles as the .dgn-side-panel-header (shared style).
+   Override every legacy property that would offset it from BGM's <button>. */
+body.dangan-trial-active #dangan-trial-pre-debate-notif .dangan-trial-notif-drag-handle {
+    padding: 8px 14px !important;
+    margin: 0 !important;
+    cursor: pointer !important;
+    gap: 8px !important;
+    box-sizing: border-box !important;
+}
+body.dangan-trial-active #dangan-trial-pre-debate-notif.collapsed .dangan-trial-notif-drag-handle {
+    padding-bottom: 8px !important;
+}
+body.dangan-trial-active #dangan-trial-pre-debate-notif .dangan-trial-notif-drag-icon { display: none; }
+body.dangan-trial-active #dangan-trial-pre-debate-notif .dangan-trial-topic-label {
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    text-shadow: inherit;
+}
+
+body.dangan-trial-active #dangan-trial-pre-debate-notif .dangan-trial-notif-body {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0;
+    padding: 0;
+    overflow: hidden;
+    max-height: 90vh;
+    opacity: 1;
+    transition: max-height 0.3s ease, opacity 0.2s ease;
+}
+body.dangan-trial-active #dangan-trial-pre-debate-notif.collapsed .dangan-trial-notif-body {
+    max-height: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+body.dangan-trial-active .dgn-trial-section {
+    padding: 12px 18px;
+    position: relative;
+    text-align: center;
+    width: 100%;
+    box-sizing: border-box;
+}
+body.dangan-trial-active .dgn-trial-section:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-bottom: 1px solid var(--dgn-neon-faint);
+}
+
+body.dangan-trial-active .dgn-trial-section-title {
+    text-align: center !important;
+    color: var(--dgn-neon);
+    font-size: 14px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    margin: 0 0 8px 0;
+    text-shadow: 0 0 5px var(--dgn-neon-soft);
+}
+
+/* Goal */
+body.dangan-trial-active .dgn-trial-goal-text,
+body.dangan-trial-active #dangan-trial-pre-debate-notif .dangan-context-goal,
+body.dangan-trial-active #dangan-trial-pre-debate-notif .dgn-trial-section--goal .dangan-context-goal {
+    display: block;
+    width: 100%;
+    margin: 0 auto;
+    text-align: center !important;
+    text-align-last: center !important;
+    font-size: 13px;
+    color: var(--dgn-neon);
+    text-shadow: 0 0 5px var(--dgn-neon-soft);
+    line-height: 1.4;
+    font-family: 'Noto Sans JP', sans-serif;
+    font-style: italic;
+    word-break: break-word;
+}
+body.dangan-trial-active .dgn-trial-goal-text:empty::before {
+    content: 'Click to set goal';
+    opacity: 0.4;
+}
+body.dangan-trial-active .dgn-trial-goal-text[contenteditable] {
+    cursor: text;
+    border-radius: 2px;
+    padding: 2px 4px;
+    transition: background 0.15s ease, box-shadow 0.15s ease;
+    outline: none;
+}
+body.dangan-trial-active .dgn-trial-goal-text[contenteditable]:hover {
+    background: rgba(var(--dgn-neon-rgb), 0.10);
+}
+body.dangan-trial-active .dgn-trial-goal-text[contenteditable]:focus {
+    background: rgba(var(--dgn-neon-rgb), 0.14);
+    box-shadow: 0 0 0 1px var(--dgn-neon), 0 0 8px var(--dgn-neon-soft);
+    font-style: normal;
+}
+body.dangan-trial-active .dgn-trial-goal-text[contenteditable]:focus:empty::before {
+    content: '';
+}
+
+/* Suspects (checkbox + name + percent) */
+body.dangan-trial-active .dgn-suspects-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    align-items: start;
+    justify-items: center;
+}
+body.dangan-trial-active .dgn-suspect-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    user-select: none;
+}
+body.dangan-trial-active .dgn-suspect-portrait {
+    width: 64px;
+    height: 64px;
+    border: 1.5px solid var(--dgn-neon);
+    background: rgba(8, 2, 14, 0.6);
+    box-shadow: 0 0 6px var(--dgn-neon-soft), inset 0 0 8px rgba(var(--dgn-neon-rgb), 0.10);
+    position: relative;
+    overflow: hidden;
+}
+body.dangan-trial-active .dgn-suspect-portrait img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top center;
+    display: block;
+}
+body.dangan-trial-active .dgn-suspect-name {
+    font-size: 10px;
+    color: var(--dgn-neon);
+    text-shadow: 0 0 4px var(--dgn-neon-soft);
+    text-align: center;
+    line-height: 1.15;
+    letter-spacing: 0.04em;
+    font-family: 'Orbitron', sans-serif;
+    word-break: break-word;
+    max-width: 100%;
+}
+body.dangan-trial-active .dgn-suspect-pct {
+    font-size: 11px;
+    color: var(--dgn-neon);
+    font-weight: 600;
+    text-shadow: 0 0 4px var(--dgn-neon-soft);
+    letter-spacing: 0.04em;
+}
+body.dangan-trial-active .dgn-suspects-empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    font-size: 11px;
+    color: rgba(245, 230, 248, 0.45);
+    font-style: italic;
+    font-family: 'Noto Sans JP', sans-serif;
+}
+body.dangan-trial-active .dgn-suspects-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    position: relative;
+    margin-bottom: 8px;
+}
+body.dangan-trial-active .dgn-suspects-header .dangan-suspect-refresh-btn {
+    position: absolute;
+    right: 0;
+    color: var(--dgn-neon);
+    text-shadow: 0 0 4px var(--dgn-neon-soft);
+}
+
+/* Controls loading indicator — three pulsing dots while buttons load */
+body.dangan-trial-active .dgn-controls-loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    height: 32px;
+    margin: 4px 0 8px 0;
+}
+body.dangan-trial-active .dgn-trial-section--controls.loaded .dgn-controls-loading {
+    display: none;
+}
+body.dangan-trial-active .dgn-controls-loading span {
+    display: block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--dgn-neon);
+    box-shadow: 0 0 6px var(--dgn-neon-soft);
+    opacity: 0.3;
+    animation: dgn-controls-loading-pulse 1.2s infinite ease-in-out;
+}
+body.dangan-trial-active .dgn-controls-loading span:nth-child(2) { animation-delay: 0.18s; }
+body.dangan-trial-active .dgn-controls-loading span:nth-child(3) { animation-delay: 0.36s; }
+
+@keyframes dgn-controls-loading-pulse {
+    0%, 70%, 100% {
+        opacity: 0.25;
+        transform: scale(1);
+        box-shadow: 0 0 4px var(--dgn-neon-faint);
+    }
+    35% {
+        opacity: 1;
+        transform: scale(1.35);
+        box-shadow: 0 0 12px var(--dgn-neon), 0 0 22px var(--dgn-neon-soft);
+    }
+}
+
+/* Controls — outline pill buttons in a 2-column grid */
+body.dangan-trial-active .dgn-controls-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+body.dangan-trial-active .dgn-controls-grid .dangan-trial-start-btn {
+    background: transparent !important;
+    color: var(--dgn-neon) !important;
+    border: 1.5px solid var(--dgn-neon) !important;
+    border-radius: 0 !important;
+    padding: 7px 6px !important;
+    font-size: 9px !important;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    box-shadow: 0 0 6px var(--dgn-neon-faint), inset 0 0 8px rgba(var(--dgn-neon-rgb), 0.08);
+    transition: background 0.15s ease, box-shadow 0.15s ease, color 0.15s ease, transform 0.1s ease;
+}
+body.dangan-trial-active .dgn-controls-grid .dangan-trial-start-btn:hover {
+    background: rgba(var(--dgn-neon-rgb), 0.18) !important;
+    color: #fff !important;
+    box-shadow: 0 0 14px var(--dgn-neon), inset 0 0 12px rgba(var(--dgn-neon-rgb), 0.25);
+    filter: none;
+    transform: translateY(-1px);
+}
+body.dangan-trial-active .dgn-controls-grid .dangan-trial-start-btn:active {
+    transform: translateY(0);
+    background: rgba(var(--dgn-neon-rgb), 0.32) !important;
+}
+
+/* Hide legacy group labels inside neon panel */
+body.dangan-trial-active #dangan-trial-pre-debate-notif .dangan-trial-group-label {
+    display: none;
+}
+
+/* Seating section keeps its layout but recolours into the magenta scheme */
+body.dangan-trial-active #dangan-trial-pre-debate-notif .dangan-seating-plan-header {
+    color: var(--dgn-neon);
+    border-bottom: 1px solid var(--dgn-neon-faint);
+}
+body.dangan-trial-active #dangan-trial-pre-debate-notif .dangan-seating-plan-chip {
+    background: rgba(var(--dgn-neon-rgb), 0.10);
+    border: 1px solid var(--dgn-neon-faint);
+    color: #f5e6f8;
+}
+body.dangan-trial-active #dangan-trial-pre-debate-notif .dangan-seating-action-btn {
+    background: transparent;
+    border: 1px solid var(--dgn-neon);
+    color: var(--dgn-neon);
+}
+
+/* ── Shared side-panel base (BGM panel + Trial panel) ────────────────────── */
+
+body.dangan-trial-active .dgn-side-panel {
+    position: fixed;
+    top: 18px;
+    width: 260px;
+    max-width: 92vw;
+    background: var(--dgn-panel-bg);
+    border: 1.5px solid var(--dgn-panel-border);
+    border-radius: 0;
+    color: #f5e6f8;
+    box-shadow: var(--dgn-panel-glow);
+    font-family: 'Orbitron', 'Noto Sans JP', sans-serif;
+    z-index: 9995;
+    overflow: visible;
+}
+body.dangan-trial-active .dgn-side-panel-header {
+    background: var(--dgn-panel-header-gradient);
+    border: none;
+    border-bottom: 1px solid var(--dgn-panel-border);
+    padding: 8px 14px;
+    width: 100%;
+    color: var(--dgn-neon);
+    font-family: 'Orbitron', sans-serif !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    font-style: normal !important;
+    line-height: 1.2 !important;
+    letter-spacing: 0.18em !important;
+    text-transform: uppercase !important;
+    text-shadow: 0 0 6px var(--dgn-neon-soft) !important;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-align: center;
+    box-sizing: border-box;
+    transition: background 0.15s ease;
+}
+body.dangan-trial-active .dgn-side-panel-header:hover {
+    background: var(--dgn-panel-header-gradient-hover);
+}
+body.dangan-trial-active .dgn-side-panel-chev {
+    position: absolute;
+    right: 14px;
+    transition: transform 0.2s ease;
+    font-size: 12px;
+    line-height: 1;
+}
+body.dangan-trial-active .dgn-side-panel.collapsed .dgn-side-panel-chev {
+    transform: rotate(-90deg);
+}
+
+/* ── BGM panel (very top-left, compact controller, no visualiser) ────────── */
+
+body.dangan-trial-active #dangan-bgm-panel {
+    top: 0;
+    left: 0;
+    width: 260px;
+}
+body.dangan-trial-active #dangan-bgm-panel #dangan-bgm-display {
+    position: static !important;
+    transform: none !important;
+    margin: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: 200px;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 4px !important;
+    padding: 8px 12px !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    opacity: 1;
+    transition: max-height 0.3s ease, opacity 0.2s ease, padding 0.3s ease;
+    overflow: hidden;
+}
+body.dangan-trial-active #dangan-bgm-panel.collapsed #dangan-bgm-display {
+    max-height: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/* Hide the visualiser + decorative artwork layers */
+body.dangan-trial-active #dangan-bgm-panel .dbgm-canvas,
+body.dangan-trial-active #dangan-bgm-panel .dbgm-cradle,
+body.dangan-trial-active #dangan-bgm-panel .dbgm-wisps,
+body.dangan-trial-active #dangan-bgm-panel .dbgm-morning,
+body.dangan-trial-active #dangan-bgm-panel .dbgm-wings,
+body.dangan-trial-active #dangan-bgm-panel .dbgm-clock,
+body.dangan-trial-active #dangan-bgm-panel .dbgm-scroller img {
+    display: none !important;
+}
+
+/* Title row (was the marquee scroller) — reflow as a normal row, magenta neon */
+body.dangan-trial-active #dangan-bgm-panel .dbgm-scroller {
+    position: static !important;
+    inset: auto !important;
+    height: 18px !important;
+    width: 100% !important;
+    overflow: hidden !important;
+    background: transparent !important;
+    z-index: auto !important;
+}
+body.dangan-trial-active #dangan-bgm-panel .dbgm-titlebar-text-container {
+    position: static !important;
+    width: 100% !important;
+    height: 18px !important;
+    overflow: hidden !important;
+    top: auto !important;
+}
+body.dangan-trial-active #dangan-bgm-panel .dbgm-titlebar-text {
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    padding: 0 !important;
+    color: var(--dgn-neon) !important;
+    text-shadow: 0 0 4px var(--dgn-neon-soft) !important;
+    font-family: 'Orbitron', sans-serif !important;
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.06em !important;
+    animation: dbgm-marquee 14s linear infinite !important;
+}
+
+/* Controls row — un-skew, sit at the bottom of the panel */
+body.dangan-trial-active #dangan-bgm-panel .dbgm-controls {
+    position: static !important;
+    inset: auto !important;
+    transform: none !important;
+    height: 24px !important;
+    background: transparent !important;
+    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+}
+body.dangan-trial-active #dangan-bgm-panel .dbgm-playlist-label {
+    color: var(--dgn-neon) !important;
+    text-shadow: 0 0 4px var(--dgn-neon-soft) !important;
+    font-family: 'Orbitron', sans-serif !important;
+    font-size: 9px !important;
+    font-style: normal !important;
+    letter-spacing: 0.12em !important;
+}
+body.dangan-trial-active #dangan-bgm-panel .dbgm-ctrl-btns {
+    gap: 4px !important;
+}
+body.dangan-trial-active #dangan-bgm-panel .dbgm-ctrl-btn {
+    background: transparent !important;
+    border: 1px solid var(--dgn-neon) !important;
+    color: var(--dgn-neon) !important;
+    border-radius: 0 !important;
+    padding: 2px 6px !important;
+    font-size: 11px !important;
+    line-height: 1 !important;
+    text-shadow: 0 0 4px var(--dgn-neon-soft) !important;
+    box-shadow: 0 0 4px var(--dgn-neon-faint);
+    transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease !important;
+}
+body.dangan-trial-active #dangan-bgm-panel .dbgm-ctrl-btn:hover {
+    background: rgba(var(--dgn-neon-rgb), 0.18) !important;
+    color: #fff !important;
+    box-shadow: 0 0 8px var(--dgn-neon) !important;
+}
+
+/* ── FX Panel theme section (under the music controls) ───────────────────── */
+
+body.dangan-trial-active .dgn-fx-section {
+    padding: 8px 12px;
+    transition: max-height 0.3s ease, opacity 0.25s ease, padding 0.3s ease;
+    overflow: hidden;
+    max-height: 200px;
+    opacity: 1;
+}
+body.dangan-trial-active #dangan-bgm-panel.collapsed .dgn-fx-section {
+    max-height: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+body.dangan-trial-active .dgn-fx-divider {
+    height: 1px;
+    background: var(--dgn-neon-faint);
+    margin: 0 0 8px 0;
+}
+body.dangan-trial-active .dgn-fx-theme-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+body.dangan-trial-active .dgn-fx-theme-label {
+    color: var(--dgn-neon);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    text-shadow: 0 0 4px var(--dgn-neon-soft);
+}
+body.dangan-trial-active .dgn-fx-theme-select {
+    background: rgba(8, 2, 14, 0.7);
+    color: var(--dgn-neon);
+    border: 1px solid var(--dgn-neon);
+    border-radius: 0;
+    padding: 4px 22px 4px 8px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    cursor: pointer;
+    text-shadow: 0 0 4px var(--dgn-neon-soft);
+    box-shadow: 0 0 4px var(--dgn-neon-faint);
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--dgn-neon) 50%),
+                      linear-gradient(135deg, var(--dgn-neon) 50%, transparent 50%);
+    background-position: calc(100% - 14px) center, calc(100% - 8px) center;
+    background-size: 6px 6px, 6px 6px;
+    background-repeat: no-repeat;
+}
+body.dangan-trial-active .dgn-fx-theme-select option {
+    background: rgba(8, 2, 14, 0.95);
+    color: var(--dgn-neon);
+}
+
+body.dangan-trial-active .dgn-fx-commands-row {
+    display: flex;
+    justify-content: center;
+}
+body.dangan-trial-active .dgn-fx-commands-btn {
+    width: 100%;
+    background: rgba(8, 2, 14, 0.7);
+    color: var(--dgn-neon);
+    border: 1px solid var(--dgn-neon);
+    border-radius: 0;
+    padding: 6px 10px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    text-shadow: 0 0 4px var(--dgn-neon-soft);
+    box-shadow: 0 0 4px var(--dgn-neon-faint);
+    transition: background 0.12s ease, box-shadow 0.12s ease, color 0.12s ease;
+}
+body.dangan-trial-active .dgn-fx-commands-btn:hover {
+    background: rgba(var(--dgn-neon-rgb), 0.18);
+    color: #fff;
+    box-shadow: 0 0 10px var(--dgn-neon);
+}
+
+/* ── Commands modal ──────────────────────────────────────────────────────── */
+
+.dgn-commands-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 10001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Noto Sans JP', sans-serif;
+}
+.dgn-commands-modal .dgn-commands-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+}
+.dgn-commands-modal .dgn-commands-card {
+    position: relative;
+    width: min(720px, 92vw);
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--dgn-panel-bg, rgba(8, 2, 14, 0.92));
+    border: 1.5px solid var(--dgn-panel-border, rgba(255, 55, 196, 0.85));
+    box-shadow: var(--dgn-panel-glow, 0 0 12px rgba(255, 55, 196, 0.55));
+    color: #f5e6f8;
+}
+.dgn-commands-modal .dgn-commands-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 16px;
+    background: var(--dgn-panel-header-gradient, linear-gradient(180deg, rgba(255,55,196,0.18) 0%, rgba(255,55,196,0.04) 100%));
+    border-bottom: 1px solid var(--dgn-panel-border, rgba(255, 55, 196, 0.85));
+    color: var(--dgn-neon, #ff37c4);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    text-shadow: 0 0 6px var(--dgn-neon-soft, rgba(255, 55, 196, 0.55));
+    position: relative;
+}
+.dgn-commands-modal .dgn-commands-close {
+    position: absolute;
+    right: 12px;
+    background: transparent;
+    border: none;
+    color: var(--dgn-neon, #ff37c4);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 2px 6px;
+    text-shadow: 0 0 4px var(--dgn-neon-soft, rgba(255, 55, 196, 0.55));
+}
+.dgn-commands-modal .dgn-commands-close:hover {
+    color: #fff;
+}
+.dgn-commands-modal .dgn-commands-body {
+    overflow-y: auto;
+    padding: 18px 22px;
+    line-height: 1.45;
+}
+.dgn-commands-modal .dgn-cmd-group + .dgn-cmd-group {
+    margin-top: 18px;
+}
+.dgn-commands-modal .dgn-cmd-group-title {
+    margin: 0 0 10px 0;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--dgn-neon, #ff37c4);
+    text-shadow: 0 0 5px var(--dgn-neon-soft, rgba(255, 55, 196, 0.55));
+    border-bottom: 1px solid var(--dgn-neon-faint, rgba(255, 55, 196, 0.22));
+    padding-bottom: 6px;
+}
+.dgn-commands-modal .dgn-cmd-item {
+    margin-bottom: 12px;
+}
+.dgn-commands-modal .dgn-cmd-name code {
+    font-family: 'Orbitron', monospace;
+    font-size: 13px;
+    color: var(--dgn-neon, #ff37c4);
+    background: rgba(var(--dgn-neon-rgb, 255, 55, 196), 0.10);
+    padding: 1px 6px;
+    border: 1px solid var(--dgn-neon-faint, rgba(255, 55, 196, 0.22));
+}
+.dgn-commands-modal .dgn-cmd-desc {
+    margin-top: 4px;
+    font-size: 13px;
+    color: #f5e6f8;
+}
+.dgn-commands-modal .dgn-cmd-opts {
+    margin: 6px 0 0 0;
+    padding-left: 18px;
+    font-size: 12px;
+    color: rgba(245, 230, 248, 0.78);
+}
+.dgn-commands-modal .dgn-cmd-opts li {
+    margin-bottom: 2px;
+}
+
+/* ── Trial themes — chrome colors come from --dgn-neon-rgb (a 'r, g, b'
+       triplet). The frame overlay PNG gets its own filter to recolor the
+       baked-in pink lines. Character images, suspect portraits and the
+       speaker sprite are NOT filtered, so they keep their natural colors. */
+
+body.dangan-trial-active #dangan-trial-frame .dgn-frame-img {
+    filter: var(--dgn-overlay-filter, none);
+}
+
+body.dangan-trial-active.dangan-trial-theme-pink-concerto {
+    --dgn-neon-rgb: 255, 55, 196;
+    --dgn-overlay-filter: none;
+}
+body.dangan-trial-active.dangan-trial-theme-silver-rock {
+    --dgn-neon-rgb: 207, 207, 207;
+    --dgn-overlay-filter: grayscale(1) brightness(1.05);
+}
+body.dangan-trial-active.dangan-trial-theme-spring-metal {
+    --dgn-neon-rgb: 216, 160, 96;
+    --dgn-overlay-filter: sepia(1) saturate(1.6) hue-rotate(-15deg) brightness(1.05);
+}
+body.dangan-trial-active.dangan-trial-theme-crimson-jazz {
+    --dgn-neon-rgb: 255, 77, 77;
+    --dgn-overlay-filter: hue-rotate(60deg);
+}
+body.dangan-trial-active.dangan-trial-theme-sapphire-elegy {
+    --dgn-neon-rgb: 77, 138, 255;
+    --dgn-overlay-filter: hue-rotate(280deg);
+}
+body.dangan-trial-active.dangan-trial-theme-violet-waltz {
+    --dgn-neon-rgb: 176, 77, 255;
+    --dgn-overlay-filter: hue-rotate(315deg);
+}
+body.dangan-trial-active.dangan-trial-theme-gold-beat {
+    --dgn-neon-rgb: 255, 214, 51;
+    --dgn-overlay-filter: hue-rotate(110deg);
+}
+body.dangan-trial-active.dangan-trial-theme-emerald-blues {
+    --dgn-neon-rgb: 77, 255, 122;
+    --dgn-overlay-filter: hue-rotate(160deg);
+}
+body.dangan-trial-active.dangan-trial-theme-scarlet-tango {
+    --dgn-neon-rgb: 255, 140, 51;
+    --dgn-overlay-filter: hue-rotate(90deg);
+}
+
+
+/* ── VN dialogue frame: pin to bottom-centre during a trial ──────────────── */
+
+/* Lift the parent above the frame overlay AND #sheld so its buttons are
+   actually clickable. Dialogue and input never overlap visually (dialogue
+   sits above the input), so #sheld being below the dialogue here is fine —
+   clicks on the input still land on #sheld since the dialogue isn't there. */
+body.dangan-trial-active #dangan-vn-overlay {
+    z-index: 9996 !important;
+}
+
+body.dangan-trial-active #dangan-vn-overlay .dangan-vn-frame,
+body.dangan-trial-active #dangan-vn-overlay .dangan-vn-frame.dangan-vn-custom-pos {
+    position: fixed !important;
+    top: auto !important;
+    bottom: var(--dgn-input-height, 44px) !important;  /* sit directly on top of #send_form */
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    margin: 0 !important;
+    background: var(--dgn-panel-bg) !important;
+    border: 1.5px solid var(--dgn-panel-border) !important;
+    border-radius: 12px 12px 0 0 !important;
+    box-shadow: var(--dgn-panel-glow) !important;
+}
+body.dangan-trial-active #dangan-vn-lock {
+    display: none !important;
+}
+
+/* ── VN toolbar and message input gating ─────────────────────────────────── */
+
+/* Progress bar (line / chunk position) — match panel pinks */
+body.dangan-trial-active #dangan-vn-overlay .dangan-vn-progress {
+    background: rgba(var(--dgn-neon-rgb), 0.18) !important;
+    box-shadow: 0 0 6px rgba(var(--dgn-neon-rgb), 0.18) !important;
+}
+body.dangan-trial-active #dangan-vn-overlay .dangan-vn-progress-fill {
+    background: linear-gradient(90deg, rgba(var(--dgn-neon-rgb), 0.85), rgba(var(--dgn-neon-rgb), 0.95)) !important;
+    box-shadow: 0 0 8px rgba(var(--dgn-neon-rgb), 0.55) !important;
+}
+
+body.dangan-trial-active #dangan-vn-overlay .dangan-vn-control,
+body.dangan-trial-active #dangan-vn-overlay .dangan-vn-nav-button {
+    background: rgba(8, 2, 14, 0.7) !important;
+    border: 1.5px solid var(--dgn-neon) !important;
+    color: var(--dgn-neon) !important;
+    border-radius: 0 !important;
+    box-shadow: 0 0 6px var(--dgn-neon-faint);
+    text-shadow: 0 0 4px var(--dgn-neon-soft);
+    font-family: 'Orbitron', sans-serif;
+    letter-spacing: 0.10em;
+}
+body.dangan-trial-active #dangan-vn-overlay .dangan-vn-control:hover,
+body.dangan-trial-active #dangan-vn-overlay .dangan-vn-nav-button:hover {
+    background: rgba(var(--dgn-neon-rgb), 0.18) !important;
+    color: #fff !important;
+    box-shadow: 0 0 14px var(--dgn-neon);
+}
+
+/* SillyTavern composer recolouring while in trial — match BGM panel */
+body.dangan-trial-active #send_form {
+    top: 831px !important;
+    background: var(--dgn-panel-bg) !important;
+    border: 1.5px solid var(--dgn-panel-border) !important;
+    border-radius: 0 !important;
+    box-shadow:
+        0 0 18px rgba(var(--dgn-neon-rgb), 0.65),
+        0 0 32px rgba(var(--dgn-neon-rgb), 0.40),
+        inset 0 0 22px rgba(var(--dgn-neon-rgb), 0.15) !important;
+    margin: 0 !important;
+}
+body.dangan-trial-active #send_textarea {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+}
+/* Remove gap between #form_sheld and #send_form so they touch the bottom edge.
+   Pink glow on #form_sheld (no border-radius — that lives on #send_form). */
+body.dangan-trial-active #form_sheld {
+    margin-bottom: 0 !important;
+    padding-bottom: 0 !important;
+    box-shadow:
+        0 0 18px rgba(var(--dgn-neon-rgb), 0.65),
+        0 0 32px rgba(var(--dgn-neon-rgb), 0.40) !important;
+}
+/* Lift the composer above the magenta frame overlay AND the VN dialogue
+   frame so the user can always type. #sheld is already position:absolute
+   in SillyTavern — don't touch its position or its inner flex layout,
+   just bump z-index. */
+body.dangan-trial-active #sheld {
+    z-index: 9994 !important;
+}
+body.dangan-trial-active #send_textarea {
+    color: #f5e6f8 !important;
+    caret-color: var(--dgn-neon) !important;
+}
+body.dangan-trial-active #send_textarea::placeholder {
+    color: var(--dgn-neon-soft) !important;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+}

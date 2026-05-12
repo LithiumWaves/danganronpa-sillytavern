@@ -331,7 +331,7 @@ export function createMindMineController({
         return `
 /* ── Mind Mine overlay ─────────────────────────────────────────────────── */
 .mm-overlay {
-    position: fixed; inset: 0; z-index: 9200;
+    position: fixed; inset: 0; z-index: 2147483646;
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
     background: radial-gradient(ellipse at 50% 40%, #0d1830 0%, #060b18 100%);
