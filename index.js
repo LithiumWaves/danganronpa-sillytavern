@@ -29,7 +29,7 @@ import { createQuestionTimeController } from "./vfx/questionTime.js";
 import { createQuestionTruthController } from "./vfx/questionTruth.js";
 import { createHangmansGambitController } from "./vfx/hangmansGambit.js";
 import { createPanicTalkActionController } from "./vfx/panicTalkAction.js";
-import { createScrumDebateController } from "./vfx/scrumDebate.js";
+import { createScrumDebateController, buildTeams as buildScrumTeams } from "./vfx/scrumDebate.js";
 import { createMindMineController } from "./vfx/mindMine.js";
 import { createChooseCharacterController } from "./vfx/chooseCharacter.js";
 import { createIntroduceCharacterController } from "./vfx/introduceCharacter.js";
@@ -3559,6 +3559,214 @@ async function generateTrialDialogue(prompt, { maxTokens = 140, temperature = 0.
     return (result || "").trim();
 }
 
+// Parses the LLM's Scrum Debate response into a scenario object.  Returns
+// null if the response is malformed or refers to truth bullets that don't
+// exist in the player's pool — the caller then retries or falls back.
+//
+// titleByLower: Map<lowercaseTitle, canonicalTitle> built from the real
+// truth-bullet pool, used to resolve TRUTH_BULLET values back to the exact
+// title stored in extension_settings.
+function parseScrumDebateResponse(out, titleByLower, expectedRounds = 3) {
+    const lines = String(out || "").split("\n").map(l => l.trim());
+
+    let opposingTheory = "";
+    let playerTheory   = "";
+    const roundChunks  = [];
+    let currentRound   = null;
+
+    for (const line of lines) {
+        const opp = line.match(/^OPPOSING_THEORY\s*:\s*(.+)$/i);
+        if (opp) { opposingTheory = opp[1].trim(); continue; }
+        const pl = line.match(/^PLAYER_THEORY\s*:\s*(.+)$/i);
+        if (pl)  { playerTheory   = pl[1].trim(); continue; }
+        if (/^ROUND\s*\d+/i.test(line)) {
+            if (currentRound) roundChunks.push(currentRound);
+            currentRound = { claim: "", statement: "", bulletRaw: "" };
+            continue;
+        }
+        if (!currentRound) continue;
+        const claim = line.match(/^CLAIM\s*:\s*(.+)$/i);
+        if (claim) { currentRound.claim = claim[1].trim(); continue; }
+        const stmt = line.match(/^STATEMENT\s*:\s*(.+)$/i);
+        if (stmt)  { currentRound.statement = stmt[1].trim(); continue; }
+        const tb   = line.match(/^TRUTH[_-]?BULLET\s*:\s*(.+)$/i);
+        if (tb)    { currentRound.bulletRaw = tb[1].trim(); continue; }
+    }
+    if (currentRound) roundChunks.push(currentRound);
+    if (roundChunks.length < expectedRounds) return null;
+    if (!opposingTheory || !playerTheory) return null;
+
+    // Hard-cap rocket-banner text at 5 words — the LLM is asked for this in
+    // the prompt, but the banners get clipped at screen edge if it overruns,
+    // so we enforce here too.
+    const clipToFiveWords = (s) => {
+        const cleaned = String(s).replace(/[.,;:]+$/g, "").trim();
+        const words = cleaned.split(/\s+/).filter(Boolean);
+        return words.slice(0, 5).join(" ");
+    };
+    opposingTheory = clipToFiveWords(opposingTheory);
+    playerTheory   = clipToFiveWords(playerTheory);
+
+    // Title-cases each word in an opposing "fake" claim ("power surge" →
+    // "Power Surge").  Preserves intentional all-caps (e.g. "A/C") and
+    // articles inside the phrase aren't lower-cased because the cap-name
+    // appears as a banner on the rocket — uniform capitalisation reads best.
+    const toTitleCase = (s) => String(s).split(/(\s+)/).map(part => {
+        if (!/\S/.test(part)) return part;
+        if (/^[A-Z0-9/]{2,}$/.test(part)) return part; // keep ALL-CAPS / "A/C"
+        return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    }).join("");
+
+    const rounds      = [];
+    const usedBullets = new Set();
+    for (const c of roundChunks.slice(0, expectedRounds)) {
+        // Exactly one [[…]] segment per statement.
+        if (!c.statement) return null;
+        const openCount = (c.statement.match(/\[\[/g) || []).length;
+        const innerOk   = /\[\[[^\[\]]+\]\]/.test(c.statement);
+        if (openCount !== 1 || !innerOk) return null;
+
+        let bulletTitle = titleByLower.get(c.bulletRaw.toLowerCase());
+        if (!bulletTitle) {
+            const stripped = c.bulletRaw.replace(/^["'`*\s]+|["'`.!,*\s]+$/g, "");
+            bulletTitle = titleByLower.get(stripped.toLowerCase());
+        }
+        if (!bulletTitle || usedBullets.has(bulletTitle)) return null;
+        usedBullets.add(bulletTitle);
+
+        rounds.push({
+            opposingClaim: toTitleCase(c.claim || bulletTitle),
+            statement: c.statement,
+            correctTruthBulletTitle: bulletTitle,
+        });
+    }
+
+    if (rounds.length !== expectedRounds) return null;
+    return { opposingTheory, playerTheory, rounds };
+}
+
+// Generates a Scrum Debate scenario via the LLM following the stub shape in
+// vfx/scrumDebate.js (SCRUM_DEBATE_DEFAULT_SCENARIO).  Returns a scenario
+// object on success or null on failure (caller should fall back to the
+// hardcoded default).  Requires at least 3 truth bullets in the pool.
+async function buildScrumDebateScenario({ trialContext, truthBullets, contextMessages, roundCount = 3, attempts = 2 } = {}) {
+    if (typeof generateTrialDialogue !== "function") return null;
+
+    // One round per opposing-team member. Clamp to [1, bullet pool size] so
+    // we never ask for more unique TRUTH_BULLETS than the player owns.
+    const requestedRounds = Math.max(1, Math.floor(Number(roundCount) || 0));
+
+    const topic    = String(trialContext?.topic    || "").trim();
+    const goal     = String(trialContext?.goal     || "").trim();
+    const suspects = Array.isArray(trialContext?.suspects) ? trialContext.suspects : [];
+
+    const bullets = (Array.isArray(truthBullets) ? truthBullets : [])
+        .map(b => ({
+            title:       String(b?.title       || "").trim(),
+            description: String(b?.description || "").trim(),
+        }))
+        .filter(b => b.title);
+    if (bullets.length < requestedRounds) {
+        console.warn(`[Dangan][Scrum] Need ≥${requestedRounds} truth bullets to generate a scenario; falling back. Got:`, bullets.length);
+        return null;
+    }
+
+    const bulletListText = bullets
+        .map(b => `- ${b.title}${b.description ? ` — ${b.description}` : ""}`)
+        .join("\n");
+
+    const contextLines = (Array.isArray(contextMessages) ? contextMessages : [])
+        .slice(-14)
+        .map(m => `${m.isUser ? "YOU" : (m.name || "NARRATOR")}: ${m.text}`)
+        .join("\n");
+
+    // Build the variable-length ROUND format spec the LLM must follow.
+    const roundsFormatSpec = Array.from({ length: requestedRounds }, (_, i) => {
+        if (i === 0) {
+            return `ROUND ${i + 1}
+CLAIM: <2–5 word noun phrase naming what the opposing team is pointing at>
+STATEMENT: <opposing-team statement, 8–22 words, with the WEAK part wrapped in [[double brackets]]>
+TRUTH_BULLET: <one of the Truth Bullet titles above, copied character-for-character>`;
+        }
+        return `ROUND ${i + 1}
+CLAIM: ...
+STATEMENT: ...
+TRUTH_BULLET: ...`;
+    }).join("\n");
+
+    const roundsWord = requestedRounds === 1 ? "one round" : `${requestedRounds} rounds`;
+
+    const prompt = `
+You are scripting a Danganronpa-style Scrum Debate. Two teams of students clash over opposing theories about the murder. Over ${roundsWord}, the opposing team makes confident claims about specific evidence or testimony; the player refutes the WEAK PART of each claim by firing the correct Truth Bullet.
+
+TRIAL CONTEXT
+Topic: ${topic || "(unknown)"}
+Goal: ${goal || "(unknown)"}
+Suspects: ${suspects.join(", ") || "(unknown)"}
+
+TRUTH BULLETS (the player's available evidence — you MUST pick TRUTH_BULLET titles VERBATIM from this list):
+${bulletListText}
+
+DEBATE FORMAT
+- Two opposing theories about the murder: the opposing team's accusation vs. the player's counter-accusation.
+- Exactly ${requestedRounds} round${requestedRounds === 1 ? "" : "s"}.  For each round:
+    * The opposing team picks a piece of evidence or testimony and makes a confident claim about it.
+    * Inside that claim, mark the WEAK PART — the specific assertion the truth bullet refutes — by wrapping it in [[double brackets]].
+    * Pair the round with the one Truth Bullet whose existence makes the [[…]] part false.
+- A given Truth Bullet may only be used in ONE round.
+
+Respond in EXACTLY this format and nothing else. No JSON, no markdown, no commentary:
+
+OPPOSING_THEORY: <MAX 5 WORDS — the opposing team's accusation as a tiny banner caption (e.g. "Nagito is the killer", "Knife from the kitchen")>
+PLAYER_THEORY: <MAX 5 WORDS — the player's counter-accusation in the same caption style>
+${roundsFormatSpec}
+
+Rules:
+- OPPOSING_THEORY and PLAYER_THEORY must each be FIVE WORDS OR FEWER — they render on a small rocket banner and longer text gets clipped.  No leading "The ", no trailing punctuation beyond a single "!" if used.
+- Each STATEMENT contains exactly ONE [[…]] segment, with no nested or stray brackets.
+- TRUTH_BULLET MUST exactly match a title from the TRUTH BULLETS list above (case-insensitive, but punctuation and words must match).
+- Do not reuse a TRUTH_BULLET across rounds.
+- Stay in-world: the statements should sound like the opposing team shouting them mid-trial.
+
+RECENT CHAT CONTEXT:
+${contextLines || "NONE"}
+`.trim();
+
+    const titleByLower = new Map(bullets.map(b => [b.title.toLowerCase(), b.title]));
+
+    // Token budget scales roughly with the round count (~120 tokens / round
+    // for CLAIM + STATEMENT + TRUTH_BULLET + headers).
+    const maxTokens = Math.min(2000, 240 + requestedRounds * 130);
+
+    for (let attempt = 0; attempt < attempts; attempt++) {
+        let out = "";
+        try {
+            out = String(await generateTrialDialogue(prompt, {
+                maxTokens,
+                temperature: 0.78 + attempt * 0.07,
+            }) || "").trim();
+        } catch (e) {
+            console.warn(`[Dangan][Scrum] LLM attempt ${attempt + 1} failed:`, e);
+            continue;
+        }
+        if (!out) continue;
+
+        const parsed = parseScrumDebateResponse(out, titleByLower, requestedRounds);
+        if (!parsed) continue;
+
+        return {
+            title: "SCRUM DEBATE",
+            topic,
+            opposingTheory: parsed.opposingTheory,
+            playerTheory:   parsed.playerTheory,
+            rounds:         parsed.rounds,
+        };
+    }
+
+    console.warn("[Dangan][Scrum] All generation attempts failed; falling back to stub.");
+    return null;
+}
+
 
 async function generateCharacterNotes(char) {
 const profile = char.social?.profile;
@@ -4590,6 +4798,10 @@ function showMinigameLoadingState(label = 'Loading', { command = null } = {}) {
         <div class="hg-loading-dots"><span></span><span></span><span></span></div>
         <div class="hg-loading-progress" style="display:none">0%</div>
     `;
+    // Loading-screen highlight colour follows the active trial theme via
+    // --dgn-neon-rgb (set on body.dangan-trial-active.dangan-trial-theme-*).
+    // Outside a trial the fallback keeps the original green so the loader
+    // still reads as a "system is working" indicator.
     el.style.cssText = `
         position: fixed; inset: 0;
         z-index: 2147483647;
@@ -4597,10 +4809,10 @@ function showMinigameLoadingState(label = 'Loading', { command = null } = {}) {
         align-items: center; justify-content: center;
         gap: 22px;
         background: rgba(0, 6, 24, 0.92);
-        color: #44ff88;
+        color: rgb(var(--dgn-neon-rgb, 68, 255, 136));
         font-family: "Orbitron", "Impact", monospace;
         font-size: 18px; letter-spacing: 3px; text-transform: uppercase;
-        text-shadow: 0 0 10px rgba(80, 255, 130, 0.7);
+        text-shadow: 0 0 10px rgba(var(--dgn-neon-rgb, 80, 255, 130), 0.7);
         pointer-events: auto;
         opacity: 0;
         transition: opacity 320ms ease;
@@ -4615,9 +4827,9 @@ function showMinigameLoadingState(label = 'Loading', { command = null } = {}) {
             display: block;
             width: 16px; height: 16px;
             border-radius: 50%;
-            background: #44ff88;
-            box-shadow: 0 0 14px rgba(80, 255, 130, 0.85),
-                        0 0 26px rgba(40, 220, 80, 0.5);
+            background: rgb(var(--dgn-neon-rgb, 68, 255, 136));
+            box-shadow: 0 0 14px rgba(var(--dgn-neon-rgb, 80, 255, 130), 0.85),
+                        0 0 26px rgba(var(--dgn-neon-rgb, 40, 220, 80), 0.5);
             opacity: 0.3;
             animation: hgLoadingDotPulse 0.9s ease-in-out infinite;
         }
@@ -4632,9 +4844,9 @@ function showMinigameLoadingState(label = 'Loading', { command = null } = {}) {
             font-size: 28px;
             font-weight: 700;
             letter-spacing: 4px;
-            color: #44ff88;
-            text-shadow: 0 0 10px rgba(80, 255, 130, 0.7),
-                         0 0 22px rgba(40, 220, 80, 0.45);
+            color: rgb(var(--dgn-neon-rgb, 68, 255, 136));
+            text-shadow: 0 0 10px rgba(var(--dgn-neon-rgb, 80, 255, 130), 0.7),
+                         0 0 22px rgba(var(--dgn-neon-rgb, 40, 220, 80), 0.45);
             font-variant-numeric: tabular-nums;
             min-width: 110px;
             text-align: center;
@@ -4684,6 +4896,101 @@ function showMinigameLoadingState(label = 'Loading', { command = null } = {}) {
             progEl.textContent = `${pct}%`;
         }
     };
+    return el;
+}
+
+// Fullscreen error overlay shown when a minigame's LLM generation fails
+// outright (parse errors after all retries, missing context, etc.).  Same
+// chrome as showMinigameLoadingState but red rather than green, no
+// spinner, and click-to-dismiss.  The returned element exposes hide()
+// and resolves a promise via onDismissed for callers that want to await
+// the user before continuing (e.g. abort the minigame entirely).
+function showMinigameErrorState({ title = 'Generation failed', subtitle = '', command = null } = {}) {
+    document.getElementById('hg-loading-state')?.remove();
+    document.getElementById('hg-error-state')?.remove();
+    const el = document.createElement('div');
+    el.id = 'hg-error-state';
+    const safeTitle    = String(title).replace(/[<>&]/g, '');
+    const safeSubtitle = String(subtitle).replace(/[<>&]/g, '');
+    const safeCommand  = command ? String(command).replace(/[<>&"']/g, '') : '';
+    const subtitleHtml = safeSubtitle
+        ? `<div class="hg-error-sub">${safeSubtitle}${safeCommand ? ` <span class="hg-error-cmd">${safeCommand}</span>` : ''}</div>`
+        : '';
+    el.innerHTML = `
+        <div class="hg-error-text">${safeTitle}</div>
+        ${subtitleHtml}
+        <div class="hg-error-dismiss">Click anywhere to dismiss</div>
+    `;
+    el.style.cssText = `
+        position: fixed; inset: 0;
+        z-index: 2147483647;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        gap: 22px;
+        background: rgba(24, 0, 6, 0.94);
+        color: #ff4d4d;
+        font-family: "Orbitron", "Impact", monospace;
+        font-size: 22px; letter-spacing: 3px; text-transform: uppercase;
+        text-shadow: 0 0 10px rgba(255, 80, 80, 0.7);
+        pointer-events: auto;
+        opacity: 0;
+        transition: opacity 320ms ease;
+        cursor: pointer;
+    `;
+    const css = `
+        #hg-error-state .hg-error-text {
+            font-weight: 700;
+            font-size: 26px;
+            letter-spacing: 4px;
+        }
+        #hg-error-state .hg-error-sub {
+            font-family: "Noto Sans", "Inter", sans-serif;
+            font-size: 14px;
+            font-weight: 400;
+            letter-spacing: 1px;
+            text-transform: none;
+            color: rgba(220, 200, 200, 0.85);
+            text-shadow: none;
+            text-align: center;
+            max-width: 560px;
+            line-height: 1.5;
+        }
+        #hg-error-state .hg-error-sub .hg-error-cmd {
+            color: rgba(255, 230, 230, 0.95);
+            font-family: "Orbitron", "Inter", monospace;
+            font-weight: 600;
+        }
+        #hg-error-state .hg-error-dismiss {
+            margin-top: 8px;
+            font-family: "Noto Sans", "Inter", sans-serif;
+            font-size: 11px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: rgba(255, 180, 180, 0.55);
+            text-shadow: none;
+        }
+    `;
+    let styleEl = document.getElementById('hg-error-state-style');
+    if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'hg-error-state-style';
+        styleEl.textContent = css;
+        document.head.appendChild(styleEl);
+    }
+    document.body.appendChild(el);
+    requestAnimationFrame(() => requestAnimationFrame(() => { el.style.opacity = '1'; }));
+
+    let dismissed = false;
+    const dismissPromise = new Promise(resolve => {
+        el.hide = () => {
+            if (dismissed) return;
+            dismissed = true;
+            el.style.opacity = '0';
+            window.setTimeout(() => { el.remove(); resolve(); }, 340);
+        };
+        el.addEventListener('click', () => el.hide());
+    });
+    el.onDismissed = () => dismissPromise;
     return el;
 }
 
@@ -4757,13 +5064,16 @@ function resumeBgmAfterHG() {
 }
 
 async function onMindMineWin(sentence) {
-    const text = (sentence || '').trim();
+    const raw = (sentence || '').trim();
+    // Lead with "that" + lowercase first letter of the chosen sentence so the
+    // sentence flows as one continuous clause: "…is that the suspect…"
+    const text = raw ? raw.charAt(0).toLowerCase() + raw.slice(1) : '';
 
     const ctx = window.SillyTavern?.getContext?.();
     const setPrompt = ctx?.setExtensionPrompt || window.setExtensionPrompt;
     if (typeof setPrompt === 'function' && text) {
         setPrompt('dangan_mindmine_result',
-            `[MIND MINE RESULT]\nA point of relevance is ${text}...`,
+            `[MIND MINE RESULT]\nA point of relevance is that ${text}...`,
             0, 1, true, 'system');
     }
 
@@ -4777,7 +5087,7 @@ async function onMindMineWin(sentence) {
         <div class="dangan-trial-notif-content">
             <div class="rebuttal-header">MIND MINE COMPLETE</div>
             <div class="rebuttal-info">
-                A point of relevance is <em id="dangan-mindmine-win-theory"></em>...
+                A point of relevance is that <em id="dangan-mindmine-win-theory"></em>...
             </div>
         </div>`;
     document.body.appendChild(notif);
@@ -8060,9 +8370,156 @@ TIME: <whole-second integer, minimum 60, maximum 180>`;
                 }
                 trialManager?.resumeAfterActivity?.();
             },
-            onStartScrumDebate: () => scrumDebateController?.run()
-                ?.then(() => trialManager?.resumeAfterActivity?.()),
-            onStartMindMine:    () => mindMineController?.run(),
+            onStartScrumDebate: async () => {
+                if (!scrumDebateController) return;
+                // Generate a scenario via the LLM (matching SCRUM_DEBATE_DEFAULT_SCENARIO's
+                // shape).  If anything fails — no truth bullets, parse error,
+                // LLM unavailable — fall through to the hardcoded default in
+                // vfx/scrumDebate.js so the minigame still launches.
+                const loadingEl = showMinigameLoadingState('Loading Scrum Debate', { command: '/scrumdebate' });
+                // Time-based eased progress ramp: scenario generation is a
+                // single LLM call (with one retry on parse fail), so we
+                // can't report real intermediate progress.  Instead, ramp
+                // 0 → ~90% asymptotically over the typical generation
+                // window so the user sees movement; snap to 100% the
+                // moment generation actually completes.
+                let scrumProgress = 0;
+                const scrumProgressStart = performance.now();
+                const SCRUM_PROGRESS_HALF_LIFE_MS = 7000; // 50% of remaining gap closes every ~7s
+                const scrumProgressTick = window.setInterval(() => {
+                    const elapsed = performance.now() - scrumProgressStart;
+                    // 1 - 0.5^(t / halfLife): hits ~50% at 7s, ~75% at 14s, ~87.5% at 21s, cap 90%.
+                    const eased = 1 - Math.pow(0.5, elapsed / SCRUM_PROGRESS_HALF_LIFE_MS);
+                    scrumProgress = Math.min(0.9, eased * 0.9);
+                    loadingEl?.setProgress?.(scrumProgress);
+                }, 120);
+                // Round count tracks the number of ALIVE opposing-team members
+                // that can actually speak (dead classmates never get their own
+                // scenario).  When alive counts are unequal across the two
+                // teams — which happens when the alive-total is odd and the
+                // split is e.g. 4 / 3 — fall back to the smaller of the two
+                // so each round has a paired alive speaker on each side.
+                // Net effect: equal alive teams use the full count; uneven
+                // teams drop one scenario.
+                let roundCount = 3;
+                try {
+                    const teams = buildScrumTeams((name) => characters.get(normalizeName(name))?.dead === true);
+                    const oppAlive    = (teams?.opposing || []).filter(c => !c?._sdDead).length;
+                    const playerAlive = (teams?.player   || []).filter(c => !c?._sdDead).length;
+                    const minAlive    = Math.min(oppAlive, playerAlive);
+                    if (minAlive > 0) roundCount = minAlive;
+                } catch (e) {
+                    console.warn("[danganronpa] Could not size Scrum rounds from alive headcounts; using default 3:", e);
+                }
+                let scenario = null;
+                try {
+                    scenario = await buildScrumDebateScenario({
+                        trialContext:    trialManager?.getTrialContext?.() ?? null,
+                        truthBullets:    getTruthBulletsSnapshot(),
+                        contextMessages: (typeof getContextMessages === "function" ? getContextMessages() : [])
+                            .map(m => ({ isUser: m.isUser, name: m.name, text: m.text })),
+                        roundCount,
+                    });
+                } catch (e) {
+                    console.warn("[danganronpa] Scrum Debate scenario generation threw:", e);
+                }
+                window.clearInterval(scrumProgressTick);
+                loadingEl?.setProgress?.(1.0);
+                // Brief beat at 100% so the user actually sees the bar
+                // finish before the screen tears down.
+                await new Promise(r => setTimeout(r, 180));
+                loadingEl?.hide?.();
+
+                // Generation failed → surface the error to the user instead
+                // of silently falling back to the stubbed scenario, then bail
+                // out without launching the minigame.
+                if (!scenario) {
+                    const errorEl = showMinigameErrorState({
+                        title:    'Scrum Debate generation failed',
+                        subtitle: 'Please try again. Alternatively, generate your own using',
+                        command:  '/scrumdebate',
+                    });
+                    try { await errorEl.onDismissed(); } catch {}
+                    trialManager?.resumeAfterActivity?.();
+                    return;
+                }
+
+                try {
+                    await scrumDebateController.run({ scenario });
+                } finally {
+                    trialManager?.resumeAfterActivity?.();
+                }
+            },
+            onStartMindMine: async () => {
+                if (!mindMineController) return;
+                // Generate three case-relevant statements via the LLM. One of
+                // them will be uncovered by the player and folded back into
+                // the LLM as "A point of relevance is that <statement>...".
+                // Falls through to mindMine.js's hardcoded defaults if
+                // generation fails or returns fewer than three usable lines.
+                const loadingEl = showMinigameLoadingState('Loading Mind Mine', { command: '/mindmine' });
+                loadingEl?.setProgress?.(0);
+                let softProgress = 0;
+                const softInterval = window.setInterval(() => {
+                    softProgress = Math.min(0.95, softProgress + (0.95 - softProgress) * 0.08);
+                    loadingEl?.setProgress?.(softProgress);
+                }, 200);
+
+                let sentences = [];
+                try {
+                    const ctx = trialManager?.getTrialContext?.() ?? {};
+                    const topic = String(ctx.topic || '').trim() || 'a mysterious crime';
+                    const goal  = String(ctx.goal  || '').trim() || 'find the culprit';
+                    const suspectsList = (Array.isArray(ctx.suspects) ? ctx.suspects : [])
+                        .map(s => s?.name).filter(Boolean).join(', ') || 'unknown';
+
+                    const bullets = (getTruthBulletsSnapshot() || [])
+                        .filter(b => b && typeof b.title === 'string' && b.title.trim().length)
+                        .slice(0, 16)
+                        .map((b, i) => {
+                            const title = String(b.title || '').trim();
+                            const desc  = String(b.description || '').trim().replace(/\s+/g, ' ');
+                            return `${i + 1}. ${title}${desc ? ` — ${desc}` : ''}`;
+                        }).join('\n');
+                    const bulletsBlock = bullets ? `\n\nTRUTH BULLETS COLLECTED\n${bullets}` : '';
+
+                    const prompt = `You are generating three statements for a "Mind Mine" round in a Danganronpa-style class trial.
+
+TRIAL CONTEXT
+Topic: ${topic}
+Goal: ${goal}
+Suspects: ${suspectsList}${bulletsBlock}
+
+Produce THREE distinct, plausible STATEMENTS about the case. Each statement must:
+- Be a complete, declarative sentence — NOT a question and NOT prefixed with a label.
+- Be between 6 and 14 words long.
+- Make a specific claim about the case (an alibi, a piece of evidence, a motive, a timeline detail, an inconsistency, who was where, etc.).
+- Be self-contained and read naturally as a continuation of the phrase "A point of relevance is that <statement>".
+- Start with a capital letter and end with NO trailing punctuation (no period or question mark).
+- Be distinct from the other two — no near-duplicates.
+
+Respond in EXACTLY this format and nothing else:
+STATEMENT: <first statement>
+STATEMENT: <second statement>
+STATEMENT: <third statement>`;
+
+                    const out = await generateTrialDialogue(prompt, { maxTokens: 220, temperature: 0.85 });
+                    const matches = [...out.matchAll(/STATEMENT:\s*(.+)/gi)]
+                        .map(m => m[1].trim()
+                            .replace(/^["']|["']$/g, '')
+                            .replace(/[.?!]+\s*$/, ''))
+                        .filter(s => s.length >= 6);
+                    if (matches.length >= 3) sentences = matches.slice(0, 3);
+                } catch (err) {
+                    console.warn('[danganronpa] Failed to generate Mind Mine statements, using fallback:', err);
+                } finally {
+                    window.clearInterval(softInterval);
+                    loadingEl?.setProgress?.(1);
+                    loadingEl?.hide?.();
+                }
+
+                mindMineController.run({ sentences });
+            },
             getEquippedSkillsSnapshot,
             attachDraggablePositioning,
             applyCustomUiPosition,
@@ -8158,8 +8615,13 @@ TIME: <whole-second integer, minimum 60, maximum 180>`;
                 await trialManager?.initGroupChatPortraits?.();
                 const ctx = window.SillyTavern?.getContext?.();
                 setVfxGcpGroupActive(!!(ctx?.groupId));
-                const lastMsg = [...(ctx?.chat || [])].reverse().find(m => !m.is_user && m.name);
-                if (lastMsg?.name) trialManager?.updateGroupChatSpeaker?.(lastMsg.name);
+                const lastMsg = [...(ctx?.chat || [])].reverse().find(m => !m.is_system && m.name);
+                if (lastMsg) {
+                    const speakerName = lastMsg.is_user
+                        ? (ctx?.name1 || ctx?.user_name || ctx?.userName || ctx?.personaName || lastMsg.name)
+                        : lastMsg.name;
+                    if (speakerName) trialManager?.updateGroupChatSpeaker?.(speakerName);
+                }
                 updateSuspectsFromChat();
                 // Grace period for ST's post-load expression updates to settle, then re-enable VFX/SFX.
                 setTimeout(() => setVfxGcpLoadSuppressed(false), 1500);
@@ -8433,6 +8895,7 @@ TIME: <whole-second integer, minimum 60, maximum 180>`;
         resumeCurrentBgm: resumeBgmAfterHG,
         playBgm: playMindMineBgm,
         onWin: onMindMineWin,
+        getPlayerSpriteUrl,
         onStart: () => {
             document.getElementById('dangan-trial-context-panel')?.style.setProperty('display', 'none');
             document.getElementById('dangan_monopad_button')?.style.setProperty('display', 'none');

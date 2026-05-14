@@ -784,7 +784,7 @@ export function createHangmansGambitController({
                 const spriteEl = document.createElement('img');
                 spriteEl.src = spriteUrl;
                 spriteEl.alt = '';
-                spriteEl.style.cssText = 'position:absolute;bottom:-1370px;left:70%;transform:translateX(-50%);height:650%;width:auto;object-fit:contain;object-position:center bottom;pointer-events:none;filter:drop-shadow(rgb(255,255,255) 0px 0px 50px);';
+                spriteEl.style.cssText = 'position:absolute;bottom:-1475px;left:70%;transform:translateX(-50%);height:650%;width:auto;object-fit:contain;object-position:center bottom;pointer-events:none;filter:drop-shadow(rgb(255,255,255) 0px 0px 50px);';
                 inner.appendChild(spriteEl);
             }
         }

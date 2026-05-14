@@ -1,17 +1,26 @@
 const QT_ID    = "dangan-qt-overlay";
 const QT_STYLE = "dangan-qt-style";
 
-function buildStyles() {
+function buildStyles(extensionFolderPath = '') {
     return `
+    /* Hide ST top-bar + FX/Trial side panels while Question Time is active.
+     * Toggled via body.dangan-qt-active (not :has()) — see memory note about
+     * body:has() causing long tasks in SillyTavern. */
+    body.dangan-qt-active #top-bar,
+    body.dangan-qt-active #top-settings-holder,
+    body.dangan-qt-active #dangan-bgm-panel,
+    body.dangan-qt-active #dangan-trial-pre-debate-notif {
+        display: none !important;
+    }
+
     #${QT_ID} {
         position: fixed;
         left: 0; right: 0;
         top: 33.33%; height: 33.34%;
         z-index: 2147483645;
-        background: rgba(0, 5, 22, 0.91);
         display: flex; flex-direction: column;
         align-items: flex-start; justify-content: center;
-        padding: 0 0 0 400px;
+        padding: 0 0 0 385px;
         opacity: 0; transition: opacity 280ms ease;
         pointer-events: none;
         font-family: "Orbitron", "Impact", sans-serif;
@@ -19,43 +28,14 @@ function buildStyles() {
     }
     #${QT_ID}.qt-on { opacity: 1; pointer-events: auto; }
 
-    /* CRT scanlines */
+    /* Background image at 75% opacity, behind all content */
     #${QT_ID}::before {
         content: "";
         position: absolute; inset: 0;
-        background: repeating-linear-gradient(
-            0deg, transparent 0px, transparent 3px,
-            rgba(0, 80, 255, 0.05) 3px, rgba(0, 80, 255, 0.05) 4px
-        );
-        pointer-events: none; z-index: 0;
-    }
-
-    /* Neon border glow at top and bottom */
-    #${QT_ID}::after {
-        content: "";
-        position: absolute; inset: 0;
-        background:
-            linear-gradient(90deg, transparent, #00aaff, #0055ff, #00aaff, transparent) top    / 100% 3px no-repeat,
-            linear-gradient(90deg, transparent, #00aaff, #0055ff, #00aaff, transparent) bottom / 100% 3px no-repeat;
-        box-shadow:
-            0 -1px 18px #00ddff, 0 -1px 40px #0088ff, 0 -1px 70px rgba(0, 140, 255, 0.8),
-            0  1px 18px #00ddff, 0  1px 40px #0088ff, 0  1px 70px rgba(0, 140, 255, 0.8);
+        background: url("${extensionFolderPath}/assets/classtrial/question-time-bar.png") center / 100% 100% no-repeat;
+        opacity: 0.9;
         pointer-events: none;
-        animation: qtBorderPulse 1.8s ease-in-out infinite;
-    }
-    @keyframes qtBorderPulse {
-        0%, 100% {
-            box-shadow:
-                0 -1px 18px #00ddff, 0 -1px 40px #0088ff, 0 -1px 70px rgba(0, 140, 255, 0.8),
-                0  1px 18px #00ddff, 0  1px 40px #0088ff, 0  1px 70px rgba(0, 140, 255, 0.8);
-            opacity: 1;
-        }
-        50% {
-            box-shadow:
-                0 -1px 30px #ffffff, 0 -1px 60px #00eeff, 0 -1px 100px rgba(0, 180, 255, 1),
-                0  1px 30px #ffffff, 0  1px 60px #00eeff, 0  1px 100px rgba(0, 180, 255, 1);
-            opacity: 1;
-        }
+        z-index: 0;
     }
 
     .qt-inner {
@@ -64,6 +44,7 @@ function buildStyles() {
         align-items: flex-start;
         gap: 0;
         width: 100%;
+        margin-bottom: 15px;
     }
 
     .qt-answer-heading {
@@ -72,12 +53,12 @@ function buildStyles() {
         font-weight: 900;
         font-style: italic;
         letter-spacing: 3px;
-        margin-bottom: clamp(2px, 0.5vh, 6px);
+        margin-bottom: clamp(5px, 0.5vh, 16px);
         line-height: 1;
     }
     /* Slightly larger leading "A" — adds visual emphasis to the heading. */
     .qt-answer-heading > span:first-child {
-        font-size: 1.18em;
+        font-size: 2em;
     }
     .qt-answer-heading > span {
         transition: color 90ms linear, text-shadow 90ms linear;
@@ -106,21 +87,22 @@ function buildStyles() {
 
     .qt-options {
         display: flex; flex-direction: column; gap: clamp(1px, 0.3vh, 4px);
+        width: 100%;
+        margin-left: 80px;
+        margin-top: 10px;
+        margin-bottom: 10px;
     }
 
     .qt-option {
-        display: flex; align-items: center; gap: clamp(8px, 1.2vw, 16px);
+        display: flex; align-items: stretch; gap: clamp(1px, 0.3vh, 4px);
         cursor: pointer;
-        padding: clamp(2px, 0.5vh, 6px) 12px clamp(2px, 0.5vh, 6px) 6px;
-        border-left: 2px solid rgba(0, 120, 255, 0.25);
+        padding: 0;
         background: transparent;
-        transition: background 120ms ease, border-color 120ms ease, transform 80ms ease;
+        transition: transform 80ms ease;
         user-select: none;
     }
     .qt-option:hover,
     .qt-option.qt-focused {
-        background: rgba(0, 100, 255, 0.18);
-        border-left-color: rgba(0, 180, 255, 0.85);
         transform: translateX(4px);
     }
     .qt-option:active { transform: translateX(8px); }
@@ -129,11 +111,23 @@ function buildStyles() {
         font-size: clamp(12px, 2.2vh, 26px);
         font-weight: 900;
         font-style: italic;
-        color: #eecc00;
-        min-width: clamp(16px, 2vh, 28px);
-        text-align: right;
-        text-shadow: 0 0 8px rgba(255, 200, 0, 0.6);
+        color: #ffffff;
+        min-width: clamp(36px, 5vh, 56px);
+        text-align: center;
+        text-shadow: none;
         line-height: 1;
+        background: rgba(40, 40, 48, 0.85);
+        padding: clamp(2px, 0.5vh, 6px) 18px;
+        box-sizing: border-box;
+        clip-path: polygon(14px 0%, 100% 0%, calc(100% - 14px) 100%, 0 100%);
+        display: flex; align-items: center; justify-content: center;
+        transition: color 120ms ease, text-shadow 120ms ease, background 120ms ease;
+    }
+    .qt-option:hover .qt-num,
+    .qt-option.qt-focused .qt-num {
+        color: #eecc00;
+        text-shadow: 0 0 8px rgba(255, 200, 0, 0.6);
+        background: rgba(0, 100, 255, 0.55);
     }
 
     .qt-option-text {
@@ -143,13 +137,24 @@ function buildStyles() {
         letter-spacing: 1px;
         text-shadow: 0 1px 3px rgba(0,0,0,0.8);
         line-height: 1.1;
+        flex: 1;
+        background: rgba(40, 40, 48, 0.85);
+        padding: clamp(2px, 0.5vh, 6px) 12px clamp(2px, 0.5vh, 6px) 24px;
+        margin-left: -14px;
+        clip-path: polygon(14px 0%, 100% 0%, 100% 100%, 0 100%);
+        display: flex; align-items: center;
+        transition: background 120ms ease;
+    }
+    .qt-option:hover .qt-option-text,
+    .qt-option.qt-focused .qt-option-text {
+        background: rgba(0, 100, 255, 0.45);
     }
 
     /* Timer — in normal flow below options */
     #qt-timer {
         position: relative;
-        margin-top: 24px;
-        font-size: clamp(11px, 1.8vh, 24px);
+        margin-bottom: 6px;
+        font-size: clamp(25px, 1.8vh, 25px);
         font-weight: 700;
         letter-spacing: 4px;
         color: #ffaa00;
@@ -193,14 +198,15 @@ function buildStyles() {
     /* Hourglass */
     #qt-hourglass {
         position: absolute;
-        left: 275px;
-        top: 50%;
+        left: 195px;
+        top: 24%;
         transform: translateY(-50%);
-        width: clamp(36px, 5.5vh, 60px);
-        height: clamp(54px, 8vh, 90px);
+        width: clamp(86px, 5.5vh, 86px);
+        height: clamp(144px, 8vh, 144px);
         pointer-events: none;
         z-index: 1;
         filter: drop-shadow(0 0 6px #0088ff) drop-shadow(0 0 12px #004499);
+        transform: rotate(20deg);
     }
 
     /* GOT IT banner prefill */
@@ -395,6 +401,7 @@ export function createQuestionTimeController({ extensionFolderPath = '', awardMo
         document.getElementById(QT_ID)?.remove();
         document.getElementById(QT_STYLE)?.remove();
         document.getElementById("dangan-qt-banner")?.remove();
+        document.body.classList.remove("dangan-qt-active");
     }
 
     async function run({ title, time, answers, correct }) {
@@ -402,7 +409,7 @@ export function createQuestionTimeController({ extensionFolderPath = '', awardMo
 
         const styleEl = document.createElement("style");
         styleEl.id = QT_STYLE;
-        styleEl.textContent = buildStyles();
+        styleEl.textContent = buildStyles(extensionFolderPath);
         document.head.appendChild(styleEl);
 
         const MAX_HEALTH = 4;
@@ -440,6 +447,7 @@ export function createQuestionTimeController({ extensionFolderPath = '', awardMo
             <div id="qt-timer">00:${String(Math.floor(time)).padStart(2,'0')}:000</div>`;
 
         document.body.appendChild(overlay);
+        document.body.classList.add("dangan-qt-active");
         requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add("qt-on")));
 
         // Apply the NSD heart + star SVG masks once the gauge elements are
@@ -618,6 +626,11 @@ export function createQuestionTimeController({ extensionFolderPath = '', awardMo
                         setFocus(focusedIdx + 1, 1);
                         playHover();
                         break;
+                    case "ArrowLeft":
+                    case "ArrowRight":
+                        e.preventDefault();
+                        e.stopPropagation();
+                        break;
                     case "Enter":
                         e.preventDefault();
                         playClick();
@@ -677,6 +690,7 @@ export function createQuestionTimeController({ extensionFolderPath = '', awardMo
     }
 
     function dismiss() {
+        document.body.classList.remove("dangan-qt-active");
         const el = document.getElementById(QT_ID);
         if (!el) return;
         el.style.transition = "opacity 250ms ease";
@@ -709,7 +723,7 @@ export function createQuestionTimeController({ extensionFolderPath = '', awardMo
                 const spriteEl = document.createElement('img');
                 spriteEl.src = spriteUrl;
                 spriteEl.alt = '';
-                spriteEl.style.cssText = 'position:absolute;bottom:-1370px;left:70%;transform:translateX(-50%);height:650%;width:auto;object-fit:contain;object-position:center bottom;pointer-events:none;filter:drop-shadow(rgb(255,255,255) 0px 0px 50px);';
+                spriteEl.style.cssText = 'position:absolute;bottom:-1475px;left:70%;transform:translateX(-50%);height:650%;width:auto;object-fit:contain;object-position:center bottom;pointer-events:none;filter:drop-shadow(rgb(255,255,255) 0px 0px 50px);';
                 inner.appendChild(spriteEl);
             }
         }
@@ -723,23 +737,7 @@ export function createQuestionTimeController({ extensionFolderPath = '', awardMo
 
         // Wait for slide to complete, then linger for 3 seconds
         await new Promise(r => setTimeout(r, 350));
-
-        // ── Debug freeze (TEMPORARY) ──────────────────────────────────
-        // Pause here instead of lingering / fading out so the Got It!
-        // banner stays on-screen for styling.  Pointer-events flip to
-        // `auto` and the wrap accepts a single click to dismiss; flip
-        // DEBUG_FREEZE_GOT_IT_BANNER to `false` to restore normal playback.
-        const DEBUG_FREEZE_GOT_IT_BANNER = true;
-        if (DEBUG_FREEZE_GOT_IT_BANNER) {
-            banner.setAttribute('data-frozen', '1');
-            banner.style.pointerEvents = 'auto';
-            banner.style.cursor        = 'pointer';
-            await new Promise(resolveClick => {
-                banner.addEventListener('click', () => resolveClick(), { once: true });
-            });
-        } else {
-            await new Promise(r => setTimeout(r, 3000));
-        }
+        await new Promise(r => setTimeout(r, 3000));
 
         // Fade out
         banner.style.transition = "opacity 0.5s ease";

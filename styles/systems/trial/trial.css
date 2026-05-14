@@ -567,6 +567,10 @@ body.dangan-nsd-lie-armed .dangan-tb-bar-bg {
     box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
 }
 
+.dangan-trial-notif-content {
+    padding: 20px 40px;
+}
+
 .rebuttal-header {
     color: #ffff00;
     font-size: 14px;
@@ -603,6 +607,47 @@ body.dangan-nsd-lie-armed .dangan-tb-bar-bg {
 @keyframes trialNotifPulse {
     0%, 100% { box-shadow: 0 0 8px 1px var(--SmartThemeBorderColor); }
     50%       { box-shadow: 0 0 22px 5px var(--SmartThemeBorderColor); }
+}
+
+/* ── Scrum Debate post-minigame chat-response context ────────────────────
+ * Wraps the "SCRUM DEBATE VICTORY" notification in pta-panel.png instead
+ * of the generic notification chrome.  Strips the inherited background /
+ * border / pulse glow from .dangan-trial-notification.rebuttal-active so
+ * only the panel artwork shows, scopes the title font to the Quickend
+ * stack, and routes the panel image through --dgn-overlay-filter so it
+ * picks up the active trial theme's hue-shift. */
+#dangan-scrum-win-notif.dangan-trial-notification.rebuttal-active,
+#dangan-mindmine-win-notif.dangan-trial-notification.rebuttal-active {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    animation: slideInRight 0.5s ease-out;
+    padding: 28px 50px !important;
+    max-height: none;
+    isolation: isolate;
+    overflow: visible;
+}
+/* Render the Mind Mine completion panel below the Trial Panel (which sits
+ * at the default .dangan-trial-notification z-index: 9998) so the trial
+ * goal/suspects remain readable. */
+#dangan-mindmine-win-notif.dangan-trial-notification {
+    z-index: 9990;
+}
+#dangan-scrum-win-notif.dangan-trial-notification.rebuttal-active::before,
+#dangan-mindmine-win-notif.dangan-trial-notification.rebuttal-active::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: url('../../../assets/images/minigames/pta-panel.png');
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    z-index: -1;
+    pointer-events: none;
+    filter: var(--dgn-overlay-filter, none);
+}
+#dangan-scrum-win-notif .rebuttal-header,
+#dangan-mindmine-win-notif .rebuttal-header {
+    font-family: "Quickend", "Boldonse", "Orbitron", "Rajdhani", monospace;
 }
 
 @keyframes slideInRight {
@@ -1326,17 +1371,25 @@ body.dangan-nsd-shaking { animation: danganNsdScreenShake 80ms steps(2, end) inf
     animation: wn-press-flash 0.22s ease-out forwards;
 }
 
-/* ─── White Noise burst (pink variant of nsd-burst) ── */
+/* ─── White Noise burst (pink variant of nsd-burst) ──
+ * The radial gradient is set once on the element (paint-once) and only
+ * `transform` and `opacity` animate.  Previously each keyframe carried its
+ * own radial-gradient() expression, which forced the gradient to be
+ * repainted pixel-by-pixel every frame — that cost was the residual jank
+ * felt when bursts overlapped on rapid Space presses. */
 @keyframes wn-burst-core {
-    0%   { background: radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,105,180,0.9) 35%, rgba(200,0,255,0.5) 65%, transparent 100%); transform: scale(0.1); opacity: 1; }
-    50%  { background: radial-gradient(circle, rgba(255,255,255,0.9) 0%, rgba(255,80,160,0.7) 35%, rgba(180,0,220,0.3) 65%, transparent 100%); transform: scale(1.1); opacity: 0.85; }
-    100% { background: radial-gradient(circle, rgba(255,255,255,0) 0%, rgba(255,50,150,0) 50%, transparent 100%); transform: scale(1.4); opacity: 0; }
+    0%   { transform: scale(0.1); opacity: 1; }
+    50%  { transform: scale(1.1); opacity: 0.85; }
+    100% { transform: scale(1.4); opacity: 0; }
 }
 @keyframes wn-burst-ring {
     0%   { transform: scale(0.1); opacity: 1; }
     60%  { transform: scale(1.0); opacity: 0.8; }
     100% { transform: scale(1.5); opacity: 0; }
 }
+/* Pool elements live in the DOM permanently and are invisible while idle.
+ * .fire-burst gates the animation so a fresh layer-promotion isn't paid
+ * for on every Space press — the same 8 pooled layers are simply replayed. */
 .dangan-wn-burst {
     position: fixed;
     width: 110px; height: 110px;
@@ -1344,6 +1397,15 @@ body.dangan-nsd-shaking { animation: danganNsdScreenShake 80ms steps(2, end) inf
     pointer-events: none;
     z-index: 2147483646;
     border-radius: 50%;
+    background: radial-gradient(circle,
+        rgba(255, 255, 255, 1) 0%,
+        rgba(255, 105, 180, 0.9) 35%,
+        rgba(200, 0, 255, 0.5) 65%,
+        transparent 100%);
+    will-change: transform, opacity;
+    opacity: 0;
+}
+.dangan-wn-burst.fire-burst {
     animation: wn-burst-core 0.35s ease-out forwards;
 }
 .dangan-wn-burst::after {
@@ -1353,13 +1415,23 @@ body.dangan-nsd-shaking { animation: danganNsdScreenShake 80ms steps(2, end) inf
     width: 90px; height: 90px;
     border-radius: 50%;
     border: 4px solid rgba(255, 105, 180, 0.9);
+    opacity: 0;
+}
+.dangan-wn-burst.fire-burst::after {
     animation: wn-burst-ring 0.35s ease-out forwards;
 }
 
 /* ─── White Noise ────────────────────────────── */
+/* Break animation: opacity + transform only — both are compositor
+ * properties, so no repaint happens during the 0.32 s.  The bright flash
+ * feel is provided by the .flash class added at the same instant in
+ * hitWhiteNoise(), which animates color + text-shadow for 0.18 s and ends
+ * before the break does.  Avoid animating text-shadow / filter here:
+ * either forces per-frame paint or a fresh GPU layer and was the source of
+ * jank when multiple breaks overlapped. */
 @keyframes white-noise-break {
-    0%   { opacity: 1; transform: translate(-50%, -50%) scale(1.3); filter: brightness(3); }
-    100% { opacity: 0; transform: translate(-50%, -50%) scale(2.2); filter: brightness(5); }
+    0%   { opacity: 1; transform: translate(-50%, -50%) scale(1.3); }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(2.2); }
 }
 
 @keyframes white-noise-flash {
@@ -1833,11 +1905,21 @@ body.dangan-nsd-shaking { animation: danganNsdScreenShake 80ms steps(2, end) inf
     animation: danganCgFadeIn 0.55s ease-out forwards;
 }
 
+@keyframes danganCgFadeOut {
+    from { opacity: 1; }
+    to   { opacity: 0; }
+}
+#dangan-cg-overlay.dangan-cg-fading-out,
+.dangan-cg-dismiss-btn.dangan-cg-fading-out,
+.dangan-cg-name-panel.dangan-cg-fading-out {
+    animation: danganCgFadeOut 0.45s ease-in forwards;
+    pointer-events: none;
+}
+
 .dangan-cg-dismiss-btn {
     position: fixed;
     bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%);
+    right: 24px;
     z-index: 2147483647;
     background: rgba(0, 0, 0, 0.72);
     color: white;
@@ -1858,6 +1940,64 @@ body.dangan-nsd-shaking { animation: danganNsdScreenShake 80ms steps(2, end) inf
     border-color: rgba(255, 255, 255, 0.55);
 }
 
+/* Speaker-name panel — left-edge card framed in pta-panel.png. */
+.dangan-cg-name-panel {
+    position: fixed;
+    left: 414px;
+    top: 73%;
+    transform: translateY(-50%);
+    z-index: 2147483647;
+    padding: 36px 44px;
+    min-width: 240px;
+    max-width: 360px;
+    pointer-events: none;
+    isolation: isolate;
+    animation: danganCgFadeIn 0.55s ease-out forwards;
+    /* These speaker-name variables are otherwise scoped to
+     * #dangan-trial-speaker-sticker — re-declare here so the
+     * ::first-letter accent below resolves them. */
+    --dgn-speaker-cyan: #6ce6ff;
+    --dgn-speaker-cyan-soft: rgba(108, 230, 255, 0.55);
+}
+.dangan-cg-name-panel::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: url('../../../assets/images/minigames/pta-panel.png');
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    z-index: -1;
+    pointer-events: none;
+    filter: var(--dgn-overlay-filter, none);
+}
+.dangan-cg-name-text {
+    display: block;
+    font-family: "Quickend", "Boldonse", "Orbitron", "Rajdhani", monospace;
+    font-size: 30px;
+    line-height: 1.05;
+    color: var(--dgn-neon);
+    text-shadow:
+        0 0 6px rgba(var(--dgn-neon-rgb), 0.55),
+        0 0 16px rgba(var(--dgn-neon-rgb), 0.40),
+        2px 3px 0 rgba(0, 0, 0, 0.55);
+    font-weight: 700;
+    text-transform: capitalize;
+    letter-spacing: 0;
+    word-break: normal;
+    overflow-wrap: normal;
+    white-space: normal;
+    text-align: center;
+    pointer-events: none;
+}
+.dangan-cg-name-text::first-letter {
+    color: var(--dgn-speaker-cyan);
+    text-shadow:
+        0 0 6px var(--dgn-speaker-cyan-soft),
+        0 0 18px rgba(108, 230, 255, 0.55),
+        2px 3px 0 rgba(0, 0, 0, 0.55);
+}
+.dangan-cg-name-panel-empty { display: none; }
+
 /* ── CG picker modal ─────────────────────────────────────────────────────── */
 
 #dangan-cg-overlay.dangan-cg-sepia     { filter: sepia(1); }
@@ -1874,8 +2014,9 @@ body.dangan-nsd-shaking { animation: danganNsdScreenShake 80ms steps(2, end) inf
 }
 
 .dangan-cg-picker-inner {
-    background: var(--SmartThemeChatTintColor, rgba(16, 16, 24, 0.98));
-    border: 2px solid rgba(0, 255, 255, 0.3);
+    background: var(--dgn-panel-bg, rgba(8, 2, 14, 0.92));
+    border: 2px solid var(--dgn-panel-border, rgba(255, 55, 196, 0.85));
+    box-shadow: var(--dgn-panel-glow, 0 0 18px rgba(255, 55, 196, 0.45), inset 0 0 22px rgba(255, 55, 196, 0.10));
     border-radius: 12px;
     width: min(960px, 95vw);
     max-height: 80vh;
@@ -1889,31 +2030,35 @@ body.dangan-nsd-shaking { animation: danganNsdScreenShake 80ms steps(2, end) inf
     align-items: center;
     justify-content: space-between;
     padding: 12px 16px;
-    border-bottom: 1px solid rgba(0, 255, 255, 0.18);
+    border-bottom: 1px solid var(--dgn-neon-faint, rgba(255, 55, 196, 0.22));
+    background: var(--dgn-panel-header-gradient, linear-gradient(180deg, rgba(255, 55, 196, 0.18) 0%, rgba(255, 55, 196, 0.04) 100%));
     flex-shrink: 0;
 }
 
 .dangan-cg-picker-title {
-    font-family: 'Noto Sans JP', sans-serif;
-    font-size: 11px;
+    font-family: "Quickend", "Boldonse", "Orbitron", "Rajdhani", 'Noto Sans JP', sans-serif;
+    font-size: 13px;
     font-weight: bold;
-    letter-spacing: 0.2em;
-    color: #00ffff;
+    letter-spacing: 0.22em;
+    color: var(--dgn-neon, #ff37c4);
+    text-shadow: 0 0 6px var(--dgn-neon-soft, rgba(255, 55, 196, 0.55)),
+                 0 0 14px var(--dgn-neon-faint, rgba(255, 55, 196, 0.22));
 }
 
 .dangan-cg-picker-close {
     background: none;
     border: none;
-    color: rgba(255, 255, 255, 0.45);
+    color: rgba(255, 255, 255, 0.55);
     font-size: 16px;
     cursor: pointer;
     padding: 0 4px;
     line-height: 1;
-    transition: color 0.15s;
+    transition: color 0.15s, text-shadow 0.15s;
 }
 
 .dangan-cg-picker-close:hover {
-    color: white;
+    color: var(--dgn-neon, #ff37c4);
+    text-shadow: 0 0 8px var(--dgn-neon-soft, rgba(255, 55, 196, 0.55));
 }
 
 /* Filter toggles */
@@ -1921,7 +2066,7 @@ body.dangan-nsd-shaking { animation: danganNsdScreenShake 80ms steps(2, end) inf
     display: flex;
     gap: 8px;
     padding: 8px 14px;
-    border-bottom: 1px solid rgba(0, 255, 255, 0.1);
+    border-bottom: 1px solid var(--dgn-neon-faint, rgba(255, 55, 196, 0.18));
     flex-shrink: 0;
 }
 
@@ -1932,28 +2077,29 @@ body.dangan-nsd-shaking { animation: danganNsdScreenShake 80ms steps(2, end) inf
     letter-spacing: 0.12em;
     padding: 4px 14px;
     border-radius: 4px;
-    border: 1px solid rgba(255, 255, 255, 0.22);
+    border: 1px solid var(--dgn-neon-faint, rgba(255, 55, 196, 0.35));
     background: transparent;
-    color: rgba(255, 255, 255, 0.55);
+    color: rgba(255, 255, 255, 0.7);
     cursor: pointer;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 
 .dangan-cg-filter-btn:hover {
-    border-color: rgba(0, 255, 255, 0.45);
-    color: rgba(255, 255, 255, 0.9);
+    border-color: var(--dgn-neon-soft, rgba(255, 55, 196, 0.65));
+    color: #fff;
 }
 
 .dangan-cg-filter-btn.active {
-    background: rgba(0, 255, 255, 0.18);
-    border-color: #00ffff;
-    color: #00ffff;
+    background: var(--dgn-neon-faint, rgba(255, 55, 196, 0.22));
+    border-color: var(--dgn-neon, #ff37c4);
+    color: var(--dgn-neon, #ff37c4);
+    box-shadow: 0 0 8px var(--dgn-neon-soft, rgba(255, 55, 196, 0.55));
 }
 
 /* Search bar */
 .dangan-cg-picker-search-row {
     padding: 8px 14px;
-    border-bottom: 1px solid rgba(0, 255, 255, 0.1);
+    border-bottom: 1px solid var(--dgn-neon-faint, rgba(255, 55, 196, 0.18));
     flex-shrink: 0;
 }
 
@@ -1961,26 +2107,36 @@ body.dangan-nsd-shaking { animation: danganNsdScreenShake 80ms steps(2, end) inf
     width: 100%;
     box-sizing: border-box;
     background: rgba(0, 0, 0, 0.4);
-    border: 1px solid rgba(0, 255, 255, 0.22);
+    border: 1px solid var(--dgn-neon-faint, rgba(255, 55, 196, 0.35));
     border-radius: 4px;
     color: white;
     font-family: 'Noto Sans JP', sans-serif;
     font-size: 11px;
     padding: 6px 10px;
     outline: none;
-    transition: border-color 0.15s;
+    transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-.dangan-cg-search:focus { border-color: #00ffff; }
+.dangan-cg-search:focus {
+    border-color: var(--dgn-neon, #ff37c4);
+    box-shadow: 0 0 8px var(--dgn-neon-soft, rgba(255, 55, 196, 0.55));
+}
 
-.dangan-cg-search::placeholder { color: rgba(255, 255, 255, 0.28); }
+.dangan-cg-search::placeholder { color: rgba(255, 255, 255, 0.35); }
 
-/* 5-column grid */
+/* 5-column grid — must claim remaining vertical space inside the flex
+ * column AND have min-height:0 so its `overflow-y: auto` can actually
+ * scroll instead of forcing rows to share whatever space the inner panel
+ * has left (which collapses thumbnails to thin horizontal strips). */
 .dangan-cg-picker-grid {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
+    grid-auto-rows: auto;
+    align-content: start;
     gap: 8px;
     padding: 10px;
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
 }
 
@@ -1992,16 +2148,20 @@ body.dangan-nsd-shaking { animation: danganNsdScreenShake 80ms steps(2, end) inf
     overflow: hidden;
     border: 2px solid transparent;
     transition: border-color 0.15s;
+    height: min-content;
 }
 
 .dangan-cg-pick-item:hover {
-    border-color: #00ffff;
+    border-color: var(--dgn-neon, #ff37c4);
+    box-shadow: 0 0 10px var(--dgn-neon-soft, rgba(255, 55, 196, 0.55));
 }
 
+/* Fixed pixel height keeps every thumbnail identical regardless of how
+ * the browser resolves aspect-ratio inside a flex/grid combination. */
 .dangan-cg-pick-thumb {
     display: block;
     width: 100%;
-    aspect-ratio: 16 / 9;
+    height: 110px;
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;

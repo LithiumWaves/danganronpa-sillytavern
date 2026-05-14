@@ -21,6 +21,7 @@ export function createMindMineController({
     playBgm            = null,   // () => void — starts the minigame BGM track
     onStart            = null,   // () => void — called when minigame begins
     onEnd              = null,   // () => void — called when minigame ends/cleans up
+    getPlayerSpriteUrl = null,   // (expression: string) => Promise<string> — for Got It banner sprite
 } = {}) {
 
     /* ── grid constants ──────────────────────────────────────────────── */
@@ -51,34 +52,118 @@ export function createMindMineController({
     }
 
     /* Scatter sentences at random positions/angles within the grid area.
-       Coverage = cells whose centres fall beneath the text's approximate footprint. */
+       Each layout's AABB is rejection-sampled against previously placed
+       layouts so the three sentences don't visually overlap.  If no fully
+       non-overlapping placement is found after MAX_TRIES, we keep the
+       candidate that minimised total overlap area (so we never deadlock).
+       Coverage = cells whose centres fall beneath the text's footprint. */
     function buildSentenceLayouts(count, block, gridW, gridH) {
-        const cellW   = block + GAP;
-        const padX    = block * 2;
-        const padY    = block * 1.5;
-        const layouts = [];
+        const cellW    = block + GAP;
+        const margin   = block; // visual breathing room between layouts
+        const MAX_TRIES = 120;
+        const layouts  = [];
+
+        const maxTextW = Math.round(gridW / 2);
+
+        const aabbOverlap = (a, b) => {
+            const dx = Math.abs(a.x - b.x) - (a.halfW + b.halfW + margin);
+            const dy = Math.abs(a.y - b.y) - (a.halfH + b.halfH + margin);
+            if (dx >= 0 || dy >= 0) return 0;
+            return (-dx) * (-dy);
+        };
+
+        const edgePad = 6;
+
         for (let s = 0; s < count; s++) {
-            const x     = padX + Math.random() * (gridW - padX * 2);
-            const y     = padY + Math.random() * (gridH - padY * 2);
-            const angle = (Math.random() - 0.5) * 40; // −20° … +20°
-            // Axis-aligned bounding box of the rotated text block (accounts for wrapping)
-            const maxTextW = Math.round(gridW / 2);
             const rawTextW = Math.max(60, (sentences[s]?.length ?? 20) * 6.5);
             const textW    = Math.min(maxTextW, rawTextW);
             const lines    = Math.ceil(rawTextW / maxTextW);
             const textH    = Math.max(14, lines * 16);
-            const rad     = Math.abs(angle) * Math.PI / 180;
-            const halfAABBW = (textW / 2) * Math.cos(rad) + (textH / 2) * Math.sin(rad);
-            const halfAABBH = (textW / 2) * Math.sin(rad) + (textH / 2) * Math.cos(rad);
-            const colMin  = Math.max(0,        Math.floor((x - halfAABBW) / cellW));
-            const colMax  = Math.min(COLS - 1, Math.floor((x + halfAABBW) / cellW));
-            const rowMin  = Math.max(0,        Math.floor((y - halfAABBH) / cellW));
-            const rowMax  = Math.min(ROWS - 1, Math.floor((y + halfAABBH) / cellW));
+
+            let best = null;
+            let bestOverlap = Infinity;
+            for (let t = 0; t < MAX_TRIES; t++) {
+                // Pick angle first so the rotated AABB half-extents are known
+                // before constraining the centre — without this the centre
+                // gets clamped only to a constant block-multiple margin, and
+                // the (often much wider) rotated text can spill past the grid.
+                const angle  = (Math.random() - 0.5) * 40; // −20° … +20°
+                const rad    = Math.abs(angle) * Math.PI / 180;
+                const halfW  = (textW / 2) * Math.cos(rad) + (textH / 2) * Math.sin(rad);
+                const halfH  = (textW / 2) * Math.sin(rad) + (textH / 2) * Math.cos(rad);
+                const minX   = halfW + edgePad;
+                const maxX   = gridW - halfW - edgePad;
+                const minY   = halfH + edgePad;
+                const maxY   = gridH - halfH - edgePad;
+                const x = minX <= maxX ? minX + Math.random() * (maxX - minX) : gridW / 2;
+                const y = minY <= maxY ? minY + Math.random() * (maxY - minY) : gridH / 2;
+                const cand   = { x, y, angle, halfW, halfH };
+                let overlap = 0;
+                for (const prev of layouts) {
+                    overlap += aabbOverlap(cand, prev);
+                    if (overlap >= bestOverlap) break;
+                }
+                if (overlap < bestOverlap) {
+                    best = cand;
+                    bestOverlap = overlap;
+                    if (overlap === 0) break;
+                }
+            }
+
+            const { x, y, angle, halfW, halfH } = best;
+            const colMin  = Math.max(0,        Math.floor((x - halfW) / cellW));
+            const colMax  = Math.min(COLS - 1, Math.floor((x + halfW) / cellW));
+            const rowMin  = Math.max(0,        Math.floor((y - halfH) / cellW));
+            const rowMax  = Math.min(ROWS - 1, Math.floor((y + halfH) / cellW));
+            // Coverage: every grid cell whose square hitbox actually
+            // overlaps the rotated text rectangle (SAT test). A
+            // centre-only test missed cells that the text clipped a
+            // corner of, letting sentences register as revealed while
+            // blocks still sat on top of them.
+            const rad  = angle * Math.PI / 180;
+            const cosA = Math.cos(rad);
+            const sinA = Math.sin(rad);
+            const halfTW = textW / 2;
+            const halfTH = textH / 2;
+            const textCorners = [
+                [-halfTW, -halfTH], [halfTW, -halfTH],
+                [ halfTW,  halfTH], [-halfTW,  halfTH],
+            ].map(([lx, ly]) => [
+                x + lx * cosA - ly * sinA,
+                y + lx * sinA + ly * cosA,
+            ]);
+            const axes = [[1, 0], [0, 1], [cosA, sinA], [-sinA, cosA]];
+            const projectRange = (corners, ax, ay) => {
+                let min = Infinity, max = -Infinity;
+                for (const [px, py] of corners) {
+                    const p = px * ax + py * ay;
+                    if (p < min) min = p;
+                    if (p > max) max = p;
+                }
+                return [min, max];
+            };
+            const overlapsText = (cellCorners) => {
+                for (const [ax, ay] of axes) {
+                    const [cMin, cMax] = projectRange(cellCorners, ax, ay);
+                    const [tMin, tMax] = projectRange(textCorners, ax, ay);
+                    if (cMax < tMin || tMax < cMin) return false;
+                }
+                return true;
+            };
             const coverage = [];
-            for (let r = rowMin; r <= rowMax; r++)
-                for (let c = colMin; c <= colMax; c++)
-                    coverage.push(flatIdx(r, c));
-            layouts.push({ x, y, angle, coverage });
+            for (let r = rowMin; r <= rowMax; r++) {
+                for (let c = colMin; c <= colMax; c++) {
+                    const cx = c * cellW + block / 2;
+                    const cy = r * cellW + block / 2;
+                    const h  = block / 2;
+                    const cellCorners = [
+                        [cx - h, cy - h], [cx + h, cy - h],
+                        [cx + h, cy + h], [cx - h, cy + h],
+                    ];
+                    if (overlapsText(cellCorners)) coverage.push(flatIdx(r, c));
+                }
+            }
+            layouts.push({ x, y, angle, halfW, halfH, coverage });
         }
         return layouts;
     }
@@ -152,9 +237,18 @@ export function createMindMineController({
         }
 
         // Single block with no same-colour neighbours: penalty, but still breaks.
-        if (group.size === 1) {
+        const isPenalty = group.size === 1;
+        if (isPenalty) {
             applyDamage(i);
             if (!isRunning) return; // time hit zero
+        }
+
+        // One SFX per click event regardless of how many blocks are in the
+        // chain — penalty cue wins when it's the lone-block case.
+        if (extensionFolderPath) {
+            const sfxFile = isPenalty ? 'mindmine-block-penalty.wav' : 'mindmine-block-break.wav';
+            new Audio(`/${extensionFolderPath}/assets/sfx/minigames/${sfxFile}`)
+                .play().catch(() => {});
         }
 
         // Break the group.
@@ -191,7 +285,7 @@ export function createMindMineController({
             label.textContent = '-10 sec!';
             label.style.left = `${rect.left + rect.width / 2}px`;
             label.style.top  = `${rect.top}px`;
-            document.body.appendChild(label);
+            overlay.appendChild(label);
             setTimeout(() => label.remove(), 1000);
         }
         if (timeRemaining <= 0) endGame(false);
@@ -260,19 +354,50 @@ export function createMindMineController({
         endGame(true);
     }
 
-    function showGotIt() {
-        const el = document.createElement('div');
-        el.className = 'mm-gotit';
-        el.textContent = 'GOT IT!';
-        overlay.appendChild(el);
-        // Two rAF so the initial opacity:0 state is committed first.
-        requestAnimationFrame(() => requestAnimationFrame(() => {
-            el.classList.add('mm-gotit-visible');
-            setTimeout(() => {
-                el.classList.remove('mm-gotit-visible');
-                setTimeout(() => el.remove(), 550);
-            }, 1600);
-        }));
+    async function showGotIt() {
+        const imgUrl = extensionFolderPath
+            ? `/${extensionFolderPath}/assets/images/minigames/got-it-banner.png`
+            : 'assets/images/minigames/got-it-banner.png';
+
+        // Same "Got It!" cue Question Time uses on a correct answer.
+        if (extensionFolderPath) {
+            new Audio(`/${extensionFolderPath}/assets/monokuma/question-answered-correctly.wav`)
+                .play().catch(() => {});
+        }
+
+        // Mounted on <body> (not the overlay) so it persists past cleanup.
+        const prefill = document.createElement('div');
+        prefill.className = 'mm-banner-prefill';
+        document.body.appendChild(prefill);
+        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+        prefill.style.transform = 'scaleX(1)';
+        await new Promise(r => setTimeout(r, 55));
+
+        const banner = document.createElement('div');
+        banner.className = 'mm-banner';
+        banner.innerHTML = `<div class="mm-banner-inner"><img class="mm-banner-img" src="${imgUrl}" alt="Got It"/></div>`;
+        document.body.appendChild(banner);
+        const inner = banner.querySelector('.mm-banner-inner');
+
+        // Player approval sprite overlay (matches Question Time placement).
+        if (typeof getPlayerSpriteUrl === 'function') {
+            const spriteUrl = await getPlayerSpriteUrl('approval');
+            if (spriteUrl) {
+                const spriteEl = document.createElement('img');
+                spriteEl.src = spriteUrl;
+                spriteEl.alt = '';
+                spriteEl.style.cssText = 'position:absolute;bottom:-1475px;left:70%;transform:translateX(-50%);height:650%;width:auto;object-fit:contain;object-position:center bottom;pointer-events:none;filter:drop-shadow(rgb(255,255,255) 0px 0px 50px);';
+                inner.appendChild(spriteEl);
+            }
+        }
+
+        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+        inner.style.left = '0%';
+
+        await new Promise(r => setTimeout(r, 350 + 1400)); // slide-in + linger
+        banner.style.opacity = '0';
+        prefill.style.opacity = '0';
+        setTimeout(() => { banner.remove(); prefill.remove(); }, 520);
     }
 
     /* ── timer ───────────────────────────────────────────────────────── */
@@ -302,7 +427,7 @@ export function createMindMineController({
         const secs    = Math.floor((ms % 60000) / 1000);
         const millis  = Math.floor(ms % 1000);
         timerEl.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(millis).padStart(3, '0')}`;
-        timerEl.classList.toggle('mm-timer-low', timeRemaining <= 30000);
+        timerEl.classList.toggle('mm-timer-low', timeRemaining <= 10000);
     }
 
     /* ── end game / cleanup ──────────────────────────────────────────── */
@@ -311,7 +436,24 @@ export function createMindMineController({
         isRunning = false;
         cancelAnimationFrame(timerInterval);
         timerInterval = null;
+        if (!win) playTimeUpDamage();
         setTimeout(cleanup, win ? 2000 : 600);
+    }
+
+    /* Red full-screen flash + body shake + Monokuma "incorrect" cue — same
+     * pattern Question Time uses when the player loses a heart. Fired when
+     * the Mind Mine countdown hits zero. */
+    function playTimeUpDamage() {
+        if (extensionFolderPath) {
+            new Audio(`/${extensionFolderPath}/assets/monokuma/incorrect-answer.wav`)
+                .play().catch(() => {});
+        }
+        const flashEl = document.createElement('div');
+        flashEl.id = 'mm-damage-flash';
+        document.body.appendChild(flashEl);
+        document.body.classList.add('mm-shaking');
+        setTimeout(() => flashEl.remove(), 220);
+        setTimeout(() => document.body.classList.remove('mm-shaking'), 360);
     }
 
     function cleanup() {
@@ -328,6 +470,7 @@ export function createMindMineController({
 
     /* ── CSS ─────────────────────────────────────────────────────────── */
     function buildStyles({ block, gridW, gridH, panelW }) {
+        const imgBase = extensionFolderPath ? `/${extensionFolderPath}/assets/images/minigames` : 'assets/images/minigames';
         return `
 /* ── Mind Mine overlay ─────────────────────────────────────────────────── */
 .mm-overlay {
@@ -352,18 +495,79 @@ export function createMindMineController({
 }
 .mm-overlay.mm-damage { animation: mmDamageFlash 0.5s ease; }
 
+/* Intro lock — applied while the start SFX is playing. Cursor is
+ * hidden and clicks are absorbed so the player can't break blocks
+ * before the round actually begins. */
+.mm-overlay.mm-intro-locked,
+.mm-overlay.mm-intro-locked * {
+    cursor: none !important;
+}
+.mm-overlay.mm-intro-locked .mm-block { pointer-events: none !important; }
+
+/* ── Time-up: full-screen red flash + body shake (ported from QT) ── */
+#mm-damage-flash {
+    position: fixed; inset: 0;
+    z-index: 2147483640;
+    pointer-events: none;
+    background: rgba(220, 0, 0, 0.55);
+    animation: mmTimeUpFlash 0.2s ease-out forwards;
+}
+@keyframes mmTimeUpFlash {
+    0%   { opacity: 0; }
+    20%  { opacity: 1; }
+    100% { opacity: 0; }
+}
+@keyframes mmScreenShake {
+    0%   { translate:  0px  0px; }
+    10%  { translate: -6px  3px; }
+    20%  { translate:  5px -4px; }
+    30%  { translate: -4px  2px; }
+    40%  { translate:  6px -3px; }
+    50%  { translate: -5px  4px; }
+    60%  { translate:  4px -2px; }
+    70%  { translate: -6px  3px; }
+    80%  { translate:  5px -4px; }
+    90%  { translate: -4px  2px; }
+    100% { translate:  0px  0px; }
+}
+body.mm-shaking { animation: mmScreenShake 80ms steps(2, end) infinite; }
+
 /* ── footer ── */
 .mm-footer {
     position: relative; z-index: 1;
-    display: flex; align-items: center; justify-content: center;
-    width: ${panelW}px; margin-top: 10px;
+    display: flex; align-items: flex-start; justify-content: flex-start;
+    width: ${panelW}px; margin-top: 0;
+}
+/* Trapezoid frame around the timer — wider at the top, narrower at
+ * the bottom. The SVG inside scales with the frame; the polygon's
+ * border keeps a constant pixel width via vector-effect:
+ * non-scaling-stroke, so the outline stays crisp even though the
+ * SVG itself is stretched to fill. overflow:visible lets the top
+ * edge of the stroke spill 1px above the frame so it overlaps and
+ * visually merges with the panel's bottom border. */
+.mm-timer-frame {
+    position: relative;
+    display: inline-flex;
+    align-items: center; justify-content: flex-start;
+    padding: 8px 56px 10px 44px;
+    margin-left: 24px;
+}
+.mm-timer-frame-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    overflow: visible;
 }
 .mm-timer {
+    position: relative;
+    z-index: 1;
     font-family: "Orbitron", "Impact", monospace;
     font-size: clamp(28px, 4vh, 46px); font-weight: 900; letter-spacing: 3px;
     color: #ffaa00;
     text-shadow: 0 0 12px rgba(255,140,0,0.7), 0 0 3px rgba(255,200,0,0.9);
-    text-align: center;
+    text-align: left;
+    font-variant-numeric: tabular-nums;
 }
 @keyframes mmTimerBlink { 0%,100%{opacity:1} 50%{opacity:0.3} }
 .mm-timer.mm-timer-low {
@@ -409,6 +613,11 @@ export function createMindMineController({
     position: relative;
     display: flex; align-items: center; justify-content: center;
     user-select: none;
+    /* Pre-promote each block to its own GPU layer so the .mm-hover
+     * scale change is texture-stretching only — without this, the
+     * browser cold-creates a layer on every hover change and re-paints
+     * the gradient + box-shadow stack, which is the per-move stall. */
+    will-change: transform;
 }
 .mm-block::before {
     content: ''; position: absolute; inset: 0; border-radius: 3px;
@@ -420,10 +629,6 @@ export function createMindMineController({
 .mm-block.mm-hover:not(.mm-anim-break)::before {
     background: rgba(255,255,255,0.28);
 }
-.mm-block::after {
-    content: '◆'; font-size: 13px; opacity: 0.5; pointer-events: none;
-}
-
 /* empty cell */
 .mm-block.mm-empty {
     cursor: default;
@@ -432,40 +637,21 @@ export function createMindMineController({
     border: none !important;
     box-shadow: none !important;
 }
-.mm-block.mm-empty::after { display: none; }
 
-/* silver */
-.mm-block[data-color="0"] {
-    background: linear-gradient(145deg, #dde6f4 0%, #8898b4 55%, #c2cedd 100%);
-    border: 2px solid #4a5870;
-    box-shadow:
-        inset 2px 2px 5px rgba(255,255,255,0.55),
-        inset -2px -2px 5px rgba(0,10,40,0.45),
-        0 2px 6px rgba(0,0,0,0.55);
-}
-.mm-block[data-color="0"]::after { color: rgba(20,40,90,0.55); }
-
-/* gold */
-.mm-block[data-color="1"] {
-    background: linear-gradient(145deg, #f8d460 0%, #a46800 55%, #dea030 100%);
-    border: 2px solid #6a3800;
-    box-shadow:
-        inset 2px 2px 5px rgba(255,230,110,0.6),
-        inset -2px -2px 5px rgba(70,25,0,0.5),
-        0 2px 6px rgba(0,0,0,0.55);
-}
-.mm-block[data-color="1"]::after { color: rgba(80,30,0,0.55); }
-
-/* pink */
+/* silver / gold / pink blocks — each rendered as the corresponding PNG */
+.mm-block[data-color="0"],
+.mm-block[data-color="1"],
 .mm-block[data-color="2"] {
-    background: linear-gradient(145deg, #f090cc 0%, #920855 55%, #d04094 100%);
-    border: 2px solid #5a0038;
-    box-shadow:
-        inset 2px 2px 5px rgba(255,160,215,0.5),
-        inset -2px -2px 5px rgba(65,0,35,0.5),
-        0 2px 6px rgba(0,0,0,0.55);
+    background-color: transparent;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 100% 100%;
+    border: none;
+    box-shadow: none;
 }
-.mm-block[data-color="2"]::after { color: rgba(65,0,35,0.55); }
+.mm-block[data-color="0"] { background-image: url("${imgBase}/mindmine-silver.png"); }
+.mm-block[data-color="1"] { background-image: url("${imgBase}/mindmine-gold.png"); }
+.mm-block[data-color="2"] { background-image: url("${imgBase}/mindmine-pink.png"); }
 
 /* break */
 @keyframes mmBreak {
@@ -533,22 +719,59 @@ export function createMindMineController({
     text-shadow: none;
 }
 
-/* ── Got It! banner ── */
-.mm-gotit {
-    position: absolute; top: 50%; left: 50%;
-    transform: translate(-50%, -50%) scale(0.55);
-    opacity: 0; pointer-events: none; z-index: 200;
-    font-size: clamp(38px, 7vw, 74px);
-    font-weight: 900; letter-spacing: 6px; white-space: nowrap;
-    color: #fff;
-    text-shadow:
-        0 0 18px rgba(80,255,80,1),
-        0 0 36px rgba(40,200,40,0.85),
-        0 0 60px rgba(0,140,0,0.65);
-    transition: opacity 0.28s ease, transform 0.28s ease;
+/* ── Got It! banner (image-based, ported from Question Time) ── */
+.mm-banner-prefill {
+    position: fixed;
+    top: 33.33%; left: 0; right: 0; height: 33.34%;
+    z-index: 2147483646;
+    background: #000;
+    pointer-events: none;
+    transform: scaleX(0);
+    transform-origin: center;
+    transition: transform 0.045s ease-out;
 }
-.mm-gotit.mm-gotit-visible {
-    opacity: 1; transform: translate(-50%, -50%) scale(1);
+.mm-banner {
+    position: fixed;
+    top: 33.33%; left: 0; right: 0; height: 33.34%;
+    z-index: 2147483647;
+    pointer-events: none;
+    overflow: visible;
+    opacity: 1;
+    transition: opacity 0.5s ease;
+    border-top: 6px solid #000;
+    border-bottom: 6px solid #000;
+    animation: mmBannerShadowPulse 1.2s ease-in-out infinite;
+}
+@keyframes mmBannerShadowPulse {
+    0%, 100% {
+        box-shadow:
+            0 -12px 32px rgba(0,0,0,0.95),
+            0 -4px  10px rgba(0,0,0,1),
+            0  12px 32px rgba(0,0,0,0.95),
+            0  4px  10px rgba(0,0,0,1);
+    }
+    50% {
+        box-shadow:
+            0 -24px 60px rgba(0,0,0,1),
+            0 -8px  20px rgba(0,0,0,1),
+            0  24px 60px rgba(0,0,0,1),
+            0  8px  20px rgba(0,0,0,1);
+    }
+}
+.mm-banner-inner {
+    position: absolute;
+    top: 0; bottom: 0;
+    left: 100%;
+    width: 100%;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+    transition: left 0.325s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.mm-banner-img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    object-position: center;
+    display: block;
 }
 
 /* ── penalty float label ── */
@@ -565,14 +788,14 @@ export function createMindMineController({
     font-size: 26px;
     font-weight: 900;
     font-style: italic;
-    color: #ff1a6e;
+    color: #fff;
     letter-spacing: 2px;
     white-space: nowrap;
     text-shadow:
-        -2px -2px 0 #fff,
-         2px -2px 0 #fff,
-        -2px  2px 0 #fff,
-         2px  2px 0 #fff,
+        -2px -2px 0 #ff0000,
+         2px -2px 0 #ff0000,
+        -2px  2px 0 #ff0000,
+         2px  2px 0 #ff0000,
          0 0 18px rgba(255, 30, 110, 0.95),
          0 0 36px rgba(255, 0,  80,  0.6);
     animation: mmPenalty 0.95s ease-out forwards;
@@ -641,10 +864,20 @@ export function createMindMineController({
         window.addEventListener('resize', onResize);
         wrapperEl._mmCleanup = () => window.removeEventListener('resize', onResize);
 
-        wrapperEl.addEventListener('mousemove', e => {
+        // rAF-batched hover: at high cursor speeds, mousemove fires 4–8×
+        // per frame.  Each fire was doing two classList toggles; we only
+        // need the final position per frame, so coalesce into one update.
+        let pendingMouseX = -1;
+        let pendingMouseY = -1;
+        let mouseRafScheduled = false;
+        const processHover = () => {
+            mouseRafScheduled = false;
+            if (pendingMouseX < 0) return;
             if (!wrapperRect) wrapperRect = wrapperEl.getBoundingClientRect();
-            const col = Math.floor((e.clientX - wrapperRect.left) / cellSize);
-            const row = Math.floor((e.clientY - wrapperRect.top)  / cellSize);
+            const col = Math.floor((pendingMouseX - wrapperRect.left) / cellSize);
+            const row = Math.floor((pendingMouseY - wrapperRect.top)  / cellSize);
+            pendingMouseX = -1;
+            pendingMouseY = -1;
             let newIdx = -1;
             if (row >= 0 && row < ROWS && col >= 0 && col < COLS) {
                 const i = flatIdx(row, col);
@@ -654,8 +887,18 @@ export function createMindMineController({
             if (hoveredCellIdx >= 0) cellEls[hoveredCellIdx]?.classList.remove('mm-hover');
             hoveredCellIdx = newIdx;
             if (hoveredCellIdx >= 0) cellEls[hoveredCellIdx]?.classList.add('mm-hover');
+        };
+        wrapperEl.addEventListener('mousemove', e => {
+            pendingMouseX = e.clientX;
+            pendingMouseY = e.clientY;
+            if (!mouseRafScheduled) {
+                mouseRafScheduled = true;
+                requestAnimationFrame(processHover);
+            }
         });
         wrapperEl.addEventListener('mouseleave', () => {
+            pendingMouseX = -1;
+            pendingMouseY = -1;
             if (hoveredCellIdx >= 0) cellEls[hoveredCellIdx]?.classList.remove('mm-hover');
             hoveredCellIdx = -1;
         });
@@ -665,7 +908,19 @@ export function createMindMineController({
 
         const footer = document.createElement('div');
         footer.className = 'mm-footer';
-        footer.appendChild(timerEl);
+        const timerFrame = document.createElement('div');
+        timerFrame.className = 'mm-timer-frame';
+        timerFrame.innerHTML = `
+            <svg class="mm-timer-frame-bg" preserveAspectRatio="none" viewBox="0 0 100 30">
+                <polygon points="0,0 100,0 88,30 12,30"
+                         fill="rgba(6,14,36,0.92)"
+                         stroke="rgba(50,110,220,0.85)"
+                         stroke-width="2"
+                         stroke-linejoin="miter"
+                         vector-effect="non-scaling-stroke"/>
+            </svg>`;
+        timerFrame.appendChild(timerEl);
+        footer.appendChild(timerFrame);
         overlay.appendChild(footer);
 
         document.body.appendChild(overlay);
@@ -698,8 +953,30 @@ export function createMindMineController({
         buildUI();
         renderGrid();
         checkSentences(); // reveal any bands that happened to start empty
-        startTimer();
         isRunning = true;
+        // Paint the starting time immediately so the timer is visible while
+        // the intro SFX plays — the countdown itself starts only after.
+        updateTimerEl();
+
+        // Lock interaction (hidden cursor + no clicks) until the intro
+        // SFX finishes; unlocked by startCountdown below.
+        overlay?.classList.add('mm-intro-locked');
+
+        // Entry SFX — same start cue used by Panic Talk Action / Hangman's
+        // Gambit. The countdown only begins once it finishes (or fails to
+        // play / errors), so the player gets a beat to read the board.
+        const startCountdown = () => {
+            overlay?.classList.remove('mm-intro-locked');
+            if (isRunning && !timerInterval) startTimer();
+        };
+        if (extensionFolderPath) {
+            const introAudio = new Audio(`/${extensionFolderPath}/assets/sfx/minigames/minigame-start.wav`);
+            introAudio.addEventListener('ended', startCountdown, { once: true });
+            introAudio.addEventListener('error', startCountdown, { once: true });
+            introAudio.play().catch(startCountdown);
+        } else {
+            startCountdown();
+        }
     }
 
     return { run };

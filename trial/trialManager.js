@@ -66,6 +66,10 @@ export function createTrialManager(deps) {
     let statementAnimation = null;
     let playbackTimerId = null;
     let currentSpeaker = null;
+    // Reference to the open CG name panel's text node (or null when no CG
+    // overlay is visible). updateGroupChatSpeaker writes through this so
+    // the CG label follows Prev/Next navigation.
+    let cgNameTextEl = null;
     let currentWeakPointInfo = null;
     let preparedDebateSections = null;
     let debateSectionsActive = null;
@@ -221,7 +225,10 @@ export function createTrialManager(deps) {
     let gcpCurrentFloat = 0;         // fractional center index (animated)
     let gcpAnimRafId    = null;      // RAF id for scroll animation
     let gcpInitializing = false;     // true while initGroupChatPortraits is awaiting sprites
-    let gcpSeatingListRenderer = null; // callback set by Trial Controls to stay in sync with rebuilds
+    // Subscribers that need to re-render whenever the GCP slot order changes
+    // (Trial Panel's seating list, Controls Panel's seating list, etc.).
+    const gcpSeatingListRenderers = new Set();
+    const notifyGcpSeatingListRenderers = () => gcpSeatingListRenderers.forEach(fn => { try { fn(); } catch (e) { console.error(e); } });
     let gcpLastCamIdx   = null;      // slot index for which we last fired the camera shot
     let gcpBgLoopEl     = null;      // repeating background overlay for seamless circular pan
     let gcpBgImgWidth   = 0;         // rendered px width of background image at current viewport height
@@ -1155,7 +1162,7 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
         header.className = 'dgn-side-panel-header';
         header.setAttribute('aria-expanded', 'false');
         header.setAttribute('aria-controls', 'dangan-bgm-display');
-        header.innerHTML = `<span>FX PANEL</span><span class="dgn-side-panel-chev" aria-hidden="true">▾</span>`;
+        header.innerHTML = `<span>CONTROLS PANEL</span><span class="dgn-side-panel-chev" aria-hidden="true">▾</span>`;
         header.addEventListener('click', () => {
             const collapsed = wrapper.classList.toggle('collapsed');
             header.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
@@ -1183,6 +1190,19 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
                 </select>
             </div>
             <div class="dgn-fx-divider" aria-hidden="true"></div>
+            <div class="dgn-fx-seating-row">
+                <div class="dgn-fx-seating-header">
+                    <span class="dgn-fx-seating-label">Seating Plan</span>
+                    <div class="dgn-fx-seating-actions">
+                        <button type="button" id="dgn-fx-seating-edit"  class="dgn-fx-seating-btn">Edit</button>
+                        <button type="button" id="dgn-fx-seating-save"  class="dgn-fx-seating-btn" style="display:none">Save</button>
+                        <button type="button" id="dgn-fx-seating-reset" class="dgn-fx-seating-btn dgn-fx-seating-btn-danger">Reset</button>
+                    </div>
+                </div>
+                <div id="dgn-fx-seating-list" class="dgn-fx-seating-circle"></div>
+                <div class="dgn-fx-seating-hint" id="dgn-fx-seating-hint" style="display:none">Click two seats to swap, then Save.</div>
+            </div>
+            <div class="dgn-fx-divider" aria-hidden="true"></div>
             <div class="dgn-fx-commands-row">
                 <button type="button" id="dgn-fx-commands-btn" class="dgn-fx-commands-btn">View Commands</button>
             </div>
@@ -1200,6 +1220,216 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
         select.addEventListener('change', (e) => applyTrialTheme(e.target.value));
 
         fxSection.querySelector('#dgn-fx-commands-btn').addEventListener('click', showCommandsModal);
+
+        // ── Seating Plan section (circular diagram + edit/save) ─────────
+        const seatingListEl  = fxSection.querySelector('#dgn-fx-seating-list');
+        const editBtn        = fxSection.querySelector('#dgn-fx-seating-edit');
+        const saveBtn        = fxSection.querySelector('#dgn-fx-seating-save');
+        const resetBtn       = fxSection.querySelector('#dgn-fx-seating-reset');
+        const hintEl         = fxSection.querySelector('#dgn-fx-seating-hint');
+
+        // Edit-mode state — when editing, the live renderer freezes and
+        // user clicks swap seats. Save persists; cancel/Edit toggle reverts.
+        let editing = false;
+        let editPlan = [];          // working copy while editing
+        let editPlanOriginal = [];  // snapshot taken on entering edit mode (for diff highlighting)
+        let editSelectedIdx = -1;   // first-click anchor for swap
+
+        function gatherCurrentNames() {
+            const names = gcpSlots.map(s => s.name).filter(n => n && !isMonokuma(n));
+            const playerName = getPlayerName?.();
+            if (playerName && !names.some(n => normalizeSeatName(n) === normalizeSeatName(playerName))) {
+                names.push(playerName);
+            }
+            return names;
+        }
+
+        function renderCircle(names, speakerIdx) {
+            seatingListEl.innerHTML = '';
+            if (!names.length) {
+                seatingListEl.classList.add('dgn-fx-seating-empty');
+                seatingListEl.innerHTML = '<span class="dangan-seating-plan-empty">Waiting for chat…</span>';
+                return;
+            }
+            seatingListEl.classList.remove('dgn-fx-seating-empty');
+            const n = names.length;
+
+            // Centre display: empty by default; only shows the hovered
+            // seat's number + name. Mouseleave on a chip clears it.
+            const centre = document.createElement('div');
+            centre.className = 'dgn-fx-seating-centre';
+            const centreNum  = document.createElement('div');
+            centreNum.className = 'dgn-fx-seating-centre-num';
+            const centreName = document.createElement('div');
+            centreName.className = 'dgn-fx-seating-centre-name';
+            centre.appendChild(centreNum);
+            centre.appendChild(centreName);
+            seatingListEl.appendChild(centre);
+
+            const showCentre = (idx) => {
+                if (idx >= 0 && idx < n) {
+                    const nm = String(names[idx] || '').trim();
+                    const parts = nm.split(/\s+/);
+                    const firstName = parts.shift() || nm;
+                    const lastName  = parts.join(' ');
+                    centreNum.textContent  = `${idx + 1}`;
+                    centreName.textContent = lastName ? `${firstName}\n${lastName}` : firstName;
+                    centre.style.visibility = 'visible';
+                    const origAtIdx = editing ? editPlanOriginal[idx] : null;
+                    const isChanged = editing && origAtIdx && normalizeSeatName(names[idx]) !== normalizeSeatName(origAtIdx);
+                    const isDead    = !!(isCharacterDead && isCharacterDead(nm));
+                    centre.classList.toggle('dgn-fx-seating-centre-changed',      isChanged && !isDead);
+                    centre.classList.toggle('dgn-fx-seating-centre-changed-dead', isChanged && isDead);
+                } else {
+                    centre.style.visibility = 'hidden';
+                    centre.classList.remove('dgn-fx-seating-centre-changed', 'dgn-fx-seating-centre-changed-dead');
+                }
+            };
+            showCentre(-1);
+
+            for (let i = 0; i < n; i++) {
+                const name = names[i];
+                // Single seat: render at centre. Otherwise: distribute
+                // evenly clockwise starting from the top.
+                let leftPct = 50;
+                let topPct  = 50;
+                if (n > 1) {
+                    const angle = -Math.PI / 2 + (i / n) * Math.PI * 2;
+                    leftPct = 50 + Math.cos(angle) * 38;
+                    topPct  = 50 + Math.sin(angle) * 38;
+                }
+                const chip = document.createElement('div');
+                chip.className = 'dgn-fx-seating-chip';
+                chip.dataset.idx = String(i);
+                chip.style.left = `${leftPct}%`;
+                chip.style.top  = `${topPct}%`;
+                const isSpeaker = !editing && i === speakerIdx;
+                const isDead    = isCharacterDead?.(name);
+                const origAtI   = editing ? editPlanOriginal[i] : null;
+                const isChanged = editing && origAtI && normalizeSeatName(name) !== normalizeSeatName(origAtI);
+                if (isSpeaker) chip.classList.add('dgn-fx-seating-chip-speaker');
+                else if (isDead) chip.classList.add('dgn-fx-seating-chip-dead');
+                if (isChanged) chip.classList.add(isDead ? 'dgn-fx-seating-chip-changed-dead' : 'dgn-fx-seating-chip-changed');
+                if (editing && i === editSelectedIdx) chip.classList.add('dgn-fx-seating-chip-selected');
+
+                const badge = document.createElement('div');
+                badge.className = 'dgn-fx-seating-badge';
+                badge.textContent = String(i + 1);
+                chip.appendChild(badge);
+
+                chip.addEventListener('mouseenter', () => showCentre(i));
+                chip.addEventListener('mouseleave', () => showCentre(-1));
+
+                if (editing) {
+                    chip.addEventListener('click', () => handleEditClick(i));
+                }
+                seatingListEl.appendChild(chip);
+            }
+        }
+
+        function handleEditClick(idx) {
+            if (!editing) return;
+            if (editSelectedIdx === -1) {
+                editSelectedIdx = idx;
+                renderCircle(editPlan, -1);
+                return;
+            }
+            if (editSelectedIdx === idx) {
+                editSelectedIdx = -1;
+                renderCircle(editPlan, -1);
+                return;
+            }
+            [editPlan[editSelectedIdx], editPlan[idx]] = [editPlan[idx], editPlan[editSelectedIdx]];
+            editSelectedIdx = -1;
+            renderCircle(editPlan, -1);
+        }
+
+        const renderControlsSeating = () => {
+            if (!seatingListEl) return;
+            if (editing) return; // freeze while user is editing
+            const names = gatherCurrentNames();
+            const speakerIdx = gcpSlots.length ? Math.round(gcpCurrentFloat) : -1;
+            renderCircle(names, speakerIdx);
+        };
+        gcpSeatingListRenderers.add(renderControlsSeating);
+        renderControlsSeating();
+
+        editBtn?.addEventListener('click', () => {
+            if (editing) {
+                // Cancel
+                editing = false;
+                editSelectedIdx = -1;
+                editPlan = [];
+                editBtn.textContent = 'Edit';
+                editBtn.classList.remove('dgn-fx-seating-btn-active');
+                if (saveBtn) saveBtn.style.display = 'none';
+                if (hintEl)  hintEl.style.display  = 'none';
+                renderControlsSeating();
+            } else {
+                editPlan = gatherCurrentNames();
+                if (!editPlan.length) return;
+                editPlanOriginal = editPlan.slice();
+                editing = true;
+                editSelectedIdx = -1;
+                editBtn.textContent = 'Cancel';
+                editBtn.classList.add('dgn-fx-seating-btn-active');
+                if (saveBtn) saveBtn.style.display = '';
+                if (hintEl)  hintEl.style.display  = '';
+                renderCircle(editPlan, -1);
+            }
+        });
+
+        saveBtn?.addEventListener('click', () => {
+            if (!editing) return;
+            saveSavedSeatingPlan(editPlan);
+            editing = false;
+            editSelectedIdx = -1;
+            editBtn.textContent = 'Edit';
+            editBtn.classList.remove('dgn-fx-seating-btn-active');
+            if (saveBtn) saveBtn.style.display = 'none';
+            if (hintEl)  hintEl.style.display  = 'none';
+            // Force the GCP carousel to rebuild with the new order. Clearing
+            // debateSeatingPlan makes getOrBuildSeatingPlan reconsult
+            // buildSeatingPlan, which now reads the freshly saved plan.
+            debateSeatingPlan = null;
+            try {
+                destroyGroupChatPortraits();
+                initGroupChatPortraits();
+            } catch (e) { console.warn('[Dangan][Seating] rebuild failed:', e); }
+            // The rebuild will repopulate gcpSlots and fire the renderers
+            // asynchronously — render once now from the saved order so
+            // the diagram updates immediately.
+            renderCircle(editPlan.slice(), -1);
+        });
+
+        resetBtn?.addEventListener('click', () => {
+            saveSavedSeatingPlan(null);
+            if (editing) {
+                editing = false;
+                editSelectedIdx = -1;
+                editBtn.textContent = 'Edit';
+                editBtn.classList.remove('dgn-fx-seating-btn-active');
+                if (saveBtn) saveBtn.style.display = 'none';
+                if (hintEl)  hintEl.style.display  = 'none';
+            }
+            debateSeatingPlan = null;
+            try {
+                destroyGroupChatPortraits();
+                initGroupChatPortraits();
+            } catch (e) { console.warn('[Dangan][Seating] rebuild failed:', e); }
+            renderControlsSeating();
+        });
+
+        // If the FX accordion ever leaves the DOM (rare, but possible if
+        // the BGM display is torn down), unsubscribe so we don't render
+        // into a detached node forever.
+        const wrapperObserver = new MutationObserver(() => {
+            if (!document.body.contains(wrapper)) {
+                gcpSeatingListRenderers.delete(renderControlsSeating);
+                wrapperObserver.disconnect();
+            }
+        });
+        wrapperObserver.observe(document.body, { childList: true, subtree: true });
     }
 
     const TRIAL_COMMANDS = [
@@ -1640,6 +1870,7 @@ ${historyText}
             }).join('');
         }
 
+        let seatingRenderer = null;
         if (isGroupChat()) {
             async function buildFreshPlan() {
                 silencedSeats.clear();
@@ -1665,7 +1896,8 @@ ${historyText}
 
             // Register a live callback so GCP rebuilds automatically refresh the list.
             // Cleared when the notification is removed (panel closed or debate starts).
-            gcpSeatingListRenderer = () => renderSeatingList(null);
+            seatingRenderer = () => renderSeatingList(null);
+            gcpSeatingListRenderers.add(seatingRenderer);
 
             // Initial display: if GCP is already active use its slot order directly.
             // Still run buildFreshPlan to populate silencedSeats for the upcoming debate,
@@ -1689,7 +1921,7 @@ ${historyText}
         // Clear the live seating renderer when the panel is removed
         const notifObserver = new MutationObserver(() => {
             if (!document.body.contains(notification)) {
-                gcpSeatingListRenderer = null;
+                if (seatingRenderer) gcpSeatingListRenderers.delete(seatingRenderer);
                 notifObserver.disconnect();
             }
         });
@@ -1815,13 +2047,30 @@ ${historyText}
         const items = bgs.map(el => {
             const bgfile   = el.getAttribute('bgfile') || '';
             const label    = bgfile.split('/').pop().replace(/\.[^.]+$/, '') || bgfile;
-            const imgEl    = el.querySelector('.bg_example_img');
-            const thumb    = imgEl ? window.getComputedStyle(imgEl).backgroundImage : 'none';
+            // SillyTavern's thumbnail can be an <img>, a div with a CSS
+            // background-image, or an inline style — handle all three.
+            const imgEl    = el.querySelector('.bg_example_img, img');
+            let thumb = 'none';
+            if (imgEl) {
+                if (imgEl.tagName === 'IMG' && imgEl.src) {
+                    thumb = `url("${imgEl.src}")`;
+                } else {
+                    const cs = window.getComputedStyle(imgEl);
+                    if (cs.backgroundImage && cs.backgroundImage !== 'none') {
+                        thumb = cs.backgroundImage;
+                    } else if (imgEl.style.backgroundImage) {
+                        thumb = imgEl.style.backgroundImage;
+                    }
+                }
+            }
             const isCustom = el.getAttribute('custom') === 'true';
             const cssUrl   = el.dataset?.url
                           || el.getAttribute('data-url')
                           || (thumb && thumb !== 'none' ? thumb : null)
                           || (isCustom ? `url("${bgfile}")` : `url("backgrounds/${encodeURIComponent(bgfile)}")`);
+            // No thumb resolvable? Fall back to the fullsize URL so the cell
+            // at least renders the background instead of an empty rectangle.
+            if (thumb === 'none' && cssUrl) thumb = cssUrl;
             return { label, thumb, cssUrl };
         }).filter(item => item.cssUrl);
 
@@ -1929,24 +2178,41 @@ ${historyText}
     function showCgOverlay(bgCssUrl, filter = null) {
         document.getElementById('dangan-cg-overlay')?.remove();
         document.querySelector('.dangan-cg-dismiss-btn')?.remove();
+        document.querySelector('.dangan-cg-name-panel')?.remove();
 
-        // These UI elements sit at z:50–9998 normally; the CG is at 2147483646, so
-        // temporarily raise them to 2147483647 so they stay visible above the CG.
+        // SillyTavern chrome + extension widgets need to remain visible and
+        // clickable above the CG (which lives at z:2147483646). Each element
+        // gets its z-index bumped to 2147483647; if it has no positioning,
+        // we also force `position: relative` so z-index actually applies.
+        // Originals are saved and restored on cleanup.
         const ABOVE_CG = [
             '#top-bar',
             '#top-settings-holder',
-            '#sheld',
+            '#sheld',                  // chat sheld (chat list + messages)
+            '#chat',                   // chat messages container
+            '#send_form',              // text input area
+            '#form_sheld',             // form wrapper around the text input
             '#dangan-hud-topright',
             '#dangan-bgm-display',
+            '#dangan-bgm-panel',       // FX Panel (BGM + theme selector)
             '#dangan-vn-overlay',
             '#dangan-trial-pre-debate-notif',
             '#dangan-trial-context-panel',
         ];
+        // SillyTavern stylesheets use !important on z-index for some of
+        // these elements (#top-bar, #top-settings-holder, #sheld), so a
+        // plain inline style loses. Apply with `important` and preserve
+        // the original priority so restoration is clean.
         const saved = ABOVE_CG.flatMap(sel =>
             Array.from(document.querySelectorAll(sel)).map(el => {
-                const orig = el.style.zIndex;
-                el.style.zIndex = '2147483647';
-                return { el, orig };
+                const origZ      = el.style.getPropertyValue('z-index');
+                const origZPri   = el.style.getPropertyPriority('z-index');
+                const origPos    = el.style.getPropertyValue('position');
+                const origPosPri = el.style.getPropertyPriority('position');
+                const cs = getComputedStyle(el);
+                el.style.setProperty('z-index', '2147483647', 'important');
+                if (cs.position === 'static') el.style.setProperty('position', 'relative', 'important');
+                return { el, origZ, origZPri, origPos, origPosPri };
             })
         );
 
@@ -1957,10 +2223,48 @@ ${historyText}
         dismissBtn.className = 'dangan-cg-dismiss-btn';
         dismissBtn.textContent = '✕ DISMISS';
 
+        // Speaker-name panel — pinned to the left of the viewport, framed in
+        // pta-panel.png. Carries the current GCP speaker over and follows
+        // Prev/Next message navigation via cgNameTextEl, which is updated
+        // by updateGroupChatSpeaker whenever the highlighted speaker changes.
+        const initialName = currentSpeaker || gcpSlots[Math.round(gcpCurrentFloat)]?.name || '';
+        const namePanel = document.createElement('div');
+        namePanel.className = 'dangan-cg-name-panel';
+        namePanel.innerHTML = `<span class="dangan-cg-name-text"></span>`;
+        const nameTextEl = namePanel.querySelector('.dangan-cg-name-text');
+        // Custom setter — also toggles the hide class so an empty name
+        // collapses the panel cleanly via .dangan-cg-name-panel-empty.
+        const applyName = (value) => {
+            const name = String(value || '').trim();
+            nameTextEl.textContent = name;
+            namePanel.classList.toggle('dangan-cg-name-panel-empty', !name);
+        };
+        applyName(initialName);
+        cgNameTextEl = {
+            set textContent(value) { applyName(value); },
+            get textContent() { return nameTextEl.textContent; },
+        };
+
+        const FADE_OUT_MS = 450;
+        let dismissing = false;
         const cleanup = () => {
-            overlay.remove();
-            dismissBtn.remove();
-            saved.forEach(({ el, orig }) => { el.style.zIndex = orig; });
+            if (dismissing) return;
+            dismissing = true;
+            overlay.classList.add('dangan-cg-fading-out');
+            dismissBtn.classList.add('dangan-cg-fading-out');
+            namePanel.classList.add('dangan-cg-fading-out');
+            setTimeout(() => {
+                overlay.remove();
+                dismissBtn.remove();
+                namePanel.remove();
+                cgNameTextEl = null;
+                saved.forEach(({ el, origZ, origZPri, origPos, origPosPri }) => {
+                    if (origZ)   el.style.setProperty('z-index',  origZ,   origZPri);
+                    else         el.style.removeProperty('z-index');
+                    if (origPos) el.style.setProperty('position', origPos, origPosPri);
+                    else         el.style.removeProperty('position');
+                });
+            }, FADE_OUT_MS);
         };
         dismissBtn.onclick = cleanup;
 
@@ -1971,6 +2275,7 @@ ${historyText}
         if (filter === 'grayscale') overlay.classList.add('dangan-cg-grayscale');
 
         document.body.appendChild(overlay);
+        document.body.appendChild(namePanel);
         document.body.appendChild(dismissBtn);
     }
 
@@ -2790,6 +3095,25 @@ ${historyText}
         return getSpriteUrl(name, emo);
     }
 
+    // ── Saved seating plan (per-chat user override) ─────────────────────
+    function loadSavedSeatingPlan() {
+        const key = getTrialPersistenceKey();
+        const arr = extensionSettings?.[extensionName]?.trials?.[key]?.savedSeatingPlan;
+        return Array.isArray(arr) && arr.length ? arr.slice() : null;
+    }
+    function saveSavedSeatingPlan(plan) {
+        if (typeof saveSettingsDebounced !== 'function') return;
+        const key = getTrialPersistenceKey();
+        if (!extensionSettings[extensionName].trials)      extensionSettings[extensionName].trials      = {};
+        if (!extensionSettings[extensionName].trials[key]) extensionSettings[extensionName].trials[key] = {};
+        if (!Array.isArray(plan) || plan.length === 0) {
+            delete extensionSettings[extensionName].trials[key].savedSeatingPlan;
+        } else {
+            extensionSettings[extensionName].trials[key].savedSeatingPlan = plan.slice();
+        }
+        saveSettingsDebounced();
+    }
+
     function buildSeatingPlan(names) {
         // Deduplicate by normalized full name first, then by first-name token.
         // This catches both exact duplicates ("Nagito" / "nagito") and
@@ -2807,13 +3131,41 @@ ${historyText}
             seenFull.set(fullKey, trimmed);
             seenFirst.add(firstKey);
         }
-
         const unique = Array.from(seenFull.values());
+
+        // User override: if the player has saved a seating plan for this
+        // chat, project it onto the current name set. Drop characters no
+        // longer present; append any new arrivals at the end. Monokuma
+        // is always forced to seat 0.
+        const saved = loadSavedSeatingPlan();
+        if (saved && saved.length) {
+            const byKey = new Map(unique.map(n => [normalizeSeatName(n), n]));
+            const used = new Set();
+            const ordered = [];
+            for (const s of saved) {
+                const k = normalizeSeatName(s);
+                if (byKey.has(k) && !used.has(k)) {
+                    ordered.push(byKey.get(k));
+                    used.add(k);
+                }
+            }
+            for (const n of unique) {
+                const k = normalizeSeatName(n);
+                if (!used.has(k)) ordered.push(n);
+            }
+            const monoIdx = ordered.findIndex(n => normalizeSeatName(n) === 'monokuma');
+            if (monoIdx > 0) {
+                const [m] = ordered.splice(monoIdx, 1);
+                ordered.unshift(m);
+            }
+            return ordered;
+        }
+
+        // No saved plan — shuffle randomly, Monokuma still anchored at 0.
         for (let i = unique.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [unique[i], unique[j]] = [unique[j], unique[i]];
         }
-        // Monokuma always sits at seat 0
         const monokumaIdx = unique.findIndex(n => normalizeSeatName(n) === 'monokuma');
         if (monokumaIdx > 0) {
             const [monokuma] = unique.splice(monokumaIdx, 1);
@@ -4477,13 +4829,36 @@ ${historyText}
         if (hoveredWhiteNoise) hitWhiteNoise(hoveredWhiteNoise);
     }
 
+    // Pre-allocated pool of burst elements.  Rapid Space spam previously
+    // created/destroyed a DOM node + compositor layer on every press, which
+    // dominated the per-press cost.  We keep N pool elements parented to the
+    // body, hidden when idle (the .fire-burst class drives the animation
+    // and ends at opacity 0).  Each press grabs the next slot round-robin
+    // and restarts the animation by toggling the class.
+    const WN_BURST_POOL_SIZE = 8;
+    const wnBurstPool = [];
+    let wnBurstPoolIdx = 0;
+
+    function ensureWnBurstPool() {
+        while (wnBurstPool.length < WN_BURST_POOL_SIZE) {
+            const burst = document.createElement('div');
+            burst.className = 'dangan-wn-burst';
+            document.body.appendChild(burst);
+            wnBurstPool.push(burst);
+        }
+    }
+
     function showWnBurst(x, y) {
-        const burst = document.createElement('div');
-        burst.className = 'dangan-wn-burst';
+        ensureWnBurstPool();
+        const burst = wnBurstPool[wnBurstPoolIdx];
+        wnBurstPoolIdx = (wnBurstPoolIdx + 1) % WN_BURST_POOL_SIZE;
         burst.style.left = `${x}px`;
         burst.style.top  = `${y}px`;
-        document.body.appendChild(burst);
-        setTimeout(() => burst.remove(), 400);
+        // Restart the CSS animation by removing then re-adding .fire-burst.
+        burst.classList.remove('fire-burst');
+        // eslint-disable-next-line no-unused-expressions
+        void burst.offsetWidth;
+        burst.classList.add('fire-burst');
     }
 
     function showWnPressFlash() {
@@ -6704,7 +7079,7 @@ ${contextLines}
             const roundedIdx = Math.round(gcpCurrentFloat);
             if (roundedIdx !== lastRoundedIdx) {
                 lastRoundedIdx = roundedIdx;
-                gcpSeatingListRenderer?.();
+                notifyGcpSeatingListRenderers();
             }
 
             if (rawT < 1) {
@@ -6719,7 +7094,7 @@ ${contextLines}
                 slot.el.style.transform  = gcpSlotTransform(cx + gcpCircularDiff(i, targetIdx) * total);
                 slot.el.style.transition = '';
             });
-            gcpSeatingListRenderer?.();
+            notifyGcpSeatingListRenderers();
         }
 
         // Fire camera, background pan, and seating list immediately so the UI
@@ -6729,7 +7104,7 @@ ${contextLines}
             applyCamShot(gcpStage, gcpBgLoopEl);
         }
         gcpPanBackground(targetIdx, true);
-        gcpSeatingListRenderer?.();
+        notifyGcpSeatingListRenderers();
 
         gcpAnimRafId = requestAnimationFrame(tick);
     }
@@ -6931,9 +7306,18 @@ ${contextLines}
                     if (url && gcpStage === stageRef) slot.img.src = url;
                 }));
 
-                // Snap to last character speaker without animation
-                const lastMsg = [...(ctx?.chat || [])].reverse().find(m => !m.is_user && m.name);
-                const rawIdx  = lastMsg?.name ? gcpFindIdx(lastMsg.name) : -1;
+                // Snap to last speaker without animation. If the last message was the
+                // human player's, target the isPlayer slot directly — its name in
+                // gcpIndexMap can be the underlying character's, so a persona-name
+                // lookup would miss it.
+                const lastMsg = [...(ctx?.chat || [])].reverse().find(m => !m.is_system && m.name);
+                let rawIdx = -1;
+                if (lastMsg?.is_user) {
+                    rawIdx = gcpSlots.findIndex(s => s.isPlayer);
+                }
+                if (rawIdx < 0 && lastMsg?.name) {
+                    rawIdx = gcpFindIdx(lastMsg.name);
+                }
                 const initIdx = rawIdx >= 0 ? rawIdx : Math.round(Math.max(0, Math.min(gcpCurrentFloat, gcpSlots.length - 1)));
                 if (trialActive) {
                     gcpBuildBgLoop();
@@ -6945,8 +7329,15 @@ ${contextLines}
                     gcpPositionSlotsFlat();
                     gcpSyncFromPromeExpressions();
                     setTimeout(() => gcpSyncFromPromeExpressions(), 600);
-                    // Apply initial dim: highlight last speaker, dim everyone else
-                    if (lastMsg?.name) {
+                    // Apply initial dim: highlight last speaker, dim everyone else.
+                    // When the player spoke last, dim by slot identity (the player slot
+                    // may have an NPC's name in gcpIndexMap, so a name compare misses it).
+                    if (rawIdx >= 0) {
+                        const speakerSlot = gcpSlots[rawIdx];
+                        for (const slot of gcpSlots) {
+                            slot.el.classList.toggle('dangan-gcp-dim', slot !== speakerSlot);
+                        }
+                    } else if (lastMsg?.name) {
                         const speakerKey = normalizeSeatName(lastMsg.name);
                         for (const slot of gcpSlots) {
                             slot.el.classList.toggle('dangan-gcp-dim', normalizeSeatName(slot.name) !== speakerKey);
@@ -6995,10 +7386,14 @@ ${contextLines}
             gcpInitializing = false;
         }
         // Notify Trial Controls seating list to re-render with the freshly built gcpSlots
-        gcpSeatingListRenderer?.();
+        notifyGcpSeatingListRenderers();
     }
 
     function updateGroupChatSpeaker(speakerName) {
+        currentSpeaker = speakerName || null;
+        // Keep the CG label in sync with whichever message is highlighted.
+        if (cgNameTextEl) cgNameTextEl.textContent = currentSpeaker || '';
+
         // ── Monokuma: always handled via overlay, never via carousel ──────────
         if (isMonokuma(speakerName)) {
             const monoEmo = characterEmotions.get(speakerName) || characterEmotions.get('Monokuma') || 'neutral';
@@ -7249,7 +7644,7 @@ ${contextLines}
                 const deadUrl = await getSpriteUrl(characterName, 'dead').catch(() => null);
                 if (deadUrl) slot.img.src = deadUrl;
             }
-            gcpSeatingListRenderer?.();
+            notifyGcpSeatingListRenderers();
         },
     };
 }

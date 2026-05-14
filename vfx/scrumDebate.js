@@ -2,7 +2,7 @@ const SD_ID    = "dangan-sd-overlay";
 const SD_STYLE = "dangan-sd-style";
 
 // Scroll speed (pixels per second at 1× speed)
-const SCROLL_BASE_PPS = 140;
+const SCROLL_BASE_PPS = 230;
 const SPEED_SLOW = 0.38;   // Shift held — concentration / slow motion
 const SPEED_FAST = 2.3;    // Ctrl held  — turbo advance
 
@@ -19,6 +19,10 @@ const TUG_DECAY_PPS  = 16;    // % drift toward 50 per second
 const TUG_DIRS       = ["up", "down", "left", "right"];
 const TUG_DIR_GLYPH  = { up: "↑", down: "↓", left: "←", right: "→" };
 const TUG_DIR_KEY    = { up: "ArrowUp", down: "ArrowDown", left: "ArrowLeft", right: "ArrowRight" };
+
+// Debate time limit (mirrors NSD_TIMER_DURATION_MS). Player has this long
+// to debunk every active round; timeout = debate lost.
+const SD_TIMER_DURATION_MS = 3 * 60 * 1000; // 3 minutes
 
 export const SCRUM_DEBATE_DEFAULT_SCENARIO = {
     title: "SCRUM DEBATE",
@@ -61,7 +65,7 @@ function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
 const SD_EXCLUDED_NAMES = new Set(["narrator", "assistant", "monokuma"]);
 
-function buildTeams(isCharacterDead) {
+export function buildTeams(isCharacterDead) {
     const ctx  = window.SillyTavern?.getContext?.();
     const allChars = Array.isArray(ctx?.characters) ? ctx.characters : [];
     const rawChars = allChars.filter(c => !SD_EXCLUDED_NAMES.has(String(c?.name || "").trim().toLowerCase()));
@@ -101,9 +105,10 @@ function charAvatarUrl(char) {
 // ── Style builder ──────────────────────────────────────────────────────────
 
 function buildStyles(extPath) {
-    const monoUrl    = extPath ? `/${extPath}/assets/monokuma/monokuma_idle.png`      : "";
-    const lecternUrl = extPath ? `/${extPath}/assets/classtrial/lectern.webp`         : "";
-    const scrumBgUrl = extPath ? `/${extPath}/assets/images/minigames/scrum.png`      : "";
+    const monoUrl       = extPath ? `/${extPath}/assets/monokuma/monokuma_idle.png`             : "";
+    const lecternUrl    = extPath ? `/${extPath}/assets/classtrial/lectern.webp`                : "";
+    const scrumBgUrl    = extPath ? `/${extPath}/assets/images/minigames/scrum.png`             : "";
+    const panelUrl      = extPath ? `/${extPath}/assets/images/minigames/pta-panel.png`         : "";
     return `
 /* ── Overlay root ── */
 #${SD_ID} {
@@ -138,30 +143,178 @@ function buildStyles(extPath) {
     display: flex; flex-direction: column;
 }
 
-/* ── Hearts — absolute overlay, top-right, floats over the court ── */
-.sd-hearts {
-    position: absolute; top: 12px; right: 16px; z-index: 20;
-    display: flex; gap: 5px; font-size: clamp(13px, 1.9vh, 19px);
+/* ── Status frame — NSD-style hearts + concentration stars (top-right).
+ * Mirrors questionTime.js / non-stop debate setup: a status-bar.png
+ * background with two SVG-masked gauges layered above (hearts.svg → pink
+ * HP, stars.svg → green concentration). Masks are applied from JS once
+ * the DOM is in place because mask-image relies on absolute paths from
+ * extensionFolderPath. */
+.sd-status-frame {
+    position: absolute;
+    top: 10px; right: 10px;
+    width: clamp(260px, 26vw, 320px);
+    aspect-ratio: 770 / 442;
+    z-index: 20;
     pointer-events: none;
 }
-.sd-heart { color: #ff6a7a; text-shadow: 0 0 8px rgba(255,80,110,0.8); transition: opacity 160ms; }
-.sd-heart.sd-lost { opacity: 0.16; }
+.sd-status-bar-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-drag: none;
+    z-index: 1;
+}
+.sd-hp-gauge,
+.sd-stars-gauge {
+    position: absolute;
+    pointer-events: none;
+    z-index: 2;
+}
+.sd-hp-gauge {
+    top: 14.7%;
+    right: 1.875%;
+    width: 71.875%;
+    aspect-ratio: 420.62 / 162.12;
+}
+.sd-stars-gauge {
+    top: 54.5%;
+    right: 11.25%;
+    width: 62.5%;
+    aspect-ratio: 831.39 / 183.14;
+}
+.sd-hp-bg, .sd-hp-fg-wrap, .sd-hp-fg,
+.sd-stars-bg, .sd-stars-fg-wrap, .sd-stars-fg {
+    position: absolute;
+    inset: 0;
+}
+.sd-hp-bg, .sd-hp-fg,
+.sd-stars-bg, .sd-stars-fg {
+    -webkit-mask-repeat: no-repeat;
+            mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+            mask-position: center;
+    -webkit-mask-size: contain;
+            mask-size: contain;
+}
+.sd-hp-bg { background: #000; }
+.sd-hp-fg-wrap {
+    filter:
+        drop-shadow(0 0 6px  rgba(255,  55, 196, 0.90))
+        drop-shadow(0 0 14px rgba(255,  55, 196, 0.55));
+    transition: filter 0.18s ease;
+}
+.sd-hp-fg {
+    background: #ff37c4;
+    clip-path: inset(0 calc(100% - var(--hp-pct, 100%)) 0 0);
+    transition: clip-path 180ms ease;
+}
+.sd-stars-bg { background: #000; }
+.sd-stars-fg-wrap {
+    filter:
+        drop-shadow(0 0 6px  rgba(43, 209, 79, 0.90))
+        drop-shadow(0 0 14px rgba(43, 209, 79, 0.55));
+    transition: filter 0.18s ease;
+}
+.sd-stars-fg {
+    background: #2bd14f;
+    clip-path: inset(0 calc(100% - var(--conc-pct, 100%)) 0 0);
+    transition: clip-path 80ms linear;
+}
+/* When concentration is depleted: no glow on the (mostly-empty) green stars. */
+.sd-stars-gauge.sd-conc-depleted .sd-stars-fg-wrap { filter: none; }
+/* When slow-mo is engaged: pulse the green glow. */
+.sd-stars-gauge.sd-conc-active .sd-stars-fg-wrap {
+    animation: sdConcentratePulse 0.38s ease-in-out infinite;
+}
+@keyframes sdConcentratePulse {
+    0%, 100% { filter: drop-shadow(0 0 6px  rgba(43, 209, 79, 0.90)) drop-shadow(0 0 14px rgba(43, 209, 79, 0.55)); }
+    50%      { filter: drop-shadow(0 0 18px rgba(80, 255, 120, 0.95)) drop-shadow(0 0 30px rgba(43, 209, 79, 0.60)); }
+}
 
-/* ── Left HUD: speaker name + round dots stacked top-left of court ── */
+/* ── Top-center countdown timer ── matches NSD's dangan-nsd-timer-wrap
+ * styling (timer-bar.png + Orbitron orange text), positioned centered at
+ * the top of the screen rather than NSD's bottom-right. */
+.sd-timer-frame {
+    position: absolute;
+    top: 18px; left: 50%;
+    transform: translateX(-50%);
+    z-index: 41;
+    pointer-events: none;
+    width: clamp(220px, 22vw, 380px);
+    aspect-ratio: 840 / 137;
+}
+.sd-timer-bar-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+.sd-timer {
+    position: absolute;
+    top: 50%; left: 77px;
+    transform: translateY(-50%);
+    font-family: "Orbitron", "Impact", monospace;
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: #ffaa00;
+    text-shadow: 0 0 10px #ff8800, 0 0 3px #ffcc00;
+    z-index: 1;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    text-align: left;
+}
+.sd-timer.sd-timer-urgent {
+    color: #ff1111;
+    text-shadow: 0 0 14px rgba(255, 0, 0, 1);
+    animation: sdTimerBlink 0.45s ease-in-out infinite;
+}
+@keyframes sdTimerBlink {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.3; }
+}
+
+/* ── Left HUD: speaker name + round dots stacked top-left of court.
+ * Matches the Non-Stop Debate top-left treatment: a speaker-scenario-bar.png
+ * banner sits behind both the speaker name and the round-dots row.
+ * Using a real <img> child (not ::before) so there's no interpolation /
+ * stacking-context risk hiding the asset; isolation pins its z-index:-1
+ * within this HUD so it sits behind text but still visible. */
 .sd-left-hud {
     position: absolute; top: 0; left: 0; z-index: 15;
     display: flex; flex-direction: column; align-items: flex-start;
-    gap: 8px; pointer-events: none;
+    gap: 4px; pointer-events: none;
+    padding: 16px 28px;
+    isolation: isolate;
+}
+.sd-left-hud-bar {
+    position: absolute;
+    top: 0; left: 0;
+    width: 500px;
+    height: 108px; /* 500 × (199/922) — matches the PNG's aspect. */
+    object-fit: fill;
+    z-index: -1;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-drag: none;
 }
 
-/* Speaker — large NSD-style name display */
+/* Speaker name — exact match for NSD's #dangan-speaker-name. */
 .sd-speaker {
     font-family: "Orbitron", monospace;
-    font-size: clamp(17px, 3.4vh, 35px); font-weight: 900;
-    letter-spacing: 0.1em; color: #4af5f0;
-    text-shadow: 0 0 18px rgba(74,245,240,0.5), 0 0 3px rgba(74,245,240,0.88);
-    padding: 5px 22px 5px 12px;
-    min-width: 80px;
+    font-size: 32px;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #00ffff;
+    text-shadow: 0 0 15px rgba(0, 255, 255, 0.6), 2px 2px 0px rgba(0, 0, 0, 0.8);
+    padding: 0px 20px 5px;
     transition: opacity 220ms ease;
 }
 .sd-speaker:empty { opacity: 0; }
@@ -172,7 +325,12 @@ function buildStyles(extPath) {
     display: flex; align-items: stretch;
 }
 
-/* Courtroom wall — scrum background image with red→blue side gradient */
+/* Courtroom wall — scrum background image with red→blue side gradient.
+ * transform-origin pinned to the centre so character/bg zoom matches the
+ * visual focal point of the team line-up.  No will-change here: the
+ * element has a layered gradient+image background that's full court
+ * size, and pre-promoting it to its own GPU layer ate memory + caused
+ * the gradient stack to be re-rasterised into a texture on every zoom. */
 .sd-court-bg {
     position: absolute; inset: 0; z-index: 0;
     background:
@@ -185,6 +343,8 @@ function buildStyles(extPath) {
             rgba(20,55,200,0.48) 100%
         ),
         url(${scrumBgUrl}) center / cover no-repeat;
+    transform-origin: 50% 50%;
+    transition: transform 280ms ease-out;
 }
 .sd-court-bg::before { content: none; }
 .sd-court-bg::after  { content: none; }
@@ -209,6 +369,8 @@ function buildStyles(extPath) {
     height: clamp(51px, 10.1vh, 97px); width: auto; object-fit: contain;
     filter: drop-shadow(0 0 4px rgba(255,255,255,0.07)); opacity: 0.85;
     transform: translateY(-425%);
+    transform-origin: 50% 100%;
+    transition: transform 280ms ease-out;
 }
 .sd-monokuma-placeholder {
     width: 40px; height: 50px; display: flex; align-items: center;
@@ -359,16 +521,25 @@ function buildStyles(extPath) {
 .sd-bullet-name-box.sd-slide-right { animation: sdBoxFromBottom 185ms cubic-bezier(0.22,0.61,0.36,1) both; }
 .sd-bullet-name-box.sd-slide-left  { animation: sdBoxFromTop    185ms cubic-bezier(0.22,0.61,0.36,1) both; }
 
-/* ── Scrolling statement text — floats over the court ── */
+/* ── Scrolling statement text — floats over the court ──
+ * Matches Non-Stop Debate's .dangan-statement-single: a width-constrained
+ * block that wraps onto multiple lines when long, rather than a single
+ * line that runs off-screen. Still scrolled across the arena via
+ * transform: translateX(...) in JS, so the marquee mechanic survives —
+ * the block just enters/exits as a multi-line slab now. */
 .sd-statement {
     position: absolute; bottom: 40%; left: 0;
     z-index: 12; pointer-events: none;
-    white-space: nowrap; will-change: transform;
+    white-space: normal; will-change: transform;
+    width: min(50vw, 620px);
+    text-align: center;
     font-family: "Noto Sans JP", sans-serif;
-    font-size: clamp(17px, 3vh, 38px); font-weight: 900; letter-spacing: 0.03em; line-height: 1;
+    font-size: clamp(21px, 3.75vh, 48px); font-weight: 900; letter-spacing: 0.03em; line-height: 1.1;
     color: #fff;
     text-shadow: 2px 2px 4px #000, 0 0 14px rgba(255,60,60,0.55);
     padding: 0 24px;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
 }
 /* Weak spot — orange gradient text, matches NSD/MPD style */
 .sd-weak {
@@ -403,23 +574,96 @@ function buildStyles(extPath) {
     will-change: transform, opacity;
 }
 
-/* ── Round indicator dots — single row, inside left HUD ── */
+/* ── Hint panel — sits beneath the speaker-scenario bar.  Uses
+ * pta-panel.png as the chrome and Question-Truth-style HINT button →
+ * "K-e" reveal with grey X-decoys flanking the actual first/last letters. */
+.sd-hint-panel {
+    position: absolute;
+    top: 120px;
+    left: 36px;
+    padding: 22px 40px;
+    min-width: 220px;
+    z-index: 15;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    isolation: isolate;
+}
+.sd-hint-panel::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: url("${panelUrl}");
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    z-index: -1;
+    pointer-events: none;
+}
+.sd-hint-btn {
+    display: inline-block;
+    padding: 6px 18px;
+    font-family: "Quickend", "Boldonse", "Orbitron", "Rajdhani", monospace;
+    font-size: clamp(11px, 1.4vh, 14px);
+    letter-spacing: 3px;
+    color: #ffcc00;
+    background: rgba(40, 20, 0, 0.7);
+    border: 1px solid rgba(255, 200, 0, 0.6);
+    border-radius: 4px;
+    text-shadow: 0 0 10px rgba(255, 200, 0, 0.55);
+    box-shadow: 0 0 14px rgba(255, 180, 0, 0.25);
+    cursor: pointer;
+    pointer-events: auto;
+    transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.sd-hint-btn:hover {
+    background: rgba(70, 35, 0, 0.85);
+    border-color: rgba(255, 220, 80, 0.95);
+    color: #ffe080;
+}
+.sd-hint-btn[disabled] { cursor: default; opacity: 0.85; }
+.sd-hint-display {
+    display: inline-block;
+    padding: 6px 16px;
+    font-family: "Quickend", "Boldonse", "Orbitron", "Rajdhani", monospace;
+    font-size: clamp(11px, 1.4vh, 14px);
+    letter-spacing: 6px;
+    font-weight: 700;
+    color: #ffcc00;
+    text-shadow: 0 0 12px rgba(255, 200, 0, 0.75);
+}
+.sd-hint-x {
+    color: #888888;
+    text-shadow: none;
+}
+
+/* ── Round indicator dots — matches NSD's #dangan-section-dots row. ── */
 .sd-round-dots {
-    padding-left: 14px;
     display: flex; flex-direction: row;
-    gap: 8px; align-items: center; pointer-events: none;
+    gap: 6px;
+    padding-left: 36px;
+    margin-top: -7px;
+    align-items: center; pointer-events: none;
 }
 .sd-round-dot {
-    width: clamp(9px, 1.5vh, 14px); height: clamp(9px, 1.5vh, 14px); border-radius: 50%;
-    background: rgba(255,255,255,0.14); border: 1.5px solid rgba(255,255,255,0.28);
-    transition: background 200ms ease, transform 200ms ease, box-shadow 200ms ease;
+    width: 8.25px;
+    height: 8.25px;
+    border-radius: 50%;
+    background: rgba(180, 180, 180, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    flex-shrink: 0;
+    transition: background 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
 }
 .sd-round-dot.sd-dot-active {
-    background: #ffd54f; border-color: rgba(255,215,80,0.9);
-    transform: scale(1.25); box-shadow: 0 0 8px rgba(255,215,80,0.85);
+    background: #ffd700;
+    border-color: #ffec6e;
+    box-shadow:
+        0 0 6px 2px rgba(255, 215, 0, 0.85),
+        0 0 14px 4px rgba(255, 200, 0, 0.5);
 }
 .sd-round-dot.sd-dot-debunked {
-    background: rgba(72,255,175,0.65); border-color: rgba(72,255,175,0.85);
+    background: rgba(72, 255, 175, 0.75);
+    border-color: rgba(72, 255, 175, 0.85);
 }
 
 /* Flash overlay */
@@ -431,32 +675,9 @@ function buildStyles(extPath) {
 .sd-flash.sd-flash-green { background: rgba(18,220,100,0.28); }
 .sd-flash.sd-flash-blue  { background: rgba(18,80,220,0.28); }
 
-/* ── Concentration gauge (slow-mo resource) — inside left HUD ── */
-.sd-conc-row {
-    display: flex; flex-direction: column;
-    gap: 3px; padding: 2px 14px 4px;
-    pointer-events: none;
-}
-.sd-conc-label {
-    font-size: clamp(6px, 0.85vh, 9px); font-weight: 700;
-    letter-spacing: 0.15em; color: rgba(255,120,170,0.82);
-    white-space: nowrap;
-}
-.sd-conc-track {
-    height: clamp(4px, 0.7vh, 7px); width: clamp(140px, 20vw, 240px);
-    background: rgba(0,0,0,0.55); border: 1px solid rgba(255,80,140,0.22);
-    border-radius: 2px; overflow: hidden;
-}
-.sd-conc-fill {
-    height: 100%; width: 100%; transform-origin: left center;
-    background: linear-gradient(90deg, rgba(220,50,120,0.95), rgba(255,110,160,0.85));
-    transition: transform 80ms linear;
-}
-.sd-conc-fill.sd-conc-empty {
-    background: linear-gradient(90deg, rgba(190,30,30,0.9), rgba(255,80,80,0.75));
-    animation: sdConcPulse 0.45s ease-in-out infinite alternate;
-}
-@keyframes sdConcPulse { from { opacity: 0.45; } to { opacity: 1; } }
+/* (Concentration gauge moved to the NSD-style status frame above —
+ * the green star row visualises slow-mo resource. Previous .sd-conc-row
+ * / .sd-conc-fill rules removed.) */
 
 /* ── Tug-of-war overlay — now transparent; rockets handle the visual ── */
 .sd-tug {
@@ -555,8 +776,10 @@ function buildStyles(extPath) {
 }
 /* ── Final Push: hide cylinders / hearts / HUD / statement while rockets fight ── */
 #${SD_ID}.sd-tug-active .sd-cyl-wrap,
-#${SD_ID}.sd-tug-active .sd-hearts,
+#${SD_ID}.sd-tug-active .sd-status-frame,
+#${SD_ID}.sd-tug-active .sd-timer-frame,
 #${SD_ID}.sd-tug-active .sd-left-hud,
+#${SD_ID}.sd-tug-active .sd-hint-panel,
 #${SD_ID}.sd-tug-active .sd-statement { opacity: 0; pointer-events: none; }
 
 /* ── Final Push: centered direction indicator ── */
@@ -688,12 +911,16 @@ function buildStyles(extPath) {
 }
 
 /* ── Intro active: hide cylinders and HUD until intro finishes ── */
-.sd-cyl-wrap { transition: opacity 450ms ease; }
-.sd-hearts   { transition: opacity 450ms ease; }
-.sd-left-hud { transition: opacity 450ms ease; }
+.sd-cyl-wrap     { transition: opacity 450ms ease; }
+.sd-status-frame { transition: opacity 450ms ease; }
+.sd-timer-frame  { transition: opacity 450ms ease; }
+.sd-left-hud     { transition: opacity 450ms ease; }
+.sd-hint-panel   { transition: opacity 450ms ease; }
 #${SD_ID}.sd-intro-active .sd-cyl-wrap,
-#${SD_ID}.sd-intro-active .sd-hearts,
-#${SD_ID}.sd-intro-active .sd-left-hud { opacity: 0; }
+#${SD_ID}.sd-intro-active .sd-status-frame,
+#${SD_ID}.sd-intro-active .sd-timer-frame,
+#${SD_ID}.sd-intro-active .sd-left-hud,
+#${SD_ID}.sd-intro-active .sd-hint-panel { opacity: 0; }
 
 /* ── Scrum intro: Truth Rocket banners ── */
 /* Zero-height flex line pinned to the same vertical level as the truth-bullet
@@ -874,13 +1101,11 @@ function stageHtml(teams, extPath, oppSprites, playerSprites, playerSpriteUrl, p
         <div class="sd-team-player">${playerPortraits}</div>
     </div>
     <div class="sd-left-hud">
+        <img class="sd-left-hud-bar" src="/${extPath}/assets/classtrial/speaker-scenario-bar.png" alt="" draggable="false"/>
         <div class="sd-speaker" id="sd-speaker"></div>
         <div class="sd-round-dots" id="sd-round-dots"></div>
-        <div class="sd-conc-row" id="sd-conc-row">
-            <span class="sd-conc-label">CONCENTRATE</span>
-            <div class="sd-conc-track"><div class="sd-conc-fill" id="sd-conc-fill"></div></div>
-        </div>
     </div>
+    <div class="sd-hint-panel" id="sd-hint-panel"></div>
 </div>`;
 }
 
@@ -1031,7 +1256,21 @@ export function createScrumDebateController({
             <div class="sd-bullet-desc"  id="sd-player-desc"></div>
         </div>
     </div>
-    <div class="sd-hearts" id="sd-hearts"></div>
+    <div class="sd-status-frame" id="sd-status-frame">
+        <img class="sd-status-bar-img" src="/${extensionFolderPath}/assets/classtrial/status-bar.png" alt="" draggable="false"/>
+        <div class="sd-hp-gauge" id="sd-hp-gauge">
+            <div class="sd-hp-bg"></div>
+            <div class="sd-hp-fg-wrap"><div class="sd-hp-fg"></div></div>
+        </div>
+        <div class="sd-stars-gauge" id="sd-stars-gauge">
+            <div class="sd-stars-bg"></div>
+            <div class="sd-stars-fg-wrap"><div class="sd-stars-fg"></div></div>
+        </div>
+    </div>
+    <div class="sd-timer-frame" id="sd-timer-frame">
+        <img class="sd-timer-bar-bg" src="/${extensionFolderPath}/assets/classtrial/timer-bar.png" alt="" draggable="false"/>
+        <div class="sd-timer" id="sd-timer">03:00:000</div>
+    </div>
     ${stageHtml(teams, extensionFolderPath, oppSprites, playerSprites, playerSpriteUrl, playerName, monoSpriteUrl, getCharacterHeightCm)}
     <div class="sd-statement" id="sd-statement" style="transform:translateX(-9999px)"></div>
     <div class="sd-flash" id="sd-flash"></div>
@@ -1054,14 +1293,38 @@ export function createScrumDebateController({
         if (bgmTrack) playBgm?.(bgmTrack);
 
         // ── DOM refs ───────────────────────────────────────────────────────
-        const bgEl          = overlay.querySelector("#sd-bg");
+        // The visible courtroom image lives on .sd-court-bg (inside .sd-court).
+        // #sd-bg was an empty positioning wrapper, so scaling it didn't actually
+        // zoom anything — point bgEl at the right element.
+        const bgEl          = overlay.querySelector(".sd-court-bg");
+        const monoSpriteEl  = overlay.querySelector(".sd-monokuma-img");
         const dotsEl        = overlay.querySelector("#sd-round-dots");
         const speakerEl     = overlay.querySelector("#sd-speaker");
-        const concRowEl     = overlay.querySelector("#sd-conc-row");
-        const concFillEl    = overlay.querySelector("#sd-conc-fill");
         const oppTeamEl     = overlay.querySelector(".sd-team-opp");
         const playerTeamEl  = overlay.querySelector(".sd-team-player");
-        const heartsEl      = overlay.querySelector("#sd-hearts");
+        const statusFrameEl = overlay.querySelector("#sd-status-frame");
+        const hpGaugeEl     = overlay.querySelector("#sd-hp-gauge");
+        const starsGaugeEl  = overlay.querySelector("#sd-stars-gauge");
+
+        // Apply NSD-style SVG masks once the gauges are in the DOM. The
+        // hearts gauge fills pink for HP; the stars gauge fills green for
+        // concentration. Both gauges are exposed as CSS custom props
+        // (--hp-pct / --conc-pct) and updated via renderHearts() /
+        // updateConcBar() below.
+        const heartsMaskUrl = `url("/${extensionFolderPath}/assets/classtrial/hearts.svg")`;
+        const starsMaskUrl  = `url("/${extensionFolderPath}/assets/classtrial/stars.svg")`;
+        for (const sel of [".sd-hp-bg", ".sd-hp-fg"]) {
+            const el = overlay.querySelector(sel);
+            if (!el) continue;
+            el.style.webkitMaskImage = heartsMaskUrl;
+            el.style.maskImage       = heartsMaskUrl;
+        }
+        for (const sel of [".sd-stars-bg", ".sd-stars-fg"]) {
+            const el = overlay.querySelector(sel);
+            if (!el) continue;
+            el.style.webkitMaskImage = starsMaskUrl;
+            el.style.maskImage       = starsMaskUrl;
+        }
         const oppTitleEl    = overlay.querySelector("#sd-opp-title");
         const oppDescEl     = overlay.querySelector("#sd-opp-desc");
         const playerTitleEl   = overlay.querySelector("#sd-player-title");
@@ -1077,6 +1340,8 @@ export function createScrumDebateController({
         const statusEl      = overlay.querySelector("#sd-status");
         const speedSlowEl   = overlay.querySelector("#sd-speed-slow");
         const speedFastEl   = overlay.querySelector("#sd-speed-fast");
+        const timerEl       = overlay.querySelector("#sd-timer");
+        const hintPanelEl   = overlay.querySelector("#sd-hint-panel");
         const tugEl         = overlay.querySelector("#sd-tug");
 
         // ── Populate VFX overlays ──────────────────────────────────────────
@@ -1133,6 +1398,10 @@ export function createScrumDebateController({
             let bgZoom      = 1.0;
             let frameId     = null;
             let lastTs      = null;
+            // Debate countdown timer (3 minutes by default). startTs is set
+            // when the intro finishes and the debate loop kicks in.
+            let sdTimerStartTs = 0;
+            let sdTimerExpired = false;
             // Tug-of-war state
             let tugPos          = 50;
             let tugDir          = "right";
@@ -1279,10 +1548,11 @@ export function createScrumDebateController({
             }
 
             // ── UI helpers ─────────────────────────────────────────────────
+            const MAX_HEALTH = 3;
             function renderHearts() {
-                heartsEl.innerHTML = Array.from({ length: 3 }, (_, i) =>
-                    `<span class="sd-heart ${i >= health ? "sd-lost" : ""}">❤</span>`
-                ).join("");
+                if (!hpGaugeEl) return;
+                const pct = Math.max(0, Math.min(100, (health / MAX_HEALTH) * 100));
+                hpGaugeEl.style.setProperty("--hp-pct", `${pct}%`);
             }
 
             function flash(type, ms = 220) {
@@ -1324,10 +1594,12 @@ export function createScrumDebateController({
                 return rounds.map((_, i) => i).filter(i => !debunkedSet.has(i));
             }
 
-            // ── Speaker nameplate — shows the current opposing leader's name ──
+            // ── Speaker nameplate — front-most ALIVE non-passed opposing
+            // character (dead classmates are pinned at the back of the team
+            // and never speak a scenario).
             function updateSpeaker() {
                 if (!speakerEl) return;
-                const leader = oppTeamEl?.querySelector('.sd-portrait-leader:not([data-passed="true"])');
+                const leader = oppTeamEl?.querySelector('.sd-portrait:not([data-passed="true"]):not([data-dead="true"])');
                 const fullName = leader?.dataset.name || "";
                 speakerEl.textContent = fullName.trim().split(/[\s,_\-]+/)[0].toUpperCase();
             }
@@ -1384,21 +1656,84 @@ export function createScrumDebateController({
             }
 
             // ── De-load the current speaking slot on each team ────────────
-            // Called whenever a round is passed (debunked or scrolled off).
-            // The leaders fade out and are hidden from layout so they never
-            // cycle back to the front.
+            // Identifies the "speaker" as the front-most non-passed portrait
+            // and stamps it with the round number they spoke at (so
+            // respawnTeams can distinguish debunked-permanent from
+            // temporarily-failed).  After the fade is queued, callers
+            // should reflow the remaining team into the front depths so
+            // remaining characters scale up to fill the vacated slots.
             function passLeaders() {
                 [oppTeamEl, playerTeamEl].forEach(teamEl => {
                     if (!teamEl) return;
-                    const leader = teamEl.querySelector('.sd-portrait-leader');
-                    if (!leader || leader.dataset.passed === "true") return;
-                    leader.dataset.passed = "true";
+                    // Pick the first ALIVE non-passed portrait — dead classmates
+                    // shouldn't ever be promoted to a speaking slot.
+                    const leader = teamEl.querySelector('.sd-portrait:not([data-passed="true"]):not([data-dead="true"])');
+                    if (!leader) return;
+                    leader.dataset.passed   = "true";
+                    leader.dataset.roundAt  = String(roundIdx);
                     leader.classList.add('sd-portrait-passed');
-                    // Collapse from layout after the CSS fade completes
                     setTimeout(() => {
                         if (!resolved) leader.style.display = 'none';
                     }, 430);
                 });
+            }
+
+            // ── Background zoom — matches the front-most surviving
+            // character's literal depth-driven scale-up.
+            //
+            // computePortraitVars maps depth → phVh via 70 − 20·d/(N−1).
+            // When K characters have passed, the new front-most character
+            // was originally at depth K with phVh = 70 − 20·K/(N−1); they
+            // now sit at depth 0 with phVh = 70.  Bg zoom = the ratio
+            // between those two sizes, so the camera pulls in by exactly
+            // the same factor as the character on screen grew.
+            function syncBgZoomToTeamSize() {
+                if (!bgEl || !oppTeamEl) return;
+                // Count only alive opposing members — dead classmates are
+                // pinned spectators and shouldn't influence the camera zoom.
+                const totalOpp   = (teams?.opposing || []).filter(c => !c?._sdDead).length || 1;
+                const visibleOpp = oppTeamEl.querySelectorAll('.sd-portrait:not([data-passed="true"]):not([data-dead="true"])').length;
+                const passed     = Math.max(0, totalOpp - visibleOpp);
+                if (passed <= 0 || totalOpp <= 1) {
+                    bgZoom = 1.0;
+                } else {
+                    const originalFrontPhVh = 70 - 20 * passed / (totalOpp - 1);
+                    bgZoom = 70 / Math.max(50, originalFrontPhVh);
+                }
+                bgEl.style.transform = `scale(${bgZoom})`;
+                // Scale Monokuma's sprite by the same ratio so he tracks the
+                // background as the camera pulls in — preserve his existing
+                // translateY(-425%) so he stays anchored to the throne.
+                if (monoSpriteEl) {
+                    monoSpriteEl.style.transform = `translateY(-425%) scale(${bgZoom})`;
+                }
+            }
+
+            // ── Respawn the two teams between cycles ──────────────────────
+            // Called when a full pass through the rounds completes with
+            // some still un-debunked. Un-passes every portrait whose round
+            // is NOT in debunkedSet — the permanently-defeated speakers
+            // stay hidden, but the speakers whose rounds we just failed
+            // come back to the line so the cycle can continue.  Positions
+            // stay at their initial depths (no team-shift cycling) so the
+            // visible line-up only ever shrinks, never reshuffles.
+            function respawnTeams() {
+                [oppTeamEl, playerTeamEl].forEach(teamEl => {
+                    if (!teamEl) return;
+                    teamEl.querySelectorAll('.sd-portrait[data-passed="true"]').forEach(el => {
+                        const roundAt = Number(el.dataset.roundAt);
+                        if (Number.isFinite(roundAt) && debunkedSet.has(roundAt)) return;
+                        delete el.dataset.passed;
+                        delete el.dataset.roundAt;
+                        el.classList.remove('sd-portrait-passed');
+                        el.style.display = "";
+                    });
+                });
+                // Restored characters now flow back into front depths; pull
+                // the camera back out to match the larger visible team.
+                updateTeamShift(0);
+                syncBgZoomToTeamSize();
+                updateSpeaker();
             }
 
             // ── Round indicator dots ───────────────────────────────────────
@@ -1426,6 +1761,49 @@ export function createScrumDebateController({
                 statementX = -arenaW - 24;
                 statementEl.style.transform = `translateX(${statementX}px)`;
                 renderDots();
+                resetHintPanel(round);
+            }
+
+            // ── Hint panel ────────────────────────────────────────────────
+            // Same reveal format as Question Truth's HINT — "F-l" (uppercase
+            // first letter + lowercase last letter of the correct Truth
+            // Bullet) flanked by random gray X-decoys — but always visible
+            // for the active round rather than gated behind a button.
+            // Rebuilds whenever the round changes so the hint always tracks
+            // the currently-active bullet.
+            function resetHintPanel(round) {
+                if (!hintPanelEl) return;
+                hintPanelEl.innerHTML = "";
+                const rawAnswer = String(round?.correctTruthBulletTitle || "").trim();
+                const letters = rawAnswer.replace(/[^A-Za-z0-9]/g, "");
+                if (!letters.length) return;
+
+                const first = letters.charAt(0).toUpperCase();
+                const last  = letters.length > 1
+                    ? letters.charAt(letters.length - 1).toLowerCase()
+                    : "?";
+
+                const beforeCount = 2 + Math.floor(Math.random() * 4); // 2–5
+                const afterCount  = 2 + Math.floor(Math.random() * 4); // 2–5
+                const beforeStr   = Array(beforeCount).fill("X").join("-") + "-";
+                const afterStr    = "-" + Array(afterCount).fill("X").join("-");
+
+                const display = document.createElement("span");
+                display.className = "sd-hint-display";
+
+                const beforeSpan = document.createElement("span");
+                beforeSpan.className = "sd-hint-x";
+                beforeSpan.textContent = beforeStr;
+
+                const afterSpan = document.createElement("span");
+                afterSpan.className = "sd-hint-x";
+                afterSpan.textContent = afterStr;
+
+                display.appendChild(beforeSpan);
+                display.appendChild(document.createTextNode(`${first}-${last}`));
+                display.appendChild(afterSpan);
+
+                hintPanelEl.appendChild(display);
             }
 
             // ── Fire / debunk ──────────────────────────────────────────────
@@ -1462,8 +1840,6 @@ export function createScrumDebateController({
                 flash("green", 320);
                 awardMonocoins?.(2, "scrum debate weak spot debunked");
                 debunkedSet.add(idx);
-                bgZoom = Math.min(1.28, bgZoom + 0.05);
-                bgEl.style.transform = `scale(${bgZoom})`;
                 // Reveal the weak spot text in-place
                 statementEl.querySelectorAll(".sd-weak").forEach(el => el.classList.add("sd-revealed"));
                 statusEl.textContent = "Weak point exposed!";
@@ -1471,26 +1847,52 @@ export function createScrumDebateController({
                 setTimeout(() => {
                     advancing = false;
                     passLeaders();
+                    // Reflow surviving characters into the front depth
+                    // slots (so they scale up) and pull the camera in
+                    // by the same ratio.
+                    updateTeamShift(0);
+                    syncBgZoomToTeamSize();
                     const active = getActiveRounds();
                     if (!active.length) {
                         startTug();
                         return;
                     }
-                    // Advance to the next active round after current
                     const nextIdx = active.find(i => i > idx) ?? active[0];
                     roundIdx = nextIdx;
-                    teamShift++;
-                    updateTeamShift(teamShift);
                     loadRound(roundIdx);
                     statusEl.textContent = `${debunkedSet.size} debunked — ${active.length} remaining!`;
                 }, 920);
             }
 
             // ── Concentration gauge ────────────────────────────────────────
+            // Drives the green stars half of the status frame:
+            //   --conc-pct → fill width (clip-path on .sd-stars-fg)
+            //   .sd-conc-depleted → drops the glow when emptied
+            //   .sd-conc-active   → pulses the glow while slow-mo is engaged
             function updateConcBar() {
-                if (!concFillEl) return;
-                concFillEl.style.transform = `scaleX(${concentration / 100})`;
-                concFillEl.classList.toggle('sd-conc-empty', concentrationDepleted);
+                if (!starsGaugeEl) return;
+                starsGaugeEl.style.setProperty("--conc-pct", `${Math.max(0, Math.min(100, concentration))}%`);
+                starsGaugeEl.classList.toggle("sd-conc-depleted", concentrationDepleted);
+                const slowmoEngaged = shiftHeld && !concentrationDepleted && concentration > 0;
+                starsGaugeEl.classList.toggle("sd-conc-active", slowmoEngaged);
+            }
+
+            // ── Countdown timer ────────────────────────────────────────────
+            // Mirrors NSD's updateNsdTimer: MM:SS:mmm format, .sd-timer-urgent
+            // class kicks in under 10s. Returns true when the timer has hit
+            // zero so the debateFrame caller can trigger the loss path.
+            function updateTimer(nowMs) {
+                if (!timerEl || !sdTimerStartTs) return false;
+                const remaining = Math.max(0, SD_TIMER_DURATION_MS - (nowMs - sdTimerStartTs));
+                const mins   = Math.floor(remaining / 60000);
+                const secs   = Math.floor((remaining % 60000) / 1000);
+                const millis = Math.floor(remaining % 1000);
+                timerEl.textContent =
+                    String(mins).padStart(2, '0') + ':' +
+                    String(secs).padStart(2, '0') + ':' +
+                    String(millis).padStart(3, '0');
+                timerEl.classList.toggle("sd-timer-urgent", remaining < 10_000);
+                return remaining <= 0;
             }
 
             // ── Debate rAF loop ────────────────────────────────────────────
@@ -1499,6 +1901,23 @@ export function createScrumDebateController({
                 if (!lastTs) lastTs = ts;
                 const dt = Math.min((ts - lastTs) / 1000, 0.09);
                 lastTs = ts;
+
+                // Countdown — at zero, deal full damage to the player
+                // (drain every remaining heart at once, with the same red
+                // flash + shake + wrong-answer SFX wrongFire() uses), then
+                // tear the debate down.
+                if (!sdTimerExpired && updateTimer(performance.now())) {
+                    sdTimerExpired = true;
+                    playSfx("assets/monokuma/incorrect-answer.wav");
+                    flash("red");
+                    shakeArena();
+                    deductMonocoins?.(2 * health, "scrum debate timeout");
+                    health = 0;
+                    renderHearts();
+                    statusEl.textContent = "Time's up — the opposition's argument carries.";
+                    setTimeout(() => teardown(false), 750);
+                    return;
+                }
 
                 // Drain / refill concentration gauge
                 const canSlowmo = shiftHeld && !concentrationDepleted;
@@ -1526,18 +1945,25 @@ export function createScrumDebateController({
                         if (active.length) {
                             const pos    = active.indexOf(roundIdx);
                             const isLast = (pos + 1) >= active.length;
-                            if (isLast && debunkedSet.size > 0) {
-                                // Completed a full loop without solving all — reset progress
-                                debunkedSet.clear();
+                            if (isLast) {
+                                // Cycle complete — fail the current speaker, then
+                                // respawn the un-debunked speakers so the team can
+                                // make another pass starting at the first still-active
+                                // round.  Debunked speakers stay permanently gone.
                                 flash("red", 400);
-                                roundIdx = 0;
+                                passLeaders();
+                                roundIdx = active[0];
+                                respawnTeams();
+                                loadRound(roundIdx);
                             } else {
                                 roundIdx = active[(pos + 1) % active.length];
+                                passLeaders();
+                                // Reflow + zoom: surviving characters fill the
+                                // front slots, camera pulls in to match.
+                                updateTeamShift(0);
+                                syncBgZoomToTeamSize();
+                                loadRound(roundIdx);
                             }
-                            passLeaders();
-                            teamShift++;
-                            updateTeamShift(teamShift);
-                            loadRound(roundIdx);
                         }
                     } else {
                         const txt       = statementEl.textContent || "";
@@ -1850,6 +2276,8 @@ export function createScrumDebateController({
                 uiReady = true;
                 playSfx("assets/sfx/minigames/minigame-start.wav");
                 lastTs  = null;
+                sdTimerStartTs = performance.now();
+                updateTimer(sdTimerStartTs);
                 frameId = requestAnimationFrame(debateFrame);
             });
         });

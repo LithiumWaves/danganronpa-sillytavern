@@ -189,11 +189,17 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
         flex: 1; display: flex; flex-direction: column; min-width: 0;
     }
 
-    /* Question section */
+    /* Question section.  Right padding reserves ~340 px for the status bar
+     * (320 px wide + 10 px right inset + small gap) so the title wraps
+     * before it can pass beneath it.  min-height is exactly two lines of
+     * question text + the vertical padding, so the section is the same
+     * height whether the question is one line or two. */
     .qtt-question-section {
-        padding: clamp(14px, 2.8vh, 36px) clamp(20px, 4vw, 60px);
+        padding: clamp(14px, 2.8vh, 36px) clamp(340px, 32vw, 360px) clamp(14px, 2.8vh, 36px) clamp(20px, 4vw, 60px);
         border-bottom: 2px solid rgba(255, 255, 255, 0.12);
         flex-shrink: 0;
+        box-sizing: border-box;
+        min-height: calc(clamp(14px, 2.6vh, 32px) * 1.45 * 2 + clamp(14px, 2.8vh, 36px) * 2);
     }
     .qtt-question-text {
         font-size: clamp(14px, 2.6vh, 32px);
@@ -243,6 +249,11 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
         color: #ffcc00;
         text-shadow: 0 0 12px rgba(255, 200, 0, 0.75);
     }
+    /* Decoy X-letters flanking the revealed hint — gray, no glow. */
+    .qtt-hint-x {
+        color: #888888;
+        text-shadow: none;
+    }
 
     /* Detail section */
     .qtt-detail-section {
@@ -277,7 +288,7 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
         flex-shrink: 0;
         align-self: flex-start;
         object-fit: contain;
-        border-radius: 4px;
+        border-radius: 64px;
         border: 1px solid rgba(255, 0, 255, 0.3);
         box-shadow: 0 0 16px rgba(255, 0, 255, 0.25);
         transform: skewX(4deg) skewY(8deg);
@@ -516,7 +527,7 @@ export function createQuestionTruthController({ extensionFolderPath = '', getTru
                 const spriteEl = document.createElement('img');
                 spriteEl.src = spriteUrl;
                 spriteEl.alt = '';
-                spriteEl.style.cssText = 'position:absolute;bottom:-1370px;left:70%;transform:translateX(-50%);height:650%;width:auto;object-fit:contain;object-position:center bottom;pointer-events:none;filter:drop-shadow(rgb(255,255,255) 0px 0px 50px);';
+                spriteEl.style.cssText = 'position:absolute;bottom:-1475px;left:70%;transform:translateX(-50%);height:650%;width:auto;object-fit:contain;object-position:center bottom;pointer-events:none;filter:drop-shadow(rgb(255,255,255) 0px 0px 50px);';
                 inner.appendChild(spriteEl);
             }
         }
@@ -655,7 +666,26 @@ export function createQuestionTruthController({ extensionFolderPath = '', getTru
                         : '?';
                     const display = document.createElement('span');
                     display.className = 'qtt-hint-display';
-                    display.textContent = `${first}-${last}`;
+
+                    // Decoy X-letters flanking the revealed hint to obscure
+                    // the answer's length.  Counts are randomised each click.
+                    const beforeCount = 2 + Math.floor(Math.random() * 4); // 2–5
+                    const afterCount  = 2 + Math.floor(Math.random() * 4); // 2–5
+                    const beforeStr   = Array(beforeCount).fill('X').join('-') + '-';
+                    const afterStr    = '-' + Array(afterCount).fill('X').join('-');
+
+                    const beforeSpan = document.createElement('span');
+                    beforeSpan.className = 'qtt-hint-x';
+                    beforeSpan.textContent = beforeStr;
+
+                    const afterSpan = document.createElement('span');
+                    afterSpan.className = 'qtt-hint-x';
+                    afterSpan.textContent = afterStr;
+
+                    display.appendChild(beforeSpan);
+                    display.appendChild(document.createTextNode(`${first}-${last}`));
+                    display.appendChild(afterSpan);
+
                     hintBtn.replaceWith(display);
                 });
             } else {
