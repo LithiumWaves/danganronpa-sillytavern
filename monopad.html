@@ -853,7 +853,15 @@
                     <div class="settings-ai-actions">
                         <button id="dangan_configure_vfx" class="settings-small-button" type="button">CONFIGURE EXPRESSIONS</button>
                     </div>
-                    <div class="settings-note">Visual and audio effects on character expressions. Character-specific.</div>
+                    <div class="settings-note">Visual and audio effects on character expressions. Character-specific. Requires you to be on a specific character chat to configure.</div>
+                </div>
+
+                <div class="settings-item settings-item-stack">
+                    <span class="settings-label">EMOTION FONTS</span>
+                    <div class="settings-ai-actions">
+                        <button id="dangan_configure_emotion_fonts" class="settings-small-button" type="button">CONFIGURE EMOTION FONTS</button>
+                    </div>
+                    <div class="settings-note">Per-emotion font override used by class trial statements. Default falls back to the standard statement font.</div>
                 </div>
 
 
@@ -1006,6 +1014,27 @@
             </div>
         </div>
 
+
+        <div id="monopad-emofont-overlay" class="monopad-vfx-overlay" aria-hidden="true">
+            <div class="monopad-vfx-window" role="dialog" aria-modal="true" aria-labelledby="monopad-emofont-title">
+                <div class="monopad-vfx-header">
+                    <div>
+                        <div class="monopad-vfx-title" id="monopad-emofont-title">EMOTION FONTS</div>
+                        <div class="monopad-vfx-subtitle">PER-EMOTION FONT OVERRIDES</div>
+                    </div>
+                    <div class="monopad-vfx-header-controls">
+                        <div class="monopad-emofont-target-row">
+                            <span>TARGET</span>
+                            <select id="monopad-emofont-target"></select>
+                        </div>
+                        <button id="monopad-emofont-close" class="monopad-vfx-close" type="button" aria-label="Close emotion fonts">✕</button>
+                    </div>
+                </div>
+                <div class="monopad-vfx-body">
+                    <div id="monopad-emofont-grid" class="monopad-emofont-grid"></div>
+                </div>
+            </div>
+        </div>
 
         <div id="monopad-vfx-overlay" class="monopad-vfx-overlay" aria-hidden="true">
             <div class="monopad-vfx-window" role="dialog" aria-modal="true" aria-labelledby="monopad-vfx-title">

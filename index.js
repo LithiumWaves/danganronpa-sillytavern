@@ -4,6 +4,7 @@ import { executeSlashCommandsWithOptions } from '../../../slash-commands.js';
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../../slash-commands/SlashCommandArgument.js';
+import { SlashCommandEnumValue } from '../../../slash-commands/SlashCommandEnumValue.js';
 import { initTruthBullets, handleTruthBullet, setNextTruthBulletSfxVariant, getTruthBulletByLocationId, showTruthBulletByLocationId, showTruthBulletById, getTruthBullets, clearAllTruthBullets } from "./truth/truthBullets.js";
 import { buildDecagram, crackShard, shatterShard } from "./trust/trustDecagram.js";
 import { initTrustAnimations, playTrustRankUp, playTrustRankDown, playTrustMaxed, playTrustToDistrustTransition, playDistrustRankDown, playDistrustRankUp, playDistrustToTrustRecovery } from "./trust/trustAnimations.js";
@@ -21,6 +22,7 @@ import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers 
 import { createClassTrialMenuController } from "./trial/menu/classTrialMenu.js";
 import { createTrialManager, TrialPhases } from "./trial/trialManager.js";
 import { initVfxSystem, onVfxChatChanged, setExpressionTarget, setVfxGcpLoadSuppressed, setVfxGcpGroupActive, triggerVfxOnElement } from "./vfx/vfxSystem.js";
+import { initEmotionFontsSystem, getEmotionFont } from "./vfx/emotionFontsSystem.js";
 import { createBdaCinematicEditor } from "./vfx/bdaCinematicEditor.js";
 import { createExecutionCinematicEditor } from "./vfx/executionCinematicEditor.js";
 import { createVoteResultsController } from "./vfx/voteResults.js";
@@ -291,10 +293,15 @@ async function sleepToNextDay({ source = "manual" } = {}) {
     saveSettingsDebounced();
     renderTimeTrackerUi();
     applyTimeContextToGeneration();
+    // Hide the BGM visualizer for the duration of the announcement + theme swap
+    // (mirrors /passtime so the visualizer doesn't pop back as the daytime track
+    // resumes before the theme has finished applying).
+    audioVisualizer?.suppress?.();
     await monokumaAnnouncementController?.triggerAsync("DAY_ANNOUN");
     await freeTimeStartController.triggerAsync();
     playDaytimeTrack();
     applyDynamicTheme();
+    audioVisualizer?.unsuppress?.();
     console.log(`[${extensionName}] Time advanced to DAY ${state.day} (source: ${source}).`);
     return true;
 }
@@ -7028,8 +7035,31 @@ jQuery(async () => {
                 onMachineClose: () => fadeInAndResumeBgm(),
                 playShopTrack,
                 stopShopTrack,
+                fetchBgmPaths,
+                playBgmPath,
             });
             mapPanelController?.renderMapPanel?.();
+            const initialRender = (tag) => {
+                try { renderMoveToPanel(); }
+                catch (e) { console.warn(`[Dangan][moveto-panel] render failed (${tag}):`, e); }
+                try { renderMinimap(); }
+                catch (e) { console.warn(`[Dangan][minimap] render failed (${tag}):`, e); }
+            };
+            initialRender('init');
+            // Fallback renders — Assistant / Narrator chats and slow-loading group
+            // chats can fire CHAT_CHANGED before our handler is registered, OR
+            // never fire CHAT_CHANGED at all on first load. Retry at staggered
+            // intervals so one of them lands once the DOM is ready.
+            setTimeout(() => initialRender('t200'),  200);
+            setTimeout(() => initialRender('t600'),  600);
+            setTimeout(() => initialRender('t1200'), 1200);
+            setTimeout(() => initialRender('t2500'), 2500);
+            setTimeout(() => initialRender('t5000'), 5000);
+            const triggerInitialRender = () => initialRender('event');
+            try { eventSource.on(event_types.APP_READY,             triggerInitialRender); } catch {}
+            try { eventSource.on(event_types.CHAT_LOADED,           triggerInitialRender); } catch {}
+            try { eventSource.on(event_types.CHARACTER_PAGE_LOADED, triggerInitialRender); } catch {}
+            try { eventSource.on(event_types.MORE_MESSAGES_LOADED,  triggerInitialRender); } catch {}
         } catch (error) {
             console.error("[Dangan][Map] Failed to initialize map panel controller:", error);
             mapPanelController = {
@@ -7091,6 +7121,7 @@ jQuery(async () => {
                 playSfx(sfx.close);
                 $panel.addClass("closed");
             }
+            try { renderMoveToPanel(); renderMinimap(); } catch {}
         }
 
         $("#dangan_monopad_close").on("click", () => {
@@ -7184,6 +7215,7 @@ $(".monopad-icon").on("mouseenter", function () {
                     hasBootedThisSession = true;
                 }
                 if (getMonopadSetting("monopadJingleEnabled") !== false) playSfx(sfx.open);
+                try { renderMoveToPanel(); renderMinimap(); } catch {}
             } else {
                 closeMonopadPanel();
             }
@@ -7781,6 +7813,13 @@ setInterval(() => {
     if (!isInCharacterChat()) _stopAllBgm();
 }, 2000);
 
+// Move-to panel polling — also driven here for the same reason: CHAT_CHANGED
+// doesn't fire when entering/leaving the Assistant chat, and renderMoveToPanel
+// is idempotent (it re-uses the existing DOM node when present).
+setInterval(() => {
+    try { renderMoveToPanel(); renderMinimap(); } catch {}
+}, 2000);
+
 rewards?.renderProgressionUi?.();
 updateChapterDisplay();
 itemsPanelController.loadInventoryState();
@@ -7830,6 +7869,7 @@ debugSTGlobals();
     });
 
     vfxCleanup = initVfxSystem();
+    initEmotionFontsSystem();
     setExpressionTarget(() => trialManager?.getGcpSpeakerImg?.() ?? document.getElementById('expression-image'));
 
     function promptForBlackened(suggested = '') {
@@ -7839,7 +7879,9 @@ debugSTGlobals();
             const val = JSON.stringify(suggested);
             modal.innerHTML = `
                 <div style="background:#0d0808;border:2px solid #cc1100;box-shadow:0 0 32px rgba(200,0,0,0.4);padding:32px 40px;max-width:420px;width:90%;text-align:center;">
-                    <div style="color:#ff4444;font-size:1em;font-weight:900;letter-spacing:3px;margin-bottom:20px;text-transform:uppercase;text-shadow:0 0 10px #ff2200;">Who is the Blackened?</div>
+                    <div style="color:#ff4444;font-size:1em;font-weight:900;letter-spacing:3px;margin-bottom:20px;text-transform:uppercase;text-shadow:0 0 10px #ff2200;">Who, truthfully, is the Blackened?</div>
+                    <div style="color:#ababab;font-size:0.75em;font-weight:900;letter-spacing:3px;margin-bottom:20px;text-transform:uppercase;text-shadow:0 0 10px #8c8c8c;">This will dictate the 'correct' result.</div>
+
                     <input id="vt-bl-input" type="text" value=${val}
                         style="width:100%;background:#111;border:1px solid #662200;color:#fff;padding:9px 14px;font-size:1em;font-family:inherit;margin-bottom:18px;box-sizing:border-box;outline:none;"
                         placeholder="Enter suspect name…">
@@ -7911,6 +7953,8 @@ debugSTGlobals();
             getTruthBullets,
             generateTrialDialogue,
             getCharacterSourceText,
+            getEmotionFont,
+            onTrialStateChange: () => { renderMoveToPanel(); renderMinimap(); },
             getSpriteUrl,
             playSfx,
             getSfx: () => sfx,
@@ -8609,6 +8653,7 @@ STATEMENT: <third statement>`;
         eventSource.on(event_types.CHAT_CHANGED, () => {
             setVfxGcpLoadSuppressed(true);
             setVfxGcpGroupActive(false); // reset until new chat's GCP init completes
+            try { renderMoveToPanel(); renderMinimap(); } catch (e) { console.warn('[Dangan][moveto-panel] render failed:', e); }
             trialManager?.destroyGroupChatPortraits?.();
             setTimeout(async () => {
                 trialManager?.onChatChanged?.();
@@ -8799,7 +8844,7 @@ STATEMENT: <third statement>`;
             return chars;
         },
         getUserAvatarUrl: getActiveUserAvatarUrl,
-        getSpriteUrl: (charName) => getSpriteUrl(charName, 'panictalkaction'),
+        getSpriteUrl: (charName, label = 'neutral') => getSpriteUrl(charName, label),
         getPlayerName: getActivePersonaName,
         generateVotes: async (livingNames, playerName) => {
             const npcs = livingNames.filter(n => n !== playerName);
@@ -9443,6 +9488,724 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         SlashCommandNamedArgument.fromProps({ name: 'question', description: 'The statement to answer',           typeList: [ARGUMENT_TYPE.STRING], isRequired: true }),
         SlashCommandNamedArgument.fromProps({ name: 'answer',   description: 'Name of the correct Truth Bullet',  typeList: [ARGUMENT_TYPE.STRING], isRequired: true }),
         SlashCommandNamedArgument.fromProps({ name: 'time',     description: 'Optional time limit in seconds',    typeList: [ARGUMENT_TYPE.NUMBER], isRequired: false }),
+    ],
+}));
+
+// /moveto — moves the player between connected rooms / areas / sub-areas, updates
+// the chat background to the destination pin's BG, and remembers the current
+// location across reloads.
+function getCurrentLocationId() {
+    return extension_settings[extensionName]?.map?.currentLocationId || null;
+}
+function setCurrentLocationId(locationId) {
+    const root = extension_settings[extensionName] ??= {};
+    root.map ??= {};
+    const prev = root.map.currentLocationId || null;
+    root.map.currentLocationId = locationId || null;
+    saveSettingsDebounced();
+    // When the room changes, drop any drag-overrides so the character pins fall
+    // back to the default ring around the *new* room on the next render.
+    if (prev !== root.map.currentLocationId) {
+        _minimapCharPositions.clear();
+        _minimapSig = null;
+    }
+}
+
+// Resolve a destination string (label/ref/value) against the current pin's
+// connection list and execute the move. Shared by /moveto and the side panel
+// buttons so they behave identically.
+function moveToDestination(raw) {
+    if (!mapPanelController) return false;
+    const currentId = getCurrentLocationId();
+    if (!currentId) return false;
+    const conns = mapPanelController.getConnectionsForLocationId?.(currentId) ?? [];
+    const lcRaw = String(raw || '').trim().toLowerCase();
+    if (!lcRaw) return false;
+    const dest = conns.find(c => c.label?.toLowerCase() === lcRaw)
+              || conns.find(c => c.ref?.toLowerCase() === lcRaw)
+              || conns.find(c => c.value?.toLowerCase() === lcRaw);
+    if (!dest) return false;
+
+    if (dest.kind === 'pin') {
+        const pin = mapPanelController.getPinByLocationId?.(dest.value);
+        if (!pin) return false;
+        setCurrentLocationId(pin.locationId);
+        if (pin.bg)  mapPanelController.switchChatBackground?.(pin.bg);
+        if (pin.bgm) mapPanelController.playPinBgm?.(pin.bgm);
+        mapPanelController.highlightPinByLocationId?.(pin.locationId);
+    } else if (dest.kind === 'area') {
+        mapPanelController.navigateToArea?.(dest.value);
+        setCurrentLocationId(`area:${dest.value}`);
+    } else if (dest.kind === 'subarea') {
+        mapPanelController.navigateToArea?.(dest.areaKey, dest.floorKey);
+        setCurrentLocationId(`subarea:${dest.areaKey}/${dest.floorKey}`);
+    }
+    renderMoveToPanel();
+    renderMinimap();
+    return true;
+}
+
+// Fixed left-side panel listing every connection from the current location as
+// a "Move to <name>" button. NEVER renders during any Class Trial phase. Always
+// rendered otherwise (with an empty-state hint when the current pin has no
+// connections, or when no current location is set yet) so the player can see
+// the panel exists.
+let _moveToPanelSig = null;
+let _minimapSig = null;
+// Pan offset for the minimap, persisted across re-renders. Reset whenever the
+// underlying floor image changes (so each new floor starts un-panned).
+let _minimapPan = { tx: 0, ty: 0, imageSrc: null };
+let _minimapZoom = 1.0;
+const MINIMAP_ZOOM_MIN  = 1.0;
+const MINIMAP_ZOOM_MAX  = 2.5;
+const MINIMAP_ZOOM_STEP = 0.25;
+
+// Rotated-square minimap rendered bottom-right outside Class Trials.
+// Mirrors the moveTo panel's visibility gates: hides during any trial phase and
+// while the Monopad is open. Shows only the current sub-area's floor + location
+// pins (rooms / monomachines / trials) — no evidence, no bodies, no hover.
+function renderMinimap() {
+    const existing = document.getElementById('dangan-minimap');
+    const removeIt = () => { if (existing) { existing.remove(); _minimapSig = null; } };
+
+    if (isTrialUiActive()) { removeIt(); return; }
+    const monopad = document.getElementById('dangan_monopad_panel');
+    if (monopad?.classList.contains('open')) { removeIt(); return; }
+
+    // Pass the player's current location so the minimap shows THAT floor, not
+    // whatever the Map panel happened to be displaying last.
+    const data = mapPanelController?.getMinimapState?.(getCurrentLocationId());
+    if (!data?.imageSrc) { removeIt(); return; }
+
+    const pinSig = data.pins.map(p => `${p.id}:${p.x}:${p.y}`).join(';');
+    // Include the current location + recent speaker + group composition in the
+    // signature so character pins update when the conversation moves.
+    const ctxSnap = window.SillyTavern?.getContext?.();
+    const lastSpeaker = ctxSnap?.chat
+        ? [...ctxSnap.chat].reverse().find(m => m && !m.is_system && m.name && !m.is_user)?.name
+        : null;
+    const groupSig = ctxSnap?.groupId
+        ? (Array.isArray(ctxSnap.groups) ? ctxSnap.groups : []).find(g => String(g.id) === String(ctxSnap.groupId))?.members?.join(',') || ''
+        : (ctxSnap?.name2 || '');
+    const sig = `${data.areaKey}/${data.floorKey}|${data.imageSrc}|${pinSig}|cur:${getCurrentLocationId() || ''}|spk:${lastSpeaker || ''}|grp:${groupSig}`;
+    if (existing && sig === _minimapSig) return;
+    _minimapSig = sig;
+
+    const root = existing || document.createElement('div');
+    root.id = 'dangan-minimap';
+    root.innerHTML = '';
+
+    const square = document.createElement('div');
+    square.className = 'dangan-minimap-square';
+
+    // Image lives inside an aspect-ratio-matched wrapper so the pin %-coords
+    // (which live in the floor image's coordinate space) align with the image
+    // pixels even though the diamond outer frame is square.
+    const mapWrap = document.createElement('div');
+    mapWrap.className = 'dangan-minimap-map';
+    mapWrap.style.aspectRatio = `${data.mapWidth} / ${data.mapHeight}`;
+
+    const img = document.createElement('img');
+    img.className = 'dangan-minimap-image';
+    img.src = data.imageSrc;
+    img.alt = '';
+    img.draggable = false;
+    mapWrap.appendChild(img);
+
+    const pinLayer = document.createElement('div');
+    pinLayer.className = 'dangan-minimap-pin-layer';
+    const currentId = getCurrentLocationId();
+    const currentPin = (currentId && !currentId.startsWith('area:') && !currentId.startsWith('subarea:'))
+        ? mapPanelController?.getPinByLocationId?.(currentId)
+        : null;
+    for (const p of data.pins) {
+        const isCurrent = currentPin && p.id === currentPin.id;
+        const pin = document.createElement('div');
+        pin.className = `dangan-minimap-pin dangan-minimap-pin-${p.type}${isCurrent ? ' dangan-minimap-pin-current' : ''}`;
+        pin.style.left = `${(p.x / data.mapWidth) * 100}%`;
+        pin.style.top  = `${(p.y / data.mapHeight) * 100}%`;
+        if (p.iconUrl) {
+            const i = document.createElement('img');
+            i.src = p.iconUrl;
+            i.alt = '';
+            i.draggable = false;
+            pin.appendChild(i);
+        }
+        pinLayer.appendChild(pin);
+    }
+    mapWrap.appendChild(pinLayer);
+
+    // Character/location-marker layer — gold pulsing circle for the player's
+    // current room, plus per-character pins (player / speaker / group members).
+    renderMinimapCharacterLayer(mapWrap, data, currentPin);
+
+    square.appendChild(mapWrap);
+
+    root.appendChild(square);
+
+    // Zoom controls — two small rotated-square buttons on the right.
+    const zoomCol = document.createElement('div');
+    zoomCol.className = 'dangan-minimap-zoom';
+    const zoomIn  = document.createElement('button');
+    zoomIn.type = 'button';
+    zoomIn.className = 'dangan-minimap-zoom-btn dangan-minimap-zoom-in';
+    zoomIn.title = 'Zoom in';
+    zoomIn.innerHTML = '<span>+</span>';
+    const zoomOut = document.createElement('button');
+    zoomOut.type = 'button';
+    zoomOut.className = 'dangan-minimap-zoom-btn dangan-minimap-zoom-out';
+    zoomOut.title = 'Zoom out';
+    zoomOut.innerHTML = '<span>−</span>';
+    zoomCol.appendChild(zoomIn);
+    zoomCol.appendChild(zoomOut);
+    root.appendChild(zoomCol);
+
+    // Reset pan + zoom if the floor changed; otherwise preserve the player's view.
+    if (_minimapPan.imageSrc !== data.imageSrc) {
+        _minimapPan = { tx: 0, ty: 0, imageSrc: data.imageSrc };
+        _minimapZoom = 1.0;
+    }
+    applyMinimapTransform(mapWrap);
+
+    zoomIn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (_minimapZoom >= MINIMAP_ZOOM_MAX) return;
+        _minimapZoom = Math.min(MINIMAP_ZOOM_MAX, Math.round((_minimapZoom + MINIMAP_ZOOM_STEP) * 100) / 100);
+        applyMinimapTransform(root.querySelector('.dangan-minimap-map'));
+    });
+    zoomOut.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (_minimapZoom <= MINIMAP_ZOOM_MIN) return;
+        _minimapZoom = Math.max(MINIMAP_ZOOM_MIN, Math.round((_minimapZoom - MINIMAP_ZOOM_STEP) * 100) / 100);
+        applyMinimapTransform(root.querySelector('.dangan-minimap-map'));
+    });
+    // Prevent button presses from initiating the diamond drag.
+    zoomIn.addEventListener('pointerdown',  (e) => e.stopPropagation());
+    zoomOut.addEventListener('pointerdown', (e) => e.stopPropagation());
+
+    if (!existing) {
+        document.body.appendChild(root);
+        // Drag is attached to the outer root, not the rotated square — the square's
+        // clip + rotation made hit-testing flaky at high zoom levels. Zoom buttons
+        // and character pins both stop propagation on pointerdown so they remain
+        // independently interactive without triggering a pan.
+        attachMinimapDrag(root);
+    }
+}
+
+// Distinct colours assigned by index to group-chat members other than the
+// player and the active speaker. Cycles when the group is larger than the list.
+const MINIMAP_OTHER_COLORS = [
+    '#56e2ff', '#b366ff', '#8cff66', '#ffb14d', '#ff66bb', '#ffe05a', '#5a9bff', '#9fff5a',
+];
+
+// Per-character drag-override positions for the minimap, keyed by character name.
+// { xPct, yPct } — survives re-renders so the player's manual placement sticks.
+const _minimapCharPositions = new Map();
+// Per-character teardrop rotation in degrees, keyed by character name. Cached
+// once per character so the teardrop point doesn't change direction on every
+// re-render (which would look chaotic).
+const _minimapCharRotations = new Map();
+
+function renderMinimapCharacterLayer(mapWrap, data, currentPin) {
+    // Without a known room pin we have nowhere to draw character markers.
+    if (!currentPin) return;
+    const xPct = (currentPin.x / data.mapWidth) * 100;
+    const yPct = (currentPin.y / data.mapHeight) * 100;
+
+    const charLayer = document.createElement('div');
+    charLayer.className = 'dangan-minimap-char-layer';
+
+    const playerName = getActivePersonaName?.() || 'You';
+
+    // ── Determine speaker + group members from SillyTavern context ───────
+    const ctx = window.SillyTavern?.getContext?.();
+    const lastMsg = ctx?.chat
+        ? [...ctx.chat].reverse().find(m => m && !m.is_system && m.name && !m.is_user)
+        : null;
+    const speakerName = (lastMsg?.name && lastMsg.name !== playerName) ? lastMsg.name : null;
+
+    // Substrings (case-insensitive) used to skip names when building the
+    // character-pin list. A substring match catches name variants with
+    // suffixes like "Prome User Sprite (Do Not Click)".
+    const EXCLUDED_PIN_SUBSTRINGS = [
+        'prome user sprite',
+        'narrator',
+        'assistant',
+        'sillytavern system',
+    ];
+    const isExcludedPinName = (name) => {
+        if (!name) return true;
+        const lc = String(name).toLowerCase();
+        return EXCLUDED_PIN_SUBSTRINGS.some(s => lc.includes(s));
+    };
+
+    let memberNames = [];
+    if (ctx?.groupId) {
+        const group = (Array.isArray(ctx.groups) ? ctx.groups : []).find(g => String(g.id) === String(ctx.groupId));
+        if (group?.members?.length && Array.isArray(ctx.characters)) {
+            memberNames = group.members
+                .map(avatar => ctx.characters.find(c => c?.avatar === avatar)?.name)
+                .filter(n => n && n !== playerName && !isExcludedPinName(n));
+        }
+    } else if (ctx?.name2 && !isExcludedPinName(ctx.name2) && ctx.name2 !== playerName) {
+        memberNames = [ctx.name2];
+    }
+    // Also drop the speaker if it's a narrator/assistant — the chat's last
+    // "speaker" can be the Narrator and we don't want a red pin for them.
+    const filteredSpeaker = (speakerName && !isExcludedPinName(speakerName)) ? speakerName : null;
+
+    // Build the list of character pins to render around the room.
+    const chars = [];
+    if (playerName) chars.push({ name: playerName, kind: 'player' });
+    if (filteredSpeaker) chars.push({ name: filteredSpeaker, kind: 'speaker' });
+    let otherIdx = 0;
+    for (const name of memberNames) {
+        if (name === filteredSpeaker) continue;
+        if (name === playerName) continue;
+        chars.push({ name, kind: 'other', color: MINIMAP_OTHER_COLORS[otherIdx++ % MINIMAP_OTHER_COLORS.length] });
+    }
+
+    // Arrange around the room in a small ring so they don't all stack — but
+    // honour any drag-override saved in _minimapCharPositions first.
+    const RING_RADIUS_PCT = 9;
+    chars.forEach((c, i) => {
+        const angle = (i / Math.max(1, chars.length)) * Math.PI * 2 - Math.PI / 2;
+        const stored = _minimapCharPositions.get(c.name);
+        const px = stored ? stored.xPct : xPct + Math.cos(angle) * RING_RADIUS_PCT;
+        const py = stored ? stored.yPct : yPct + Math.sin(angle) * RING_RADIUS_PCT;
+        const pin = document.createElement('div');
+        pin.className = `dangan-minimap-char-pin dangan-minimap-char-pin-${c.kind}`;
+        pin.style.left = `${px}%`;
+        pin.style.top  = `${py}%`;
+        pin.dataset.name = c.name;
+        if (c.color) pin.style.setProperty('--char-color', c.color);
+        // Teardrop point rotation — random per character, cached so it stays
+        // stable across re-renders. Rotation is applied to a child shape so
+        // the pin wrapper (and its tooltip) stay axis-aligned.
+        let rot = _minimapCharRotations.get(c.name);
+        if (rot === undefined) {
+            rot = Math.floor(Math.random() * 360);
+            _minimapCharRotations.set(c.name, rot);
+        }
+        const shape = document.createElement('div');
+        shape.className = 'dangan-minimap-char-pin-shape';
+        shape.style.setProperty('--pin-angle', `${rot}deg`);
+        pin.appendChild(shape);
+        attachCharPinDrag(pin, c.name);
+        charLayer.appendChild(pin);
+    });
+
+    mapWrap.appendChild(charLayer);
+}
+
+// Per-pin drag inside the minimap. Independent of the diamond pan handler.
+//
+// Coordinate math: the parent square is rotate(45°) and the map wrapper is
+// translate(tx,ty) rotate(-45°) scale(zoom). The parent rotation and the
+// child counter-rotation cancel out for the *linear* part of the transform,
+// so the only thing that scales the screen delta into wrapper-local coords is
+// the zoom factor:
+//   local_dx = dx / zoom
+//   local_dy = dy / zoom
+// That delta is then converted to a % of the wrapper's natural CSS dimensions.
+function attachCharPinDrag(pin, name) {
+    pin.style.cursor = 'grab';
+    pin.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const mapWrap = pin.closest('.dangan-minimap-map');
+        if (!mapWrap) return;
+        // clientWidth / clientHeight are layout (unzoomed) dimensions.
+        const W = mapWrap.clientWidth;
+        const H = mapWrap.clientHeight;
+        if (!W || !H) return;
+        const startX = e.clientX;
+        const startY = e.clientY;
+        let lastX = startX;
+        let lastY = startY;
+        let posX = parseFloat(pin.style.left) || 0;
+        let posY = parseFloat(pin.style.top)  || 0;
+        let moved = false;
+        const CLICK_THRESHOLD = 4;  // px before a press becomes a drag
+        try { pin.setPointerCapture?.(e.pointerId); } catch {}
+
+        const onMove = (em) => {
+            const dx = em.clientX - lastX;
+            const dy = em.clientY - lastY;
+            if (!moved) {
+                const totalDx = em.clientX - startX;
+                const totalDy = em.clientY - startY;
+                if (Math.hypot(totalDx, totalDy) >= CLICK_THRESHOLD) {
+                    moved = true;
+                    pin.style.cursor = 'grabbing';
+                } else {
+                    return;
+                }
+            }
+            lastX = em.clientX;
+            lastY = em.clientY;
+            const inv = 1 / _minimapZoom;
+            posX += (dx * inv) * 100 / W;
+            posY += (dy * inv) * 100 / H;
+            pin.style.left = `${posX}%`;
+            pin.style.top  = `${posY}%`;
+        };
+        const endDrag = (eu) => {
+            pin.removeEventListener('pointermove', onMove);
+            pin.removeEventListener('pointerup', endDrag);
+            pin.removeEventListener('pointercancel', endDrag);
+            pin.style.cursor = 'grab';
+            try { pin.releasePointerCapture?.(eu.pointerId); } catch {}
+            if (moved) {
+                _minimapCharPositions.set(name, { xPct: posX, yPct: posY });
+            } else {
+                selectMinimapPin(pin, name);
+            }
+        };
+        pin.addEventListener('pointermove', onMove);
+        pin.addEventListener('pointerup', endDrag);
+        pin.addEventListener('pointercancel', endDrag);
+    });
+}
+
+// ── Pin selection + keyboard rotation ─────────────────────────────────────
+// Click a pin to select it; press 1 / 2 to rotate its teardrop point in
+// 15° steps. Esc or a click anywhere else deselects.
+let _selectedPinName = null;
+const PIN_ROTATION_STEP_DEG = 15;
+
+function selectMinimapPin(pin, name) {
+    // Clear any previously-selected pin's outline.
+    document.querySelectorAll('.dangan-minimap-char-pin.selected').forEach(el => el.classList.remove('selected'));
+    pin.classList.add('selected');
+    _selectedPinName = name;
+}
+function deselectMinimapPin() {
+    if (!_selectedPinName) return;
+    document.querySelectorAll('.dangan-minimap-char-pin.selected').forEach(el => el.classList.remove('selected'));
+    _selectedPinName = null;
+}
+// Document-level handlers (registered once at module load).
+(function installPinSelectionHandlers() {
+    document.addEventListener('keydown', (e) => {
+        if (!_selectedPinName) return;
+        if (e.key === 'Escape') { e.preventDefault(); deselectMinimapPin(); return; }
+        // Ignore the keys when the user is typing in an input/textarea.
+        const tag = (e.target?.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
+        // '1' = rotate left (counter-clockwise), '2' = rotate right (clockwise).
+        let delta = 0;
+        if (e.key === '1') delta = -PIN_ROTATION_STEP_DEG;
+        else if (e.key === '2') delta = PIN_ROTATION_STEP_DEG;
+        else return;
+        e.preventDefault();
+        const cur = _minimapCharRotations.get(_selectedPinName) ?? 0;
+        const next = ((cur + delta) % 360 + 360) % 360;
+        _minimapCharRotations.set(_selectedPinName, next);
+        // Live-update only the currently-selected pin's shape child; no need
+        // to re-render the whole minimap.
+        const selectedPin = document.querySelector(`.dangan-minimap-char-pin.selected[data-name="${CSS.escape(_selectedPinName)}"]`);
+        const shape = selectedPin?.querySelector('.dangan-minimap-char-pin-shape');
+        if (shape) shape.style.setProperty('--pin-angle', `${next}deg`);
+    });
+    // Any click outside a char-pin deselects.
+    document.addEventListener('pointerdown', (e) => {
+        if (!_selectedPinName) return;
+        if (e.target.closest?.('.dangan-minimap-char-pin')) return;
+        deselectMinimapPin();
+    });
+})();
+
+function applyMinimapTransform(mapWrap) {
+    if (!mapWrap) return;
+    // Counter-rotate the inner content so it stays axis-aligned even though the
+    // parent square is rotated 45°. translate(tx, ty) is applied AFTER the
+    // rotation so screen-space drag deltas map straight to (tx, ty).
+    mapWrap.style.transform =
+        `translate(${_minimapPan.tx}px, ${_minimapPan.ty}px) rotate(-45deg) scale(${_minimapZoom})`;
+}
+
+// Drag-to-pan handler. The map wrapper's translate happens INSIDE the rotated
+// square's coord system, so a (tx, ty) translate is then rotated 45° on screen
+// by the parent. To make a horizontal drag move the map horizontally, the
+// screen-space delta (dx, dy) is first rotated by -45° before being added:
+//   tx += (dx + dy) / √2
+//   ty += (dy - dx) / √2
+function attachMinimapDrag(target) {
+    let dragging = false;
+    let lastX = 0, lastY = 0;
+    const INV_SQRT2 = 1 / Math.SQRT2;
+    const root = target.closest('#dangan-minimap') || target;
+
+    target.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        dragging = true;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        root.classList.add('dragging');
+        try { target.setPointerCapture?.(e.pointerId); } catch {}
+        e.preventDefault();
+    });
+    target.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const dx = e.clientX - lastX;
+        const dy = e.clientY - lastY;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        _minimapPan.tx += (dx + dy) * INV_SQRT2;
+        _minimapPan.ty += (dy - dx) * INV_SQRT2;
+        applyMinimapTransform(target.querySelector('.dangan-minimap-map'));
+    });
+    const endDrag = (e) => {
+        if (!dragging) return;
+        dragging = false;
+        root.classList.remove('dragging');
+        try { target.releasePointerCapture?.(e.pointerId); } catch {}
+    };
+    target.addEventListener('pointerup', endDrag);
+    target.addEventListener('pointercancel', endDrag);
+}
+
+// True when the Class Trial UI is actually mounted on the page. This is the
+// reliable "we're in a trial" signal — it's set by trialManager only on real
+// group-chat trials, so a stale persisted pre_debate state on an Assistant /
+// Narrator chat doesn't falsely hide the Move To panel and Minimap.
+function isTrialUiActive() {
+    return document.body.classList.contains('dangan-trial-active');
+}
+
+function renderMoveToPanel() {
+    const existing = document.getElementById('dangan-moveto-panel');
+
+    // Hide whenever the Class Trial UI is on screen.
+    if (isTrialUiActive()) {
+        if (existing) { existing.remove(); _moveToPanelSig = null; }
+        return;
+    }
+
+    // Also hide while the Monopad is open — it's a full-screen panel and the
+    // Move To panel would render on top of it otherwise.
+    const monopad = document.getElementById('dangan_monopad_panel');
+    if (monopad?.classList.contains('open')) {
+        if (existing) { existing.remove(); _moveToPanelSig = null; }
+        return;
+    }
+
+    const currentId = getCurrentLocationId();
+    const conns = currentId
+        ? (mapPanelController?.getConnectionsForLocationId?.(currentId) ?? [])
+        : [];
+
+    // Dirty-check signature — short-circuit when nothing observable has changed.
+    // The poll calls this every 2s; without this guard each call would rebuild
+    // the DOM and trigger a visible flicker.
+    const sig = `${currentId || ''}|${conns.map(c => `${c.kind}:${c.value}:${c.label}`).join(';')}`;
+    if (existing && sig === _moveToPanelSig) return;
+    _moveToPanelSig = sig;
+
+    const panel = existing || document.createElement('div');
+    panel.id = 'dangan-moveto-panel';
+    panel.innerHTML = '';
+
+    const title = document.createElement('div');
+    title.className = 'dangan-moveto-title';
+    title.textContent = 'MOVE TO';
+    panel.appendChild(title);
+
+    const list = document.createElement('div');
+    list.className = 'dangan-moveto-list';
+    if (!currentId) {
+        const empty = document.createElement('div');
+        empty.className = 'dangan-moveto-empty';
+        empty.textContent = 'Use /setlocation to set your current location.';
+        list.appendChild(empty);
+    } else if (!conns.length) {
+        const empty = document.createElement('div');
+        empty.className = 'dangan-moveto-empty';
+        empty.textContent = 'No connected rooms from here. Edit the current pin to add some.';
+        list.appendChild(empty);
+    } else {
+        for (const c of conns) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = `dangan-moveto-btn dangan-moveto-kind-${c.kind}`;
+            btn.textContent = c.label;
+            btn.title = c.kind === 'pin' ? `Pin (${c.value})`
+                      : c.kind === 'area' ? `Area (${c.value})`
+                      : `Sub-area (${c.value})`;
+            btn.addEventListener('click', () => moveToDestination(c.label));
+            list.appendChild(btn);
+        }
+    }
+    panel.appendChild(list);
+
+    if (!existing) document.body.appendChild(panel);
+}
+
+// Module-level early-load polling. Runs OUTSIDE the jQuery init callback so
+// rendering retries fire even if the jQuery callback's awaits are still pending
+// (which happens during Assistant / Narrator chat first-load, when CHAT_LOADED
+// has fired before our listeners get a chance to register inside the callback).
+// Each tick is cheap: it just calls the idempotent renderers, which bail out
+// quickly when mapPanelController isn't ready yet or when nothing has changed.
+(function bootstrapMinimapAndMoveToRender() {
+    let elapsed = 0;
+    const STEP = 250;
+    const DURATION = 12000;
+    const tick = () => {
+        try { renderMoveToPanel(); } catch (e) { console.warn('[Dangan][moveto-panel] bootstrap render failed:', e); }
+        try { renderMinimap();    } catch (e) { console.warn('[Dangan][minimap] bootstrap render failed:', e); }
+        elapsed += STEP;
+        if (elapsed < DURATION) setTimeout(tick, STEP);
+    };
+    // Kick off on the next tick so the function declarations are guaranteed hoisted
+    // and SillyTavern has at least started bootstrapping the DOM.
+    setTimeout(tick, 0);
+
+    // Belt-and-braces — also listen for the DOMContentLoaded event in case the
+    // module loaded before the DOM was ready.
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            try { renderMoveToPanel(); renderMinimap(); } catch {}
+        }, { once: true });
+    }
+})();
+
+function buildMoveToEnumOptions() {
+    if (!mapPanelController) return [];
+    const currentId = getCurrentLocationId();
+    if (!currentId) return [];   // No current location → no connected destinations to offer.
+    const conns = mapPanelController.getConnectionsForLocationId?.(currentId) ?? [];
+    const seen = new Map();
+    for (const c of conns) {
+        if (!c?.label || seen.has(c.label)) continue;
+        const desc = c.kind === 'pin' ? `Pin (${c.value})`
+                   : c.kind === 'area' ? `Area (${c.value})`
+                   : `Sub-area (${c.value})`;
+        seen.set(c.label, new SlashCommandEnumValue(c.label, desc));
+    }
+    return [...seen.values()];
+}
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'moveto',
+    callback: async (args) => {
+        if (!mapPanelController) {
+            console.warn('[Dangan][moveto] Map controller unavailable.');
+            return '';
+        }
+        const raw = String(args.location || args._ || '').trim();
+        if (!raw) {
+            console.warn('[Dangan][moveto] Provide location=<pin label / area name / sub-area>.');
+            return '';
+        }
+
+        if (!getCurrentLocationId()) {
+            console.warn('[Dangan][moveto] No current location set. Use /setlocation first.');
+            return '';
+        }
+        if (!moveToDestination(raw)) {
+            console.warn('[Dangan][moveto] Destination is not connected to the current location:', raw);
+            return '';
+        }
+        return raw;
+    },
+    helpString: 'Moves the player to a connected room/area/sub-area. Updates the chat background to the destination room\'s BG and remembers the current location.',
+    namedArgumentList: [
+        SlashCommandNamedArgument.fromProps({
+            name: 'location',
+            description: 'Destination — picked from connected rooms / sub-areas / areas of the current room.',
+            typeList: [ARGUMENT_TYPE.STRING],
+            isRequired: true,
+            enumProvider: () => buildMoveToEnumOptions(),
+        }),
+    ],
+}));
+
+// /setlocation — directly set the player's current location by ID, regardless of
+// any "Connected To" graph. Accepts a pin locationId, an area key, or a sub-area
+// key in the form "<areaKey>/<floorKey>". Switches the chat background when the
+// resolved target has one.
+function buildSetLocationEnumOptions() {
+    if (!mapPanelController) return [];
+    const out = [];
+    // Only navigable location pins — exclude evidence ('truth-bullet') and body pins.
+    const LOCATION_PIN_TYPES = new Set(['room', 'monomachine', 'trial']);
+    for (const p of (mapPanelController.getAllPins?.() ?? [])) {
+        if (!p?.locationId) continue;
+        if (!LOCATION_PIN_TYPES.has(p.type)) continue;
+        out.push(new SlashCommandEnumValue(p.locationId, `Pin — ${p.label || p.locationId}`));
+    }
+    for (const a of (mapPanelController.getAllAreas?.() ?? [])) {
+        out.push(new SlashCommandEnumValue(a.key, `Area — ${a.label}`));
+        for (const f of (a.floors || [])) {
+            out.push(new SlashCommandEnumValue(`${a.key}/${f.key}`, `Sub-area — ${a.label} › ${f.label}`));
+        }
+    }
+    return out;
+}
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'setlocation',
+    callback: async (args) => {
+        if (!mapPanelController) {
+            console.warn('[Dangan][setlocation] Map controller unavailable.');
+            return '';
+        }
+        const raw = String(args.id || args._ || '').trim();
+        if (!raw) {
+            console.warn('[Dangan][setlocation] Provide id=<pin locationId | areaKey | areaKey/floorKey>.');
+            return '';
+        }
+
+        // 1) Pin lookup by locationId first.
+        const pin = mapPanelController.getPinByLocationId?.(raw);
+        if (pin) {
+            setCurrentLocationId(pin.locationId);
+            if (pin.bg)  mapPanelController.switchChatBackground?.(pin.bg);
+            if (pin.bgm) mapPanelController.playPinBgm?.(pin.bgm);
+            mapPanelController.highlightPinByLocationId?.(pin.locationId);
+            renderMoveToPanel();
+            renderMinimap();
+            return pin.label || pin.locationId;
+        }
+
+        // 2) Sub-area: "<areaKey>/<floorKey>".
+        if (raw.includes('/')) {
+            const d = mapPanelController.describeConnectionRef?.(`subarea:${raw}`);
+            if (d?.kind === 'subarea') {
+                mapPanelController.navigateToArea?.(d.areaKey, d.floorKey);
+                setCurrentLocationId(`subarea:${d.areaKey}/${d.floorKey}`);
+                renderMoveToPanel();
+                renderMinimap();
+                return d.label;
+            }
+        }
+
+        // 3) Area key.
+        const a = mapPanelController.describeConnectionRef?.(`area:${raw}`);
+        if (a?.kind === 'area') {
+            mapPanelController.navigateToArea?.(a.value);
+            setCurrentLocationId(`area:${a.value}`);
+            renderMoveToPanel();
+            renderMinimap();
+            return a.label;
+        }
+
+        console.warn('[Dangan][setlocation] Could not resolve id:', raw);
+        return '';
+    },
+    helpString: 'Sets the player\'s current location to the given pin, area, or sub-area ID — bypassing the "Connected To" check. Switches the chat background when the target pin has one.',
+    namedArgumentList: [
+        SlashCommandNamedArgument.fromProps({
+            name: 'id',
+            description: 'A pin locationId, an areaKey, or a sub-area key (areaKey/floorKey).',
+            typeList: [ARGUMENT_TYPE.STRING],
+            isRequired: true,
+            enumProvider: () => buildSetLocationEnumOptions(),
+        }),
     ],
 }));
 

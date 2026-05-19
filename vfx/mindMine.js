@@ -13,6 +13,8 @@
  * calls onWin(sentence).
  */
 
+import { attachCursorSway } from "./cursorSway.js";
+
 export function createMindMineController({
     extensionFolderPath = '',
     onWin              = null,   // (sentenceText: string) => void
@@ -173,6 +175,7 @@ export function createMindMineController({
     let cellEls       = [];
     let overlay       = null;
     let styleEl       = null;
+    let swayDetach    = null;
     let timerEl       = null;
     let timerInterval  = null;
     let timerLastWall  = null;
@@ -459,6 +462,7 @@ export function createMindMineController({
     function cleanup() {
         cancelAnimationFrame(timerInterval);
         document.querySelector('.mm-grid-wrapper')?._mmCleanup?.();
+        if (swayDetach) { try { swayDetach(); } catch {} swayDetach = null; }
         overlay?.remove();  overlay  = null;
         styleEl?.remove();  styleEl  = null;
         cellEls         = [];
@@ -470,7 +474,8 @@ export function createMindMineController({
 
     /* ── CSS ─────────────────────────────────────────────────────────── */
     function buildStyles({ block, gridW, gridH, panelW }) {
-        const imgBase = extensionFolderPath ? `/${extensionFolderPath}/assets/images/minigames` : 'assets/images/minigames';
+        const imgBase   = extensionFolderPath ? `/${extensionFolderPath}/assets/images/minigames` : 'assets/images/minigames';
+        const cursorUrl = extensionFolderPath ? `/${extensionFolderPath}/assets/classtrial/trialcursor.png` : '';
         return `
 /* ── Mind Mine overlay ─────────────────────────────────────────────────── */
 .mm-overlay {
@@ -480,6 +485,28 @@ export function createMindMineController({
     background: radial-gradient(ellipse at 50% 40%, #0d1830 0%, #060b18 100%);
     font-family: 'Courier New', monospace;
     overflow: hidden;
+}
+.mm-overlay, .mm-overlay * { cursor: none !important; }
+.mm-sway-reticle {
+    position: fixed; left: 0; top: 0;
+    width: 96px; height: 96px;
+    background-image: url("${cursorUrl}");
+    background-size: contain; background-repeat: no-repeat; background-position: center;
+    transform: translate(-50%, -50%);
+    pointer-events: none; z-index: 2147483647;
+    will-change: transform;
+    opacity: 0.92;
+}
+.mm-sway-reticle::after {
+    content: '+';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: "Orbitron", "Impact", monospace;
+    font-size: 24px; font-weight: 900; line-height: 1;
+    color: #f0bf70;
+    text-shadow: 0 0 4px rgba(0, 0, 0, 0.65), 0 0 8px rgba(240, 191, 112, 0.6);
+    pointer-events: none;
 }
 .mm-overlay::before {
     content: '';
@@ -924,6 +951,12 @@ body.mm-shaking { animation: mmScreenShake 80ms steps(2, end) infinite; }
         overlay.appendChild(footer);
 
         document.body.appendChild(overlay);
+
+        const swayReticle = document.createElement('div');
+        swayReticle.className = 'mm-sway-reticle';
+        overlay.appendChild(swayReticle);
+        if (swayDetach) { try { swayDetach(); } catch {} }
+        swayDetach = attachCursorSway(swayReticle, overlay);
     }
 
     /* ── public API ──────────────────────────────────────────────────── */

@@ -1,3 +1,5 @@
+import { attachCursorSway } from "./cursorSway.js";
+
 const HG_ID    = "dangan-hg-overlay";
 const HG_STYLE = "dangan-hg-style";
 
@@ -53,7 +55,8 @@ function buildLetterPool(answer, fillerCount) {
     return needed.concat(others.slice(0, fillerCount));
 }
 
-function buildStyles() {
+function buildStyles(extPath = "") {
+    const cursorUrl = extPath ? `${extPath}/assets/classtrial/trialcursor.png` : "";
     return `
 #${HG_ID} {
     position: fixed; inset: 0;
@@ -69,6 +72,7 @@ function buildStyles() {
     pointer-events: none;
 }
 #${HG_ID}.hg-on { opacity: 1; pointer-events: auto; }
+#${HG_ID}.hg-on, #${HG_ID}.hg-on * { cursor: none !important; }
 
 /* CRT scanlines */
 #${HG_ID}::before {
@@ -287,6 +291,29 @@ function buildStyles() {
     color: rgba(0, 200, 255, 0.35);
     text-shadow: 0 0 14px rgba(0, 180, 255, 0.4);
     pointer-events: none; z-index: 5; user-select: none;
+}
+
+/* Mouse-following reticle with sway */
+#hg-sway-reticle {
+    position: fixed; left: 0; top: 0;
+    width: 96px; height: 96px;
+    background-image: url("${cursorUrl}");
+    background-size: contain; background-repeat: no-repeat; background-position: center;
+    transform: translate(-50%, -50%);
+    pointer-events: none; z-index: 2147483647;
+    will-change: transform;
+    opacity: 0.92;
+}
+#hg-sway-reticle::after {
+    content: '+';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: "Orbitron", "Impact", monospace;
+    font-size: 24px; font-weight: 900; line-height: 1;
+    color: #f0bf70;
+    text-shadow: 0 0 4px rgba(0, 0, 0, 0.65), 0 0 8px rgba(240, 191, 112, 0.6);
+    pointer-events: none;
 }
 
 /* ─── Stock ──────────────────────────── */
@@ -714,6 +741,7 @@ export function createHangmansGambitController({
 } = {}) {
 
     let _bgmAudio = null;
+    let _swayDetach = null;
     let _bgmIsDA  = false;
 
     function stopBgm() {
@@ -741,6 +769,7 @@ export function createHangmansGambitController({
 
     function destroy() {
         stopBgm();
+        if (_swayDetach) { try { _swayDetach(); } catch {} _swayDetach = null; }
         document.getElementById(HG_ID)?.remove();
         document.getElementById(HG_STYLE)?.remove();
         document.getElementById("dangan-hg-banner")?.remove();
@@ -883,7 +912,7 @@ export function createHangmansGambitController({
         // Inject styles
         const styleEl = document.createElement("style");
         styleEl.id = HG_STYLE;
-        styleEl.textContent = buildStyles();
+        styleEl.textContent = buildStyles(extensionFolderPath);
         document.head.appendChild(styleEl);
 
         // Build anagram HTML
@@ -942,6 +971,11 @@ export function createHangmansGambitController({
             </div>
         `;
         document.body.appendChild(overlay);
+        const swayReticle = document.createElement("div");
+        swayReticle.id = "hg-sway-reticle";
+        overlay.appendChild(swayReticle);
+        if (_swayDetach) { try { _swayDetach(); } catch {} }
+        _swayDetach = attachCursorSway(swayReticle, overlay);
         requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add("hg-on")));
 
 

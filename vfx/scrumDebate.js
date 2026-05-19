@@ -106,7 +106,6 @@ function charAvatarUrl(char) {
 
 function buildStyles(extPath) {
     const monoUrl       = extPath ? `/${extPath}/assets/monokuma/monokuma_idle.png`             : "";
-    const lecternUrl    = extPath ? `/${extPath}/assets/classtrial/lectern.webp`                : "";
     const scrumBgUrl    = extPath ? `/${extPath}/assets/images/minigames/scrum.png`             : "";
     const panelUrl      = extPath ? `/${extPath}/assets/images/minigames/pta-panel.png`         : "";
     return `
@@ -408,6 +407,22 @@ function buildStyles(extPath) {
 }
 /* Mirror avatars that have no side-specific sprite (generic scrum/relief facing left) */
 .sd-portrait-avatar.sd-mirrored { transform: scaleX(-1); }
+
+/* Lectern — sits in front of the character at the portrait's foot.
+   Sized relative to the portrait so closer (taller) portraits get larger lecterns,
+   matching the perspective of the character. */
+.sd-portrait-lectern {
+    position: absolute;
+    bottom: -4%;
+    left: 50%;
+    transform: translateX(-50%);
+    height: 70%;
+    width: auto;
+    pointer-events: none;
+    z-index: 4;
+    filter: drop-shadow(0 6px 10px rgba(0,0,0,0.55));
+}
+.sd-portrait-lectern.sd-mirrored { transform: translateX(-50%) scaleX(-1); }
 
 
 /* ── Cylinder wrap containers — RS-style, one per side ── */
@@ -1042,7 +1057,7 @@ function scaledPhFromEl(el, phVh, pbPx) {
     return pbPx > 0 ? `calc(${v}vh - ${pbPx}px)` : `${v}vh`;
 }
 
-function portraitHtml(char, side, depthIdx, total, overrideUrl = null, overrideName = null, forceAlive = false, needsFlip = false, getCharHeightCm = null) {
+function portraitHtml(char, side, depthIdx, total, overrideUrl = null, overrideName = null, forceAlive = false, needsFlip = false, getCharHeightCm = null, lecternUrl = "") {
     const { pz, pb, phVh, pbPx } = computePortraitVars(depthIdx, total);
     const url        = overrideUrl || charAvatarUrl(char);
     const rawName    = overrideName || String(char?.name || "");
@@ -1056,28 +1071,32 @@ function portraitHtml(char, side, depthIdx, total, overrideUrl = null, overrideN
     ].filter(Boolean).join(" ");
     const deadAttr    = isDeadChar ? ' data-dead="true"' : '';
     const mirrorClass = needsFlip  ? ' sd-mirrored'      : '';
-    // data-ph-base  — depth-based vh (position scaling), used to restore after debug toggle
-    // data-pb-base  — bottom stagger px, used to restore after debug toggle
-    // data-ph-true  — character-height-based vh (real-world scale), used in debug flat view
+    // data-ph-true — character-height-based vh (real-world scale), read by scaledPhFromEl
     const trueVh      = charTrueHeightVh(rawName, getCharHeightCm) ?? '';
     // Combine depth scaling with character height ratio for the live --ph value.
     // scaledPhFromEl can't be used here (no element yet), so inline the same maths.
     const heightScale = trueVh ? parseFloat(trueVh) / SD_BASE_VH : 1;
     const scaledVh    = (parseFloat(phVh) * heightScale).toFixed(1);
     const ph          = pbPx > 0 ? `calc(${scaledVh}vh - ${pbPx}px)` : `${scaledVh}vh`;
-    return `<div class="${classes}"${deadAttr} data-name="${escapeHtml(rawName)}" data-ph-base="${phVh}" data-pb-base="${pbPx}" data-ph-true="${trueVh}" style="--ph:${ph}; --pz:${pz}; --pb:${pb}">
+    const lecternMirror = side === 'player' ? ' sd-mirrored' : '';
+    const lecternImg    = lecternUrl
+        ? `<img src="${lecternUrl}" alt="" class="sd-portrait-lectern${lecternMirror}" draggable="false" onerror="this.remove()">`
+        : "";
+    return `<div class="${classes}"${deadAttr} data-name="${escapeHtml(rawName)}" data-ph-true="${trueVh}" style="--ph:${ph}; --pz:${pz}; --pb:${pb}">
         <div class="sd-portrait-img-wrap">
             ${url ? `<img src="${url}" alt="${initial}" class="sd-portrait-avatar${mirrorClass}" onerror="this.remove()">` : ""}
         </div>
+        ${lecternImg}
     </div>`;
 }
 
 function stageHtml(teams, extPath, oppSprites, playerSprites, playerSpriteUrl, playerName, monoUrl = "", getCharHeightCm = null) {
     if (!monoUrl && extPath) monoUrl = `/${extPath}/assets/monokuma/monokuma_idle.png`;
+    const lecternUrl = extPath ? `/${extPath}/assets/classtrial/scrum-lectern.webp` : "";
     const oppN = teams.opposing.length || 1;
     const oppPortraits = teams.opposing.length
-        ? teams.opposing.map((c, i) => portraitHtml(c, "opp", i, oppN, oppSprites?.[i]?.url || null, null, false, oppSprites?.[i]?.needsFlip ?? false, getCharHeightCm)).join("")
-        : portraitHtml({ name: "?" }, "opp", 0, 1);
+        ? teams.opposing.map((c, i) => portraitHtml(c, "opp", i, oppN, oppSprites?.[i]?.url || null, null, false, oppSprites?.[i]?.needsFlip ?? false, getCharHeightCm, lecternUrl)).join("")
+        : portraitHtml({ name: "?" }, "opp", 0, 1, null, null, false, false, null, lecternUrl);
     const playerN = teams.player.length || 1;
     const playerPortraits = teams.player.length
         ? teams.player.map((c, i) => portraitHtml(
@@ -1086,9 +1105,10 @@ function stageHtml(teams, extPath, oppSprites, playerSprites, playerSpriteUrl, p
               i === 0 ? (playerName || null) : null,
               i === 0,  // forceAlive: front slot is always the player (Prome), never marked dead
               playerSprites?.[i]?.needsFlip ?? false,
-              getCharHeightCm
+              getCharHeightCm,
+              lecternUrl
           )).join("")
-        : portraitHtml({ name: playerName || "You" }, "player", 0, 1, playerSpriteUrl || null, playerName || null, true, false);
+        : portraitHtml({ name: playerName || "You" }, "player", 0, 1, playerSpriteUrl || null, playerName || null, true, false, null, lecternUrl);
     const monoEl = monoUrl
         ? `<img src="${monoUrl}" alt="Monokuma" class="sd-monokuma-img">`
         : `<div class="sd-monokuma-placeholder">⚖</div>`;
@@ -2116,46 +2136,11 @@ export function createScrumDebateController({
                 tugFrameId = requestAnimationFrame(tugFrame);
             }
 
-            // ── Debug: § toggles depth offsets + perspective off/on ──────────
-            // Flat mode: zero pb, pure-vh ph, even horizontal spacing (two rows).
-            // Restore: re-runs updateTeamShift so all depth vars are correct again.
-            let debugFlatBottom = false;
-            function toggleFlatBottomDebug() {
-                debugFlatBottom = !debugFlatBottom;
-
-                if (debugFlatBottom) {
-                    [
-                        { teamEl: oppTeamEl,    edge: 'left',  opp: 'right' },
-                        { teamEl: playerTeamEl, edge: 'right', opp: 'left'  },
-                    ].forEach(({ teamEl, edge, opp }) => {
-                        if (!teamEl) return;
-                        const portraits = [...teamEl.querySelectorAll('.sd-portrait')]
-                            .filter(el => el.dataset.passed !== "true");
-                        if (!portraits.length) return;
-                        const teamW = teamEl.offsetWidth || (window.innerWidth * 0.45);
-                        const step  = Math.round(teamW / (portraits.length + 1));
-                        portraits.forEach((el, i) => {
-                            // Prefer the real-world height-based vh; fall back to depth-based vh
-                            const phVh = el.dataset.phTrue || el.dataset.phBase || '70';
-                            el.style.setProperty('--pb', '0px');
-                            el.style.setProperty('--ph', `${phVh}vh`);
-                            el.style.setProperty('--pz', '3');
-                            el.style[edge] = `${i * step}px`;
-                            el.style[opp]  = '';
-                        });
-                    });
-                } else {
-                    updateTeamShift(teamShift);
-                }
-            }
-
             // ── Input ──────────────────────────────────────────────────────
             function onKeydown(e) {
                 if (resolved) return;
                 if (e.key === "Shift")  { shiftHeld = true;  return; }
                 if (e.key === "Escape") { escHeld   = true;  return; }
-
-                if (e.key === "§") { e.preventDefault(); toggleFlatBottomDebug(); return; }
 
                 if (phase === "debate" && uiReady) {
                     if (e.key === "ArrowUp")                      { e.preventDefault(); cycleBullet(-1); }

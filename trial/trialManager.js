@@ -1,5 +1,7 @@
 // trial/trialManager.js
 
+import { attachCursorSway } from "../vfx/cursorSway.js";
+
 export const TrialPhases = {
     IDLE: 'idle',
     PRE_DEBATE: 'pre_debate',
@@ -18,6 +20,8 @@ export function createTrialManager(deps) {
         getTruthBullets,
         generateTrialDialogue,
         getCharacterSourceText,
+        getEmotionFont,
+        onTrialStateChange,
         getSpriteUrl,
         playSfx,
         getSfx,
@@ -61,6 +65,7 @@ export function createTrialManager(deps) {
     let selectedTruthBulletIndex = 0;
     let debateOverlay = null;
     let reticleEl = null;
+    let detachReticleSway = null;
     let cutsceneOverlay = null;
     let statementEl = null;
     let statementAnimation = null;
@@ -100,11 +105,21 @@ export function createTrialManager(deps) {
     let btCharge = 1.0;
     const NSD_HEALTH_MAX = 3;
     const NSD_BREAK_PENALTY = 50;
-    const NSD_TIMER_DURATION_MS = 60_000;
-    let nsdTimerStartTs = 0;
+    // Shared by NSD and MPD: both phases use the same on-screen timer, the same
+    // floor, and the same LLM-extensible override field on their scenario arrays.
+    const DEBATE_TIMER_MIN_MS = 120_000;        // 2-minute floor for NSD and MPD timers
+    let debateTimerDurationMs = DEBATE_TIMER_MIN_MS;
+    let debateTimerStartTs = 0;
 
-    function updateNsdTimer(nowMs) {
-        const remaining = Math.max(0, NSD_TIMER_DURATION_MS - (nowMs - nsdTimerStartTs));
+    // Set the debate time limit. Floor-clamped to DEBATE_TIMER_MIN_MS so the timer is
+    // never shorter than two minutes; LLM-supplied scenarios may request more.
+    function setDebateTimeLimit(ms) {
+        const requested = Number(ms);
+        debateTimerDurationMs = Math.max(DEBATE_TIMER_MIN_MS, Number.isFinite(requested) ? requested : 0);
+    }
+
+    function updateDebateTimer(nowMs) {
+        const remaining = Math.max(0, debateTimerDurationMs - (nowMs - debateTimerStartTs));
         const el = document.getElementById('dangan-nsd-timer');
         if (el) {
             const mins   = Math.floor(remaining / 60000);
@@ -335,6 +350,7 @@ export function createTrialManager(deps) {
         console.log(`[Dangan][Trial] State change: ${currentState} -> ${newState}`);
         const oldState = currentState;
         currentState = newState;
+        try { onTrialStateChange?.(newState, oldState); } catch {}
         
         // Persist state to extension settings (per chat/group)
         if (typeof saveSettingsDebounced === 'function') {
@@ -495,9 +511,12 @@ export function createTrialManager(deps) {
 
             clearTimeout(perjuryChargeTimer);
 
+            // Use the swayed reticle position (lastCursorX/Y) rather than the raw OS
+            // mouse position so the Truth Bullet fires at where the player can see
+            // the reticle pointing, not at the hidden OS pointer.
             if (currentState === TrialPhases.MASS_PANIC_DEBATE) {
                 // Block shots at locked columns
-                const col = Math.max(0, Math.min(2, Math.floor((e.clientX / window.innerWidth) * 3)));
+                const col = Math.max(0, Math.min(2, Math.floor((lastCursorX / window.innerWidth) * 3)));
                 if (mpdLockActive && col !== mpdFreeColumn) {
                     mpdShowBlockedFeedback(col);
                     return;
@@ -526,27 +545,35 @@ export function createTrialManager(deps) {
             showPerjuryVfx(false);
         }, { signal });
 
-        // White noise hover tracking via rect check (pointer-events: none on elements)
+        // White noise hover tracking via rect check (pointer-events: none on elements).
+        // When the cursor-sway reticle is active, lastCursorX/Y is driven by its onFrame
+        // callback (swayed position), and updateWhiteNoiseHover runs from that callback;
+        // here we only update lastCursorX/Y as a fallback while the reticle isn't attached.
         window.addEventListener('mousemove', (e) => {
-            lastCursorX = e.clientX;
-            lastCursorY = e.clientY;
-            if (!isDebateActive() || !activeWhiteNoiseEls.length) {
-                if (hoveredWhiteNoise) { hoveredWhiteNoise.classList.remove('hovered'); hoveredWhiteNoise = null; }
-                return;
-            }
-            const cx = e.clientX, cy = e.clientY;
-            let found = null;
-            for (const el of activeWhiteNoiseEls) {
-                if (!document.body.contains(el) || el.classList.contains('breaking')) continue;
-                const r = el.getBoundingClientRect();
-                if (cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom) { found = el; break; }
-            }
-            if (found !== hoveredWhiteNoise) {
-                hoveredWhiteNoise?.classList.remove('hovered');
-                found?.classList.add('hovered');
-                hoveredWhiteNoise = found;
+            if (!detachReticleSway) {
+                lastCursorX = e.clientX;
+                lastCursorY = e.clientY;
+                updateWhiteNoiseHover(e.clientX, e.clientY);
             }
         }, { signal });
+    }
+
+    function updateWhiteNoiseHover(cx, cy) {
+        if (!isDebateActive() || !activeWhiteNoiseEls.length) {
+            if (hoveredWhiteNoise) { hoveredWhiteNoise.classList.remove('hovered'); hoveredWhiteNoise = null; }
+            return;
+        }
+        let found = null;
+        for (const el of activeWhiteNoiseEls) {
+            if (!document.body.contains(el) || el.classList.contains('breaking')) continue;
+            const r = el.getBoundingClientRect();
+            if (cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom) { found = el; break; }
+        }
+        if (found !== hoveredWhiteNoise) {
+            hoveredWhiteNoise?.classList.remove('hovered');
+            found?.classList.add('hovered');
+            hoveredWhiteNoise = found;
+        }
     }
 
     function showPerjuryVfx(active) {
@@ -936,7 +963,7 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
             }
             // Time limit — runs in both NSD and MPD
             if (isDebateActive()) {
-                updateNsdTimer(ts);
+                updateDebateTimer(ts);
             }
             btConcentrateRaf = requestAnimationFrame(tick);
         }
@@ -3344,14 +3371,23 @@ ${historyText}
         // Hearts health gauge — sits above the stars, drains left per WN hit.
         nsdHealth = NSD_HEALTH_MAX;
         nsdBreakTriggered = false;
-        nsdTimerStartTs = performance.now();
+
+        // Decide the debate time limit. Default is the 2-minute floor; scenarios may
+        // request more by setting a numeric `timeLimitMs` on the prepared sections /
+        // MPD scenarios array.
+        const isMpdNow = currentState === TrialPhases.MASS_PANIC_DEBATE;
+        const requestedLimit = isMpdNow
+            ? (mpdScenarios?.timeLimitMs ?? null)
+            : (preparedDebateSections?.timeLimitMs ?? null);
+        setDebateTimeLimit(requestedLimit ?? DEBATE_TIMER_MIN_MS);
+        debateTimerStartTs = performance.now();
 
         // NSD time-limit timer (bottom-left). Uses Hangman's Gambit font/colors.
         const timerWrap = document.createElement('div');
         timerWrap.id = 'dangan-nsd-timer-wrap';
         timerWrap.innerHTML = `
             <img class="dangan-nsd-timer-bar-bg" src="${extensionFolderPath}/assets/classtrial/timer-bar.png" alt="" draggable="false"/>
-            <div id="dangan-nsd-timer">01:00:000</div>
+            <div id="dangan-nsd-timer">02:00:000</div>
         `;
         debateOverlay.appendChild(timerWrap);
         const heartsGauge = document.createElement('div');
@@ -3453,16 +3489,33 @@ ${historyText}
             loadImg(portraitRightEl, firstRight, rightEmo);
         }
 
-        debateOverlay.onmousemove = (e) => {
-            reticleEl.style.transform = `translate(${e.clientX}px, ${e.clientY}px) translate(-50%, -50%)`;
+        // Reticle position is driven by attachCursorSway (mouse position + sway offset).
+        // Absorb hit-detection uses the SWAYED reticle position (where the visible
+        // cursor is), not the raw OS mouse position, so the player can absorb the
+        // weak point under the reticle even when the sway offsets it from the mouse.
+        detachReticleSway?.();
+        detachReticleSway = attachCursorSway(reticleEl, debateOverlay, {
+            onFrame: (sx, sy) => {
+                // The swayed reticle position is the cursor for all gameplay logic:
+                // White-noise hover, space-fire burst origin, MPD column selection,
+                // and click hit-detection all read from lastCursorX/Y, so making it
+                // the swayed position routes everything through the visible cursor.
+                lastCursorX = sx;
+                lastCursorY = sy;
+                updateWhiteNoiseHover(sx, sy);
+            },
+        });
+        debateOverlay.onmousemove = () => {
+            const pos = detachReticleSway?.getPosition?.();
+            if (!pos) return;
             if (shiftRightPressed && isDebateActive()) {
-                const hit  = document.elementFromPoint(e.clientX, e.clientY);
+                const hit  = document.elementFromPoint(pos.x, pos.y);
                 const wpEl = hit?.closest?.('.dangan-weak-point');
                 if (wpEl) startAbsorb(wpEl);
                 else      cancelAbsorb();
             }
             if (lieHeld && isDebateActive()) {
-                const hit  = document.elementFromPoint(e.clientX, e.clientY);
+                const hit  = document.elementFromPoint(pos.x, pos.y);
                 const wpEl = hit?.closest?.('.dangan-weak-point');
                 if (wpEl) startLieAbsorb(wpEl);
                 else      cancelLieAbsorb();
@@ -3953,7 +4006,7 @@ ${historyText}
 
     // Column-scoped copy of showStatementChunk — positions statement in column `col`,
     // uses per-column element/animation tracking, same NSD visual flair throughout.
-    function showMpdStatementInColumn(col, { text, isWeakPoint, whiteNoise, speaker }) {
+    function showMpdStatementInColumn(col, { text, isWeakPoint, whiteNoise, speaker, emotion }) {
         if (!debateOverlay) return Promise.resolve();
 
         // Cancel any existing animation in this column
@@ -3974,6 +4027,8 @@ ${historyText}
         el.className = 'dangan-floating-statement mpd-statement';
         el.style.width = `${Math.round(cw * 0.82)}px`;
         if (speaker) el.dataset.speakerName = String(speaker);
+        const emoFont = getEmotionFont?.(emotion, speaker);
+        if (emoFont) el.style.fontFamily = emoFont;
 
         const rawText    = stripSurroundingQuotes(String(text || ''));
         const hasAgreeText = /\(\([^)]+\)\)/.test(rawText);
@@ -4418,6 +4473,7 @@ ${historyText}
             weakMarkup: part.weakMarkup,
             whiteNoise: part.isWeakPoint ? (section.whiteNoise || null) : null,
             speakerName,
+            emotion,
         }).then(() => {
             if (currentState !== TrialPhases.NON_STOP_DEBATE) return;
             debatePartIndex++;
@@ -4549,7 +4605,7 @@ ${historyText}
         await Promise.all(updates);
     }
 
-    function showStatementChunk({ text, isWeakPoint, laneY, weakMarkup, whiteNoise, speakerName }) {
+    function showStatementChunk({ text, isWeakPoint, laneY, weakMarkup, whiteNoise, speakerName, emotion }) {
         if (!debateOverlay) return Promise.resolve();
 
         if (playbackTimerId) window.clearTimeout(playbackTimerId);
@@ -4571,6 +4627,8 @@ ${historyText}
         const w = window.innerWidth || 1200;
         el.style.width = `${Math.min(Math.round(w * 0.82), 980)}px`;
         if (speakerName) el.dataset.speakerName = String(speakerName);
+        const emoFont = getEmotionFont?.(emotion, speakerName);
+        if (emoFont) el.style.fontFamily = emoFont;
         const rawText = stripSurroundingQuotes(String(text || ''));
         const hasAgreeText = /\(\([^)]+\)\)/.test(rawText);
         const cleanedText = rawText.replace(/\[\[|\]\]/g, '').replace(/\(\(|\)\)/g, '');
@@ -5157,7 +5215,9 @@ ${historyText}
         if (isDebateActive()) {
             let wnAtClick = hoveredWhiteNoise;
             if (!wnAtClick && activeWhiteNoiseEls.length) {
-                const cx = e.clientX, cy = e.clientY;
+                // Hit-test at the swayed reticle position (where the visible cursor is)
+                // rather than the raw OS mouse position passed in via `e`.
+                const cx = lastCursorX, cy = lastCursorY;
                 for (const el of activeWhiteNoiseEls) {
                     if (!document.body.contains(el) || el.classList.contains('breaking')) continue;
                     const r = el.getBoundingClientRect();
@@ -5185,7 +5245,10 @@ ${historyText}
                 playSfx?.('tb_spent');
             }
         }
-        showShotEffect(e.clientX, e.clientY);
+        // Visual effects originate at the swayed reticle position, matching the
+        // hit-test logic above so the projectile and muzzle flash line up with
+        // where the visible cursor is pointing.
+        showShotEffect(lastCursorX, lastCursorY);
 
         // Consume the temporary bullet immediately on fire (regardless of hit/miss)
         if (currentBullet.isTemporary) {
@@ -5195,7 +5258,7 @@ ${historyText}
             renderCylinder();
         }
 
-        fireProjectile(currentBullet.title, e.clientX, e.clientY, isPerjury, currentBullet);
+        fireProjectile(currentBullet.title, lastCursorX, lastCursorY, isPerjury, currentBullet);
         // shotCooldown is reset inside finish() when the projectile resolves
     }
 
@@ -5636,6 +5699,10 @@ JUDGMENT RULES:
         if (statementEl) {
             statementEl.remove();
             statementEl = null;
+        }
+        if (detachReticleSway) {
+            try { detachReticleSway(); } catch {}
+            detachReticleSway = null;
         }
         if (debateOverlay) {
             debateOverlay.remove();
@@ -6085,6 +6152,7 @@ Rules:
                     text,
                     speaker: speakerTrio[col].name,
                     isWeakPoint: col === weakColumn,
+                    emotion: inferEmotionFromText(text),
                 }));
 
                 // White-noise reactions for the weak-point column only.

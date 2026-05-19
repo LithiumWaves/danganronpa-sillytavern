@@ -92,7 +92,7 @@
     background: transparent;
     pointer-events: auto;
     overflow: visible;
-    cursor: crosshair;
+    cursor: none;
 }
 
 /* Blue hue during Non-Stop Debate (not during Mass Panic which uses its own red overlay) */
@@ -119,6 +119,17 @@
     pointer-events: none;
     z-index: 2147483647;
     will-change: transform;
+}
+#dangan-trial-reticle::after {
+    content: '+';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: "Orbitron", "Impact", monospace;
+    font-size: 28px; font-weight: 900; line-height: 1;
+    color: #f0bf70;
+    text-shadow: 0 0 4px rgba(0, 0, 0, 0.65), 0 0 8px rgba(240, 191, 112, 0.6);
+    pointer-events: none;
 }
 
 #dangan-trial-reticle.perjury-charging {
@@ -862,7 +873,7 @@ body.dangan-nsd-lie-armed .dangan-tb-bar-bg {
 }
 
 .dangan-weak-point:hover {
-    cursor: crosshair;
+    cursor: none;
 }
 
 .dangan-trial-overlay.explanation {

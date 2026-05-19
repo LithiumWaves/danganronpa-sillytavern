@@ -16,11 +16,81 @@ function esc(t) {
         .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-function buildCSS() {
+function createTitleSide(side) {
+    const wrap = document.createElement('div');
+    wrap.className = `vt-title-sides vt-title-sides-${side}`;
+    for (const colorClass of ['vtt-y', 'vtt-p', 'vtt-y']) {
+        const strip = document.createElement('div');
+        strip.className = `vt-title-vstrip ${colorClass}`;
+        for (let i = 0; i < 5; i++) {
+            const dot = document.createElement('span');
+            dot.className = 'vt-title-vdot';
+            strip.appendChild(dot);
+        }
+        wrap.appendChild(strip);
+    }
+    return wrap;
+}
+
+function createDotStrip(side, count, startIdx = 0) {
+    const strip = document.createElement('div');
+    strip.className = `vt-strip vt-strip-${side}`;
+    for (let i = 0; i < count; i++) {
+        const dot = document.createElement('span');
+        dot.className = (startIdx + i) % 2 === 0 ? 'vt-dot vt-dot-y' : 'vt-dot vt-dot-p';
+        strip.appendChild(dot);
+    }
+    return strip;
+}
+
+function buildTimerDots(timerBox, topCount = 22) {
+    timerBox.querySelectorAll('.vt-strip').forEach(s => s.remove());
+    const rect = timerBox.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+
+    const dotSize     = 6;
+    const cornerInset = 4;   // matches .vt-strip-top/.bottom left/right
+    const sideInset   = 18;  // matches .vt-strip-left/.right top/bottom
+
+    const topLen  = Math.max(0, rect.width  - 2 * cornerInset);
+    const sideLen = Math.max(0, rect.height - 2 * sideInset);
+
+    // Distance between dot centers along the top edge.
+    const stride    = (topLen - dotSize) / Math.max(1, topCount - 1);
+    const sideCount = Math.max(2, Math.round((sideLen - dotSize) / stride) + 1);
+
+    let idx = 0;
+    timerBox.appendChild(createDotStrip('top',    topCount,  idx)); idx += topCount;
+    timerBox.appendChild(createDotStrip('right',  sideCount, idx)); idx += sideCount;
+    timerBox.appendChild(createDotStrip('bottom', topCount,  idx)); idx += topCount;
+    timerBox.appendChild(createDotStrip('left',   sideCount, idx));
+}
+
+function createBandsLayer(count = 6) {
+    const layer = document.createElement('div');
+    layer.className = 'vt-bands';
+    for (let i = 0; i < count; i++) {
+        const band = document.createElement('div');
+        band.className = 'vt-band';
+        const heightVh   = 8 + Math.random() * 18;   // 8–26vh tall
+        const durationS  = 6 + Math.random() * 10;   // 6–16s
+        const delayS     = -Math.random() * durationS;
+        band.style.height = `${heightVh}vh`;
+        band.style.top = '0';
+        band.style.animationDuration = `${durationS.toFixed(2)}s`;
+        band.style.animationDelay = `${delayS.toFixed(2)}s`;
+        band.style.opacity = (0.55 + Math.random() * 0.45).toFixed(2);
+        layer.appendChild(band);
+    }
+    return layer;
+}
+
+function buildCSS(extPath = '') {
+    const voteBtnImg = extPath ? `/${extPath}/assets/classtrial/voting-button.png` : '';
     return `
     #${VT_ID} {
         position: fixed; inset: 0; z-index: 2147483646;
-        background: #080505;
+        background: #0a0a0a;
         display: flex; align-items: stretch;
         opacity: 0; transition: opacity 350ms ease;
         pointer-events: none; user-select: none;
@@ -29,29 +99,64 @@ function buildCSS() {
     }
     #${VT_ID}.vt-on { opacity: 1; pointer-events: auto; }
 
+    /* Red banner line through the vote button's center */
+    .vt-redline {
+        position: absolute; left: 0; right: 0;
+    height: 36px;
+    bottom: calc(12px + clamp(96px, 12vw, 160px) / 2 - 53px);
+        background: #c20000;
+        box-shadow: 0 0 14px rgba(255,40,40,0.55), 0 0 2px rgba(255,80,80,0.7);
+        pointer-events: none; z-index: 2;
+    }
+
+    /* CRT scroll bands */
+    .vt-bands {
+        position: absolute; inset: 0; overflow: hidden;
+        pointer-events: none; z-index: 0;
+    }
+    .vt-band {
+        position: absolute; left: 0; right: 0;
+        background: linear-gradient(to bottom,
+            transparent 0%,
+            rgba(220,220,220,0.16) 25%,
+            rgba(240,240,240,0.28) 50%,
+            rgba(220,220,220,0.16) 75%,
+            transparent 100%);
+        mix-blend-mode: screen;
+        will-change: transform;
+        animation-name: vtBandScroll;
+        animation-iteration-count: infinite;
+        animation-timing-function: linear;
+    }
+    @keyframes vtBandScroll {
+        from { transform: translateY(120vh); }
+        to   { transform: translateY(-120vh); }
+    }
+
     .vt-left {
         flex: 0 0 56%;
         position: relative;
         display: flex; flex-direction: column;
         align-items: center; justify-content: center;
         padding: 72px 18px 84px;
-        background: linear-gradient(155deg, #141414 55%, #1c0505 100%);
         overflow: hidden;
     }
     .vt-right {
-        flex: 1; position: relative; overflow: hidden;
-        background: #0d0808;
+        flex: 1; position: relative;
     }
     .vt-portrait {
-        position: absolute; inset: 0;
-        width: 100%; height: 100%;
-        object-fit: cover; object-position: top center;
+        position: absolute; top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        max-width: 92%; max-height: 92%;
+        width: auto; height: auto;
+        object-fit: contain;
         display: block; opacity: 0; transition: opacity 220ms ease;
+        filter: drop-shadow(0 0 1px #ff0a0a) drop-shadow(0 0 1px #ff2222) drop-shadow(8px 0 1px #ff4444)
     }
     .vt-portrait.shown { opacity: 1; }
     .vt-portrait-grad {
         position: absolute; inset: 0;
-        background: linear-gradient(160deg,rgba(0,0,0,0.2) 0%,transparent 45%,rgba(0,0,0,0.55) 100%);
+        background: transparent;
         pointer-events: none;
     }
     .vt-name-banner {
@@ -71,22 +176,44 @@ function buildCSS() {
 
     /* Title marquee banner */
     .vt-title {
-        position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
-        background: linear-gradient(90deg,#7a5200,#d4a820,#c89000,#d4a820,#7a5200);
-        border: 3px solid #b08020;
-        padding: 5px 26px 3px;
-        box-shadow: 0 0 16px rgba(195,144,0,0.5), inset 0 0 6px rgba(255,255,255,0.08);
-        white-space: nowrap; z-index: 5;
+        position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+        background: #000;
+        border: 4px solid #c89000;
+        padding: 22px 56px;
+        box-shadow: 0 0 16px rgba(200,144,0,0.45), inset 0 0 8px rgba(0,0,0,0.5);
+        white-space: nowrap; z-index: 6;
     }
-    .vt-title-dots { display: flex; gap: 5px; justify-content: center; margin-bottom: 2px; }
-    .vt-title-dots-b { display: flex; gap: 5px; justify-content: center; margin-top: 2px; }
+    .vt-title-dots, .vt-title-dots-b {
+        position: absolute; left: 50px; right: 50px; height: 6px;
+        display: flex; justify-content: space-between; align-items: center;
+        pointer-events: none; z-index: 2;
+    }
+    .vt-title-dots   { top: 6px; }
+    .vt-title-dots-b { bottom: 6px; }
     .vt-title-dot {
-        width: 5px; height: 5px; border-radius: 50%; background: #ffe000;
+        width: 6px; height: 6px; border-radius: 50%; background: #ffe000;
         box-shadow: 0 0 3px rgba(255,220,0,0.8);
-        animation: vtDot 1s ease-in-out infinite;
     }
-    .vt-title-dot:nth-child(even) { animation-delay: -0.5s; }
-    @keyframes vtDot { 0%,100%{opacity:1;}50%{opacity:0.2;} }
+    .vt-title-sides {
+        position: absolute; top: 6px; bottom: 6px;
+        display: flex; gap: 6px; align-items: stretch;
+        pointer-events: none; z-index: 1;
+    }
+    .vt-title-sides-left  { left: 12px; }
+    .vt-title-sides-right { right: 12px; }
+    .vt-title-vstrip {
+        display: flex; flex-direction: column; justify-content: space-between;
+        align-items: center; width: 6px;
+    }
+    .vt-title-vdot {
+        width: 6px; height: 6px; border-radius: 50%;
+    }
+    @keyframes vttColorSwap {
+        0%, 49.99% { background: #ffe000; box-shadow: 0 0 4px rgba(255,220,0,0.9); }
+        50%, 100%  { background: #ff3d8c; box-shadow: 0 0 4px rgba(255,60,140,0.9); }
+    }
+    .vtt-y .vt-title-vdot { animation: vttColorSwap 3s steps(1, end) infinite; }
+    .vtt-p .vt-title-vdot { animation: vttColorSwap 3s steps(1, end) -1.5s infinite; }
     .vt-title-text {
         font-size: clamp(13px,1.7vw,26px); font-weight: 900;
         color: #00dce8; text-transform: uppercase; letter-spacing: 4px;
@@ -97,18 +224,39 @@ function buildCSS() {
     /* Character grid */
     .vt-grid {
         display: grid; grid-template-columns: repeat(4,1fr);
-        gap: 6px; width: 100%; max-width: calc(100vh - 200px);
+        gap: 22px; width: 100%; max-width: calc(100vh - 320px);
+        transform: perspective(900px) rotateY(12deg) rotateX(4deg);
+        transform-style: preserve-3d;
     }
     .vt-tile {
         position: relative; aspect-ratio: 1;
-        border: 3px solid rgba(200,200,200,0.28);
-        background: #181818; cursor: pointer; overflow: hidden;
-        transition: border-color 80ms ease, box-shadow 80ms ease;
+        border: 4px solid #b00000;
+        background: #fff; cursor: pointer; overflow: hidden;
+        box-shadow:
+            inset 0 0 14px rgba(0,0,0,0.35),
+            inset 0 0 4px rgba(0,0,0,0.25),
+            0 0 0 3px #fff,
+            0 8px 14px rgba(0,0,0,0.55),
+            0 2px 4px rgba(0,0,0,0.4);
+        transition: border-color 80ms ease, box-shadow 120ms ease;
     }
-    .vt-tile:not(.vt-dead):not(.vt-missing):not(.vt-selected):hover { border-color: rgba(255,255,255,0.65); }
+    .vt-tile:not(.vt-dead):not(.vt-missing):not(.vt-selected):hover {
+        box-shadow:
+            inset 0 0 14px rgba(0,0,0,0.35),
+            inset 0 0 4px rgba(0,0,0,0.25),
+            0 0 0 3px #fff,
+            0 0 12px rgba(255,80,80,0.5),
+            0 8px 14px rgba(0,0,0,0.55);
+    }
     .vt-tile.vt-selected {
         border-color: #ee2222;
-        box-shadow: 0 0 12px rgba(240,40,40,0.6), inset 0 0 5px rgba(200,0,0,0.18);
+        box-shadow:
+            inset 0 0 14px rgba(0,0,0,0.35),
+            inset 0 0 4px rgba(0,0,0,0.25),
+            0 0 0 6px #ee2222,
+            0 0 20px 4px rgba(240,40,40,0.95),
+            0 0 36px 10px rgba(240,40,40,0.55),
+            0 8px 14px rgba(0,0,0,0.55);
     }
     .vt-tile.vt-dead { cursor: default; opacity: 0.55; filter: grayscale(0.65); }
     .vt-tile.vt-missing { cursor: default; opacity: 0.42; filter: grayscale(0.75); }
@@ -133,26 +281,41 @@ function buildCSS() {
 
     /* Timer */
     .vt-timer-wrap {
-        position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 5;
+        position: fixed; bottom: 16px; left: 0; right: 0;
+        display: flex; justify-content: center; align-items: center;
+        padding: 0 18px; z-index: 6; pointer-events: none;
     }
     .vt-timer-box {
         background: #000; border: 4px solid #c89000;
         box-shadow: 0 0 16px rgba(200,144,0,0.45), inset 0 0 8px rgba(0,0,0,0.5);
-        padding: 3px 20px; position: relative;
+        padding: 14px 32px; position: relative; pointer-events: auto;
+        display: inline-flex; align-items: center; justify-content: flex-start;
+        text-align: left;
     }
-    .vt-timer-box::before, .vt-timer-box::after {
-        content: '●'; position: absolute; top: 50%; transform: translateY(-50%);
-        color: #c89000; font-size: 10px;
+    .vt-strip {
+        position: absolute; display: flex; pointer-events: none;
     }
-    .vt-timer-box::before { left: 6px; }
-    .vt-timer-box::after  { right: 6px; }
+    .vt-strip-top    { top: 4px;    left: 4px; right: 4px;  height: 6px;  flex-direction: row;            justify-content: space-between; align-items: center; }
+    .vt-strip-right  { right: 4px;  top: 18px; bottom: 18px; width: 6px; flex-direction: column;         justify-content: space-between; align-items: center; }
+    .vt-strip-bottom { bottom: 4px; left: 4px; right: 4px;  height: 6px;  flex-direction: row-reverse;    justify-content: space-between; align-items: center; }
+    .vt-strip-left   { left: 4px;   top: 18px; bottom: 18px; width: 6px; flex-direction: column-reverse; justify-content: space-between; align-items: center; }
+    .vt-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .vt-dot-y { background: #ffe000; box-shadow: 0 0 3px rgba(255,220,0,0.85); }
+    .vt-dot-p { background: #ff3d8c; box-shadow: 0 0 3px rgba(255,60,140,0.85); }
     .vt-timer-val {
         font-size: clamp(20px,2.6vw,42px); font-weight: 900;
-        color: #ffe000; letter-spacing: 4px; font-variant-numeric: tabular-nums;
+        color: #ffe000; font-variant-numeric: tabular-nums;
+        font-feature-settings: "tnum" 1, "lnum" 1;
         text-shadow: 0 0 10px rgba(255,200,0,0.65);
         transition: color 200ms, text-shadow 200ms;
-        display: block; text-align: left;
+        display: inline-flex; text-align: left;
     }
+    .vt-timer-val .vt-ch {
+        display: inline-block; width: 0.7em; text-align: center;
+        margin-right: 4px;
+    }
+    .vt-timer-val .vt-ch.vt-sep { width: 0.35em; }
+    .vt-timer-val .vt-ch:last-child { margin-right: 0; }
     .vt-timer-val.vt-urgent {
         color: #ff3333; text-shadow: 0 0 12px rgba(255,0,0,0.85);
         animation: vtUrgent 0.45s ease-in-out infinite;
@@ -161,31 +324,37 @@ function buildCSS() {
 
     /* Vote button */
     .vt-vote-btn {
-        position: absolute; bottom: 12px; right: 18px;
-        width: clamp(68px,8vw,104px); height: clamp(68px,8vw,104px);
-        border-radius: 50%;
-        background: radial-gradient(circle at 38% 34%,#dd2000,#880000,#3a0000);
-        border: 4px solid #ff5533;
-        box-shadow: 0 0 16px rgba(255,55,0,0.5), inset 0 0 12px rgba(0,0,0,0.35);
-        cursor: pointer; display: flex; align-items: center; justify-content: center;
-        font-size: clamp(8px,0.95vw,13px); font-weight: 900;
-        color: #fff; letter-spacing: 1.5px; text-transform: uppercase;
-        text-shadow: 1px 1px 0 #440000;
-        transition: transform 80ms ease, box-shadow 80ms ease, opacity 150ms ease;
+        position: absolute; bottom: 10px; right: 18px;
+        width: clamp(316px, 12vw, 260px); height: clamp(96px, 12vw, 160px);
+        border: 0; padding: 0; background: transparent;
+        background-image: url("${voteBtnImg}");
+        background-size: contain; background-position: center; background-repeat: no-repeat;
+        cursor: pointer;
+        font-size: 0; color: transparent;
+        transition: transform 80ms ease, filter 80ms ease, opacity 150ms ease;
         z-index: 5;
+        filter: drop-shadow(0 0 10px rgba(255, 55, 0, 0.45));
     }
     .vt-vote-btn:not(:disabled):hover {
         transform: scale(1.07);
-        box-shadow: 0 0 26px rgba(255,55,0,0.8), inset 0 0 12px rgba(0,0,0,0.35);
+        filter: drop-shadow(0 0 18px rgba(255,55,0,0.85));
     }
     .vt-vote-btn:not(:disabled):active { transform: scale(0.93); }
     .vt-vote-btn:disabled { opacity: 0.32; cursor: not-allowed; }
 
     /* Tally grid */
     .vt-tally {
-        display: grid; grid-template-columns: 1fr 1fr;
-        column-gap: 10px; row-gap: 5px;
+        border: 2px solid #969696;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        column-gap: 10px;
+        row-gap: 5px;
         width: 100%;
+        background: black;
+        padding: 2em;
+        border-radius: 0.5em;
+        transform: perspective(900px) rotateY(12deg) rotateX(4deg);
+        transform-style: preserve-3d;
     }
     .vt-trow {
         display: flex; align-items: center; gap: 6px;
@@ -227,22 +396,6 @@ function buildCSS() {
         transition: opacity 150ms ease, transform 150ms cubic-bezier(0.34,1.56,0.64,1);
     }
     .vt-pill.shown { opacity: 1; transform: scaleY(1); }
-
-    /* Selection coin */
-    .vt-coin {
-        position: absolute; top: 14px; right: 14px;
-        width: clamp(54px,6vw,78px); height: clamp(54px,6vw,78px);
-        border-radius: 50%;
-        background: radial-gradient(circle at 38% 32%,#ffe888,#c89000,#6a4800);
-        border: 3px solid #ffe000;
-        box-shadow: 0 0 16px rgba(255,200,0,0.45), inset 0 2px 5px rgba(255,255,255,0.2);
-        display: flex; align-items: center; justify-content: center;
-        flex-direction: column;
-        font-size: clamp(6px,0.65vw,9px); font-weight: 900; color: #fff;
-        text-shadow: 1px 1px 0 #5a3800;
-        text-align: center; letter-spacing: 0.8px; text-transform: uppercase;
-        line-height: 1.3; z-index: 5;
-    }
 
     /* Dismiss hint */
     .vt-hint {
@@ -313,17 +466,22 @@ export function createVotingScreenController({
 
         const living = allChars.filter(c => !c.dead && !c.missing);
 
-        // Pre-load sprites
+        // Pre-load sprites — tile uses 'neutral', portrait uses 'panictalkaction'
         const imageUrls = await Promise.all(allChars.map(async c => {
             try {
+                const tilePromise     = getSpriteUrl?.(c.name, 'neutral').catch(() => null) ?? Promise.resolve(null);
+                const portraitPromise = getSpriteUrl?.(c.name, 'panictalkaction').catch(() => null) ?? Promise.resolve(null);
+                let [tile, portrait] = await Promise.all([tilePromise, portraitPromise]);
                 if (c.isPlayer) {
-                    return (await getSpriteUrl?.(c.name).catch(() => null)) || (getUserAvatarUrl?.() ?? null);
+                    const userAvatar = getUserAvatarUrl?.() ?? null;
+                    tile     = tile     || userAvatar;
+                    portrait = portrait || userAvatar;
                 }
-                return await getSpriteUrl?.(c.name) ?? null;
-            } catch { return null; }
+                return { tile, portrait };
+            } catch { return { tile: null, portrait: null }; }
         }));
 
-        const chars = allChars.map((c, i) => ({ ...c, imgUrl: imageUrls[i] }));
+        const chars = allChars.map((c, i) => ({ ...c, imgUrl: imageUrls[i].tile, portraitUrl: imageUrls[i].portrait }));
 
         // Begin NPC vote generation concurrently while player is in the selection screen
         // Only living, present characters are valid vote targets
@@ -338,7 +496,7 @@ export function createVotingScreenController({
 
         const styleEl = document.createElement('style');
         styleEl.id = VT_STYLE;
-        styleEl.textContent = buildCSS();
+        styleEl.textContent = buildCSS(extensionFolderPath);
         document.head.appendChild(styleEl);
 
         // ── Phase 1: player selects ────────────────────────────────────────────
@@ -430,12 +588,16 @@ export function createVotingScreenController({
 
             const overlay = document.createElement('div');
             overlay.id = VT_ID;
+            overlay.appendChild(createBandsLayer(6));
+            const redLine = document.createElement('div');
+            redLine.className = 'vt-redline';
+            overlay.appendChild(redLine);
 
             // ── Left panel ──────────────────────────────────────────────────────
             const leftEl = document.createElement('div');
             leftEl.className = 'vt-left';
 
-            const NDOTS   = 10;
+            const NDOTS   = 20;
             const dotsHtml = Array.from({ length: NDOTS }, () => '<span class="vt-title-dot"></span>').join('');
             const titleEl = document.createElement('div');
             titleEl.className = 'vt-title';
@@ -443,6 +605,8 @@ export function createVotingScreenController({
                 <div class="vt-title-dots">${dotsHtml}</div>
                 <span class="vt-title-text">Voting Time</span>
                 <div class="vt-title-dots-b">${dotsHtml}</div>`;
+            titleEl.appendChild(createTitleSide('left'));
+            titleEl.appendChild(createTitleSide('right'));
             leftEl.appendChild(titleEl);
 
             const gridEl = document.createElement('div');
@@ -486,9 +650,14 @@ export function createVotingScreenController({
             // Timer
             const timerWrap = document.createElement('div');
             timerWrap.className = 'vt-timer-wrap';
-            timerWrap.innerHTML = '<div class="vt-timer-box"><span class="vt-timer-val">00:30</span></div>';
+            const timerBox = document.createElement('div');
+            timerBox.className = 'vt-timer-box';
+            const timerVal = document.createElement('span');
+            timerVal.className = 'vt-timer-val';
+            timerVal.textContent = '00:30';
+            timerBox.appendChild(timerVal);
+            timerWrap.appendChild(timerBox);
             leftEl.appendChild(timerWrap);
-            const timerVal = timerWrap.querySelector('.vt-timer-val');
 
             overlay.appendChild(leftEl);
 
@@ -521,10 +690,11 @@ export function createVotingScreenController({
             function updateRight(char) {
                 if (!char) return;
                 nameTextEl.textContent = char.name.toUpperCase();
-                if (char.imgUrl) {
+                const portSrc = char.portraitUrl || char.imgUrl;
+                if (portSrc) {
                     portEl.style.transition = 'none';
                     portEl.style.opacity    = '0';
-                    portEl.src = char.imgUrl;
+                    portEl.src = portSrc;
                     requestAnimationFrame(() => {
                         portEl.style.transition = 'opacity 200ms ease';
                         portEl.style.opacity    = '1';
@@ -563,17 +733,34 @@ export function createVotingScreenController({
 
             function updateTimerDisplay(ms) {
                 const total = Math.max(0, ms);
-                const mins  = Math.floor(total / 60000);
+                const mins  = Math.min(99, Math.floor(total / 60000));
                 const secs  = Math.floor((total % 60000) / 1000);
                 const msec  = Math.floor(total % 1000);
-                timerVal.textContent = `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}:${String(msec).padStart(3,'0')}`;
+                const str = `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}:${String(msec).padStart(3,'0')}`;
+                const spans = timerVal.children;
+                if (spans.length !== str.length) {
+                    timerVal.textContent = '';
+                    for (const ch of str) {
+                        const s = document.createElement('span');
+                        s.className = ch === ':' ? 'vt-ch vt-sep' : 'vt-ch';
+                        s.textContent = ch;
+                        timerVal.appendChild(s);
+                    }
+                } else {
+                    for (let i = 0; i < str.length; i++) {
+                        if (spans[i].textContent !== str[i]) spans[i].textContent = str[i];
+                    }
+                }
                 timerVal.classList.toggle('vt-urgent', total < 10_000);
             }
 
             voteBtnEl.addEventListener('click', () => settle(selected));
 
             document.body.appendChild(overlay);
-            requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add('vt-on')));
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+                overlay.classList.add('vt-on');
+                buildTimerDots(timerBox, 22);
+            }));
             rafId = requestAnimationFrame(timerTick);
         });
     }
@@ -584,12 +771,16 @@ export function createVotingScreenController({
         return new Promise(resolve => {
             const overlay = document.createElement('div');
             overlay.id = VT_ID;
+            overlay.appendChild(createBandsLayer(6));
+            const redLine = document.createElement('div');
+            redLine.className = 'vt-redline';
+            overlay.appendChild(redLine);
 
             // ── Left panel (tally) ───────────────────────────────────────────────
             const leftEl = document.createElement('div');
             leftEl.className = 'vt-left';
 
-            const NDOTS   = 10;
+            const NDOTS   = 20;
             const dotsHtml = Array.from({ length: NDOTS }, () => '<span class="vt-title-dot"></span>').join('');
             const titleEl = document.createElement('div');
             titleEl.className = 'vt-title';
@@ -597,6 +788,8 @@ export function createVotingScreenController({
                 <div class="vt-title-dots">${dotsHtml}</div>
                 <span class="vt-title-text">Voting Time</span>
                 <div class="vt-title-dots-b">${dotsHtml}</div>`;
+            titleEl.appendChild(createTitleSide('left'));
+            titleEl.appendChild(createTitleSide('right'));
             leftEl.appendChild(titleEl);
 
             const tallyEl = document.createElement('div');
@@ -647,7 +840,8 @@ export function createVotingScreenController({
 
             const portEl = document.createElement('img');
             portEl.className = 'vt-portrait'; portEl.alt = '';
-            if (winnerChar?.imgUrl) { portEl.src = winnerChar.imgUrl; portEl.classList.add('shown'); }
+            const winnerPort = winnerChar?.portraitUrl || winnerChar?.imgUrl;
+            if (winnerPort) { portEl.src = winnerPort; portEl.classList.add('shown'); }
             rightEl.appendChild(portEl);
 
             rightEl.appendChild(Object.assign(document.createElement('div'), { className: 'vt-portrait-grad' }));
@@ -656,11 +850,6 @@ export function createVotingScreenController({
             bannerEl.className = 'vt-name-banner';
             bannerEl.innerHTML = `<span class="vt-name-text">${esc(winnerChar?.name?.toUpperCase() ?? '')}</span>`;
             rightEl.appendChild(bannerEl);
-
-            const coinEl = document.createElement('div');
-            coinEl.className = 'vt-coin';
-            coinEl.innerHTML = '<span>SELEC</span><span>TION</span>';
-            rightEl.appendChild(coinEl);
 
             overlay.appendChild(rightEl);
             document.body.appendChild(overlay);

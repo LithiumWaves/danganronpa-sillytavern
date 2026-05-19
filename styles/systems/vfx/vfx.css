@@ -317,6 +317,93 @@
     background: linear-gradient(90deg, rgba(20, 42, 80, 0.92), rgba(14, 32, 60, 0.92));
 }
 
+/* Settings panel "Configure Emotion Fonts" button — mirrors expressions button */
+#dangan_configure_emotion_fonts {
+    background: linear-gradient(90deg, rgba(16, 30, 58, 0.9), rgba(12, 22, 44, 0.9));
+    border-color: rgba(100, 180, 255, 0.5);
+    color: #c8e8ff;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+#dangan_configure_emotion_fonts:hover {
+    border-color: rgba(70, 220, 255, 0.85);
+    box-shadow: 0 0 10px rgba(70, 220, 255, 0.2);
+    background: linear-gradient(90deg, rgba(20, 42, 80, 0.92), rgba(14, 32, 60, 0.92));
+}
+
+/* ── Emotion fonts modal grid ──────────────────────────────────────────────── */
+.monopad-emofont-target-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: "Rajdhani", monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: rgba(188, 215, 255, 0.8);
+    text-transform: uppercase;
+}
+.monopad-emofont-target-row select {
+    background: rgba(5, 14, 25, 0.85);
+    border: 1px solid rgba(117, 241, 255, 0.4);
+    border-radius: 4px;
+    color: #c8e8ff;
+    font-family: "Rajdhani", monospace;
+    font-size: 11px;
+    padding: 3px 8px;
+    max-width: 220px;
+}
+.monopad-emofont-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow-y: auto;
+    padding: 4px 2px;
+}
+.monopad-emofont-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 10px;
+    border: 1px solid rgba(121, 170, 255, 0.18);
+    border-radius: 6px;
+    background: rgba(10, 18, 36, 0.6);
+}
+.monopad-emofont-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+.monopad-emofont-name {
+    font-family: "Orbitron", monospace;
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    color: #c8e8ff;
+    text-transform: uppercase;
+}
+.monopad-emofont-select {
+    flex: 1;
+    min-width: 0;
+    max-width: 260px;
+    background: rgba(5, 14, 25, 0.85);
+    border: 1px solid rgba(117, 241, 255, 0.4);
+    border-radius: 4px;
+    color: #e8f3ff;
+    font-family: "Rajdhani", monospace;
+    font-size: 12px;
+    padding: 4px 8px;
+}
+.monopad-emofont-preview {
+    margin-top: 2px;
+    padding: 8px 12px;
+    border: 1px dashed rgba(121, 170, 255, 0.25);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.35);
+    color: #fff;
+    font-size: 18px;
+    text-align: center;
+    text-shadow: 1px 1px 2px #000;
+}
+
 /* ── CSS VFX Animation Classes ─────────────────────────────────────────────── */
 
 /* Realization — bright flash + upward lurch */
