@@ -1730,15 +1730,18 @@ body.dangan-theme-night         #dangan-moveto-panel { filter: grayscale(1) brig
     outline-offset: 2px;
 }
 
-/* Zoom controls — small rotated-square buttons stacked on the right edge. */
+/* Zoom controls — + and − sit side-by-side just above the diamond's top apex.
+ * The flat-render toggle (in .dangan-minimap-flat-toggle-col) is centered
+ * above them so the three buttons cluster as an upward-pointing triangle. */
 .dangan-minimap-zoom {
     position: absolute;
-    right: -22px;
-    top: 50%;
-    transform: translateY(-50%);
+    top: -18px;
+    left: 50%;
+    transform: translateX(-50%);
     display: flex;
-    flex-direction: column;
-    gap: 14px;
+    flex-direction: row;
+    align-items: center;
+    gap: 24px;
     pointer-events: auto;
 }
 .dangan-minimap-zoom-btn {

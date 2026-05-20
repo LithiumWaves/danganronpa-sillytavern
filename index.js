@@ -1,5 +1,6 @@
 import { extension_settings } from "../../../extensions.js";
 import { saveSettingsDebounced, getRequestHeaders, eventSource, event_types } from "../../../../script.js";
+import { openGroupById, editGroup } from "../../../group-chats.js";
 import { executeSlashCommandsWithOptions } from '../../../slash-commands.js';
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
@@ -39,6 +40,7 @@ import { createChapterEndRosterController } from "./vfx/chapterEndRoster.js";
 import { createRebuttalShowdownController, createInterjectionCinematicRunner } from "./vfx/rebuttalShowdown.js";
 import { MPD_TEST_SCENARIOS } from "./vfx/massPanicDebate.js";
 import { createAudioVisualizerController } from "./audio/audioVisualizer.js";
+import { createOverworldSceneController } from "./overworld/overworldScene.js";
 import { user_avatar } from "../../../personas.js";
 
 window.refreshActiveCharacterUI = function () {
@@ -80,6 +82,7 @@ let chooseCharacterController   = null;
 let introduceCharacterController = null;
 let chapterEndRosterController   = null;
 let audioVisualizer              = null;
+let overworldSceneController     = null;
 
 const openRouterSettings = createOpenRouterSettingsManager({
     extensionName,
@@ -168,6 +171,21 @@ function buildRecentLocationPresence() {
 window.getMonopadRecentLocationPresence = function () {
     return buildRecentLocationPresence();
 };
+
+// Returns a flat map of normalized character name -> last seen locationId,
+// drawn from the recent-mention buffer. Used by the overworld scene to seed
+// starting locations from chat history before falling back to random.
+function getLastKnownCharacterLocations() {
+    const out = {};
+    for (let i = recentLocationMentions.length - 1; i >= 0; i -= 1) {
+        const item = recentLocationMentions[i];
+        if (!item || item.isUser) continue;
+        if (!item.speakerName || !item.locationId) continue;
+        const key = normalizeName(item.speakerName);
+        if (!out[key]) out[key] = item.locationId;
+    }
+    return out;
+}
 
 const TIME_PHASE_DAY = "day";
 const TIME_PHASE_NIGHT = "night";
@@ -274,6 +292,7 @@ async function passTimeToNight({ source = "manual" } = {}) {
     saveSettingsDebounced();
     renderTimeTrackerUi();
     applyTimeContextToGeneration();
+    overworldSceneController?.randomizeLocations?.();
     await monokumaAnnouncementController?.triggerAsync("NIGHT_ANNOUN");
     await nightTimeStartController.triggerAsync();
     playNighttimeTrack();
@@ -293,6 +312,7 @@ async function sleepToNextDay({ source = "manual" } = {}) {
     saveSettingsDebounced();
     renderTimeTrackerUi();
     applyTimeContextToGeneration();
+    overworldSceneController?.randomizeLocations?.();
     // Hide the BGM visualizer for the duration of the announcement + theme swap
     // (mirrors /passtime so the visualizer doesn't pop back as the daytime track
     // resumes before the theme has finished applying).
@@ -2926,18 +2946,75 @@ const BGM_PLAYLIST_PARENTS = {
     ptaPhase3Tracks:         'PANIC TALK ACTION',
 };
 
+// Briefly armed by callers that wrap a chat transition; during the window any
+// unexpected pause on investigationTrackAudio is auto-resumed so the BGM rides
+// through the fade-to-black even if ST/DA/etc. tries to clip it.
+let _bgmTransitionGuardUntilMs = 0;
+let _bgmTransitionWatchdogRaf  = null;
+function _bgmTransitionWatchdogTick() {
+    const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    if (now >= _bgmTransitionGuardUntilMs) {
+        _bgmTransitionWatchdogRaf = null;
+        return;
+    }
+    // Resume the audio if anything quietly paused it.
+    const audio = investigationTrackAudio;
+    if (audio && audio.paused) {
+        try { audio.play().catch(() => {}); } catch (_) {}
+    }
+    // Resume the visualizer's AudioContext if suspended — a suspended
+    // context silences a `createMediaElementSource`-routed track even when
+    // the element itself reports `paused === false`.
+    try { audioVisualizer?.pokeAudioContext?.(); } catch (_) {}
+    _bgmTransitionWatchdogRaf = requestAnimationFrame(_bgmTransitionWatchdogTick);
+}
+function armBgmTransitionGuard(durationMs = 2500) {
+    const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    const until = now + Math.max(0, durationMs);
+    if (until > _bgmTransitionGuardUntilMs) _bgmTransitionGuardUntilMs = until;
+    if (_bgmTransitionWatchdogRaf == null) {
+        _bgmTransitionWatchdogRaf = requestAnimationFrame(_bgmTransitionWatchdogTick);
+    }
+}
+
 function playBgmPath(path, settingKey = null) {
     if (!path) return;
 
     // Play on our own independent element — DA cannot interfere with this element.
+    // Null out FIRST, then pause the detached reference. The new audio's
+    // `.pause()` override below uses `audioEl !== investigationTrackAudio` as
+    // its "this track is no longer current, let the pause through" signal, so
+    // the order matters.
     if (investigationTrackAudio) {
-        investigationTrackAudio.pause();
+        const oldAudio = investigationTrackAudio;
         investigationTrackAudio = null;
+        oldAudio.pause();
     }
     investigationTrackAudio = new Audio(path);
     investigationTrackAudio.loop = (bgmPlayMode === 'loop');
     if (bgmPlayMode !== 'loop') bgmAttachEndedListener(investigationTrackAudio);
     investigationTrackAudio.volume = Number(getMonopadSetting("monopadVolume") ?? 50) / 100;
+    // Suppress incidental pauses during chat-transition windows. The override
+    // replaces the prototype pause on this instance only; once the track is
+    // swapped out (audioEl !== investigationTrackAudio) the override yields
+    // so the legitimate cleanup pause above still works.
+    const audioEl = investigationTrackAudio;
+    const origPause = audioEl.pause.bind(audioEl);
+    audioEl.pause = function () {
+        if (audioEl !== investigationTrackAudio) return origPause();
+        const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+        if (now < _bgmTransitionGuardUntilMs) return; // suppress — guard armed
+        return origPause();
+    };
+    // Belt-and-suspenders: some browser-level pauses (e.g. media element
+    // `load()` resetting state) bypass the .pause() override and fire the
+    // 'pause' event directly. Catch those and resume during the guard window.
+    audioEl.addEventListener('pause', () => {
+        if (audioEl !== investigationTrackAudio) return;
+        const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+        if (now >= _bgmTransitionGuardUntilMs) return;
+        audioEl.play().catch(() => {});
+    });
     investigationTrackAudio.play().catch(e =>
         console.warn(`[Dangan][BGM] Track play failed (${settingKey ?? "?"}):`, e)
     );
@@ -3043,6 +3120,52 @@ function isInCharacterChat() {
     if (ctx.name2 === 'Assistant') return false;
     if (char?.avatar === 'assistant') return false;
     return true;
+}
+
+/**
+ * Removes Prome User Sprite avatars from the currently-open group chat's
+ * member list and persists via editGroup. Idempotent — no-ops when not in
+ * a group or when no Prome member is present. Also tears down any lingering
+ * .expression-holder slot for the removed avatars so the visible chat layout
+ * matches the new member set without waiting for the next chat reload.
+ */
+async function stripPromeFromCurrentGroup() {
+    try {
+        const ctx = window.SillyTavern?.getContext?.();
+        if (!ctx?.groupId) return;
+        const group = (Array.isArray(ctx.groups) ? ctx.groups : []).find(g => String(g.id) === String(ctx.groupId));
+        if (!group || !Array.isArray(group.members) || !group.members.length) return;
+        const allChars = Array.isArray(ctx.characters) ? ctx.characters : [];
+
+        const removed = [];
+        const kept = [];
+        for (const avatar of group.members) {
+            const c = allChars.find(x => x?.avatar === avatar);
+            const lc = String(c?.name || '').toLowerCase();
+            if (lc.includes('prome user sprite')) removed.push(avatar);
+            else kept.push(avatar);
+        }
+        if (!removed.length) return;
+
+        group.members = kept;
+        try {
+            await editGroup(group.id, true, false);
+        } catch (err) {
+            // Roll back the in-memory mutation if the server save failed so
+            // the next render doesn't show a stale, locally-only group.
+            group.members = [...kept, ...removed];
+            console.warn('[Dangan] editGroup failed while stripping Prome:', err);
+            return;
+        }
+        for (const avatar of removed) {
+            for (const holder of document.querySelectorAll('.expression-holder')) {
+                if (holder.dataset.avatar === avatar) holder.remove();
+            }
+        }
+        console.log('[Dangan] Stripped Prome User Sprite from group', group.id);
+    } catch (err) {
+        console.warn('[Dangan] stripPromeFromCurrentGroup failed:', err);
+    }
 }
 
 function _stopAllBgm() {
@@ -4421,6 +4544,33 @@ async function getSpriteUrl(charName, label = "neutral") {
     }
 }
 
+// Returns the deduped list of expression labels available for a character,
+// derived from the same /api/sprites/get endpoint getSpriteUrl uses. Empty
+// array if the character has no sprites or the call fails.
+async function getAvailableExpressionLabels(charName) {
+    let folder = charName;
+    const stChars = window.characters;
+    if (Array.isArray(stChars)) {
+        const stChar = stChars.find(c => c.name === charName);
+        if (stChar?.avatar) {
+            folder = stChar.avatar.replace(/\.[^.]+$/, "");
+        }
+    }
+    try {
+        const resp = await fetch(`/api/sprites/get?name=${encodeURIComponent(folder)}`);
+        if (!resp.ok) return [];
+        const sprites = await resp.json();
+        const labels = new Set();
+        for (const s of sprites) {
+            const label = String(s?.label || '').trim();
+            if (label) labels.add(label);
+        }
+        return [...labels];
+    } catch {
+        return [];
+    }
+}
+
 const KNOWN_HEIGHTS_CM = new Map([
     ['monokuma',75],['saionji',130],['hiyoko',130],['hanamura',133],['teruteru',133],
     ['kuzuryu',157],['fuyuhiko',157],['nanami',160],['chiaki',160],['mioda',164],
@@ -5505,6 +5655,13 @@ function loadCharacters() {
             value.name.toUpperCase().includes("API")
         ) {
             return; // 🚮 skip junk
+        }
+
+        // Drop anything that matches the current ignored-character rules —
+        // catches stale entries like "SillyTavern System", "Assistant", etc.
+        // that were registered before the filter was tightened.
+        if (isIgnoredCharacter(value.name)) {
+            return;
         }
 
         // 🔑 Restore trustHistory as a Set
@@ -6935,6 +7092,10 @@ jQuery(async () => {
         click: document.getElementById("monopad_sfx_click"),
         hover: document.getElementById("monopad_sfx_hover"),
         message_move: document.getElementById("monopad_sfx_message_move"),
+        character_hover: document.getElementById("ow_sfx_character_hover"),
+        character_click: document.getElementById("ow_sfx_character_click"),
+        character_enter_talk: document.getElementById("ow_sfx_character_enter_talk"),
+        character_exit_talk: document.getElementById("ow_sfx_character_exit_talk"),
         monocoin_insert: document.getElementById("monopad_sfx_monocoin_insert"),
         monochine_jingle: document.getElementById("monopad_sfx_monochine_jingle"),
         monochine_turn: document.getElementById("monopad_sfx_monochine_turn"),
@@ -7039,11 +7200,49 @@ jQuery(async () => {
                 playBgmPath,
             });
             mapPanelController?.renderMapPanel?.();
+
+            try {
+                overworldSceneController = createOverworldSceneController({
+                    extension_settings,
+                    extensionName,
+                    saveSettingsDebounced,
+                    characters,
+                    getSpriteUrl,
+                    getAvailableExpressionLabels,
+                    getCharacterHeightCm,
+                    getCurrentLocationId,
+                    isInCharacterChat,
+                    executeSlashCommands: (cmd) => executeSlashCommandsWithOptions(cmd, { handleParserErrors: true }),
+                    openGroupById,
+                    getRequestHeaders,
+                    eventSource,
+                    event_types,
+                    getLastKnownCharacterLocations,
+                    getMapPanelController: () => mapPanelController,
+                    getPlayerName: () => getActivePersonaName(),
+                    playSfx,
+                    getSfx: () => sfx,
+                    armBgmTransitionGuard,
+                    onSceneChanged: () => {
+                        // Invalidate the cached minimap signature so it
+                        // rebuilds with the new occupant pins.
+                        _minimapSig = null;
+                        try { renderMinimap(); } catch (e) { console.warn("[Dangan][Overworld] minimap refresh failed:", e); }
+                    },
+                });
+                window.dangan_overworld = overworldSceneController;
+            } catch (e) {
+                console.error("[Dangan][Overworld] Failed to initialize overworld controller:", e);
+                overworldSceneController = { render: () => {}, randomizeLocations: () => {}, notifyPlayerMovedTo: () => {}, ensureCharacterLocations: () => {}, destroy: () => {} };
+            }
+
             const initialRender = (tag) => {
                 try { renderMoveToPanel(); }
                 catch (e) { console.warn(`[Dangan][moveto-panel] render failed (${tag}):`, e); }
                 try { renderMinimap(); }
                 catch (e) { console.warn(`[Dangan][minimap] render failed (${tag}):`, e); }
+                try { overworldSceneController?.render?.(); }
+                catch (e) { console.warn(`[Dangan][overworld] render failed (${tag}):`, e); }
             };
             initialRender('init');
             // Fallback renders — Assistant / Narrator chats and slow-loading group
@@ -7109,6 +7308,7 @@ jQuery(async () => {
             closePayloadOverlay();
             vnModeController?.setMonopadOpen?.(false);
             $panel.removeClass("open booting boot-cold boot-warm");
+            document.body.classList.remove("dangan-monopad-open");
 
             if (getMonopadSetting("bootAnimations")) {
                 $panel.addClass("shutting-down");
@@ -7121,7 +7321,7 @@ jQuery(async () => {
                 playSfx(sfx.close);
                 $panel.addClass("closed");
             }
-            try { renderMoveToPanel(); renderMinimap(); } catch {}
+            try { renderMoveToPanel(); renderMinimap(); overworldSceneController?.render?.(); } catch {}
         }
 
         $("#dangan_monopad_close").on("click", () => {
@@ -7214,8 +7414,9 @@ $(".monopad-icon").on("mouseenter", function () {
                     $panel.addClass("open");
                     hasBootedThisSession = true;
                 }
+                document.body.classList.add("dangan-monopad-open");
                 if (getMonopadSetting("monopadJingleEnabled") !== false) playSfx(sfx.open);
-                try { renderMoveToPanel(); renderMinimap(); } catch {}
+                try { renderMoveToPanel(); renderMinimap(); overworldSceneController?.render?.(); } catch {}
             } else {
                 closeMonopadPanel();
             }
@@ -7785,18 +7986,12 @@ if (!getMonopadSetting('bgmOutsideChats') && !isInCharacterChat()) {
     audioVisualizer.suppress();
 }
 
-// Intercept any play() call on #audio_bgm or our own investigationTrackAudio in the
-// capture phase — this fires before the audio actually starts, giving us a zero-latency
-// block. Unsuppress the visualizer once we've confirmed the initial state is settled.
-document.addEventListener('play', (e) => {
-    if (getMonopadSetting('bgmOutsideChats') || isInCharacterChat()) return;
-    const daEl = document.getElementById('audio_bgm');
-    if (e.target === daEl || e.target === investigationTrackAudio) {
-        e.target.pause();
-        audioVisualizer.hide();
-    }
-}, true);
-
+// BGM is allowed to play through chat transitions, so we no longer intercept
+// `play` events on #audio_bgm / investigationTrackAudio to enforce the
+// "in-chat only" rule. The setting still gates the initial autostart below
+// and the CHAT_CHANGED autostart, which is enough to keep a fresh session
+// silent until the user enters a chat — but once BGM is going, nothing here
+// will yank it during a fade-to-black.
 setTimeout(() => audioVisualizer.unsuppress(), 1000);
 
 // Auto-start BGM for the current phase on load (character/group chats only).
@@ -7806,16 +8001,9 @@ setTimeout(() => {
     playPhaseTrack();
 }, 2000);
 
-// Poll to enforce the setting while the user navigates between chats.
-// CHAT_CHANGED doesn't fire when going to/from the Assistant chat.
-setInterval(() => {
-    if (getMonopadSetting('bgmOutsideChats')) return;
-    if (!isInCharacterChat()) _stopAllBgm();
-}, 2000);
-
-// Move-to panel polling — also driven here for the same reason: CHAT_CHANGED
-// doesn't fire when entering/leaving the Assistant chat, and renderMoveToPanel
-// is idempotent (it re-uses the existing DOM node when present).
+// Move-to panel polling — CHAT_CHANGED doesn't fire when entering/leaving the
+// Assistant chat, and renderMoveToPanel is idempotent (it re-uses the existing
+// DOM node when present).
 setInterval(() => {
     try { renderMoveToPanel(); renderMinimap(); } catch {}
 }, 2000);
@@ -7954,7 +8142,7 @@ debugSTGlobals();
             generateTrialDialogue,
             getCharacterSourceText,
             getEmotionFont,
-            onTrialStateChange: () => { renderMoveToPanel(); renderMinimap(); },
+            onTrialStateChange: () => { renderMoveToPanel(); renderMinimap(); overworldSceneController?.render?.(); },
             getSpriteUrl,
             playSfx,
             getSfx: () => sfx,
@@ -8654,9 +8842,20 @@ STATEMENT: <third statement>`;
             setVfxGcpLoadSuppressed(true);
             setVfxGcpGroupActive(false); // reset until new chat's GCP init completes
             try { renderMoveToPanel(); renderMinimap(); } catch (e) { console.warn('[Dangan][moveto-panel] render failed:', e); }
+            try { overworldSceneController?.render?.(); } catch (e) { console.warn('[Dangan][overworld] render failed:', e); }
             trialManager?.destroyGroupChatPortraits?.();
+            // Reset trial state synchronously. Deferring this used to leave a
+            // ~300ms window where trialActive was stale from the previous chat;
+            // the trialManager's 1.5s safety poll could fire inside that gap,
+            // see trialActive && isGroupChat() as true for the *new* group, and
+            // briefly mount the trial frame/badge/sticker before the deferred
+            // onChatChanged ran and unmounted them — visible as a flash of the
+            // Class Trial UI on Talk-to-the-Room (and other group entries).
+            trialManager?.onChatChanged?.();
+            // Strip Prome User Sprite from the group's member list if it crept
+            // in before that character was added to the system-name filter.
+            stripPromeFromCurrentGroup();
             setTimeout(async () => {
-                trialManager?.onChatChanged?.();
                 await trialManager?.initGroupChatPortraits?.();
                 const ctx = window.SillyTavern?.getContext?.();
                 setVfxGcpGroupActive(!!(ctx?.groupId));
@@ -8682,18 +8881,18 @@ STATEMENT: <third statement>`;
                 }, 500);
             }
 
-            // BGM in-chat-only: start or stop depending on whether we're entering or leaving a chat.
+            // BGM persists across chat transitions. Only autostart when there
+            // is genuinely no track yet — we deliberately do NOT check
+            // `.paused`, since that can read true momentarily during the
+            // chat-load even though the override-and-listener pair below is
+            // already resuming the same element. Restarting via playPhaseTrack
+            // here would create a fresh Audio() and force a 1-2 second buffer
+            // gap, which is exactly the artefact we're trying to eliminate.
             if (!getMonopadSetting('bgmOutsideChats')) {
                 setTimeout(() => {
-                    if (isInCharacterChat()) {
-                        // Entering a chat — start phase track if nothing is playing.
-                        if (!investigationTrackAudio || investigationTrackAudio.paused) {
-                            playPhaseTrack();
-                        }
-                    } else {
-                        // Leaving chat — stop BGM and hide visualizer.
-                        _stopAllBgm();
-                    }
+                    if (!isInCharacterChat()) return;
+                    if (investigationTrackAudio) return;
+                    playPhaseTrack();
                 }, 600);
             }
         });
@@ -9533,6 +9732,9 @@ function moveToDestination(raw) {
         if (pin.bg)  mapPanelController.switchChatBackground?.(pin.bg);
         if (pin.bgm) mapPanelController.playPinBgm?.(pin.bgm);
         mapPanelController.highlightPinByLocationId?.(pin.locationId);
+        // Companion characters (1-on-1 partner or group members) follow the
+        // player into the new room so their overworld presence stays accurate.
+        overworldSceneController?.notifyPlayerMovedTo?.(pin.locationId);
     } else if (dest.kind === 'area') {
         mapPanelController.navigateToArea?.(dest.value);
         setCurrentLocationId(`area:${dest.value}`);
@@ -9542,6 +9744,7 @@ function moveToDestination(raw) {
     }
     renderMoveToPanel();
     renderMinimap();
+    overworldSceneController?.render?.();
     return true;
 }
 
@@ -9587,7 +9790,15 @@ function renderMinimap() {
     const groupSig = ctxSnap?.groupId
         ? (Array.isArray(ctxSnap.groups) ? ctxSnap.groups : []).find(g => String(g.id) === String(ctxSnap.groupId))?.members?.join(',') || ''
         : (ctxSnap?.name2 || '');
-    const sig = `${data.areaKey}/${data.floorKey}|${data.imageSrc}|${pinSig}|cur:${getCurrentLocationId() || ''}|spk:${lastSpeaker || ''}|grp:${groupSig}`;
+    // Include the overworld occupant list so randomization / movement that
+    // shuffles people in/out of the current room rebuilds the pins.
+    const owSig = (() => {
+        const currentId = getCurrentLocationId();
+        if (!currentId) return '';
+        const list = overworldSceneController?.getCharactersInRoom?.(currentId) || [];
+        return list.map(c => `${c.name}/${c.groupId || ''}`).join(',');
+    })();
+    const sig = `${data.areaKey}/${data.floorKey}|${data.imageSrc}|${pinSig}|cur:${getCurrentLocationId() || ''}|spk:${lastSpeaker || ''}|grp:${groupSig}|ow:${owSig}`;
     if (existing && sig === _minimapSig) return;
     _minimapSig = sig;
 
@@ -9658,6 +9869,31 @@ function renderMinimap() {
     zoomOut.innerHTML = '<span>−</span>';
     zoomCol.appendChild(zoomIn);
     zoomCol.appendChild(zoomOut);
+
+    // Flat-render toggle — diamond on the LEFT side of the minimap, mirroring
+    // the zoom column on the right. Lit when the current room is in flat mode.
+    const flatCol = document.createElement('div');
+    flatCol.className = 'dangan-minimap-flat-toggle-col';
+    const flatBtn = document.createElement('button');
+    flatBtn.type = 'button';
+    flatBtn.className = 'dangan-minimap-zoom-btn dangan-minimap-flat-toggle';
+    const playerRoomId = getCurrentLocationId();
+    const isFlat = playerRoomId ? overworldSceneController?.isRoomFlat?.(playerRoomId) : false;
+    if (isFlat) flatBtn.classList.add('is-active');
+    flatBtn.title = isFlat
+        ? 'This room uses flat sprite rendering — click to re-enable perspective.'
+        : 'Toggle flat sprite rendering for this room.';
+    flatBtn.innerHTML = `<span>${isFlat ? '◆' : '◇'}</span>`;
+    flatBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        overworldSceneController?.toggleCurrentRoomFlat?.();
+        _minimapSig = null;
+        renderMinimap();
+    });
+    flatBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    flatCol.appendChild(flatBtn);
+
+    root.appendChild(flatCol);
     root.appendChild(zoomCol);
 
     // Reset pan + zoom if the floor changed; otherwise preserve the player's view.
@@ -9750,6 +9986,17 @@ function renderMinimapCharacterLayer(mapWrap, data, currentPin) {
         }
     } else if (ctx?.name2 && !isExcludedPinName(ctx.name2) && ctx.name2 !== playerName) {
         memberNames = [ctx.name2];
+    }
+    // Always merge in overworld characters at the player's current room — so
+    // that when the sprites layer is hidden (in a chat), their minimap pins
+    // remain. Dedup against whoever is already in memberNames from the chat.
+    if (currentPin?.locationId) {
+        const overworldChars = overworldSceneController?.getCharactersInRoom?.(currentPin.locationId) || [];
+        for (const c of overworldChars) {
+            const n = c?.name;
+            if (!n || n === playerName || isExcludedPinName(n)) continue;
+            if (!memberNames.includes(n)) memberNames.push(n);
+        }
     }
     // Also drop the speaker if it's a narrator/assistant — the chat's last
     // "speaker" can be the Narrator and we don't want a red pin for them.
@@ -10167,8 +10414,10 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             if (pin.bg)  mapPanelController.switchChatBackground?.(pin.bg);
             if (pin.bgm) mapPanelController.playPinBgm?.(pin.bgm);
             mapPanelController.highlightPinByLocationId?.(pin.locationId);
+            overworldSceneController?.notifyPlayerMovedTo?.(pin.locationId);
             renderMoveToPanel();
             renderMinimap();
+            overworldSceneController?.render?.();
             return pin.label || pin.locationId;
         }
 
