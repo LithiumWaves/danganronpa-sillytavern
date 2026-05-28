@@ -11,20 +11,34 @@ function pickRandom(list) {
     return list[Math.floor(Math.random() * list.length)];
 }
 
-// Each cluster (solo or group) is lifted a random amount above the strip's
-// baseline. The further up they're lifted, the smaller they render — a
-// crude single-vanishing-point perspective. Resulting scale is clamped to
-// [PERSPECTIVE_SCALE_MIN, PERSPECTIVE_SCALE_MAX]; the falloff is curved so
-// small lifts barely shrink but high lifts approach the minimum quickly.
-const MAX_VERTICAL_OFFSET_VH = 32;
+// Each cluster (solo or group) sits at a vertical offset that doubles as
+// its perspective-scale input. The strip's CSS baseline is at `bottom: 22vh`,
+// so offset 0 = feet at 78vh from viewport top.
+//   offset = -22vh  → feet at viewport bottom (largest scale)
+//   offset =   0vh  → feet at the strip baseline
+//   offset = +28vh  → feet at viewport midpoint (smallest scale)
+// Auto-layout uses [0, MAX_VERTICAL_OFFSET_VH]; Edit-Positions drag uses the
+// full [MIN_VERTICAL_OFFSET_VH, MAX_VERTICAL_OFFSET_VH] range so the user can
+// drag from screen-bottom up to roughly half-screen, and the perspective
+// curve owns the entire range.
+const MIN_VERTICAL_OFFSET_VH = -22;
+const MAX_VERTICAL_OFFSET_VH = 28;
 const PERSPECTIVE_SCALE_MIN = 0.35;
 const PERSPECTIVE_SCALE_MAX = 0.65;
 const PERSPECTIVE_FALLOFF_POWER = 2.2;
+
+// Manual scale override applied via the ±/+ buttons in edit mode. Stacks on
+// top of heightScale × perspectiveScale as a final multiplier.
+const CUSTOM_SCALE_MIN = 0.3;
+const CUSTOM_SCALE_MAX = 2.5;
+const CUSTOM_SCALE_STEP = 0.1;
 function randomVerticalOffsetVh() {
+    // Auto-laid-out clusters only lift upward from the strip baseline.
     return Math.round(Math.random() * MAX_VERTICAL_OFFSET_VH * 10) / 10;
 }
 function scaleFromVerticalOffset(vh) {
-    const ratio = Math.max(0, Math.min(1, (vh || 0) / MAX_VERTICAL_OFFSET_VH));
+    const span = MAX_VERTICAL_OFFSET_VH - MIN_VERTICAL_OFFSET_VH;
+    const ratio = Math.max(0, Math.min(1, ((vh || 0) - MIN_VERTICAL_OFFSET_VH) / span));
     const curved = Math.pow(ratio, PERSPECTIVE_FALLOFF_POWER);
     return PERSPECTIVE_SCALE_MAX - curved * (PERSPECTIVE_SCALE_MAX - PERSPECTIVE_SCALE_MIN);
 }
@@ -90,6 +104,7 @@ export function createOverworldSceneController({
     getMapPanelController, // () => mapPanelController — lazy so initialization order doesn't matter
     onSceneChanged, // optional — fires after randomize / location moves so the host can refresh minimap pins
     getPlayerName, // () => string — used to filter the player's own persona out of the scene
+    getCharacterDisplayName, // (name) => string — returns "???" until /introduce has been run on the character
     playSfx, // optional — (sfxObject | id) => void
     getSfx,  // optional — () => the shared sfx registry
     armBgmTransitionGuard, // optional — (durationMs) => void; suppresses BGM pauses for the duration
@@ -143,8 +158,14 @@ export function createOverworldSceneController({
         if (cursorRafId != null) { cancelAnimationFrame(cursorRafId); cursorRafId = null; }
     }
 
-    function attachSpriteHoverFx(spriteEl) {
+    // Bind hover FX (click reticle + sfx) on the visible sprite. The cursor
+    // reticle is suppressed in edit mode; instead each enter/leave drives the
+    // parent group's .is-hovered class via the same delayed-release tracker
+    // used by the ± scale buttons, so moving the cursor sprite ↔ button
+    // doesn't flicker.
+    function attachSpriteHoverFx(spriteEl, groupEl) {
         spriteEl.addEventListener("mouseenter", (e) => {
+            if (editMode) { markGroupHovered(groupEl); return; }
             cursorActiveHoverCount++;
             // Seed the cursor at the entry point so it doesn't flash from (0,0).
             cursorTargetX = e.clientX;
@@ -155,15 +176,344 @@ export function createOverworldSceneController({
             playOwSfx("character_hover");
         });
         spriteEl.addEventListener("mouseleave", () => {
+            if (editMode) { scheduleGroupUnhover(groupEl); return; }
             cursorActiveHoverCount = Math.max(0, cursorActiveHoverCount - 1);
             if (cursorActiveHoverCount === 0) hideCursor();
         });
+    }
+
+    // Sprite ↔ ± button hover tracking. A short delay before removing
+    // .is-hovered bridges the cursor's transit through the (pointer-events:
+    // none) group space between visible sprite and absolute-positioned button.
+    function markGroupHovered(groupEl) {
+        groupEl.classList.add("is-hovered");
+        if (groupEl._owHoverLeaveTimer) {
+            clearTimeout(groupEl._owHoverLeaveTimer);
+            groupEl._owHoverLeaveTimer = null;
+        }
+    }
+    function scheduleGroupUnhover(groupEl) {
+        if (groupEl._owHoverLeaveTimer) clearTimeout(groupEl._owHoverLeaveTimer);
+        // The group itself is pointer-events: none, so the cursor crosses
+        // empty group-layout space between the visible sprite and the
+        // absolute-positioned ± buttons without firing any events. A generous
+        // delay covers slow cursor transit; the :hover recheck inside means a
+        // fast user pays nothing.
+        groupEl._owHoverLeaveTimer = setTimeout(() => {
+            if (!groupEl.querySelector(":hover")) {
+                groupEl.classList.remove("is-hovered");
+            }
+            groupEl._owHoverLeaveTimer = null;
+        }, 280);
+    }
+    function attachGroupHoverTracking(el, groupEl) {
+        el.addEventListener("mouseenter", () => markGroupHovered(groupEl));
+        el.addEventListener("mouseleave", () => scheduleGroupUnhover(groupEl));
     }
 
     function teardownCursor() {
         cursorActiveHoverCount = 0;
         hideCursor();
         if (cursorEl) { cursorEl.remove(); cursorEl = null; }
+    }
+
+    // ── Fit-to-viewport ──────────────────────────────────────────────────────
+    // Flex layout uses each sprite's natural width (driven by img height:75vh +
+    // width:auto). transform:scale on sprites doesn't affect layout, so when
+    // several spawn-groups crowd one room their combined natural widths exceed
+    // the viewport and the outermost characters render off-screen.
+    //
+    // Two-stage response:
+    //   1. --ow-fit on the strip scales the img/ghost height, which IS what flex
+    //      measures — the layout reflows. Three passes converge because fixed
+    //      gap/padding/group-margin pixels don't scale with --ow-fit.
+    //   2. Once we know how much we had to shrink, lift every group toward the
+    //      top of the strip proportionally. The existing perspective system
+    //      maps higher offset → smaller scale, so crowded rooms read as a
+    //      "background" of small, distant characters rather than a clipped row
+    //      of half-sized ones glued to the floor.
+    // Measure how much the flex LAYOUT overflows the strip. We can't use
+    // getBoundingClientRect on .dangan-ow-sprite because that returns the
+    // POST-transform (visual) box — each sprite already has a perspective
+    // transform: scale that shrinks the visual, so its visual right edge
+    // can look fine even when the layout box extends far past the viewport.
+    // scrollWidth, however, reflects the pre-transform layout content and is
+    // clamped to ≥ clientWidth — so scrollWidth > clientWidth iff overflow.
+    function measureStripBounds(strip) {
+        const layoutWidth = strip.scrollWidth;
+        const containerWidth = strip.clientWidth;
+        if (!layoutWidth || !containerWidth) return null;
+        return { layoutWidth, containerWidth };
+    }
+
+    function applyGroupLifts(strip, flatMode, liftFactor) {
+        for (const groupEl of strip.querySelectorAll(".dangan-ow-group")) {
+            // Manually-positioned or manually-scaled groups own their state —
+            // the auto crowd-lift must not yank them around.
+            if (groupEl.classList.contains("is-positioned")) continue;
+            if (groupEl.classList.contains("has-custom-scale")) continue;
+            const baseOffset = parseFloat(groupEl.dataset.baseOffsetVh) || 0;
+            const offset = flatMode
+                ? 0
+                : Math.min(MAX_VERTICAL_OFFSET_VH, baseOffset + (MAX_VERTICAL_OFFSET_VH - baseOffset) * liftFactor);
+            const perspective = flatMode ? 1 : scaleFromVerticalOffset(offset);
+            groupEl.style.setProperty("--ow-vert-offset", `${offset}vh`);
+            for (const spriteEl of groupEl.querySelectorAll(".dangan-ow-sprite")) {
+                const hs = parseFloat(spriteEl.dataset.heightScale) || 1;
+                spriteEl.style.setProperty("--ow-scale", String(hs * perspective));
+            }
+        }
+    }
+
+    async function fitCrowdedRoomToViewport(strip, flatMode, isStale) {
+        if (!strip) return;
+        // Reset prior crowd adjustments so we measure intrinsic layout.
+        strip.style.removeProperty("--ow-fit");
+        applyGroupLifts(strip, flatMode, 0);
+
+        // Stage 1: --ow-fit reflow until layoutWidth fits the container.
+        // Up to 5 passes — gap/padding/group-margin are fixed px and don't
+        // scale with --ow-fit, so a pure ratio shrink under-shrinks by the
+        // fixed fraction; the 0.92 factor closes that gap so we converge in
+        // 2-3 passes instead of asymptotically approaching the target.
+        for (let pass = 0; pass < 5; pass++) {
+            await new Promise(r => requestAnimationFrame(r));
+            if (isStale?.()) return;
+            const m = measureStripBounds(strip);
+            if (!m) return;
+            if (m.layoutWidth <= m.containerWidth) break;
+            const currentFit = parseFloat(strip.style.getPropertyValue("--ow-fit")) || 1;
+            const ratio = m.containerWidth / m.layoutWidth;
+            const newFit = Math.max(0.2, currentFit * ratio * 0.92);
+            strip.style.setProperty("--ow-fit", String(newFit));
+        }
+
+        // Stage 2: proportional crowd-lift if we had to shrink. Skip in flat
+        // mode (per-room user setting that explicitly disables perspective).
+        if (flatMode) return;
+        const finalFit = parseFloat(strip.style.getPropertyValue("--ow-fit")) || 1;
+        if (finalFit >= 0.99) return;
+        // Map shrink amount (1 - fit) to a lift factor in [0, 1]. A 30%
+        // shrink → ~36% lift toward the top; a 50% shrink → ~60%; clamp to 1.
+        const liftFactor = Math.min(1, (1 - finalFit) * 1.2);
+        applyGroupLifts(strip, flatMode, liftFactor);
+    }
+
+    async function fitStripWhenImagesReady(strip, flatMode, isStale) {
+        if (!strip) return;
+        const imgs = [...strip.querySelectorAll(".dangan-ow-sprite-img")];
+        await Promise.all(imgs.map(img => {
+            if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+            return new Promise(resolve => {
+                const onDone = () => {
+                    img.removeEventListener("load", onDone);
+                    img.removeEventListener("error", onDone);
+                    resolve();
+                };
+                img.addEventListener("load", onDone);
+                img.addEventListener("error", onDone);
+            });
+        }));
+        if (isStale?.()) return;
+        await fitCrowdedRoomToViewport(strip, flatMode, isStale);
+    }
+
+    // ── Edit Character Positions ─────────────────────────────────────────────
+    // Toggle: click "Edit Character Positions" → drag any group around the
+    // room. Drag-Y maps to verticalOffsetVh, which feeds the existing
+    // scaleFromVerticalOffset() perspective curve (lower on screen = bigger,
+    // higher on screen = smaller). Click the button again to persist customX
+    // and verticalOffsetVh onto each member's state entry.
+    let editMode = false;
+    let dragState = null;
+    // Strip is positioned at bottom: 22vh. Drag-Y math anchors against this.
+    const STRIP_BOTTOM_VH = 22;
+
+    function setGroupVerticalOffsetLive(groupEl, offsetVh) {
+        const perspective = scaleFromVerticalOffset(offsetVh);
+        const customScale = parseFloat(groupEl.dataset.customScale) || 1;
+        groupEl.style.setProperty("--ow-vert-offset", `${offsetVh}vh`);
+        for (const spriteEl of groupEl.querySelectorAll(".dangan-ow-sprite")) {
+            const hs = parseFloat(spriteEl.dataset.heightScale) || 1;
+            spriteEl.style.setProperty("--ow-scale", String(hs * perspective * customScale));
+        }
+    }
+
+    function applyGroupCustomScale(groupEl, customScale) {
+        const cssOffset = groupEl.style.getPropertyValue("--ow-vert-offset");
+        const offsetVh = parseFloat(cssOffset) || 0;
+        const flatMode = !!getDomRoot()?.classList.contains("dangan-ow-flat");
+        const perspective = flatMode ? 1 : scaleFromVerticalOffset(offsetVh);
+        for (const spriteEl of groupEl.querySelectorAll(".dangan-ow-sprite")) {
+            const hs = parseFloat(spriteEl.dataset.heightScale) || 1;
+            spriteEl.style.setProperty("--ow-scale", String(hs * perspective * customScale));
+        }
+    }
+
+    function onScaleBtnClick(groupEl, direction) {
+        if (!editMode) return;
+        const current = parseFloat(groupEl.dataset.customScale) || 1;
+        const next = Math.max(CUSTOM_SCALE_MIN, Math.min(CUSTOM_SCALE_MAX,
+            current + direction * CUSTOM_SCALE_STEP));
+        // Round to 2 decimals so dataset stays clean across many clicks.
+        const rounded = Math.round(next * 100) / 100;
+        groupEl.dataset.customScale = String(rounded);
+        groupEl.classList.add("has-custom-scale");
+        applyGroupCustomScale(groupEl, rounded);
+    }
+
+    function onGroupDragStart(e) {
+        if (!editMode || dragState) return;
+        // Ignore right-clicks etc.
+        if (e.button !== 0) return;
+        // Bound on the sprite — walk up to the actual draggable group. The
+        // group is what we move (and its members move with it).
+        const groupEl = e.currentTarget.closest(".dangan-ow-group");
+        if (!groupEl) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = groupEl.getBoundingClientRect();
+        dragState = {
+            groupEl,
+            startMouseX: e.clientX,
+            startMouseY: e.clientY,
+            startCenterX: rect.left + rect.width / 2,
+            startFeetY: rect.bottom,
+            moved: false,
+            lastCustomX: null,
+            lastOffsetVh: null,
+        };
+        window.addEventListener("mousemove", onGroupDragMove);
+        window.addEventListener("mouseup", onGroupDragEnd);
+    }
+
+    function onGroupDragMove(e) {
+        if (!dragState) return;
+        if (!dragState.groupEl.isConnected) { dragState = null; return; }
+        const dx = e.clientX - dragState.startMouseX;
+        const dy = e.clientY - dragState.startMouseY;
+        if (!dragState.moved) {
+            if (Math.abs(dx) + Math.abs(dy) < 4) return;
+            dragState.moved = true;
+            // Convert to absolute positioning, seeded with the group's
+            // pre-drag visual center so the sprite doesn't jump.
+            const seedCustomX = dragState.startCenterX / window.innerWidth;
+            dragState.groupEl.style.setProperty("--ow-custom-x", String(seedCustomX));
+            dragState.groupEl.classList.add("is-positioned");
+        }
+        const newCenterX = dragState.startCenterX + dx;
+        const newFeetY = dragState.startFeetY + dy;
+        const customX = Math.max(0, Math.min(1, newCenterX / window.innerWidth));
+        // Strip's bottom edge in viewport-pixel space (top-left origin).
+        const stripBottomY = window.innerHeight * (1 - STRIP_BOTTOM_VH / 100);
+        const offsetPx = stripBottomY - newFeetY;
+        // Allow the full drag range: negative offsets push feet below the
+        // strip baseline (toward viewport bottom = biggest); positive offsets
+        // lift feet upward (toward viewport mid = smallest).
+        const offsetVh = Math.max(MIN_VERTICAL_OFFSET_VH, Math.min(
+            MAX_VERTICAL_OFFSET_VH,
+            (offsetPx / window.innerHeight) * 100,
+        ));
+        dragState.groupEl.style.setProperty("--ow-custom-x", String(customX));
+        setGroupVerticalOffsetLive(dragState.groupEl, offsetVh);
+        dragState.lastCustomX = customX;
+        dragState.lastOffsetVh = offsetVh;
+    }
+
+    function onGroupDragEnd() {
+        window.removeEventListener("mousemove", onGroupDragMove);
+        window.removeEventListener("mouseup", onGroupDragEnd);
+        if (dragState?.moved && dragState.lastCustomX != null) {
+            // Stash final values on the DOM node — they're read off at save.
+            dragState.groupEl.dataset.customX = String(dragState.lastCustomX);
+            dragState.groupEl.dataset.customVertOffsetVh = String(dragState.lastOffsetVh);
+        }
+        dragState = null;
+    }
+
+    function updateEditButtonLabel() {
+        const root = getDomRoot();
+        if (!root) return;
+        const label = root.querySelector(".dangan-ow-edit-btn .dangan-ow-room-btn-label");
+        if (label) label.textContent = editMode ? "Save Character Positions" : "Edit Character Positions";
+    }
+
+    function enterEditMode() {
+        if (editMode) return;
+        editMode = true;
+        document.body.classList.add("dangan-ow-edit-mode");
+        // Tear the hover cursor down if it's showing — edit mode replaces
+        // the click-reticle with the OS move cursor.
+        try { teardownCursor(); } catch (_) {}
+        updateEditButtonLabel();
+    }
+
+    function commitEditPositionsToState() {
+        const root = getDomRoot();
+        if (!root) return;
+        const state = getState();
+        let touched = false;
+        // Walk every group the user touched this session — could be drag
+        // (.is-positioned), manual scale (.has-custom-scale), or both.
+        const groups = root.querySelectorAll(
+            ".dangan-ow-group.is-positioned, .dangan-ow-group.has-custom-scale",
+        );
+        for (const groupEl of groups) {
+            const cxStr = groupEl.dataset.customX;
+            const voStr = groupEl.dataset.customVertOffsetVh;
+            const csStr = groupEl.dataset.customScale;
+            const customX = cxStr != null && cxStr !== "" ? parseFloat(cxStr) : NaN;
+            const offsetVh = voStr != null && voStr !== "" ? parseFloat(voStr) : NaN;
+            const customScale = csStr != null && csStr !== "" ? parseFloat(csStr) : NaN;
+            // Skip groups whose dataset is empty — i.e. they were on the page
+            // already-customized but no edit happened in this session.
+            if (!isFinite(customX) && !isFinite(customScale)) continue;
+            const memberKeys = [...groupEl.querySelectorAll(".dangan-ow-sprite")]
+                .map(el => el.dataset.key).filter(Boolean);
+            for (const key of memberKeys) {
+                const entry = state.characters[key];
+                if (!entry) continue;
+                if (isFinite(customX)) entry.customX = customX;
+                if (isFinite(offsetVh)) entry.verticalOffsetVh = offsetVh;
+                if (isFinite(customScale)) entry.customScale = customScale;
+                touched = true;
+            }
+        }
+        if (touched) { saveState(); notifySceneChanged(); }
+    }
+
+    function exitEditModeAndSave() {
+        if (!editMode) return;
+        // Drop any in-flight drag so we don't try to write to a removed node.
+        if (dragState) { onGroupDragEnd(); }
+        commitEditPositionsToState();
+        editMode = false;
+        document.body.classList.remove("dangan-ow-edit-mode");
+        updateEditButtonLabel();
+    }
+
+    function toggleEditMode() {
+        if (editMode) exitEditModeAndSave();
+        else enterEditMode();
+    }
+
+    function buildEditPositionsBtn(solo = false) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        // `solo` adds a modifier class that promotes the button to the
+        // Talk-to-Room slot (top:186px) when it's the only button on screen —
+        // otherwise it'd sit at top:266px with empty space above it.
+        btn.className = "dangan-ow-room-btn dangan-ow-edit-btn"
+            + (solo ? " dangan-ow-edit-btn-solo" : "");
+        const label = document.createElement("span");
+        label.className = "dangan-ow-room-btn-label";
+        label.textContent = editMode ? "Save Character Positions" : "Edit Character Positions";
+        btn.appendChild(label);
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            toggleEditMode();
+        });
+        return btn;
     }
     function notifySceneChanged() {
         try { onSceneChanged?.(); } catch (e) { console.warn("[Dangan][Overworld] onSceneChanged failed:", e); }
@@ -323,6 +673,10 @@ export function createOverworldSceneController({
                 if (isRoomLocationId(fromHistory)) {
                     entry.locationId = fromHistory;
                     entry.groupId = null;
+                    // Room changed — any user-placed customization from a
+                    // previous room is meaningless in the new one.
+                    entry.customX = null;
+                    entry.customScale = null;
                     changed = true;
                 } else {
                     needSeed.push(key);
@@ -348,6 +702,8 @@ export function createOverworldSceneController({
                 const room = i < activeRooms.length ? activeRooms[i] : pickRandom(activeRooms);
                 state.characters[key].locationId = room;
                 state.characters[key].groupId = null;
+                state.characters[key].customX = null;
+                state.characters[key].customScale = null;
             });
             changed = true;
         }
@@ -421,6 +777,11 @@ export function createOverworldSceneController({
             const entry = state.characters[key] ??= { locationId: null, groupId: null };
             entry.locationId = newRoomByKey.get(key);
             entry.groupId = null;
+            // Manual customizations were anchored to the old room — drop them
+            // so the character flows back into the auto layout in their new
+            // room.
+            entry.customX = null;
+            entry.customScale = null;
             // Cycle the expression so a fresh shuffle visibly changes poses
             // alongside locations. Render() will pick a new one lazily.
             delete entry.expression;
@@ -479,6 +840,8 @@ export function createOverworldSceneController({
             if (entry.locationId !== newLocationId) {
                 entry.locationId = newLocationId;
                 entry.groupId = null;
+                entry.customX = null;
+                entry.customScale = null;
                 changed = true;
             }
         }
@@ -531,6 +894,7 @@ export function createOverworldSceneController({
         teardownCursor();
     }
 
+    let scheduleRenderTimer = null;
     function scheduleRender() {
         // Don't disturb the bouncing sprites mid-transition — the click handler
         // tears the DOM down once the fade completes.
@@ -538,11 +902,20 @@ export function createOverworldSceneController({
         // Always refresh roster locations — even when sprites are hidden
         // (in-chat), the minimap still draws pins from this state.
         try { ensureCharacterLocations(); } catch (e) { debug("ensure failed", e); }
+        // Coalesce bursts of scheduleRender calls — multiple event listeners
+        // (chat_changed, character_renamed, trial state change, minimap render
+        // hook, …) all fire during page boot and each used to start its own
+        // microtask-deferred render, producing visible despawn/respawn flashes
+        // as render() wipes root.innerHTML upfront on every pass. A 40 ms
+        // debounce collapses the whole burst into a single render at the end
+        // without noticeably delaying user-triggered movement updates.
         const myToken = ++renderToken;
-        Promise.resolve().then(() => {
+        if (scheduleRenderTimer) clearTimeout(scheduleRenderTimer);
+        scheduleRenderTimer = setTimeout(() => {
+            scheduleRenderTimer = null;
             if (myToken !== renderToken) return;
             render();
-        });
+        }, 40);
     }
 
     async function render() {
@@ -555,10 +928,11 @@ export function createOverworldSceneController({
             // In-chat overlay: Exit Conversation + Grab Group Members buttons.
             // No sprites, no click-boxes, no Talk-to-Room.
             setBodyMode("chat-exit");
-            const root = getDomRoot() || document.createElement("div");
+            // Always build into a fresh detached root and swap at the end so
+            // the live overworld stays on screen until the new content is
+            // ready — no wipe-then-await flash.
+            const root = document.createElement("div");
             root.id = ROOT_ID;
-            root.classList.remove("dangan-ow-flat");
-            root.innerHTML = "";
 
             const exitBtn = document.createElement("button");
             exitBtn.type = "button";
@@ -575,7 +949,9 @@ export function createOverworldSceneController({
 
             root.appendChild(buildGrabGroupMembersBtn());
 
-            if (!getDomRoot()) document.body.appendChild(root);
+            const liveRoot = getDomRoot();
+            if (liveRoot) liveRoot.replaceWith(root);
+            else document.body.appendChild(root);
             return;
         }
 
@@ -597,18 +973,31 @@ export function createOverworldSceneController({
         }
 
         debug(`room=${playerRoom} rosterTotal=${getActiveRosterKeys().length} inRoom=${charsHere.length}`);
-        if (!charsHere.length) { removeRoot(); return; }
+        // NOTE: don't bail when charsHere is empty — Call-to-the-Room is still
+        // available in an empty room (summons cross-room characters from the
+        // player's area). The sprite-strip rendering is gated below so it
+        // only fires when there are actually characters to draw.
 
         const myToken = renderToken;
 
         const flatMode = isRoomFlat(playerRoom);
         setBodyMode("scene");
 
-        const root = getDomRoot() || document.createElement("div");
+        // Build into a fresh detached root each pass — the live overworld
+        // stays mounted with its existing sprites visible until the new
+        // content is ready, then we atomically replace it. This avoids the
+        // wipe-then-await window that produced the despawn/respawn flashes.
+        const root = document.createElement("div");
         root.id = ROOT_ID;
         root.classList.toggle("dangan-ow-flat", flatMode);
-        root.innerHTML = "";
 
+        // Default empty when room is unpopulated; the sprite-strip block below
+        // overwrites this with the actual rendered groups when chars are
+        // present.
+        let renderable = [];
+        let groupStrip = null;
+
+        if (charsHere.length > 0) {
         // Bucket by spawn-group (solos use a synthetic per-character group).
         const buckets = new Map();
         for (const entry of charsHere) {
@@ -648,12 +1037,12 @@ export function createOverworldSceneController({
         }));
         if (expressionDirty) saveState();
         if (myToken !== renderToken) return;
-        const renderable = resolved.filter(g => g.members.length > 0);
+        renderable = resolved.filter(g => g.members.length > 0);
         debug(`resolved sprite groups=${renderable.length} (of ${groupList.length})`);
-        if (!renderable.length) { removeRoot(); return; }
 
+        if (renderable.length > 0) {
         // Distribute groups horizontally across the viewport.
-        const groupStrip = document.createElement("div");
+        groupStrip = document.createElement("div");
         groupStrip.className = "dangan-ow-strip";
         for (const group of renderable) {
             const isMulti = group.members.length > 1;
@@ -673,6 +1062,36 @@ export function createOverworldSceneController({
             })();
             const perspectiveScale = flatMode ? 1 : scaleFromVerticalOffset(offsetVh);
             groupEl.style.setProperty("--ow-vert-offset", `${offsetVh}vh`);
+            // Stamp the base offset so fitCrowdedRoomToViewport can recompute
+            // a lifted offset + perspective scale without losing the seed.
+            groupEl.dataset.baseOffsetVh = String(offsetVh);
+            // Apply a previously-saved custom horizontal position (set via
+            // Edit Character Positions). All members of a cluster share one
+            // customX, so take the first one we find.
+            const savedCustomX = (() => {
+                for (const m of group.members) {
+                    const cx = m.entry?.customX;
+                    if (typeof cx === "number" && isFinite(cx)) return cx;
+                }
+                return null;
+            })();
+            if (savedCustomX != null) {
+                groupEl.classList.add("is-positioned");
+                groupEl.style.setProperty("--ow-custom-x", String(savedCustomX));
+            }
+            // Saved manual scale override (set via ±/+ buttons in edit mode).
+            const savedCustomScale = (() => {
+                for (const m of group.members) {
+                    const cs = m.entry?.customScale;
+                    if (typeof cs === "number" && isFinite(cs)) return cs;
+                }
+                return null;
+            })();
+            if (savedCustomScale != null) {
+                groupEl.classList.add("has-custom-scale");
+                groupEl.dataset.customScale = String(savedCustomScale);
+            }
+            const customScaleMul = savedCustomScale != null ? savedCustomScale : 1;
             for (const m of group.members) {
                 const heightCm = getCharacterHeightCm(m.char.name);
                 // Exaggerate the spread: raw (cm/170) only swings ~0.76-1.17
@@ -685,12 +1104,13 @@ export function createOverworldSceneController({
                     const exaggerated = 1 + (baseRatio - 1) * 1.8;
                     return Math.min(1.55, Math.max(0.45, exaggerated));
                 })();
-                const finalScale = heightScale * perspectiveScale;
+                const finalScale = heightScale * perspectiveScale * customScaleMul;
 
                 const spriteEl = document.createElement("div");
                 spriteEl.className = "dangan-ow-sprite";
                 spriteEl.dataset.name = m.char.name;
                 spriteEl.dataset.key = m.key;
+                spriteEl.dataset.heightScale = String(heightScale);
                 spriteEl.style.setProperty("--ow-scale", String(finalScale));
                 // Encode quotes so the URL is safe inside a CSS `url("…")` token.
                 spriteEl.style.setProperty(
@@ -709,12 +1129,18 @@ export function createOverworldSceneController({
                 const img = document.createElement("img");
                 img.className = "dangan-ow-sprite-img";
                 img.src = m.spriteUrl;
-                img.alt = m.char.name;
+                // alt doubles as the native browser hover tooltip — mask it as
+                // "???" until /introduce has run on this character.
+                img.alt = typeof getCharacterDisplayName === "function"
+                    ? getCharacterDisplayName(m.char.name)
+                    : m.char.name;
                 img.draggable = false;
                 img.addEventListener("error", () => { spriteEl.style.display = "none"; });
                 spriteEl.appendChild(img);
 
                 spriteEl.addEventListener("click", (e) => {
+                    // In edit mode, clicks are reserved for drag interaction.
+                    if (editMode) { e.stopPropagation(); return; }
                     e.stopPropagation();
                     playOwSfx("character_click");
                     // Drop the cursor instantly — once a click is committed it
@@ -725,19 +1151,54 @@ export function createOverworldSceneController({
                     else onSoloClick(m);
                 });
 
+                // Drag (edit-mode only) binds on the sprite so the hit target
+                // is the transformed visual box, not the group's wider layout
+                // box. The handler walks up to the parent group internally.
+                spriteEl.addEventListener("mousedown", onGroupDragStart);
+                // Hover FX + edit-mode hover state both fire on the sprite —
+                // see attachSpriteHoverFx for the multi-sprite counting logic
+                // that keeps the cursor / .is-hovered stable across siblings.
+                attachSpriteHoverFx(spriteEl, groupEl);
+
                 groupEl.appendChild(spriteEl);
             }
-            // Hover FX (cursor + hover sfx) is bound at the GROUP level so that
-            // moving the mouse between sprites in the same cluster reads as a
-            // single hover. For solos this is still just one sprite, so the
-            // behavior is identical there.
-            attachSpriteHoverFx(groupEl);
+            // Manual ±/+ scale buttons (visible on hover in edit mode).
+            const minusBtn = document.createElement("button");
+            minusBtn.type = "button";
+            minusBtn.className = "dangan-ow-scale-btn dangan-ow-scale-minus";
+            minusBtn.textContent = "−";
+            minusBtn.addEventListener("mousedown", (e) => e.stopPropagation());
+            minusBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                onScaleBtnClick(groupEl, -1);
+            });
+            attachGroupHoverTracking(minusBtn, groupEl);
+            groupEl.appendChild(minusBtn);
+
+            const plusBtn = document.createElement("button");
+            plusBtn.type = "button";
+            plusBtn.className = "dangan-ow-scale-btn dangan-ow-scale-plus";
+            plusBtn.textContent = "+";
+            plusBtn.addEventListener("mousedown", (e) => e.stopPropagation());
+            plusBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                onScaleBtnClick(groupEl, +1);
+            });
+            attachGroupHoverTracking(plusBtn, groupEl);
+            groupEl.appendChild(plusBtn);
+
             groupStrip.appendChild(groupEl);
         }
         root.appendChild(groupStrip);
+        } // end if (renderable.length > 0)
+        } // end if (charsHere.length > 0)
 
-        // "Talk to the room" button — shown when 2+ characters share the room
-        // across all spawn-groups. The Grab Group Members button sits under it.
+        // Button visibility per population:
+        //   total >= 2 → LEFT column gets Talk-to-Room (186) + Grab-Group (226)
+        //   total >= 1 → RIGHT column gets Edit-Positions (226)
+        //   always    → RIGHT column gets Call-to-Room (186)
+        // Call always renders so the player can summon characters into an
+        // empty room. Edit only when there's at least one sprite to reposition.
         const total = renderable.reduce((a, g) => a + g.members.length, 0);
         if (total >= 2) {
             const btn = document.createElement("button");
@@ -755,8 +1216,17 @@ export function createOverworldSceneController({
 
             root.appendChild(buildGrabGroupMembersBtn());
         }
+        root.appendChild(buildCallToRoomBtn());
+        if (total >= 1) {
+            root.appendChild(buildEditPositionsBtn());
+        }
 
-        if (!getDomRoot()) document.body.appendChild(root);
+        const liveRoot = getDomRoot();
+        if (liveRoot) liveRoot.replaceWith(root);
+        else document.body.appendChild(root);
+        if (groupStrip) {
+            fitStripWhenImagesReady(groupStrip, flatMode, () => myToken !== renderToken).catch(() => {});
+        }
     }
 
     // ── Click handlers ───────────────────────────────────────────────────────
@@ -1045,6 +1515,171 @@ export function createOverworldSceneController({
         document.body.appendChild(modal);
     }
 
+    function buildCallToRoomBtn() {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "dangan-ow-room-btn dangan-ow-call-btn";
+        const label = document.createElement("span");
+        label.className = "dangan-ow-room-btn-label";
+        label.textContent = "Call to Your Location";
+        btn.appendChild(label);
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            showCallToRoomModal();
+        });
+        return btn;
+    }
+
+    // Mirror of showGrabGroupModal, but the candidate list spans every active
+    // roster character in the player's area + sub-area (not just the current
+    // room). Confirmed characters are warped into the player's room (location
+    // updated, customX/customScale/groupId cleared) and then handed to
+    // transitionToChat to open the chat with them.
+    function showCallToRoomModal() {
+        if (document.getElementById("dangan-grab-modal")) return;
+
+        // Characters already in the player's current room are handled by
+        // "Grab Group Members" — exclude them here so Call-to-the-Room is
+        // strictly the cross-room summons list. Track the full area total
+        // separately so we can distinguish "nobody anywhere" from
+        // "everyone's already here" when picking the empty-state message.
+        const allInArea = isRoomLocationId(getCurrentLocationId())
+            ? getCharactersInPlayerArea()
+            : [];
+        const inArea = allInArea.filter(c => !c.isInPlayerRoom);
+        const preCheck = new Set(getCurrentChatMemberNames());
+
+        const modal = document.createElement("div");
+        modal.id = "dangan-grab-modal";
+        modal.className = "dangan-grab-modal";
+        modal.setAttribute("role", "dialog");
+        modal.setAttribute("aria-modal", "true");
+
+        const backdrop = document.createElement("div");
+        backdrop.className = "dangan-grab-backdrop";
+        modal.appendChild(backdrop);
+
+        const card = document.createElement("div");
+        card.className = "dangan-grab-card";
+        card.setAttribute("role", "document");
+
+        const header = document.createElement("div");
+        header.className = "dangan-grab-header";
+        const title = document.createElement("span");
+        title.textContent = "Call to Your Location";
+        const closeBtn = document.createElement("button");
+        closeBtn.type = "button";
+        closeBtn.className = "dangan-grab-close";
+        closeBtn.setAttribute("aria-label", "Close");
+        closeBtn.textContent = "✕";
+        header.appendChild(title);
+        header.appendChild(closeBtn);
+        card.appendChild(header);
+
+        const body = document.createElement("div");
+        body.className = "dangan-grab-body";
+        if (!inArea.length) {
+            const empty = document.createElement("div");
+            empty.className = "dangan-grab-empty";
+            // If the area has chars but they're ALL in the current room, the
+            // user has nobody left to call — surface this as a friendlier
+            // "everyone's here" rather than the misleading "nobody in area".
+            empty.textContent = allInArea.length > 0
+                ? "Everyone's here!"
+                : "Nobody is in this area.";
+            body.appendChild(empty);
+        } else {
+            const list = document.createElement("ul");
+            list.className = "dangan-grab-list";
+            for (const c of inArea) {
+                const li = document.createElement("li");
+                const lbl = document.createElement("label");
+                const cb = document.createElement("input");
+                cb.type = "checkbox";
+                cb.dataset.name = c.name;
+                if (preCheck.has(c.name)) cb.checked = true;
+                const span = document.createElement("span");
+                // Annotate with current room so the player can see where each
+                // character is being called FROM. In-room chars get no suffix.
+                span.textContent = c.isInPlayerRoom
+                    ? c.name
+                    : `${c.name} — ${c.roomLabel}`;
+                lbl.appendChild(cb);
+                lbl.appendChild(span);
+                li.appendChild(lbl);
+                list.appendChild(li);
+            }
+            body.appendChild(list);
+        }
+        card.appendChild(body);
+
+        const footer = document.createElement("div");
+        footer.className = "dangan-grab-footer";
+        const cancelBtn = document.createElement("button");
+        cancelBtn.type = "button";
+        cancelBtn.className = "dangan-grab-cancel";
+        cancelBtn.textContent = "Cancel";
+        const confirmBtn = document.createElement("button");
+        confirmBtn.type = "button";
+        confirmBtn.className = "dangan-grab-confirm";
+        confirmBtn.textContent = "Call to Location";
+        footer.appendChild(cancelBtn);
+        footer.appendChild(confirmBtn);
+        card.appendChild(footer);
+
+        modal.appendChild(card);
+
+        const checkboxes = () => [...modal.querySelectorAll('input[type="checkbox"]')];
+        const refreshConfirm = () => {
+            const n = checkboxes().filter(cb => cb.checked).length;
+            confirmBtn.disabled = n < 1;
+            confirmBtn.textContent = n >= 2 ? "Call to Location" : "Call to Location";
+        };
+        for (const cb of checkboxes()) cb.addEventListener("change", refreshConfirm);
+        refreshConfirm();
+
+        const close = () => {
+            modal.remove();
+            document.removeEventListener("keydown", onKeydown);
+        };
+        const onKeydown = (e) => { if (e.key === "Escape") close(); };
+
+        closeBtn.addEventListener("click", close);
+        cancelBtn.addEventListener("click", close);
+        backdrop.addEventListener("click", close);
+        document.addEventListener("keydown", onKeydown);
+
+        confirmBtn.addEventListener("click", async () => {
+            const names = checkboxes().filter(cb => cb.checked).map(cb => cb.dataset.name);
+            if (names.length < 1) return;
+            close();
+            // Warp the selected characters into the player's room before
+            // entering the chat, so the overworld scene reflects their new
+            // location once the fade clears.
+            const playerRoom = getCurrentLocationId();
+            if (isRoomLocationId(playerRoom)) {
+                const state = getState();
+                let changed = false;
+                for (const name of names) {
+                    const key = normalizeName(name);
+                    const entry = state.characters[key];
+                    if (!entry) continue;
+                    if (entry.locationId !== playerRoom) {
+                        entry.locationId = playerRoom;
+                        entry.groupId = null;
+                        entry.customX = null;
+                        entry.customScale = null;
+                        changed = true;
+                    }
+                }
+                if (changed) { saveState(); notifySceneChanged(); }
+            }
+            await transitionToChat(names);
+        });
+
+        document.body.appendChild(modal);
+    }
+
     // Fade-to-black, open the requested chat (solo if one name, group if 2+),
     // pre-render the scene under the black wash, then fade back in. Mirrors
     // onExitChatClick's pattern but enters a new chat instead of closing.
@@ -1254,7 +1889,42 @@ export function createOverworldSceneController({
             }
         } catch (e) { console.warn("[Dangan][Overworld] failed to bind CHAT_CHANGED:", e); }
 
-        window.addEventListener("resize", () => scheduleRender(), { passive: true });
+        // Debounce: browser fires `resize` continuously during a drag-resize
+        // (potentially dozens of events per second). Each scheduleRender call
+        // ultimately re-runs ensureCharacterLocations + a full render() pass
+        // that fetches /api/sprites/get for every character on-stage. Wait
+        // for the resize to settle before doing that work.
+        let resizeTimer = null;
+        window.addEventListener("resize", () => {
+            if (resizeTimer) clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                resizeTimer = null;
+                scheduleRender();
+            }, 200);
+        }, { passive: true });
+
+        // 1 / 2 keyboard shortcuts as substitutes for the − / + scale buttons.
+        // Only fire in edit mode and only when a group is currently :hover —
+        // applies to whichever group the cursor is over, so the user can
+        // hover a sprite + tap the keys instead of clicking small buttons.
+        // Ignored while typing in inputs / textareas / contenteditable so the
+        // chat composer isn't hijacked.
+        window.addEventListener("keydown", (e) => {
+            if (!editMode) return;
+            if (e.metaKey || e.ctrlKey || e.altKey) return;
+            const t = e.target;
+            if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+            let direction = 0;
+            if (e.key === "1") direction = -1;
+            else if (e.key === "2") direction = +1;
+            else return;
+            const root = getDomRoot();
+            if (!root) return;
+            const hovered = root.querySelector(".dangan-ow-group:hover");
+            if (!hovered) return;
+            e.preventDefault();
+            onScaleBtnClick(hovered, direction);
+        });
     }
 
     bind();
@@ -1274,6 +1944,41 @@ export function createOverworldSceneController({
             if (!char?.name) continue;
             out.push({ name: char.name, groupId: entry.groupId || null });
         }
+        return out;
+    }
+
+    // Cross-room roster within the player's CURRENT area + sub-area. Powers the
+    // "Call to the Room" modal — any character in the same area/floor as the
+    // player is eligible to be summoned, regardless of which room they're in.
+    // Each entry includes a friendly room label resolved via map-panel pins so
+    // the modal can show "Hajime — Hotel Lobby" etc.
+    function getCharactersInPlayerArea() {
+        const playerRoom = getCurrentLocationId();
+        const allowedRoomIds = new Set(listSpawnableRoomIds());
+        const mp = getMapPanelController?.();
+        const state = getState();
+        const out = [];
+        for (const key of getActiveRosterKeys()) {
+            const entry = state.characters[key];
+            const loc = entry?.locationId;
+            if (!loc || !allowedRoomIds.has(loc)) continue;
+            const char = getRosterCharByKey(key);
+            if (!char?.name) continue;
+            const pin = mp?.getPinByLocationId?.(loc);
+            out.push({
+                name: char.name,
+                locationId: loc,
+                roomLabel: pin?.label || loc,
+                isInPlayerRoom: loc === playerRoom,
+            });
+        }
+        // Stable sort: in-room first, then by room label, then by name. Gives
+        // the modal a predictable ordering instead of roster-map iteration order.
+        out.sort((a, b) => {
+            if (a.isInPlayerRoom !== b.isInPlayerRoom) return a.isInPlayerRoom ? -1 : 1;
+            const r = a.roomLabel.localeCompare(b.roomLabel);
+            return r !== 0 ? r : a.name.localeCompare(b.name);
+        });
         return out;
     }
 

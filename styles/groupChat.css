@@ -26,6 +26,7 @@
 #dangan-group-chat-stage {
     position: fixed;
     inset: 0;
+    bottom: -110px;
     overflow: hidden;
     pointer-events: none;
     z-index: 5;
@@ -49,7 +50,6 @@
     width: 100%;
     height: 100%;
     object-fit: contain;
-    filter: drop-shadow(0 0 12px rgba(0, 0, 0, 0.7));
     display: block;
 }
 

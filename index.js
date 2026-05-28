@@ -1,5 +1,6 @@
 import { extension_settings } from "../../../extensions.js";
 import { saveSettingsDebounced, getRequestHeaders, eventSource, event_types } from "../../../../script.js";
+import { power_user } from "../../../power-user.js";
 import { openGroupById, editGroup } from "../../../group-chats.js";
 import { executeSlashCommandsWithOptions } from '../../../slash-commands.js';
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
@@ -1954,15 +1955,20 @@ function createVnModeController() {
         const clean = stripV3CMarkersFromText(entry.text).replace(/\s+/g, ' ').trim();
         const chunks = splitIntoChunks(clean);
 
+        // Mask the VN nameplate behind ??? until the speaker has been
+        // /introduce'd — same global toggle that drives the overworld /
+        // minimap / trial sticker labels.
+        const maskedName = entry.name ? getCharacterDisplayName(entry.name) : 'UNKNOWN';
+
         if (!chunks.length) {
-            nameEl.textContent = entry.name || 'UNKNOWN';
+            nameEl.textContent = maskedName;
             renderDialogueText('...');
             updateNavigationState(messages);
             return;
         }
 
         chunkIndex = Math.max(0, Math.min(chunkIndex, chunks.length - 1));
-        nameEl.textContent = entry.name || 'UNKNOWN';
+        nameEl.textContent = maskedName;
         renderDialogueText(chunks[chunkIndex]);
         updateNavigationState(messages);
         pulseText();
@@ -4523,6 +4529,17 @@ function getCharacterSourceText(charName) {
     return sources.join("\n\n") || "NO SOURCE DATA AVAILABLE.";
 }
 
+// ST's /api/sprites/get strips dash-suffixes when computing the `label` field
+// (see src/endpoints/sprites.js — the regex `^(.+?)(?:[-\\.].*?)?$` cuts at
+// the first `-` or `.`). So `gratitude.png` and `gratitude-half.png` BOTH
+// report label `gratitude` — to distinguish variants we check the file path.
+function isHalfSpritePath(s) {
+    return /-half\.[a-z0-9]+(\?|$)/i.test(String(s?.path || ''));
+}
+
+// Default sprite resolver. Always prefers the FULL sprite over a -half variant
+// — half-sprite mode is a chat-only concern (overworld characters, chapter
+// end rosters, choose-character UI, etc. must always render full body).
 async function getSpriteUrl(charName, label = "neutral") {
     let folder = charName;
     const stChars = window.characters;
@@ -4536,9 +4553,56 @@ async function getSpriteUrl(charName, label = "neutral") {
         const resp = await fetch(`/api/sprites/get?name=${encodeURIComponent(folder)}`);
         if (!resp.ok) return null;
         const sprites = await resp.json();
-        const desired = sprites.find(s => String(s.label || '').toLowerCase() === String(label || '').toLowerCase());
-        const neutral = sprites.find(s => s.label === "neutral");
-        return desired?.path ?? neutral?.path ?? null;
+        const lcLabel = String(label || '').toLowerCase();
+        const matchLabel = (s) => String(s.label || '').toLowerCase() === lcLabel;
+        const labelMatches = sprites.filter(matchLabel);
+        const neutralMatches = sprites.filter(s => String(s.label || '').toLowerCase() === 'neutral');
+        // Pick a non-half variant if both exist, else any.
+        const fullDesired = labelMatches.find(s => !isHalfSpritePath(s)) ?? labelMatches[0];
+        if (fullDesired?.path) return fullDesired.path;
+        const fullNeutral = neutralMatches.find(s => !isHalfSpritePath(s)) ?? neutralMatches[0];
+        return fullNeutral?.path ?? null;
+    } catch {
+        return null;
+    }
+}
+
+// Chat-only sprite resolver. When half-sprite mode is on, prefers the -half
+// variant (pre-cropped upper-body art) over the full sprite. Used by the GCP
+// slot resolver (trial / group-chat sprite stage) so chat sprites can be
+// upper-body crops while overworld + UI sprites stay full body.
+async function getChatSpriteUrl(charName, label = "neutral") {
+    const halfMode = !!extension_settings[extensionName]?.halfspriteMode;
+    // Class trials never use -half sprites — full body only, even if the
+    // user has half-sprite mode enabled. Trials have their own camera /
+    // staging logic that assumes the canonical sprite framing.
+    if (!halfMode || isTrialUiActive()) return getSpriteUrl(charName, label);
+
+    let folder = charName;
+    const stChars = window.characters;
+    if (Array.isArray(stChars)) {
+        const stChar = stChars.find(c => c.name === charName);
+        if (stChar?.avatar) {
+            folder = stChar.avatar.replace(/\.[^.]+$/, "");
+        }
+    }
+    try {
+        const resp = await fetch(`/api/sprites/get?name=${encodeURIComponent(folder)}`);
+        if (!resp.ok) return null;
+        const sprites = await resp.json();
+        const lcLabel = String(label || '').toLowerCase();
+        const matchLabel = (s) => String(s.label || '').toLowerCase() === lcLabel;
+        // Fallback chain: <label>-half → <label> → neutral-half → neutral.
+        const labelMatches = sprites.filter(matchLabel);
+        const halfDesired = labelMatches.find(isHalfSpritePath);
+        if (halfDesired?.path) return halfDesired.path;
+        const fullDesired = labelMatches.find(s => !isHalfSpritePath(s)) ?? labelMatches[0];
+        if (fullDesired?.path) return fullDesired.path;
+        const neutralMatches = sprites.filter(s => String(s.label || '').toLowerCase() === 'neutral');
+        const halfNeutral = neutralMatches.find(isHalfSpritePath);
+        if (halfNeutral?.path) return halfNeutral.path;
+        const fullNeutral = neutralMatches.find(s => !isHalfSpritePath(s)) ?? neutralMatches[0];
+        return fullNeutral?.path ?? null;
     } catch {
         return null;
     }
@@ -4563,7 +4627,13 @@ async function getAvailableExpressionLabels(charName) {
         const labels = new Set();
         for (const s of sprites) {
             const label = String(s?.label || '').trim();
-            if (label) labels.add(label);
+            if (!label) continue;
+            // -half variants are PAIRED with their base (e.g. "gratitude-half"
+            // is the upper-body crop of "gratitude") — skip them so random
+            // expression pickers treat them as variants of the base label,
+            // not as standalone expressions.
+            if (/-half$/i.test(label)) continue;
+            labels.add(label);
         }
         return [...labels];
     } catch {
@@ -4725,6 +4795,18 @@ function getActiveUserAvatarUrl() {
     return `/thumbnail?type=persona&file=${encodeURIComponent(user_avatar)}`;
 }
 
+// Body-class flip driven by the Monopad → Display → HALF-SPRITE MODE toggle.
+// CSS in style.css (body.dangan-halfsprite-mode) scales + clips ST's in-chat
+// sprite to the upper body. Called on toggle and on boot.
+function applyHalfSpriteMode() {
+    const on = !!extension_settings[extensionName]?.halfspriteMode;
+    document.body.classList.toggle("dangan-halfsprite-mode", on);
+    // gcpPositionSlotsFlat sets --gcp-half-slot-height for the GCP stage —
+    // re-run it so the toggle takes effect on the current chat without
+    // needing a reload / chat switch.
+    try { trialManager?.recomputeGcpFlatLayout?.(); } catch (_) {}
+}
+
 function applyImageVisibilitySettings() {
     document.body.classList.toggle("dangan-hide-truth-images", !!getMonopadSetting("hideTruthBulletImages"));
     document.body.classList.toggle("dangan-hide-gift-images", !!getMonopadSetting("hideGiftImages"));
@@ -4796,6 +4878,107 @@ function applyLecternUI() {
     if (nameEl) {
         nameEl.textContent = getMonopadSetting('customLecternData') ? 'Custom file loaded' : 'No file chosen';
     }
+}
+
+// Read the configured custom Game Master name, or null when default Monokuma
+// mode is selected / no character chosen. Centralised so callers (sprite
+// resolver, isMonokuma) don't duplicate the mode + name checks.
+function getCustomGameMasterName() {
+    if (getMonopadSetting('gameMasterMode') !== 'custom') return null;
+    const name = getMonopadSetting('gameMasterCharacter');
+    return (typeof name === 'string' && name.trim()) ? name.trim() : null;
+}
+
+// ── Character introduction tracking ─────────────────────────────────────────
+// Until /introduce is run on a character their name renders as "???" in any
+// dangan-extension UI (overworld sprite hover, minimap pin tooltip, trial
+// speaker sticker, …). The set persists in extension_settings so the player
+// only has to introduce each character once per profile.
+const UNINTRODUCED_DISPLAY_NAME = '???';
+
+function getIntroducedCharactersStore() {
+    const root = extension_settings[extensionName] ??= {};
+    root.introducedCharacters ??= {};
+    return root.introducedCharacters;
+}
+
+// Speakers that never need /introduce — these are system / framing voices
+// rather than actual characters in the killing game, so masking them as
+// "???" would be confusing rather than mysterious.
+const ALWAYS_INTRODUCED_KEYS = new Set(['narrator', 'assistant']);
+
+function isCharacterIntroduced(name) {
+    const key = normalizeName(name);
+    if (!key) return false;
+    // The player always knows themselves; treat the active persona and the
+    // Game Master (Monokuma or the custom override) as pre-introduced so the
+    // ??? mask never hides them.
+    const personaKey = normalizeName(getActivePersonaName?.() || '');
+    if (personaKey && key === personaKey) return true;
+    const gm = getCustomGameMasterName();
+    if (gm && key === normalizeName(gm)) return true;
+    if (key === 'monokuma') return true;
+    if (ALWAYS_INTRODUCED_KEYS.has(key)) return true;
+    return Boolean(getIntroducedCharactersStore()[key]);
+}
+
+function markCharacterIntroduced(name) {
+    const key = normalizeName(name);
+    if (!key) return;
+    const store = getIntroducedCharactersStore();
+    if (store[key]) return;
+    store[key] = true;
+    saveSettingsDebounced();
+}
+
+// Returns the name to show in UI labels: the original when introduced, or
+// "???" otherwise. Used by overworld + minimap + trial sticker rendering.
+function getCharacterDisplayName(name) {
+    if (!name) return name;
+    return isCharacterIntroduced(name) ? name : UNINTRODUCED_DISPLAY_NAME;
+}
+
+function applyGameMasterUI() {
+    const mode = getMonopadSetting('gameMasterMode') ?? 'default';
+    document.querySelectorAll('[data-gm-value]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.gmValue === mode);
+    });
+    const row = document.getElementById('dangan-gm-custom-row');
+    if (row) row.classList.toggle('is-hidden', mode !== 'custom');
+
+    const select = document.getElementById('dangan-gm-character');
+    if (!select) return;
+
+    // Pull the SillyTavern character roster. Skip user/persona entries and
+    // any character literally called "Monokuma" — the default option already
+    // covers that case.
+    const ctx = window.SillyTavern?.getContext?.();
+    const chars = Array.isArray(ctx?.characters) ? ctx.characters : [];
+    const saved = String(getMonopadSetting('gameMasterCharacter') || '').trim();
+    const names = chars
+        .filter(c => c && !c.is_user && !c.isUser)
+        .map(c => String(c.name || '').trim())
+        .filter(n => n && n.toLowerCase() !== 'monokuma');
+    // Dedup + sort alphabetically for predictability.
+    const uniq = [...new Set(names)].sort((a, b) => a.localeCompare(b));
+
+    // If the saved selection points to a character that no longer exists, keep
+    // it in the list so the user can see what was chosen and re-pick.
+    if (saved && !uniq.includes(saved)) uniq.unshift(saved);
+
+    select.innerHTML = '';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = uniq.length ? '— Select a character —' : 'No characters found';
+    placeholder.disabled = uniq.length > 0;
+    select.appendChild(placeholder);
+    for (const n of uniq) {
+        const opt = document.createElement('option');
+        opt.value = n;
+        opt.textContent = n;
+        select.appendChild(opt);
+    }
+    select.value = saved || '';
 }
 
 function applyDynamicTheme() {
@@ -5624,6 +5807,7 @@ function applySettingsTabUI() {
     vnModeController?.setEnabled?.(!!tab.vnModeEnabled);
     applyAnnouncementCustomisationUI();
     applyLecternUI();
+    applyGameMasterUI();
 }
 
 function saveCharacters() {
@@ -7096,6 +7280,7 @@ jQuery(async () => {
         character_click: document.getElementById("ow_sfx_character_click"),
         character_enter_talk: document.getElementById("ow_sfx_character_enter_talk"),
         character_exit_talk: document.getElementById("ow_sfx_character_exit_talk"),
+        change_rooms: document.getElementById("ow_sfx_change_rooms"),
         monocoin_insert: document.getElementById("monopad_sfx_monocoin_insert"),
         monochine_jingle: document.getElementById("monopad_sfx_monochine_jingle"),
         monochine_turn: document.getElementById("monopad_sfx_monochine_turn"),
@@ -7220,6 +7405,7 @@ jQuery(async () => {
                     getLastKnownCharacterLocations,
                     getMapPanelController: () => mapPanelController,
                     getPlayerName: () => getActivePersonaName(),
+                    getCharacterDisplayName,
                     playSfx,
                     getSfx: () => sfx,
                     armBgmTransitionGuard,
@@ -7585,6 +7771,17 @@ $(".monopad-icon").on("mouseenter", function () {
             }
             if (key === "hideTruthBulletImages" || key === "hideGiftImages" || key === "hideHopesPeakBranding") {
                 applyImageVisibilitySettings();
+                if (key === "hideHopesPeakBranding") {
+                    // The Game Master picker only shows under #dangan-branding-extras
+                    // when branding is hidden — re-show branding ⇒ revert mode to
+                    // default Monokuma so a stale "custom" pick can't keep driving
+                    // GM sprites/voice while the user can't see/change it.
+                    if (!next) setMonopadSetting('gameMasterMode', 'default');
+                    applyGameMasterUI();
+                }
+            }
+            if (key === "halfspriteMode") {
+                applyHalfSpriteMode();
             }
             mapPanelController?.handleSettingsChanged?.();
         });
@@ -7643,6 +7840,21 @@ $(".monopad-icon").on("mouseenter", function () {
             const row = document.getElementById('dangan-lectern-custom-row');
             if (row) row.classList.toggle('is-hidden', value !== 'custom');
             setMonopadSetting('customLecternMode', value);
+            saveSettingsDebounced();
+        });
+
+        // Game Master mode toggle (default Monokuma vs custom character)
+        $(document).on("click", "[data-gm-value]", function () {
+            const value = String(this.dataset.gmValue || 'default');
+            setMonopadSetting('gameMasterMode', value);
+            saveSettingsDebounced();
+            applyGameMasterUI();
+        });
+
+        // Game Master character pick
+        $(document).on("change", "#dangan-gm-character", function () {
+            const value = String(this.value || '').trim();
+            setMonopadSetting('gameMasterCharacter', value);
             saveSettingsDebounced();
         });
 
@@ -7907,6 +8119,28 @@ $(".monopad-icon").on("mouseenter", function () {
             if (statusEl) statusEl.textContent = "Chapter reset to PROLOGUE.";
         });
 
+        $("#dangan_reset_introductions").on("click", async function () {
+            const statusEl = document.getElementById("dangan_reset_introductions_status");
+            const confirmed = await openMonopadConfirmDialog({
+                title: "RESET INTRODUCTIONS",
+                message: "Mask every character as ??? again? You'll need to re-run /introduce on each one.",
+                confirmLabel: "RESET",
+                cancelLabel: "CANCEL",
+            });
+            if (!confirmed) {
+                if (statusEl) statusEl.textContent = "Reset cancelled.";
+                return;
+            }
+            // Wipe the persisted introduction map and refresh the surfaces
+            // that render character names so they flip back to ??? immediately.
+            const root = extension_settings[extensionName] ??= {};
+            root.introducedCharacters = {};
+            saveSettingsDebounced();
+            try { overworldSceneController?.render?.(); } catch (_) {}
+            try { _minimapSig = null; renderMinimap(); } catch (_) {}
+            if (statusEl) statusEl.textContent = "All characters reset to ???.";
+        });
+
 loadSettings();
 ensureTimeTrackerState();
 renderTimeTrackerUi();
@@ -8013,7 +8247,76 @@ updateChapterDisplay();
 itemsPanelController.loadInventoryState();
 applySettingsTabUI();
 applyImageVisibilitySettings();
+applyHalfSpriteMode();
 applyMonopadLaunchControlState(monopadButtonEl, $panel.get(0));
+
+// Persistent guard against Dynamic Audio playing alongside our BGM. Dangan
+// triggers DA's $bgmSelect change in playBgmPath() and does a one-shot 400ms
+// pause on #audio_bgm, but if DA's <audio> is still loading at the 400ms
+// mark the pause is a no-op and DA starts playing AFTER we've silenced it.
+// Polling restarts or chat-change re-fires can also re-trigger DA at any
+// time. Attach a `play` listener once and pause DA immediately whenever
+// dangan has a track loaded (regardless of whether dangan itself is paused
+// or playing — dangan is the authoritative source while it owns a track).
+(function attachDaBgmGuard() {
+    const tryAttach = () => {
+        const daEl = document.getElementById('audio_bgm');
+        if (!(daEl instanceof HTMLAudioElement)) return false;
+        if (daEl._danganGuarded) return true;
+        daEl._danganGuarded = true;
+        const guard = () => {
+            if (investigationTrackAudio && !daEl.paused) daEl.pause();
+        };
+        daEl.addEventListener('play', guard);
+        // Belt-and-braces: also catch the case where DA was already mid-play
+        // when this binding ran (no future `play` event for that session).
+        guard();
+        return true;
+    };
+    if (!tryAttach()) {
+        // DA's #audio_bgm element is built lazily — poll for it briefly.
+        let elapsed = 0;
+        const STEP = 250;
+        const DURATION = 15000;
+        const tick = () => {
+            if (tryAttach()) return;
+            elapsed += STEP;
+            if (elapsed < DURATION) setTimeout(tick, STEP);
+        };
+        setTimeout(tick, STEP);
+    }
+})();
+
+// While the Dangan GCP stage is active, suppress ST's expressions module from
+// running its `updateVisualNovelModeDebounced` on every resize. That handler
+// re-classifies (via /api/extra/classify) every group member's last message
+// — N characters × M resize events = O(N·M) classifier hits, even though
+// dangan's GCP stage has already replaced ST's VN sprite display so the
+// updates produce no visible effect. ST gates the update on
+// isVisualNovelMode() → `power_user.waifuMode && groupId`, so flipping
+// waifuMode off while GCP is active is the cheapest no-side-effects bypass.
+// We snapshot/restore the original value rather than mutating the persisted
+// setting so the user's preference is intact when GCP tears down.
+(function setupGcpVnSuppression() {
+    let _waifuModeSnapshot = null;
+    const apply = () => {
+        const gcpActive = document.body.classList.contains('dangan-gcp-active');
+        if (gcpActive && _waifuModeSnapshot === null) {
+            _waifuModeSnapshot = power_user.waifuMode;
+            power_user.waifuMode = false;
+        } else if (!gcpActive && _waifuModeSnapshot !== null) {
+            power_user.waifuMode = _waifuModeSnapshot;
+            _waifuModeSnapshot = null;
+        }
+    };
+    // Sync once in case the class was already set before this code ran.
+    apply();
+    new MutationObserver(apply).observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class'],
+    });
+})();
+
 loadCharacters();
 itemsPanelController.renderSkillsItemsPanel();
 
@@ -8136,6 +8439,8 @@ debugSTGlobals();
             extensionFolderPath,
             saveSettingsDebounced,
             getLecternUrl,
+            getCustomGameMasterName,
+            getCharacterDisplayName,
             deductMonocoins,
             vnModeController,
             getTruthBullets,
@@ -8143,7 +8448,11 @@ debugSTGlobals();
             getCharacterSourceText,
             getEmotionFont,
             onTrialStateChange: () => { renderMoveToPanel(); renderMinimap(); overworldSceneController?.render?.(); },
-            getSpriteUrl,
+            // Inject the chat-aware resolver so the trial / GCP stage prefers
+            // -half variants when half-sprite mode is on. Overworld scenes,
+            // chapter rosters, UI pickers, etc. still receive the plain
+            // getSpriteUrl (full sprites only) via their own dep injection.
+            getSpriteUrl: getChatSpriteUrl,
             playSfx,
             getSfx: () => sfx,
             characters,
@@ -8912,6 +9221,42 @@ STATEMENT: <third statement>`;
         let _pendingExprSrc = null;
         let _exprDebounceTimer = null;
 
+        // When half-sprite mode is on, transform a sprite URL to its -half
+        // variant (e.g. `approval.png?t=…` → `approval-half.png?t=…`). The
+        // mirror gets the raw URL from ST's img.expression element, which
+        // bypasses getSpriteUrl; this helper applies the same -half
+        // preference here. Falls back to the original URL via onerror if the
+        // -half file doesn't exist on the server.
+        function setMirroredSrc(img, src) {
+            if (!img || !src) return;
+            const halfMode = !!extension_settings[extensionName]?.halfspriteMode;
+            // Class trials never use -half sprites. If the incoming src is
+            // itself a -half URL (shouldn't happen now that getChatSpriteUrl
+            // also gates on trial state, but kept as belt-and-braces) we
+            // rewrite it back to the canonical full sprite.
+            if (isTrialUiActive()) {
+                const noHalf = src.replace(/-half(\.[a-z0-9]+)/i, '$1');
+                img.src = noHalf;
+                return;
+            }
+            // Already half-prefixed, or not in half mode — set directly.
+            if (!halfMode || /-half\.[a-z0-9]+(\?|$)/i.test(src)) {
+                img.src = src;
+                return;
+            }
+            const halfSrc = src.replace(/(\.[a-z0-9]+)(\?|$)/i, '-half$1$2');
+            // 404 fallback: if the -half file doesn't exist, drop back to the
+            // original full-body sprite. `once: true` so we don't leak handlers.
+            const onFail = () => { img.src = src; };
+            img.addEventListener('error', onFail, { once: true });
+            // Clear the listener if the half load succeeds (so a later failure
+            // on a different src doesn't accidentally reset to this one).
+            img.addEventListener('load', () => {
+                img.removeEventListener('error', onFail);
+            }, { once: true });
+            img.src = halfSrc;
+        }
+
         function flushExpression() {
             const src = _pendingExprSrc;
             _pendingExprSrc = null;
@@ -8919,7 +9264,7 @@ STATEMENT: <third statement>`;
             const speakerImg = trialManager?.getGcpSpeakerImg?.();
             if (!speakerImg) return;
             if (speakerImg.parentElement?.classList.contains('gcp-dead')) return;
-            speakerImg.src = src;
+            setMirroredSrc(speakerImg, src);
         }
 
         function onExpressionChange(imgEl) {
@@ -8934,7 +9279,7 @@ STATEMENT: <third statement>`;
             // Prome user sprite → player slot
             if (imgEl.closest?.('#expression-prome-user')) {
                 const playerImg = trialManager?.getGcpPlayerImg?.();
-                if (playerImg) playerImg.src = src;
+                if (playerImg) setMirroredSrc(playerImg, src);
                 return;
             }
 
@@ -8948,7 +9293,7 @@ STATEMENT: <third statement>`;
                 const targetImg = trialManager?.getGcpImgForExpressionSrc?.(src);
                 if (targetImg) {
                     if (!targetImg.closest('.dangan-gcp-slot')?.classList.contains('gcp-dead')) {
-                        targetImg.src = src;
+                        setMirroredSrc(targetImg, src);
                         // ST's setImage does a clone-swap in VN mode: the original img is
                         // removed and a clone gets the new src but inherits the OLD
                         // data-expression. Reading data-expression here would give "neutral"
@@ -9095,6 +9440,7 @@ STATEMENT: <third statement>`;
 
     voteResultsController = createVoteResultsController({
         extensionFolderPath,
+        getCustomGameMasterName,
         getCharacters: () => {
             const chars = [...characters.values()];
             const playerName = getActivePersonaName();
@@ -9150,7 +9496,7 @@ STATEMENT: <third statement>`;
             trialManager?.resumeAfterActivity?.();
         },
     });
-    scrumDebateController     = createScrumDebateController({ extensionFolderPath, awardMonocoins, deductMonocoins, getTruthBullets: getTruthBulletsSnapshot, pauseCurrentBgm: fadeOutAndPauseBgm, resumeCurrentBgm: resumeBgmAfterHG, getScrumTracks: () => extension_settings[extensionName]?.trialScrumTracks ?? [], playBgm: playBgmForScrum, getFinalPushTrack: () => findBgmTrackByName('Class Trial - Insurrection'), onWin: onScrumDebateWin, getSpriteUrl, isCharacterDead: (name) => characters.get(normalizeName(name))?.dead === true, getPlayerSpriteUrl, getPlayerName: getActivePersonaName, getCharacterHeightCm });
+    scrumDebateController     = createScrumDebateController({ extensionFolderPath, awardMonocoins, deductMonocoins, getTruthBullets: getTruthBulletsSnapshot, pauseCurrentBgm: fadeOutAndPauseBgm, resumeCurrentBgm: resumeBgmAfterHG, getScrumTracks: () => extension_settings[extensionName]?.trialScrumTracks ?? [], playBgm: playBgmForScrum, getFinalPushTrack: () => findBgmTrackByName('Class Trial - Insurrection'), onWin: onScrumDebateWin, getSpriteUrl, isCharacterDead: (name) => characters.get(normalizeName(name))?.dead === true, getPlayerSpriteUrl, getPlayerName: getActivePersonaName, getCharacterHeightCm, getCustomGameMasterName });
     rebuttalShowdownController = createRebuttalShowdownController({
         extensionFolderPath, getTruthBullets: getTruthBulletsSnapshot,
         awardMonocoins, deductMonocoins, getSpriteUrl,
@@ -9193,6 +9539,12 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         const ultimate  = args?.ultimate ?? lookupUltimateFromLorebook(name);
         const spriteUrl = await getSpriteUrl(name, 'neutral').catch(() => null);
         await introduceCharacterController?.run({ name, ultimate, spriteUrl });
+        // Remember that this character has now been introduced so subsequent
+        // UI labels (overworld hover, minimap pins, trial sticker, …) stop
+        // masking them as "???". Persists across page reloads via settings.
+        markCharacterIntroduced(name);
+        try { overworldSceneController?.render?.(); } catch (_) {}
+        try { renderMinimap(); } catch (_) {}
         return '';
     },
     namedArgumentList: [
@@ -9708,6 +10060,102 @@ function setCurrentLocationId(locationId) {
         _minimapCharPositions.clear();
         _minimapSig = null;
     }
+    updateCurrentRoomDisplay();
+}
+
+// Slim transparent slab under the level bar that displays the player's current
+// room name. Styled to match the BGM panel's controls strip (transparent
+// skewed slab) with the same blue italic uppercase label used by
+// "PHASES - DAYTIME" (the .dbgm-playlist-label colour).
+function ensureCurrentRoomPanel() {
+    let panel = document.getElementById('dangan-current-room');
+    if (panel) return panel;
+    const wrapper = document.getElementById('dangan-hud-topright');
+    if (!wrapper) return null; // level bar / hud not built yet — retry next call
+    panel = document.createElement('div');
+    panel.id = 'dangan-current-room';
+    const label = document.createElement('span');
+    label.className = 'dangan-current-room-label';
+    panel.appendChild(label);
+    wrapper.appendChild(panel);
+    return panel;
+}
+
+function updateCurrentRoomDisplay() {
+    const panel = ensureCurrentRoomPanel();
+    if (!panel) return;
+    const label = panel.querySelector('.dangan-current-room-label');
+    if (!label) return;
+    const id = getCurrentLocationId();
+    if (!id) { label.textContent = '—'; return; }
+    const pin = mapPanelController?.getPinByLocationId?.(id);
+    if (pin?.label) { label.textContent = pin.label; return; }
+    if (id.startsWith('area:'))    { label.textContent = id.slice(5); return; }
+    if (id.startsWith('subarea:')) { label.textContent = id.slice(8); return; }
+    label.textContent = id;
+}
+
+// Arrive at a map pin behind a fade-to-black wash. The sfx plays in sync
+// with the fade-in; once we're fully black we do the actual room swap
+// (location id, chat bg, pin BGM, overworld notify, side panels). The
+// visible transition (fade-in + black hold + fade-out) is DECOUPLED from
+// the sfx length — the sfx plays in the background and is allowed to
+// outlive the fade. This keeps the screen-in-black time short.
+//
+// Timing reference (t=0 is the moment the sfx starts):
+//   t=0        → fade-in begins (ROOM_FADE_IN_MS inline override)
+//   t~200ms    → fully black; room-change side effects fire here
+//   t~470ms    → unfade begins (ROOM_BLACK_HOLD_MS past swap)
+//   t~1070ms   → fully unfaded; overlay removed
+//   sfx ends whenever its duration says, independently of the visual.
+const ROOM_FADE_IN_MS = 200;
+const ROOM_BLACK_HOLD_MS = 250; // black-hold past the swap so it settles
+const ROOM_FADE_OUT_MS = 600;
+function performPinArrivalWithFade(pin) {
+    if (!pin) return;
+    const audio = sfx?.change_rooms;
+
+    const fade = document.createElement('div');
+    fade.className = 'dangan-ow-fadeout';
+    // Override the shared 280ms CSS transition with the snappier fade-in.
+    fade.style.transition = `opacity ${ROOM_FADE_IN_MS}ms ease`;
+    document.body.appendChild(fade);
+
+    // Double-rAF so the initial opacity:0 is committed before flipping .on —
+    // otherwise the transition would skip and we'd cut straight to black.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        fade.classList.add('on');
+        document.body.classList.add('dangan-ow-fading');
+        if (audio) playSfx(audio);
+    }));
+
+    // After the fade-in completes, the screen is fully covered — perform the
+    // visible room-change steps behind the black wash. Small buffer past the
+    // fade-in commit so the swap definitely happens behind full opacity.
+    const swapAtMs = ROOM_FADE_IN_MS + 20;
+    setTimeout(() => {
+        setCurrentLocationId(pin.locationId);
+        if (pin.bg)  mapPanelController.switchChatBackground?.(pin.bg);
+        if (pin.bgm) mapPanelController.playPinBgm?.(pin.bgm);
+        mapPanelController.highlightPinByLocationId?.(pin.locationId);
+        // Companion characters (1-on-1 partner or group members) follow the
+        // player into the new room so their overworld presence stays accurate.
+        overworldSceneController?.notifyPlayerMovedTo?.(pin.locationId);
+        renderMoveToPanel();
+        renderMinimap();
+        overworldSceneController?.render?.();
+    }, swapAtMs);
+
+    // Unfade right after the black-hold — independent of sfx duration so the
+    // total room-change feels snappy even when the sfx tail is long.
+    const unfadeStartMs = swapAtMs + ROOM_BLACK_HOLD_MS;
+    setTimeout(() => {
+        fade.style.transition = `opacity ${ROOM_FADE_OUT_MS}ms ease`;
+        fade.classList.remove('on');
+        document.body.classList.remove('dangan-ow-fading');
+    }, unfadeStartMs);
+
+    setTimeout(() => { fade.remove(); }, unfadeStartMs + ROOM_FADE_OUT_MS + 100);
 }
 
 // Resolve a destination string (label/ref/value) against the current pin's
@@ -9728,13 +10176,10 @@ function moveToDestination(raw) {
     if (dest.kind === 'pin') {
         const pin = mapPanelController.getPinByLocationId?.(dest.value);
         if (!pin) return false;
-        setCurrentLocationId(pin.locationId);
-        if (pin.bg)  mapPanelController.switchChatBackground?.(pin.bg);
-        if (pin.bgm) mapPanelController.playPinBgm?.(pin.bgm);
-        mapPanelController.highlightPinByLocationId?.(pin.locationId);
-        // Companion characters (1-on-1 partner or group members) follow the
-        // player into the new room so their overworld presence stays accurate.
-        overworldSceneController?.notifyPlayerMovedTo?.(pin.locationId);
+        // Helper handles fade, sfx, room swap, and all the panel re-renders —
+        // return early so we don't re-render before the fade has even started.
+        performPinArrivalWithFade(pin);
+        return true;
     } else if (dest.kind === 'area') {
         mapPanelController.navigateToArea?.(dest.value);
         setCurrentLocationId(`area:${dest.value}`);
@@ -9896,6 +10341,38 @@ function renderMinimap() {
     root.appendChild(flatCol);
     root.appendChild(zoomCol);
 
+    // UI-hide toggle — diamond button at the BOTTOM of the minimap, mirroring
+    // the flat-toggle column at the top. Hides every visible UI element so
+    // the scene background can be appreciated; clicking anywhere on the
+    // screen while hidden brings the UI back.
+    const hideCol = document.createElement('div');
+    hideCol.className = 'dangan-minimap-ui-toggle-col';
+    const hideBtn = document.createElement('button');
+    hideBtn.type = 'button';
+    hideBtn.className = 'dangan-minimap-zoom-btn dangan-minimap-ui-toggle';
+    hideBtn.title = 'Hide UI (click anywhere to restore)';
+    hideBtn.innerHTML = '<span>◇</span>';
+    hideBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        document.body.classList.add('dangan-ui-hidden');
+    });
+    hideBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    hideCol.appendChild(hideBtn);
+    root.appendChild(hideCol);
+
+    // One-shot global listener that restores the UI on any click while hidden.
+    // Capture phase + stopPropagation so the click that restores the UI doesn't
+    // accidentally trigger something underneath (e.g. a chat message).
+    if (!window._danganUIHideRestoreBound) {
+        window._danganUIHideRestoreBound = true;
+        window.addEventListener('click', (e) => {
+            if (!document.body.classList.contains('dangan-ui-hidden')) return;
+            e.stopPropagation();
+            e.preventDefault();
+            document.body.classList.remove('dangan-ui-hidden');
+        }, true);
+    }
+
     // Reset pan + zoom if the floor changed; otherwise preserve the player's view.
     if (_minimapPan.imageSrc !== data.imageSrc) {
         _minimapPan = { tx: 0, ty: 0, imageSrc: data.imageSrc };
@@ -9936,16 +10413,64 @@ const MINIMAP_OTHER_COLORS = [
 ];
 
 // Per-character drag-override positions for the minimap, keyed by character name.
-// { xPct, yPct } — survives re-renders so the player's manual placement sticks.
+// { xPct, yPct } — survives re-renders so the player's manual placement sticks,
+// and is rehydrated from extension_settings on each room render so it also
+// survives page reloads. The on-disk store is partitioned by room id so each
+// room keeps its own arrangement: switching rooms drops the in-memory map and
+// the next render reloads positions for the new room (or starts fresh).
 const _minimapCharPositions = new Map();
 // Per-character teardrop rotation in degrees, keyed by character name. Cached
 // once per character so the teardrop point doesn't change direction on every
 // re-render (which would look chaotic).
 const _minimapCharRotations = new Map();
 
+// Lazy accessor for the persisted store. Shape:
+//   extension_settings[extensionName].map.charPositions = {
+//     [roomId]: { [charName]: { xPct, yPct } },
+//     ...
+//   }
+function getMinimapCharPositionsStore() {
+    const root = extension_settings[extensionName] ??= {};
+    root.map ??= {};
+    root.map.charPositions ??= {};
+    return root.map.charPositions;
+}
+
+// Rehydrate the in-memory Map from settings for the given room id.  Called
+// at the top of each renderMinimapCharacterLayer pass before pins are placed
+// so a fresh page load (or returning to a previously-visited room) shows the
+// player's saved arrangement instead of falling back to the default ring.
+function loadMinimapCharPositions(roomId) {
+    _minimapCharPositions.clear();
+    if (!roomId) return;
+    const store = getMinimapCharPositionsStore();
+    const forRoom = store[roomId];
+    if (!forRoom || typeof forRoom !== 'object') return;
+    for (const [name, pos] of Object.entries(forRoom)) {
+        if (pos && Number.isFinite(pos.xPct) && Number.isFinite(pos.yPct)) {
+            _minimapCharPositions.set(name, { xPct: pos.xPct, yPct: pos.yPct });
+        }
+    }
+}
+
+// Persist a single drag-end position to settings under the current room id.
+// Updates the in-memory Map so subsequent re-renders pick up the change
+// immediately, then debounces a settings save.
+function saveMinimapCharPosition(roomId, name, pos) {
+    if (!roomId || !name || !pos) return;
+    _minimapCharPositions.set(name, pos);
+    const store = getMinimapCharPositionsStore();
+    store[roomId] ??= {};
+    store[roomId][name] = { xPct: pos.xPct, yPct: pos.yPct };
+    saveSettingsDebounced();
+}
+
 function renderMinimapCharacterLayer(mapWrap, data, currentPin) {
     // Without a known room pin we have nowhere to draw character markers.
     if (!currentPin) return;
+    // Rehydrate any drag-saved positions for this room from settings before
+    // we read _minimapCharPositions in the loop below.
+    loadMinimapCharPositions(currentPin.id);
     const xPct = (currentPin.x / data.mapWidth) * 100;
     const yPct = (currentPin.y / data.mapHeight) * 100;
 
@@ -10025,7 +10550,10 @@ function renderMinimapCharacterLayer(mapWrap, data, currentPin) {
         pin.className = `dangan-minimap-char-pin dangan-minimap-char-pin-${c.kind}`;
         pin.style.left = `${px}%`;
         pin.style.top  = `${py}%`;
-        pin.dataset.name = c.name;
+        // CSS draws the hover tooltip via `content: attr(data-name)`, so feed
+        // the masked display name (??? when uintroduced). The underlying c.name
+        // identity is preserved via the drag handler's `name` argument.
+        pin.dataset.name = getCharacterDisplayName(c.name);
         if (c.color) pin.style.setProperty('--char-color', c.color);
         // Teardrop point rotation — random per character, cached so it stays
         // stable across re-renders. Rotation is applied to a child shape so
@@ -10039,7 +10567,7 @@ function renderMinimapCharacterLayer(mapWrap, data, currentPin) {
         shape.className = 'dangan-minimap-char-pin-shape';
         shape.style.setProperty('--pin-angle', `${rot}deg`);
         pin.appendChild(shape);
-        attachCharPinDrag(pin, c.name);
+        attachCharPinDrag(pin, c.name, currentPin.id);
         charLayer.appendChild(pin);
     });
 
@@ -10056,7 +10584,7 @@ function renderMinimapCharacterLayer(mapWrap, data, currentPin) {
 //   local_dx = dx / zoom
 //   local_dy = dy / zoom
 // That delta is then converted to a % of the wrapper's natural CSS dimensions.
-function attachCharPinDrag(pin, name) {
+function attachCharPinDrag(pin, name, roomId) {
     pin.style.cursor = 'grab';
     pin.addEventListener('pointerdown', (e) => {
         if (e.button !== 0) return;
@@ -10106,7 +10634,7 @@ function attachCharPinDrag(pin, name) {
             pin.style.cursor = 'grab';
             try { pin.releasePointerCapture?.(eu.pointerId); } catch {}
             if (moved) {
-                _minimapCharPositions.set(name, { xPct: posX, yPct: posY });
+                saveMinimapCharPosition(roomId, name, { xPct: posX, yPct: posY });
             } else {
                 selectMinimapPin(pin, name);
             }
@@ -10174,45 +10702,136 @@ function applyMinimapTransform(mapWrap) {
         `translate(${_minimapPan.tx}px, ${_minimapPan.ty}px) rotate(-45deg) scale(${_minimapZoom})`;
 }
 
-// Drag-to-pan handler. The map wrapper's translate happens INSIDE the rotated
-// square's coord system, so a (tx, ty) translate is then rotated 45° on screen
-// by the parent. To make a horizontal drag move the map horizontally, the
-// screen-space delta (dx, dy) is first rotated by -45° before being added:
+// Drag-to-pan + pinch-to-zoom handler. The map wrapper's translate happens
+// INSIDE the rotated square's coord system, so a (tx, ty) translate is then
+// rotated 45° on screen by the parent. To make a horizontal drag move the
+// map horizontally, the screen-space delta (dx, dy) is first rotated by -45°
+// before being added:
 //   tx += (dx + dy) / √2
 //   ty += (dy - dx) / √2
+//
+// Pinch: when two pointers are active we switch from drag to pinch mode and
+// scale _minimapZoom by the ratio of current-to-initial finger distance.
+// Trackpad pinch on desktop arrives as a wheel event with ctrlKey set.
 function attachMinimapDrag(target) {
-    let dragging = false;
-    let lastX = 0, lastY = 0;
     const INV_SQRT2 = 1 / Math.SQRT2;
     const root = target.closest('#dangan-minimap') || target;
+    // pointerId → { x, y }. Multi-pointer gestures (pinch) compare two entries.
+    const pointers = new Map();
+    // Drag state — only meaningful while exactly one pointer is down.
+    let dragging = false;
+    let lastX = 0, lastY = 0;
+    // Pinch state — captured on the second pointerdown, replayed each move.
+    let pinching = false;
+    let pinchStartDist = 0;
+    let pinchStartZoom = 1;
+
+    const mapEl = () => target.querySelector('.dangan-minimap-map');
+
+    function clampZoom(z) {
+        return Math.max(MINIMAP_ZOOM_MIN, Math.min(MINIMAP_ZOOM_MAX, z));
+    }
+
+    function pointerDistance() {
+        const pts = [...pointers.values()];
+        if (pts.length < 2) return 0;
+        const [a, b] = pts;
+        return Math.hypot(b.x - a.x, b.y - a.y);
+    }
 
     target.addEventListener('pointerdown', (e) => {
-        if (e.button !== 0) return;
-        dragging = true;
-        lastX = e.clientX;
-        lastY = e.clientY;
-        root.classList.add('dragging');
+        if (e.button !== 0 && e.pointerType === 'mouse') return;
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
         try { target.setPointerCapture?.(e.pointerId); } catch {}
+
+        if (pointers.size === 1) {
+            // Start a drag from the single finger.
+            dragging = true;
+            pinching = false;
+            lastX = e.clientX;
+            lastY = e.clientY;
+            root.classList.add('dragging');
+        } else if (pointers.size === 2) {
+            // Promote to a pinch — drop the in-progress drag so a second
+            // finger landing doesn't yank the pan a frame before the pinch
+            // takes over.
+            dragging = false;
+            pinching = true;
+            pinchStartDist = pointerDistance() || 1;
+            pinchStartZoom = _minimapZoom;
+        }
         e.preventDefault();
     });
+
     target.addEventListener('pointermove', (e) => {
-        if (!dragging) return;
-        const dx = e.clientX - lastX;
-        const dy = e.clientY - lastY;
-        lastX = e.clientX;
-        lastY = e.clientY;
-        _minimapPan.tx += (dx + dy) * INV_SQRT2;
-        _minimapPan.ty += (dy - dx) * INV_SQRT2;
-        applyMinimapTransform(target.querySelector('.dangan-minimap-map'));
+        const tracked = pointers.get(e.pointerId);
+        if (!tracked) return;
+        tracked.x = e.clientX;
+        tracked.y = e.clientY;
+
+        if (pinching && pointers.size >= 2) {
+            const dist = pointerDistance();
+            if (!dist) return;
+            const next = clampZoom(pinchStartZoom * (dist / pinchStartDist));
+            if (next !== _minimapZoom) {
+                _minimapZoom = next;
+                applyMinimapTransform(mapEl());
+            }
+            return;
+        }
+
+        if (dragging && pointers.size === 1) {
+            const dx = e.clientX - lastX;
+            const dy = e.clientY - lastY;
+            lastX = e.clientX;
+            lastY = e.clientY;
+            _minimapPan.tx += (dx + dy) * INV_SQRT2;
+            _minimapPan.ty += (dy - dx) * INV_SQRT2;
+            applyMinimapTransform(mapEl());
+        }
     });
-    const endDrag = (e) => {
-        if (!dragging) return;
-        dragging = false;
-        root.classList.remove('dragging');
+
+    const releasePointer = (e) => {
+        if (!pointers.has(e.pointerId)) return;
+        pointers.delete(e.pointerId);
         try { target.releasePointerCapture?.(e.pointerId); } catch {}
+
+        if (pointers.size === 1) {
+            // One finger lifted mid-pinch — resume drag from the remaining
+            // finger's current position so we don't jump on the next move.
+            pinching = false;
+            dragging = true;
+            const [remaining] = pointers.values();
+            lastX = remaining.x;
+            lastY = remaining.y;
+        } else if (pointers.size === 0) {
+            dragging = false;
+            pinching = false;
+            root.classList.remove('dragging');
+        }
     };
-    target.addEventListener('pointerup', endDrag);
-    target.addEventListener('pointercancel', endDrag);
+    target.addEventListener('pointerup', releasePointer);
+    target.addEventListener('pointercancel', releasePointer);
+
+    // Trackpad pinch on desktop / mouse wheel zoom. Browsers expose trackpad
+    // pinch as a wheel event with ctrlKey: true. Plain wheel over the map
+    // also zooms — the minimap is a small isolated widget, so any wheel
+    // gesture targeted at it should be zoom rather than page scroll.
+    // deltaY > 0 = pinch out / wheel down → zoom out. The 0.0035 factor tunes
+    // how quickly a trackpad pinch traverses the zoom range.
+    target.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const next = clampZoom(_minimapZoom * Math.exp(-e.deltaY * 0.0035));
+        if (next !== _minimapZoom) {
+            _minimapZoom = next;
+            applyMinimapTransform(mapEl());
+        }
+    }, { passive: false });
+
+    // Touch CSS rule prevents the browser from claiming the gesture for
+    // native page zoom — we need every move event so the pinch tracks the
+    // user's fingers, not the page underneath.
+    target.style.touchAction = 'none';
 }
 
 // True when the Class Trial UI is actually mounted on the page. This is the
@@ -10241,9 +10860,20 @@ function renderMoveToPanel() {
     }
 
     const currentId = getCurrentLocationId();
-    const conns = currentId
+    const rawConns = currentId
         ? (mapPanelController?.getConnectionsForLocationId?.(currentId) ?? [])
         : [];
+    // Dedupe by kind:value — the upstream list occasionally repeats the same
+    // destination (e.g. a pin connection listed twice in the pin's data),
+    // which surfaces as duplicate "Move to <X>" buttons in the panel.
+    const conns = [];
+    const seenConnKeys = new Set();
+    for (const c of rawConns) {
+        const key = `${c.kind}:${c.value}`;
+        if (seenConnKeys.has(key)) continue;
+        seenConnKeys.add(key);
+        conns.push(c);
+    }
 
     // Dirty-check signature — short-circuit when nothing observable has changed.
     // The poll calls this every 2s; without this guard each call would rebuild
@@ -10304,6 +10934,10 @@ function renderMoveToPanel() {
     const tick = () => {
         try { renderMoveToPanel(); } catch (e) { console.warn('[Dangan][moveto-panel] bootstrap render failed:', e); }
         try { renderMinimap();    } catch (e) { console.warn('[Dangan][minimap] bootstrap render failed:', e); }
+        // Current-room panel hangs off #dangan-hud-topright, which the reward
+        // system creates lazily. Re-tick keeps the label correct once the
+        // wrapper materialises and once mapPanelController has its pins.
+        try { updateCurrentRoomDisplay(); } catch (e) { console.warn('[Dangan][current-room] bootstrap render failed:', e); }
         elapsed += STEP;
         if (elapsed < DURATION) setTimeout(tick, STEP);
     };
@@ -10410,14 +11044,8 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         // 1) Pin lookup by locationId first.
         const pin = mapPanelController.getPinByLocationId?.(raw);
         if (pin) {
-            setCurrentLocationId(pin.locationId);
-            if (pin.bg)  mapPanelController.switchChatBackground?.(pin.bg);
-            if (pin.bgm) mapPanelController.playPinBgm?.(pin.bgm);
-            mapPanelController.highlightPinByLocationId?.(pin.locationId);
-            overworldSceneController?.notifyPlayerMovedTo?.(pin.locationId);
-            renderMoveToPanel();
-            renderMinimap();
-            overworldSceneController?.render?.();
+            // Helper handles fade, sfx, room swap, and panel/minimap re-renders.
+            performPinArrivalWithFade(pin);
             return pin.label || pin.locationId;
         }
 

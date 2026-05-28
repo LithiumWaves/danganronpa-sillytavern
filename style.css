@@ -289,9 +289,10 @@
     /* Alias so the nameplate glow animation can run on the chapter label */
     --dangan-nameplate-glow-rgb:  var(--dlvl-rgb);
     position: fixed;
-    top: 6px;
+    top: 14px;
     right: 0;
     height: 150px;
+    margin-top: 2.15em;
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
@@ -340,7 +341,7 @@ body.dangan-theme-investigation #dangan-hud-topright {
     white-space: nowrap;
     animation: dangan-nameplate-glow-pulse 2.8s ease-in-out infinite;
     position: absolute;
-    top: 95px;
+    top: 65px;
     padding: 0 10px 0 0;
     z-index: 2;
 }
@@ -357,6 +358,40 @@ body.dangan-theme-investigation #dangan-hud-topright {
     box-sizing: border-box;
     position: relative;
     overflow: hidden;
+}
+
+/* Current-room readout — sits directly under the level bar inside
+ * #dangan-hud-topright. Mirrors the BGM control strip's transparent skewed
+ * slab; the inner label uses the same blue italic uppercase styling as the
+ * "PHASES - DAYTIME" playlist label inside the BGM panel. */
+#dangan-current-room {
+    width: 240px;
+    height: 27px;
+    box-sizing: border-box;
+    background: rgba(0, 0, 0, 0.55);
+    transform: skewX(-20deg);
+    padding: 5px 0 5px 18px;
+    display: flex;
+    align-items: center;
+    pointer-events: auto;
+    z-index: 8;
+    position: relative;
+    right: -9px;
+    top: -5px;
+}
+
+.dangan-current-room-label {
+    display: inline-block;
+    transform: skewX(40deg);
+    font-size: 9px;
+    letter-spacing: 0.07em;
+    font-style: italic;
+    color: #9be8ff;
+    font-family: inherit;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 #dangan-level-bar::before {
@@ -791,10 +826,16 @@ body.dangan-theme-damaged       { --ow-theme-rgb: 235, 60, 60; }
     pointer-events: none;
 }
 #dangan-overworld .dangan-ow-group {
+    position: relative;
     display: flex;
     align-items: flex-end;
     gap: 14px;
-    pointer-events: auto;
+    /* The group's LAYOUT box is taller/wider than the visible sprite (because
+     * each sprite is transform: scaled but the layout box stays full-size).
+     * Letting events fire on the group itself would make clicks land on the
+     * empty space above/around the character. Push pointer-events down to the
+     * sprite (its transformed visual box) and the ± buttons. */
+    pointer-events: none;
     /* Per-cluster lift above the strip baseline. The further up a cluster
      * sits, the smaller its members render (perspective scale is computed
      * in JS from this same offset). */
@@ -825,6 +866,233 @@ body.dangan-theme-damaged       { --ow-theme-rgb: 235, 60, 60; }
 #dangan-overworld.dangan-ow-flat .dangan-ow-strip {
     bottom: 0;
 }
+/* Custom-positioned groups (placed via Edit Character Positions). They're
+ * taken out of the flex flow and anchored by --ow-custom-x / --ow-vert-offset,
+ * so a manually-placed group stays put while the remaining groups continue to
+ * flow through the strip's flexbox. */
+#dangan-overworld .dangan-ow-group.is-positioned {
+    position: absolute;
+    left: calc(var(--ow-custom-x, 0.5) * 100vw);
+    bottom: var(--ow-vert-offset, 0);
+    margin: 0 !important;
+    transform: translateX(-50%);
+    /* Manually-placed groups opt out of the crowd-fit shrink. --ow-fit is set
+     * on the strip and inherited; pinning it back to 1 here means the user's
+     * placed sprite size stays exactly what they saw during the drag. */
+    --ow-fit: 1;
+}
+/* Edit mode: every group is draggable. */
+body.dangan-ow-edit-mode #dangan-overworld .dangan-ow-group {
+    /* In edit mode the entire group layout box (including empty space around
+     * the transformed visual sprite) is the hover region — so the cursor can
+     * coast from the visible sprite over to the absolute-positioned ± buttons
+     * without ever leaving :hover. Default group is pointer-events: none for
+     * non-edit-mode (so the click-box matches the visible sprite); edit mode
+     * needs the wider hover zone instead. */
+    pointer-events: auto;
+    outline: 2px dashed rgba(255, 200, 100, 0.45);
+    outline-offset: 6px;
+    transition: outline-color 120ms ease;
+}
+/* Hit-area expander — invisible pseudo-element that extends the hoverable
+ * region out to match the visual outline. Without this, pointer-events
+ * follow the layout border-box (which is INSIDE the outline-offset gap), so
+ * :hover would drop the moment the cursor crosses the visible boundary box
+ * even though it still appears to be inside the dashed outline. The ::before
+ * stays a child of the group so :hover on it propagates to the group, and
+ * z-index: -1 puts it behind the sprite/buttons so it doesn't intercept
+ * clicks. */
+body.dangan-ow-edit-mode #dangan-overworld .dangan-ow-group::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
+    pointer-events: auto;
+    z-index: -1;
+}
+body.dangan-ow-edit-mode #dangan-overworld .dangan-ow-sprite {
+    cursor: move;
+}
+/* Hovered group: aqua outline + ± buttons revealed. CSS :hover now fires
+ * reliably because pointer-events: auto on the group covers the empty
+ * layout space between visual sprite and absolute-positioned buttons. */
+body.dangan-ow-edit-mode #dangan-overworld .dangan-ow-group:hover {
+    outline-color: rgba(0, 230, 255, 0.9);
+}
+body.dangan-ow-edit-mode #dangan-overworld .dangan-ow-sprite-ghost {
+    opacity: 0 !important;
+}
+body.dangan-ow-edit-mode #dangan-ow-cursor { display: none !important; }
+
+/* The overworld reticle is an overworld-scene affordance only — suppress it
+ * whenever the overworld scene is not the active surface:
+ *   - Monopad open (its panel covers the overworld)
+ *   - Class trial active (trial UI replaces the overworld)
+ *   - Trial minigame active (NSD / MPD / scrum etc.)
+ * The hover-handlers may still fire incidentally (e.g. the cursor was active
+ * before the surface switch, or DOM updates re-fire mouseenter on the same
+ * sprite), so a CSS gate is the most reliable suppression. */
+body.dangan-monopad-open #dangan-ow-cursor,
+body.dangan-trial-active #dangan-ow-cursor,
+body.dangan-minigame-active #dangan-ow-cursor { display: none !important; }
+
+/* ── ±/+ scale buttons (edit mode) ──────────────────────────────────────── */
+#dangan-overworld .dangan-ow-scale-btn {
+    position: absolute;
+    top: 50%;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(12, 12, 18, 0.85);
+    border: 1.5px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.45));
+    color: #fff;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 22px;
+    font-weight: bold;
+    line-height: 1;
+    cursor: pointer;
+    pointer-events: auto;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transform: translateY(-50%);
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+    z-index: 3;
+    transition: background 120ms ease, transform 120ms ease;
+}
+#dangan-overworld .dangan-ow-scale-btn:hover {
+    background: rgba(255, 200, 100, 0.9);
+    color: #111;
+    transform: translateY(-50%) scale(1.08);
+}
+/* Position close to the group's edges so the cursor can move sprite ↔ button
+ * with minimal empty-space transit. */
+#dangan-overworld .dangan-ow-scale-minus { left: -16px; }
+#dangan-overworld .dangan-ow-scale-plus  { right: -16px; }
+/* Scale buttons appear only on the currently-hovered group. CSS :hover is
+ * reliable here because the group itself has pointer-events: auto in edit
+ * mode (see rule above) — the cursor stays inside the group's layout box
+ * while transiting from the visible sprite to the absolute-positioned
+ * button, so :hover never drops. */
+body.dangan-ow-edit-mode #dangan-overworld .dangan-ow-group:hover .dangan-ow-scale-btn {
+    display: flex;
+}
+
+/* Manually-scaled groups opt out of the strip's crowd-shrink — same reason
+ * as .is-positioned: WYSIWYG once the user takes manual control. */
+#dangan-overworld .dangan-ow-group.has-custom-scale {
+    --ow-fit: 1;
+}
+
+/* ── Half-sprite mode ──────────────────────────────────────────────────────
+ * Toggled via Monopad → Settings → Display → "HALF-SPRITE MODE". Scales the
+ * in-chat character sprite and crops everything below roughly the waist.
+ *
+ * Sprite element varies by setup: ST alone uses #expression-image; Prome-VN
+ * clones into <img class="expression"> inside .expression-holder under
+ * #visual-novel-wrapper. We target ALL of them with !important so whichever
+ * element is actually visible gets scaled. Parents get overflow: hidden so
+ * the bottom half ends up clipped instead of just overflowing downward. */
+
+/* Skip the CSS scale + crop when the sprite filename already has a -half
+ * variant (`gratitude-half.png` etc.) — those are pre-cropped upper-body art
+ * supplied by the character creator and don't need CSS treatment. The
+ * `[src*="-half."]` substring covers both `.png`/`.webp` and cache-buster
+ * query strings like `?t=...` while not matching incidental "-half" in a
+ * character folder name. */
+/* Class Trials always use full sprites (see isTrialUiActive() guards in
+ * getChatSpriteUrl + setMirroredSrc), so exclude body.dangan-trial-active
+ * from every half-sprite scaling/clipping rule below. Otherwise the body
+ * class would still scale full sprites 2× and crop them to upper-body during
+ * a trial, even though the sprite source itself is the full image. */
+body.dangan-halfsprite-mode:not(.dangan-trial-active) #expression-image:not([src*="-half."]),
+body.dangan-halfsprite-mode:not(.dangan-trial-active) img.expression:not([src*="-half."]),
+body.dangan-halfsprite-mode:not(.dangan-trial-active) #visual-novel-wrapper img:not([src*="-half."]),
+body.dangan-halfsprite-mode:not(.dangan-trial-active) #expression-wrapper img:not([src*="-half."]),
+body.dangan-halfsprite-mode:not(.dangan-trial-active) .expression-holder img:not([src*="-half."]) {
+    /* Scale 2× (was 3×) — 3× pushed the visible window to the top 33% of the
+       source canvas, which means characters whose sprite art has empty space
+       above their head (e.g. Hiyoko) only showed the very tip of their hair.
+       2× shows the top 50% which covers head + shoulders + upper torso even
+       with substantial top padding, and lines up with the GCP rule below. */
+    transform: scale(2) !important;
+    transform-origin: 50% 0% !important;
+    transition: none !important;
+}
+/* Dangan's own GCP stage — what actually renders in-chat sprites. The img
+ * inside .dangan-gcp-scale-wrap is the visible Mahiru etc. The base rule at
+ * styles/groupChat.css:96 sets `transform-origin: center bottom` on this img;
+ * we override to top-center so scaling pushes the bottom out of the slot.
+ *
+ * Scale = `min(3, var(--gcp-half-scale, 3))` — the stage sets --gcp-half-scale
+ * in gcpPositionSlotsFlat based on each slot's horizontal share of the
+ * viewport, so big group chats drop the scale to whatever keeps each sprite
+ * inside its slot. Solo chats keep the full 3× (the var defaults to 3).
+ *
+ * `transition: none` is critical: ST clone-swaps the img element on src
+ * change, and any transform transition causes the freshly-mounted img to
+ * animate from scale 1 (default) up to scale(3), reading visually as a
+ * zoom-in from the center of the screen on every emotion swap. */
+body.dangan-halfsprite-mode:not(.dangan-trial-active) .dangan-gcp-scale-wrap img:not([src*="-half."]),
+body.dangan-halfsprite-mode:not(.dangan-trial-active) .dangan-gcp-slot img:not(.dangan-gcp-horse):not(.dangan-gcp-lectern):not([src*="-half."]) {
+    /* See sibling rule for #expression-wrapper above — 2× shows the top 50%
+       of the source canvas, so characters whose sprite art has visible head
+       padding (Hiyoko) and characters with normal proportions (Mahiru) both
+       end up with head + upper torso in frame instead of just the very top. */
+    transform: scale(min(2, var(--gcp-half-scale, 2))) !important;
+    transform-origin: 50% 0% !important;
+    transition: none !important;
+}
+
+/* Force the legacy expression parents to clip their overflow so the bottom of
+ * the scaled sprite is cropped rather than dangling below the chat. */
+body.dangan-halfsprite-mode:not(.dangan-trial-active) #expression-wrapper,
+body.dangan-halfsprite-mode:not(.dangan-trial-active) .expression-holder,
+body.dangan-halfsprite-mode:not(.dangan-trial-active) #visual-novel-wrapper {
+    overflow: hidden !important;
+}
+body.dangan-halfsprite-mode:not(.dangan-trial-active) .dangan-gcp-slot {
+    /* Anchor the slot's bottom flush with the viewport's bottom. The stage
+     * sits at bottom: -110px in its base CSS, so 110px here cancels the
+     * offset and parks the slot's bottom edge AT the viewport bottom — the
+     * sprite (which fills the slot at height: 100%) then runs all the way
+     * down to where the chat composer begins, eliminating the gap that made
+     * non-padded characters look "short" against the floor.
+     *
+     * Slot height is computed dynamically in gcpPositionSlotsFlat — it's
+     * normally 85vh (lifts the half-sprite up by ~30%) but caps at
+     * innerHeight/maxWrapScale so even tall characters (Sonia, Gundham)
+     * don't have their heads clipped by the viewport's top edge. */
+    bottom: 110px !important;
+    /* Fallback widened from 55vh → 75vh so toggling half-mode mid-chat
+     * (before gcpPositionSlotsFlat has had a chance to write the actual
+     * var) doesn't render sprites in a too-narrow box. The runtime value
+     * caps at innerHeight / maxWrapScale anyway, so tall accessories
+     * (Sonia's pigtails, Gundham's antenna, Ibuki's horns) still don't
+     * clip — this only affects the brief pre-layout fallback. */
+    height: var(--gcp-half-slot-height, 75vh) !important;
+    /* overflow: visible (no clip-path) — the slot's bounding rect is just an
+     * anchor for the scale-wrap origin, not a clipping window. CSS spec
+     * clamps negative inset() values to 0, so any attempt at "clip only the
+     * bottom" via clip-path would still clamp the top to slot.top and chop
+     * off tall accessories (Sonia's pigtails, Gundham's antenna, Ibuki's
+     * horns). Instead the sprite renders freely:
+     *   - Top extends above slot.top into the viewport above (visible).
+     *   - Bottom extends below viewport.bottom (off-screen by viewport edge).
+     *   - Wide arms extend past slot.left / slot.right (visible).
+     * The half-sprite "crop" effect for solo chats comes from the 3× IMG
+     * scale with origin top-center pushing the bottom half way below the
+     * viewport edge — the viewport itself provides the bottom clip. */
+    overflow: visible !important;
+    clip-path: none !important;
+}
+
+/* Prome's sprite-focus / sprite-scale classes apply transform on the
+ * .expression-holder parent — strip them so our img-level scale isn't
+ * composed-multiplied into something huge. */
+body.dangan-halfsprite-mode:not(.dangan-trial-active) .expression-holder {
+    transform: none !important;
+}
 #dangan-overworld .dangan-ow-sprite {
     position: relative;
     display: flex;
@@ -832,6 +1100,11 @@ body.dangan-theme-damaged       { --ow-theme-rgb: 235, 60, 60; }
     align-items: center;
     justify-content: flex-end;
     cursor: pointer;
+    /* The visible sprite — and only the visible sprite — receives events,
+     * because its bounding box is the transformed (visual) rect. The parent
+     * group sits at pointer-events: none, so empty space above/around the
+     * character no longer triggers hover or click. */
+    pointer-events: auto;
     transform-origin: 50% 100%;
     transform: scale(var(--ow-scale, 1));
     transition: filter 120ms ease;
@@ -849,7 +1122,11 @@ body.dangan-theme-damaged       { --ow-theme-rgb: 235, 60, 60; }
     right: 0;
     bottom: 0;
     width: 100%;
-    height: 75vh;
+    /* --ow-fit is set on the strip by fitStripToViewport when too many
+     * groups crowd one room. Shrinking the height also shrinks the
+     * width:auto img inside .dangan-ow-sprite-img, which is what flex
+     * actually allocates space for. */
+    height: calc(75vh * var(--ow-fit, 1));
     pointer-events: none;
     -webkit-mask-image: var(--ow-sprite-url);
             mask-image: var(--ow-sprite-url);
@@ -872,7 +1149,7 @@ body.dangan-theme-damaged       { --ow-theme-rgb: 235, 60, 60; }
     transform: translateX(-10px);
 }
 #dangan-overworld .dangan-ow-sprite-img {
-    height: 75vh;
+    height: calc(75vh * var(--ow-fit, 1));
     width: auto;
     object-fit: contain;
     object-position: bottom center;
@@ -1023,6 +1300,83 @@ body.dangan-theme-damaged       #dangan-ow-cursor { filter: hue-rotate(310deg) s
         inset 0 0 8px rgba(0, 0, 0, 0.4) !important;
 }
 
+/* UI-hide toggle — diamond at the BOTTOM apex of the minimap, mirroring the
+ * flat-toggle column at the top. */
+.dangan-minimap-ui-toggle-col {
+    position: absolute;
+    bottom: -43px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    pointer-events: auto;
+    z-index: 2;
+}
+
+/* When the user has toggled the UI off, fade out every visible UI element and
+ * hide the cursor system-wide. Any click restores the UI (see the capture
+ * listener in index.js that strips the body class).
+ *
+ * The overworld root itself stays visible — we want the character sprites
+ * (the .dangan-ow-strip and everything inside it) to keep showing. The
+ * non-strip children of the overworld root (Talk to Room / Grab Group /
+ * Edit Positions buttons) are faded individually below. */
+#dangan-minimap,
+#dangan-moveto-panel,
+#dangan-bgm-panel,
+#dangan-bgm-display,
+#dangan-chapter-label,
+#dangan-vn-overlay,
+#dangan-hud-topright,
+#dangan_monopad_button,
+#sheld,
+#send_form,
+#top-bar,
+#top-settings-holder,
+#dangan-overworld > *:not(.dangan-ow-strip) {
+    transition: opacity 320ms ease;
+}
+
+/* Cap the chat shell to a small composer-only strip in overworld mode.
+ * Trials need the full-height shell so #send_form lands at the bottom
+ * — without this scope the chatbox is pinned near the top of the screen
+ * on trial load (until a resize triggers ST's movingUI re-scaling). */
+body:not(.dangan-trial-active) #sheld {
+    height: 100px;
+}
+body.dangan-ui-hidden #dangan-minimap,
+body.dangan-ui-hidden #dangan-moveto-panel,
+body.dangan-ui-hidden #dangan-bgm-panel,
+body.dangan-ui-hidden #dangan-chapter-label,
+body.dangan-ui-hidden #dangan-vn-overlay,
+body.dangan-ui-hidden #dangan-hud-topright,
+body.dangan-ui-hidden #dangan_monopad_button,
+body.dangan-ui-hidden #sheld,
+body.dangan-ui-hidden #send_form,
+body.dangan-ui-hidden #top-bar,
+body.dangan-ui-hidden #top-settings-holder,
+body.dangan-ui-hidden #dangan-overworld > *:not(.dangan-ow-strip) {
+    opacity: 0;
+    pointer-events: none;
+}
+/* #dangan-bgm-display has a `dbgm-slide-in` animation with forwards fill-mode
+ * that pins its opacity at 1 — and CSS animations beat non-!important author
+ * rules in the cascade. Kill the animation so our opacity actually takes,
+ * and use !important as belt-and-braces. */
+body.dangan-ui-hidden #dangan-bgm-display {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    animation: none !important;
+}
+/* Hide the cursor across the whole document while UI is hidden. !important
+ * needed to beat element-specific cursor declarations (e.g. cursor: pointer
+ * on buttons, cursor: text on inputs). */
+body.dangan-ui-hidden,
+body.dangan-ui-hidden * {
+    cursor: none !important;
+}
+
 /* Hide the Prome user sprite (#expression-prome-user) unconditionally. The
  * extension never wants a giant player avatar floating in any of its modes:
  * overworld sprites + the player's own minimap pin cover the scene mode,
@@ -1039,6 +1393,7 @@ body.dangan-theme-damaged       #dangan-ow-cursor { filter: hue-rotate(310deg) s
  * the browser to re-evaluate on every DOM mutation under body (~70ms long
  * tasks every ~250ms in SillyTavern). */
 body.dangan-trial-active #dangan-overworld { display: none !important; }
+body.dangan-trial-active #dangan-current-room { display: none !important; }
 body.dangan-monopad-open #dangan-overworld { display: none !important; }
 
 /* "Grab Group Members" — sits directly under the room-btn (Exit Conversation
@@ -1047,6 +1402,41 @@ body.dangan-monopad-open #dangan-overworld { display: none !important; }
 #dangan-overworld .dangan-ow-grab-btn {
     top: 226px;
     width: 280px;
+}
+
+/* Right-side button column — mirror of the left column. The skewX sign flips
+ * so the parallelogram leans toward the same screen edge it's pinned to, and
+ * the label gets a matching counter-skew. Top values match the left column so
+ * Call sits opposite Talk and Edit sits opposite Grab. */
+#dangan-overworld .dangan-ow-call-btn,
+#dangan-overworld .dangan-ow-edit-btn {
+    left: auto;
+    right: -10px;
+    transform: skewX(-22deg);
+}
+#dangan-overworld .dangan-ow-call-btn:hover,
+#dangan-overworld .dangan-ow-edit-btn:hover {
+    transform: skewX(-22deg) translateY(-2px);
+}
+#dangan-overworld .dangan-ow-call-btn > .dangan-ow-room-btn-label,
+#dangan-overworld .dangan-ow-edit-btn > .dangan-ow-room-btn-label {
+    transform: skewX(22deg);
+}
+/* "Call to the Room" — mirrors "Talk to the Room" on the right at top:186. */
+#dangan-overworld .dangan-ow-call-btn {
+    top: 186px;
+    width: 256px;
+}
+/* "Edit Character Positions" — mirrors "Grab Group Members" on the right at
+ * top:226. */
+#dangan-overworld .dangan-ow-edit-btn {
+    top: 226px;
+    width: 274px;
+}
+/* Single-character room: no Talk / Grab / Call buttons exist. Edit takes
+ * the top slot, still on the right side. */
+#dangan-overworld .dangan-ow-edit-btn.dangan-ow-edit-btn-solo {
+    top: 186px;
 }
 
 /* ── Grab Group Members modal ─────────────────────────────────────────────
@@ -1185,7 +1575,7 @@ body.dangan-monopad-open #dangan-overworld { display: none !important; }
     opacity: 0;
     transition: opacity 280ms ease;
     pointer-events: none;
-    z-index: 1499999; /* directly below minimap (1,500,000) */
+    z-index: 1499999; /* sits above all overworld + ST chrome for full-screen black wash */
 }
 .dangan-ow-fadeout.on { opacity: 1; }
 
@@ -1200,4 +1590,44 @@ body.dangan-ow-fading #dangan-moveto-panel,
 body.dangan-ow-fading #dangan-minimap {
     opacity: 0;
     pointer-events: none;
+}
+
+/* ── Revolver cylinder line overlays ─────────────────────────────────────
+ * Four concentric ring decorations that wrap the danganronpa-2x2 revolver
+ * cylinder, each rotating independently. Apply as sibling imgs alongside
+ * the cylinder img inside a positioned wrapper — they fill the wrapper via
+ * `inset: 0`, so the wrapper's own size dictates the ring radius.
+ *
+ * Line 1 + 3 spin counter-clockwise; line 2 + 4 spin clockwise. Durations
+ * are deliberately different so the rings never phase-lock visually. */
+.dangan-cyl-line {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+    transform-origin: center;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+.dangan-cyl-line--1 { animation: dangan-cyl-spin-ccw 18s linear infinite; }
+.dangan-cyl-line--4 { animation: dangan-cyl-spin-cw  14s linear infinite; }
+.dangan-cyl-line--2 { animation: dangan-cyl-spin-cw  22s linear infinite; }
+.dangan-cyl-line--3 { animation: dangan-cyl-spin-ccw 26s linear infinite; }
+/* Match the cylinder's perspective skew — the cylinder img's spin loop
+   sets transform: skewX(8deg) skewY(14deg) rotate(...) inline (see e.g.
+   trialManager.js startRevolverSpin / scrumDebate cylinder tick), so the
+   ring overlays would otherwise sit flat over a tilted barrel. Bake the
+   same skew into both keyframes (from + to) so it stays consistent
+   throughout the rotation cycle — CSS animations replace the transform
+   property on the element, so the skew has to live INSIDE the keyframes
+   rather than as a separate static rule. */
+@keyframes dangan-cyl-spin-cw {
+    from { transform: skewX(8deg) skewY(14deg) rotate(0deg);   }
+    to   { transform: skewX(8deg) skewY(14deg) rotate(360deg); }
+}
+@keyframes dangan-cyl-spin-ccw {
+    from { transform: skewX(8deg) skewY(14deg) rotate(0deg);    }
+    to   { transform: skewX(8deg) skewY(14deg) rotate(-360deg); }
 }

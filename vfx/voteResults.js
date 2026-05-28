@@ -104,7 +104,7 @@ function buildStyles() {
 
 // ── Controller ───────────────────────────────────────────────────────────────
 
-export function createVoteResultsController({ getCharacters, getSpriteUrl, getUserAvatarUrl, extensionFolderPath }) {
+export function createVoteResultsController({ getCharacters, getSpriteUrl, getUserAvatarUrl, getCustomGameMasterName, extensionFolderPath }) {
 
     function destroy() {
         document.getElementById(OVERLAY_ID)?.remove();
@@ -303,14 +303,31 @@ export function createVoteResultsController({ getCharacters, getSpriteUrl, getUs
             fill: "#000", stroke: "#c8860a", "stroke-width": "3",
         }));
 
-        // Monokuma in centre — fills the full centre circle
+        // Monokuma in centre — fills the full centre circle. In custom Game
+        // Master mode, swap the bundled monokuma-vote-face for the chosen
+        // character's avatar so the wheel reflects whoever's running this
+        // killing game.
         const monoR = Rin - 4;
         const monoClipId = "vr-mono-cp";
         const mc = svgEl("clipPath", { id: monoClipId });
         mc.appendChild(svgEl("circle", { cx, cy, r: monoR.toFixed(2) }));
         defs.appendChild(mc);
+        let monoFaceHref = `${extensionFolderPath}/assets/monokuma/monokuma-vote-face.png`;
+        const customGm = typeof getCustomGameMasterName === "function"
+            ? getCustomGameMasterName()
+            : null;
+        if (customGm) {
+            // The wheel's allChars list is filtered to living roster — the
+            // GM may not appear there. Resolve their avatar straight from
+            // SillyTavern's character store instead.
+            const stChars = Array.isArray(window.characters) ? window.characters : [];
+            const gmChar = stChars.find(c => String(c?.name || '').toLowerCase() === customGm.toLowerCase());
+            if (gmChar?.avatar) {
+                monoFaceHref = `/thumbnail?type=avatar&file=${encodeURIComponent(gmChar.avatar)}`;
+            }
+        }
         const monoImg = svgEl("image", {
-            href: `${extensionFolderPath}/assets/monokuma/monokuma-vote-face.png`,
+            href: monoFaceHref,
             x: (cx - monoR).toFixed(2), y: (cy - monoR).toFixed(2),
             width: (monoR * 2).toFixed(2), height: (monoR * 2).toFixed(2),
             "clip-path": `url(#${monoClipId})`,

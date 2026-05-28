@@ -660,6 +660,11 @@
                 </div>
 
                 <div class="settings-item">
+                    <span class="settings-label">HALF-SPRITE MODE</span>
+                    <button class="settings-toggle" data-setting="halfspriteMode"></button>
+                </div>
+
+                <div class="settings-item">
                     <span class="settings-label">DAILY / DEADLY LIFE DYNAMIC THEMES</span>
                     <button class="settings-toggle on" data-setting="dynamicThemes"></button>
                 </div>
@@ -699,6 +704,17 @@
 
                 <!-- Announcement customisation — only visible when Hide Hope's Peak Branding is ON -->
                 <div id="dangan-branding-extras" style="display:none">
+
+                    <div class="settings-item settings-item-stack settings-announ-row">
+                        <span class="settings-label">SELECT A GAME MASTER</span>
+                        <div class="settings-lang-toggle">
+                            <button class="settings-lang-btn active" data-gm-value="default" type="button">DEFAULT (MONOKUMA)</button>
+                            <button class="settings-lang-btn" data-gm-value="custom" type="button">CUSTOM</button>
+                        </div>
+                        <div class="settings-announ-custom-row is-hidden" id="dangan-gm-custom-row">
+                            <select id="dangan-gm-character" class="settings-select"></select>
+                        </div>
+                    </div>
 
                     <div class="bgm-tracks-panel active">
                         <div class="bgm-tracks-subtabs">
@@ -909,6 +925,14 @@
                         <span id="dangan_reset_chapter_status" class="settings-note"></span>
                     </div>
                     <div class="settings-note">Resets the chapter indicator back to PROLOGUE.</div>
+                </div>
+                <div class="settings-item settings-item-stack">
+                    <span class="settings-label">CHARACTER INTRODUCTIONS</span>
+                    <div class="settings-ai-actions">
+                        <button id="dangan_reset_introductions" class="settings-small-button" type="button">RESET INTRODUCTION STATUSES</button>
+                        <span id="dangan_reset_introductions_status" class="settings-note"></span>
+                    </div>
+                    <div class="settings-note">Masks every character as ??? again until you re-run /introduce on them.</div>
                 </div>
                 <div class="settings-item settings-item-stack">
                     <label class="settings-label" for="dangan_reward_difficulty">REWARD DIFFICULTY</label>
@@ -1199,6 +1223,10 @@
 
 <audio id="ow_sfx_character_exit_talk" preload="auto">
     <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/ui/character-exit-talk.wav" type="audio/wav">
+</audio>
+
+<audio id="ow_sfx_change_rooms" preload="auto">
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/ui/change-rooms.wav" type="audio/wav">
 </audio>
 
 

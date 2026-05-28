@@ -50,6 +50,8 @@ export function createTrialManager(deps) {
         awardXp,
         xpRewards,
         getLecternUrl,
+        getCustomGameMasterName,
+        getCharacterDisplayName,
         deductMonocoins,
         showMinigameLoadingState,
     } = deps;
@@ -271,7 +273,17 @@ export function createTrialManager(deps) {
     }
 
     function isMonokuma(name) {
-        return normalizeSeatName(name) === 'monokuma';
+        const key = normalizeSeatName(name);
+        if (key === 'monokuma') return true;
+        // When the user has selected a custom Game Master, the chosen character
+        // takes Monokuma's role — every Monokuma-ness check below (sprite
+        // resolution, solo speaker layout, antagonist filters) should fire for
+        // them too.
+        const custom = typeof getCustomGameMasterName === 'function'
+            ? getCustomGameMasterName()
+            : null;
+        if (custom && normalizeSeatName(custom) === key) return true;
+        return false;
     }
 
     // ── Mass Panic Debate state ───────────────────────────────────────────────
@@ -821,19 +833,28 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
             }
         });
         const indexEl = document.querySelector('.dangan-cylinder-index');
+        // Match the line-overlay filter to whichever state the cylinder is in.
+        // The cylinder img keeps its own filter (above); these are softer
+        // variants on the same hue so the rings read as decoration, not
+        // foreground. Cleared back to '' restores the CSS default cyan.
+        const cylWrap = document.querySelector('.dangan-cylinder-wrap');
         if (cylinderImg) {
             if (isLieBullet) {
                 cylinderImg.style.filter = 'sepia(1) hue-rotate(270deg) saturate(10) brightness(1.3) drop-shadow(0 0 18px rgba(160,0,255,0.9)) drop-shadow(0 0 45px rgba(160,0,255,0.6))';
                 if (indexEl) { indexEl.style.color = '#aa00ff'; indexEl.style.textShadow = '0 0 12px rgba(160,0,255,0.9), 0 0 30px rgba(160,0,255,0.6), 2px 2px 4px rgba(0,0,0,0.9)'; }
+                cylWrap?.style.setProperty('--cyl-line-filter', 'sepia(1) hue-rotate(270deg) saturate(10) brightness(1.3) drop-shadow(0 0 12px rgba(160,0,255,0.55))');
             } else if (mod > 1.0) {
                 cylinderImg.style.filter = 'sepia(1) hue-rotate(10deg) saturate(8) brightness(1.4) drop-shadow(0 0 18px rgba(255,220,0,0.9)) drop-shadow(0 0 45px rgba(255,180,0,0.6))';
                 if (indexEl) { indexEl.style.color = '#ffd700'; indexEl.style.textShadow = '0 0 12px rgba(255,220,0,0.9), 0 0 30px rgba(255,180,0,0.6), 2px 2px 4px rgba(0,0,0,0.9)'; }
+                cylWrap?.style.setProperty('--cyl-line-filter', 'sepia(1) hue-rotate(10deg) saturate(8) brightness(1.4) drop-shadow(0 0 12px rgba(255,220,0,0.55))');
             } else if (mod < 1.0) {
                 cylinderImg.style.filter = 'sepia(1) hue-rotate(285deg) saturate(8) brightness(1.3) drop-shadow(0 0 18px rgba(255,0,200,0.9)) drop-shadow(0 0 45px rgba(255,0,200,0.6))';
                 if (indexEl) { indexEl.style.color = '#ff00cc'; indexEl.style.textShadow = '0 0 12px rgba(255,0,200,0.9), 0 0 30px rgba(255,0,200,0.6), 2px 2px 4px rgba(0,0,0,0.9)'; }
+                cylWrap?.style.setProperty('--cyl-line-filter', 'sepia(1) hue-rotate(285deg) saturate(8) brightness(1.3) drop-shadow(0 0 12px rgba(255,0,200,0.55))');
             } else {
                 cylinderImg.style.filter = '';
                 if (indexEl) { indexEl.style.color = ''; indexEl.style.textShadow = ''; }
+                cylWrap?.style.removeProperty('--cyl-line-filter');
             }
         }
 
@@ -998,7 +1019,13 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
         trialSpeakerLastName = name;
         const myToken = ++trialSpeakerToken;
 
-        sticker.querySelector('.dgn-speaker-name').textContent = name;
+        // Mask un-introduced characters as "???" so the trial UI honours the
+        // global introduction state. Sprite resolution below still uses the
+        // real name so the correct portrait + mugshot loads regardless.
+        const displayName = typeof getCharacterDisplayName === 'function'
+            ? getCharacterDisplayName(name)
+            : name;
+        sticker.querySelector('.dgn-speaker-name').textContent = displayName;
         sticker.classList.add('visible');
 
         try {
@@ -1112,7 +1139,12 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
             // (e.g. on chat scroll, sidebar toggles, attachment drawer). Poll so
             // the dialogue's bottom stays glued to the input's actual top edge.
             inputPollIntervalId = setInterval(updateInputHeight, 250);
-            updateInputHeight();
+            // Defer the first measurement until after the browser has applied
+            // the body class change and re-laid out — otherwise rect.top can
+            // reflect the pre-trial #sheld height (overworld 100px cap) and the
+            // dialogue ends up pinned to a stale offset until the user resizes.
+            // Two rAFs: first lets style recalc commit, second lets layout commit.
+            requestAnimationFrame(() => requestAnimationFrame(updateInputHeight));
         }
     }
 
@@ -3106,16 +3138,32 @@ ${historyText}
         if (promeInfo) {
             const playerName = getPlayerName();
             if (playerName) {
-                const pKey   = normalizeSeatName(playerName);
-                const pFirst = firstToken(playerName);
-                if (normalizeSeatName(name) === pKey || firstToken(name) === pFirst) {
+                // Only an EXACT (case-insensitive, trimmed) match swaps in the
+                // Prome user sprite — the old code also matched by first token
+                // so a persona named "Hajime" would override a separate
+                // "Hajime Hinata" NPC's sprite in group chats. The exact match
+                // still handles the legitimate case where the player's persona
+                // name is unique (e.g. "Dawn") and Prome carries the actual
+                // sprite identity via promeInfo.spritePack.
+                if (normalizeSeatName(name) === normalizeSeatName(playerName)) {
                     return getSpriteUrl(promeInfo.spritePack, emo);
                 }
             }
         }
         if (isCharacterDead(name)) return getSpriteUrl(name, 'dead');
-        // Monokuma: try standard sprites first, fall back to bundled emotion sprite
+        // Monokuma: try standard sprites first, fall back to bundled emotion sprite.
+        // When a custom Game Master is configured the chosen character takes
+        // Monokuma's place — route the sprite lookup through their name so
+        // ST's sprite system returns their pack, and skip the bundled fallback
+        // (the user explicitly opted out of Monokuma art).
         if (isMonokuma(name)) {
+            const custom = typeof getCustomGameMasterName === 'function'
+                ? getCustomGameMasterName()
+                : null;
+            if (custom) {
+                const url = await getSpriteUrl(custom, emo).catch(() => null);
+                return url; // null is fine — caller hides the slot when no sprite found
+            }
             const url = await getSpriteUrl(name, emo).catch(() => null);
             return url ?? getMonokumaStaticUrl(emo);
         }
@@ -3686,8 +3734,12 @@ ${historyText}
 
                 introEl.innerHTML = `
                     <div id="dangan-bullet-intro-cylinder">
+                        <img class="dangan-cyl-line dangan-cyl-line--1" src="${extensionFolderPath}/assets/images/minigames/cylinder-lines-1.webp" alt=""/>
+                        <img class="dangan-cyl-line dangan-cyl-line--4" src="${extensionFolderPath}/assets/images/minigames/cylinder-lines-4.webp" alt=""/>
+                        <img class="dangan-cyl-line dangan-cyl-line--2" src="${extensionFolderPath}/assets/images/minigames/cylinder-lines-2.webp" alt=""/>
+                        <img class="dangan-cyl-line dangan-cyl-line--3" src="${extensionFolderPath}/assets/images/minigames/cylinder-lines-3.webp" alt=""/>
                         <img id="dangan-bullet-intro-cyl-img"
-                             src="${extensionFolderPath}/assets/images/minigames/revolver-cylinder.png" alt=""/>
+                             src="${extensionFolderPath}/assets/images/minigames/danganronpa-2x2-revolver-cylinder.webp" alt=""/>
                     </div>
                     <div id="dangan-bullet-intro-list">${listHtml}</div>
                 `;
@@ -3844,8 +3896,12 @@ ${historyText}
 
         container.innerHTML = `
             <div class="dangan-cylinder-wrap">
+                <img class="dangan-cyl-line dangan-cyl-line--1" src="${extensionFolderPath}/assets/images/minigames/cylinder-lines-1.webp" alt=""/>
+                <img class="dangan-cyl-line dangan-cyl-line--4" src="${extensionFolderPath}/assets/images/minigames/cylinder-lines-4.webp" alt=""/>
+                <img class="dangan-cyl-line dangan-cyl-line--2" src="${extensionFolderPath}/assets/images/minigames/cylinder-lines-2.webp" alt=""/>
+                <img class="dangan-cyl-line dangan-cyl-line--3" src="${extensionFolderPath}/assets/images/minigames/cylinder-lines-3.webp" alt=""/>
                 <img id="dangan-cylinder-img" class="dangan-cylinder-img"
-                     src="${extensionFolderPath}/assets/images/minigames/revolver-cylinder.png" alt=""/>
+                     src="${extensionFolderPath}/assets/images/minigames/danganronpa-2x2-revolver-cylinder.webp" alt=""/>
                 <div class="dangan-cylinder-index">${bulletNumber}</div>
             </div>
             <img class="dangan-tb-bar-bg" src="${extensionFolderPath}/assets/classtrial/truth-bullets-bar.png" alt="" draggable="false"/>
@@ -7076,6 +7132,61 @@ ${contextLines}
         // Left edge of the leftmost slot, so the group is centred.
         const cx = window.innerWidth / 2 - (n * sw) / 2;
 
+        // Half-sprite-mode horizontal-fit clamp. The default scale is 3 (see
+        // style.css), but in a group chat the per-character share of the
+        // viewport is much narrower, so a 3× sprite spills into neighbouring
+        // slots and off-screen at the edges. Compute the largest scale that
+        // keeps a typical-aspect (≈0.5 width:height) sprite within its
+        // horizontal share. Solo (n=1) gets the FULL viewport — gcpSlotW()
+        // returns innerWidth/3 for solo (carousel-compatible) but the sprite
+        // has no neighbour to overlap, so we ignore sw and use innerWidth.
+        //
+        // Also cap slot height so the TALLEST character in the group still
+        // fits vertically. scaleWrap scales each sprite by heightPx /
+        // BASE_PORTRAIT_PX with origin center-bottom; tall characters
+        // (Sonia, Gundham) come out at 1.15-1.25×, and at slot height 85vh
+        // that pushes the visual top above the viewport — heads clip. The
+        // safe slot height is innerHeight / maxWrapScale, then capped at 85vh
+        // so short-character groups still get the lift-the-half-sprite effect.
+        if (gcpStage) {
+            const ASPECT_GUESS = 0.5;
+            const spriteWidthAtBaseHeight = ASPECT_GUESS * BASE_PORTRAIT_PX;
+            const perCharWidth = window.innerWidth / Math.max(1, n);
+            // Cap at 2× — 3× was clipping characters whose sprite art has
+            // empty space above their head (visible canvas portion ends up
+            // off-screen). 2× shows the top 50% of the source which always
+            // covers head + upper torso. Multi-character chats still scale
+            // down further when perCharWidth / spriteWidthAtBaseHeight < 2.
+            const halfFitScale = Math.max(1, Math.min(2, perCharWidth / spriteWidthAtBaseHeight));
+            gcpStage.style.setProperty('--gcp-half-scale', halfFitScale.toFixed(3));
+
+            // scaleWrap on each slot scales by (heightPx / BASE_PORTRAIT_PX)
+            // with origin center-bottom. Visual top of a slot ends up at
+            //   slot.bottom_y - maxWrapScale * ACCESSORY_FACTOR * slot.height
+            // because Danganronpa sprite art routinely has accessories
+            // (Sonia's pigtails, Gundham's hair antenna, Ibuki's horns,
+            // Nagito's messy hair) extending well above the geometric head
+            // pixel, drawn right up to the top of the source PNG with no
+            // transparent padding. The 1.5 factor reserves room for that
+            // overshoot without having to measure each sprite individually.
+            // TOP_MARGIN_PX adds a fixed buffer so the tallest accessory
+            // lands at least that many pixels below the viewport top.
+            const TOP_MARGIN_PX = 120;
+            const ACCESSORY_FACTOR = 1.5;
+            const maxWrapScale = Math.max(
+                1,
+                ...gcpSlots.map(s => (s.heightPx || BASE_PORTRAIT_PX) / BASE_PORTRAIT_PX),
+            );
+            const targetSlotPx = Math.floor(0.65 * window.innerHeight);
+            const safeSlotPx = Math.floor(
+                (window.innerHeight - TOP_MARGIN_PX) / (maxWrapScale * ACCESSORY_FACTOR),
+            );
+            gcpStage.style.setProperty(
+                '--gcp-half-slot-height',
+                `${Math.min(targetSlotPx, safeSlotPx)}px`,
+            );
+        }
+
         gcpSlots.forEach((slot, i) => {
             const scale = (slot.heightPx || BASE_PORTRAIT_PX) / BASE_PORTRAIT_PX;
             const x     = cx + i * sw;
@@ -7318,7 +7429,18 @@ ${contextLines}
                         return { name, url, isDead: dead };
                     }
                     let url = await getSpriteUrl(name, 'neutral').catch(() => null);
-                    if (!url && isMonokuma(name)) url = getMonokumaStaticUrl('neutral');
+                    if (!url && isMonokuma(name)) {
+                        // Try the custom Game Master's sprite first when configured;
+                        // fall back to bundled Monokuma art only in default mode.
+                        const custom = typeof getCustomGameMasterName === 'function'
+                            ? getCustomGameMasterName()
+                            : null;
+                        if (custom) {
+                            url = await getSpriteUrl(custom, 'neutral').catch(() => null);
+                        } else {
+                            url = getMonokumaStaticUrl('neutral');
+                        }
+                    }
                     console.log(`[Dangan][GCP] "${name}" → ${url ?? 'null'}`);
                     return { name, url, isDead: false };
                 }));
@@ -7657,6 +7779,13 @@ ${contextLines}
         getGcpSpeakerImg:  () => gcpSlots[Math.round(gcpCurrentFloat)]?.img  ?? null,
         getGcpSpeakerName: () => gcpSlots[Math.round(gcpCurrentFloat)]?.name ?? null,
         getGcpPlayerImg:   () => gcpSlots.find(s => s.isPlayer)?.img ?? null,
+        // Re-runs the flat (non-trial) GCP layout so the dynamic CSS var
+        // --gcp-half-slot-height gets recomputed. Used when the user toggles
+        // half-sprite mode mid-chat — otherwise the slot height var stays
+        // unset and the CSS fallback kicks in.
+        recomputeGcpFlatLayout: () => {
+            if (gcpStage && gcpSlots.length && !trialActive) gcpPositionSlotsFlat();
+        },
         // Match an expression image src to the specific GCP slot whose sprite folder
         // matches the incoming URL. This routes /emote and AI expression changes to
         // the right character in a group chat rather than blindly updating whoever is

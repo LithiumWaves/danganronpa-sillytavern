@@ -458,6 +458,20 @@ function buildStyles(extPath) {
         drop-shadow(0 0 45px rgba(0, 100, 255, 0.45));
 }
 
+/* Colour-match the ring decorations to each side's cylinder hue. */
+.sd-cyl-wrap-opp .dangan-cyl-line {
+    filter:
+        sepia(1) hue-rotate(330deg) saturate(8) brightness(1.2)
+        drop-shadow(0 0 12px rgba(255, 0, 0, 0.55));
+    opacity: 0.7;
+}
+.sd-cyl-wrap-player .dangan-cyl-line {
+    filter:
+        sepia(1) hue-rotate(195deg) saturate(6) brightness(1.2)
+        drop-shadow(0 0 12px rgba(0, 150, 255, 0.55));
+    opacity: 0.7;
+}
+
 /* Counter — RS-style large cyan index, centered on player cylinder */
 .sd-cyl-index {
     position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -1091,7 +1105,10 @@ function portraitHtml(char, side, depthIdx, total, overrideUrl = null, overrideN
 }
 
 function stageHtml(teams, extPath, oppSprites, playerSprites, playerSpriteUrl, playerName, monoUrl = "", getCharHeightCm = null) {
-    if (!monoUrl && extPath) monoUrl = `/${extPath}/assets/monokuma/monokuma_idle.png`;
+    // The caller is responsible for resolving monoUrl (including the bundled
+    // Monokuma fallback in default mode, or leaving it empty in custom Game
+    // Master mode when no sprite is available). Don't re-inject the bundled
+    // path here — that would override the custom-mode opt-out.
     const lecternUrl = extPath ? `/${extPath}/assets/classtrial/scrum-lectern.webp` : "";
     const oppN = teams.opposing.length || 1;
     const oppPortraits = teams.opposing.length
@@ -1155,6 +1172,7 @@ export function createScrumDebateController({
     getPlayerSpriteUrl   = null,
     getPlayerName        = null,
     getCharacterHeightCm = null,
+    getCustomGameMasterName = null,
 } = {}) {
 
     function destroy() {
@@ -1239,9 +1257,23 @@ export function createScrumDebateController({
         }
 
         // ── Monokuma sprite ────────────────────────────────────────────────
-        let monoSpriteUrl = extensionFolderPath ? `/${extensionFolderPath}/assets/monokuma/monokuma_idle.png` : "";
-        if (typeof getSpriteUrl === "function") {
-            monoSpriteUrl = await getSpriteUrl("Monokuma", "sit").catch(() => null) || monoSpriteUrl;
+        // When a custom Game Master is configured, swap the throne sprite for
+        // their character's sprite and skip the bundled monokuma_idle fallback
+        // entirely (the user explicitly opted out of Monokuma art). In default
+        // mode, prefer ST's "Monokuma" sit sprite, then the bundled fallback.
+        const customGm = typeof getCustomGameMasterName === "function"
+            ? getCustomGameMasterName()
+            : null;
+        let monoSpriteUrl = "";
+        if (customGm && typeof getSpriteUrl === "function") {
+            monoSpriteUrl = await getSpriteUrl(customGm, "sit").catch(() => null)
+                         || await getSpriteUrl(customGm, "neutral").catch(() => null)
+                         || "";
+        } else {
+            monoSpriteUrl = extensionFolderPath ? `/${extensionFolderPath}/assets/monokuma/monokuma_idle.png` : "";
+            if (typeof getSpriteUrl === "function") {
+                monoSpriteUrl = await getSpriteUrl("Monokuma", "sit").catch(() => null) || monoSpriteUrl;
+            }
         }
 
         // ── DOM setup ─────────────────────────────────────────────────────
@@ -1262,14 +1294,22 @@ export function createScrumDebateController({
 <div class="sd-bg" id="sd-bg"></div>
 <div class="sd-root">
     <div class="sd-cyl-wrap sd-cyl-wrap-opp">
-        <img class="sd-cylinder sd-cylinder-opp" id="sd-cylinder-opp" src="/${extensionFolderPath}/assets/images/minigames/revolver-cylinder.png" alt=""/>
+        <img class="dangan-cyl-line dangan-cyl-line--1" src="/${extensionFolderPath}/assets/images/minigames/cylinder-lines-1.webp" alt=""/>
+        <img class="dangan-cyl-line dangan-cyl-line--4" src="/${extensionFolderPath}/assets/images/minigames/cylinder-lines-4.webp" alt=""/>
+        <img class="dangan-cyl-line dangan-cyl-line--2" src="/${extensionFolderPath}/assets/images/minigames/cylinder-lines-2.webp" alt=""/>
+        <img class="dangan-cyl-line dangan-cyl-line--3" src="/${extensionFolderPath}/assets/images/minigames/cylinder-lines-3.webp" alt=""/>
+        <img class="sd-cylinder sd-cylinder-opp" id="sd-cylinder-opp" src="/${extensionFolderPath}/assets/images/minigames/danganronpa-2x2-revolver-cylinder.webp" alt=""/>
         <div class="sd-bullet-name-box">
             <div class="sd-bullet-title" id="sd-opp-title">—</div>
             <div class="sd-bullet-desc"  id="sd-opp-desc"></div>
         </div>
     </div>
     <div class="sd-cyl-wrap sd-cyl-wrap-player">
-        <img class="sd-cylinder sd-cylinder-player" id="sd-cylinder" src="/${extensionFolderPath}/assets/images/minigames/revolver-cylinder.png" alt=""/>
+        <img class="dangan-cyl-line dangan-cyl-line--1" src="/${extensionFolderPath}/assets/images/minigames/cylinder-lines-1.webp" alt=""/>
+        <img class="dangan-cyl-line dangan-cyl-line--4" src="/${extensionFolderPath}/assets/images/minigames/cylinder-lines-4.webp" alt=""/>
+        <img class="dangan-cyl-line dangan-cyl-line--2" src="/${extensionFolderPath}/assets/images/minigames/cylinder-lines-2.webp" alt=""/>
+        <img class="dangan-cyl-line dangan-cyl-line--3" src="/${extensionFolderPath}/assets/images/minigames/cylinder-lines-3.webp" alt=""/>
+        <img class="sd-cylinder sd-cylinder-player" id="sd-cylinder" src="/${extensionFolderPath}/assets/images/minigames/danganronpa-2x2-revolver-cylinder.webp" alt=""/>
         <div class="sd-cyl-index" id="sd-bullet-counter">01</div>
         <div class="sd-bullet-name-box">
             <div class="sd-bullet-title" id="sd-player-title">—</div>

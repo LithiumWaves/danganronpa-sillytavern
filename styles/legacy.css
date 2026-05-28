@@ -1523,7 +1523,10 @@ body.dangan-theme-night         #dangan-moveto-panel { filter: grayscale(1) brig
     bottom: 38px;
     width: 200px;
     height: 200px;
-    z-index: 1500000;
+    /* Below SillyTavern's right-nav-panel drawer (.fillRight, z-index 3000)
+     * so the character list / WI / etc. drawers can overlay it, but above the
+     * overworld (25) and chat shell (30). */
+    z-index: 2000;
     pointer-events: auto;
     cursor: grab;
     touch-action: none;

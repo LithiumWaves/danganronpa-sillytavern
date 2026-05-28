@@ -107,14 +107,24 @@ function buildIntroStyles() {
         z-index: 4;
     }
 
-    /* Revolver cylinder — top-right, spinning clockwise */
-    #dangan-intro-cylinder {
+    /* Revolver cylinder — top-right, spinning clockwise. The wrap takes the
+       position so the line ring overlays (siblings of #dangan-intro-cylinder)
+       inherit the same box via inset: 0. Only the cylinder img itself spins;
+       the ring overlays carry their own counter/clockwise animations. */
+    #dangan-intro-cylinder-wrap {
         position: absolute;
         top: -18%; right: -10%;
         width: 65%;
         aspect-ratio: 1;
-        object-fit: contain;
         opacity: 0.18;
+        pointer-events: none;
+    }
+    #dangan-intro-cylinder {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
         pointer-events: none;
         animation: dangan-intro-cylinder-spin 12s linear infinite;
     }
@@ -280,12 +290,17 @@ export function createIntroduceCharacterController({ extensionFolderPath = '' } 
         console.log(`[Dangan][Intro] hue-rotate: ${introHue}deg`);
         overlay.appendChild(chromeWrap);
 
-        // Revolver cylinder (hue-shifted)
-        const cylinder = document.createElement('img');
-        cylinder.id  = 'dangan-intro-cylinder';
-        cylinder.src = `${extensionFolderPath}/assets/images/minigames/revolver-cylinder.png`;
-        cylinder.alt = '';
-        chromeWrap.appendChild(cylinder);
+        // Revolver cylinder + line ring overlays (hue-shifted via parent)
+        const cylWrap = document.createElement('div');
+        cylWrap.id = 'dangan-intro-cylinder-wrap';
+        cylWrap.innerHTML = `
+            <img class="dangan-cyl-line dangan-cyl-line--1" src="${extensionFolderPath}/assets/images/minigames/cylinder-lines-1.webp" alt=""/>
+            <img class="dangan-cyl-line dangan-cyl-line--4" src="${extensionFolderPath}/assets/images/minigames/cylinder-lines-4.webp" alt=""/>
+            <img class="dangan-cyl-line dangan-cyl-line--2" src="${extensionFolderPath}/assets/images/minigames/cylinder-lines-2.webp" alt=""/>
+            <img class="dangan-cyl-line dangan-cyl-line--3" src="${extensionFolderPath}/assets/images/minigames/cylinder-lines-3.webp" alt=""/>
+            <img id="dangan-intro-cylinder" src="${extensionFolderPath}/assets/images/minigames/danganronpa-2x2-revolver-cylinder.webp" alt=""/>
+        `;
+        chromeWrap.appendChild(cylWrap);
 
         // Character sprite (NOT hue-shifted — appended to overlay, not chrome)
         if (spriteUrl) {

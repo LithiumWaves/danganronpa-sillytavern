@@ -363,20 +363,30 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
         display: block;
     }
 
-    /* Revolver cylinder decoration */
-    .qtt-revolver {
+    /* Revolver cylinder decoration — wrapper takes the position so the
+       ring-line overlays (siblings of .qtt-revolver) share the same box. */
+    .qtt-revolver-wrap {
         position: absolute;
         bottom: -6%;
         left: -4%;
         width: clamp(280px, 38vw, 560px);
+        aspect-ratio: 1;
         pointer-events: none;
         z-index: 0;
-        transform-origin: center;
         filter:
             sepia(1) hue-rotate(285deg) saturate(6) brightness(1.2)
             drop-shadow(0 0 18px rgba(255, 0, 200, 0.75))
             drop-shadow(0 0 45px rgba(255, 0, 200, 0.45));
         opacity: 0.88;
+    }
+    .qtt-revolver {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        pointer-events: none;
+        transform-origin: center;
     }
 
     /* Health display — NSD-style: a status-bar.png graphic in the top-right
@@ -583,7 +593,13 @@ export function createQuestionTruthController({ extensionFolderPath = '', getTru
         const overlay = document.createElement("div");
         overlay.id = QTT_ID;
         overlay.innerHTML = `
-            <img class="qtt-revolver" src="${extensionFolderPath}/assets/images/minigames/revolver-cylinder.png" alt=""/>
+            <div class="qtt-revolver-wrap">
+                <img class="dangan-cyl-line dangan-cyl-line--1" src="${extensionFolderPath}/assets/images/minigames/cylinder-lines-1.webp" alt=""/>
+                <img class="dangan-cyl-line dangan-cyl-line--4" src="${extensionFolderPath}/assets/images/minigames/cylinder-lines-4.webp" alt=""/>
+                <img class="dangan-cyl-line dangan-cyl-line--2" src="${extensionFolderPath}/assets/images/minigames/cylinder-lines-2.webp" alt=""/>
+                <img class="dangan-cyl-line dangan-cyl-line--3" src="${extensionFolderPath}/assets/images/minigames/cylinder-lines-3.webp" alt=""/>
+                <img class="qtt-revolver" src="${extensionFolderPath}/assets/images/minigames/danganronpa-2x2-revolver-cylinder.webp" alt=""/>
+            </div>
             ${hasTimer ? `
                 <div id="qtt-timer-area">
                     <div id="qtt-timer-label">TIME</div>
