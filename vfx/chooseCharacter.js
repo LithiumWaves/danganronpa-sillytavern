@@ -280,6 +280,12 @@ export function createChooseCharacterController({
             document.head.appendChild(styleEl);
         }
 
+        // Trip the shared minigame-active body class so the trial chrome
+        // (frame overlay, FX/BGM panel, badge, speaker mugshot sticker)
+        // hides via the existing trial-aesthetic.css rules for the duration
+        // of Choosing Time. Removed inside restoreUI() at exit.
+        document.body.classList.add('dangan-minigame-active');
+
         // Hide ST UI
         const hiddenEls = new Map();
         for (const sel of UI_HIDE_SELECTORS) {
@@ -299,6 +305,7 @@ export function createChooseCharacterController({
                 el.style.opacity = '1';
             }
             hiddenEls.clear();
+            document.body.classList.remove('dangan-minigame-active');
         }
 
         const overlay = document.createElement('div');

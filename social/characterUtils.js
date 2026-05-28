@@ -40,7 +40,11 @@ export function isIgnoredCharacter(name) {
         n.includes("helper") ||
         n.includes("assistant") ||
         n.includes("mono") ||
-        n.includes("tool")
+        n.includes("tool") ||
+        n.includes("sillytavern") ||
+        n.includes("system") ||
+        n.includes("narrator") ||
+        n.includes("prome user sprite")
     );
 }
 

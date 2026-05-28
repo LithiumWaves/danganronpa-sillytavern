@@ -261,7 +261,7 @@
                         <div class="report-header">
                             <div class="report-header-identity">
                                 <div class="report-name">—</div>
-                                <div class="report-ultimate">ULTIMATE: ???</div>
+                                <div class="report-ultimate">ULTIMATE ???</div>
                             </div>
                             <div class="report-status-btns">
                                 <button id="report-dead-toggle" class="report-dead-btn" type="button">MARK AS DEAD</button>
@@ -284,6 +284,12 @@
                                         <div class="trust-segment"></div><div class="trust-segment"></div>
                                     </div>
                                     <div class="trust-value">1 / 10</div>
+                                </div>
+
+                                <div class="stats-edit-bar">
+                                    <button id="report-edit-stats-btn" class="report-edit-btn" type="button">EDIT</button>
+                                    <button id="report-save-stats-btn" class="report-save-btn" type="button">SAVE</button>
+                                    <button id="report-cancel-stats-btn" class="report-cancel-btn" type="button">CANCEL</button>
                                 </div>
 
                                 <div class="character-stats">
@@ -654,6 +660,11 @@
                 </div>
 
                 <div class="settings-item">
+                    <span class="settings-label">HALF-SPRITE MODE</span>
+                    <button class="settings-toggle" data-setting="halfspriteMode"></button>
+                </div>
+
+                <div class="settings-item">
                     <span class="settings-label">DAILY / DEADLY LIFE DYNAMIC THEMES</span>
                     <button class="settings-toggle on" data-setting="dynamicThemes"></button>
                 </div>
@@ -666,6 +677,11 @@
                 <div class="settings-item">
                     <span class="settings-label">HIDE GIFT IMAGES</span>
                     <button class="settings-toggle" data-setting="hideGiftImages"></button>
+                </div>
+
+                <div class="settings-item">
+                    <span class="settings-label">MINIGAME TUTORIAL PROMPTS</span>
+                    <button class="settings-toggle" data-setting="minigameTutorialsEnabled"></button>
                 </div>
 
                 <div class="settings-item settings-item-stack settings-announ-row">
@@ -688,6 +704,17 @@
 
                 <!-- Announcement customisation — only visible when Hide Hope's Peak Branding is ON -->
                 <div id="dangan-branding-extras" style="display:none">
+
+                    <div class="settings-item settings-item-stack settings-announ-row">
+                        <span class="settings-label">SELECT A GAME MASTER</span>
+                        <div class="settings-lang-toggle">
+                            <button class="settings-lang-btn active" data-gm-value="default" type="button">DEFAULT (MONOKUMA)</button>
+                            <button class="settings-lang-btn" data-gm-value="custom" type="button">CUSTOM</button>
+                        </div>
+                        <div class="settings-announ-custom-row is-hidden" id="dangan-gm-custom-row">
+                            <select id="dangan-gm-character" class="settings-select"></select>
+                        </div>
+                    </div>
 
                     <div class="bgm-tracks-panel active">
                         <div class="bgm-tracks-subtabs">
@@ -842,7 +869,15 @@
                     <div class="settings-ai-actions">
                         <button id="dangan_configure_vfx" class="settings-small-button" type="button">CONFIGURE EXPRESSIONS</button>
                     </div>
-                    <div class="settings-note">Visual and audio effects on character expressions. Character-specific.</div>
+                    <div class="settings-note">Visual and audio effects on character expressions. Character-specific. Requires you to be on a specific character chat to configure.</div>
+                </div>
+
+                <div class="settings-item settings-item-stack">
+                    <span class="settings-label">EMOTION FONTS</span>
+                    <div class="settings-ai-actions">
+                        <button id="dangan_configure_emotion_fonts" class="settings-small-button" type="button">CONFIGURE EMOTION FONTS</button>
+                    </div>
+                    <div class="settings-note">Per-emotion font override used by class trial statements. Default falls back to the standard statement font.</div>
                 </div>
 
 
@@ -890,6 +925,14 @@
                         <span id="dangan_reset_chapter_status" class="settings-note"></span>
                     </div>
                     <div class="settings-note">Resets the chapter indicator back to PROLOGUE.</div>
+                </div>
+                <div class="settings-item settings-item-stack">
+                    <span class="settings-label">CHARACTER INTRODUCTIONS</span>
+                    <div class="settings-ai-actions">
+                        <button id="dangan_reset_introductions" class="settings-small-button" type="button">RESET INTRODUCTION STATUSES</button>
+                        <span id="dangan_reset_introductions_status" class="settings-note"></span>
+                    </div>
+                    <div class="settings-note">Masks every character as ??? again until you re-run /introduce on them.</div>
                 </div>
                 <div class="settings-item settings-item-stack">
                     <label class="settings-label" for="dangan_reward_difficulty">REWARD DIFFICULTY</label>
@@ -995,6 +1038,27 @@
             </div>
         </div>
 
+
+        <div id="monopad-emofont-overlay" class="monopad-vfx-overlay" aria-hidden="true">
+            <div class="monopad-vfx-window" role="dialog" aria-modal="true" aria-labelledby="monopad-emofont-title">
+                <div class="monopad-vfx-header">
+                    <div>
+                        <div class="monopad-vfx-title" id="monopad-emofont-title">EMOTION FONTS</div>
+                        <div class="monopad-vfx-subtitle">PER-EMOTION FONT OVERRIDES</div>
+                    </div>
+                    <div class="monopad-vfx-header-controls">
+                        <div class="monopad-emofont-target-row">
+                            <span>TARGET</span>
+                            <select id="monopad-emofont-target"></select>
+                        </div>
+                        <button id="monopad-emofont-close" class="monopad-vfx-close" type="button" aria-label="Close emotion fonts">✕</button>
+                    </div>
+                </div>
+                <div class="monopad-vfx-body">
+                    <div id="monopad-emofont-grid" class="monopad-emofont-grid"></div>
+                </div>
+            </div>
+        </div>
 
         <div id="monopad-vfx-overlay" class="monopad-vfx-overlay" aria-hidden="true">
             <div class="monopad-vfx-window" role="dialog" aria-modal="true" aria-labelledby="monopad-vfx-title">
@@ -1138,6 +1202,31 @@
 
 <audio id="monopad_sfx_hover" preload="auto">
     <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/ui/sfx_hover.mp3" type="audio/mpeg">
+</audio>
+
+<audio id="monopad_sfx_message_move" preload="auto">
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/ui/message-move.wav" type="audio/wav">
+</audio>
+
+<!-- Overworld character interaction sounds -->
+<audio id="ow_sfx_character_hover" preload="auto">
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/ui/character-hover.wav" type="audio/wav">
+</audio>
+
+<audio id="ow_sfx_character_click" preload="auto">
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/ui/character-click.wav" type="audio/wav">
+</audio>
+
+<audio id="ow_sfx_character_enter_talk" preload="auto">
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/ui/character-enter-talk.wav" type="audio/wav">
+</audio>
+
+<audio id="ow_sfx_character_exit_talk" preload="auto">
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/ui/character-exit-talk.wav" type="audio/wav">
+</audio>
+
+<audio id="ow_sfx_change_rooms" preload="auto">
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/ui/change-rooms.wav" type="audio/wav">
 </audio>
 
 

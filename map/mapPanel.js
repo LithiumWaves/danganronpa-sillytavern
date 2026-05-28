@@ -59,7 +59,7 @@ function getFloorByKey(areaKey, floorKey) {
     return area.floors.find(floor => floor.key === floorKey) || null;
 }
 
-export function createMapPanelController({ extensionFolderPath, getItemsPanelController, playSfx, getSfx, getSetting, onWalkStep, onTrialStartRequest, getTruthBulletByLocationId, navigateToTruth, onMachineOpen, onMachineClose, playShopTrack, stopShopTrack }) {
+export function createMapPanelController({ extensionFolderPath, getItemsPanelController, playSfx, getSfx, getSetting, onWalkStep, onTrialStartRequest, getTruthBulletByLocationId, navigateToTruth, onMachineOpen, onMachineClose, playShopTrack, stopShopTrack, fetchBgmPaths, playBgmPath }) {
     const state = {
         area: "hopes_peak",
         floor: "floor_1",
@@ -294,6 +294,31 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         };
     }
 
+    // Resolve a usable image URL for a SillyTavern background file. Mirrors the
+    // logic used by the CG picker: prefer the <.bg_example> thumbnail, fall back
+    // to /backgrounds/<file>. Returns a plain URL (not a `url("…")` CSS string).
+    function resolveBgUrl(bgfile) {
+        if (!bgfile) return '';
+        const el = Array.from(document.querySelectorAll('.bg_example'))
+            .find(e => e.getAttribute('bgfile') === bgfile);
+        if (el) {
+            const imgEl = el.querySelector('.bg_example_img, img');
+            if (imgEl?.tagName === 'IMG' && imgEl.src) return imgEl.src;
+            if (imgEl) {
+                const cs = window.getComputedStyle(imgEl);
+                const m = (cs.backgroundImage || '').match(/url\(["']?([^"')]+)["']?\)/);
+                if (m?.[1]) return m[1];
+            }
+            const dataUrl = el.dataset?.url || el.getAttribute('data-url');
+            if (dataUrl) {
+                const m = dataUrl.match(/url\(["']?([^"')]+)["']?\)/);
+                return m?.[1] || dataUrl;
+            }
+            if (el.getAttribute('custom') === 'true') return bgfile;
+        }
+        return `backgrounds/${encodeURI(bgfile)}`;
+    }
+
     function renderCustomPins($pinLayer) {
         $pinLayer.find(selectors.customPin).remove();
         const floorPins = state.customPins.filter(
@@ -328,11 +353,17 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                                || (pin.type === "truth-bullet" && state.simpleEvidencePins)
                                || (pin.type === "body"         && state.simpleBodyPins);
             const showTooltipIcon = pin.type === "room" || pin.type === "monomachine" || pin.type === "trial";
-            const tooltipIconHtml = showTooltipIcon
+            // Hide the small icon when the room has a BG preview to show — the BG
+            // image takes its place as the visual preview, like bullet images do.
+            const roomBgUrl = (pin.type === "room" && pin.bg) ? resolveBgUrl(pin.bg) : "";
+            const tooltipIconHtml = (showTooltipIcon && !roomBgUrl)
                 ? `<img class="map-custom-pin-tooltip-icon" src="${iconSrc}" alt="" />`
                 : "";
             const tooltipBulletImageHtml = matchedBullet?.image
                 ? `<img class="map-custom-pin-tooltip-bullet-image" src="${matchedBullet.image}" alt="" />`
+                : "";
+            const tooltipBgImageHtml = roomBgUrl
+                ? `<img class="map-custom-pin-tooltip-bg-image" src="${escapeHtml(roomBgUrl)}" alt="" />`
                 : "";
             const $pin = $(`
                 <button
@@ -347,6 +378,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                     <span class="map-custom-pin-tooltip" aria-hidden="true">
                         ${tooltipIconHtml}
                         ${tooltipBulletImageHtml}
+                        ${tooltipBgImageHtml}
                         <span class="map-custom-pin-tooltip-name">${escapeHtml(pin.label)}</span>
                         <span class="map-custom-pin-tooltip-id">${escapeHtml(pin.locationId || '')}</span>
                     </span>
@@ -1628,6 +1660,73 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                     </div>
                 </div>` : "";
 
+            // Background data — sourced from SillyTavern's <.bg_example> elements.
+            // We build a list of { bgfile, label, thumb } so the picker can show
+            // a real preview thumbnail for each background, matching the CG picker.
+            const bgItems = Array.from(document.querySelectorAll('.bg_example')).map(el => {
+                const bgfile = el.getAttribute('bgfile') || '';
+                if (!bgfile) return null;
+                const label = bgfile.split('/').pop().replace(/\.[^.]+$/, '') || bgfile;
+                const imgEl = el.querySelector('.bg_example_img, img');
+                let thumb = 'none';
+                if (imgEl) {
+                    if (imgEl.tagName === 'IMG' && imgEl.src) {
+                        thumb = `url("${imgEl.src}")`;
+                    } else {
+                        const cs = window.getComputedStyle(imgEl);
+                        if (cs.backgroundImage && cs.backgroundImage !== 'none') thumb = cs.backgroundImage;
+                        else if (imgEl.style.backgroundImage) thumb = imgEl.style.backgroundImage;
+                    }
+                }
+                const isCustom = el.getAttribute('custom') === 'true';
+                const cssUrl = el.dataset?.url || el.getAttribute('data-url')
+                    || (thumb !== 'none' ? thumb : null)
+                    || (isCustom ? `url("${bgfile}")` : `url("backgrounds/${encodeURIComponent(bgfile)}")`);
+                if (thumb === 'none' && cssUrl) thumb = cssUrl;
+                return { bgfile, label, thumb };
+            }).filter(Boolean);
+
+            // Currently chosen BG → its preview, label, and thumbnail.
+            // The thumb is applied via JS after the modal renders rather than as an
+            // inline `style="…"` attribute, because background-image url() values
+            // contain double quotes that would prematurely close the style attribute.
+            const chosenBg   = pin.bg || '';
+            const chosenItem = bgItems.find(b => b.bgfile === chosenBg) || null;
+            const chosenLabel = chosenItem?.label || (chosenBg ? chosenBg : '(none)');
+
+            // Connected To picker — every other pin, every area, every sub-area (floor).
+            // Refs are typed: pin:<locationId> | area:<areaKey> | subarea:<areaKey>/<floorKey>
+            const connected = Array.isArray(pin.connectedTo) ? pin.connectedTo : [];
+            const allPinsForCon = state.customPins.filter(p => p.id !== pin.id);
+            const areaEntries = [];
+            const floorEntries = [];
+            for (const [areaKey, area] of Object.entries(MAP_AREAS)) {
+                areaEntries.push({ ref: `area:${areaKey}`, label: `Area — ${area.label}` });
+                for (const f of (area.floors || [])) {
+                    floorEntries.push({ ref: `subarea:${areaKey}/${f.key}`, label: `Sub-area — ${area.label} › ${f.label}` });
+                }
+            }
+            for (const ca of (state.customAreas || [])) {
+                areaEntries.push({ ref: `area:${ca.key}`, label: `Area — ${ca.label || ca.key}` });
+                for (const f of (ca.floors || [])) {
+                    floorEntries.push({ ref: `subarea:${ca.key}/${f.key}`, label: `Sub-area — ${ca.label || ca.key} › ${f.label || f.key}` });
+                }
+            }
+            const conPinOptions = allPinsForCon.map(p => {
+                const ref   = `pin:${p.locationId || p.id}`;
+                const chk   = connected.includes(ref) ? ' checked' : '';
+                const label = p.label || p.locationId;
+                return `<label class="map-pin-edit-conn-row" data-search="${escapeHtml(label.toLowerCase())}"><input type="checkbox" class="map-pin-edit-conn" value="${escapeHtml(ref)}"${chk}> ${escapeHtml(label)}</label>`;
+            }).join('');
+            const conAreaOptions = areaEntries.map(({ ref, label }) => {
+                const chk = connected.includes(ref) ? ' checked' : '';
+                return `<label class="map-pin-edit-conn-row" data-search="${escapeHtml(label.toLowerCase())}"><input type="checkbox" class="map-pin-edit-conn" value="${escapeHtml(ref)}"${chk}> ${escapeHtml(label)}</label>`;
+            }).join('');
+            const conFloorOptions = floorEntries.map(({ ref, label }) => {
+                const chk = connected.includes(ref) ? ' checked' : '';
+                return `<label class="map-pin-edit-conn-row" data-search="${escapeHtml(label.toLowerCase())}"><input type="checkbox" class="map-pin-edit-conn" value="${escapeHtml(ref)}"${chk}> ${escapeHtml(label)}</label>`;
+            }).join('');
+
             const $modal = $(`
                 <div class="map-pin-edit-modal">
                     <div class="map-pin-edit-box">
@@ -1641,6 +1740,36 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                             <div class="map-pin-edit-label">LOCATION ID</div>
                             <input type="text" class="map-pin-edit-input map-pin-edit-id" value="${escapeHtml(pin.locationId || '')}" maxlength="80" />
                         </div>
+                        <div class="map-pin-edit-field">
+                            <div class="map-pin-edit-label">BG</div>
+                            <div class="map-pin-edit-bg-row">
+                                <button type="button" class="map-pin-edit-bg-btn" data-bg="${escapeHtml(chosenBg)}">
+                                    <span class="map-pin-edit-bg-thumb"></span>
+                                    <span class="map-pin-edit-bg-name">${escapeHtml(chosenLabel)}</span>
+                                </button>
+                                <button type="button" class="map-pin-edit-bg-clear" title="Clear background">✕</button>
+                            </div>
+                        </div>
+                        <div class="map-pin-edit-field">
+                            <div class="map-pin-edit-label">BGM</div>
+                            <div class="map-pin-edit-bg-row">
+                                <button type="button" class="map-pin-edit-bgm-btn" data-bgm="${escapeHtml(pin.bgm || '')}">
+                                    <span class="map-pin-edit-bgm-icon">♪</span>
+                                    <span class="map-pin-edit-bgm-name">${escapeHtml(bgmTrackLabel(pin.bgm))}</span>
+                                </button>
+                                <button type="button" class="map-pin-edit-bgm-preview" title="Preview / stop">▶</button>
+                                <button type="button" class="map-pin-edit-bgm-clear" title="Clear BGM override">✕</button>
+                            </div>
+                        </div>
+                        <div class="map-pin-edit-field">
+                            <div class="map-pin-edit-label">CONNECTED TO</div>
+                            <input type="text" class="map-pin-edit-input map-pin-edit-conn-search" placeholder="Search…" autocomplete="off" />
+                            <div class="map-pin-edit-conn-list">
+                                ${conPinOptions || '<div class="map-pin-edit-conn-empty">(no other pins)</div>'}
+                                ${conAreaOptions}
+                                ${conFloorOptions}
+                            </div>
+                        </div>
                         <div class="map-pin-edit-actions">
                             <button class="map-pin-edit-save" type="button">SAVE</button>
                             <button class="map-pin-edit-cancel" type="button">CANCEL</button>
@@ -1650,6 +1779,67 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             `);
 
             $("body").append($modal);
+
+            // BG picker — CG-style modal grid with previews.
+            function setChosenBg(bgfile) {
+                const item   = bgItems.find(b => b.bgfile === bgfile) || null;
+                const label  = item?.label || (bgfile ? bgfile : '(none)');
+                const $btn   = $modal.find(".map-pin-edit-bg-btn");
+                $btn.attr('data-bg', bgfile || '');
+                $btn.find('.map-pin-edit-bg-name').text(label);
+                const thumbEl = $btn.find('.map-pin-edit-bg-thumb')[0];
+                if (thumbEl) {
+                    if (item?.thumb && item.thumb !== 'none') thumbEl.style.backgroundImage = item.thumb;
+                    else thumbEl.style.backgroundImage = '';
+                }
+            }
+            // Apply the initial thumbnail (avoids inline-style attribute quote breakage).
+            setChosenBg(chosenBg);
+            $modal.on("click", ".map-pin-edit-bg-clear", (e) => { e.stopPropagation(); setChosenBg(''); });
+            $modal.on("click", ".map-pin-edit-bg-btn", (e) => {
+                e.stopPropagation();
+                openBgPicker(bgItems, $modal.find(".map-pin-edit-bg-btn").attr('data-bg') || '', setChosenBg);
+            });
+
+            // BGM picker + preview wiring
+            function setChosenBgm(path) {
+                const $btn = $modal.find(".map-pin-edit-bgm-btn");
+                $btn.attr('data-bgm', path || '');
+                $btn.find('.map-pin-edit-bgm-name').text(bgmTrackLabel(path));
+                $modal.find(".map-pin-edit-bgm-preview").text('▶');
+            }
+            $modal.on("click", ".map-pin-edit-bgm-btn", (e) => {
+                e.stopPropagation();
+                openBgmPicker($modal.find(".map-pin-edit-bgm-btn").attr('data-bgm') || '', setChosenBgm);
+            });
+            $modal.on("click", ".map-pin-edit-bgm-clear", (e) => { e.stopPropagation(); stopBgmPreview(); setChosenBgm(''); });
+            let modalPreviewPlaying = false;
+            $modal.on("click", ".map-pin-edit-bgm-preview", (e) => {
+                e.stopPropagation();
+                const path = $modal.find(".map-pin-edit-bgm-btn").attr('data-bgm') || '';
+                if (!path) return;
+                if (modalPreviewPlaying) {
+                    stopBgmPreview();
+                    modalPreviewPlaying = false;
+                    $(e.currentTarget).text('▶');
+                } else {
+                    playBgmPreview(path);
+                    modalPreviewPlaying = true;
+                    $(e.currentTarget).text('■');
+                }
+            });
+            // Make sure preview audio doesn't keep playing after the modal closes.
+            const origRemove = $modal[0].remove.bind($modal[0]);
+            $modal[0].remove = function () { stopBgmPreview(); origRemove(); };
+
+            // Live filter the Connected To list by row label.
+            $modal.find(".map-pin-edit-conn-search").on("input", function () {
+                const q = this.value.toLowerCase().trim();
+                $modal.find(".map-pin-edit-conn-row").each(function () {
+                    const hay = this.dataset.search || '';
+                    this.style.display = !q || hay.includes(q) ? '' : 'none';
+                });
+            });
 
             // spaces → underscores on ID input
             $modal.find(".map-pin-edit-id").on("input", function () {
@@ -1676,6 +1866,9 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                     const selectedIcon = $modal.find(".map-pins-icon-btn.selected").data("icon");
                     if (selectedIcon) pin.icon = selectedIcon;
                 }
+                pin.bg = String($modal.find(".map-pin-edit-bg-btn").attr('data-bg') || '');
+                pin.bgm = String($modal.find(".map-pin-edit-bgm-btn").attr('data-bgm') || '');
+                pin.connectedTo = $modal.find(".map-pin-edit-conn:checked").map(function () { return this.value; }).get();
                 saveCustomPins();
                 $modal.remove();
                 renderMapPanel();
@@ -1882,6 +2075,173 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         }
     }
 
+    // Derive a friendly track label from a BGM file path.
+    function bgmTrackLabel(path) {
+        if (!path) return '(none)';
+        return String(path).split('/').pop().replace(/\.[^.]+$/, '');
+    }
+
+    // Audio element used by both the pin-edit modal preview and the BGM picker
+    // grid preview buttons. Single shared instance so previews don't stack.
+    let bgmPreviewAudio = null;
+    function stopBgmPreview() {
+        if (bgmPreviewAudio) {
+            try { bgmPreviewAudio.pause(); bgmPreviewAudio.src = ''; } catch {}
+            bgmPreviewAudio = null;
+        }
+    }
+    function playBgmPreview(path) {
+        stopBgmPreview();
+        if (!path) return;
+        try {
+            bgmPreviewAudio = new Audio(path);
+            bgmPreviewAudio.volume = 0.5;
+            bgmPreviewAudio.play().catch(() => {});
+        } catch {}
+    }
+
+    // CG-style modal BGM picker — same shell as the BG picker, but each row is
+    // a track label + Preview ▶ / ■ button instead of a thumbnail.
+    async function openBgmPicker(currentBgm, onPick) {
+        document.getElementById('map-bgm-picker')?.remove();
+        const picker = document.createElement('div');
+        picker.id = 'map-bgm-picker';
+        picker.innerHTML = `
+            <div class="map-bg-picker-inner">
+                <div class="map-bg-picker-header">
+                    <span class="map-bg-picker-title">CHOOSE BGM</span>
+                    <button type="button" class="map-bg-picker-close">✕</button>
+                </div>
+                <div class="map-bg-picker-search-row">
+                    <input type="text" class="map-bg-picker-search" placeholder="Search BGM tracks…" autocomplete="off" />
+                </div>
+                <div class="map-bgm-picker-list"></div>
+            </div>
+        `;
+        document.body.appendChild(picker);
+
+        const list = picker.querySelector('.map-bgm-picker-list');
+        const search = picker.querySelector('.map-bg-picker-search');
+
+        let paths = [];
+        try { paths = (await fetchBgmPaths?.()) || []; } catch { paths = []; }
+        paths = paths.filter(p => typeof p === 'string' && p.trim());
+
+        let playingPath = null;
+
+        function render() {
+            list.innerHTML = '';
+            const q = search.value.trim().toLowerCase();
+            const visible = q
+                ? paths.filter(p => p.toLowerCase().includes(q) || bgmTrackLabel(p).toLowerCase().includes(q))
+                : paths;
+            if (!visible.length) {
+                const empty = document.createElement('div');
+                empty.className = 'map-bg-picker-empty';
+                empty.textContent = 'No BGM tracks found';
+                list.appendChild(empty);
+                return;
+            }
+            for (const p of visible) {
+                const row = document.createElement('div');
+                row.className = 'map-bgm-picker-row' + (p === currentBgm ? ' selected' : '');
+                row.innerHTML = `
+                    <button type="button" class="map-bgm-picker-preview" data-path="${escapeHtml(p)}" title="Preview / stop">${p === playingPath ? '■' : '▶'}</button>
+                    <span class="map-bgm-picker-label" title="${escapeHtml(p)}">${escapeHtml(bgmTrackLabel(p))}</span>
+                    <button type="button" class="map-bgm-picker-pick" data-path="${escapeHtml(p)}">Use</button>
+                `;
+                list.appendChild(row);
+            }
+        }
+        render();
+        search.addEventListener('input', render);
+
+        picker.addEventListener('click', (e) => {
+            const previewBtn = e.target.closest?.('.map-bgm-picker-preview');
+            if (previewBtn) {
+                const path = previewBtn.dataset.path;
+                if (playingPath === path) {
+                    stopBgmPreview();
+                    playingPath = null;
+                } else {
+                    playBgmPreview(path);
+                    playingPath = path;
+                }
+                render();
+                return;
+            }
+            const pickBtn = e.target.closest?.('.map-bgm-picker-pick');
+            if (pickBtn) {
+                stopBgmPreview();
+                const path = pickBtn.dataset.path;
+                picker.remove();
+                onPick(path);
+                return;
+            }
+            if (e.target === picker || e.target.closest?.('.map-bg-picker-close')) {
+                stopBgmPreview();
+                picker.remove();
+            }
+        });
+    }
+
+    // CG-style modal background picker. Shows every <.bg_example> as a labelled
+    // thumbnail in a 5-column grid with a search field. Click a thumb → onPick(bgfile).
+    function openBgPicker(items, currentBg, onPick) {
+        document.getElementById('map-bg-picker')?.remove();
+        const picker = document.createElement('div');
+        picker.id = 'map-bg-picker';
+        picker.innerHTML = `
+            <div class="map-bg-picker-inner">
+                <div class="map-bg-picker-header">
+                    <span class="map-bg-picker-title">CHOOSE BACKGROUND</span>
+                    <button type="button" class="map-bg-picker-close">✕</button>
+                </div>
+                <div class="map-bg-picker-search-row">
+                    <input type="text" class="map-bg-picker-search" placeholder="Search backgrounds…" autocomplete="off" />
+                </div>
+                <div class="map-bg-picker-grid"></div>
+            </div>
+        `;
+        document.body.appendChild(picker);
+
+        const grid = picker.querySelector('.map-bg-picker-grid');
+        const search = picker.querySelector('.map-bg-picker-search');
+
+        function render() {
+            grid.innerHTML = '';
+            const q = search.value.trim().toLowerCase();
+            const visible = q ? items.filter(it => it.label.toLowerCase().includes(q) || it.bgfile.toLowerCase().includes(q)) : items;
+            if (!visible.length) {
+                const empty = document.createElement('div');
+                empty.className = 'map-bg-picker-empty';
+                empty.textContent = 'No backgrounds found';
+                grid.appendChild(empty);
+                return;
+            }
+            for (const item of visible) {
+                const cell = document.createElement('div');
+                cell.className = 'map-bg-picker-item' + (item.bgfile === currentBg ? ' selected' : '');
+                const thumb = document.createElement('div');
+                thumb.className = 'map-bg-picker-thumb';
+                if (item.thumb && item.thumb !== 'none') thumb.style.backgroundImage = item.thumb;
+                const lbl = document.createElement('span');
+                lbl.className = 'map-bg-picker-label';
+                lbl.textContent = item.label;
+                cell.appendChild(thumb);
+                cell.appendChild(lbl);
+                cell.onclick = () => { picker.remove(); onPick(item.bgfile); };
+                grid.appendChild(cell);
+            }
+        }
+        render();
+        search.addEventListener('input', render);
+
+        picker.querySelector('.map-bg-picker-close').addEventListener('click', () => picker.remove());
+        picker.addEventListener('click', (e) => { if (e.target === picker) picker.remove(); });
+        setTimeout(() => search.focus(), 30);
+    }
+
     function setPinHidden(locationId, hidden) {
         if (!locationId) return;
         const pin = state.customPins.find(p => p.locationId === locationId);
@@ -1889,6 +2249,164 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         pin.hidden = hidden;
         saveCustomPins();
         renderMapPanel();
+    }
+
+    function getAllPins() {
+        return state.customPins.slice();
+    }
+
+    // Read the data needed to render a small floor preview (minimap) outside the
+    // main Map panel. Excludes evidence ('truth-bullet') and body pins.
+    //
+    // `currentLocationId` controls which floor the minimap targets, irrespective
+    // of what the Map panel itself is currently displaying:
+    //   - "<locationId>"           — look up the pin; use its areaKey + floorKey.
+    //   - "area:<areaKey>"         — use the area's first floor.
+    //   - "subarea:<areaKey>/<floorKey>" — use those directly.
+    //   - null / unknown           — fall back to state.area / state.floor.
+    function getMinimapState(currentLocationId = null) {
+        let areaKey = state.area;
+        let floorKey = state.floor;
+        const allAreas = getAllAreas();
+
+        if (typeof currentLocationId === 'string' && currentLocationId) {
+            if (currentLocationId.startsWith('subarea:')) {
+                const tail = currentLocationId.slice(8);
+                const slash = tail.indexOf('/');
+                if (slash >= 0) {
+                    areaKey = tail.slice(0, slash);
+                    floorKey = tail.slice(slash + 1);
+                }
+            } else if (currentLocationId.startsWith('area:')) {
+                areaKey = currentLocationId.slice(5);
+                floorKey = allAreas[areaKey]?.floors?.[0]?.key || floorKey;
+            } else {
+                const pin = state.customPins.find(p => p.locationId === currentLocationId);
+                if (pin) { areaKey = pin.areaKey; floorKey = pin.floorKey; }
+            }
+        }
+
+        const area = allAreas[areaKey];
+        const floor = getAreaFloor(areaKey, floorKey);
+        if (!area || !floor) return null;
+        const imageSrc = floor.image?.startsWith('data:')
+            ? floor.image
+            : floor.image ? `${extensionFolderPath}/assets/${floor.image}` : '';
+        const LOCATION_PIN_TYPES = new Set(['room', 'monomachine', 'trial']);
+        const pins = state.customPins
+            .filter(p => p.areaKey === areaKey && p.floorKey === floorKey && !p.hidden)
+            .filter(p => LOCATION_PIN_TYPES.has(p.type))
+            .map(p => {
+                const ICON_MIGRATIONS = {
+                    'truth-bullet-location.svg': 'artillery-shell.svg',
+                    'body-discovery-location.svg': 'chalk-outline-murder.svg',
+                };
+                const icon = ICON_MIGRATIONS[p.icon] ?? p.icon;
+                const iconUrl = icon ? `${extensionFolderPath}/assets/rooms/${icon}` : '';
+                return {
+                    id: p.id, type: p.type, label: p.label,
+                    x: p.x, y: p.y, iconUrl,
+                };
+            });
+        return {
+            areaLabel: area.label,
+            floorLabel: floor.label,
+            areaKey, floorKey,
+            imageSrc,
+            pins,
+            mapWidth: MAP_POINT_WIDTH,
+            mapHeight: MAP_POINT_HEIGHT,
+        };
+    }
+
+    // Flat list view of every known area + floor for use by /setlocation autocomplete.
+    // Avoids shadowing the controller's existing getAllAreas() (which returns an
+    // object map keyed by areaKey and is consumed all over the panel).
+    function listAreasForNav() {
+        const all = getAllAreas();
+        const out = [];
+        for (const [key, area] of Object.entries(all)) {
+            out.push({
+                key,
+                label: area.label || key,
+                floors: (area.floors || []).map(f => ({ key: f.key, label: f.label || f.key })),
+            });
+        }
+        return out;
+    }
+
+    function getPinByLocationId(locationId) {
+        if (!locationId) return null;
+        return state.customPins.find(p => p.locationId === locationId) || null;
+    }
+
+    // Resolve a labelled human description for a connectedTo ref (pin/area/subarea).
+    function describeConnectionRef(ref) {
+        if (typeof ref !== 'string' || !ref) return null;
+        if (ref.startsWith('pin:')) {
+            const id = ref.slice(4);
+            const p = getPinByLocationId(id);
+            return { ref, kind: 'pin', value: id, label: p?.label || id };
+        }
+        if (ref.startsWith('area:')) {
+            const key = ref.slice(5);
+            const a = MAP_AREAS[key] || (state.customAreas || []).find(c => c.key === key);
+            return { ref, kind: 'area', value: key, label: a?.label || key };
+        }
+        if (ref.startsWith('subarea:')) {
+            const tail = ref.slice(8);
+            const slash = tail.indexOf('/');
+            if (slash < 0) return null;
+            const areaKey = tail.slice(0, slash);
+            const floorKey = tail.slice(slash + 1);
+            const a = MAP_AREAS[areaKey] || (state.customAreas || []).find(c => c.key === areaKey);
+            const f = a?.floors?.find(fl => fl.key === floorKey);
+            if (!a || !f) return null;
+            return {
+                ref, kind: 'subarea', value: `${areaKey}/${floorKey}`,
+                areaKey, floorKey, label: `${a.label || areaKey} › ${f.label || floorKey}`,
+            };
+        }
+        return null;
+    }
+
+    function getConnectionsForLocationId(locationId) {
+        const pin = getPinByLocationId(locationId);
+        if (!pin || !Array.isArray(pin.connectedTo)) return [];
+        return pin.connectedTo.map(describeConnectionRef).filter(Boolean);
+    }
+
+    // Play a pin's BGM override via the host extension's playBgmPath helper.
+    function playPinBgm(path) {
+        if (!path) return false;
+        if (typeof playBgmPath === 'function') {
+            playBgmPath(path);
+            return true;
+        }
+        return false;
+    }
+
+    // Switch SillyTavern's chat background by clicking the matching <.bg_example>.
+    // Accepts a partial filename match (case-insensitive), mirroring /bda bg=…
+    function switchChatBackground(bg) {
+        if (!bg) return false;
+        const bgElements = Array.from(document.querySelectorAll('.bg_example'));
+        const lower = String(bg).toLowerCase();
+        const match = bgElements.find(el => el.getAttribute('bgfile')?.toLowerCase().includes(lower));
+        if (match instanceof HTMLElement) { match.click(); return true; }
+        return false;
+    }
+
+    // Navigate the map UI to an area/floor without changing background.
+    function navigateToArea(areaKey, floorKey = null) {
+        if (!areaKey) return false;
+        const a = MAP_AREAS[areaKey] || (state.customAreas || []).find(c => c.key === areaKey);
+        if (!a) return false;
+        state.area = areaKey;
+        const floor = floorKey ? a.floors?.find(f => f.key === floorKey) : a.floors?.[0];
+        state.floor = floor?.key || state.floor;
+        renderMapPanel();
+        return true;
     }
 
     return {
@@ -1899,5 +2417,14 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         openPinCreatorWithPrefill,
         removePinByLocationId,
         setPinHidden,
+        getAllPins,
+        getAllAreas: listAreasForNav,
+        getMinimapState,
+        getPinByLocationId,
+        describeConnectionRef,
+        getConnectionsForLocationId,
+        switchChatBackground,
+        playPinBgm,
+        navigateToArea,
     };
 }

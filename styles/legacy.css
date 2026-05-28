@@ -1378,6 +1378,690 @@ body.dangan-theme-investigation #dangan_monopad_button {
 .map-pin-edit-input:focus {
     border-color: rgba(100, 180, 255, 0.7);
 }
+.map-pin-edit-conn-search {
+    margin-bottom: 4px;
+}
+
+/* BG picker trigger button inside the pin edit modal */
+.map-pin-edit-bg-row {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+}
+.map-pin-edit-bg-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    background: rgba(5, 10, 22, 0.6);
+    border: 1px solid rgba(80, 180, 255, 0.32);
+    border-radius: 4px;
+    color: rgba(220, 235, 255, 0.92);
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 11px;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 120ms, background 120ms;
+}
+.map-pin-edit-bg-btn:hover {
+    border-color: rgba(100, 180, 255, 0.75);
+    background: rgba(10, 20, 40, 0.75);
+}
+.map-pin-edit-bg-thumb {
+    width: 60px;
+    height: 34px;
+    border-radius: 3px;
+    background-size: cover;
+    background-position: center;
+    background-color: rgba(255, 255, 255, 0.06);
+    flex-shrink: 0;
+}
+.map-pin-edit-bg-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.map-pin-edit-bg-clear {
+    padding: 0 10px;
+    background: rgba(40, 8, 12, 0.6);
+    border: 1px solid rgba(255, 80, 80, 0.42);
+    border-radius: 4px;
+    color: rgba(255, 200, 200, 0.85);
+    cursor: pointer;
+    font-size: 12px;
+}
+.map-pin-edit-bg-clear:hover {
+    background: rgba(60, 10, 18, 0.85);
+    border-color: rgba(255, 120, 120, 0.8);
+}
+
+/* BGM trigger button + preview button — share the BG-row layout */
+.map-pin-edit-bgm-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 10px;
+    background: rgba(5, 10, 22, 0.6);
+    border: 1px solid rgba(80, 180, 255, 0.32);
+    border-radius: 4px;
+    color: rgba(220, 235, 255, 0.92);
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 11px;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 120ms, background 120ms;
+}
+.map-pin-edit-bgm-btn:hover {
+    border-color: rgba(100, 180, 255, 0.75);
+    background: rgba(10, 20, 40, 0.75);
+}
+.map-pin-edit-bgm-icon {
+    width: 24px;
+    text-align: center;
+    color: rgba(140, 200, 255, 0.9);
+    font-size: 14px;
+}
+.map-pin-edit-bgm-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.map-pin-edit-bgm-preview,
+.map-pin-edit-bgm-clear {
+    padding: 0 10px;
+    background: rgba(8, 22, 36, 0.7);
+    border: 1px solid rgba(80, 180, 255, 0.45);
+    border-radius: 4px;
+    color: rgba(200, 230, 255, 0.92);
+    cursor: pointer;
+    font-size: 12px;
+}
+.map-pin-edit-bgm-clear { background: rgba(40, 8, 12, 0.6); border-color: rgba(255, 80, 80, 0.42); color: rgba(255, 200, 200, 0.85); }
+.map-pin-edit-bgm-preview:hover { border-color: #8cc8ff; box-shadow: 0 0 6px rgba(100, 180, 255, 0.5); }
+.map-pin-edit-bgm-clear:hover   { background: rgba(60, 10, 18, 0.85); border-color: rgba(255, 120, 120, 0.8); }
+
+/* Floating "Move to" panel — fixed to the left of the viewport in non-trial views.
+ * Rendered inside a Danganronpa-style angular "panel" PNG (assets/images/panel-small.png).
+ * The PNG provides the dark interior + magenta/pink torn-edge frame; we pad so the
+ * inner content sits inside the dark central region. Hidden by JS during Class Trials. */
+#dangan-moveto-panel {
+    position: fixed;
+    top: 87%;
+    left: -130px;
+    transform: translateY(-50%);
+    z-index: 1500000;
+    display: flex;
+    flex-direction: column;
+    width: 400px;
+    height: 35vh;
+    max-height: 880px;
+    padding: 50px 30px;
+    background-image: url(../assets/images/vertical-panel.png);
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    pointer-events: auto;
+    box-sizing: border-box;
+    transition: filter 250ms ease;
+}
+/* Hue-shift the panel art to match the current dynamic theme.
+   The source PNG is magenta/pink, so Investigation (pink) needs no shift,
+   Day rotates to blue, and Night desaturates to gray. */
+body.dangan-theme-investigation #dangan-moveto-panel { filter: none; }
+body.dangan-theme-daily         #dangan-moveto-panel { filter: hue-rotate(280deg) saturate(1.05); }
+body.dangan-theme-night         #dangan-moveto-panel { filter: grayscale(1) brightness(0.85); }
+
+/* Bottom-right minimap — rotated-square frame showing the current sub-area's
+ * floor image plus location pins (no evidence, no bodies, no hover). Hidden by
+ * JS during Class Trials and while the Monopad is open. */
+#dangan-minimap {
+    position: fixed;
+    right: 38px;
+    bottom: 38px;
+    width: 200px;
+    height: 200px;
+    /* Below SillyTavern's right-nav-panel drawer (.fillRight, z-index 3000)
+     * so the character list / WI / etc. drawers can overlay it, but above the
+     * overworld (25) and chat shell (30). */
+    z-index: 2000;
+    pointer-events: auto;
+    cursor: grab;
+    touch-action: none;
+}
+#dangan-minimap.dragging { cursor: grabbing; }
+
+/* Dark-gray "shadow" diamond behind the main one — same shape and size, but
+ * offset slightly downward and a stop darker so the main diamond reads as
+ * lifted off a backing plate. */
+#dangan-minimap::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: rotate(45deg) translate(0, 14px);
+    transform-origin: 50% 50%;
+    border: 5px solid rgba(40, 40, 48);
+    background: rgba(18, 18, 24);
+    box-shadow: 0 0 12px rgba(0, 0, 0, 0.6);
+    z-index: -1;
+    pointer-events: none;
+    padding: 7em 10.5em;
+    top: 8em;
+    left: 1em;
+}
+
+.dangan-minimap-square {
+    position: absolute;
+    inset: 0;
+    transform: rotate(45deg);
+    transform-origin: 50% 50%;
+    border: 5px solid rgba(255, 130, 220, 0.85);
+    box-shadow:
+        0 0 14px rgba(255, 100, 200, 0.45),
+        inset 0 0 16px rgba(0, 0, 0, 0.55);
+    background: rgba(8, 6, 18, 0.85);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+/* Aspect-matched wrapper so pin %-coords (in floor-image space) align with the
+ * image pixels. The diamond outer stays square; the wrapper fits inside it. */
+.dangan-minimap-map {
+    position: relative;
+    width: 100%;
+    max-height: 100%;
+    /* aspect-ratio set inline based on getMinimapState().mapWidth/mapHeight */
+    will-change: transform;
+}
+.dangan-minimap-image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-drag: none;
+    filter: grayscale(1);
+}
+.dangan-minimap-pin-layer,
+.dangan-minimap-char-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+.dangan-minimap-pin {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: rgba(255, 220, 240, 0.95);
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Non-current room pins are desaturated so the current room stands out. */
+    filter: grayscale(1) brightness(0.85);
+}
+/* Current room pin is hidden — the player's gold pulse replaces it visually. */
+.dangan-minimap-pin-current { display: none; }
+.dangan-minimap-pin img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: contain;
+    filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.85));
+}
+
+/* ── Pulses & character pins ────────────────────────────────────────────── */
+@keyframes minimap-pulse-out {
+    0%   { transform: translate(-50%, -50%) scale(0.6); opacity: 0.85; }
+    100% { transform: translate(-50%, -50%) scale(2.0); opacity: 0;    }
+}
+.dangan-minimap-pulse,
+.dangan-minimap-char-pin {
+    position: absolute;
+    width: 7px;
+    height: 7px;
+    transform: translate(-50%, -50%);
+    pointer-events: auto;
+}
+/* The pin wrapper handles positioning and tooltip placement; it stays
+ * axis-aligned so the tooltip never gets rotated with the teardrop. The
+ * coloured teardrop lives in a child .dangan-minimap-char-pin-shape and
+ * is the only thing rotated by --pin-angle. */
+.dangan-minimap-char-pin {
+    transform: translate(-50%, -50%);
+    background: transparent;
+    box-shadow: none;
+}
+.dangan-minimap-char-pin-shape {
+    position: absolute;
+    inset: 0;
+    border-radius: 50% 50% 50% 0;
+    transform: rotate(var(--pin-angle, 0deg));
+    transform-origin: center;
+    pointer-events: none;
+}
+.dangan-minimap-pulse { pointer-events: auto; }
+.dangan-minimap-pulse-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 220, 100, 0.55) 0%, rgba(255, 220, 100, 0) 70%);
+    animation: minimap-pulse-out 1.6s ease-out infinite;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+}
+.dangan-minimap-pulse-ring.delay { animation-delay: 0.8s; }
+.dangan-minimap-pulse-core {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 10px; height: 10px;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: #ffd64a;
+    box-shadow: 0 0 6px rgba(255, 200, 60, 0.85), 0 0 14px rgba(255, 200, 60, 0.55);
+}
+
+/* Speaker pin — red teardrop. */
+.dangan-minimap-char-pin-speaker .dangan-minimap-char-pin-shape {
+    background: #ff2a3a;
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.9), 0 0 10px rgba(255, 60, 60, 0.85);
+}
+
+/* Other group-chat members — per-character colour passed in via --char-color. */
+.dangan-minimap-char-pin-other .dangan-minimap-char-pin-shape {
+    background: var(--char-color, #56e2ff);
+    box-shadow:
+        0 0 5px rgba(0, 0, 0, 0.85),
+        0 0 8px var(--char-color, rgba(86, 226, 255, 0.7));
+}
+
+/* The player's pin — gold, marked visually distinct from group members. */
+.dangan-minimap-char-pin-player .dangan-minimap-char-pin-shape {
+    background: #ffd64a;
+    box-shadow:
+        0 0 5px rgba(0, 0, 0, 0.9),
+        0 0 10px rgba(255, 200, 60, 0.85);
+}
+
+/* Hover tooltip — name label rendered above the pin. */
+.dangan-minimap-pulse::after,
+.dangan-minimap-char-pin::after {
+    content: attr(data-name);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 6px);
+    transform: translateX(-50%);
+    padding: 3px 7px;
+    background: rgba(8, 6, 18, 0.92);
+    border: 1px solid rgba(255, 130, 220, 0.6);
+    border-radius: 3px;
+    color: rgba(255, 240, 250, 0.96);
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 120ms;
+    z-index: 4;
+}
+.dangan-minimap-pulse:hover::after,
+.dangan-minimap-char-pin:hover::after,
+.dangan-minimap-char-pin.selected::after { opacity: 1; }
+
+/* Hovered / selected pins jump above their siblings in the stacking order
+ * so the tooltip isn't drawn underneath neighbouring pins that happen to
+ * appear later in the DOM. */
+.dangan-minimap-char-pin,
+.dangan-minimap-pulse { z-index: 2; }
+.dangan-minimap-pulse:hover,
+.dangan-minimap-char-pin:hover,
+.dangan-minimap-char-pin.selected { z-index: 50; }
+
+/* A selected pin gets a ring outline so the player knows the keys will
+ * affect this one. Outline is applied to the inner shape so it stays
+ * snug to the teardrop and doesn't bound the empty wrapper. */
+.dangan-minimap-char-pin.selected .dangan-minimap-char-pin-shape {
+    outline: 2px solid rgba(255, 255, 255, 0.95);
+    outline-offset: 2px;
+}
+
+/* Zoom controls — + and − sit side-by-side just above the diamond's top apex.
+ * The flat-render toggle (in .dangan-minimap-flat-toggle-col) is centered
+ * above them so the three buttons cluster as an upward-pointing triangle. */
+.dangan-minimap-zoom {
+    position: absolute;
+    top: -18px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 24px;
+    pointer-events: auto;
+}
+.dangan-minimap-zoom-btn {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    transform: rotate(45deg);
+    background: rgba(8, 6, 18, 0.92);
+    border: 2px solid rgba(255, 130, 220, 0.7);
+    box-shadow:
+        0 0 10px rgba(255, 100, 200, 0.45),
+        inset 0 0 8px rgba(0, 0, 0, 0.4);
+    color: rgba(255, 220, 240, 0.95);
+    cursor: pointer;
+    font-family: "Orbitron", "Rajdhani", 'Noto Sans JP', sans-serif;
+    transition: border-color 120ms, box-shadow 120ms, background 120ms;
+}
+.dangan-minimap-zoom-btn:hover {
+    border-color: #ff8cd8;
+    box-shadow: 0 0 14px rgba(255, 100, 200, 0.85), inset 0 0 8px rgba(0, 0, 0, 0.4);
+    background: rgba(40, 10, 30, 0.95);
+}
+.dangan-minimap-zoom-btn:active {
+    transform: rotate(45deg) scale(0.93);
+}
+.dangan-minimap-zoom-btn > span {
+    display: block;
+    transform: rotate(-45deg);
+    font-size: 18px;
+    font-weight: 900;
+    line-height: 1;
+}
+
+/* Theme hue-shifts for the zoom buttons match the diamond. */
+body.dangan-theme-investigation #dangan-minimap .dangan-minimap-zoom-btn { filter: none; }
+body.dangan-theme-daily         #dangan-minimap .dangan-minimap-zoom-btn { filter: hue-rotate(280deg) saturate(1.05); }
+body.dangan-theme-night         #dangan-minimap .dangan-minimap-zoom-btn { filter: grayscale(1) brightness(0.85); }
+.dangan-minimap-pin-trial       { background: rgba(255, 230, 120, 0.95); }
+.dangan-minimap-pin-monomachine { background: rgba(180, 255, 130, 0.95); }
+.dangan-minimap-pin-room        { background: rgba(180, 210, 255, 0.95); }
+
+/* Theme hue-shifts apply ONLY to the diamond frame's border and to the floor
+ * image — not to character pulses / pins, which always need to read as gold
+ * (player), red (speaker), or their assigned palette colour. */
+body.dangan-theme-investigation #dangan-minimap .dangan-minimap-square { border-color: rgba(255, 130, 220, 0.7); box-shadow: 0 0 14px rgba(255, 100, 200, 0.45), inset 0 0 16px rgba(0, 0, 0, 0.55); }
+body.dangan-theme-daily         #dangan-minimap .dangan-minimap-square { border-color: rgba(120, 190, 255, 0.78); box-shadow: 0 0 14px rgba(80, 150, 255, 0.45), inset 0 0 16px rgba(0, 0, 0, 0.55); }
+body.dangan-theme-night         #dangan-minimap .dangan-minimap-square { border-color: rgba(180, 190, 210, 0.6);  box-shadow: 0 0 14px rgba(160, 170, 190, 0.35), inset 0 0 16px rgba(0, 0, 0, 0.6); }
+
+.dangan-moveto-title {
+    font-family: "Orbitron", "Rajdhani", 'Noto Sans JP', sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.22em;
+    color: #ff8cd8;
+    text-shadow: 0 0 6px rgba(255, 80, 200, 0.55), 0 0 14px rgba(255, 80, 200, 0.25);
+    text-align: center;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255, 100, 200, 0.32);
+    margin-bottom: 12px;
+}
+.dangan-moveto-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    min-height: 0;
+    padding: 4px 2px 6px;
+    width: 170px;
+    left: 110px;
+    position: relative;
+}
+.dangan-moveto-btn {
+    text-align: left;
+    padding: 8px 12px;
+    background: rgba(20, 8, 30, 0.65);
+    border: 1px solid rgba(255, 100, 200, 0.4);
+    border-radius: 4px;
+    color: rgba(255, 220, 240, 0.95);
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    transition: background 120ms, border-color 120ms, box-shadow 120ms, transform 80ms;
+}
+.dangan-moveto-btn:hover {
+    background: rgba(60, 14, 50, 0.85);
+    border-color: #ff8cd8;
+    box-shadow: 0 0 10px rgba(255, 100, 200, 0.55);
+}
+.dangan-moveto-btn:active { transform: translateY(1px); }
+.dangan-moveto-kind-area    { border-left: 3px solid #b4ff7a; }
+.dangan-moveto-kind-subarea { border-left: 3px solid #ffd66a; }
+.dangan-moveto-kind-pin     { border-left: 3px solid rgba(255, 140, 216, 0.85); }
+.dangan-moveto-empty {
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 11px;
+    line-height: 1.5;
+    color: rgba(255, 200, 230, 0.6);
+    font-style: italic;
+    padding: 8px 4px;
+    text-align: center;
+}
+
+
+/* BGM picker grid (list view, since tracks don't have thumbnails) */
+.map-bgm-picker-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+.map-bgm-picker-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background: rgba(5, 10, 22, 0.6);
+    border: 1px solid rgba(100, 180, 255, 0.22);
+    border-radius: 4px;
+    color: rgba(220, 235, 255, 0.92);
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 11px;
+}
+.map-bgm-picker-row.selected {
+    border-color: #b4ff7a;
+    box-shadow: 0 0 6px rgba(150, 255, 100, 0.35);
+}
+.map-bgm-picker-preview,
+.map-bgm-picker-pick {
+    padding: 3px 10px;
+    background: rgba(8, 22, 36, 0.85);
+    border: 1px solid rgba(100, 180, 255, 0.45);
+    border-radius: 3px;
+    color: rgba(200, 230, 255, 0.92);
+    cursor: pointer;
+    font-size: 11px;
+}
+.map-bgm-picker-preview:hover,
+.map-bgm-picker-pick:hover {
+    border-color: #8cc8ff;
+    box-shadow: 0 0 6px rgba(100, 180, 255, 0.5);
+}
+.map-bgm-picker-label {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Modal BG / BGM picker — CG-picker visual language, scoped to map */
+#map-bg-picker,
+#map-bgm-picker {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.map-bg-picker-inner {
+    background: rgba(8, 12, 24, 0.95);
+    border: 2px solid rgba(100, 180, 255, 0.7);
+    box-shadow: 0 0 18px rgba(100, 180, 255, 0.35), inset 0 0 22px rgba(100, 180, 255, 0.08);
+    border-radius: 12px;
+    width: min(960px, 95vw);
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.map-bg-picker-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(100, 180, 255, 0.22);
+    background: linear-gradient(180deg, rgba(100, 180, 255, 0.16) 0%, rgba(100, 180, 255, 0.04) 100%);
+    flex-shrink: 0;
+}
+.map-bg-picker-title {
+    font-family: "Orbitron", "Rajdhani", 'Noto Sans JP', sans-serif;
+    font-size: 13px;
+    font-weight: bold;
+    letter-spacing: 0.22em;
+    color: #8cc8ff;
+    text-shadow: 0 0 6px rgba(100, 180, 255, 0.55), 0 0 14px rgba(100, 180, 255, 0.22);
+}
+.map-bg-picker-close {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    transition: color 0.15s, text-shadow 0.15s;
+}
+.map-bg-picker-close:hover { color: #8cc8ff; text-shadow: 0 0 8px rgba(100, 180, 255, 0.55); }
+.map-bg-picker-search-row {
+    padding: 8px 14px;
+    border-bottom: 1px solid rgba(100, 180, 255, 0.18);
+    flex-shrink: 0;
+}
+.map-bg-picker-search {
+    width: 100%;
+    box-sizing: border-box;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(100, 180, 255, 0.35);
+    border-radius: 4px;
+    color: white;
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 11px;
+    padding: 6px 10px;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.map-bg-picker-search:focus {
+    border-color: #8cc8ff;
+    box-shadow: 0 0 8px rgba(100, 180, 255, 0.55);
+}
+.map-bg-picker-search::placeholder { color: rgba(255, 255, 255, 0.35); }
+.map-bg-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    grid-auto-rows: auto;
+    align-content: start;
+    gap: 8px;
+    padding: 10px;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+.map-bg-picker-item {
+    position: relative;
+    cursor: pointer;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 2px solid transparent;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    height: min-content;
+}
+.map-bg-picker-item:hover {
+    border-color: #8cc8ff;
+    box-shadow: 0 0 10px rgba(100, 180, 255, 0.55);
+}
+.map-bg-picker-item.selected {
+    border-color: #b4ff7a;
+    box-shadow: 0 0 10px rgba(150, 255, 100, 0.5);
+}
+.map-bg-picker-thumb {
+    display: block;
+    width: 100%;
+    height: 110px;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-color: rgba(255, 255, 255, 0.06);
+}
+.map-bg-picker-label {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 4px 6px;
+    background: rgba(0, 0, 0, 0.72);
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 9px;
+    letter-spacing: 0.05em;
+    color: rgba(255, 255, 255, 0.9);
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+.map-bg-picker-item:hover .map-bg-picker-label { opacity: 1; }
+.map-bg-picker-item.selected .map-bg-picker-label { opacity: 1; }
+.map-bg-picker-empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 24px;
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.4);
+    letter-spacing: 0.08em;
+}
+.map-pin-edit-conn-list {
+    max-height: 160px;
+    overflow-y: auto;
+    border: 1px solid rgba(80, 180, 255, 0.28);
+    border-radius: 4px;
+    padding: 5px 8px;
+    background: rgba(5, 10, 22, 0.6);
+}
+.map-pin-edit-conn-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+    font-size: 12px;
+    color: rgba(220, 235, 255, 0.85);
+    cursor: pointer;
+}
+.map-pin-edit-conn-row input { accent-color: #66c2ff; }
+.map-pin-edit-conn-empty {
+    font-size: 11px;
+    color: rgba(180, 200, 230, 0.55);
+    font-style: italic;
+    padding: 2px 0;
+}
+select.map-pin-edit-input {
+    cursor: pointer;
+}
 .map-pin-edit-icon-grid {
     display: grid;
     grid-template-columns: repeat(10, 1fr);
@@ -1933,6 +2617,81 @@ body.dangan-theme-investigation #dangan_monopad_button {
     line-height: 1.4;
     word-wrap: break-word;
     white-space: normal;
+}
+
+/* ── Stats edit bar ──────────────────────────────────────────────────────── */
+.social-report:not(.has-character) .stats-edit-bar {
+    display: none;
+}
+
+.stats-edit-bar {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.report-edit-btn,
+.report-save-btn,
+.report-cancel-btn {
+    padding: 4px 12px;
+    background: rgba(8, 3, 14, 0.85);
+    font-family: "Orbitron", monospace;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.report-edit-btn,
+.report-cancel-btn {
+    border: 1px solid rgba(150, 180, 255, 0.4);
+    color: rgba(180, 210, 255, 0.75);
+}
+
+.report-edit-btn:hover,
+.report-cancel-btn:hover {
+    border-color: rgba(180, 210, 255, 0.7);
+    color: #c0d8ff;
+    background: rgba(20, 30, 60, 0.85);
+}
+
+.report-save-btn {
+    border: 1px solid rgba(60, 200, 80, 0.5);
+    color: rgba(80, 220, 100, 0.8);
+}
+
+.report-save-btn:hover {
+    border-color: rgba(80, 255, 100, 0.75);
+    color: #80ff9a;
+    background: rgba(8, 40, 12, 0.95);
+}
+
+.stat-edit-input {
+    background: rgba(20, 30, 50, 0.9);
+    border: 1px solid rgba(150, 180, 255, 0.35);
+    border-radius: 3px;
+    color: #c8d8ff;
+    font-family: "Rajdhani", sans-serif;
+    font-size: 14px;
+    padding: 2px 5px;
+    width: 100%;
+    box-sizing: border-box;
+    outline: none;
+}
+
+.stat-edit-input:focus {
+    border-color: rgba(150, 180, 255, 0.8);
+}
+
+.report-ultimate .stat-edit-input {
+    font-family: "Orbitron", "Rajdhani", monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    display: inline-block;
+    width: auto;
+    min-width: 140px;
+    vertical-align: middle;
 }
 
 #trust-rankup-overlay {
@@ -6094,6 +6853,16 @@ body.dangan-trial-vn-chat-hidden #chat {
     margin-bottom: 4px;
     display: block;
 }
+/* Same preview slot as the bullet image but wider — backgrounds are landscape. */
+.map-custom-pin-tooltip-bg-image {
+    width: 180px;
+    height: auto;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid rgba(0, 0, 0, 0.85);
+    margin-bottom: 4px;
+    display: block;
+}
 
 .map-custom-pin-tooltip::after {
     content: "";
@@ -8087,7 +8856,8 @@ body.dangan-trial-vn-chat-hidden #chat {
 .dangan-vn-text-wrap {
     min-height: 82px;
     max-height: min(34vh, 280px);
-    overflow: auto;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
     padding-right: 2px;
 }
 
@@ -8920,6 +9690,12 @@ body.dangan-vn-compose-docked-active .autoComplete-detailsWrap {
 
 .social-list-item-user:hover .social-name {
     color: #80ff9a;
+}
+
+.social-list-item-active .social-name,
+.social-list-item-active.social-list-item-user .social-name {
+    color: #5bc8ff !important;
+    font-weight: 600;
 }
 
 /* Player detail view */

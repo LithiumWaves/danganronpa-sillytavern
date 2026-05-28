@@ -375,5 +375,14 @@ export function createAudioVisualizerController({ getAudioElement, assetsBasePat
     function suppress()   { suppressed = true;  setVisible(false); }
     function unsuppress() { suppressed = false; }
 
-    return { init, destroy, hide, suppress, unsuppress };
+    // Called by the chat-transition watchdog so a momentarily-suspended
+    // context can't silence the BGM (createMediaElementSource routes the
+    // audio through this context exclusively).
+    function pokeAudioContext() {
+        if (audioCtx && audioCtx.state === 'suspended') {
+            audioCtx.resume().catch(() => {});
+        }
+    }
+
+    return { init, destroy, hide, suppress, unsuppress, pokeAudioContext };
 }

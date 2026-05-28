@@ -1,5 +1,7 @@
 // trial/trialManager.js
 
+import { attachCursorSway } from "../vfx/cursorSway.js";
+
 export const TrialPhases = {
     IDLE: 'idle',
     PRE_DEBATE: 'pre_debate',
@@ -18,6 +20,8 @@ export function createTrialManager(deps) {
         getTruthBullets,
         generateTrialDialogue,
         getCharacterSourceText,
+        getEmotionFont,
+        onTrialStateChange,
         getSpriteUrl,
         playSfx,
         getSfx,
@@ -38,12 +42,18 @@ export function createTrialManager(deps) {
         onStartMassPanicDebate,
         onStartRebuttalShowdown,
         onStartPunishmentTime,
+        onStartScrumDebate,
+        onStartMindMine,
         getEquippedSkillsSnapshot,
         attachDraggablePositioning,
         applyCustomUiPosition,
         awardXp,
         xpRewards,
         getLecternUrl,
+        getCustomGameMasterName,
+        getCharacterDisplayName,
+        deductMonocoins,
+        showMinigameLoadingState,
     } = deps;
 
     function getAssetUrl(name) {
@@ -57,11 +67,16 @@ export function createTrialManager(deps) {
     let selectedTruthBulletIndex = 0;
     let debateOverlay = null;
     let reticleEl = null;
+    let detachReticleSway = null;
     let cutsceneOverlay = null;
     let statementEl = null;
     let statementAnimation = null;
     let playbackTimerId = null;
     let currentSpeaker = null;
+    // Reference to the open CG name panel's text node (or null when no CG
+    // overlay is visible). updateGroupChatSpeaker writes through this so
+    // the CG label follows Prev/Next navigation.
+    let cgNameTextEl = null;
     let currentWeakPointInfo = null;
     let preparedDebateSections = null;
     let debateSectionsActive = null;
@@ -81,6 +96,8 @@ export function createTrialManager(deps) {
     let lastHitWeakPoint = null;
     let rebuttalPromptActive = false;
     let persistentDebateHistory = [];
+    let trialContext = { topic: '', goal: '', suspects: [] };
+    // suspects: [{ name: string, chance: number }]  (chance is 0–100)
     let speedModifier = 1.0;
     let revolverAngle  = 0;
     let revolverTarget = 0;
@@ -88,6 +105,95 @@ export function createTrialManager(deps) {
     let seatingDebugMode = 'circle'; // 'circle' | 'line'
     let lastSeatingDebugSpeaker = null;
     let btCharge = 1.0;
+    const NSD_HEALTH_MAX = 3;
+    const NSD_BREAK_PENALTY = 50;
+    // Shared by NSD and MPD: both phases use the same on-screen timer, the same
+    // floor, and the same LLM-extensible override field on their scenario arrays.
+    const DEBATE_TIMER_MIN_MS = 120_000;        // 2-minute floor for NSD and MPD timers
+    let debateTimerDurationMs = DEBATE_TIMER_MIN_MS;
+    let debateTimerStartTs = 0;
+
+    // Set the debate time limit. Floor-clamped to DEBATE_TIMER_MIN_MS so the timer is
+    // never shorter than two minutes; LLM-supplied scenarios may request more.
+    function setDebateTimeLimit(ms) {
+        const requested = Number(ms);
+        debateTimerDurationMs = Math.max(DEBATE_TIMER_MIN_MS, Number.isFinite(requested) ? requested : 0);
+    }
+
+    function updateDebateTimer(nowMs) {
+        const remaining = Math.max(0, debateTimerDurationMs - (nowMs - debateTimerStartTs));
+        const el = document.getElementById('dangan-nsd-timer');
+        if (el) {
+            const mins   = Math.floor(remaining / 60000);
+            const secs   = Math.floor((remaining % 60000) / 1000);
+            const millis = Math.floor(remaining % 1000);
+            el.textContent =
+                String(mins).padStart(2, '0') + ':' +
+                String(secs).padStart(2, '0') + ':' +
+                String(millis).padStart(3, '0');
+            el.classList.toggle('hg-urgent', remaining < 10000);
+        }
+        if (remaining <= 0 && !nsdBreakTriggered) {
+            nsdBreakTriggered = true;
+            // Treat timeout as full damage — wipe HP, flash/shake/SFX,
+            // then break. nsdBreakTriggered gate ensures the monocoin
+            // deduction inside triggerNsdBreak only ever fires once.
+            nsdHealth = 0;
+            const heartsEl = document.getElementById('dangan-nsd-hearts');
+            if (heartsEl) heartsEl.style.setProperty('--gauge-pct', `${NSD_HP_TO_GAUGE[0]}%`);
+            triggerNsdDamageFx();
+            triggerNsdBreak();
+        }
+    }
+    // Discrete HP → gauge-pct mapping. Steps are aligned to the heart positions
+    // in hearts.svg so each remaining HP shows a fully-on heart and the gauge
+    // only reads as fully empty when HP is exactly 0.
+    const NSD_HP_TO_GAUGE = [0, 35, 75, 100];
+    let nsdHealth = NSD_HEALTH_MAX;
+    let nsdBreakTriggered = false;
+
+    function deductNsdHealth() {
+        if (nsdHealth <= 0) return;
+        nsdHealth = Math.max(0, nsdHealth - 1);
+        const el = document.getElementById('dangan-nsd-hearts');
+        if (el) el.style.setProperty('--gauge-pct', `${NSD_HP_TO_GAUGE[nsdHealth]}%`);
+        triggerNsdDamageFx();
+        if (nsdHealth === 0 && !nsdBreakTriggered) {
+            nsdBreakTriggered = true;
+            triggerNsdBreak();
+        }
+    }
+
+    function triggerNsdDamageFx() {
+        playSfx?.('wn_damage');
+        let flash = document.getElementById('dangan-nsd-damage-flash');
+        if (!flash) {
+            flash = document.createElement('div');
+            flash.id = 'dangan-nsd-damage-flash';
+            document.body.appendChild(flash);
+        }
+        flash.classList.remove('flash');
+        requestAnimationFrame(() => {
+            flash.classList.add('flash');
+            window.setTimeout(() => flash.classList.remove('flash'), 200);
+        });
+
+        document.body.classList.remove('dangan-nsd-shaking');
+        void document.body.offsetWidth;
+        document.body.classList.add('dangan-nsd-shaking');
+        window.setTimeout(() => {
+            document.body.classList.remove('dangan-nsd-shaking');
+        }, 1000);
+    }
+
+    function triggerNsdBreak() {
+        try { deductMonocoins?.(NSD_BREAK_PENALTY, 'Debate break (health depleted)'); } catch {}
+        window.setTimeout(() => {
+            if (isDebateActive()) {
+                setState(TrialPhases.PRE_DEBATE);
+            }
+        }, 600);
+    }
     let btConcentrateActive = false;
     let btConcentrateRaf = null;
     let btLastTs = null;
@@ -111,6 +217,18 @@ export function createTrialManager(deps) {
     let lieAbsorbRafId    = null;
     let lieScanningAudio  = null;
     let lieGenerationPromise = null; // kicked off at scan start, awaited at completion
+    let nsdLieLoading = false;       // true while awaiting the generated lie
+    let nsdIntroPlaying = false;     // true during pre-intro + bullet intro — blocks fires
+
+    function showLieLoadingState() {
+        const activeCartridge = document.querySelector('.dangan-bullet-cartridge--active');
+        if (!activeCartridge) return;
+        activeCartridge.classList.add('lie-loading');
+        const nameEl = activeCartridge.querySelector('.dangan-bullet-cartridge-name');
+        if (nameEl) {
+            nameEl.innerHTML = `<span class="lie-loading-dots"><span></span><span></span><span></span></span>`;
+        }
+    }
     let btSlowmoAudio = null;
     let ffAudio = null;
     let nsdKeyAC = null;
@@ -124,11 +242,17 @@ export function createTrialManager(deps) {
     let gcpCurrentFloat = 0;         // fractional center index (animated)
     let gcpAnimRafId    = null;      // RAF id for scroll animation
     let gcpInitializing = false;     // true while initGroupChatPortraits is awaiting sprites
-    let gcpSeatingListRenderer = null; // callback set by Trial Controls to stay in sync with rebuilds
+    // Subscribers that need to re-render whenever the GCP slot order changes
+    // (Trial Panel's seating list, Controls Panel's seating list, etc.).
+    const gcpSeatingListRenderers = new Set();
+    const notifyGcpSeatingListRenderers = () => gcpSeatingListRenderers.forEach(fn => { try { fn(); } catch (e) { console.error(e); } });
+    let gcpLastCamIdx   = null;      // slot index for which we last fired the camera shot
     let gcpBgLoopEl     = null;      // repeating background overlay for seamless circular pan
     let gcpBgImgWidth   = 0;         // rendered px width of background image at current viewport height
     let gcpBgCurrentPx  = 0;        // current background-position-x in pixels (for wrap detection)
     let nsdShiftParadeStop = null;   // stop fn for in-progress speaker-shift parade (NSD only)
+    let lastCamShot = null;
+    const CAM_SHOTS = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'];
 
     // Shared white-noise animation pool — one RAF loop drives all active elements.
     let wnAnimPool  = [];
@@ -146,6 +270,20 @@ export function createTrialManager(deps) {
 
     function isSilenced(name) {
         return silencedSeats.has(normalizeSeatName(String(name || '')));
+    }
+
+    function isMonokuma(name) {
+        const key = normalizeSeatName(name);
+        if (key === 'monokuma') return true;
+        // When the user has selected a custom Game Master, the chosen character
+        // takes Monokuma's role — every Monokuma-ness check below (sprite
+        // resolution, solo speaker layout, antagonist filters) should fire for
+        // them too.
+        const custom = typeof getCustomGameMasterName === 'function'
+            ? getCustomGameMasterName()
+            : null;
+        if (custom && normalizeSeatName(custom) === key) return true;
+        return false;
     }
 
     // ── Mass Panic Debate state ───────────────────────────────────────────────
@@ -224,6 +362,7 @@ export function createTrialManager(deps) {
         console.log(`[Dangan][Trial] State change: ${currentState} -> ${newState}`);
         const oldState = currentState;
         currentState = newState;
+        try { onTrialStateChange?.(newState, oldState); } catch {}
         
         // Persist state to extension settings (per chat/group)
         if (typeof saveSettingsDebounced === 'function') {
@@ -250,9 +389,10 @@ export function createTrialManager(deps) {
             setupNSDListeners();
         }
 
-        // Hide group chat portraits during active debates; show during idle/pre-debate
-        const gcpVisible = newState === TrialPhases.IDLE || newState === TrialPhases.PRE_DEBATE;
-        const gcpWasVisible = oldState === TrialPhases.IDLE || oldState === TrialPhases.PRE_DEBATE;
+        // Hide GCP only during actual debate overlays (NSD/MPD); keep visible during
+        // IDLE, PRE_DEBATE, TRUTH_BULLET_EXPLANATION, etc.
+        const gcpVisible    = newState !== TrialPhases.NON_STOP_DEBATE && newState !== TrialPhases.MASS_PANIC_DEBATE;
+        const gcpWasVisible = oldState !== TrialPhases.NON_STOP_DEBATE && oldState !== TrialPhases.MASS_PANIC_DEBATE;
         if (gcpVisible !== gcpWasVisible) {
             setGroupChatPortraitsVisible(gcpVisible);
         }
@@ -363,6 +503,7 @@ export function createTrialManager(deps) {
         // Perjury logic (NSD only)
         window.addEventListener('mousedown', (e) => {
             if (currentState !== TrialPhases.NON_STOP_DEBATE) return;
+            if (nsdIntroPlaying) return;
             if (e.button !== 0) return; // Left click only
 
             clearTimeout(perjuryChargeTimer);
@@ -382,9 +523,12 @@ export function createTrialManager(deps) {
 
             clearTimeout(perjuryChargeTimer);
 
+            // Use the swayed reticle position (lastCursorX/Y) rather than the raw OS
+            // mouse position so the Truth Bullet fires at where the player can see
+            // the reticle pointing, not at the hidden OS pointer.
             if (currentState === TrialPhases.MASS_PANIC_DEBATE) {
                 // Block shots at locked columns
-                const col = Math.max(0, Math.min(2, Math.floor((e.clientX / window.innerWidth) * 3)));
+                const col = Math.max(0, Math.min(2, Math.floor((lastCursorX / window.innerWidth) * 3)));
                 if (mpdLockActive && col !== mpdFreeColumn) {
                     mpdShowBlockedFeedback(col);
                     return;
@@ -413,27 +557,35 @@ export function createTrialManager(deps) {
             showPerjuryVfx(false);
         }, { signal });
 
-        // White noise hover tracking via rect check (pointer-events: none on elements)
+        // White noise hover tracking via rect check (pointer-events: none on elements).
+        // When the cursor-sway reticle is active, lastCursorX/Y is driven by its onFrame
+        // callback (swayed position), and updateWhiteNoiseHover runs from that callback;
+        // here we only update lastCursorX/Y as a fallback while the reticle isn't attached.
         window.addEventListener('mousemove', (e) => {
-            lastCursorX = e.clientX;
-            lastCursorY = e.clientY;
-            if (!isDebateActive() || !activeWhiteNoiseEls.length) {
-                if (hoveredWhiteNoise) { hoveredWhiteNoise.classList.remove('hovered'); hoveredWhiteNoise = null; }
-                return;
-            }
-            const cx = e.clientX, cy = e.clientY;
-            let found = null;
-            for (const el of activeWhiteNoiseEls) {
-                if (!document.body.contains(el) || el.classList.contains('breaking')) continue;
-                const r = el.getBoundingClientRect();
-                if (cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom) { found = el; break; }
-            }
-            if (found !== hoveredWhiteNoise) {
-                hoveredWhiteNoise?.classList.remove('hovered');
-                found?.classList.add('hovered');
-                hoveredWhiteNoise = found;
+            if (!detachReticleSway) {
+                lastCursorX = e.clientX;
+                lastCursorY = e.clientY;
+                updateWhiteNoiseHover(e.clientX, e.clientY);
             }
         }, { signal });
+    }
+
+    function updateWhiteNoiseHover(cx, cy) {
+        if (!isDebateActive() || !activeWhiteNoiseEls.length) {
+            if (hoveredWhiteNoise) { hoveredWhiteNoise.classList.remove('hovered'); hoveredWhiteNoise = null; }
+            return;
+        }
+        let found = null;
+        for (const el of activeWhiteNoiseEls) {
+            if (!document.body.contains(el) || el.classList.contains('breaking')) continue;
+            const r = el.getBoundingClientRect();
+            if (cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom) { found = el; break; }
+        }
+        if (found !== hoveredWhiteNoise) {
+            hoveredWhiteNoise?.classList.remove('hovered');
+            found?.classList.add('hovered');
+            hoveredWhiteNoise = found;
+        }
     }
 
     function showPerjuryVfx(active) {
@@ -458,6 +610,7 @@ export function createTrialManager(deps) {
     // ── Weak-point absorption ─────────────────────────────────────────────────
 
     function startAbsorb(wpEl) {
+        if (nsdIntroPlaying) return;
         if (absorbTarget === wpEl) return;
         cancelAbsorb();
         absorbTarget    = wpEl;
@@ -539,6 +692,7 @@ export function createTrialManager(deps) {
     // ── Lie-scan absorption ────────────────────────────────────────────────────
 
     function startLieAbsorb(wpEl) {
+        if (nsdIntroPlaying) return;
         if (lieAbsorbTarget === wpEl) return;
         cancelLieAbsorb();
         lieAbsorbTarget    = wpEl;
@@ -589,11 +743,18 @@ export function createTrialManager(deps) {
         new Audio(`${extensionFolderPath}/assets/sfx/trial/scanned-lie.wav`).play().catch(() => {});
         showAbsorbFlash();
 
+        // Lock fires + recolor the active cartridge purple with pulsing dots
+        // while we wait for the model to return the lie text.
+        nsdLieLoading = true;
+        showLieLoadingState();
+
         const lieText = await (lieGenerationPromise ?? generateLieFromWeakPoint(
             (wpEl.textContent || '').replace(/^\[+|\]+$/g, '').trim() || 'unknown claim'
         ));
 
+        nsdLieLoading = false;
         tempBullet = { title: lieText, text: lieText, isTemporary: true, isLie: true };
+        document.body.classList.add('dangan-nsd-lie-armed');
 
         const current = getDebateBullets();
         nsdActiveBullets = [...current, tempBullet];
@@ -672,21 +833,44 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
             }
         });
         const indexEl = document.querySelector('.dangan-cylinder-index');
+        // Match the line-overlay filter to whichever state the cylinder is in.
+        // The cylinder img keeps its own filter (above); these are softer
+        // variants on the same hue so the rings read as decoration, not
+        // foreground. Cleared back to '' restores the CSS default cyan.
+        const cylWrap = document.querySelector('.dangan-cylinder-wrap');
         if (cylinderImg) {
             if (isLieBullet) {
                 cylinderImg.style.filter = 'sepia(1) hue-rotate(270deg) saturate(10) brightness(1.3) drop-shadow(0 0 18px rgba(160,0,255,0.9)) drop-shadow(0 0 45px rgba(160,0,255,0.6))';
                 if (indexEl) { indexEl.style.color = '#aa00ff'; indexEl.style.textShadow = '0 0 12px rgba(160,0,255,0.9), 0 0 30px rgba(160,0,255,0.6), 2px 2px 4px rgba(0,0,0,0.9)'; }
+                cylWrap?.style.setProperty('--cyl-line-filter', 'sepia(1) hue-rotate(270deg) saturate(10) brightness(1.3) drop-shadow(0 0 12px rgba(160,0,255,0.55))');
             } else if (mod > 1.0) {
                 cylinderImg.style.filter = 'sepia(1) hue-rotate(10deg) saturate(8) brightness(1.4) drop-shadow(0 0 18px rgba(255,220,0,0.9)) drop-shadow(0 0 45px rgba(255,180,0,0.6))';
                 if (indexEl) { indexEl.style.color = '#ffd700'; indexEl.style.textShadow = '0 0 12px rgba(255,220,0,0.9), 0 0 30px rgba(255,180,0,0.6), 2px 2px 4px rgba(0,0,0,0.9)'; }
+                cylWrap?.style.setProperty('--cyl-line-filter', 'sepia(1) hue-rotate(10deg) saturate(8) brightness(1.4) drop-shadow(0 0 12px rgba(255,220,0,0.55))');
             } else if (mod < 1.0) {
                 cylinderImg.style.filter = 'sepia(1) hue-rotate(285deg) saturate(8) brightness(1.3) drop-shadow(0 0 18px rgba(255,0,200,0.9)) drop-shadow(0 0 45px rgba(255,0,200,0.6))';
                 if (indexEl) { indexEl.style.color = '#ff00cc'; indexEl.style.textShadow = '0 0 12px rgba(255,0,200,0.9), 0 0 30px rgba(255,0,200,0.6), 2px 2px 4px rgba(0,0,0,0.9)'; }
+                cylWrap?.style.setProperty('--cyl-line-filter', 'sepia(1) hue-rotate(285deg) saturate(8) brightness(1.3) drop-shadow(0 0 12px rgba(255,0,200,0.55))');
             } else {
                 cylinderImg.style.filter = '';
                 if (indexEl) { indexEl.style.color = ''; indexEl.style.textShadow = ''; }
+                cylWrap?.style.removeProperty('--cyl-line-filter');
             }
         }
+
+        // Hue-shift the blue chrome bars to match the cartridge theme:
+        // slow-mo → pink, fast-forward → yellow, normal → no filter.
+        const blueChromeFilter =
+            mod > 1.0 ? 'hue-rotate(220deg) saturate(1.5) brightness(1.05)' :
+            mod < 1.0 ? 'hue-rotate(135deg) saturate(1.5) brightness(1.05)' :
+            '';
+        document.querySelectorAll('.dangan-tb-bar-bg, #dangan-nsd-status-bar').forEach(el => {
+            el.style.filter = blueChromeFilter;
+        });
+        // Top-left speaker-scenario-bar lives on a pseudo-element, so push
+        // the value through a CSS custom property instead.
+        const topLeftEl = document.querySelector('.dangan-trial-top-left');
+        if (topLeftEl) topLeftEl.style.setProperty('--speaker-bar-filter', blueChromeFilter || 'none');
     }
 
     function updateSpeedModifier() {
@@ -758,7 +942,7 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
     function startConcentrateLoop() {
         btLastTs = null;
         // Cache element once — avoids a DOM query every frame
-        const fill = document.getElementById('dangan-concentrate-bar-fill');
+        const fill = document.getElementById('dangan-concentrate-stars');
         function tick(ts) {
             if (!btLastTs) btLastTs = ts;
             const dt = Math.min((ts - btLastTs) / 1000, 0.1);
@@ -791,15 +975,624 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
                     btSlowmoAudio = null;
                 }
             }
-            // scaleX instead of width — compositor-only, zero layout work
+            // Drive the green→black gradient via a CSS variable so the
+            // stars-shaped mask reveals less green as btCharge drains.
             if (fill) {
-                fill.style.transform = `scaleX(${btCharge})`;
+                fill.style.setProperty('--gauge-pct', `${btCharge * 100}%`);
                 fill.classList.toggle('nsd-bt-active',   btConcentrateActive);
                 fill.classList.toggle('nsd-bt-depleted', btCharge <= 0.01);
+            }
+            // Time limit — runs in both NSD and MPD
+            if (isDebateActive()) {
+                updateDebateTimer(ts);
             }
             btConcentrateRaf = requestAnimationFrame(tick);
         }
         btConcentrateRaf = requestAnimationFrame(tick);
+    }
+
+    let trialSpeakerObserver = null;
+    let trialSpeakerLastName = '';
+    let trialSpeakerToken = 0;
+    let inputResizeObserver = null;
+    let inputWindowResizeHandler = null;
+    let inputPollIntervalId = null;
+
+    function isPlaceholderSpeakerName(name) {
+        const v = String(name || '').trim().toUpperCase();
+        return !v || v === '—' || v === '-' || v === 'SYSTEM' || v === 'UNKNOWN';
+    }
+
+    async function refreshTrialSpeakerSticker(rawName) {
+        const sticker = document.getElementById('dangan-trial-speaker-sticker');
+        if (!sticker) return;
+        const name = String(rawName || '').trim();
+
+        if (isPlaceholderSpeakerName(name)) {
+            sticker.classList.remove('visible');
+            sticker.querySelector('.dgn-speaker-img').style.backgroundImage = '';
+            trialSpeakerLastName = '';
+            return;
+        }
+
+        if (name === trialSpeakerLastName) return;
+        trialSpeakerLastName = name;
+        const myToken = ++trialSpeakerToken;
+
+        // Mask un-introduced characters as "???" so the trial UI honours the
+        // global introduction state. Sprite resolution below still uses the
+        // real name so the correct portrait + mugshot loads regardless.
+        const displayName = typeof getCharacterDisplayName === 'function'
+            ? getCharacterDisplayName(name)
+            : name;
+        sticker.querySelector('.dgn-speaker-name').textContent = displayName;
+        sticker.classList.add('visible');
+
+        try {
+            // 'mugshot' isn't in ST's registered emotion list, so getSpriteUrl
+            // can't find it — even when the file exists. Probe the direct
+            // /characters/<name>/mugshot.png path first, then fall back to neutral.
+            const mugshotUrl = `/characters/${encodeURIComponent(name)}/mugshot.png`;
+            const mugshotExists = await new Promise(resolve => {
+                const probe = new Image();
+                probe.onload = () => resolve(true);
+                probe.onerror = () => resolve(false);
+                probe.src = mugshotUrl;
+            });
+            const url = mugshotExists
+                ? mugshotUrl
+                : await getCharSpriteUrl(name, 'neutral').catch(() => null);
+            if (myToken !== trialSpeakerToken) return;
+            const imgEl = sticker.querySelector('.dgn-speaker-img');
+            imgEl.style.backgroundImage = url ? `url("${url.replace(/"/g, '\\"')}")` : '';
+        } catch {}
+    }
+
+    function getChapterBadgeText() {
+        const idx = Number(extensionSettings?.[extensionName]?.chapterIndex ?? 0);
+        if (idx <= 0) return '0';
+        if (idx >= 10) return 'X';
+        return String(idx);
+    }
+
+    function refreshTrialBadge() {
+        const numEl = document.querySelector('#dangan-trial-badge .dgn-badge-num');
+        if (numEl) numEl.textContent = getChapterBadgeText();
+    }
+
+    function mountTrialAesthetic() {
+        // Trials only happen inside group chats. If we're on the Assistant /
+        // welcome screen or a single-character chat, don't mount the aesthetic
+        // even if trialActive is true for some other group's persisted state.
+        if (!isGroupChat()) return;
+        document.body.classList.add('dangan-trial-active');
+        applyTrialTheme(getCurrentTrialTheme());
+
+        if (!document.getElementById('dangan-trial-frame')) {
+            const frame = document.createElement('div');
+            frame.id = 'dangan-trial-frame';
+            frame.setAttribute('aria-hidden', 'true');
+            const base = extensionFolderPath || `scripts/extensions/third-party/${extensionName}`;
+            frame.innerHTML = `<img class="dgn-frame-img" src="${base}/assets/classtrial/frame-overlay.png" alt="" draggable="false" />`;
+            document.body.appendChild(frame);
+        }
+
+        // BGM accordion header — wraps the existing #dangan-bgm-display so it can collapse.
+        installBgmAccordion();
+
+        if (!document.getElementById('dangan-trial-badge')) {
+            const badge = document.createElement('div');
+            badge.id = 'dangan-trial-badge';
+            badge.setAttribute('aria-hidden', 'true');
+            badge.innerHTML = `
+                <div class="dgn-badge-num-wrap">
+                    <div class="dgn-badge-moon"></div>
+                    <div class="dgn-badge-num">${getChapterBadgeText()}</div>
+                </div>
+                <div class="dgn-badge-label">Class<br>Trial</div>
+            `;
+            document.body.appendChild(badge);
+        }
+
+        if (!document.getElementById('dangan-trial-speaker-sticker')) {
+            const sticker = document.createElement('div');
+            sticker.id = 'dangan-trial-speaker-sticker';
+            sticker.setAttribute('aria-hidden', 'true');
+            sticker.innerHTML = `
+                <div class="dgn-speaker-img" aria-hidden="true"></div>
+                <div class="dgn-speaker-name"></div>
+            `;
+            document.body.appendChild(sticker);
+        }
+
+        // Subscribe to VN nameplate updates so the sticker follows the active speaker.
+        const speakerNameEl = document.getElementById('dangan-vn-name');
+        if (speakerNameEl && !trialSpeakerObserver) {
+            trialSpeakerObserver = new MutationObserver(() => {
+                refreshTrialSpeakerSticker(speakerNameEl.textContent);
+            });
+            trialSpeakerObserver.observe(speakerNameEl, { childList: true, characterData: true, subtree: true });
+            refreshTrialSpeakerSticker(speakerNameEl.textContent);
+        }
+
+        // Track the actual top edge of #send_form (relative to the viewport
+        // bottom) and expose it as --dgn-input-height. The VN dialogue frame's
+        // bottom uses this var, so on any viewport size the dialogue sits flush
+        // on top of the input — no detachment, no overlap.
+        const sendForm = document.getElementById('send_form');
+        if (sendForm && !inputResizeObserver && typeof ResizeObserver === 'function') {
+            let lastValue = -1;
+            const updateInputHeight = () => {
+                const rect = sendForm.getBoundingClientRect();
+                const distFromBottom = Math.max(0, Math.round(window.innerHeight - rect.top));
+                if (distFromBottom > 0 && distFromBottom !== lastValue) {
+                    lastValue = distFromBottom;
+                    document.documentElement.style.setProperty('--dgn-input-height', `${distFromBottom}px`);
+                }
+            };
+            inputResizeObserver = new ResizeObserver(updateInputHeight);
+            inputResizeObserver.observe(sendForm);
+            inputWindowResizeHandler = updateInputHeight;
+            window.addEventListener('resize', inputWindowResizeHandler);
+            // ResizeObserver only fires on size changes — not on position changes.
+            // ST's flex layout can move #send_form vertically without resizing it
+            // (e.g. on chat scroll, sidebar toggles, attachment drawer). Poll so
+            // the dialogue's bottom stays glued to the input's actual top edge.
+            inputPollIntervalId = setInterval(updateInputHeight, 250);
+            // Defer the first measurement until after the browser has applied
+            // the body class change and re-laid out — otherwise rect.top can
+            // reflect the pre-trial #sheld height (overworld 100px cap) and the
+            // dialogue ends up pinned to a stale offset until the user resizes.
+            // Two rAFs: first lets style recalc commit, second lets layout commit.
+            requestAnimationFrame(() => requestAnimationFrame(updateInputHeight));
+        }
+    }
+
+    function unmountTrialAesthetic() {
+        document.body.classList.remove('dangan-trial-active');
+        for (const t of TRIAL_THEMES) document.body.classList.remove(`dangan-trial-theme-${t}`);
+        document.getElementById('dangan-trial-frame')?.remove();
+        document.getElementById('dangan-trial-badge')?.remove();
+        document.getElementById('dangan-trial-speaker-sticker')?.remove();
+        uninstallBgmAccordion();
+        if (trialSpeakerObserver) {
+            trialSpeakerObserver.disconnect();
+            trialSpeakerObserver = null;
+        }
+        if (inputResizeObserver) {
+            inputResizeObserver.disconnect();
+            inputResizeObserver = null;
+        }
+        if (inputWindowResizeHandler) {
+            window.removeEventListener('resize', inputWindowResizeHandler);
+            inputWindowResizeHandler = null;
+        }
+        if (inputPollIntervalId) {
+            clearInterval(inputPollIntervalId);
+            inputPollIntervalId = null;
+        }
+        document.documentElement.style.removeProperty('--dgn-input-height');
+        trialSpeakerLastName = '';
+    }
+
+    const TRIAL_THEMES = [
+        'pink-concerto',
+        'silver-rock',
+        'spring-metal',
+        'crimson-jazz',
+        'sapphire-elegy',
+        'violet-waltz',
+        'gold-beat',
+        'emerald-blues',
+        'scarlet-tango',
+    ];
+
+    function getCurrentTrialTheme() {
+        const t = String(extensionSettings?.[extensionName]?.trialUiTheme || 'pink-concerto').toLowerCase();
+        return TRIAL_THEMES.includes(t) ? t : 'pink-concerto';
+    }
+
+    function applyTrialTheme(theme) {
+        const next = TRIAL_THEMES.includes(theme) ? theme : 'pink-concerto';
+        for (const t of TRIAL_THEMES) {
+            document.body.classList.toggle(`dangan-trial-theme-${t}`, t === next);
+        }
+        if (extensionSettings?.[extensionName]) {
+            extensionSettings[extensionName].trialUiTheme = next;
+            if (typeof saveSettingsDebounced === 'function') saveSettingsDebounced();
+        }
+    }
+
+    function installBgmAccordion() {
+        const bgm = document.getElementById('dangan-bgm-display');
+        if (!bgm) {
+            // Visualizer hasn't mounted yet — try again shortly
+            setTimeout(installBgmAccordion, 250);
+            return;
+        }
+        if (document.getElementById('dangan-bgm-panel')) return;
+
+        const wrapper = document.createElement('div');
+        wrapper.id = 'dangan-bgm-panel';
+        wrapper.className = 'dgn-side-panel collapsed';
+
+        const header = document.createElement('button');
+        header.type = 'button';
+        header.className = 'dgn-side-panel-header';
+        header.setAttribute('aria-expanded', 'false');
+        header.setAttribute('aria-controls', 'dangan-bgm-display');
+        header.innerHTML = `<span>CONTROLS PANEL</span><span class="dgn-side-panel-chev" aria-hidden="true">▾</span>`;
+        header.addEventListener('click', () => {
+            const collapsed = wrapper.classList.toggle('collapsed');
+            header.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        });
+
+        // Theme selector — sits below the music controls.
+        const fxSection = document.createElement('div');
+        fxSection.id = 'dangan-fx-theme-section';
+        fxSection.className = 'dgn-fx-section';
+        const currentTheme = getCurrentTrialTheme();
+        fxSection.innerHTML = `
+            <div class="dgn-fx-divider" aria-hidden="true"></div>
+            <div class="dgn-fx-theme-row">
+                <label for="dgn-fx-theme-select" class="dgn-fx-theme-label">UI Theme</label>
+                <select id="dgn-fx-theme-select" class="dgn-fx-theme-select">
+                    <option value="pink-concerto">Pink Concerto</option>
+                    <option value="silver-rock">Silver Rock</option>
+                    <option value="spring-metal">Spring Metal</option>
+                    <option value="crimson-jazz">Crimson Jazz</option>
+                    <option value="sapphire-elegy">Sapphire Elegy</option>
+                    <option value="violet-waltz">Violet Waltz</option>
+                    <option value="gold-beat">Gold Beat</option>
+                    <option value="emerald-blues">Emerald Blues</option>
+                    <option value="scarlet-tango">Scarlet Tango</option>
+                </select>
+            </div>
+            <div class="dgn-fx-divider" aria-hidden="true"></div>
+            <div class="dgn-fx-seating-row">
+                <div class="dgn-fx-seating-header">
+                    <span class="dgn-fx-seating-label">Seating Plan</span>
+                    <div class="dgn-fx-seating-actions">
+                        <button type="button" id="dgn-fx-seating-edit"  class="dgn-fx-seating-btn">Edit</button>
+                        <button type="button" id="dgn-fx-seating-save"  class="dgn-fx-seating-btn" style="display:none">Save</button>
+                        <button type="button" id="dgn-fx-seating-reset" class="dgn-fx-seating-btn dgn-fx-seating-btn-danger">Reset</button>
+                    </div>
+                </div>
+                <div id="dgn-fx-seating-list" class="dgn-fx-seating-circle"></div>
+                <div class="dgn-fx-seating-hint" id="dgn-fx-seating-hint" style="display:none">Click two seats to swap, then Save.</div>
+            </div>
+            <div class="dgn-fx-divider" aria-hidden="true"></div>
+            <div class="dgn-fx-commands-row">
+                <button type="button" id="dgn-fx-commands-btn" class="dgn-fx-commands-btn">View Commands</button>
+            </div>
+        `;
+
+        // Slot the bgm-display inside the wrapper as its body, and the theme
+        // selector below it.
+        bgm.parentNode.insertBefore(wrapper, bgm);
+        wrapper.appendChild(header);
+        wrapper.appendChild(bgm);
+        wrapper.appendChild(fxSection);
+
+        const select = fxSection.querySelector('select');
+        select.value = currentTheme;
+        select.addEventListener('change', (e) => applyTrialTheme(e.target.value));
+
+        fxSection.querySelector('#dgn-fx-commands-btn').addEventListener('click', showCommandsModal);
+
+        // ── Seating Plan section (circular diagram + edit/save) ─────────
+        const seatingListEl  = fxSection.querySelector('#dgn-fx-seating-list');
+        const editBtn        = fxSection.querySelector('#dgn-fx-seating-edit');
+        const saveBtn        = fxSection.querySelector('#dgn-fx-seating-save');
+        const resetBtn       = fxSection.querySelector('#dgn-fx-seating-reset');
+        const hintEl         = fxSection.querySelector('#dgn-fx-seating-hint');
+
+        // Edit-mode state — when editing, the live renderer freezes and
+        // user clicks swap seats. Save persists; cancel/Edit toggle reverts.
+        let editing = false;
+        let editPlan = [];          // working copy while editing
+        let editPlanOriginal = [];  // snapshot taken on entering edit mode (for diff highlighting)
+        let editSelectedIdx = -1;   // first-click anchor for swap
+
+        function gatherCurrentNames() {
+            const names = gcpSlots.map(s => s.name).filter(n => n && !isMonokuma(n));
+            const playerName = getPlayerName?.();
+            if (playerName && !names.some(n => normalizeSeatName(n) === normalizeSeatName(playerName))) {
+                names.push(playerName);
+            }
+            return names;
+        }
+
+        function renderCircle(names, speakerIdx) {
+            seatingListEl.innerHTML = '';
+            if (!names.length) {
+                seatingListEl.classList.add('dgn-fx-seating-empty');
+                seatingListEl.innerHTML = '<span class="dangan-seating-plan-empty">Waiting for chat…</span>';
+                return;
+            }
+            seatingListEl.classList.remove('dgn-fx-seating-empty');
+            const n = names.length;
+
+            // Centre display: empty by default; only shows the hovered
+            // seat's number + name. Mouseleave on a chip clears it.
+            const centre = document.createElement('div');
+            centre.className = 'dgn-fx-seating-centre';
+            const centreNum  = document.createElement('div');
+            centreNum.className = 'dgn-fx-seating-centre-num';
+            const centreName = document.createElement('div');
+            centreName.className = 'dgn-fx-seating-centre-name';
+            centre.appendChild(centreNum);
+            centre.appendChild(centreName);
+            seatingListEl.appendChild(centre);
+
+            const showCentre = (idx) => {
+                if (idx >= 0 && idx < n) {
+                    const nm = String(names[idx] || '').trim();
+                    const parts = nm.split(/\s+/);
+                    const firstName = parts.shift() || nm;
+                    const lastName  = parts.join(' ');
+                    centreNum.textContent  = `${idx + 1}`;
+                    centreName.textContent = lastName ? `${firstName}\n${lastName}` : firstName;
+                    centre.style.visibility = 'visible';
+                    const origAtIdx = editing ? editPlanOriginal[idx] : null;
+                    const isChanged = editing && origAtIdx && normalizeSeatName(names[idx]) !== normalizeSeatName(origAtIdx);
+                    const isDead    = !!(isCharacterDead && isCharacterDead(nm));
+                    centre.classList.toggle('dgn-fx-seating-centre-changed',      isChanged && !isDead);
+                    centre.classList.toggle('dgn-fx-seating-centre-changed-dead', isChanged && isDead);
+                } else {
+                    centre.style.visibility = 'hidden';
+                    centre.classList.remove('dgn-fx-seating-centre-changed', 'dgn-fx-seating-centre-changed-dead');
+                }
+            };
+            showCentre(-1);
+
+            for (let i = 0; i < n; i++) {
+                const name = names[i];
+                // Single seat: render at centre. Otherwise: distribute
+                // evenly clockwise starting from the top.
+                let leftPct = 50;
+                let topPct  = 50;
+                if (n > 1) {
+                    const angle = -Math.PI / 2 + (i / n) * Math.PI * 2;
+                    leftPct = 50 + Math.cos(angle) * 38;
+                    topPct  = 50 + Math.sin(angle) * 38;
+                }
+                const chip = document.createElement('div');
+                chip.className = 'dgn-fx-seating-chip';
+                chip.dataset.idx = String(i);
+                chip.style.left = `${leftPct}%`;
+                chip.style.top  = `${topPct}%`;
+                const isSpeaker = !editing && i === speakerIdx;
+                const isDead    = isCharacterDead?.(name);
+                const origAtI   = editing ? editPlanOriginal[i] : null;
+                const isChanged = editing && origAtI && normalizeSeatName(name) !== normalizeSeatName(origAtI);
+                if (isSpeaker) chip.classList.add('dgn-fx-seating-chip-speaker');
+                else if (isDead) chip.classList.add('dgn-fx-seating-chip-dead');
+                if (isChanged) chip.classList.add(isDead ? 'dgn-fx-seating-chip-changed-dead' : 'dgn-fx-seating-chip-changed');
+                if (editing && i === editSelectedIdx) chip.classList.add('dgn-fx-seating-chip-selected');
+
+                const badge = document.createElement('div');
+                badge.className = 'dgn-fx-seating-badge';
+                badge.textContent = String(i + 1);
+                chip.appendChild(badge);
+
+                chip.addEventListener('mouseenter', () => showCentre(i));
+                chip.addEventListener('mouseleave', () => showCentre(-1));
+
+                if (editing) {
+                    chip.addEventListener('click', () => handleEditClick(i));
+                }
+                seatingListEl.appendChild(chip);
+            }
+        }
+
+        function handleEditClick(idx) {
+            if (!editing) return;
+            if (editSelectedIdx === -1) {
+                editSelectedIdx = idx;
+                renderCircle(editPlan, -1);
+                return;
+            }
+            if (editSelectedIdx === idx) {
+                editSelectedIdx = -1;
+                renderCircle(editPlan, -1);
+                return;
+            }
+            [editPlan[editSelectedIdx], editPlan[idx]] = [editPlan[idx], editPlan[editSelectedIdx]];
+            editSelectedIdx = -1;
+            renderCircle(editPlan, -1);
+        }
+
+        const renderControlsSeating = () => {
+            if (!seatingListEl) return;
+            if (editing) return; // freeze while user is editing
+            const names = gatherCurrentNames();
+            const speakerIdx = gcpSlots.length ? Math.round(gcpCurrentFloat) : -1;
+            renderCircle(names, speakerIdx);
+        };
+        gcpSeatingListRenderers.add(renderControlsSeating);
+        renderControlsSeating();
+
+        editBtn?.addEventListener('click', () => {
+            if (editing) {
+                // Cancel
+                editing = false;
+                editSelectedIdx = -1;
+                editPlan = [];
+                editBtn.textContent = 'Edit';
+                editBtn.classList.remove('dgn-fx-seating-btn-active');
+                if (saveBtn) saveBtn.style.display = 'none';
+                if (hintEl)  hintEl.style.display  = 'none';
+                renderControlsSeating();
+            } else {
+                editPlan = gatherCurrentNames();
+                if (!editPlan.length) return;
+                editPlanOriginal = editPlan.slice();
+                editing = true;
+                editSelectedIdx = -1;
+                editBtn.textContent = 'Cancel';
+                editBtn.classList.add('dgn-fx-seating-btn-active');
+                if (saveBtn) saveBtn.style.display = '';
+                if (hintEl)  hintEl.style.display  = '';
+                renderCircle(editPlan, -1);
+            }
+        });
+
+        saveBtn?.addEventListener('click', () => {
+            if (!editing) return;
+            saveSavedSeatingPlan(editPlan);
+            editing = false;
+            editSelectedIdx = -1;
+            editBtn.textContent = 'Edit';
+            editBtn.classList.remove('dgn-fx-seating-btn-active');
+            if (saveBtn) saveBtn.style.display = 'none';
+            if (hintEl)  hintEl.style.display  = 'none';
+            // Force the GCP carousel to rebuild with the new order. Clearing
+            // debateSeatingPlan makes getOrBuildSeatingPlan reconsult
+            // buildSeatingPlan, which now reads the freshly saved plan.
+            debateSeatingPlan = null;
+            try {
+                destroyGroupChatPortraits();
+                initGroupChatPortraits();
+            } catch (e) { console.warn('[Dangan][Seating] rebuild failed:', e); }
+            // The rebuild will repopulate gcpSlots and fire the renderers
+            // asynchronously — render once now from the saved order so
+            // the diagram updates immediately.
+            renderCircle(editPlan.slice(), -1);
+        });
+
+        resetBtn?.addEventListener('click', () => {
+            saveSavedSeatingPlan(null);
+            if (editing) {
+                editing = false;
+                editSelectedIdx = -1;
+                editBtn.textContent = 'Edit';
+                editBtn.classList.remove('dgn-fx-seating-btn-active');
+                if (saveBtn) saveBtn.style.display = 'none';
+                if (hintEl)  hintEl.style.display  = 'none';
+            }
+            debateSeatingPlan = null;
+            try {
+                destroyGroupChatPortraits();
+                initGroupChatPortraits();
+            } catch (e) { console.warn('[Dangan][Seating] rebuild failed:', e); }
+            renderControlsSeating();
+        });
+
+        // If the FX accordion ever leaves the DOM (rare, but possible if
+        // the BGM display is torn down), unsubscribe so we don't render
+        // into a detached node forever.
+        const wrapperObserver = new MutationObserver(() => {
+            if (!document.body.contains(wrapper)) {
+                gcpSeatingListRenderers.delete(renderControlsSeating);
+                wrapperObserver.disconnect();
+            }
+        });
+        wrapperObserver.observe(document.body, { childList: true, subtree: true });
+    }
+
+    const TRIAL_COMMANDS = [
+        {
+            heading: 'Cinematics & Chapters',
+            items: [
+                { cmd: '/bodydiscovery', desc: 'Plays the body discovery static/shake vignette, then the Body Discovery announcement, then triggers Investigation mode and switches to the Investigation theme.', opts: ['bg — Background image to switch to under the static effect (partial name match)', 'cinematic — Name of a configured Body Discovery cinematic to play instead of the default sequence'] },
+                { cmd: '/punishmenttime', desc: 'Plays the execution cinematic for the named character, then marks them as dead in the Monopad roster.', opts: ['name (required) — Character name; must match both a configured execution cinematic and a registered character'] },
+                { cmd: '/introduce', desc: 'Shows a 4-second character introduction screen for the current SillyTavern speaker.', opts: ['ultimate — Override the Ultimate title shown on the card (auto-detected from lorebook by default)'] },
+                { cmd: '/nextchapter', desc: 'Advances the Chapter counter one step (PROLOGUE → CHAPTER 1 → … → CHAPTER 9).' },
+                { cmd: '/epiloguechapter', desc: 'Sets the Chapter display to EPILOGUE.' },
+                { cmd: '/passtime', desc: 'Triggers the nighttime announcement, shows a Night Time Start banner, and switches to the Night theme.' },
+                { cmd: '/gotosleep', desc: 'Advances to the next day, plays the daytime announcement, shows a Free Time Start banner, and switches to the Day theme.' },
+            ],
+        },
+        {
+            heading: 'Class Trial',
+            items: [
+                { cmd: '/startclasstrial', desc: 'Begin a Class Trial in the current group chat. Converts the chat into a Class Trial chat.' },
+                { cmd: '/endtrial', desc: 'Immediately ends the current Class Trial and clears all persistent trial state.' },
+                { cmd: '/setclasstrialgoal', desc: 'Sets the overall objective text shown in the Trial Context panel.', opts: ['(unnamed, required) — The goal text, e.g. /setclasstrialgoal Who killed Byakuya?'] },
+                { cmd: '/givetruthbullet', desc: 'Manually adds a Truth Bullet to the Monopad. Add an image via the Truth Bullet Monopad tab afterwards.', opts: ['name (required) — Truth Bullet title; quote if it contains spaces', '(unnamed, required) — The Truth Bullet description'] },
+                { cmd: '/suspectchoosing', desc: 'Opens the character selection screen to single out a suspect. Arrow keys to navigate, Enter to confirm.' },
+                { cmd: '/votingtime', desc: 'Spins the class trial vote roulette. A correct guess awards XP; an incorrect one triggers failure.', opts: ['guess (required) — The character that was voted for (partial name match)', 'result — The actual blackened character (omit to pick randomly)'] },
+            ],
+        },
+        {
+            heading: 'Minigames',
+            items: [
+                { cmd: '/nonstopdebate', desc: 'Force-starts a Non-Stop Debate with manually provided lines. Each line supports [[weak spot]] and ((agreement)) markup.', opts: ['s1-q … s8-q (at least one required) — Dialogue lines for sections 1–8', '(unnamed) — Shorthand for a single-line debate'] },
+                { cmd: '/masspanicdebate', desc: 'Starts a Mass Panic Debate with up to 8 scenarios. Each scenario requires all three columns; mark the weak spot in one column with [[brackets]].', opts: ['sc1-c1-q … sc8-c3-q (at least one full scenario) — Dialogue text', 'sc1-c1-speaker … sc8-c3-speaker — Speaker name per column'] },
+                { cmd: '/interjection', desc: 'Plays the rebuttal interjection cinematic, switches BGM to “New Classmates of the Dead”, then the interjector replies.', opts: ['character — Character name for the interjection sprite (defaults to last speaker)'] },
+                { cmd: '/rebuttalshowdown', desc: 'Starts a Rebuttal Showdown — cut through scrolling statements, then land the correct Truth Blade on the weak point.', opts: ['opponent — Opponent character name (defaults to last speaker)', 'player — Player character name (defaults to Prome player profile)', 's1-q … sN-q — Statement phrases (auto-split into chunks)'] },
+                { cmd: '/scrumdebate', desc: 'Starts a Scrum Debate. The group splits into two teams; debunk each opposing claim with the correct Truth Bullet, then win the final tug-of-war.' },
+                { cmd: '/panictalkaction', desc: 'Starts a Panic Talk Action boss-fight against the current speaker. At least one dialog line is required.', opts: ['dialogA … dialogK (at least one) — Up to 11 dialogue lines', 'enemyHp / playerHp — Starting HP (default 100)', 'phases — Number of phases 1–3 (default 3)', 'nSolution / sSolution / eSolution / wSolution — Direction prompt answer words', 'finalSolution — Final answer (shown uppercased)', 'finalSolutionQuote — Quote line accompanying the final solution', 'bg — Background image (partial name match)'] },
+                { cmd: '/hangmansgambit', desc: 'Starts a Hangman’s Gambit — letters scroll across the screen; stock a letter, match it against the current target position to reveal it.', opts: ['question (required) — Title or prompt', 'answer (required) — Word or phrase to unscramble', 'time — Time limit in seconds (default 60)', 'health — Health points (default 3)', 'difficulty — 1–5 (default 2)'] },
+                { cmd: '/questiontime', desc: 'Timed four-answer multiple choice question. Correct answer triggers GOT IT and awards XP.', opts: ['title (required) — Question text', 'time (required) — Time limit in seconds', 'a1 … a4 (required) — Four answer options', 'correct (required) — Index 1–4 of the correct answer'] },
+                { cmd: '/questiontruth', desc: 'Displays the Truth Bullet list and asks the player to pick the correct one. Correct answer awards Monocoins and GOT IT.', opts: ['question (required) — Statement or prompt', 'answer (required) — Title of the correct Truth Bullet (exact match)', 'time — Optional time limit in seconds'] },
+            ],
+        },
+    ];
+
+    function showCommandsModal() {
+        if (document.getElementById('dgn-commands-modal')) return;
+
+        const modal = document.createElement('div');
+        modal.id = 'dgn-commands-modal';
+        modal.className = 'dgn-commands-modal';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+
+        const sections = TRIAL_COMMANDS.map(group => {
+            const items = group.items.map(it => {
+                const opts = it.opts && it.opts.length
+                    ? `<ul class="dgn-cmd-opts">${it.opts.map(o => `<li>${escapeHtml(o)}</li>`).join('')}</ul>`
+                    : '';
+                return `
+                    <div class="dgn-cmd-item">
+                        <div class="dgn-cmd-name"><code>${escapeHtml(it.cmd)}</code></div>
+                        <div class="dgn-cmd-desc">${escapeHtml(it.desc)}</div>
+                        ${opts}
+                    </div>
+                `;
+            }).join('');
+            return `
+                <section class="dgn-cmd-group">
+                    <h3 class="dgn-cmd-group-title">${escapeHtml(group.heading)}</h3>
+                    ${items}
+                </section>
+            `;
+        }).join('');
+
+        modal.innerHTML = `
+            <div class="dgn-commands-backdrop"></div>
+            <div class="dgn-commands-card" role="document">
+                <div class="dgn-commands-header">
+                    <span>Slash Commands</span>
+                    <button type="button" class="dgn-commands-close" aria-label="Close">✕</button>
+                </div>
+                <div class="dgn-commands-body">${sections}</div>
+            </div>
+        `;
+
+        const close = () => {
+            modal.remove();
+            document.removeEventListener('keydown', onKeydown);
+        };
+        const onKeydown = (e) => { if (e.key === 'Escape') close(); };
+
+        modal.querySelector('.dgn-commands-close').addEventListener('click', close);
+        modal.querySelector('.dgn-commands-backdrop').addEventListener('click', close);
+        document.addEventListener('keydown', onKeydown);
+
+        document.body.appendChild(modal);
+    }
+
+    function uninstallBgmAccordion() {
+        const wrapper = document.getElementById('dangan-bgm-panel');
+        const bgm = document.getElementById('dangan-bgm-display');
+        if (wrapper && bgm) {
+            // Move bgm-display back out of the wrapper before removing it
+            wrapper.parentNode.insertBefore(bgm, wrapper);
+            wrapper.remove();
+        }
     }
 
     function syncPrompt() {
@@ -812,8 +1605,14 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
         if (currentState === TrialPhases.IDLE) {
             setPrompt('dangan_debate_history', '', 0, 0, false, 'system');
             setPrompt('dangan_rebuttal_judgment', '', 0, 0, false, 'system');
+            setPrompt('dangan_monokuma_rules', '', 0, 0, false, 'system');
             return;
         }
+
+        // Monokuma observes but does not initiate — inject a standing rule whenever trial is active
+        setPrompt('dangan_monokuma_rules',
+            '[CLASS TRIAL RULE] Monokuma is present in the courtroom as an observer and referee, but he does NOT speak or interject spontaneously. He only responds if directly addressed or asked a question. He never participates in Non-stop Debates, Mass Panic Debates, Rebuttal Showdowns, or Scrum Debates.',
+            0, 2, true, 'system');
 
         // Always save persistent history to settings for page refreshes (per chat/group)
         if (typeof saveSettingsDebounced === 'function') {
@@ -854,6 +1653,7 @@ ${historyText}
                     setTimeout(() => { if (trialActive && isGroupChat()) playTrialGeneralTrack?.(); }, 750);
                 }
                 if (isGroupChat() && trialActive) showPreDebateNotification();
+                if (isGroupChat() && trialActive) showContextPanel();
                 break;
             case TrialPhases.PRE_DEBATE:
                 cleanupDebateUI();
@@ -864,6 +1664,7 @@ ${historyText}
                     setTimeout(() => { if (trialActive && isGroupChat()) playTrialGeneralTrack?.(); }, 750);
                 }
                 if (isGroupChat()) showPreDebateNotification();
+                if (isGroupChat()) showContextPanel();
                 break;
             case TrialPhases.NON_STOP_DEBATE:
                 setupNonStopDebate();
@@ -881,6 +1682,138 @@ ${historyText}
         }
     }
 
+    function updateControlPanelTopic() {
+        const label = document.querySelector('#dangan-trial-pre-debate-notif .dangan-trial-topic-label');
+        if (!label) return;
+        label.textContent = trialContext.topic
+            ? `Debating: ${trialContext.topic}`
+            : 'TRIAL PANEL';
+    }
+
+    function updateContextPanel() {
+        const hosts = [
+            document.getElementById('dangan-trial-context-panel'),
+            document.getElementById('dangan-trial-pre-debate-notif'),
+        ].filter(Boolean);
+        if (!hosts.length) return;
+
+        for (const host of hosts) {
+            const goalEl     = host.querySelector('.dangan-context-goal');
+            const suspectsEl = host.querySelector('.dangan-context-suspects');
+
+            if (goalEl) {
+                const goalText = trialContext.goal || '';
+                goalEl.textContent = goalText || (host.id === 'dangan-trial-context-panel' ? '—' : '');
+            }
+
+            if (!suspectsEl) continue;
+
+            if (host.classList.contains('dgn-suspects-grid') || suspectsEl.classList.contains('dgn-suspects-grid')) {
+                if (!trialContext.suspects.length) {
+                    suspectsEl.innerHTML = '<div class="dgn-suspects-empty">No suspects identified</div>';
+                } else {
+                    suspectsEl.innerHTML = trialContext.suspects.slice(0, 3).map(s => {
+                        const pct = Math.max(0, Math.min(100, Number(s.chance) || 0));
+                        const portraitSrc = `/characters/${encodeURIComponent(s.name)}.png`;
+                        return `
+                            <div class="dgn-suspect-cell" data-suspect-name="${escapeHtml(s.name)}">
+                                <div class="dgn-suspect-portrait" aria-hidden="true">
+                                    <img src="${portraitSrc}" alt="" onerror="this.style.opacity=0">
+                                </div>
+                                <div class="dgn-suspect-name">${escapeHtml(s.name)}</div>
+                                <div class="dgn-suspect-pct">${pct}%</div>
+                            </div>`;
+                    }).join('');
+                }
+                continue;
+            }
+
+            // Legacy left-side panel (kept for compat)
+            if (!trialContext.suspects.length) {
+                suspectsEl.innerHTML = '<span class="dangan-context-no-suspects">No suspects identified</span>';
+            } else {
+                suspectsEl.innerHTML = trialContext.suspects.slice(0, 3).map(s => `
+                    <div class="dangan-context-suspect-row">
+                        <span class="dangan-context-suspect-name">${s.name}</span>
+                        <div class="dangan-context-suspect-bar-wrap">
+                            <div class="dangan-context-suspect-bar" style="width:${Math.max(0, Math.min(100, s.chance))}%"></div>
+                        </div>
+                        <span class="dangan-context-suspect-pct">${s.chance}%</span>
+                    </div>`).join('');
+            }
+        }
+    }
+
+
+    function showContextPanel() {
+        if (document.getElementById('dangan-trial-context-panel')) {
+            updateContextPanel();
+            return;
+        }
+
+        const panel = document.createElement('div');
+        panel.id = 'dangan-trial-context-panel';
+        panel.className = 'dangan-trial-notification dangan-context-panel';
+        panel.innerHTML = `
+            <div class="dangan-trial-notif-content">
+                <div class="dangan-trial-notif-drag-handle">
+                    <span class="dangan-trial-notif-drag-icon">⠿</span>
+                    <span>Trial Context</span>
+                    <button class="dangan-trial-collapse-btn" title="Collapse panel">▼</button>
+                </div>
+                <div class="dangan-trial-notif-body dangan-context-body">
+                    <div class="dangan-context-section">
+                        <span class="dangan-trial-group-label">Trial Goal</span>
+                        <span class="dangan-context-goal">—</span>
+                    </div>
+                    <div class="dangan-context-section">
+                        <div class="dangan-context-suspects-header">
+                            <span class="dangan-trial-group-label">Suspects</span>
+                            <button class="dangan-suspect-refresh-btn" title="Refresh suspect analysis">↻</button>
+                        </div>
+                        <div class="dangan-context-suspects"></div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(panel);
+
+        applyCustomUiPosition?.(panel, 'dangan-trial-context-pos');
+        attachDraggablePositioning?.(panel, {
+            storageKey: 'dangan-trial-context-pos',
+            handleSelector: '.dangan-trial-notif-drag-handle',
+        });
+
+        const collapseBtn = panel.querySelector('.dangan-trial-collapse-btn');
+        collapseBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isCollapsed = panel.classList.toggle('collapsed');
+            collapseBtn.textContent = isCollapsed ? '▲' : '▼';
+            collapseBtn.title = isCollapsed ? 'Expand panel' : 'Collapse panel';
+        });
+
+        updateContextPanel();
+    }
+
+    function saveTrialContext() {
+        if (typeof saveSettingsDebounced !== 'function') return;
+        const key = getTrialPersistenceKey();
+        if (!extensionSettings[extensionName].trials)      extensionSettings[extensionName].trials      = {};
+        if (!extensionSettings[extensionName].trials[key]) extensionSettings[extensionName].trials[key] = {};
+        extensionSettings[extensionName].trials[key].trialTopic = trialContext.topic;
+        extensionSettings[extensionName].trials[key].trialGoal  = trialContext.goal;
+        saveSettingsDebounced();
+    }
+
+    function setTrialContext(topic, goal, suspects) {
+        if (topic    !== undefined) trialContext.topic    = topic    || '';
+        if (goal     !== undefined) trialContext.goal     = goal     || '';
+        if (suspects !== undefined) trialContext.suspects = Array.isArray(suspects) ? suspects.slice(0, 3) : [];
+        saveTrialContext();
+        updateControlPanelTopic();
+        updateContextPanel();
+    }
+
     function showPreDebateNotification() {
         if (document.getElementById('dangan-trial-pre-debate-notif')) return;
 
@@ -889,38 +1822,50 @@ ${historyText}
 
         const notification = document.createElement('div');
         notification.id = 'dangan-trial-pre-debate-notif';
-        notification.className = 'dangan-trial-notification';
+        notification.className = 'dangan-trial-notification dgn-side-panel collapsed';
         notification.innerHTML = `
             <div class="dangan-trial-notif-content">
-                <div class="dangan-trial-notif-drag-handle">
+                <div class="dangan-trial-notif-drag-handle dgn-side-panel-header">
                     <span class="dangan-trial-notif-drag-icon">⠿</span>
-                    <span>The Class Trial is ongoing...</span>
-                    <button class="dangan-trial-collapse-btn" title="Collapse panel">▼</button>
+                    <span class="dangan-trial-topic-label">${trialContext.topic ? `Debating: ${trialContext.topic}` : 'TRIAL PANEL'}</span>
+                    <span class="dgn-side-panel-chev" aria-hidden="true">▾</span>
                 </div>
                 <div class="dangan-trial-notif-body">
-                    <div class="dangan-trial-btn-group dangan-trial-btn-group--minigames">
-                        <span class="dangan-trial-group-label">Minigames</span>
-                        <div class="dangan-trial-btn-row">
-                            <button id="dangan-start-nonstop-btn"  class="dangan-trial-start-btn" style="display:none">START NON-STOP DEBATE</button>
-                            <button id="dangan-start-mpdebate-btn" class="dangan-trial-start-btn" style="display:none">START MASS PANIC DEBATE</button>
-                            <button id="dangan-start-hangman-btn"  class="dangan-trial-start-btn" style="display:none">START HANGMAN'S GAMBIT</button>
-                            <button id="dangan-start-pta-btn"      class="dangan-trial-start-btn" style="display:none">START PANIC TALK ACTION</button>
-                            <button id="dangan-start-rebuttal-btn" class="dangan-trial-start-btn" style="display:none">START REBUTTAL SHOWDOWN</button>
-                            <button id="dangan-start-qtime-btn"    class="dangan-trial-start-btn" style="display:none">START QUESTION TIME</button>
-                            <button id="dangan-start-qtruth-btn"   class="dangan-trial-start-btn" style="display:none">START QUESTION TRUTH</button>
-                        </div>
+                    <div class="dgn-trial-section dgn-trial-section--goal">
+                        <h3 class="dgn-trial-section-title">Goal</h3>
+                        <div class="dgn-trial-goal-text dangan-context-goal"></div>
                     </div>
-                    <div class="dangan-trial-btn-group dangan-trial-btn-group--actions">
-                        <span class="dangan-trial-group-label">Actions</span>
-                        <div class="dangan-trial-btn-row">
-                            <button id="dangan-start-interject-btn"  class="dangan-trial-start-btn" style="display:none">START AN INTERJECTION</button>
-                            <button id="dangan-start-choosing-btn"   class="dangan-trial-start-btn" style="display:none">START CHOOSING TIME</button>
-                            <button id="dangan-start-voting-btn"     class="dangan-trial-start-btn" style="display:none">START VOTING TIME</button>
-                            <button id="dangan-start-punishment-btn" class="dangan-trial-start-btn" style="display:none">START PUNISHMENT TIME</button>
+                    <div class="dgn-trial-section dgn-trial-section--suspects">
+                        <div class="dgn-suspects-header">
+                            <h3 class="dgn-trial-section-title" style="margin:0">Suspects</h3>
+                            <button class="dangan-suspect-refresh-btn" title="Refresh suspect analysis">↻</button>
+                        </div>
+                        <div class="dgn-suspects-grid dangan-context-suspects"></div>
+                    </div>
+                    <div class="dgn-trial-section dgn-trial-section--controls">
+                        <h3 class="dgn-trial-section-title">Controls</h3>
+                        <div class="dgn-controls-loading" aria-live="polite" aria-label="Loading controls">
+                            <span></span><span></span><span></span>
+                        </div>
+                        <div class="dgn-controls-grid dangan-trial-btn-group--minigames">
+                            <button id="dangan-start-nonstop-btn"  class="dangan-trial-start-btn" style="display:none">Start Non-Stop Debate</button>
+                            <button id="dangan-start-hangman-btn"  class="dangan-trial-start-btn" style="display:none">Start Hangman's Gambit</button>
+                            <button id="dangan-start-mpdebate-btn" class="dangan-trial-start-btn" style="display:none">Start Mass Panic Debate</button>
+                            <button id="dangan-start-rebuttal-btn" class="dangan-trial-start-btn" style="display:none">Start Rebuttal Showdown</button>
+                            <button id="dangan-start-scrum-btn"    class="dangan-trial-start-btn" style="display:none">Start Scrum Debate</button>
+                            <button id="dangan-start-mindmine-btn" class="dangan-trial-start-btn" style="display:none">Start Mind Mine</button>
+                            <button id="dangan-start-pta-btn"      class="dangan-trial-start-btn" style="display:none">Start Panic Talk Action</button>
+                            <button id="dangan-start-qtime-btn"    class="dangan-trial-start-btn" style="display:none">Start Question Time</button>
+                            <button id="dangan-start-qtruth-btn"   class="dangan-trial-start-btn" style="display:none">Start Question Truth</button>
+                            <button id="dangan-start-interject-btn"  class="dangan-trial-start-btn" style="display:none">Trigger an Interjection</button>
+                            <button id="dangan-start-choosing-btn"   class="dangan-trial-start-btn" style="display:none">Start Choosing Time</button>
+                            <button id="dangan-start-voting-btn"     class="dangan-trial-start-btn" style="display:none">Start Voting Time</button>
+                            <button id="dangan-start-punishment-btn" class="dangan-trial-start-btn" style="display:none">Start Punishment Time</button>
+                            <button id="dangan-start-showcg-btn"     class="dangan-trial-start-btn" style="display:none">Show CG</button>
                         </div>
                     </div>
                     ${isGroupChat() ? `
-                    <div class="dangan-trial-btn-group dangan-trial-btn-group--seating"${hasSeatingPlanCopy ? '' : ' style="display:none"'}>
+                    <div class="dgn-trial-section dangan-trial-btn-group--seating"${hasSeatingPlanCopy ? '' : ' style="display:none"'}>
                         <div class="dangan-seating-plan-section">
                             <div class="dangan-seating-plan-header">
                                 <span>SEATING PLAN</span>
@@ -937,19 +1882,19 @@ ${historyText}
         `;
         document.body.appendChild(notification);
 
-        applyCustomUiPosition?.(notification, 'dangan-trial-panel-pos');
-        attachDraggablePositioning?.(notification, {
-            storageKey: 'dangan-trial-panel-pos',
-            handleSelector: '.dangan-trial-notif-drag-handle',
-        });
+        // Trial panel is non-draggable — it locks to the top-right corner via CSS.
+        // Clear any stale inline position that a previous draggable session may
+        // have written so the CSS top:0/right:0 takes effect cleanly.
+        notification.style.left = '';
+        notification.style.top = '';
+        notification.style.right = '';
+        notification.style.bottom = '';
 
-        // Collapse / expand toggle
-        const collapseBtn = notification.querySelector('.dangan-trial-collapse-btn');
-        collapseBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const isCollapsed = notification.classList.toggle('collapsed');
-            collapseBtn.textContent = isCollapsed ? '▲' : '▼';
-            collapseBtn.title = isCollapsed ? 'Expand panel' : 'Collapse panel';
+        // Collapse / expand toggle — click anywhere on the header, but
+        // suppress when the user is mid-drag (drag.js fires no click).
+        const headerEl = notification.querySelector('.dgn-side-panel-header');
+        headerEl.addEventListener('click', () => {
+            notification.classList.toggle('collapsed');
         });
 
         function renderSeatingList(plan) {
@@ -961,9 +1906,10 @@ ${historyText}
             // chars for debate purposes, which would cause seat numbers to diverge from the GCP.
             // GCP slots are the source of truth when active; fall back to the provided plan.
             // Either way, the player (Prome user sprite) is never a gcpSlot — append manually.
-            let displayPlan = gcpSlots.length
+            let displayPlan = (gcpSlots.length
                 ? gcpSlots.map(s => s.name)
-                : (plan ? [...plan] : []);
+                : (plan ? [...plan] : []))
+                .filter(n => !isMonokuma(n));
             const playerName = getPlayerName();
             if (playerName && !displayPlan.some(n => normalizeSeatName(n) === normalizeSeatName(playerName))) {
                 displayPlan.push(playerName);
@@ -983,6 +1929,7 @@ ${historyText}
             }).join('');
         }
 
+        let seatingRenderer = null;
         if (isGroupChat()) {
             async function buildFreshPlan() {
                 silencedSeats.clear();
@@ -1008,7 +1955,8 @@ ${historyText}
 
             // Register a live callback so GCP rebuilds automatically refresh the list.
             // Cleared when the notification is removed (panel closed or debate starts).
-            gcpSeatingListRenderer = () => renderSeatingList(null);
+            seatingRenderer = () => renderSeatingList(null);
+            gcpSeatingListRenderers.add(seatingRenderer);
 
             // Initial display: if GCP is already active use its slot order directly.
             // Still run buildFreshPlan to populate silencedSeats for the upcoming debate,
@@ -1032,7 +1980,7 @@ ${historyText}
         // Clear the live seating renderer when the panel is removed
         const notifObserver = new MutationObserver(() => {
             if (!document.body.contains(notification)) {
-                gcpSeatingListRenderer = null;
+                if (seatingRenderer) gcpSeatingListRenderers.delete(seatingRenderer);
                 notifObserver.disconnect();
             }
         });
@@ -1041,6 +1989,7 @@ ${historyText}
         // Show debate buttons after 5 seconds
         setTimeout(() => {
             notification.querySelectorAll('.dangan-trial-start-btn').forEach(btn => btn.style.display = 'block');
+            notification.querySelector('.dgn-trial-section--controls')?.classList.add('loaded');
         }, 5000);
 
         notification.querySelector('#dangan-start-nonstop-btn').onclick = () => {
@@ -1049,7 +1998,7 @@ ${historyText}
         };
         notification.querySelector('#dangan-start-mpdebate-btn').onclick = () => {
             notification.remove();
-            onStartMassPanicDebate?.();
+            void startMassPanicDebateGenerated();
         };
         notification.querySelector('#dangan-start-hangman-btn').onclick = () => {
             notification.remove();
@@ -1092,6 +2041,14 @@ ${historyText}
             notification.remove();
             onStartQuestionTruth?.();
         };
+        notification.querySelector('#dangan-start-scrum-btn').onclick = () => {
+            notification.remove();
+            onStartScrumDebate?.();
+        };
+        notification.querySelector('#dangan-start-mindmine-btn').onclick = () => {
+            notification.remove();
+            onStartMindMine?.();
+        };
         notification.querySelector('#dangan-start-choosing-btn').onclick = async () => {
             notification.remove();
             const characters = await Promise.all(gcpSlots.map(async s => ({
@@ -1108,12 +2065,288 @@ ${historyText}
             })));
             onStartChoosing?.({ characters, startIdx: Math.round(gcpCurrentFloat) });
         };
+        notification.querySelector('#dangan-start-showcg-btn').onclick = () => {
+            showCgPicker();
+        };
+
+        // Render goal/suspects into the merged panel
+        updateContextPanel();
+
+        // Inline-edit the goal text on click. Enter saves, Escape reverts.
+        const goalEl = notification.querySelector('.dangan-context-goal');
+        if (goalEl) {
+            goalEl.setAttribute('contenteditable', 'plaintext-only');
+            goalEl.setAttribute('spellcheck', 'false');
+            goalEl.title = 'Click to edit goal';
+            goalEl.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    goalEl.blur();
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    goalEl.textContent = trialContext.goal || '';
+                    goalEl.blur();
+                }
+            });
+            goalEl.addEventListener('blur', () => {
+                const next = goalEl.textContent.trim();
+                if (next !== (trialContext.goal || '')) {
+                    setTrialContext(undefined, next, undefined);
+                }
+            });
+        }
+    }
+
+    function showCgPicker() {
+        document.getElementById('dangan-cg-picker')?.remove();
+
+        const bgs = Array.from(document.querySelectorAll('.bg_example'));
+        if (!bgs.length) return;
+
+        const items = bgs.map(el => {
+            const bgfile   = el.getAttribute('bgfile') || '';
+            const label    = bgfile.split('/').pop().replace(/\.[^.]+$/, '') || bgfile;
+            // SillyTavern's thumbnail can be an <img>, a div with a CSS
+            // background-image, or an inline style — handle all three.
+            const imgEl    = el.querySelector('.bg_example_img, img');
+            let thumb = 'none';
+            if (imgEl) {
+                if (imgEl.tagName === 'IMG' && imgEl.src) {
+                    thumb = `url("${imgEl.src}")`;
+                } else {
+                    const cs = window.getComputedStyle(imgEl);
+                    if (cs.backgroundImage && cs.backgroundImage !== 'none') {
+                        thumb = cs.backgroundImage;
+                    } else if (imgEl.style.backgroundImage) {
+                        thumb = imgEl.style.backgroundImage;
+                    }
+                }
+            }
+            const isCustom = el.getAttribute('custom') === 'true';
+            const cssUrl   = el.dataset?.url
+                          || el.getAttribute('data-url')
+                          || (thumb && thumb !== 'none' ? thumb : null)
+                          || (isCustom ? `url("${bgfile}")` : `url("backgrounds/${encodeURIComponent(bgfile)}")`);
+            // No thumb resolvable? Fall back to the fullsize URL so the cell
+            // at least renders the background instead of an empty rectangle.
+            if (thumb === 'none' && cssUrl) thumb = cssUrl;
+            return { label, thumb, cssUrl };
+        }).filter(item => item.cssUrl);
+
+        if (!items.length) return;
+
+        let selectedFilter = null; // null | 'sepia' | 'grayscale'
+
+        // ── Build shell (no grid items yet) ──────────────────────────────────
+        const picker = document.createElement('div');
+        picker.id = 'dangan-cg-picker';
+
+        const inner = document.createElement('div');
+        inner.className = 'dangan-cg-picker-inner';
+
+        // Header
+        const header = document.createElement('div');
+        header.className = 'dangan-cg-picker-header';
+        header.innerHTML = `<span class="dangan-cg-picker-title">CHOOSE CG</span>`;
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'dangan-cg-picker-close';
+        closeBtn.textContent = '✕';
+        closeBtn.onclick = () => picker.remove();
+        header.appendChild(closeBtn);
+
+        // Filter toggles
+        const filterRow = document.createElement('div');
+        filterRow.className = 'dangan-cg-picker-filters';
+        ['sepia', 'grayscale'].forEach(f => {
+            const btn = document.createElement('button');
+            btn.className = 'dangan-cg-filter-btn';
+            btn.textContent = f.toUpperCase();
+            btn.dataset.filter = f;
+            btn.onclick = () => {
+                if (selectedFilter === f) {
+                    selectedFilter = null;
+                    btn.classList.remove('active');
+                } else {
+                    selectedFilter = f;
+                    filterRow.querySelectorAll('.dangan-cg-filter-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                }
+            };
+            filterRow.appendChild(btn);
+        });
+
+        // Search
+        const searchRow = document.createElement('div');
+        searchRow.className = 'dangan-cg-picker-search-row';
+        const searchInput = document.createElement('input');
+        searchInput.className = 'dangan-cg-search';
+        searchInput.type = 'text';
+        searchInput.placeholder = 'Search backgrounds…';
+        searchRow.appendChild(searchInput);
+
+        // Grid
+        const grid = document.createElement('div');
+        grid.className = 'dangan-cg-picker-grid';
+
+        inner.appendChild(header);
+        inner.appendChild(filterRow);
+        inner.appendChild(searchRow);
+        inner.appendChild(grid);
+        picker.appendChild(inner);
+        document.body.appendChild(picker);
+
+        // ── Render grid items ─────────────────────────────────────────────────
+        // Items are created programmatically so backgroundImage is set via .style
+        // (not innerHTML) — avoids quote-in-attribute corruption of the URL string.
+        function renderItems() {
+            grid.innerHTML = '';
+            const query = searchInput.value.trim().toLowerCase();
+            const visible = query ? items.filter(it => it.label.toLowerCase().includes(query)) : items;
+            if (!visible.length) {
+                const empty = document.createElement('div');
+                empty.className = 'dangan-cg-no-results';
+                empty.textContent = 'No backgrounds found';
+                grid.appendChild(empty);
+                return;
+            }
+            visible.forEach(item => {
+                const cell = document.createElement('div');
+                cell.className = 'dangan-cg-pick-item';
+
+                const thumb = document.createElement('div');
+                thumb.className = 'dangan-cg-pick-thumb';
+                if (item.thumb && item.thumb !== 'none') thumb.style.backgroundImage = item.thumb;
+
+                const lbl = document.createElement('span');
+                lbl.className = 'dangan-cg-pick-label';
+                lbl.textContent = item.label;
+
+                cell.appendChild(thumb);
+                cell.appendChild(lbl);
+                cell.onclick = () => { picker.remove(); showCgOverlay(item.cssUrl, selectedFilter); };
+                grid.appendChild(cell);
+            });
+        }
+
+        renderItems();
+        searchInput.addEventListener('input', renderItems);
+
+        picker.addEventListener('click', e => { if (e.target === picker) picker.remove(); });
+    }
+
+    function showCgOverlay(bgCssUrl, filter = null) {
+        document.getElementById('dangan-cg-overlay')?.remove();
+        document.querySelector('.dangan-cg-dismiss-btn')?.remove();
+        document.querySelector('.dangan-cg-name-panel')?.remove();
+
+        // SillyTavern chrome + extension widgets need to remain visible and
+        // clickable above the CG (which lives at z:2147483646). Each element
+        // gets its z-index bumped to 2147483647; if it has no positioning,
+        // we also force `position: relative` so z-index actually applies.
+        // Originals are saved and restored on cleanup.
+        const ABOVE_CG = [
+            '#top-bar',
+            '#top-settings-holder',
+            '#sheld',                  // chat sheld (chat list + messages)
+            '#chat',                   // chat messages container
+            '#send_form',              // text input area
+            '#form_sheld',             // form wrapper around the text input
+            '#dangan-hud-topright',
+            '#dangan-bgm-display',
+            '#dangan-bgm-panel',       // FX Panel (BGM + theme selector)
+            '#dangan-vn-overlay',
+            '#dangan-trial-pre-debate-notif',
+            '#dangan-trial-context-panel',
+        ];
+        // SillyTavern stylesheets use !important on z-index for some of
+        // these elements (#top-bar, #top-settings-holder, #sheld), so a
+        // plain inline style loses. Apply with `important` and preserve
+        // the original priority so restoration is clean.
+        const saved = ABOVE_CG.flatMap(sel =>
+            Array.from(document.querySelectorAll(sel)).map(el => {
+                const origZ      = el.style.getPropertyValue('z-index');
+                const origZPri   = el.style.getPropertyPriority('z-index');
+                const origPos    = el.style.getPropertyValue('position');
+                const origPosPri = el.style.getPropertyPriority('position');
+                const cs = getComputedStyle(el);
+                el.style.setProperty('z-index', '2147483647', 'important');
+                if (cs.position === 'static') el.style.setProperty('position', 'relative', 'important');
+                return { el, origZ, origZPri, origPos, origPosPri };
+            })
+        );
+
+        // Dismiss button must be a direct body child so its stacking context
+        // sits at z:2147483647, above the boosted UI elements that would otherwise
+        // swallow clicks if the button were nested inside the overlay (z:2147483646).
+        const dismissBtn = document.createElement('button');
+        dismissBtn.className = 'dangan-cg-dismiss-btn';
+        dismissBtn.textContent = '✕ DISMISS';
+
+        // Speaker-name panel — pinned to the left of the viewport, framed in
+        // pta-panel.png. Carries the current GCP speaker over and follows
+        // Prev/Next message navigation via cgNameTextEl, which is updated
+        // by updateGroupChatSpeaker whenever the highlighted speaker changes.
+        const initialName = currentSpeaker || gcpSlots[Math.round(gcpCurrentFloat)]?.name || '';
+        const namePanel = document.createElement('div');
+        namePanel.className = 'dangan-cg-name-panel';
+        namePanel.innerHTML = `<span class="dangan-cg-name-text"></span>`;
+        const nameTextEl = namePanel.querySelector('.dangan-cg-name-text');
+        // Custom setter — also toggles the hide class so an empty name
+        // collapses the panel cleanly via .dangan-cg-name-panel-empty.
+        const applyName = (value) => {
+            const name = String(value || '').trim();
+            nameTextEl.textContent = name;
+            namePanel.classList.toggle('dangan-cg-name-panel-empty', !name);
+        };
+        applyName(initialName);
+        cgNameTextEl = {
+            set textContent(value) { applyName(value); },
+            get textContent() { return nameTextEl.textContent; },
+        };
+
+        const FADE_OUT_MS = 450;
+        let dismissing = false;
+        const cleanup = () => {
+            if (dismissing) return;
+            dismissing = true;
+            overlay.classList.add('dangan-cg-fading-out');
+            dismissBtn.classList.add('dangan-cg-fading-out');
+            namePanel.classList.add('dangan-cg-fading-out');
+            setTimeout(() => {
+                overlay.remove();
+                dismissBtn.remove();
+                namePanel.remove();
+                cgNameTextEl = null;
+                saved.forEach(({ el, origZ, origZPri, origPos, origPosPri }) => {
+                    if (origZ)   el.style.setProperty('z-index',  origZ,   origZPri);
+                    else         el.style.removeProperty('z-index');
+                    if (origPos) el.style.setProperty('position', origPos, origPosPri);
+                    else         el.style.removeProperty('position');
+                });
+            }, FADE_OUT_MS);
+        };
+        dismissBtn.onclick = cleanup;
+
+        const overlay = document.createElement('div');
+        overlay.id = 'dangan-cg-overlay';
+        overlay.style.backgroundImage = bgCssUrl;
+        if (filter === 'sepia')     overlay.classList.add('dangan-cg-sepia');
+        if (filter === 'grayscale') overlay.classList.add('dangan-cg-grayscale');
+
+        document.body.appendChild(overlay);
+        document.body.appendChild(namePanel);
+        document.body.appendChild(dismissBtn);
     }
 
     async function startNonStopDebate() {
-        const count = Math.floor(Math.random() * (8 - 3 + 1)) + 3;
+        const count = Math.floor(Math.random() * (8 - 4 + 1)) + 4;
+        const loadingEl = showMinigameLoadingState?.('Loading Non-Stop Debate', { command: '/nonstopdebate' });
+        loadingEl?.setProgress?.(0);
         try {
-            const sections = await buildDebateSections({ sectionsCount: count });
+            const sections = await buildDebateSections({
+                sectionsCount: count,
+                onProgress: (frac) => loadingEl?.setProgress?.(frac),
+            });
             if (Array.isArray(sections) && sections.length > 0) {
                 const lines = sections.map(s => ({ text: s.statement, speaker: s.speakerName, whiteNoise: s.whiteNoise }));
                 debugStartNonStopDebateWithLines(lines);
@@ -1122,6 +2355,30 @@ ${historyText}
             }
         } catch (e) {
             console.warn('[Dangan][Trial] Debate section generation failed:', e);
+        } finally {
+            loadingEl?.hide?.();
+        }
+    }
+
+    async function startMassPanicDebateGenerated() {
+        const count = Math.floor(Math.random() * (6 - 4 + 1)) + 4;
+        const loadingEl = showMinigameLoadingState?.('Loading Mass Panic Debate', { command: '/masspanicdebate' });
+        loadingEl?.setProgress?.(0);
+        try {
+            const scenarios = await buildMpdScenarios({
+                scenarioCount: count,
+                onProgress: (frac) => loadingEl?.setProgress?.(frac),
+            });
+            if (Array.isArray(scenarios) && scenarios.length > 0) {
+                mpdScenarios = parseMpdScenarios(scenarios);
+                setState(TrialPhases.MASS_PANIC_DEBATE);
+            } else {
+                console.warn('[Dangan][Trial] MPD generation returned empty scenarios.');
+            }
+        } catch (e) {
+            console.warn('[Dangan][Trial] MPD generation failed:', e);
+        } finally {
+            loadingEl?.hide?.();
         }
     }
 
@@ -1138,15 +2395,15 @@ ${historyText}
         }).filter(e => e.text) : [];
         if (!list.length) return false;
 
-        const speakers = getChatCardMembers().map(s => s.name).filter(Boolean).filter(n => !isCharacterDead(n) && !isSilenced(n));
+        const speakers = getChatCardMembers().map(s => s.name).filter(Boolean).filter(n => !isCharacterDead(n) && !isCharacterMissing(n) && !isSilenced(n) && !isMonokuma(n));
         const speakerPool = speakers.length ? speakers : ['???'];
 
         persistentDebateHistory = [];
         debateSeatingPlan = null;
         currentDebateSections = Math.min(24, Math.max(1, list.length));
         preparedDebateSections = list.slice(0, currentDebateSections).map(({ text, speaker, whiteNoise }) => {
-            // If an explicit speaker is dead, pick a living one instead
-            const speakerName = (speaker && !isCharacterDead(speaker))
+            // If an explicit speaker is dead or is Monokuma, pick a living one instead
+            const speakerName = (speaker && !isCharacterDead(speaker) && !isCharacterMissing(speaker) && !isMonokuma(speaker))
                 ? speaker
                 : speakerPool[Math.floor(Math.random() * speakerPool.length)];
             const isAgree  = /\(\([^)]+\)\)/.test(text);
@@ -1192,6 +2449,7 @@ ${historyText}
     const nsdHiddenEls = new Map(); // selector → original display value
 
     function fadeOutChatUI() {
+        document.body.classList.add('dangan-minigame-active');
         for (const sel of NSD_UI_SELECTORS) {
             const el = document.querySelector(sel);
             if (!el) continue;
@@ -1204,6 +2462,7 @@ ${historyText}
     }
 
     function fadeInChatUI() {
+        document.body.classList.remove('dangan-minigame-active');
         for (const sel of NSD_UI_SELECTORS) {
             const el = document.querySelector(sel);
             if (!el) continue;
@@ -1476,6 +2735,7 @@ ${historyText}
             const idx  = spawnIdx % n;
             const name = debateSeatingPlan[idx];
             spawnIdx++;
+            if (isCharacterMissing(name)) return;
             const hpx    = portraitSlotHeightPx(name);
             const startX = window.innerWidth + CHAR_SLOT_W;
 
@@ -1708,6 +2968,7 @@ ${historyText}
             const idx  = ((spawnIdx % n) + n) % n;
             spawnIdx   = scrollForward ? (spawnIdx + 1) : (spawnIdx - 1);
             const name = debateSeatingPlan[idx];
+            if (isCharacterMissing(name)) return;
 
             const hpx = portraitSlotHeightPx(name);
             const el  = document.createElement('div');
@@ -1826,6 +3087,47 @@ ${historyText}
         return ctx?.name1 || ctx?.user_name || ctx?.userName || ctx?.personaName || null;
     }
 
+    function showMonokumaOverlay(emo) {
+        let overlay = document.getElementById('dangan-monokuma-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'dangan-monokuma-overlay';
+            const img = document.createElement('img');
+            img.alt = 'Monokuma';
+            overlay.appendChild(img);
+            document.body.appendChild(overlay);
+            void overlay.offsetWidth; // flush so opacity:0 is committed before transition fires
+        }
+        const img = overlay.querySelector('img');
+        if (img) {
+            getCharSpriteUrl('Monokuma', emo || 'neutral')
+                .then(url => { if (url && img) img.src = url; })
+                .catch(() => {});
+        }
+        if (trialActive) applyCamShot(overlay, gcpBgLoopEl);
+        document.body.classList.add('dangan-mono-speaker');
+    }
+
+    function hideMonokumaOverlay() {
+        document.body.classList.remove('dangan-mono-speaker');
+        // Don't remove the element — keep it for re-use and so the fade-out transition plays.
+    }
+
+    function getMonokumaStaticUrl(emo) {
+        const base = extensionFolderPath || `scripts/extensions/third-party/${extensionName}`;
+        const emoMap = {
+            angry: 'monokuma_angry', rage: 'monokuma_angry', furious: 'monokuma_angry',
+            cheerful: 'monokuma_cheerful', happy: 'monokuma_cheerful', joy: 'monokuma_whimsyjoy',
+            laughing: 'monokuma_laugh', laugh: 'monokuma_laugh', amused: 'monokuma_laugh',
+            confused: 'monokuma_confused', surprised: 'monokuma_confused',
+            sad: 'monokuma_sad', crying: 'monokuma_sad',
+            nervous: 'monokuma_sweating', anxious: 'monokuma_sweating', sweating: 'monokuma_sweating',
+            thinking: 'monokuma_eto', smug: 'monokuma_tadam',
+        };
+        const file = emoMap[String(emo || '').toLowerCase()] || 'monokuma_idle';
+        return `${base}/assets/monokuma/${file}.png`;
+    }
+
     // Sprite resolver that transparently handles the player character.
     // getSpriteUrl uses the SillyTavern sprite API and has no knowledge of the
     // Prome VN Extension's sprite pack, so the player's name would always return null.
@@ -1836,15 +3138,55 @@ ${historyText}
         if (promeInfo) {
             const playerName = getPlayerName();
             if (playerName) {
-                const pKey   = normalizeSeatName(playerName);
-                const pFirst = firstToken(playerName);
-                if (normalizeSeatName(name) === pKey || firstToken(name) === pFirst) {
+                // Only an EXACT (case-insensitive, trimmed) match swaps in the
+                // Prome user sprite — the old code also matched by first token
+                // so a persona named "Hajime" would override a separate
+                // "Hajime Hinata" NPC's sprite in group chats. The exact match
+                // still handles the legitimate case where the player's persona
+                // name is unique (e.g. "Dawn") and Prome carries the actual
+                // sprite identity via promeInfo.spritePack.
+                if (normalizeSeatName(name) === normalizeSeatName(playerName)) {
                     return getSpriteUrl(promeInfo.spritePack, emo);
                 }
             }
         }
         if (isCharacterDead(name)) return getSpriteUrl(name, 'dead');
+        // Monokuma: try standard sprites first, fall back to bundled emotion sprite.
+        // When a custom Game Master is configured the chosen character takes
+        // Monokuma's place — route the sprite lookup through their name so
+        // ST's sprite system returns their pack, and skip the bundled fallback
+        // (the user explicitly opted out of Monokuma art).
+        if (isMonokuma(name)) {
+            const custom = typeof getCustomGameMasterName === 'function'
+                ? getCustomGameMasterName()
+                : null;
+            if (custom) {
+                const url = await getSpriteUrl(custom, emo).catch(() => null);
+                return url; // null is fine — caller hides the slot when no sprite found
+            }
+            const url = await getSpriteUrl(name, emo).catch(() => null);
+            return url ?? getMonokumaStaticUrl(emo);
+        }
         return getSpriteUrl(name, emo);
+    }
+
+    // ── Saved seating plan (per-chat user override) ─────────────────────
+    function loadSavedSeatingPlan() {
+        const key = getTrialPersistenceKey();
+        const arr = extensionSettings?.[extensionName]?.trials?.[key]?.savedSeatingPlan;
+        return Array.isArray(arr) && arr.length ? arr.slice() : null;
+    }
+    function saveSavedSeatingPlan(plan) {
+        if (typeof saveSettingsDebounced !== 'function') return;
+        const key = getTrialPersistenceKey();
+        if (!extensionSettings[extensionName].trials)      extensionSettings[extensionName].trials      = {};
+        if (!extensionSettings[extensionName].trials[key]) extensionSettings[extensionName].trials[key] = {};
+        if (!Array.isArray(plan) || plan.length === 0) {
+            delete extensionSettings[extensionName].trials[key].savedSeatingPlan;
+        } else {
+            extensionSettings[extensionName].trials[key].savedSeatingPlan = plan.slice();
+        }
+        saveSettingsDebounced();
     }
 
     function buildSeatingPlan(names) {
@@ -1864,13 +3206,41 @@ ${historyText}
             seenFull.set(fullKey, trimmed);
             seenFirst.add(firstKey);
         }
-
         const unique = Array.from(seenFull.values());
+
+        // User override: if the player has saved a seating plan for this
+        // chat, project it onto the current name set. Drop characters no
+        // longer present; append any new arrivals at the end. Monokuma
+        // is always forced to seat 0.
+        const saved = loadSavedSeatingPlan();
+        if (saved && saved.length) {
+            const byKey = new Map(unique.map(n => [normalizeSeatName(n), n]));
+            const used = new Set();
+            const ordered = [];
+            for (const s of saved) {
+                const k = normalizeSeatName(s);
+                if (byKey.has(k) && !used.has(k)) {
+                    ordered.push(byKey.get(k));
+                    used.add(k);
+                }
+            }
+            for (const n of unique) {
+                const k = normalizeSeatName(n);
+                if (!used.has(k)) ordered.push(n);
+            }
+            const monoIdx = ordered.findIndex(n => normalizeSeatName(n) === 'monokuma');
+            if (monoIdx > 0) {
+                const [m] = ordered.splice(monoIdx, 1);
+                ordered.unshift(m);
+            }
+            return ordered;
+        }
+
+        // No saved plan — shuffle randomly, Monokuma still anchored at 0.
         for (let i = unique.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [unique[i], unique[j]] = [unique[j], unique[i]];
         }
-        // Monokuma always sits at seat 0
         const monokumaIdx = unique.findIndex(n => normalizeSeatName(n) === 'monokuma');
         if (monokumaIdx > 0) {
             const [monokuma] = unique.splice(monokumaIdx, 1);
@@ -1929,20 +3299,22 @@ ${historyText}
             playDebatesTrack?.();
         }
         suppressVisualizer?.();
+        document.getElementById('dangan-chapter-label')?.style.setProperty('display', 'none');
+        document.getElementById('dangan-trial-context-panel')?.style.setProperty('display', 'none');
 
         if (!debateSeatingPlan?.length && isGroupChat()) {
             const isMpd = currentState === TrialPhases.MASS_PANIC_DEBATE;
             const groupMembers = getChatCardMembers().map(m => m.name).filter(Boolean)
-                .filter(n => !isCharacterMuted(n) || isCharacterDead(n));
+                .filter(n => (!isCharacterMuted(n) || isCharacterDead(n)) && !isMonokuma(n));
             let speakerNames;
             if (groupMembers.length) {
                 speakerNames = groupMembers;
             } else if (isMpd) {
                 speakerNames = [...new Set(
                     (mpdScenarios || []).flatMap(s => (s.texts || []).map(t => t.speaker)).filter(Boolean)
-                )];
+                )].filter(n => !isMonokuma(n));
             } else {
-                speakerNames = (preparedDebateSections || []).map(s => s.speakerName).filter(Boolean);
+                speakerNames = (preparedDebateSections || []).map(s => s.speakerName).filter(Boolean).filter(n => !isMonokuma(n));
             }
             const playerName = getPlayerName();
             if (playerName) speakerNames.push(playerName);
@@ -1980,12 +3352,6 @@ ${historyText}
             <div class="dangan-trial-top-left">
                 <div id="dangan-speaker-name">...</div>
                 <div id="dangan-section-dots"></div>
-                <div id="dangan-concentrate-bar-wrap">
-                    <div id="dangan-concentrate-bar-label">CONCENTRATE</div>
-                    <div id="dangan-concentrate-bar-track">
-                        <div id="dangan-concentrate-bar-fill"></div>
-                    </div>
-                </div>
             </div>
             <div class="dangan-trial-portrait-stage">
                 <div class="dangan-portrait-slot dangan-portrait-neighbor-slot dangan-portrait-left-slot">
@@ -2017,6 +3383,78 @@ ${historyText}
         const wnFlashEl = document.createElement('div');
         wnFlashEl.id = 'dangan-wn-press-flash';
         debateOverlay.appendChild(wnFlashEl);
+
+        // Status bar PNG — sits BEHIND the hearts and stars gauges.
+        const statusBar = document.createElement('img');
+        statusBar.id = 'dangan-nsd-status-bar';
+        statusBar.src = `${extensionFolderPath}/assets/classtrial/status-bar.png`;
+        statusBar.alt = '';
+        statusBar.draggable = false;
+        debateOverlay.appendChild(statusBar);
+
+        // Concentrate stars — top-right gauge that drains right→left, green→black.
+        // The black layer is just a masked silhouette underneath. The green
+        // layer wraps a masked inner div so the parent's drop-shadow filter
+        // runs AFTER the mask shapes it into stars (CSS paint order is
+        // filter → mask, so we need the mask on the child and filter on the
+        // parent for the glow to actually trace the star outlines).
+        const starsGauge = document.createElement('div');
+        starsGauge.id = 'dangan-concentrate-stars';
+        starsGauge.innerHTML = `
+            <div class="stars-bg"></div>
+            <div class="stars-fg-wrap">
+                <div class="stars-fg"></div>
+            </div>
+        `;
+        const starsUrl = `${extensionFolderPath}/assets/classtrial/stars.svg`;
+        const starsMaskUrl = `url("${starsUrl}")`;
+        for (const sel of ['.stars-bg', '.stars-fg']) {
+            const el = starsGauge.querySelector(sel);
+            el.style.webkitMaskImage = starsMaskUrl;
+            el.style.maskImage       = starsMaskUrl;
+        }
+        starsGauge.style.setProperty('--gauge-pct', '100%');
+        debateOverlay.appendChild(starsGauge);
+
+        // Hearts health gauge — sits above the stars, drains left per WN hit.
+        nsdHealth = NSD_HEALTH_MAX;
+        nsdBreakTriggered = false;
+
+        // Decide the debate time limit. Default is the 2-minute floor; scenarios may
+        // request more by setting a numeric `timeLimitMs` on the prepared sections /
+        // MPD scenarios array.
+        const isMpdNow = currentState === TrialPhases.MASS_PANIC_DEBATE;
+        const requestedLimit = isMpdNow
+            ? (mpdScenarios?.timeLimitMs ?? null)
+            : (preparedDebateSections?.timeLimitMs ?? null);
+        setDebateTimeLimit(requestedLimit ?? DEBATE_TIMER_MIN_MS);
+        debateTimerStartTs = performance.now();
+
+        // NSD time-limit timer (bottom-left). Uses Hangman's Gambit font/colors.
+        const timerWrap = document.createElement('div');
+        timerWrap.id = 'dangan-nsd-timer-wrap';
+        timerWrap.innerHTML = `
+            <img class="dangan-nsd-timer-bar-bg" src="${extensionFolderPath}/assets/classtrial/timer-bar.png" alt="" draggable="false"/>
+            <div id="dangan-nsd-timer">02:00:000</div>
+        `;
+        debateOverlay.appendChild(timerWrap);
+        const heartsGauge = document.createElement('div');
+        heartsGauge.id = 'dangan-nsd-hearts';
+        heartsGauge.innerHTML = `
+            <div class="hearts-bg"></div>
+            <div class="hearts-fg-wrap">
+                <div class="hearts-fg"></div>
+            </div>
+        `;
+        const heartsUrl = `${extensionFolderPath}/assets/classtrial/hearts.svg`;
+        const heartsMaskUrl = `url("${heartsUrl}")`;
+        for (const sel of ['.hearts-bg', '.hearts-fg']) {
+            const el = heartsGauge.querySelector(sel);
+            el.style.webkitMaskImage = heartsMaskUrl;
+            el.style.maskImage       = heartsMaskUrl;
+        }
+        heartsGauge.style.setProperty('--gauge-pct', '100%');
+        debateOverlay.appendChild(heartsGauge);
 
         document.body.appendChild(debateOverlay);
         fadeOutChatUI();
@@ -2059,6 +3497,7 @@ ${historyText}
             const tok = ++portraitToken;
             const loadImg = async (el, name) => {
                 if (!el || !name) return;
+                if (isCharacterMissing(name)) { el.style.display = 'none'; return; }
                 try {
                     const url = await getCharSpriteUrl(name, 'neutral').catch(() => null);
                     if (tok !== portraitToken || !url || !el) return;
@@ -2083,6 +3522,7 @@ ${historyText}
 
             const loadImg = async (el, name, emo) => {
                 if (!el || !name) return;
+                if (isCharacterMissing(name)) { el.style.display = 'none'; return; }
                 try {
                     const url = await getCharSpriteUrl(name, emo).catch(() => null);
                     if (tok !== portraitToken || !url || !el) return;
@@ -2097,16 +3537,33 @@ ${historyText}
             loadImg(portraitRightEl, firstRight, rightEmo);
         }
 
-        debateOverlay.onmousemove = (e) => {
-            reticleEl.style.transform = `translate(${e.clientX}px, ${e.clientY}px) translate(-50%, -50%)`;
+        // Reticle position is driven by attachCursorSway (mouse position + sway offset).
+        // Absorb hit-detection uses the SWAYED reticle position (where the visible
+        // cursor is), not the raw OS mouse position, so the player can absorb the
+        // weak point under the reticle even when the sway offsets it from the mouse.
+        detachReticleSway?.();
+        detachReticleSway = attachCursorSway(reticleEl, debateOverlay, {
+            onFrame: (sx, sy) => {
+                // The swayed reticle position is the cursor for all gameplay logic:
+                // White-noise hover, space-fire burst origin, MPD column selection,
+                // and click hit-detection all read from lastCursorX/Y, so making it
+                // the swayed position routes everything through the visible cursor.
+                lastCursorX = sx;
+                lastCursorY = sy;
+                updateWhiteNoiseHover(sx, sy);
+            },
+        });
+        debateOverlay.onmousemove = () => {
+            const pos = detachReticleSway?.getPosition?.();
+            if (!pos) return;
             if (shiftRightPressed && isDebateActive()) {
-                const hit  = document.elementFromPoint(e.clientX, e.clientY);
+                const hit  = document.elementFromPoint(pos.x, pos.y);
                 const wpEl = hit?.closest?.('.dangan-weak-point');
                 if (wpEl) startAbsorb(wpEl);
                 else      cancelAbsorb();
             }
             if (lieHeld && isDebateActive()) {
-                const hit  = document.elementFromPoint(e.clientX, e.clientY);
+                const hit  = document.elementFromPoint(pos.x, pos.y);
                 const wpEl = hit?.closest?.('.dangan-weak-point');
                 if (wpEl) startLieAbsorb(wpEl);
                 else      cancelLieAbsorb();
@@ -2142,7 +3599,9 @@ ${historyText}
         }
         startConcentrateLoop();
 
+        nsdIntroPlaying = true;
         playNsdPreIntro().then(() => showBulletIntroScreen()).then(() => {
+            nsdIntroPlaying = false;
             if (currentState === TrialPhases.MASS_PANIC_DEBATE) {
                 startMassPanicDebatePlayback();
             } else {
@@ -2275,8 +3734,12 @@ ${historyText}
 
                 introEl.innerHTML = `
                     <div id="dangan-bullet-intro-cylinder">
+                        <img class="dangan-cyl-line dangan-cyl-line--1" src="${extensionFolderPath}/assets/images/minigames/cylinder-lines-1.webp" alt=""/>
+                        <img class="dangan-cyl-line dangan-cyl-line--4" src="${extensionFolderPath}/assets/images/minigames/cylinder-lines-4.webp" alt=""/>
+                        <img class="dangan-cyl-line dangan-cyl-line--2" src="${extensionFolderPath}/assets/images/minigames/cylinder-lines-2.webp" alt=""/>
+                        <img class="dangan-cyl-line dangan-cyl-line--3" src="${extensionFolderPath}/assets/images/minigames/cylinder-lines-3.webp" alt=""/>
                         <img id="dangan-bullet-intro-cyl-img"
-                             src="${extensionFolderPath}/assets/images/minigames/revolver-cylinder.png" alt=""/>
+                             src="${extensionFolderPath}/assets/images/minigames/danganronpa-2x2-revolver-cylinder.webp" alt=""/>
                     </div>
                     <div id="dangan-bullet-intro-list">${listHtml}</div>
                 `;
@@ -2389,6 +3852,10 @@ ${historyText}
             const introHiddenEls = [
                 '.dangan-trial-top-left',
                 '.dangan-trial-bottom-left',
+                '#dangan-concentrate-stars',
+                '#dangan-nsd-hearts',
+                '#dangan-nsd-status-bar',
+                '#dangan-nsd-timer-wrap',
             ].map(sel => debateOverlay?.querySelector(sel)).filter(Boolean);
             introHiddenEls.forEach(el => { el.dataset.introDisplay = el.style.display; el.style.display = 'none'; });
 
@@ -2429,10 +3896,15 @@ ${historyText}
 
         container.innerHTML = `
             <div class="dangan-cylinder-wrap">
+                <img class="dangan-cyl-line dangan-cyl-line--1" src="${extensionFolderPath}/assets/images/minigames/cylinder-lines-1.webp" alt=""/>
+                <img class="dangan-cyl-line dangan-cyl-line--4" src="${extensionFolderPath}/assets/images/minigames/cylinder-lines-4.webp" alt=""/>
+                <img class="dangan-cyl-line dangan-cyl-line--2" src="${extensionFolderPath}/assets/images/minigames/cylinder-lines-2.webp" alt=""/>
+                <img class="dangan-cyl-line dangan-cyl-line--3" src="${extensionFolderPath}/assets/images/minigames/cylinder-lines-3.webp" alt=""/>
                 <img id="dangan-cylinder-img" class="dangan-cylinder-img"
-                     src="${extensionFolderPath}/assets/images/minigames/revolver-cylinder.png" alt=""/>
+                     src="${extensionFolderPath}/assets/images/minigames/danganronpa-2x2-revolver-cylinder.webp" alt=""/>
                 <div class="dangan-cylinder-index">${bulletNumber}</div>
             </div>
+            <img class="dangan-tb-bar-bg" src="${extensionFolderPath}/assets/classtrial/truth-bullets-bar.png" alt="" draggable="false"/>
             <div class="dangan-bullet-cartridge dangan-bullet-cartridge--adj dangan-bullet-cartridge--above">
                 <span class="dangan-bullet-cartridge-name">${above?.title || ''}</span>
             </div>
@@ -2590,7 +4062,7 @@ ${historyText}
 
     // Column-scoped copy of showStatementChunk — positions statement in column `col`,
     // uses per-column element/animation tracking, same NSD visual flair throughout.
-    function showMpdStatementInColumn(col, { text, isWeakPoint, whiteNoise }) {
+    function showMpdStatementInColumn(col, { text, isWeakPoint, whiteNoise, speaker, emotion }) {
         if (!debateOverlay) return Promise.resolve();
 
         // Cancel any existing animation in this column
@@ -2610,6 +4082,9 @@ ${historyText}
         const el = document.createElement('div');
         el.className = 'dangan-floating-statement mpd-statement';
         el.style.width = `${Math.round(cw * 0.82)}px`;
+        if (speaker) el.dataset.speakerName = String(speaker);
+        const emoFont = getEmotionFont?.(emotion, speaker);
+        if (emoFont) el.style.fontFamily = emoFont;
 
         const rawText    = stripSurroundingQuotes(String(text || ''));
         const hasAgreeText = /\(\([^)]+\)\)/.test(rawText);
@@ -2769,6 +4244,7 @@ ${historyText}
         const tok = ++portraitToken;
         const loadImg = async (el, name) => {
             if (!el || !name) return;
+            if (isCharacterMissing(name)) { el.style.display = 'none'; return; }
             try {
                 const emo = isCharacterDead(name) || isSilenced(name) ? 'dead' : 'anger';
                 let url = await getCharSpriteUrl(name, emo).catch(() => null);
@@ -2882,6 +4358,7 @@ ${historyText}
     }
 
     function mpdOnRPress() {
+        if (nsdIntroPlaying) return;
         if (mpdLockActive) {
             const col = Math.max(0, Math.min(2, Math.floor((lastCursorX / window.innerWidth) * 3)));
             if (col !== mpdFreeColumn) {
@@ -3051,6 +4528,8 @@ ${historyText}
             laneY: getLaneY(debatePartIndex),
             weakMarkup: part.weakMarkup,
             whiteNoise: part.isWeakPoint ? (section.whiteNoise || null) : null,
+            speakerName,
+            emotion,
         }).then(() => {
             if (currentState !== TrialPhases.NON_STOP_DEBATE) return;
             debatePartIndex++;
@@ -3060,6 +4539,48 @@ ${historyText}
             }
             playbackTimerId = window.setTimeout(playNextChunk, 1200);
         });
+    }
+
+    const REALIZATION_SHOTS = ['b', 'd', 'e'];
+    let realizationShotIdx = 0;
+
+    const EMOTION_FX = {
+        realization: (elements) => {
+            const flash = document.createElement('div');
+            flash.className = 'dangan-emotion-flash-white';
+            document.body.appendChild(flash);
+            flash.addEventListener('animationend', () => flash.remove(), { once: true });
+            const shot = REALIZATION_SHOTS[realizationShotIdx % REALIZATION_SHOTS.length];
+            realizationShotIdx++;
+            applySpecificCamShot(shot, ...elements);
+        },
+    };
+
+    function triggerEmotionFx(emotion, ...elements) {
+        EMOTION_FX[emotion?.toLowerCase?.()]?.(elements);
+    }
+
+    function applySpecificCamShot(shot, ...elements) {
+        const valid = elements.filter(Boolean);
+        if (!valid.length) return;
+        console.log(`[Dangan][Trial] camera shot: ${String(shot || '').toUpperCase()}`);
+        for (const el of valid) for (const s of CAM_SHOTS) el.classList.remove(`dangan-portrait-cam-${s}`);
+        void valid[0].offsetWidth;
+        for (const el of valid) el.classList.add(`dangan-portrait-cam-${shot}`);
+    }
+
+    function applyCamShot(...elements) {
+        // Random shot, but never the same letter twice in a row.
+        let shot;
+        if (CAM_SHOTS.length <= 1) {
+            shot = CAM_SHOTS[0];
+        } else {
+            do {
+                shot = CAM_SHOTS[Math.floor(Math.random() * CAM_SHOTS.length)];
+            } while (shot === lastCamShot);
+        }
+        lastCamShot = shot;
+        applySpecificCamShot(shot, ...elements);
     }
 
     async function updateDebatePortraits(speakerName, emotion) {
@@ -3078,8 +4599,17 @@ ${historyText}
         portraitSpeaker = name;
         portraitEmotion = emo;
 
+        const mono = isMonokuma(name);
         const { left: leftName, right: rightName } = getSeatingNeighbors(name);
+        // Monokuma appears solo: no neighbours, no lectern
+        const effectiveLeft  = mono ? null : leftName;
+        const effectiveRight = mono ? null : rightName;
         const token = ++portraitToken;
+
+        if (speakerChanged) {
+            const centerLectern = debateOverlay?.querySelector('.dangan-portrait-center-slot .dangan-portrait-lectern');
+            if (centerLectern) centerLectern.style.display = mono ? 'none' : '';
+        }
 
         if (typeof getSpriteUrl !== 'function') {
             [portraitImgEl, portraitLeftEl, portraitRightEl].forEach(el => { if (el) el.style.display = 'none'; });
@@ -3089,6 +4619,7 @@ ${historyText}
         const updateImg = async (el, charName, emoLabel) => {
             if (!el) return;
             if (!charName) { el.style.display = 'none'; return; }
+            if (isCharacterMissing(charName)) { el.style.display = 'none'; return; }
             try {
                 const dead = isCharacterDead(charName) || isSilenced(charName);
                 let url = null;
@@ -3114,17 +4645,23 @@ ${historyText}
         };
 
         const updates = [updateImg(portraitImgEl, name, emo)];
+        const sceneEls = [
+            debateOverlay?.querySelector('.dangan-trial-portrait-stage'),
+            debateOverlay?.querySelector('#dangan-nsd-speedlines'),
+        ];
         if (speakerChanged) {
-            const leftEmo  = characterEmotions.get(leftName)  || 'neutral';
-            const rightEmo = characterEmotions.get(rightName) || 'neutral';
-            applyPortraitHeights(name, leftName, rightName);
-            updates.push(updateImg(portraitLeftEl,  leftName,  leftEmo));
-            updates.push(updateImg(portraitRightEl, rightName, rightEmo));
+            applyCamShot(...sceneEls);
+            const leftEmo  = characterEmotions.get(effectiveLeft)  || 'neutral';
+            const rightEmo = characterEmotions.get(effectiveRight) || 'neutral';
+            applyPortraitHeights(name, effectiveLeft, effectiveRight);
+            updates.push(updateImg(portraitLeftEl,  effectiveLeft,  leftEmo));
+            updates.push(updateImg(portraitRightEl, effectiveRight, rightEmo));
         }
+        triggerEmotionFx(emo, ...sceneEls);
         await Promise.all(updates);
     }
 
-    function showStatementChunk({ text, isWeakPoint, laneY, weakMarkup, whiteNoise }) {
+    function showStatementChunk({ text, isWeakPoint, laneY, weakMarkup, whiteNoise, speakerName, emotion }) {
         if (!debateOverlay) return Promise.resolve();
 
         if (playbackTimerId) window.clearTimeout(playbackTimerId);
@@ -3145,6 +4682,9 @@ ${historyText}
         el.className = 'dangan-floating-statement dangan-statement-single';
         const w = window.innerWidth || 1200;
         el.style.width = `${Math.min(Math.round(w * 0.82), 980)}px`;
+        if (speakerName) el.dataset.speakerName = String(speakerName);
+        const emoFont = getEmotionFont?.(emotion, speakerName);
+        if (emoFont) el.style.fontFamily = emoFont;
         const rawText = stripSurroundingQuotes(String(text || ''));
         const hasAgreeText = /\(\([^)]+\)\)/.test(rawText);
         const cleanedText = rawText.replace(/\[\[|\]\]/g, '').replace(/\(\(|\)\)/g, '');
@@ -3396,19 +4936,43 @@ ${historyText}
     }
 
     function doWnSpaceFire() {
+        if (nsdIntroPlaying) return;
         playSfx?.('wn_shooting');
         showWnPressFlash();
         showWnBurst(lastCursorX, lastCursorY);
         if (hoveredWhiteNoise) hitWhiteNoise(hoveredWhiteNoise);
     }
 
+    // Pre-allocated pool of burst elements.  Rapid Space spam previously
+    // created/destroyed a DOM node + compositor layer on every press, which
+    // dominated the per-press cost.  We keep N pool elements parented to the
+    // body, hidden when idle (the .fire-burst class drives the animation
+    // and ends at opacity 0).  Each press grabs the next slot round-robin
+    // and restarts the animation by toggling the class.
+    const WN_BURST_POOL_SIZE = 8;
+    const wnBurstPool = [];
+    let wnBurstPoolIdx = 0;
+
+    function ensureWnBurstPool() {
+        while (wnBurstPool.length < WN_BURST_POOL_SIZE) {
+            const burst = document.createElement('div');
+            burst.className = 'dangan-wn-burst';
+            document.body.appendChild(burst);
+            wnBurstPool.push(burst);
+        }
+    }
+
     function showWnBurst(x, y) {
-        const burst = document.createElement('div');
-        burst.className = 'dangan-wn-burst';
+        ensureWnBurstPool();
+        const burst = wnBurstPool[wnBurstPoolIdx];
+        wnBurstPoolIdx = (wnBurstPoolIdx + 1) % WN_BURST_POOL_SIZE;
         burst.style.left = `${x}px`;
         burst.style.top  = `${y}px`;
-        document.body.appendChild(burst);
-        setTimeout(() => burst.remove(), 400);
+        // Restart the CSS animation by removing then re-adding .fire-burst.
+        burst.classList.remove('fire-burst');
+        // eslint-disable-next-line no-unused-expressions
+        void burst.offsetWidth;
+        burst.classList.add('fire-burst');
     }
 
     function showWnPressFlash() {
@@ -3610,13 +5174,21 @@ ${historyText}
             if (hitWp) {
                 playSfx?.('weak_spot_hit');
                 hitWeakPoint(hitWp, currentBullet, isPerjury);
+                // Successful hit — leave shotCooldown locked so spam-clicks
+                // can't fire further bullets until the next debate setup.
+                return;
             } else if (hitAgree) {
                 playSfx?.('weak_spot_hit');
                 hitAgreeText(hitAgree, currentBullet);
+                return;
             } else {
                 playSfx?.('tbmiss');
                 if (isPointOnDebateText(targetX, targetY)) {
                     playSfx?.('rejected_shot');
+                }
+                // Lie missed the weak spot — drop the inversion overlay.
+                if (currentBullet?.isLie) {
+                    document.body.classList.remove('dangan-nsd-lie-armed');
                 }
             }
             shotCooldown = false;
@@ -3688,7 +5260,31 @@ ${historyText}
 
     function handleShoot(e, isPerjury = false) {
         if (shotCooldown) return;
+        if (nsdIntroPlaying) return; // block fires until the debate intro fully finishes
+        if (nsdLieLoading) return; // block fires while the lie is generating
         shotCooldown = true;
+
+        // Health: deduct one point if the user fired a Truth Bullet while
+        // hovering on a White Noise (NSD + MPD). Re-check rects at click time
+        // since white noise drifts via RAF — a stationary cursor with a WN
+        // drifting onto it won't have hoveredWhiteNoise updated by mousemove.
+        if (isDebateActive()) {
+            let wnAtClick = hoveredWhiteNoise;
+            if (!wnAtClick && activeWhiteNoiseEls.length) {
+                // Hit-test at the swayed reticle position (where the visible cursor is)
+                // rather than the raw OS mouse position passed in via `e`.
+                const cx = lastCursorX, cy = lastCursorY;
+                for (const el of activeWhiteNoiseEls) {
+                    if (!document.body.contains(el) || el.classList.contains('breaking')) continue;
+                    const r = el.getBoundingClientRect();
+                    if (cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom) {
+                        wnAtClick = el;
+                        break;
+                    }
+                }
+            }
+            if (wnAtClick) deductNsdHealth();
+        }
 
         const bullets = getDebateBullets();
         const currentBullet = bullets[selectedTruthBulletIndex] || { title: 'TRUTH BULLET' };
@@ -3705,7 +5301,10 @@ ${historyText}
                 playSfx?.('tb_spent');
             }
         }
-        showShotEffect(e.clientX, e.clientY);
+        // Visual effects originate at the swayed reticle position, matching the
+        // hit-test logic above so the projectile and muzzle flash line up with
+        // where the visible cursor is pointing.
+        showShotEffect(lastCursorX, lastCursorY);
 
         // Consume the temporary bullet immediately on fire (regardless of hit/miss)
         if (currentBullet.isTemporary) {
@@ -3715,7 +5314,7 @@ ${historyText}
             renderCylinder();
         }
 
-        fireProjectile(currentBullet.title, e.clientX, e.clientY, isPerjury, currentBullet);
+        fireProjectile(currentBullet.title, lastCursorX, lastCursorY, isPerjury, currentBullet);
         // shotCooldown is reset inside finish() when the projectile resolves
     }
 
@@ -3797,7 +5396,9 @@ ${historyText}
         const xpAmount = xpRewards?.[xpKey] ?? (isMpd ? 18 : 15);
         awardXp?.(xpAmount, isMpd ? 'mass panic debate completed' : 'non-stop debate completed');
 
-        const speakerName = gcpSlots[Math.round(gcpCurrentFloat)]?.name ?? null;
+        const speakerName = parentStatement?.dataset?.speakerName
+            || gcpSlots[Math.round(gcpCurrentFloat)]?.name
+            || null;
         showTrialBanner('consent', { speakerName }).then(() => {
             setState(TrialPhases.TRUTH_BULLET_EXPLANATION);
             showExplanationUI(currentBullet, agreeEl.textContent, 'agree');
@@ -3845,7 +5446,7 @@ ${historyText}
         const prefillArea = type === 'perjury'
             ? 'top:calc(23.33% - 10px);left:0px;right:0px;height:calc(50.34% + 20px);'
             : type === 'consent'
-            ? 'top:calc(19.33% - 10px);left:0px;right:0px;height:calc(53.34% + 20px);'
+            ? 'top:calc(19.33% - 10px + 150px);left:0px;right:0px;height:calc(53.34% + 20px);'
             : type === 'counter'
             ? 'top:0;left:0px;right:0px;height:100%;'
             : 'top:calc(33.33% - 10px);left:0;right:0;height:calc(33.34% + 20px);';
@@ -3862,7 +5463,7 @@ ${historyText}
         const bannerArea = type === 'perjury'
             ? 'top:23.33%;left:0px;right:0px;height:50%;overflow:hidden;'
             : type === 'consent'
-            ? 'top:19.33%;left:0px;right:0px;height:53.34%;overflow:initial;'
+            ? 'top:calc(19.33% + 150px);left:0px;right:0px;height:53.34%;overflow:initial;'
             : type === 'counter'
             ? 'top:0;left:0px;right:0px;height:100%;overflow:hidden;'
             : 'top:33.33%;left:0;right:0;height:33.34%;overflow:hidden;';
@@ -4138,6 +5739,11 @@ JUDGMENT RULES:
     }
 
     function cleanupDebateUI() {
+        // Fresh debate session — release the per-hit shot lock so the player
+        // can fire again in the next round.
+        shotCooldown = false;
+        nsdIntroPlaying = false;
+        document.body.classList.remove('dangan-nsd-lie-armed');
         if (playbackTimerId) {
             window.clearTimeout(playbackTimerId);
             playbackTimerId = null;
@@ -4149,6 +5755,10 @@ JUDGMENT RULES:
         if (statementEl) {
             statementEl.remove();
             statementEl = null;
+        }
+        if (detachReticleSway) {
+            try { detachReticleSway(); } catch {}
+            detachReticleSway = null;
         }
         if (debateOverlay) {
             debateOverlay.remove();
@@ -4163,6 +5773,8 @@ JUDGMENT RULES:
         document.body.classList.remove('dangan-mpd-active');
         stopDebatesTrack?.();
         unsuppressVisualizer?.();
+        document.getElementById('dangan-chapter-label')?.style.removeProperty('display');
+        document.getElementById('dangan-trial-context-panel')?.style.removeProperty('display');
         nsdActiveBullets  = null;
         tempBullet        = null;
         shiftRightPressed = false;
@@ -4280,7 +5892,7 @@ JUDGMENT RULES:
         });
     }
 
-    async function buildDebateSections({ sectionsCount }) {
+    async function buildDebateSections({ sectionsCount, onProgress }) {
         const context = getContextMessagesForTrial();
         const speakers = pickSpeakersFromContext(context);
         const usableSpeakers = speakers.length ? speakers : [{ name: '???', weight: 1 }];
@@ -4339,6 +5951,7 @@ JUDGMENT RULES:
             } catch (e) {
                 console.error(`[Dangan][Trial] Error generating section ${i + 1}:`, e);
             }
+            try { onProgress?.((i + 1) / sectionsCount); } catch {}
         }
         
         // Sync prompt immediately after building sections
@@ -4535,6 +6148,167 @@ Rules:
         } catch {
             return null;
         }
+    }
+
+    // Build an array of Mass Panic Debate scenarios via the same LLM pipeline
+    // we use for NSD. Each scenario is { texts: [{text, speaker, whiteNoise?}, x3] }
+    // with one column wrapped in [[…]] to mark the weak point.
+    async function buildMpdScenarios({ scenarioCount, onProgress }) {
+        const context = getContextMessagesForTrial();
+        const speakers = pickSpeakersFromContext(context);
+        const usableSpeakers = speakers.filter(s => s && s.name) ;
+        if (usableSpeakers.length < 3) return null;
+
+        const poolSize = Math.min(usableSpeakers.length, Math.max(3, Math.min(8, scenarioCount + 2)));
+        const speakerPool = sampleWeightedWithoutReplacement(usableSpeakers, poolSize);
+        if (speakerPool.length < 3) return null;
+
+        // Reset persistent history for the new debate
+        persistentDebateHistory = [];
+        const scenarios = [];
+        const debateSoFar = [];
+
+        for (let i = 0; i < scenarioCount; i++) {
+            // Pick 3 distinct speakers for this scenario, weighted by pool weight
+            const pickPool = speakerPool.slice();
+            const speakerTrio = [];
+            for (let p = 0; p < 3 && pickPool.length; p++) {
+                const total = pickPool.reduce((sum, s) => sum + (s.weight || 1), 0);
+                let r = Math.random() * total;
+                let chosenIdx = 0;
+                for (let j = 0; j < pickPool.length; j++) {
+                    r -= (pickPool[j].weight || 1);
+                    if (r <= 0) { chosenIdx = j; break; }
+                }
+                speakerTrio.push(pickPool[chosenIdx]);
+                pickPool.splice(chosenIdx, 1);
+            }
+            if (speakerTrio.length < 3) break;
+
+            const weakColumn = Math.floor(Math.random() * 3);
+            const debateSoFarText = debateSoFar.length
+                ? debateSoFar.map(line => `- ${line}`).join('\n')
+                : '';
+
+            try {
+                const lines = await generateMpdScenarioStatements({
+                    speakerTrio,
+                    weakColumn,
+                    debateSoFarText,
+                    context,
+                    scenarioIndex: i,
+                    scenarioCount,
+                });
+                if (!lines || lines.length !== 3) {
+                    console.warn(`[Dangan][Trial] MPD scenario ${i + 1} returned ${lines?.length || 0} lines — skipping.`);
+                    continue;
+                }
+
+                const texts = lines.map((text, col) => ({
+                    text,
+                    speaker: speakerTrio[col].name,
+                    isWeakPoint: col === weakColumn,
+                    emotion: inferEmotionFromText(text),
+                }));
+
+                // White-noise reactions for the weak-point column only.
+                const weakText = lines[weakColumn];
+                const bystanderNames = speakerPool
+                    .map(s => s.name)
+                    .filter(n => !speakerTrio.find(t => t.name === n));
+                const whiteNoise = await generateWhiteNoiseReactions(weakText, bystanderNames);
+                if (whiteNoise) texts[weakColumn].whiteNoise = whiteNoise;
+
+                scenarios.push({ texts });
+
+                // Push spoken dialogue to debate history (sans the [[…]] markers).
+                lines.forEach((text, col) => {
+                    const stripped = String(text || '').replace(/\[\[/g, '').replace(/\]\]/g, '');
+                    const spoken = stripSurroundingQuotes(extractDialogueOnly(stripped) || stripped);
+                    if (spoken) {
+                        const line = `${speakerTrio[col].name}: ${spoken}`;
+                        debateSoFar.push(line);
+                        persistentDebateHistory.push(line);
+                    }
+                });
+                while (debateSoFar.length > 6) debateSoFar.shift();
+            } catch (e) {
+                console.error(`[Dangan][Trial] Error generating MPD scenario ${i + 1}:`, e);
+            }
+            try { onProgress?.((i + 1) / scenarioCount); } catch {}
+        }
+
+        syncPrompt();
+        return scenarios;
+    }
+
+    // One LLM call → 3 simultaneous shouted lines for an MPD scenario; the
+    // weakColumn slot gets wrapped in [[…]] so it's flagged as the weak spot.
+    async function generateMpdScenarioStatements({ speakerTrio, weakColumn, debateSoFarText, context, scenarioIndex, scenarioCount }) {
+        const contextLines = context
+            .slice(-12)
+            .map(m => `${m.isUser ? 'YOU' : m.name}: ${m.text}`)
+            .join('\n');
+
+        const speakerList = speakerTrio
+            .map((s, i) => `Column ${i + 1}: ${s.name}${i === weakColumn ? '  ← WEAK-POINT speaker' : ''}`)
+            .join('\n');
+
+        const prompt = `
+You are scripting a Danganronpa-style Mass Panic Debate. Three students shout over each other simultaneously — one of them lets slip the weak point that drives the debate.
+
+SCENARIO ${scenarioIndex + 1} / ${scenarioCount}
+
+SPEAKERS (left → right column order):
+${speakerList}
+
+Rules:
+- Output EXACTLY 3 lines, one per column in order, no labels, no numbering, no blank lines.
+- Each line is a single spoken sentence (6–18 words), in double quotes.
+- Stay in character for each speaker. Lines should feel like they're being shouted simultaneously — overlapping accusations, panic, deflection.
+- Column ${weakColumn + 1}'s line is the WEAK POINT. Wrap its FULL sentence (inside the quotes) in [[double brackets]]. Example: "[[The locked door proves the killer is still in this room!]]"
+- The other two lines must NOT contain [[…]] markers.
+- No narration, no actions, no inner thoughts, no speaker labels.
+
+DEBATE SO FAR (most recent lines):
+${debateSoFarText || 'NONE'}
+
+RECENT CHAT CONTEXT:
+${contextLines}
+`.trim();
+
+        if (typeof generateTrialDialogue !== 'function') return null;
+
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const out = String(
+                await generateTrialDialogue(prompt, {
+                    maxTokens: 220,
+                    temperature: 0.78 + attempt * 0.08,
+                }) || ''
+            ).trim();
+
+            const rawLines = out
+                .split('\n')
+                .map(l => l.replace(/^\s*\d+[.)]\s*/, '').replace(/^\s*[-*•]\s*/, '').trim())
+                .filter(l => l.length > 0)
+                .slice(0, 3);
+            if (rawLines.length !== 3) continue;
+
+            // Ensure exactly one [[…]] and it's on the weak-point line.
+            const stripMarkers = (s) => s.replace(/\[\[/g, '').replace(/\]\]/g, '');
+            const finalLines = rawLines.map((line, i) => {
+                let body = stripMarkers(line);
+                // Pull text out of surrounding quotes for inner wrapping, then re-quote.
+                const inner = extractDialogueOnly(body) || stripSurroundingQuotes(body);
+                if (!inner) return null;
+                if (i === weakColumn) return `"[[${inner.replace(/^\[\[|\]\]$/g, '')}]]"`;
+                return `"${inner}"`;
+            });
+
+            if (finalLines.every(Boolean)) return finalLines;
+        }
+
+        return null;
     }
 
     function sanitizeDebateLine(text) {
@@ -4781,6 +6555,20 @@ Rules:
             const memberName  = normalizeLooseName(el.textContent?.trim() || '');
             const memberFirst = memberName.split(/\s+/)[0];
             if (memberName === needle || memberFirst === needleFirst) return true;
+        }
+        return false;
+    }
+
+    function isCharacterMissing(name) {
+        const needle      = normalizeLooseName(name);
+        const needleFirst = needle.split(/\s+/)[0];
+        if (characters instanceof Map) {
+            for (const char of characters.values()) {
+                if (!char.missing) continue;
+                const memberName  = normalizeLooseName(String(char.name || ''));
+                const memberFirst = memberName.split(/\s+/)[0];
+                if (memberName === needle || memberFirst === needleFirst) return true;
+            }
         }
         return false;
     }
@@ -5062,8 +6850,11 @@ Rules:
         persistentDebateHistory = [];
         trialActive      = false;
         debateSeatingPlan = null;
+        unmountTrialAesthetic();
         destroyGroupChatPortraits();
         document.getElementById('dangan-trial-pre-debate-notif')?.remove();
+        document.getElementById('dangan-trial-context-panel')?.remove();
+        trialContext = { topic: '', goal: '', suspects: [] };
         setState(TrialPhases.IDLE);
 
         // Clear from extension settings (per chat/group)
@@ -5072,6 +6863,8 @@ Rules:
             if (extensionSettings[extensionName].trials && extensionSettings[extensionName].trials[key]) {
                 extensionSettings[extensionName].trials[key].currentTrialState = TrialPhases.IDLE;
                 extensionSettings[extensionName].trials[key].persistentDebateHistory = [];
+                extensionSettings[extensionName].trials[key].trialTopic = '';
+                extensionSettings[extensionName].trials[key].trialGoal  = '';
                 saveSettingsDebounced();
             }
         }
@@ -5086,19 +6879,27 @@ Rules:
 
         // Always reset — prevents stale trialActive from a previous chat leaking in
         trialActive = false;
+        unmountTrialAesthetic();
         currentState = TrialPhases.IDLE;
         persistentDebateHistory = [];
+        trialContext = { topic: '', goal: '', suspects: [] };
 
         if (Array.isArray(savedHistory)) {
             persistentDebateHistory = savedHistory;
         }
 
+        if (saved?.trialTopic) trialContext.topic = saved.trialTopic;
+        if (saved?.trialGoal)  trialContext.goal  = saved.trialGoal;
+
         if (savedState && savedState !== TrialPhases.IDLE) {
             trialActive = true;
+            mountTrialAesthetic();
             console.log(`[Dangan][Trial] Restoring trial state for ${key}: ${savedState}`);
             // Transition back to the saved state.
             // Returning to PRE_DEBATE is safer after a refresh for stability.
-            if (savedState === TrialPhases.NON_STOP_DEBATE || savedState === TrialPhases.MASS_PANIC_DEBATE) {
+            if (savedState === TrialPhases.NON_STOP_DEBATE
+             || savedState === TrialPhases.MASS_PANIC_DEBATE
+             || savedState === TrialPhases.TRUTH_BULLET_EXPLANATION) {
                 setState(TrialPhases.PRE_DEBATE);
             } else {
                 setState(savedState);
@@ -5111,6 +6912,18 @@ Rules:
 
     // Call init on manager creation
     setTimeout(initFromPersistentState, 500);
+
+    // Safety poll: keep the trial aesthetic in sync even when CHAT_CHANGED
+    // doesn't fire (e.g. navigating to/from the Assistant chat).
+    setInterval(() => {
+        const shouldShow = trialActive && isGroupChat();
+        const isShown = document.body.classList.contains('dangan-trial-active');
+        if (isShown && !shouldShow) {
+            unmountTrialAesthetic();
+        } else if (!isShown && shouldShow) {
+            mountTrialAesthetic();
+        }
+    }, 1500);
 
     // ── Group Chat Portrait Stage ─────────────────────────────────────────────
 
@@ -5129,7 +6942,7 @@ Rules:
         return stChar ? group.disabled_members.includes(stChar.avatar) : false;
     }
 
-    const GCP_GAP        = 180;  // gap between characters
+    const GCP_GAP        = 60;   // gap between characters
     const GCP_MAX_ROT    = 20;   // maximum rotation of
     const GCP_ANIM_SPEED = 14;   // peak slots per second
     const GCP_MIN_SPEED  = 0.8;  // floor speed (slots/s) near target
@@ -5319,6 +7132,61 @@ Rules:
         // Left edge of the leftmost slot, so the group is centred.
         const cx = window.innerWidth / 2 - (n * sw) / 2;
 
+        // Half-sprite-mode horizontal-fit clamp. The default scale is 3 (see
+        // style.css), but in a group chat the per-character share of the
+        // viewport is much narrower, so a 3× sprite spills into neighbouring
+        // slots and off-screen at the edges. Compute the largest scale that
+        // keeps a typical-aspect (≈0.5 width:height) sprite within its
+        // horizontal share. Solo (n=1) gets the FULL viewport — gcpSlotW()
+        // returns innerWidth/3 for solo (carousel-compatible) but the sprite
+        // has no neighbour to overlap, so we ignore sw and use innerWidth.
+        //
+        // Also cap slot height so the TALLEST character in the group still
+        // fits vertically. scaleWrap scales each sprite by heightPx /
+        // BASE_PORTRAIT_PX with origin center-bottom; tall characters
+        // (Sonia, Gundham) come out at 1.15-1.25×, and at slot height 85vh
+        // that pushes the visual top above the viewport — heads clip. The
+        // safe slot height is innerHeight / maxWrapScale, then capped at 85vh
+        // so short-character groups still get the lift-the-half-sprite effect.
+        if (gcpStage) {
+            const ASPECT_GUESS = 0.5;
+            const spriteWidthAtBaseHeight = ASPECT_GUESS * BASE_PORTRAIT_PX;
+            const perCharWidth = window.innerWidth / Math.max(1, n);
+            // Cap at 2× — 3× was clipping characters whose sprite art has
+            // empty space above their head (visible canvas portion ends up
+            // off-screen). 2× shows the top 50% of the source which always
+            // covers head + upper torso. Multi-character chats still scale
+            // down further when perCharWidth / spriteWidthAtBaseHeight < 2.
+            const halfFitScale = Math.max(1, Math.min(2, perCharWidth / spriteWidthAtBaseHeight));
+            gcpStage.style.setProperty('--gcp-half-scale', halfFitScale.toFixed(3));
+
+            // scaleWrap on each slot scales by (heightPx / BASE_PORTRAIT_PX)
+            // with origin center-bottom. Visual top of a slot ends up at
+            //   slot.bottom_y - maxWrapScale * ACCESSORY_FACTOR * slot.height
+            // because Danganronpa sprite art routinely has accessories
+            // (Sonia's pigtails, Gundham's hair antenna, Ibuki's horns,
+            // Nagito's messy hair) extending well above the geometric head
+            // pixel, drawn right up to the top of the source PNG with no
+            // transparent padding. The 1.5 factor reserves room for that
+            // overshoot without having to measure each sprite individually.
+            // TOP_MARGIN_PX adds a fixed buffer so the tallest accessory
+            // lands at least that many pixels below the viewport top.
+            const TOP_MARGIN_PX = 120;
+            const ACCESSORY_FACTOR = 1.5;
+            const maxWrapScale = Math.max(
+                1,
+                ...gcpSlots.map(s => (s.heightPx || BASE_PORTRAIT_PX) / BASE_PORTRAIT_PX),
+            );
+            const targetSlotPx = Math.floor(0.65 * window.innerHeight);
+            const safeSlotPx = Math.floor(
+                (window.innerHeight - TOP_MARGIN_PX) / (maxWrapScale * ACCESSORY_FACTOR),
+            );
+            gcpStage.style.setProperty(
+                '--gcp-half-slot-height',
+                `${Math.min(targetSlotPx, safeSlotPx)}px`,
+            );
+        }
+
         gcpSlots.forEach((slot, i) => {
             const scale = (slot.heightPx || BASE_PORTRAIT_PX) / BASE_PORTRAIT_PX;
             const x     = cx + i * sw;
@@ -5336,74 +7204,88 @@ Rules:
         gcpCurrentFloat = (n - 1) / 2;
     }
 
-    // Scroll to targetIdx — CSS transition on .dangan-gcp-slot handles the easing.
+    // Scroll to targetIdx using a JS RAF loop so all slots move as a unit.
+    // Every frame derives each slot's position from a single animated offset value,
+    // which eliminates the "stuck neighbor" artifact that independent per-slot CSS
+    // transitions produce (neighbors would reach the edge and stall while the center
+    // was still animating in from off-screen).
+    //
+    // Off-path slots (those that would travel the long way around the ring) are placed
+    // off-screen on the correct side at the start of the animation so they flow in from
+    // outside rather than teleporting mid-scroll.  gcpCircularDiff is only called once
+    // per slot at setup time — never during the tick — which prevents the discontinuity
+    // that occurs when centerFloat crosses the n/2 ring boundary.
     function gcpScrollTo(targetIdx) {
         if (gcpCurrentFloat === targetIdx) return;
         if (gcpAnimRafId) { cancelAnimationFrame(gcpAnimRafId); gcpAnimRafId = null; }
         if (!gcpSlots.length) return;
+
+        const startFloat  = gcpCurrentFloat;
+        const travelDelta = gcpCircularDiff(targetIdx, Math.round(startFloat));
+        if (travelDelta === 0) { gcpCurrentFloat = targetIdx; return; }
+
+        const DURATION  = 1700; // ms — same feel as old CSS transition
+        const startTime = performance.now();
+        const easeOut   = t => 1 - Math.pow(1 - t, 3);
+
         const sw    = gcpSlotW();
         const total = sw + GCP_GAP;
         const cx    = window.innerWidth / 2 - sw / 2;
 
-        // Signed circular travel distance (shortest path).
-        const travelDelta = gcpCircularDiff(targetIdx, Math.round(gcpCurrentFloat));
-
-        // Helper: does this slot animate naturally (same direction as the scroll)?
-        // A slot is on-path when its actual shift (newDiff − oldDiff) exactly matches
-        // the expected shift (−travelDelta).  Any wrapped slot has a shift of
-        // (−travelDelta ± n) ≠ 0, so it fails this check and gets snapped instead
-        // of animating across the visible area.  No tolerance is needed because all
-        // diffs are integers and the natural shift is always exactly −travelDelta.
-        const isOnPath = (oldDiff, newDiff) =>
-            (newDiff - oldDiff) === -travelDelta;
-
-        // Snapshot per-slot diffs before mutating gcpCurrentFloat.
-        const slotData = gcpSlots.map((slot, i) => ({
-            slot,
-            oldDiff: gcpCircularDiff(i, Math.round(gcpCurrentFloat)),
-            newDiff: gcpCircularDiff(i, targetIdx),
-        }));
-
-        // Pass 1 — snap off-path slots instantly (no transition).
-        slotData.forEach(({ slot, oldDiff, newDiff }) => {
-            if (isOnPath(oldDiff, newDiff)) return;
-            slot.el.style.transition = 'none';
-            slot.el.style.transform  = gcpSlotTransform(cx + newDiff * total);
+        // Pre-compute each slot's starting diff (in slot-widths from center).
+        // On-path slots use their actual fractional start position.
+        // Off-path slots are placed one full ring further in the scroll direction so they
+        // enter from off-screen on the correct side instead of teleporting.
+        const startDiffs = gcpSlots.map((_, i) => {
+            const endDiff   = gcpCircularDiff(i, targetIdx);
+            const startDiff = gcpCircularDiff(i, startFloat);
+            // On-path: plain subtraction lands exactly on endDiff (no ring wrap needed).
+            return (startDiff - travelDelta === endDiff) ? startDiff : endDiff + travelDelta;
         });
 
-        // Reflow 1 — commits the snapped off-path positions AND the existing
-        // on-path positions so the browser records them as the animation "from" baseline.
-        void gcpStage.offsetWidth;
+        let lastRoundedIdx = Math.round(startFloat);
 
-        // Enable transitions on on-path slots only.
-        // Off-path slots stay at transition:'none' for now so the next reflow doesn't
-        // accidentally queue a transition for them.
-        slotData.forEach(({ slot, oldDiff, newDiff }) => {
-            if (isOnPath(oldDiff, newDiff)) slot.el.style.transition = '';
-        });
+        function tick(now) {
+            const rawT   = Math.min(1, (now - startTime) / DURATION);
+            const offset = travelDelta * easeOut(rawT);
 
-        // Reflow 2 — forces the browser to commit "transition now active + current
-        // position" as the start state for on-path slots.  Without this second flush,
-        // changing transition and transform in the same microtask collapses them into
-        // one style update and the browser skips the animation.
-        void gcpStage.offsetWidth;
+            gcpSlots.forEach((slot, i) => {
+                slot.el.style.transition = 'none';
+                slot.el.style.transform  = gcpSlotTransform(cx + (startDiffs[i] - offset) * total);
+            });
+            gcpCurrentFloat = startFloat + travelDelta * easeOut(rawT);
 
-        // Write new transforms for on-path slots — transitions fire immediately because
-        // the browser already has a committed "from" snapshot from reflow 2.
-        // Restore transition on off-path slots so they animate on future scrolls.
-        // Do NOT touch transition on on-path slots here — re-setting it would cause
-        // the browser to re-snapshot the "from" position and skip the animation.
-        slotData.forEach(({ slot, oldDiff, newDiff }) => {
-            if (isOnPath(oldDiff, newDiff)) {
-                slot.el.style.transform = gcpSlotTransform(cx + newDiff * total);
-            } else {
-                slot.el.style.transition = '';
+            const roundedIdx = Math.round(gcpCurrentFloat);
+            if (roundedIdx !== lastRoundedIdx) {
+                lastRoundedIdx = roundedIdx;
+                notifyGcpSeatingListRenderers();
             }
-        });
 
-        gcpCurrentFloat = targetIdx;
+            if (rawT < 1) {
+                gcpAnimRafId = requestAnimationFrame(tick);
+                return;
+            }
+
+            // Snap to exact integer positions and restore CSS transitions.
+            gcpAnimRafId = null;
+            gcpCurrentFloat = targetIdx;
+            gcpSlots.forEach((slot, i) => {
+                slot.el.style.transform  = gcpSlotTransform(cx + gcpCircularDiff(i, targetIdx) * total);
+                slot.el.style.transition = '';
+            });
+            notifyGcpSeatingListRenderers();
+        }
+
+        // Fire camera, background pan, and seating list immediately so the UI
+        // responds at once rather than waiting for the animation to finish.
+        if (trialActive && targetIdx !== gcpLastCamIdx) {
+            gcpLastCamIdx = targetIdx;
+            applyCamShot(gcpStage, gcpBgLoopEl);
+        }
         gcpPanBackground(targetIdx, true);
-        gcpSeatingListRenderer?.();
+        notifyGcpSeatingListRenderers();
+
+        gcpAnimRafId = requestAnimationFrame(tick);
     }
 
     // GCP-local index lookup — gcpSlots is a filtered subset of debateSeatingPlan.
@@ -5420,12 +7302,54 @@ Rules:
     }
 
     // Builds one DOM slot and registers it in gcpIndexMap at the given index.
-    function gcpMakeSlot(name, url, isDead, idx) {
+    // Sync already-loaded Prome expression imgs into GCP slots that have no sprite yet.
+    // Called after the stage is built to catch expressions that fired before we were ready.
+    function gcpSyncFromPromeExpressions() {
+        if (!gcpSlots.length) return;
+        // Query both the standard VN wrapper and any Prome [data-avatar] portrait holders.
+        // The latter covers the common case where Prome fires expressions into named containers
+        // (e.g. <div data-avatar="akane-owari"><img class="expression" ...>).
+        document.querySelectorAll(
+            '#visual-novel-wrapper img.expression, #expression-holder img.expression, [data-avatar] img.expression'
+        ).forEach(imgEl => {
+            const srcAttr = imgEl.getAttribute?.('src');
+            if (!srcAttr) return;
+            const src = imgEl.src;
+            if (!src || src === location.href) return;
+            if (imgEl.closest?.('#expression-prome-user')) return;
+            // Prefer the data-avatar attribute (most reliable Prome identifier); fall back to URL folder.
+            const dataAvatar = imgEl.closest?.('[data-avatar]')?.getAttribute?.('data-avatar');
+            const folderHint = dataAvatar
+                ? dataAvatar.toLowerCase().replace(/[-_]/g, ' ').trim()
+                : (() => {
+                    try {
+                        const parts = new URL(src, location.href).pathname.split('/').filter(Boolean);
+                        if (parts.length < 2) return null;
+                        return decodeURIComponent(parts[parts.length - 2]).toLowerCase().replace(/[-_]/g, ' ').trim();
+                    } catch { return null; }
+                })();
+            if (!folderHint) return;
+            const folderFirst = firstToken(folderHint);
+            for (const slot of gcpSlots) {
+                if (slot.isDead || slot.isPlayer || slot.isMissing) continue;
+                // Only fill slots with no src yet — don't override successfully loaded sprites
+                if (slot.img?.getAttribute?.('src')) continue;
+                const slotName = normalizeSeatName(slot.name);
+                if (slotName === folderHint || (folderFirst === folderHint && firstToken(slot.name) === folderFirst)) {
+                    if (!slot.el.classList.contains('gcp-dead')) slot.img.src = src;
+                    break;
+                }
+            }
+        });
+    }
+
+    function gcpMakeSlot(name, url, isDead, idx, isMissing = false) {
         const sw = gcpSlotW();
         const el = document.createElement('div');
         el.className = 'dangan-gcp-slot';
         el.style.cssText = `width:${sw}px;height:${portraitSlotHeightPx(name)}px;`;
         if (isDead) el.classList.add('gcp-dead');
+        if (isMissing) el.classList.add('gcp-missing');
         if (trialActive && isGroupChat() && needsGymnasticsHorse(name)) {
             el.classList.add('has-horse');
             const horse = document.createElement('img');
@@ -5436,7 +7360,8 @@ Rules:
         }
         const img = document.createElement('img');
         img.alt = name;
-        if (url) img.src = url;
+        if (url && !isMissing) img.src = url;
+        if (isMissing) img.style.display = 'none';
         // scaleWrap isolates the height-proportional scale transform so that VFX
         // animation classes added to img never override the character's base scale.
         const scaleWrap = document.createElement('div');
@@ -5452,7 +7377,7 @@ Rules:
         }
         gcpStage.appendChild(el);
         gcpIndexMap.set(normalizeSeatName(name), idx);
-        return { name, el, img, scaleWrap, heightPx: portraitSlotHeightPx(name) };
+        return { name, el, img, scaleWrap, heightPx: portraitSlotHeightPx(name), isDead: !!isDead, isMissing: !!isMissing };
     }
 
     async function initGroupChatPortraits() {
@@ -5463,13 +7388,15 @@ Rules:
 
         gcpStage = document.createElement('div');
         gcpStage.id = 'dangan-group-chat-stage';
-        // If rebuilt while a debate is active, keep it hidden to avoid duplication
-        if (currentState !== TrialPhases.IDLE && currentState !== TrialPhases.PRE_DEBATE) {
+        // If rebuilt while an actual debate (NSD/MPD) is running, keep it hidden to avoid
+        // duplicating the debate overlay. Other non-IDLE states (TRUTH_BULLET_EXPLANATION
+        // etc.) still want the carousel visible underneath.
+        if (currentState === TrialPhases.NON_STOP_DEBATE || currentState === TrialPhases.MASS_PANIC_DEBATE) {
             gcpStage.style.display = 'none';
         }
         document.body.appendChild(gcpStage);
         document.body.classList.add('dangan-gcp-active');
-        const initVisible = currentState === TrialPhases.IDLE || currentState === TrialPhases.PRE_DEBATE;
+        const initVisible = currentState !== TrialPhases.NON_STOP_DEBATE && currentState !== TrialPhases.MASS_PANIC_DEBATE;
         document.body.classList.toggle('dangan-gcp-visible', initVisible);
         gcpIndexMap = new Map();
         const stageRef = gcpStage; // capture ref to detect if destroyed mid-await
@@ -5485,24 +7412,44 @@ Rules:
                 if (!plan.length) { gcpStage.remove(); gcpStage = null; document.body.classList.remove('dangan-gcp-active'); return; }
 
                 // Resolve sprite URLs upfront; exclude muted-without-dead from the plan.
+                console.log(`[Dangan][GCP] Building stage — plan (${plan.length}):`, plan);
                 const resolved = await Promise.all(plan.map(async name => {
-                    const muted = isCharacterMuted(name);
-                    const dead  = isCharacterDead(name);
+                    const muted   = isCharacterMuted(name);
+                    const dead    = isCharacterDead(name);
+                    const missing = isCharacterMissing(name);
+                    if (missing) {
+                        console.log(`[Dangan][GCP] "${name}" missing → no sprite`);
+                        return { name, url: null, isDead: false, isMissing: true };
+                    }
                     if (muted || dead) {
                         const deadUrl = await getSpriteUrl(name, 'dead').catch(() => null);
-                        if (muted && !deadUrl) return null; // muted + no dead sprite → exclude
+                        if (muted && !deadUrl) { console.log(`[Dangan][GCP] "${name}" muted+no dead sprite → excluded`); return null; }
                         const url = deadUrl ?? await getSpriteUrl(name, 'neutral').catch(() => null);
+                        console.log(`[Dangan][GCP] "${name}" (dead=${dead}, muted=${muted}) → ${url ?? 'null'}`);
                         return { name, url, isDead: dead };
                     }
-                    const url = await getSpriteUrl(name, 'neutral').catch(() => null);
+                    let url = await getSpriteUrl(name, 'neutral').catch(() => null);
+                    if (!url && isMonokuma(name)) {
+                        // Try the custom Game Master's sprite first when configured;
+                        // fall back to bundled Monokuma art only in default mode.
+                        const custom = typeof getCustomGameMasterName === 'function'
+                            ? getCustomGameMasterName()
+                            : null;
+                        if (custom) {
+                            url = await getSpriteUrl(custom, 'neutral').catch(() => null);
+                        } else {
+                            url = getMonokumaStaticUrl('neutral');
+                        }
+                    }
+                    console.log(`[Dangan][GCP] "${name}" → ${url ?? 'null'}`);
                     return { name, url, isDead: false };
                 }));
 
                 // If destroyed by a concurrent call while we were awaiting sprites, abort.
                 if (gcpStage !== stageRef) return;
 
-                gcpSlots = resolved.filter(Boolean).map(({ name, url, isDead }, i) =>
-                    gcpMakeSlot(name, url, isDead, i));
+                gcpSlots = resolved.filter(r => r && !isMonokuma(r.name)).map(({ name, url, isDead, isMissing }, i) =>
+                    gcpMakeSlot(name, url, isDead, i, isMissing));
 
                 // Mark the player's slot (Prome VN Extension) so it uses the Prome sprite.
                 // Only shown during Class Trials — non-trial group chats don't show the player.
@@ -5514,6 +7461,7 @@ Rules:
                     const playerKey   = normalizeSeatName(playerName);
                     const playerFirst = firstToken(playerName);
                     const playerUrl   = await getSpriteUrl(promeInfo.spritePack, 'neutral').catch(() => null);
+                    if (gcpStage !== stageRef) return;
                     // Also match by Prome sprite pack name — the player may be using a
                     // character's sprites (e.g. "Gundham Tanaka") while their persona name
                     // differs (e.g. "Dawn"), which would otherwise create a duplicate slot.
@@ -5541,24 +7489,45 @@ Rules:
                 // Apply last-known expressions from chat history so sprites don't all start neutral
                 const initialEmotions = buildInitialEmotions();
                 await Promise.all(gcpSlots.map(async slot => {
-                    if (slot.isDead || slot.isPlayer) return;
+                    if (slot.isDead || slot.isPlayer || slot.isMissing) return;
                     const emotion = initialEmotions.get(slot.name);
                     if (!emotion || emotion === 'neutral') return;
                     const url = await getSpriteUrl(slot.name, emotion).catch(() => null);
                     if (url && gcpStage === stageRef) slot.img.src = url;
                 }));
 
-                // Snap to last character speaker without animation
-                const lastMsg = [...(ctx?.chat || [])].reverse().find(m => !m.is_user && m.name);
-                const rawIdx  = lastMsg?.name ? gcpFindIdx(lastMsg.name) : -1;
+                // Snap to last speaker without animation. If the last message was the
+                // human player's, target the isPlayer slot directly — its name in
+                // gcpIndexMap can be the underlying character's, so a persona-name
+                // lookup would miss it.
+                const lastMsg = [...(ctx?.chat || [])].reverse().find(m => !m.is_system && m.name);
+                let rawIdx = -1;
+                if (lastMsg?.is_user) {
+                    rawIdx = gcpSlots.findIndex(s => s.isPlayer);
+                }
+                if (rawIdx < 0 && lastMsg?.name) {
+                    rawIdx = gcpFindIdx(lastMsg.name);
+                }
                 const initIdx = rawIdx >= 0 ? rawIdx : Math.round(Math.max(0, Math.min(gcpCurrentFloat, gcpSlots.length - 1)));
                 if (trialActive) {
                     gcpBuildBgLoop();
                     gcpPositionSlots(initIdx);
+                    gcpSyncFromPromeExpressions();
+                    // Delayed second sync: Prome may still be resolving expression imgs when we first build.
+                    setTimeout(() => gcpSyncFromPromeExpressions(), 600);
                 } else {
                     gcpPositionSlotsFlat();
-                    // Apply initial dim: highlight last speaker, dim everyone else
-                    if (lastMsg?.name) {
+                    gcpSyncFromPromeExpressions();
+                    setTimeout(() => gcpSyncFromPromeExpressions(), 600);
+                    // Apply initial dim: highlight last speaker, dim everyone else.
+                    // When the player spoke last, dim by slot identity (the player slot
+                    // may have an NPC's name in gcpIndexMap, so a name compare misses it).
+                    if (rawIdx >= 0) {
+                        const speakerSlot = gcpSlots[rawIdx];
+                        for (const slot of gcpSlots) {
+                            slot.el.classList.toggle('dangan-gcp-dim', slot !== speakerSlot);
+                        }
+                    } else if (lastMsg?.name) {
                         const speakerKey = normalizeSeatName(lastMsg.name);
                         for (const slot of gcpSlots) {
                             slot.el.classList.toggle('dangan-gcp-dim', normalizeSeatName(slot.name) !== speakerKey);
@@ -5601,15 +7570,33 @@ Rules:
                 if (gcpStage !== stageRef) return;
                 gcpSlots = [gcpMakeSlot(name, url, false, 0)];
                 gcpPositionSlots(0); // slot 0 centered, rotY = 0 (no cylinder warp)
+                gcpSyncFromPromeExpressions();
             }
         } finally {
             gcpInitializing = false;
         }
         // Notify Trial Controls seating list to re-render with the freshly built gcpSlots
-        gcpSeatingListRenderer?.();
+        notifyGcpSeatingListRenderers();
     }
 
     function updateGroupChatSpeaker(speakerName) {
+        currentSpeaker = speakerName || null;
+        // Keep the CG label in sync with whichever message is highlighted.
+        if (cgNameTextEl) cgNameTextEl.textContent = currentSpeaker || '';
+
+        // ── Monokuma: always handled via overlay, never via carousel ──────────
+        if (isMonokuma(speakerName)) {
+            const monoEmo = characterEmotions.get(speakerName) || characterEmotions.get('Monokuma') || 'neutral';
+            showMonokumaOverlay(monoEmo);
+            // Kick off GCP init in the background so the carousel is ready when
+            // another character speaks next.
+            if (!gcpStage) initGroupChatPortraits();
+            return;
+        }
+
+        // Any non-Monokuma speaker: dismiss the overlay and restore the carousel.
+        hideMonokumaOverlay();
+
         if (!gcpStage) {
             initGroupChatPortraits().then(() => {
                 const idx = gcpFindIdx(speakerName);
@@ -5700,6 +7687,15 @@ Rules:
                 if (!slot.el.classList.contains('gcp-dead')) slot.el.classList.add('gcp-dead');
             }
         }
+
+        // Retry sprite load for the current speaker if their slot has no src yet.
+        // This covers the common case where getSpriteUrl returned null at init time.
+        const speakerSlot = gcpSlots[Math.round(gcpCurrentFloat)];
+        if (speakerSlot && !speakerSlot.isDead && !speakerSlot.isPlayer && !speakerSlot.isMissing && !speakerSlot.img?.getAttribute?.('src')) {
+            getCharSpriteUrl(speakerSlot.name, characterEmotions.get(speakerSlot.name) || 'neutral')
+                .then(url => { if (url && speakerSlot.img && !speakerSlot.img.getAttribute('src')) speakerSlot.img.src = url; })
+                .catch(() => {});
+        }
     }
 
     function setGroupChatPortraitsVisible(visible) {
@@ -5708,7 +7704,10 @@ Rules:
     }
 
     function destroyGroupChatPortraits() {
+        hideMonokumaOverlay();
+        document.getElementById('dangan-monokuma-overlay')?.remove();
         gcpInitializing = false; // unblock any init that was racing
+        gcpLastCamIdx   = null;
         if (gcpAnimRafId) { cancelAnimationFrame(gcpAnimRafId); gcpAnimRafId = null; }
         gcpStage?.remove();
         gcpStage      = null;
@@ -5726,6 +7725,7 @@ Rules:
     return {
         start: () => {
             trialActive = true;
+            mountTrialAesthetic();
             setState(TrialPhases.PRE_DEBATE);
         },
         stop: () => {
@@ -5734,6 +7734,7 @@ Rules:
         onChatChanged: () => {
             // Remove the existing panel so it can rebuild with fresh members/context
             document.getElementById('dangan-trial-pre-debate-notif')?.remove();
+            document.getElementById('dangan-trial-context-panel')?.remove();
             // Reload persistent state for the new chat — resets trialActive and currentState
             // so lecterns/horses don't bleed in from a previous trial chat
             initFromPersistentState();
@@ -5745,6 +7746,7 @@ Rules:
         debugStartNonStopDebateWithLines,
         onMessageSent,
         getState: () => currentState,
+        refreshTrialBadge,
         // Call this when an external activity (interjection, PTA, minigame, etc.) has
         // finished so the controls panel is restored. No-op if a debate is still running.
         resumeAfterActivity: () => {
@@ -5753,6 +7755,8 @@ Rules:
             setState(TrialPhases.PRE_DEBATE);
         },
         phases: TrialPhases,
+        setTrialContext,
+        getTrialContext: () => ({ ...trialContext, suspects: trialContext.suspects.slice() }),
         endTrial,
         initGroupChatPortraits,
         updateGroupChatSpeaker,
@@ -5775,6 +7779,13 @@ Rules:
         getGcpSpeakerImg:  () => gcpSlots[Math.round(gcpCurrentFloat)]?.img  ?? null,
         getGcpSpeakerName: () => gcpSlots[Math.round(gcpCurrentFloat)]?.name ?? null,
         getGcpPlayerImg:   () => gcpSlots.find(s => s.isPlayer)?.img ?? null,
+        // Re-runs the flat (non-trial) GCP layout so the dynamic CSS var
+        // --gcp-half-slot-height gets recomputed. Used when the user toggles
+        // half-sprite mode mid-chat — otherwise the slot height var stays
+        // unset and the CSS fallback kicks in.
+        recomputeGcpFlatLayout: () => {
+            if (gcpStage && gcpSlots.length && !trialActive) gcpPositionSlotsFlat();
+        },
         // Match an expression image src to the specific GCP slot whose sprite folder
         // matches the incoming URL. This routes /emote and AI expression changes to
         // the right character in a group chat rather than blindly updating whoever is
@@ -5784,16 +7795,36 @@ Rules:
             try {
                 const parts = new URL(src, location.href).pathname.split('/').filter(Boolean);
                 if (parts.length >= 2) {
-                    const srcFolder = decodeURIComponent(parts[parts.length - 2]).toLowerCase();
+                    // Raw folder for URL-to-URL comparison (Pass 1); normalized for name comparison (Pass 2).
+                    const srcFolderRaw  = decodeURIComponent(parts[parts.length - 2]).toLowerCase();
+                    // Monokuma is handled via overlay; route his expression to the overlay img
+                    // so it updates there instead of falling through to a carousel slot.
+                    if (srcFolderRaw === 'monokuma') {
+                        return document.getElementById('dangan-monokuma-overlay')?.querySelector('img') ?? null;
+                    }
+                    // Normalize hyphens/underscores to spaces so "akane-owari" matches slot name "akane owari"
+                    const srcFolder     = srcFolderRaw.replace(/[-_]/g, ' ').trim();
+                    // Pass 1: folder-match using the slot's existing src URL (works once sprites are loaded)
                     for (const slot of gcpSlots) {
                         if (slot.isDead || !slot.img?.src) continue;
                         try {
                             const slotParts = new URL(slot.img.src, location.href).pathname.split('/').filter(Boolean);
                             if (slotParts.length >= 2) {
                                 const slotFolder = decodeURIComponent(slotParts[slotParts.length - 2]).toLowerCase();
-                                if (slotFolder === srcFolder) return slot.img;
+                                if (slotFolder === srcFolderRaw) return slot.img;
                             }
                         } catch { /* ignore bad slot src */ }
+                    }
+                    // Pass 2: name-match for slots that have no src yet (sprites not pre-loaded via getSpriteUrl).
+                    // Hyphens/underscores already normalized above; compare against the lowercased seat name.
+                    const srcFirst = firstToken(srcFolder);
+                    for (const slot of gcpSlots) {
+                        if (slot.isDead || slot.isMissing) continue;
+                        const slotName = normalizeSeatName(slot.name);
+                        if (slotName === srcFolder) return slot.img;
+                        // First-token fallback: only when srcFolder is a single word (e.g. "akane"),
+                        // to avoid ambiguous matches between characters with the same first name.
+                        if (srcFirst === srcFolder && firstToken(slot.name) === srcFirst) return slot.img;
                     }
                 }
             } catch { /* ignore bad src */ }
@@ -5810,7 +7841,7 @@ Rules:
                 const deadUrl = await getSpriteUrl(characterName, 'dead').catch(() => null);
                 if (deadUrl) slot.img.src = deadUrl;
             }
-            gcpSeatingListRenderer?.();
+            notifyGcpSeatingListRenderers();
         },
     };
 }

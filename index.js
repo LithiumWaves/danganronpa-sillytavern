@@ -1,9 +1,12 @@
 import { extension_settings } from "../../../extensions.js";
 import { saveSettingsDebounced, getRequestHeaders, eventSource, event_types } from "../../../../script.js";
+import { power_user } from "../../../power-user.js";
+import { openGroupById, editGroup } from "../../../group-chats.js";
 import { executeSlashCommandsWithOptions } from '../../../slash-commands.js';
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../../slash-commands/SlashCommandArgument.js';
+import { SlashCommandEnumValue } from '../../../slash-commands/SlashCommandEnumValue.js';
 import { initTruthBullets, handleTruthBullet, setNextTruthBulletSfxVariant, getTruthBulletByLocationId, showTruthBulletByLocationId, showTruthBulletById, getTruthBullets, clearAllTruthBullets } from "./truth/truthBullets.js";
 import { buildDecagram, crackShard, shatterShard } from "./trust/trustDecagram.js";
 import { initTrustAnimations, playTrustRankUp, playTrustRankDown, playTrustMaxed, playTrustToDistrustTransition, playDistrustRankDown, playDistrustRankUp, playDistrustToTrustRecovery } from "./trust/trustAnimations.js";
@@ -14,25 +17,31 @@ import { createSocialPanelController } from "./social/socialPanel.js";
 import { extractUltimateFromNotes, isIgnoredCharacter, lookupUltimateFromLorebook, normalizeList, normalizeName } from "./social/characterUtils.js";
 import { createMapPanelController } from "./map/mapPanel.js";
 import { getLocationPromptReference, resolveLocationIdFromText } from "./map/locationPresence.js";
-import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
+import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, TRIAL_CONTEXT_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "./core/monokumaLessonScript.js";
 import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers } from "./monokuma/announcementController.js";
 import { createClassTrialMenuController } from "./trial/menu/classTrialMenu.js";
 import { createTrialManager, TrialPhases } from "./trial/trialManager.js";
 import { initVfxSystem, onVfxChatChanged, setExpressionTarget, setVfxGcpLoadSuppressed, setVfxGcpGroupActive, triggerVfxOnElement } from "./vfx/vfxSystem.js";
+import { initEmotionFontsSystem, getEmotionFont } from "./vfx/emotionFontsSystem.js";
 import { createBdaCinematicEditor } from "./vfx/bdaCinematicEditor.js";
 import { createExecutionCinematicEditor } from "./vfx/executionCinematicEditor.js";
 import { createVoteResultsController } from "./vfx/voteResults.js";
+import { createVotingScreenController } from "./vfx/votingScreen.js";
 import { createQuestionTimeController } from "./vfx/questionTime.js";
 import { createQuestionTruthController } from "./vfx/questionTruth.js";
 import { createHangmansGambitController } from "./vfx/hangmansGambit.js";
 import { createPanicTalkActionController } from "./vfx/panicTalkAction.js";
+import { createScrumDebateController, buildTeams as buildScrumTeams } from "./vfx/scrumDebate.js";
+import { createMindMineController } from "./vfx/mindMine.js";
 import { createChooseCharacterController } from "./vfx/chooseCharacter.js";
 import { createIntroduceCharacterController } from "./vfx/introduceCharacter.js";
+import { createChapterEndRosterController } from "./vfx/chapterEndRoster.js";
 import { createRebuttalShowdownController, createInterjectionCinematicRunner } from "./vfx/rebuttalShowdown.js";
 import { MPD_TEST_SCENARIOS } from "./vfx/massPanicDebate.js";
 import { createAudioVisualizerController } from "./audio/audioVisualizer.js";
+import { createOverworldSceneController } from "./overworld/overworldScene.js";
 import { user_avatar } from "../../../personas.js";
 
 window.refreshActiveCharacterUI = function () {
@@ -61,14 +70,20 @@ let vfxCleanup = null;
 let bdaCinematicEditor = null;
 let executionCinematicEditor = null;
 let voteResultsController   = null;
+let votingScreenController  = null;
 let questionTimeController    = null;
 let questionTruthController   = null;
 let hangmansGambitController    = null;
 let panicTalkActionController   = null;
+let scrumDebateController      = null;
+let mindMineController         = null;
 let rebuttalShowdownController  = null;
 let interjectionRunner          = null;
 let chooseCharacterController   = null;
 let introduceCharacterController = null;
+let chapterEndRosterController   = null;
+let audioVisualizer              = null;
+let overworldSceneController     = null;
 
 const openRouterSettings = createOpenRouterSettingsManager({
     extensionName,
@@ -157,6 +172,21 @@ function buildRecentLocationPresence() {
 window.getMonopadRecentLocationPresence = function () {
     return buildRecentLocationPresence();
 };
+
+// Returns a flat map of normalized character name -> last seen locationId,
+// drawn from the recent-mention buffer. Used by the overworld scene to seed
+// starting locations from chat history before falling back to random.
+function getLastKnownCharacterLocations() {
+    const out = {};
+    for (let i = recentLocationMentions.length - 1; i >= 0; i -= 1) {
+        const item = recentLocationMentions[i];
+        if (!item || item.isUser) continue;
+        if (!item.speakerName || !item.locationId) continue;
+        const key = normalizeName(item.speakerName);
+        if (!out[key]) out[key] = item.locationId;
+    }
+    return out;
+}
 
 const TIME_PHASE_DAY = "day";
 const TIME_PHASE_NIGHT = "night";
@@ -263,6 +293,7 @@ async function passTimeToNight({ source = "manual" } = {}) {
     saveSettingsDebounced();
     renderTimeTrackerUi();
     applyTimeContextToGeneration();
+    overworldSceneController?.randomizeLocations?.();
     await monokumaAnnouncementController?.triggerAsync("NIGHT_ANNOUN");
     await nightTimeStartController.triggerAsync();
     playNighttimeTrack();
@@ -282,10 +313,16 @@ async function sleepToNextDay({ source = "manual" } = {}) {
     saveSettingsDebounced();
     renderTimeTrackerUi();
     applyTimeContextToGeneration();
+    overworldSceneController?.randomizeLocations?.();
+    // Hide the BGM visualizer for the duration of the announcement + theme swap
+    // (mirrors /passtime so the visualizer doesn't pop back as the daytime track
+    // resumes before the theme has finished applying).
+    audioVisualizer?.suppress?.();
     await monokumaAnnouncementController?.triggerAsync("DAY_ANNOUN");
     await freeTimeStartController.triggerAsync();
     playDaytimeTrack();
     applyDynamicTheme();
+    audioVisualizer?.unsuppress?.();
     console.log(`[${extensionName}] Time advanced to DAY ${state.day} (source: ${source}).`);
     return true;
 }
@@ -316,6 +353,7 @@ function getChapterLabel() {
 function updateChapterDisplay() {
     const el = document.getElementById('dangan-chapter-label');
     if (el) el.textContent = getChapterLabel();
+    trialManager?.refreshTrialBadge?.();
 }
 
 // ── Chapter Journal ───────────────────────────────────────────────────────────
@@ -1214,6 +1252,7 @@ function createVnModeController() {
                 <button type="button" class="dangan-vn-control dangan-vn-transcript-toggle" id="dangan-vn-transcript-toggle" aria-label="Open transcript" title="Open transcript">TRANSCRIPT</button>
                 <button type="button" class="dangan-vn-control dangan-vn-extra-actions" id="dangan-vn-extra-actions" aria-label="Message actions" title="Message actions">···</button>
                 <button type="button" class="dangan-vn-control dangan-vn-edit-message" id="dangan-vn-edit-message" aria-label="Edit current message" title="Edit current message">✏</button>
+                <button type="button" class="dangan-vn-control dangan-vn-clear-chat" id="dangan-vn-clear-chat" aria-label="Clear all chat messages" title="Clear all chat messages">🗑</button>
                 <button type="button" class="dangan-vn-control dangan-vn-lock" id="dangan-vn-lock" aria-label="Unlock Visual Novel box movement" title="Unlock Visual Novel box movement">🔒</button>
             </div>
             <div class="dangan-vn-header">
@@ -1261,6 +1300,7 @@ function createVnModeController() {
     const regenerateBtnEl = host.querySelector('#dangan-vn-regenerate');
     const extraActionsBtnEl = host.querySelector('#dangan-vn-extra-actions');
     const editMessageBtnEl = host.querySelector('#dangan-vn-edit-message');
+    const clearChatBtnEl = host.querySelector('#dangan-vn-clear-chat');
     const latestButtonBaseLabel = '⤓ Latest';
 
 
@@ -1822,25 +1862,40 @@ function createVnModeController() {
         const normalized = String(text || '').replace(/\s+/g, ' ').trim();
         if (!normalized) return [];
 
-        // Collect split positions based on sentence-boundary rules:
-        //   ."  — single period immediately followed by a quote  → split AFTER the quote
-        //   ".  — quote immediately followed by a single period  → split AFTER the period
-        // "Single" means the period is not part of an ellipsis (not preceded or followed
-        // by another dot). Patterns with a space between period and quote (`. "` / `" .`)
-        // are intentionally ignored — the quote there is an opening quote, not a closer.
+        // Split on sentence-ending punctuation:
+        //   ."  !"  ?"  — punctuation + closing quote → split after the quote (always)
+        //   ".          — closing quote + single period → split after the period (always)
+        //   .  !  ?     — bare punctuation outside of speech marks → split after it
+        //                 (bare . also skips ellipses: not preceded or followed by another dot)
         const splitPositions = [];
-        for (let i = 0; i < normalized.length - 1; i++) {
+        let inQuotes = false;
+        for (let i = 0; i < normalized.length; i++) {
             const c    = normalized[i];
-            const next = normalized[i + 1];
             const prev = i > 0 ? normalized[i - 1] : '';
+            const next = i + 1 < normalized.length ? normalized[i + 1] : '';
+
+            if (c === '"') {
+                inQuotes = !inQuotes;
+                // ". — closing quote then single period → split after the period
+                if (next === '.') {
+                    const afterDot = i + 2 < normalized.length ? normalized[i + 2] : '';
+                    if (afterDot !== '.') splitPositions.push(i + 2);
+                }
+                continue;
+            }
 
             if (c === '.' && next === '"') {
-                // ." — skip if this dot is part of an ellipsis (..)
-                if (prev !== '.') splitPositions.push(i + 2); // include ." in this chunk
-            } else if (c === '"' && next === '.') {
-                // ". — skip if the following dot leads into an ellipsis
-                const afterDot = i + 2 < normalized.length ? normalized[i + 2] : '';
-                if (afterDot !== '.') splitPositions.push(i + 2); // include ". in this chunk
+                // ." — skip if this dot is part of an ellipsis
+                if (prev !== '.') splitPositions.push(i + 2);
+            } else if ((c === '!' || c === '?') && next === '"') {
+                // !" / ?" — always split after the closing quote
+                splitPositions.push(i + 2);
+            } else if (!inQuotes) {
+                if (c === '.' && prev !== '.' && next !== '.') {
+                    splitPositions.push(i + 1);
+                } else if (c === '!' || c === '?') {
+                    splitPositions.push(i + 1);
+                }
             }
         }
 
@@ -1900,15 +1955,20 @@ function createVnModeController() {
         const clean = stripV3CMarkersFromText(entry.text).replace(/\s+/g, ' ').trim();
         const chunks = splitIntoChunks(clean);
 
+        // Mask the VN nameplate behind ??? until the speaker has been
+        // /introduce'd — same global toggle that drives the overworld /
+        // minimap / trial sticker labels.
+        const maskedName = entry.name ? getCharacterDisplayName(entry.name) : 'UNKNOWN';
+
         if (!chunks.length) {
-            nameEl.textContent = entry.name || 'UNKNOWN';
+            nameEl.textContent = maskedName;
             renderDialogueText('...');
             updateNavigationState(messages);
             return;
         }
 
         chunkIndex = Math.max(0, Math.min(chunkIndex, chunks.length - 1));
-        nameEl.textContent = entry.name || 'UNKNOWN';
+        nameEl.textContent = maskedName;
         renderDialogueText(chunks[chunkIndex]);
         updateNavigationState(messages);
         pulseText();
@@ -1996,6 +2056,23 @@ function createVnModeController() {
         setMoveUnlocked(true);
     });
 
+    clearChatBtnEl?.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const confirmed = window.confirm('Clear all messages from this chat? This cannot be undone.');
+        if (!confirmed) return;
+        const ctx = window.SillyTavern?.getContext?.();
+        if (typeof ctx?.clearChat === 'function') {
+            await ctx.clearChat({ clearData: true });
+            if (typeof ctx.saveChat === 'function') {
+                await ctx.saveChat();
+            }
+            messageIndex = 0;
+            chunkIndex = 0;
+            renderCurrent();
+        }
+    });
+
     streamToggleEl?.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -2020,18 +2097,21 @@ function createVnModeController() {
     prevBtnEl?.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
+        playSfx(sfx.message_move);
         retreat();
     });
 
     nextBtnEl?.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
+        playSfx(sfx.message_move);
         advance();
     });
 
     latestBtnEl?.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
+        playSfx(sfx.message_move);
         jumpToLatest();
     });
 
@@ -2224,6 +2304,7 @@ function createVnModeController() {
         if (!moveUnlocked || event.button !== 0 || !frameEl) return;
         const target = event.target;
         if (target instanceof Element && target.closest('.dangan-vn-lock')) return;
+        if (target instanceof Element && target.closest('.dangan-vn-clear-chat')) return;
 
         isDragging = true;
         movedDuringPointer = false;
@@ -2270,6 +2351,9 @@ function createVnModeController() {
         }
         const target = event.target;
         if (target instanceof Element && target.closest('.dangan-vn-lock')) return;
+        if (target instanceof Element && target.closest('.dangan-vn-clear-chat')) return;
+        if (target instanceof Element && target.closest('.dangan-vn-edit-message')) return;
+        if (target instanceof Element && target.closest('.dangan-vn-extra-actions')) return;
         if (target instanceof Element && target.closest('.dangan-vn-transcript-toggle')) return;
         if (target instanceof Element && target.closest('.dangan-vn-stream-toggle')) return;
         if (target instanceof Element && target.closest('.dangan-vn-nav-button')) return;
@@ -2370,8 +2454,6 @@ function createVnModeController() {
                 }
             } else if (hadMessageCountChange && messages.length > previousCount && wasAtTailBeforeNewMessage) {
                 renderCurrent();
-            } else if (messageIndex >= maxIndex || (wasAtTailBeforeNewMessage && !hadMessageCountChange)) {
-                jumpToLatest();
             } else {
                 renderCurrent();
             }
@@ -2870,18 +2952,75 @@ const BGM_PLAYLIST_PARENTS = {
     ptaPhase3Tracks:         'PANIC TALK ACTION',
 };
 
+// Briefly armed by callers that wrap a chat transition; during the window any
+// unexpected pause on investigationTrackAudio is auto-resumed so the BGM rides
+// through the fade-to-black even if ST/DA/etc. tries to clip it.
+let _bgmTransitionGuardUntilMs = 0;
+let _bgmTransitionWatchdogRaf  = null;
+function _bgmTransitionWatchdogTick() {
+    const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    if (now >= _bgmTransitionGuardUntilMs) {
+        _bgmTransitionWatchdogRaf = null;
+        return;
+    }
+    // Resume the audio if anything quietly paused it.
+    const audio = investigationTrackAudio;
+    if (audio && audio.paused) {
+        try { audio.play().catch(() => {}); } catch (_) {}
+    }
+    // Resume the visualizer's AudioContext if suspended — a suspended
+    // context silences a `createMediaElementSource`-routed track even when
+    // the element itself reports `paused === false`.
+    try { audioVisualizer?.pokeAudioContext?.(); } catch (_) {}
+    _bgmTransitionWatchdogRaf = requestAnimationFrame(_bgmTransitionWatchdogTick);
+}
+function armBgmTransitionGuard(durationMs = 2500) {
+    const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    const until = now + Math.max(0, durationMs);
+    if (until > _bgmTransitionGuardUntilMs) _bgmTransitionGuardUntilMs = until;
+    if (_bgmTransitionWatchdogRaf == null) {
+        _bgmTransitionWatchdogRaf = requestAnimationFrame(_bgmTransitionWatchdogTick);
+    }
+}
+
 function playBgmPath(path, settingKey = null) {
     if (!path) return;
 
     // Play on our own independent element — DA cannot interfere with this element.
+    // Null out FIRST, then pause the detached reference. The new audio's
+    // `.pause()` override below uses `audioEl !== investigationTrackAudio` as
+    // its "this track is no longer current, let the pause through" signal, so
+    // the order matters.
     if (investigationTrackAudio) {
-        investigationTrackAudio.pause();
+        const oldAudio = investigationTrackAudio;
         investigationTrackAudio = null;
+        oldAudio.pause();
     }
     investigationTrackAudio = new Audio(path);
     investigationTrackAudio.loop = (bgmPlayMode === 'loop');
     if (bgmPlayMode !== 'loop') bgmAttachEndedListener(investigationTrackAudio);
     investigationTrackAudio.volume = Number(getMonopadSetting("monopadVolume") ?? 50) / 100;
+    // Suppress incidental pauses during chat-transition windows. The override
+    // replaces the prototype pause on this instance only; once the track is
+    // swapped out (audioEl !== investigationTrackAudio) the override yields
+    // so the legitimate cleanup pause above still works.
+    const audioEl = investigationTrackAudio;
+    const origPause = audioEl.pause.bind(audioEl);
+    audioEl.pause = function () {
+        if (audioEl !== investigationTrackAudio) return origPause();
+        const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+        if (now < _bgmTransitionGuardUntilMs) return; // suppress — guard armed
+        return origPause();
+    };
+    // Belt-and-suspenders: some browser-level pauses (e.g. media element
+    // `load()` resetting state) bypass the .pause() override and fire the
+    // 'pause' event directly. Catch those and resume during the guard window.
+    audioEl.addEventListener('pause', () => {
+        if (audioEl !== investigationTrackAudio) return;
+        const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+        if (now >= _bgmTransitionGuardUntilMs) return;
+        audioEl.play().catch(() => {});
+    });
     investigationTrackAudio.play().catch(e =>
         console.warn(`[Dangan][BGM] Track play failed (${settingKey ?? "?"}):`, e)
     );
@@ -2955,15 +3094,16 @@ function bgmAttachEndedListener(audioEl) {
 }
 
 function bgmTogglePause() {
+    // Prioritise the extension's own element — matches getAudioElement() priority.
+    if (investigationTrackAudio) {
+        if (investigationTrackAudio.paused) investigationTrackAudio.play().catch(() => {});
+        else investigationTrackAudio.pause();
+        return;
+    }
     const audioEl = document.getElementById("audio_bgm");
     if (audioEl instanceof HTMLAudioElement) {
         if (audioEl.paused) audioEl.play().catch(() => {});
         else audioEl.pause();
-        return;
-    }
-    if (investigationTrackAudio) {
-        if (investigationTrackAudio.paused) investigationTrackAudio.play().catch(() => {});
-        else investigationTrackAudio.pause();
     }
 }
 
@@ -2988,6 +3128,52 @@ function isInCharacterChat() {
     return true;
 }
 
+/**
+ * Removes Prome User Sprite avatars from the currently-open group chat's
+ * member list and persists via editGroup. Idempotent — no-ops when not in
+ * a group or when no Prome member is present. Also tears down any lingering
+ * .expression-holder slot for the removed avatars so the visible chat layout
+ * matches the new member set without waiting for the next chat reload.
+ */
+async function stripPromeFromCurrentGroup() {
+    try {
+        const ctx = window.SillyTavern?.getContext?.();
+        if (!ctx?.groupId) return;
+        const group = (Array.isArray(ctx.groups) ? ctx.groups : []).find(g => String(g.id) === String(ctx.groupId));
+        if (!group || !Array.isArray(group.members) || !group.members.length) return;
+        const allChars = Array.isArray(ctx.characters) ? ctx.characters : [];
+
+        const removed = [];
+        const kept = [];
+        for (const avatar of group.members) {
+            const c = allChars.find(x => x?.avatar === avatar);
+            const lc = String(c?.name || '').toLowerCase();
+            if (lc.includes('prome user sprite')) removed.push(avatar);
+            else kept.push(avatar);
+        }
+        if (!removed.length) return;
+
+        group.members = kept;
+        try {
+            await editGroup(group.id, true, false);
+        } catch (err) {
+            // Roll back the in-memory mutation if the server save failed so
+            // the next render doesn't show a stale, locally-only group.
+            group.members = [...kept, ...removed];
+            console.warn('[Dangan] editGroup failed while stripping Prome:', err);
+            return;
+        }
+        for (const avatar of removed) {
+            for (const holder of document.querySelectorAll('.expression-holder')) {
+                if (holder.dataset.avatar === avatar) holder.remove();
+            }
+        }
+        console.log('[Dangan] Stripped Prome User Sprite from group', group.id);
+    } catch (err) {
+        console.warn('[Dangan] stripPromeFromCurrentGroup failed:', err);
+    }
+}
+
 function _stopAllBgm() {
     if (investigationTrackAudio) {
         investigationTrackAudio.pause();
@@ -2997,7 +3183,7 @@ function _stopAllBgm() {
     if (daEl instanceof HTMLAudioElement && !daEl.paused) {
         daEl.pause();
     }
-    audioVisualizer.hide();
+    audioVisualizer?.hide();
 }
 
 function playPhaseTrack() {
@@ -3507,6 +3693,214 @@ async function generateTrialDialogue(prompt, { maxTokens = 140, temperature = 0.
     });
 
     return (result || "").trim();
+}
+
+// Parses the LLM's Scrum Debate response into a scenario object.  Returns
+// null if the response is malformed or refers to truth bullets that don't
+// exist in the player's pool — the caller then retries or falls back.
+//
+// titleByLower: Map<lowercaseTitle, canonicalTitle> built from the real
+// truth-bullet pool, used to resolve TRUTH_BULLET values back to the exact
+// title stored in extension_settings.
+function parseScrumDebateResponse(out, titleByLower, expectedRounds = 3) {
+    const lines = String(out || "").split("\n").map(l => l.trim());
+
+    let opposingTheory = "";
+    let playerTheory   = "";
+    const roundChunks  = [];
+    let currentRound   = null;
+
+    for (const line of lines) {
+        const opp = line.match(/^OPPOSING_THEORY\s*:\s*(.+)$/i);
+        if (opp) { opposingTheory = opp[1].trim(); continue; }
+        const pl = line.match(/^PLAYER_THEORY\s*:\s*(.+)$/i);
+        if (pl)  { playerTheory   = pl[1].trim(); continue; }
+        if (/^ROUND\s*\d+/i.test(line)) {
+            if (currentRound) roundChunks.push(currentRound);
+            currentRound = { claim: "", statement: "", bulletRaw: "" };
+            continue;
+        }
+        if (!currentRound) continue;
+        const claim = line.match(/^CLAIM\s*:\s*(.+)$/i);
+        if (claim) { currentRound.claim = claim[1].trim(); continue; }
+        const stmt = line.match(/^STATEMENT\s*:\s*(.+)$/i);
+        if (stmt)  { currentRound.statement = stmt[1].trim(); continue; }
+        const tb   = line.match(/^TRUTH[_-]?BULLET\s*:\s*(.+)$/i);
+        if (tb)    { currentRound.bulletRaw = tb[1].trim(); continue; }
+    }
+    if (currentRound) roundChunks.push(currentRound);
+    if (roundChunks.length < expectedRounds) return null;
+    if (!opposingTheory || !playerTheory) return null;
+
+    // Hard-cap rocket-banner text at 5 words — the LLM is asked for this in
+    // the prompt, but the banners get clipped at screen edge if it overruns,
+    // so we enforce here too.
+    const clipToFiveWords = (s) => {
+        const cleaned = String(s).replace(/[.,;:]+$/g, "").trim();
+        const words = cleaned.split(/\s+/).filter(Boolean);
+        return words.slice(0, 5).join(" ");
+    };
+    opposingTheory = clipToFiveWords(opposingTheory);
+    playerTheory   = clipToFiveWords(playerTheory);
+
+    // Title-cases each word in an opposing "fake" claim ("power surge" →
+    // "Power Surge").  Preserves intentional all-caps (e.g. "A/C") and
+    // articles inside the phrase aren't lower-cased because the cap-name
+    // appears as a banner on the rocket — uniform capitalisation reads best.
+    const toTitleCase = (s) => String(s).split(/(\s+)/).map(part => {
+        if (!/\S/.test(part)) return part;
+        if (/^[A-Z0-9/]{2,}$/.test(part)) return part; // keep ALL-CAPS / "A/C"
+        return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    }).join("");
+
+    const rounds      = [];
+    const usedBullets = new Set();
+    for (const c of roundChunks.slice(0, expectedRounds)) {
+        // Exactly one [[…]] segment per statement.
+        if (!c.statement) return null;
+        const openCount = (c.statement.match(/\[\[/g) || []).length;
+        const innerOk   = /\[\[[^\[\]]+\]\]/.test(c.statement);
+        if (openCount !== 1 || !innerOk) return null;
+
+        let bulletTitle = titleByLower.get(c.bulletRaw.toLowerCase());
+        if (!bulletTitle) {
+            const stripped = c.bulletRaw.replace(/^["'`*\s]+|["'`.!,*\s]+$/g, "");
+            bulletTitle = titleByLower.get(stripped.toLowerCase());
+        }
+        if (!bulletTitle || usedBullets.has(bulletTitle)) return null;
+        usedBullets.add(bulletTitle);
+
+        rounds.push({
+            opposingClaim: toTitleCase(c.claim || bulletTitle),
+            statement: c.statement,
+            correctTruthBulletTitle: bulletTitle,
+        });
+    }
+
+    if (rounds.length !== expectedRounds) return null;
+    return { opposingTheory, playerTheory, rounds };
+}
+
+// Generates a Scrum Debate scenario via the LLM following the stub shape in
+// vfx/scrumDebate.js (SCRUM_DEBATE_DEFAULT_SCENARIO).  Returns a scenario
+// object on success or null on failure (caller should fall back to the
+// hardcoded default).  Requires at least 3 truth bullets in the pool.
+async function buildScrumDebateScenario({ trialContext, truthBullets, contextMessages, roundCount = 3, attempts = 2 } = {}) {
+    if (typeof generateTrialDialogue !== "function") return null;
+
+    // One round per opposing-team member. Clamp to [1, bullet pool size] so
+    // we never ask for more unique TRUTH_BULLETS than the player owns.
+    const requestedRounds = Math.max(1, Math.floor(Number(roundCount) || 0));
+
+    const topic    = String(trialContext?.topic    || "").trim();
+    const goal     = String(trialContext?.goal     || "").trim();
+    const suspects = Array.isArray(trialContext?.suspects) ? trialContext.suspects : [];
+
+    const bullets = (Array.isArray(truthBullets) ? truthBullets : [])
+        .map(b => ({
+            title:       String(b?.title       || "").trim(),
+            description: String(b?.description || "").trim(),
+        }))
+        .filter(b => b.title);
+    if (bullets.length < requestedRounds) {
+        console.warn(`[Dangan][Scrum] Need ≥${requestedRounds} truth bullets to generate a scenario; falling back. Got:`, bullets.length);
+        return null;
+    }
+
+    const bulletListText = bullets
+        .map(b => `- ${b.title}${b.description ? ` — ${b.description}` : ""}`)
+        .join("\n");
+
+    const contextLines = (Array.isArray(contextMessages) ? contextMessages : [])
+        .slice(-14)
+        .map(m => `${m.isUser ? "YOU" : (m.name || "NARRATOR")}: ${m.text}`)
+        .join("\n");
+
+    // Build the variable-length ROUND format spec the LLM must follow.
+    const roundsFormatSpec = Array.from({ length: requestedRounds }, (_, i) => {
+        if (i === 0) {
+            return `ROUND ${i + 1}
+CLAIM: <2–5 word noun phrase naming what the opposing team is pointing at>
+STATEMENT: <opposing-team statement, 8–22 words, with the WEAK part wrapped in [[double brackets]]>
+TRUTH_BULLET: <one of the Truth Bullet titles above, copied character-for-character>`;
+        }
+        return `ROUND ${i + 1}
+CLAIM: ...
+STATEMENT: ...
+TRUTH_BULLET: ...`;
+    }).join("\n");
+
+    const roundsWord = requestedRounds === 1 ? "one round" : `${requestedRounds} rounds`;
+
+    const prompt = `
+You are scripting a Danganronpa-style Scrum Debate. Two teams of students clash over opposing theories about the murder. Over ${roundsWord}, the opposing team makes confident claims about specific evidence or testimony; the player refutes the WEAK PART of each claim by firing the correct Truth Bullet.
+
+TRIAL CONTEXT
+Topic: ${topic || "(unknown)"}
+Goal: ${goal || "(unknown)"}
+Suspects: ${suspects.join(", ") || "(unknown)"}
+
+TRUTH BULLETS (the player's available evidence — you MUST pick TRUTH_BULLET titles VERBATIM from this list):
+${bulletListText}
+
+DEBATE FORMAT
+- Two opposing theories about the murder: the opposing team's accusation vs. the player's counter-accusation.
+- Exactly ${requestedRounds} round${requestedRounds === 1 ? "" : "s"}.  For each round:
+    * The opposing team picks a piece of evidence or testimony and makes a confident claim about it.
+    * Inside that claim, mark the WEAK PART — the specific assertion the truth bullet refutes — by wrapping it in [[double brackets]].
+    * Pair the round with the one Truth Bullet whose existence makes the [[…]] part false.
+- A given Truth Bullet may only be used in ONE round.
+
+Respond in EXACTLY this format and nothing else. No JSON, no markdown, no commentary:
+
+OPPOSING_THEORY: <MAX 5 WORDS — the opposing team's accusation as a tiny banner caption (e.g. "Nagito is the killer", "Knife from the kitchen")>
+PLAYER_THEORY: <MAX 5 WORDS — the player's counter-accusation in the same caption style>
+${roundsFormatSpec}
+
+Rules:
+- OPPOSING_THEORY and PLAYER_THEORY must each be FIVE WORDS OR FEWER — they render on a small rocket banner and longer text gets clipped.  No leading "The ", no trailing punctuation beyond a single "!" if used.
+- Each STATEMENT contains exactly ONE [[…]] segment, with no nested or stray brackets.
+- TRUTH_BULLET MUST exactly match a title from the TRUTH BULLETS list above (case-insensitive, but punctuation and words must match).
+- Do not reuse a TRUTH_BULLET across rounds.
+- Stay in-world: the statements should sound like the opposing team shouting them mid-trial.
+
+RECENT CHAT CONTEXT:
+${contextLines || "NONE"}
+`.trim();
+
+    const titleByLower = new Map(bullets.map(b => [b.title.toLowerCase(), b.title]));
+
+    // Token budget scales roughly with the round count (~120 tokens / round
+    // for CLAIM + STATEMENT + TRUTH_BULLET + headers).
+    const maxTokens = Math.min(2000, 240 + requestedRounds * 130);
+
+    for (let attempt = 0; attempt < attempts; attempt++) {
+        let out = "";
+        try {
+            out = String(await generateTrialDialogue(prompt, {
+                maxTokens,
+                temperature: 0.78 + attempt * 0.07,
+            }) || "").trim();
+        } catch (e) {
+            console.warn(`[Dangan][Scrum] LLM attempt ${attempt + 1} failed:`, e);
+            continue;
+        }
+        if (!out) continue;
+
+        const parsed = parseScrumDebateResponse(out, titleByLower, requestedRounds);
+        if (!parsed) continue;
+
+        return {
+            title: "SCRUM DEBATE",
+            topic,
+            opposingTheory: parsed.opposingTheory,
+            playerTheory:   parsed.playerTheory,
+            rounds:         parsed.rounds,
+        };
+    }
+
+    console.warn("[Dangan][Scrum] All generation attempts failed; falling back to stub.");
+    return null;
 }
 
 
@@ -4030,6 +4424,19 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
             monokumaAnnouncementController?.trigger(marker.type);
         });
 
+        // ---- Trial Context ----
+        for (const match of rawText.matchAll(TRIAL_CONTEXT_REGEX)) {
+            const topic    = match[1]?.trim() || '';
+            const goal     = match[2]?.trim() || '';
+            const suspects = (match[3]?.trim() || '').split(',').map(s => {
+                const [name, pctRaw] = s.trim().split(':');
+                const chance = parseInt(pctRaw ?? '') || 0;
+                return name?.trim() ? { name: name.trim(), chance } : null;
+            }).filter(Boolean).slice(0, 3);
+            trialManager?.setTrialContext?.(topic, goal, suspects);
+            break; // only process the first match per message
+        }
+
         // ---- Marker Cleanup ----
        if (/[Vv]3[Cc]\s*[|｜]/.test(rawText)) {
     const walker = document.createTreeWalker(
@@ -4122,6 +4529,17 @@ function getCharacterSourceText(charName) {
     return sources.join("\n\n") || "NO SOURCE DATA AVAILABLE.";
 }
 
+// ST's /api/sprites/get strips dash-suffixes when computing the `label` field
+// (see src/endpoints/sprites.js — the regex `^(.+?)(?:[-\\.].*?)?$` cuts at
+// the first `-` or `.`). So `gratitude.png` and `gratitude-half.png` BOTH
+// report label `gratitude` — to distinguish variants we check the file path.
+function isHalfSpritePath(s) {
+    return /-half\.[a-z0-9]+(\?|$)/i.test(String(s?.path || ''));
+}
+
+// Default sprite resolver. Always prefers the FULL sprite over a -half variant
+// — half-sprite mode is a chat-only concern (overworld characters, chapter
+// end rosters, choose-character UI, etc. must always render full body).
 async function getSpriteUrl(charName, label = "neutral") {
     let folder = charName;
     const stChars = window.characters;
@@ -4135,11 +4553,91 @@ async function getSpriteUrl(charName, label = "neutral") {
         const resp = await fetch(`/api/sprites/get?name=${encodeURIComponent(folder)}`);
         if (!resp.ok) return null;
         const sprites = await resp.json();
-        const desired = sprites.find(s => String(s.label || '').toLowerCase() === String(label || '').toLowerCase());
-        const neutral = sprites.find(s => s.label === "neutral");
-        return desired?.path ?? neutral?.path ?? null;
+        const lcLabel = String(label || '').toLowerCase();
+        const matchLabel = (s) => String(s.label || '').toLowerCase() === lcLabel;
+        const labelMatches = sprites.filter(matchLabel);
+        const neutralMatches = sprites.filter(s => String(s.label || '').toLowerCase() === 'neutral');
+        // Pick a non-half variant if both exist, else any.
+        const fullDesired = labelMatches.find(s => !isHalfSpritePath(s)) ?? labelMatches[0];
+        if (fullDesired?.path) return fullDesired.path;
+        const fullNeutral = neutralMatches.find(s => !isHalfSpritePath(s)) ?? neutralMatches[0];
+        return fullNeutral?.path ?? null;
     } catch {
         return null;
+    }
+}
+
+// Chat-only sprite resolver. When half-sprite mode is on, prefers the -half
+// variant (pre-cropped upper-body art) over the full sprite. Used by the GCP
+// slot resolver (trial / group-chat sprite stage) so chat sprites can be
+// upper-body crops while overworld + UI sprites stay full body.
+async function getChatSpriteUrl(charName, label = "neutral") {
+    const halfMode = !!extension_settings[extensionName]?.halfspriteMode;
+    // Class trials never use -half sprites — full body only, even if the
+    // user has half-sprite mode enabled. Trials have their own camera /
+    // staging logic that assumes the canonical sprite framing.
+    if (!halfMode || isTrialUiActive()) return getSpriteUrl(charName, label);
+
+    let folder = charName;
+    const stChars = window.characters;
+    if (Array.isArray(stChars)) {
+        const stChar = stChars.find(c => c.name === charName);
+        if (stChar?.avatar) {
+            folder = stChar.avatar.replace(/\.[^.]+$/, "");
+        }
+    }
+    try {
+        const resp = await fetch(`/api/sprites/get?name=${encodeURIComponent(folder)}`);
+        if (!resp.ok) return null;
+        const sprites = await resp.json();
+        const lcLabel = String(label || '').toLowerCase();
+        const matchLabel = (s) => String(s.label || '').toLowerCase() === lcLabel;
+        // Fallback chain: <label>-half → <label> → neutral-half → neutral.
+        const labelMatches = sprites.filter(matchLabel);
+        const halfDesired = labelMatches.find(isHalfSpritePath);
+        if (halfDesired?.path) return halfDesired.path;
+        const fullDesired = labelMatches.find(s => !isHalfSpritePath(s)) ?? labelMatches[0];
+        if (fullDesired?.path) return fullDesired.path;
+        const neutralMatches = sprites.filter(s => String(s.label || '').toLowerCase() === 'neutral');
+        const halfNeutral = neutralMatches.find(isHalfSpritePath);
+        if (halfNeutral?.path) return halfNeutral.path;
+        const fullNeutral = neutralMatches.find(s => !isHalfSpritePath(s)) ?? neutralMatches[0];
+        return fullNeutral?.path ?? null;
+    } catch {
+        return null;
+    }
+}
+
+// Returns the deduped list of expression labels available for a character,
+// derived from the same /api/sprites/get endpoint getSpriteUrl uses. Empty
+// array if the character has no sprites or the call fails.
+async function getAvailableExpressionLabels(charName) {
+    let folder = charName;
+    const stChars = window.characters;
+    if (Array.isArray(stChars)) {
+        const stChar = stChars.find(c => c.name === charName);
+        if (stChar?.avatar) {
+            folder = stChar.avatar.replace(/\.[^.]+$/, "");
+        }
+    }
+    try {
+        const resp = await fetch(`/api/sprites/get?name=${encodeURIComponent(folder)}`);
+        if (!resp.ok) return [];
+        const sprites = await resp.json();
+        const labels = new Set();
+        for (const s of sprites) {
+            const label = String(s?.label || '').trim();
+            if (!label) continue;
+            // -half variants are PAIRED with their base (e.g. "gratitude-half"
+            // is the upper-body crop of "gratitude") — skip them so random
+            // expression pickers treat them as variants of the base label,
+            // not as standalone expressions.
+            if (/-half$/i.test(label)) continue;
+            labels.add(label);
+        }
+        return [...labels];
+    } catch {
+        return [];
     }
 }
 
@@ -4297,6 +4795,18 @@ function getActiveUserAvatarUrl() {
     return `/thumbnail?type=persona&file=${encodeURIComponent(user_avatar)}`;
 }
 
+// Body-class flip driven by the Monopad → Display → HALF-SPRITE MODE toggle.
+// CSS in style.css (body.dangan-halfsprite-mode) scales + clips ST's in-chat
+// sprite to the upper body. Called on toggle and on boot.
+function applyHalfSpriteMode() {
+    const on = !!extension_settings[extensionName]?.halfspriteMode;
+    document.body.classList.toggle("dangan-halfsprite-mode", on);
+    // gcpPositionSlotsFlat sets --gcp-half-slot-height for the GCP stage —
+    // re-run it so the toggle takes effect on the current chat without
+    // needing a reload / chat switch.
+    try { trialManager?.recomputeGcpFlatLayout?.(); } catch (_) {}
+}
+
 function applyImageVisibilitySettings() {
     document.body.classList.toggle("dangan-hide-truth-images", !!getMonopadSetting("hideTruthBulletImages"));
     document.body.classList.toggle("dangan-hide-gift-images", !!getMonopadSetting("hideGiftImages"));
@@ -4368,6 +4878,107 @@ function applyLecternUI() {
     if (nameEl) {
         nameEl.textContent = getMonopadSetting('customLecternData') ? 'Custom file loaded' : 'No file chosen';
     }
+}
+
+// Read the configured custom Game Master name, or null when default Monokuma
+// mode is selected / no character chosen. Centralised so callers (sprite
+// resolver, isMonokuma) don't duplicate the mode + name checks.
+function getCustomGameMasterName() {
+    if (getMonopadSetting('gameMasterMode') !== 'custom') return null;
+    const name = getMonopadSetting('gameMasterCharacter');
+    return (typeof name === 'string' && name.trim()) ? name.trim() : null;
+}
+
+// ── Character introduction tracking ─────────────────────────────────────────
+// Until /introduce is run on a character their name renders as "???" in any
+// dangan-extension UI (overworld sprite hover, minimap pin tooltip, trial
+// speaker sticker, …). The set persists in extension_settings so the player
+// only has to introduce each character once per profile.
+const UNINTRODUCED_DISPLAY_NAME = '???';
+
+function getIntroducedCharactersStore() {
+    const root = extension_settings[extensionName] ??= {};
+    root.introducedCharacters ??= {};
+    return root.introducedCharacters;
+}
+
+// Speakers that never need /introduce — these are system / framing voices
+// rather than actual characters in the killing game, so masking them as
+// "???" would be confusing rather than mysterious.
+const ALWAYS_INTRODUCED_KEYS = new Set(['narrator', 'assistant']);
+
+function isCharacterIntroduced(name) {
+    const key = normalizeName(name);
+    if (!key) return false;
+    // The player always knows themselves; treat the active persona and the
+    // Game Master (Monokuma or the custom override) as pre-introduced so the
+    // ??? mask never hides them.
+    const personaKey = normalizeName(getActivePersonaName?.() || '');
+    if (personaKey && key === personaKey) return true;
+    const gm = getCustomGameMasterName();
+    if (gm && key === normalizeName(gm)) return true;
+    if (key === 'monokuma') return true;
+    if (ALWAYS_INTRODUCED_KEYS.has(key)) return true;
+    return Boolean(getIntroducedCharactersStore()[key]);
+}
+
+function markCharacterIntroduced(name) {
+    const key = normalizeName(name);
+    if (!key) return;
+    const store = getIntroducedCharactersStore();
+    if (store[key]) return;
+    store[key] = true;
+    saveSettingsDebounced();
+}
+
+// Returns the name to show in UI labels: the original when introduced, or
+// "???" otherwise. Used by overworld + minimap + trial sticker rendering.
+function getCharacterDisplayName(name) {
+    if (!name) return name;
+    return isCharacterIntroduced(name) ? name : UNINTRODUCED_DISPLAY_NAME;
+}
+
+function applyGameMasterUI() {
+    const mode = getMonopadSetting('gameMasterMode') ?? 'default';
+    document.querySelectorAll('[data-gm-value]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.gmValue === mode);
+    });
+    const row = document.getElementById('dangan-gm-custom-row');
+    if (row) row.classList.toggle('is-hidden', mode !== 'custom');
+
+    const select = document.getElementById('dangan-gm-character');
+    if (!select) return;
+
+    // Pull the SillyTavern character roster. Skip user/persona entries and
+    // any character literally called "Monokuma" — the default option already
+    // covers that case.
+    const ctx = window.SillyTavern?.getContext?.();
+    const chars = Array.isArray(ctx?.characters) ? ctx.characters : [];
+    const saved = String(getMonopadSetting('gameMasterCharacter') || '').trim();
+    const names = chars
+        .filter(c => c && !c.is_user && !c.isUser)
+        .map(c => String(c.name || '').trim())
+        .filter(n => n && n.toLowerCase() !== 'monokuma');
+    // Dedup + sort alphabetically for predictability.
+    const uniq = [...new Set(names)].sort((a, b) => a.localeCompare(b));
+
+    // If the saved selection points to a character that no longer exists, keep
+    // it in the list so the user can see what was chosen and re-pick.
+    if (saved && !uniq.includes(saved)) uniq.unshift(saved);
+
+    select.innerHTML = '';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = uniq.length ? '— Select a character —' : 'No characters found';
+    placeholder.disabled = uniq.length > 0;
+    select.appendChild(placeholder);
+    for (const n of uniq) {
+        const opt = document.createElement('option');
+        opt.value = n;
+        opt.textContent = n;
+        select.appendChild(opt);
+    }
+    select.value = saved || '';
 }
 
 function applyDynamicTheme() {
@@ -4471,7 +5082,22 @@ async function fadeInAndResumeBgm(durationMs = 600) {
     }
 }
 
-let _hgPreviousBgmSelectVal = null;
+let _hgPreviousBgmSelectVal      = null;
+let _hgPreviousInvestigationAudio = null; // investigationTrackAudio saved across scrum/HG BGM switch
+
+function playMindMineBgm() {
+    const $sel = $('#audio_bgm_select');
+    if (!$sel.length) return;
+    _hgPreviousBgmSelectVal = _hgPreviousBgmSelectVal ?? $sel.val();
+    const track = findBgmTrackByName('DX Growth Plan');
+    const path  = track ?? `${(extensionFolderPath || '').replace(/\\/g, '/')}/assets/bgm/DX Growth Plan.mp3`;
+    if (!$sel.find(`option[value="${path}"]`).length) {
+        $sel.append(new Option('DX Growth Plan', path));
+    }
+    $sel.val(path).trigger('change');
+    const audioEl = document.getElementById('audio_bgm');
+    if (audioEl) audioEl.loop = true;
+}
 
 function playHGBgm() {
     const $sel = $('#audio_bgm_select');
@@ -4487,17 +5113,390 @@ function playHGBgm() {
     return audioEl;
 }
 
+function showHangmanLoadingState() {
+    return showMinigameLoadingState("Loading Hangman's Gambit", { command: '/hangmansgambit' });
+}
+
+function showMinigameLoadingState(label = 'Loading', { command = null } = {}) {
+    // Fullscreen overlay shown while the LLM is generating content for a
+    // minigame. Fades in on mount and exposes hide() + setProgress(pct).
+    // setProgress is optional — callers with a single-shot generation
+    // (like Hangman's Gambit, one generateRaw call) can omit it and just
+    // get the indeterminate three-dot pulse. `command` adds a gray hint
+    // pointing the user at the slash-command alternative.
+    document.getElementById('hg-loading-state')?.remove();
+    const el = document.createElement('div');
+    el.id = 'hg-loading-state';
+    const safeLabel   = String(label).replace(/[<>&]/g, '');
+    const safeCommand = command ? String(command).replace(/[<>&"']/g, '') : '';
+    const hintHtml = safeCommand
+        ? `<div class="hg-loading-hint">Taking too long to load? You can create your own using <span class="hg-loading-cmd">${safeCommand}</span></div>`
+        : '';
+    el.innerHTML = `
+        <div class="hg-loading-text">${safeLabel}</div>
+        ${hintHtml}
+        <div class="hg-loading-dots"><span></span><span></span><span></span></div>
+        <div class="hg-loading-progress" style="display:none">0%</div>
+    `;
+    // Loading-screen highlight colour follows the active trial theme via
+    // --dgn-neon-rgb (set on body.dangan-trial-active.dangan-trial-theme-*).
+    // Outside a trial the fallback keeps the original green so the loader
+    // still reads as a "system is working" indicator.
+    el.style.cssText = `
+        position: fixed; inset: 0;
+        z-index: 2147483647;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        gap: 22px;
+        background: rgba(0, 6, 24, 0.92);
+        color: rgb(var(--dgn-neon-rgb, 68, 255, 136));
+        font-family: "Orbitron", "Impact", monospace;
+        font-size: 18px; letter-spacing: 3px; text-transform: uppercase;
+        text-shadow: 0 0 10px rgba(var(--dgn-neon-rgb, 80, 255, 130), 0.7);
+        pointer-events: auto;
+        opacity: 0;
+        transition: opacity 320ms ease;
+    `;
+    const dotsCss = `
+        #hg-loading-state .hg-loading-dots {
+            display: inline-flex;
+            align-items: center;
+            gap: 14px;
+        }
+        #hg-loading-state .hg-loading-dots > span {
+            display: block;
+            width: 16px; height: 16px;
+            border-radius: 50%;
+            background: rgb(var(--dgn-neon-rgb, 68, 255, 136));
+            box-shadow: 0 0 14px rgba(var(--dgn-neon-rgb, 80, 255, 130), 0.85),
+                        0 0 26px rgba(var(--dgn-neon-rgb, 40, 220, 80), 0.5);
+            opacity: 0.3;
+            animation: hgLoadingDotPulse 0.9s ease-in-out infinite;
+        }
+        #hg-loading-state .hg-loading-dots > span:nth-child(2) { animation-delay: 0.15s; }
+        #hg-loading-state .hg-loading-dots > span:nth-child(3) { animation-delay: 0.30s; }
+        @keyframes hgLoadingDotPulse {
+            0%, 100% { opacity: 0.25; transform: scale(1); }
+            50%      { opacity: 1;    transform: scale(1.25); }
+        }
+        #hg-loading-state .hg-loading-progress {
+            font-family: "Orbitron", "Impact", monospace;
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: 4px;
+            color: rgb(var(--dgn-neon-rgb, 68, 255, 136));
+            text-shadow: 0 0 10px rgba(var(--dgn-neon-rgb, 80, 255, 130), 0.7),
+                         0 0 22px rgba(var(--dgn-neon-rgb, 40, 220, 80), 0.45);
+            font-variant-numeric: tabular-nums;
+            min-width: 110px;
+            text-align: center;
+        }
+        #hg-loading-state .hg-loading-hint {
+            margin-top: -8px;
+            font-family: "Noto Sans", "Inter", sans-serif;
+            font-size: 13px;
+            font-weight: 400;
+            letter-spacing: 1px;
+            text-transform: none;
+            color: rgba(190, 200, 210, 0.65);
+            text-shadow: none;
+            text-align: center;
+            max-width: 520px;
+            line-height: 1.5;
+        }
+        #hg-loading-state .hg-loading-hint .hg-loading-cmd {
+            color: rgba(220, 230, 240, 0.85);
+            font-family: "Orbitron", "Inter", monospace;
+            font-weight: 600;
+        }
+    `;
+    let styleEl = document.getElementById('hg-loading-state-style');
+    if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'hg-loading-state-style';
+        styleEl.textContent = dotsCss;
+        document.head.appendChild(styleEl);
+    }
+    document.body.appendChild(el);
+    // Two-frame nudge so the initial opacity:0 commits before the transition.
+    requestAnimationFrame(() => requestAnimationFrame(() => { el.style.opacity = '1'; }));
+
+    el.hide = () => {
+        el.style.opacity = '0';
+        window.setTimeout(() => el.remove(), 340);
+    };
+    // Callers with a known total can show a numeric percentage by calling
+    // setProgress(0..1). The dots stay visible above the percentage so the
+    // animation continues while the number ticks up.
+    el.setProgress = (frac) => {
+        const pct = Math.max(0, Math.min(100, Math.round(Number(frac) * 100)));
+        const progEl = el.querySelector('.hg-loading-progress');
+        if (progEl) {
+            progEl.style.display = '';
+            progEl.textContent = `${pct}%`;
+        }
+    };
+    return el;
+}
+
+// Fullscreen error overlay shown when a minigame's LLM generation fails
+// outright (parse errors after all retries, missing context, etc.).  Same
+// chrome as showMinigameLoadingState but red rather than green, no
+// spinner, and click-to-dismiss.  The returned element exposes hide()
+// and resolves a promise via onDismissed for callers that want to await
+// the user before continuing (e.g. abort the minigame entirely).
+function showMinigameErrorState({ title = 'Generation failed', subtitle = '', command = null } = {}) {
+    document.getElementById('hg-loading-state')?.remove();
+    document.getElementById('hg-error-state')?.remove();
+    const el = document.createElement('div');
+    el.id = 'hg-error-state';
+    const safeTitle    = String(title).replace(/[<>&]/g, '');
+    const safeSubtitle = String(subtitle).replace(/[<>&]/g, '');
+    const safeCommand  = command ? String(command).replace(/[<>&"']/g, '') : '';
+    const subtitleHtml = safeSubtitle
+        ? `<div class="hg-error-sub">${safeSubtitle}${safeCommand ? ` <span class="hg-error-cmd">${safeCommand}</span>` : ''}</div>`
+        : '';
+    el.innerHTML = `
+        <div class="hg-error-text">${safeTitle}</div>
+        ${subtitleHtml}
+        <div class="hg-error-dismiss">Click anywhere to dismiss</div>
+    `;
+    el.style.cssText = `
+        position: fixed; inset: 0;
+        z-index: 2147483647;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        gap: 22px;
+        background: rgba(24, 0, 6, 0.94);
+        color: #ff4d4d;
+        font-family: "Orbitron", "Impact", monospace;
+        font-size: 22px; letter-spacing: 3px; text-transform: uppercase;
+        text-shadow: 0 0 10px rgba(255, 80, 80, 0.7);
+        pointer-events: auto;
+        opacity: 0;
+        transition: opacity 320ms ease;
+        cursor: pointer;
+    `;
+    const css = `
+        #hg-error-state .hg-error-text {
+            font-weight: 700;
+            font-size: 26px;
+            letter-spacing: 4px;
+        }
+        #hg-error-state .hg-error-sub {
+            font-family: "Noto Sans", "Inter", sans-serif;
+            font-size: 14px;
+            font-weight: 400;
+            letter-spacing: 1px;
+            text-transform: none;
+            color: rgba(220, 200, 200, 0.85);
+            text-shadow: none;
+            text-align: center;
+            max-width: 560px;
+            line-height: 1.5;
+        }
+        #hg-error-state .hg-error-sub .hg-error-cmd {
+            color: rgba(255, 230, 230, 0.95);
+            font-family: "Orbitron", "Inter", monospace;
+            font-weight: 600;
+        }
+        #hg-error-state .hg-error-dismiss {
+            margin-top: 8px;
+            font-family: "Noto Sans", "Inter", sans-serif;
+            font-size: 11px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: rgba(255, 180, 180, 0.55);
+            text-shadow: none;
+        }
+    `;
+    let styleEl = document.getElementById('hg-error-state-style');
+    if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'hg-error-state-style';
+        styleEl.textContent = css;
+        document.head.appendChild(styleEl);
+    }
+    document.body.appendChild(el);
+    requestAnimationFrame(() => requestAnimationFrame(() => { el.style.opacity = '1'; }));
+
+    let dismissed = false;
+    const dismissPromise = new Promise(resolve => {
+        el.hide = () => {
+            if (dismissed) return;
+            dismissed = true;
+            el.style.opacity = '0';
+            window.setTimeout(() => { el.remove(); resolve(); }, 340);
+        };
+        el.addEventListener('click', () => el.hide());
+    });
+    el.onDismissed = () => dismissPromise;
+    return el;
+}
+
+function playBgmForScrum(path) {
+    const $sel = $('#audio_bgm_select');
+    if (!$sel.length) return;
+    // Only save the pre-scrum state the first time — subsequent switches (e.g. Final Push)
+    // must not overwrite it, or teardown will restore the wrong track/audio element.
+    if (!_hgPreviousBgmSelectVal) {
+        _hgPreviousBgmSelectVal = $sel.val();
+        // Detach investigationTrackAudio so the visualizer falls back to #audio_bgm while
+        // the scrum BGM (played via DA on #audio_bgm) is active.  It is restored on teardown.
+        _hgPreviousInvestigationAudio = investigationTrackAudio;
+        investigationTrackAudio = null;
+    }
+    if (!$sel.find(`option[value="${CSS.escape ? path : path}"]`).length) {
+        $sel.append(new Option(path.split('/').pop().replace(/\.[^.]+$/, ''), path));
+    }
+    $sel.val(path).trigger('change');
+    const audioEl = document.getElementById('audio_bgm');
+    if (audioEl) audioEl.loop = true;
+}
+
+// Find a track in ST's audio_bgm_select by display name (case-insensitive substring match).
+// Returns the option value (file path) if found, otherwise null.
+function findBgmTrackByName(name) {
+    const $sel = $('#audio_bgm_select');
+    if (!$sel.length) return null;
+    const lower = name.toLowerCase();
+    let found = null;
+    $sel.find('option').each(function () {
+        if ($(this).text().toLowerCase().includes(lower)) {
+            found = $(this).val();
+            return false; // break
+        }
+    });
+    return found;
+}
+
 function resumeBgmAfterHG() {
     const $sel = $('#audio_bgm_select');
     if (!$sel.length || !_hgPreviousBgmSelectVal) {
-        _hgPreviousBgmSelectVal = null;
+        _hgPreviousBgmSelectVal          = null;
+        _hgPreviousInvestigationAudio    = null;
         return;
     }
-    const savedVal = _hgPreviousBgmSelectVal;
-    _hgPreviousBgmSelectVal = null;
+    const savedVal      = _hgPreviousBgmSelectVal;
+    const savedInvAudio = _hgPreviousInvestigationAudio;
+    _hgPreviousBgmSelectVal          = null;
+    _hgPreviousInvestigationAudio    = null;
+
     const audioEl = document.getElementById('audio_bgm');
     if (audioEl) audioEl.loop = false;
-    $sel.val(savedVal).trigger('change');
+
+    if (savedInvAudio) {
+        // Restore our own audio element — the visualizer watches this, so resuming it
+        // immediately makes the play/pause button reflect the correct playing state.
+        investigationTrackAudio = savedInvAudio;
+        investigationTrackAudio.play().catch(() => {});
+        // Seed DA's select so its worker doesn't clobber our track on the next poll.
+        $sel.val(savedVal).trigger('change');
+        // Silence #audio_bgm — investigationTrackAudio is the real source.
+        setTimeout(() => {
+            const daEl = document.getElementById('audio_bgm');
+            if (daEl instanceof HTMLAudioElement) daEl.pause();
+        }, 400);
+    } else {
+        // No investigationTrackAudio was active before the scrum — restore via DA only.
+        $sel.val(savedVal).trigger('change');
+    }
+}
+
+async function onMindMineWin(sentence) {
+    const raw = (sentence || '').trim();
+    // Lead with "that" + lowercase first letter of the chosen sentence so the
+    // sentence flows as one continuous clause: "…is that the suspect…"
+    const text = raw ? raw.charAt(0).toLowerCase() + raw.slice(1) : '';
+
+    const ctx = window.SillyTavern?.getContext?.();
+    const setPrompt = ctx?.setExtensionPrompt || window.setExtensionPrompt;
+    if (typeof setPrompt === 'function' && text) {
+        setPrompt('dangan_mindmine_result',
+            `[MIND MINE RESULT]\nA point of relevance is that ${text}...`,
+            0, 1, true, 'system');
+    }
+
+    // Wait for the minigame overlay to finish closing (endGame 2 s delay + CSS fade)
+    await new Promise(r => setTimeout(r, 2500));
+
+    const notif = document.createElement('div');
+    notif.id = 'dangan-mindmine-win-notif';
+    notif.className = 'dangan-trial-notification rebuttal-active';
+    notif.innerHTML = `
+        <div class="dangan-trial-notif-content">
+            <div class="rebuttal-header">MIND MINE COMPLETE</div>
+            <div class="rebuttal-info">
+                A point of relevance is that <em id="dangan-mindmine-win-theory"></em>...
+            </div>
+        </div>`;
+    document.body.appendChild(notif);
+    if (text) notif.querySelector('#dangan-mindmine-win-theory').textContent = text;
+
+    const onUserSend = () => {
+        notif.remove();
+        eventSource.removeListener(event_types.MESSAGE_SENT, onUserSend);
+    };
+    eventSource.on(event_types.MESSAGE_SENT, onUserSend);
+
+    const onAiResponded = () => {
+        const ctx2 = window.SillyTavern?.getContext?.();
+        const sp = ctx2?.setExtensionPrompt || window.setExtensionPrompt;
+        if (typeof sp === 'function') sp('dangan_mindmine_result', '', 0, 0, false, 'system');
+        eventSource.removeListener(event_types.CHARACTER_MESSAGE_RENDERED, onAiResponded);
+    };
+    eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, onAiResponded);
+}
+
+async function onScrumDebateWin(playerTheory) {
+    const theory = (playerTheory || '').trim();
+
+    // Inject the prompt immediately so it's ready when generation fires
+    const ctx = window.SillyTavern?.getContext?.();
+    const setPrompt = ctx?.setExtensionPrompt || window.setExtensionPrompt;
+    if (typeof setPrompt === 'function') {
+        const prompt = theory
+            ? `[SCRUM DEBATE RESULT]\nProving without a shadow of a doubt that ${theory}`
+            : `[SCRUM DEBATE RESULT]\nThe player's team has proven their argument beyond any doubt.`;
+        setPrompt('dangan_scrum_result', prompt, 0, 1, true, 'system');
+    }
+
+    // Wait for the scrum overlay to fully close (750 ms teardown delay + 310 ms CSS fade)
+    await new Promise(r => setTimeout(r, 1200));
+
+    // Show the rebuttal-style notification
+    const notif = document.createElement('div');
+    notif.id = 'dangan-scrum-win-notif';
+    notif.className = 'dangan-trial-notification rebuttal-active';
+    notif.innerHTML = `
+        <div class="dangan-trial-notif-content">
+            <div class="rebuttal-header">SCRUM DEBATE VICTORY</div>
+            <div class="rebuttal-info">
+                Proving without a shadow of a doubt that <em id="dangan-scrum-win-theory"></em>
+            </div>
+        </div>`;
+    document.body.appendChild(notif);
+    if (theory) notif.querySelector('#dangan-scrum-win-theory').textContent = theory;
+
+    // Do NOT trigger AI generation here — wait for the user to send their own message.
+    // The extension prompt is already set; it will be included in whatever the AI generates
+    // in response to the user's next message.
+
+    // Dismiss the notification when the user sends their next message.
+    const onUserSend = () => {
+        notif.remove();
+        eventSource.removeListener(event_types.MESSAGE_SENT, onUserSend);
+    };
+    eventSource.on(event_types.MESSAGE_SENT, onUserSend);
+
+    // Clear the extension prompt once the AI has responded to that message.
+    const onAiResponded = () => {
+        const ctx2 = window.SillyTavern?.getContext?.();
+        const sp = ctx2?.setExtensionPrompt || window.setExtensionPrompt;
+        if (typeof sp === 'function') sp('dangan_scrum_result', '', 0, 0, false, 'system');
+        eventSource.removeListener(event_types.CHARACTER_MESSAGE_RENDERED, onAiResponded);
+    };
+    eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, onAiResponded);
 }
 
 async function runMonokumaLessonStep(step, state) {
@@ -4808,6 +5807,7 @@ function applySettingsTabUI() {
     vnModeController?.setEnabled?.(!!tab.vnModeEnabled);
     applyAnnouncementCustomisationUI();
     applyLecternUI();
+    applyGameMasterUI();
 }
 
 function saveCharacters() {
@@ -4839,6 +5839,13 @@ function loadCharacters() {
             value.name.toUpperCase().includes("API")
         ) {
             return; // 🚮 skip junk
+        }
+
+        // Drop anything that matches the current ignored-character rules —
+        // catches stale entries like "SillyTavern System", "Assistant", etc.
+        // that were registered before the filter was tightened.
+        if (isIgnoredCharacter(value.name)) {
+            return;
         }
 
         // 🔑 Restore trustHistory as a Set
@@ -6268,6 +7275,12 @@ jQuery(async () => {
         close: document.getElementById("monopad_sfx_close"),
         click: document.getElementById("monopad_sfx_click"),
         hover: document.getElementById("monopad_sfx_hover"),
+        message_move: document.getElementById("monopad_sfx_message_move"),
+        character_hover: document.getElementById("ow_sfx_character_hover"),
+        character_click: document.getElementById("ow_sfx_character_click"),
+        character_enter_talk: document.getElementById("ow_sfx_character_enter_talk"),
+        character_exit_talk: document.getElementById("ow_sfx_character_exit_talk"),
+        change_rooms: document.getElementById("ow_sfx_change_rooms"),
         monocoin_insert: document.getElementById("monopad_sfx_monocoin_insert"),
         monochine_jingle: document.getElementById("monopad_sfx_monochine_jingle"),
         monochine_turn: document.getElementById("monopad_sfx_monochine_turn"),
@@ -6368,8 +7381,70 @@ jQuery(async () => {
                 onMachineClose: () => fadeInAndResumeBgm(),
                 playShopTrack,
                 stopShopTrack,
+                fetchBgmPaths,
+                playBgmPath,
             });
             mapPanelController?.renderMapPanel?.();
+
+            try {
+                overworldSceneController = createOverworldSceneController({
+                    extension_settings,
+                    extensionName,
+                    saveSettingsDebounced,
+                    characters,
+                    getSpriteUrl,
+                    getAvailableExpressionLabels,
+                    getCharacterHeightCm,
+                    getCurrentLocationId,
+                    isInCharacterChat,
+                    executeSlashCommands: (cmd) => executeSlashCommandsWithOptions(cmd, { handleParserErrors: true }),
+                    openGroupById,
+                    getRequestHeaders,
+                    eventSource,
+                    event_types,
+                    getLastKnownCharacterLocations,
+                    getMapPanelController: () => mapPanelController,
+                    getPlayerName: () => getActivePersonaName(),
+                    getCharacterDisplayName,
+                    playSfx,
+                    getSfx: () => sfx,
+                    armBgmTransitionGuard,
+                    onSceneChanged: () => {
+                        // Invalidate the cached minimap signature so it
+                        // rebuilds with the new occupant pins.
+                        _minimapSig = null;
+                        try { renderMinimap(); } catch (e) { console.warn("[Dangan][Overworld] minimap refresh failed:", e); }
+                    },
+                });
+                window.dangan_overworld = overworldSceneController;
+            } catch (e) {
+                console.error("[Dangan][Overworld] Failed to initialize overworld controller:", e);
+                overworldSceneController = { render: () => {}, randomizeLocations: () => {}, notifyPlayerMovedTo: () => {}, ensureCharacterLocations: () => {}, destroy: () => {} };
+            }
+
+            const initialRender = (tag) => {
+                try { renderMoveToPanel(); }
+                catch (e) { console.warn(`[Dangan][moveto-panel] render failed (${tag}):`, e); }
+                try { renderMinimap(); }
+                catch (e) { console.warn(`[Dangan][minimap] render failed (${tag}):`, e); }
+                try { overworldSceneController?.render?.(); }
+                catch (e) { console.warn(`[Dangan][overworld] render failed (${tag}):`, e); }
+            };
+            initialRender('init');
+            // Fallback renders — Assistant / Narrator chats and slow-loading group
+            // chats can fire CHAT_CHANGED before our handler is registered, OR
+            // never fire CHAT_CHANGED at all on first load. Retry at staggered
+            // intervals so one of them lands once the DOM is ready.
+            setTimeout(() => initialRender('t200'),  200);
+            setTimeout(() => initialRender('t600'),  600);
+            setTimeout(() => initialRender('t1200'), 1200);
+            setTimeout(() => initialRender('t2500'), 2500);
+            setTimeout(() => initialRender('t5000'), 5000);
+            const triggerInitialRender = () => initialRender('event');
+            try { eventSource.on(event_types.APP_READY,             triggerInitialRender); } catch {}
+            try { eventSource.on(event_types.CHAT_LOADED,           triggerInitialRender); } catch {}
+            try { eventSource.on(event_types.CHARACTER_PAGE_LOADED, triggerInitialRender); } catch {}
+            try { eventSource.on(event_types.MORE_MESSAGES_LOADED,  triggerInitialRender); } catch {}
         } catch (error) {
             console.error("[Dangan][Map] Failed to initialize map panel controller:", error);
             mapPanelController = {
@@ -6419,6 +7494,7 @@ jQuery(async () => {
             closePayloadOverlay();
             vnModeController?.setMonopadOpen?.(false);
             $panel.removeClass("open booting boot-cold boot-warm");
+            document.body.classList.remove("dangan-monopad-open");
 
             if (getMonopadSetting("bootAnimations")) {
                 $panel.addClass("shutting-down");
@@ -6431,6 +7507,7 @@ jQuery(async () => {
                 playSfx(sfx.close);
                 $panel.addClass("closed");
             }
+            try { renderMoveToPanel(); renderMinimap(); overworldSceneController?.render?.(); } catch {}
         }
 
         $("#dangan_monopad_close").on("click", () => {
@@ -6523,7 +7600,9 @@ $(".monopad-icon").on("mouseenter", function () {
                     $panel.addClass("open");
                     hasBootedThisSession = true;
                 }
+                document.body.classList.add("dangan-monopad-open");
                 if (getMonopadSetting("monopadJingleEnabled") !== false) playSfx(sfx.open);
+                try { renderMoveToPanel(); renderMinimap(); overworldSceneController?.render?.(); } catch {}
             } else {
                 closeMonopadPanel();
             }
@@ -6692,6 +7771,17 @@ $(".monopad-icon").on("mouseenter", function () {
             }
             if (key === "hideTruthBulletImages" || key === "hideGiftImages" || key === "hideHopesPeakBranding") {
                 applyImageVisibilitySettings();
+                if (key === "hideHopesPeakBranding") {
+                    // The Game Master picker only shows under #dangan-branding-extras
+                    // when branding is hidden — re-show branding ⇒ revert mode to
+                    // default Monokuma so a stale "custom" pick can't keep driving
+                    // GM sprites/voice while the user can't see/change it.
+                    if (!next) setMonopadSetting('gameMasterMode', 'default');
+                    applyGameMasterUI();
+                }
+            }
+            if (key === "halfspriteMode") {
+                applyHalfSpriteMode();
             }
             mapPanelController?.handleSettingsChanged?.();
         });
@@ -6750,6 +7840,21 @@ $(".monopad-icon").on("mouseenter", function () {
             const row = document.getElementById('dangan-lectern-custom-row');
             if (row) row.classList.toggle('is-hidden', value !== 'custom');
             setMonopadSetting('customLecternMode', value);
+            saveSettingsDebounced();
+        });
+
+        // Game Master mode toggle (default Monokuma vs custom character)
+        $(document).on("click", "[data-gm-value]", function () {
+            const value = String(this.dataset.gmValue || 'default');
+            setMonopadSetting('gameMasterMode', value);
+            saveSettingsDebounced();
+            applyGameMasterUI();
+        });
+
+        // Game Master character pick
+        $(document).on("change", "#dangan-gm-character", function () {
+            const value = String(this.value || '').trim();
+            setMonopadSetting('gameMasterCharacter', value);
             saveSettingsDebounced();
         });
 
@@ -7014,6 +8119,28 @@ $(".monopad-icon").on("mouseenter", function () {
             if (statusEl) statusEl.textContent = "Chapter reset to PROLOGUE.";
         });
 
+        $("#dangan_reset_introductions").on("click", async function () {
+            const statusEl = document.getElementById("dangan_reset_introductions_status");
+            const confirmed = await openMonopadConfirmDialog({
+                title: "RESET INTRODUCTIONS",
+                message: "Mask every character as ??? again? You'll need to re-run /introduce on each one.",
+                confirmLabel: "RESET",
+                cancelLabel: "CANCEL",
+            });
+            if (!confirmed) {
+                if (statusEl) statusEl.textContent = "Reset cancelled.";
+                return;
+            }
+            // Wipe the persisted introduction map and refresh the surfaces
+            // that render character names so they flip back to ??? immediately.
+            const root = extension_settings[extensionName] ??= {};
+            root.introducedCharacters = {};
+            saveSettingsDebounced();
+            try { overworldSceneController?.render?.(); } catch (_) {}
+            try { _minimapSig = null; renderMinimap(); } catch (_) {}
+            if (statusEl) statusEl.textContent = "All characters reset to ???.";
+        });
+
 loadSettings();
 ensureTimeTrackerState();
 renderTimeTrackerUi();
@@ -7039,12 +8166,21 @@ window.startClassTrial = async () => {
     return triggerTrialStartFromMapPin();
 };
 
-const audioVisualizer = createAudioVisualizerController({
+/**
+ * Update the Trial Context panel with the current topic, goal, and top suspects.
+ * @param {string} topic    - What is currently being discussed (e.g. "Discussing the Blackout")
+ * @param {string} goal     - The trial's overarching goal (e.g. "Who killed Byakuya?")
+ * @param {Array<{name:string,chance:number}>} suspects - Up to 3 suspects with % likelihood
+ */
+window.setTrialContext = (topic, goal, suspects) => {
+    trialManager?.setTrialContext?.(topic, goal, suspects);
+};
+
+audioVisualizer = createAudioVisualizerController({
     getAudioElement: () => {
-        if (investigationTrackAudio && !investigationTrackAudio.paused) return investigationTrackAudio;
+        if (investigationTrackAudio) return investigationTrackAudio;
         const bgm = document.getElementById('audio_bgm');
-        if (bgm instanceof HTMLAudioElement) return bgm;
-        return investigationTrackAudio ?? null;
+        return bgm instanceof HTMLAudioElement ? bgm : null;
     },
     assetsBasePath: extensionFolderPath,
     getGameState: () => ({
@@ -7084,18 +8220,12 @@ if (!getMonopadSetting('bgmOutsideChats') && !isInCharacterChat()) {
     audioVisualizer.suppress();
 }
 
-// Intercept any play() call on #audio_bgm or our own investigationTrackAudio in the
-// capture phase — this fires before the audio actually starts, giving us a zero-latency
-// block. Unsuppress the visualizer once we've confirmed the initial state is settled.
-document.addEventListener('play', (e) => {
-    if (getMonopadSetting('bgmOutsideChats') || isInCharacterChat()) return;
-    const daEl = document.getElementById('audio_bgm');
-    if (e.target === daEl || e.target === investigationTrackAudio) {
-        e.target.pause();
-        audioVisualizer.hide();
-    }
-}, true);
-
+// BGM is allowed to play through chat transitions, so we no longer intercept
+// `play` events on #audio_bgm / investigationTrackAudio to enforce the
+// "in-chat only" rule. The setting still gates the initial autostart below
+// and the CHAT_CHANGED autostart, which is enough to keep a fresh session
+// silent until the user enters a chat — but once BGM is going, nothing here
+// will yank it during a fade-to-black.
 setTimeout(() => audioVisualizer.unsuppress(), 1000);
 
 // Auto-start BGM for the current phase on load (character/group chats only).
@@ -7105,11 +8235,11 @@ setTimeout(() => {
     playPhaseTrack();
 }, 2000);
 
-// Poll to enforce the setting while the user navigates between chats.
-// CHAT_CHANGED doesn't fire when going to/from the Assistant chat.
+// Move-to panel polling — CHAT_CHANGED doesn't fire when entering/leaving the
+// Assistant chat, and renderMoveToPanel is idempotent (it re-uses the existing
+// DOM node when present).
 setInterval(() => {
-    if (getMonopadSetting('bgmOutsideChats')) return;
-    if (!isInCharacterChat()) _stopAllBgm();
+    try { renderMoveToPanel(); renderMinimap(); } catch {}
 }, 2000);
 
 rewards?.renderProgressionUi?.();
@@ -7117,7 +8247,76 @@ updateChapterDisplay();
 itemsPanelController.loadInventoryState();
 applySettingsTabUI();
 applyImageVisibilitySettings();
+applyHalfSpriteMode();
 applyMonopadLaunchControlState(monopadButtonEl, $panel.get(0));
+
+// Persistent guard against Dynamic Audio playing alongside our BGM. Dangan
+// triggers DA's $bgmSelect change in playBgmPath() and does a one-shot 400ms
+// pause on #audio_bgm, but if DA's <audio> is still loading at the 400ms
+// mark the pause is a no-op and DA starts playing AFTER we've silenced it.
+// Polling restarts or chat-change re-fires can also re-trigger DA at any
+// time. Attach a `play` listener once and pause DA immediately whenever
+// dangan has a track loaded (regardless of whether dangan itself is paused
+// or playing — dangan is the authoritative source while it owns a track).
+(function attachDaBgmGuard() {
+    const tryAttach = () => {
+        const daEl = document.getElementById('audio_bgm');
+        if (!(daEl instanceof HTMLAudioElement)) return false;
+        if (daEl._danganGuarded) return true;
+        daEl._danganGuarded = true;
+        const guard = () => {
+            if (investigationTrackAudio && !daEl.paused) daEl.pause();
+        };
+        daEl.addEventListener('play', guard);
+        // Belt-and-braces: also catch the case where DA was already mid-play
+        // when this binding ran (no future `play` event for that session).
+        guard();
+        return true;
+    };
+    if (!tryAttach()) {
+        // DA's #audio_bgm element is built lazily — poll for it briefly.
+        let elapsed = 0;
+        const STEP = 250;
+        const DURATION = 15000;
+        const tick = () => {
+            if (tryAttach()) return;
+            elapsed += STEP;
+            if (elapsed < DURATION) setTimeout(tick, STEP);
+        };
+        setTimeout(tick, STEP);
+    }
+})();
+
+// While the Dangan GCP stage is active, suppress ST's expressions module from
+// running its `updateVisualNovelModeDebounced` on every resize. That handler
+// re-classifies (via /api/extra/classify) every group member's last message
+// — N characters × M resize events = O(N·M) classifier hits, even though
+// dangan's GCP stage has already replaced ST's VN sprite display so the
+// updates produce no visible effect. ST gates the update on
+// isVisualNovelMode() → `power_user.waifuMode && groupId`, so flipping
+// waifuMode off while GCP is active is the cheapest no-side-effects bypass.
+// We snapshot/restore the original value rather than mutating the persisted
+// setting so the user's preference is intact when GCP tears down.
+(function setupGcpVnSuppression() {
+    let _waifuModeSnapshot = null;
+    const apply = () => {
+        const gcpActive = document.body.classList.contains('dangan-gcp-active');
+        if (gcpActive && _waifuModeSnapshot === null) {
+            _waifuModeSnapshot = power_user.waifuMode;
+            power_user.waifuMode = false;
+        } else if (!gcpActive && _waifuModeSnapshot !== null) {
+            power_user.waifuMode = _waifuModeSnapshot;
+            _waifuModeSnapshot = null;
+        }
+    };
+    // Sync once in case the class was already set before this code ran.
+    apply();
+    new MutationObserver(apply).observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class'],
+    });
+})();
+
 loadCharacters();
 itemsPanelController.renderSkillsItemsPanel();
 
@@ -7161,7 +8360,77 @@ debugSTGlobals();
     });
 
     vfxCleanup = initVfxSystem();
+    initEmotionFontsSystem();
     setExpressionTarget(() => trialManager?.getGcpSpeakerImg?.() ?? document.getElementById('expression-image'));
+
+    function promptForBlackened(suggested = '') {
+        return new Promise(resolve => {
+            const modal = document.createElement('div');
+            modal.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.88);display:flex;align-items:center;justify-content:center;font-family:"Orbitron","Arial Black",sans-serif;';
+            const val = JSON.stringify(suggested);
+            modal.innerHTML = `
+                <div style="background:#0d0808;border:2px solid #cc1100;box-shadow:0 0 32px rgba(200,0,0,0.4);padding:32px 40px;max-width:420px;width:90%;text-align:center;">
+                    <div style="color:#ff4444;font-size:1em;font-weight:900;letter-spacing:3px;margin-bottom:20px;text-transform:uppercase;text-shadow:0 0 10px #ff2200;">Who, truthfully, is the Blackened?</div>
+                    <div style="color:#ababab;font-size:0.75em;font-weight:900;letter-spacing:3px;margin-bottom:20px;text-transform:uppercase;text-shadow:0 0 10px #8c8c8c;">This will dictate the 'correct' result.</div>
+
+                    <input id="vt-bl-input" type="text" value=${val}
+                        style="width:100%;background:#111;border:1px solid #662200;color:#fff;padding:9px 14px;font-size:1em;font-family:inherit;margin-bottom:18px;box-sizing:border-box;outline:none;"
+                        placeholder="Enter suspect name…">
+                    <button id="vt-bl-confirm"
+                        style="background:#cc1100;color:#fff;border:none;padding:10px 32px;font-family:inherit;font-weight:900;font-size:0.9em;letter-spacing:2px;cursor:pointer;text-transform:uppercase;box-shadow:0 0 12px rgba(200,0,0,0.5);">
+                        CONFIRM
+                    </button>
+                </div>`;
+            document.body.appendChild(modal);
+            const input = modal.querySelector('#vt-bl-input');
+            const btn   = modal.querySelector('#vt-bl-confirm');
+            input.select();
+            input.focus();
+            const confirm = () => { const v = input.value.trim(); modal.remove(); resolve(v || null); };
+            btn.addEventListener('click', confirm);
+            input.addEventListener('keydown', e => { if (e.key === 'Enter') confirm(); });
+        });
+    }
+
+    function updateSuspectsFromChat() {
+        if (!trialManager) return;
+        const ctx  = window.SillyTavern?.getContext?.();
+        const chat = ctx?.chat;
+        if (!Array.isArray(chat)) return;
+
+        const livingNames = [...characters.values()]
+            .filter(c => !c.dead && !c.missing)
+            .map(c => c.name);
+        if (livingNames.length < 2) return;
+
+        const recent = chat.slice(-30).filter(m => !m.is_system && m.mes);
+        if (recent.length === 0) return;
+
+        // Score each character by weighted mention count, skipping self-mentions
+        const scores = Object.fromEntries(livingNames.map(n => [n, 0]));
+        recent.forEach((msg, i) => {
+            const weight  = (i + 1) / recent.length; // newer = closer to 1
+            const text    = String(msg.mes  || '').toLowerCase();
+            const speaker = String(msg.name || '').toLowerCase();
+            for (const name of livingNames) {
+                if (speaker === name.toLowerCase()) continue;
+                const token = name.split(' ')[0].toLowerCase();
+                const hits  = (text.match(new RegExp(`\\b${token}\\b`, 'g')) ?? []).length;
+                scores[name] += hits * weight;
+            }
+        });
+
+        const total = Object.values(scores).reduce((a, b) => a + b, 0);
+        if (total < 0.5) return;
+
+        const suspects = Object.entries(scores)
+            .filter(([, v]) => v > 0)
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 3)
+            .map(([name, score]) => ({ name, chance: Math.round(score / total * 100) }));
+
+        if (suspects.length > 0) trialManager.setTrialContext(undefined, undefined, suspects);
+    }
 
     try {
         trialManager = createTrialManager({
@@ -7170,11 +8439,20 @@ debugSTGlobals();
             extensionFolderPath,
             saveSettingsDebounced,
             getLecternUrl,
+            getCustomGameMasterName,
+            getCharacterDisplayName,
+            deductMonocoins,
             vnModeController,
             getTruthBullets,
             generateTrialDialogue,
             getCharacterSourceText,
-            getSpriteUrl,
+            getEmotionFont,
+            onTrialStateChange: () => { renderMoveToPanel(); renderMinimap(); overworldSceneController?.render?.(); },
+            // Inject the chat-aware resolver so the trial / GCP stage prefers
+            // -half variants when half-sprite mode is on. Overworld scenes,
+            // chapter rosters, UI pickers, etc. still receive the plain
+            // getSpriteUrl (full sprites only) via their own dep injection.
+            getSpriteUrl: getChatSpriteUrl,
             playSfx,
             getSfx: () => sfx,
             characters,
@@ -7184,9 +8462,64 @@ debugSTGlobals();
             playTrialGeneralTrack: () => playTrialTrack(),
             suppressVisualizer: () => audioVisualizer.suppress(),
             unsuppressVisualizer: () => audioVisualizer.unsuppress(),
-            onStartHangmansGambit: () => {
-                playTrackFromSetting('trialHangmanTracks');
-                hangmansGambitController?.run({ question: 'Identify the culprit', answer: 'BLACKENED', time: 60, health: 3, difficulty: 2 })
+            showMinigameLoadingState,
+            onStartHangmansGambit: async () => {
+                // Show a loading overlay and silence whatever BGM was
+                // playing before the click. The controller starts the HG
+                // OST itself from inside playBgm after the tutorial closes,
+                // so the pre-game window stays quiet.
+                const loadingEl = showHangmanLoadingState();
+                fadeOutAndPauseBgm().catch(() => {});
+
+                // Generate a contextual question/answer from the trial context.
+                // Falls back to the generic culprit prompt if generation fails
+                // or the model returns something that doesn't match the
+                // single-word, A-Z, 5-10-letter constraint.
+                let question = 'Identify the culprit';
+                let answer   = 'BLACKENED';
+                try {
+                    const ctx = trialManager?.getTrialContext?.() ?? {};
+                    const topic    = String(ctx.topic || '').trim() || 'a mysterious crime';
+                    const goal     = String(ctx.goal  || '').trim() || 'find the culprit';
+                    const suspects = (Array.isArray(ctx.suspects) ? ctx.suspects : [])
+                        .map(s => s?.name).filter(Boolean).join(', ') || 'unknown';
+
+                    const prompt = `You are generating a Hangman's Gambit puzzle for a Danganronpa-style class trial.
+
+TRIAL CONTEXT
+Topic: ${topic}
+Goal: ${goal}
+Suspects: ${suspects}
+
+Generate ONE puzzle: a short question relevant to this trial, with a single-word answer.
+
+REQUIREMENTS
+- Question is 4–12 words and ends with a question mark.
+- Answer is a SINGLE English word, 5–10 letters, UPPERCASE, letters A–Z only (no spaces, hyphens, numbers, or punctuation).
+- The answer must plausibly answer the question.
+
+Respond in EXACTLY this format and nothing else:
+QUESTION: <your question>
+ANSWER: <UPPERCASEWORD>`;
+
+                    const out = await generateTrialDialogue(prompt, { maxTokens: 80, temperature: 0.85 });
+                    const qMatch = out.match(/QUESTION:\s*(.+)/i);
+                    const aMatch = out.match(/ANSWER:\s*([A-Za-z]+)/i);
+                    if (qMatch && aMatch) {
+                        const cleanAnswer = aMatch[1].toUpperCase().replace(/[^A-Z]/g, '');
+                        const cleanQuestion = qMatch[1].trim().replace(/^["']|["']$/g, '');
+                        if (cleanAnswer.length >= 5 && cleanAnswer.length <= 10 && cleanQuestion.length > 0) {
+                            question = cleanQuestion;
+                            answer   = cleanAnswer;
+                        }
+                    }
+                } catch (err) {
+                    console.warn('[danganronpa] Failed to generate Hangman puzzle, using fallback:', err);
+                } finally {
+                    loadingEl?.hide?.();
+                }
+
+                hangmansGambitController?.run({ question, answer, time: 120, health: 7, difficulty: 2 })
                     ?.then(() => trialManager?.resumeAfterActivity?.());
             },
             onStartPanicTalkAction: async () => {
@@ -7214,9 +8547,119 @@ debugSTGlobals();
                     BG = isCustom ? encodeURI(bgfile) : `backgrounds/${encodeURIComponent(bgfile)}`;
                 }
 
+                // Loading overlay + soft progress while the LLM drafts the
+                // suspect's defensive dialogs and the four cardinal-direction
+                // sentences that form the Final Argument.
+                const loadingEl = showMinigameLoadingState('Loading Panic Talk Action', { command: '/panictalkaction' });
+                loadingEl?.setProgress?.(0);
+                let softProgress = 0;
+                const softInterval = window.setInterval(() => {
+                    softProgress = Math.min(0.95, softProgress + (0.95 - softProgress) * 0.08);
+                    loadingEl?.setProgress?.(softProgress);
+                }, 200);
+
+                // Fallback content matches the prior stub.
+                let dialogs            = ['You\'re wrong!', 'That\'s impossible!', 'I won\'t let you expose the truth!'];
+                let NSolution          = '';
+                let SSolution          = '';
+                let ESolution          = '';
+                let WSolution          = '';
+                let FinalSolution      = '';
+                let FinalSolutionQuote = '';
+
+                try {
+                    const ctx = trialManager?.getTrialContext?.() ?? {};
+                    const topic    = String(ctx.topic || '').trim() || 'a mysterious crime';
+                    const goal     = String(ctx.goal  || '').trim() || 'find the culprit';
+                    const suspects = (Array.isArray(ctx.suspects) ? ctx.suspects : [])
+                        .map(s => s?.name).filter(Boolean).join(', ') || 'unknown';
+                    const enemy = speakerName || 'the suspect';
+
+                    const prompt = `You are scripting a Panic Talk Action — a Danganronpa-style 1-on-1 confrontation between the player and a panicking suspect.
+
+TRIAL CONTEXT
+Topic: ${topic}
+Goal: ${goal}
+Suspects: ${suspects}
+Accused (PTA opponent): ${enemy}
+
+The minigame works like this:
+1. ${enemy} shouts defensive STATEMENTS while the player attacks. The player breaks each statement in turn.
+2. Once ${enemy} is cornered, the FINAL ARGUMENT begins: four pieces of evidence/logic appear on the cardinal directions (NORTH / SOUTH / EAST / WEST).
+3. The player must press those directions in the correct ORDER. Pressing them in order reconstructs the accusation. The final press triggers the climactic QUOTE.
+
+Generate ALL of the following.
+
+REQUIREMENTS
+- 9 STATEMENTS (defensive shouts from ${enemy}, each 4–12 words, in double quotes, in character). They should escalate from deflection → outright denial → desperation.
+- 4 cardinal sentences (NORTH / SOUTH / EAST / WEST), each at MOST 4 words (1–4 words inclusive), NO quotes. They are short fragments that, when assembled in the correct order, form a coherent accusation against ${enemy}, drawing on the trial context.
+- ORDER: a 4-character string that is a permutation of N, S, E, W (e.g. ESNW) — the correct sequence in which the cardinals should be pressed so the four sentences read as a coherent argument.
+- QUOTE: a single dramatic accusation line (6–14 words, NO double quotes inside), the player's climactic finishing accusation against ${enemy}.
+
+Respond in EXACTLY this format and nothing else (no blank lines, no labels other than these):
+STATEMENT: "<line 1>"
+STATEMENT: "<line 2>"
+STATEMENT: "<line 3>"
+STATEMENT: "<line 4>"
+STATEMENT: "<line 5>"
+STATEMENT: "<line 6>"
+STATEMENT: "<line 7>"
+STATEMENT: "<line 8>"
+STATEMENT: "<line 9>"
+NORTH: <north sentence>
+SOUTH: <south sentence>
+EAST: <east sentence>
+WEST: <west sentence>
+ORDER: <4-letter permutation of NSEW>
+QUOTE: <climactic accusation>`;
+
+                    const out = await generateTrialDialogue(prompt, { maxTokens: 600, temperature: 0.85 });
+
+                    const statementMatches = [...out.matchAll(/STATEMENT:\s*(.+)/gi)]
+                        .map(m => m[1].trim().replace(/^["']|["']$/g, ''))
+                        .filter(Boolean);
+                    const grab = (key) => {
+                        const m = out.match(new RegExp(`^${key}:\\s*(.+)$`, 'mi'));
+                        return m ? m[1].trim().replace(/^["']|["']$/g, '') : '';
+                    };
+                    // Hard-cap each cardinal at 4 words even if the model
+                    // ignores the prompt — keeps the on-screen button labels
+                    // from overflowing.
+                    const capWords = (s) => s.split(/\s+/).filter(Boolean).slice(0, 4).join(' ');
+                    const north = capWords(grab('NORTH'));
+                    const south = capWords(grab('SOUTH'));
+                    const east  = capWords(grab('EAST'));
+                    const west  = capWords(grab('WEST'));
+                    const order = grab('ORDER').toUpperCase().replace(/[^NSEW]/g, '');
+                    const quote = grab('QUOTE');
+
+                    const validOrder = order.length === 4
+                        && new Set(order).size === 4
+                        && [...'NSEW'].every(c => order.includes(c));
+
+                    if (statementMatches.length >= 3 && north && south && east && west && validOrder && quote) {
+                        // PTA caps at 11 statements; trim if the model over-shot.
+                        dialogs            = statementMatches.slice(0, 11);
+                        NSolution          = north;
+                        SSolution          = south;
+                        ESolution          = east;
+                        WSolution          = west;
+                        FinalSolution      = order;
+                        FinalSolutionQuote = quote;
+                    }
+                } catch (err) {
+                    console.warn('[danganronpa] Failed to generate Panic Talk Action, using fallback:', err);
+                } finally {
+                    window.clearInterval(softInterval);
+                    loadingEl?.setProgress?.(1);
+                    loadingEl?.hide?.();
+                }
+
                 panicTalkActionController?.run({
                     enemyHp: 100, playerHp: 100, phases: 3,
-                    dialogs: ['You\'re wrong!', 'That\'s impossible!', 'I won\'t let you expose the truth!'],
+                    dialogs,
+                    NSolution, SSolution, ESolution, WSolution,
+                    FinalSolution, FinalSolutionQuote,
                     BG,
                     mainSprite,
                     defeatSprite,
@@ -7247,12 +8690,196 @@ debugSTGlobals();
                     ?.then(() => triggerInterjectorResponse(characterName))
                     ?.then(() => trialManager?.resumeAfterActivity?.());
             },
-            onStartVotingTime: () => voteResultsController?.run({})
-                ?.then(() => trialManager?.resumeAfterActivity?.()),
-            onStartQuestionTime: () => questionTimeController?.run({ title: 'Who is the blackened?', time: 30, answers: ['Suspect A', 'Suspect B', 'Suspect C', 'Suspect D'], correct: 1 })
-                ?.then(() => trialManager?.resumeAfterActivity?.()),
-            onStartQuestionTruth: () => questionTruthController?.run({ question: 'What is the key piece of evidence?', answer: '' })
-                ?.then(() => trialManager?.resumeAfterActivity?.()),
+            onStartVotingTime: async () => {
+                const topSuspect = trialManager?.getTrialContext?.()?.suspects?.[0]?.name ?? '';
+                const correctBlackened = await promptForBlackened(topSuspect);
+                const result = await votingScreenController?.run() ?? {};
+                if (result.error) {
+                    trialManager?.resumeAfterActivity?.();
+                    return;
+                }
+                const guess = result.guess ?? null;
+
+                // Convert vote tallies → top-3 suspects with percentage share
+                const votes      = result.votes ?? {};
+                const totalVotes = Object.values(votes).reduce((a, b) => a + b, 0);
+                if (totalVotes > 0) {
+                    const suspects = Object.entries(votes)
+                        .sort(([, a], [, b]) => b - a)
+                        .slice(0, 3)
+                        .map(([name, count]) => ({ name, chance: Math.round(count / totalVotes * 100) }));
+                    trialManager?.setTrialContext(undefined, undefined, suspects);
+                }
+
+                await voteResultsController?.run({ guess, result: correctBlackened });
+                trialManager?.resumeAfterActivity?.();
+            },
+            onStartQuestionTime: async () => {
+                // Show a loading overlay while the LLM drafts a question + 4
+                // answers from the current trial context. Falls back to a
+                // generic suspect picker if generation fails or the model
+                // returns something we can't parse cleanly.
+                const loadingEl = showMinigameLoadingState('Loading Question Time', { command: '/questiontime' });
+                loadingEl?.setProgress?.(0);
+                // Question Time is one generateRaw call, so there's no true
+                // segment-by-segment progress. Drive a soft asymptotic
+                // approach toward 95% so the user gets a moving number, then
+                // snap to 100% in the finally block when generation lands.
+                let softProgress = 0;
+                const softInterval = window.setInterval(() => {
+                    softProgress = Math.min(0.95, softProgress + (0.95 - softProgress) * 0.08);
+                    loadingEl?.setProgress?.(softProgress);
+                }, 200);
+
+                let title   = 'Who is the blackened?';
+                let answers = ['Suspect A', 'Suspect B', 'Suspect C', 'Suspect D'];
+                let correct = 0;
+                try {
+                    const ctx = trialManager?.getTrialContext?.() ?? {};
+                    const topic    = String(ctx.topic || '').trim() || 'a mysterious crime';
+                    const goal     = String(ctx.goal  || '').trim() || 'find the culprit';
+                    const suspects = (Array.isArray(ctx.suspects) ? ctx.suspects : [])
+                        .map(s => s?.name).filter(Boolean).join(', ') || 'unknown';
+
+                    const prompt = `You are generating a Question Time round for a Danganronpa-style class trial.
+
+TRIAL CONTEXT
+Topic: ${topic}
+Goal: ${goal}
+Suspects: ${suspects}
+
+Generate ONE multiple-choice question about a SPECIFIC DETAIL of the case, with EXACTLY four answers. One answer must be correct.
+
+REQUIREMENTS
+- The question must ask about a detail of the case — for example: a piece of evidence, the murder weapon, the time/place/method, an alibi, an inconsistency in testimony, a motive, an object found at the scene, who was last seen with the victim, etc.
+- DO NOT ask "Who is the killer?", "Who is the blackened?", "Who did it?", "Who is the culprit?", or any direct variant of those. Naming a suspect should not be the question — it can only ever be one of the answers when it relates to a specific detail (e.g. "Who was seen entering the storage room?").
+- Question is 6–16 words and ends with a question mark.
+- Exactly 4 answers, each 1–6 words, distinct, none beginning with a label like "A)" or "1.".
+- Mark the correct answer with a leading "*" character.
+- The other three answers should be plausible distractors that could fit the same kind of detail (e.g. four possible weapons, four possible times, four possible locations).
+
+Respond in EXACTLY this format and nothing else:
+QUESTION: <your question>
+ANSWER: <answer>
+ANSWER: *<correct answer>
+ANSWER: <answer>
+ANSWER: <answer>`;
+
+                    const out = await generateTrialDialogue(prompt, { maxTokens: 160, temperature: 0.85 });
+                    const qMatch  = out.match(/QUESTION:\s*(.+)/i);
+                    const aMatches = [...out.matchAll(/ANSWER:\s*(.+)/gi)].map(m => m[1].trim());
+                    if (qMatch && aMatches.length >= 4) {
+                        const cleanQuestion = qMatch[1].trim().replace(/^["']|["']$/g, '');
+                        const four = aMatches.slice(0, 4);
+                        const correctIdx = four.findIndex(a => /^\*/.test(a));
+                        const cleaned = four.map(a => a.replace(/^\*\s*/, '').trim()).filter(Boolean);
+                        if (cleaned.length === 4 && correctIdx >= 0 && cleanQuestion.length > 0) {
+                            title   = cleanQuestion;
+                            answers = cleaned;
+                            correct = correctIdx;
+                        }
+                    }
+                } catch (err) {
+                    console.warn('[danganronpa] Failed to generate Question Time, using fallback:', err);
+                } finally {
+                    window.clearInterval(softInterval);
+                    loadingEl?.setProgress?.(1);
+                    loadingEl?.hide?.();
+                }
+
+                questionTimeController?.run({ title, time: 30, answers, correct })
+                    ?.then(() => trialManager?.resumeAfterActivity?.());
+            },
+            onStartQuestionTruth: async () => {
+                // Generate a question whose correct answer is exactly one of
+                // the player's collected Truth Bullet titles.  Falls back to
+                // the prior stub if generation fails or there are no bullets
+                // to pick from.
+                const loadingEl = showMinigameLoadingState('Loading Question Truth', { command: '/questiontruth' });
+                loadingEl?.setProgress?.(0);
+                let softProgress = 0;
+                const softInterval = window.setInterval(() => {
+                    softProgress = Math.min(0.95, softProgress + (0.95 - softProgress) * 0.08);
+                    loadingEl?.setProgress?.(softProgress);
+                }, 200);
+
+                let question = 'What is the key piece of evidence?';
+                let answer   = '';
+                let time     = 60; // floor; the model may extend this if it picks a harder question
+                try {
+                    const bullets = (getTruthBulletsSnapshot() || [])
+                        .filter(b => b && typeof b.title === 'string' && b.title.trim().length)
+                        .slice(0, 24);
+
+                    if (bullets.length === 0) {
+                        console.warn('[danganronpa] Question Truth: no Truth Bullets — using fallback.');
+                    } else {
+                        const ctx = trialManager?.getTrialContext?.() ?? {};
+                        const topic = String(ctx.topic || '').trim() || 'the current case';
+                        const bulletList = bullets.map((b, i) => {
+                            const title = String(b.title || '').trim();
+                            const desc  = String(b.description || '').trim().replace(/\s+/g, ' ');
+                            return `${i + 1}. TITLE: ${title}\n   DESCRIPTION: ${desc || '(no description)'}`;
+                        }).join('\n');
+
+                        const prompt = `You are generating a "Question Truth" round for a Danganronpa-style class trial about: ${topic}.
+
+The player has collected these Truth Bullets — each has a TITLE and a DESCRIPTION:
+
+${bulletList}
+
+Generate ONE multiple-truth question whose correct answer is the EXACT TITLE of one of the Truth Bullets above.
+
+REQUIREMENTS
+- Pick ONE of the Truth Bullets to be the answer. Use its TITLE verbatim — same words, same capitalisation, no rephrasing.
+- The question must ask about a specific detail found in that bullet's DESCRIPTION (e.g. what was discovered, what an item proves, what a witness saw, etc.).
+- The question must be answerable using JUST THE TITLE — the title alone must be a sensible, complete answer.
+- DO NOT ask vague trial-wide questions like "Who is the murderer?", "Who is the blackened?", or "What happened?" unless the answer matches a bullet title exactly.
+- DO NOT ask a question that requires extra context beyond the bullet's title to answer.
+- Question is 6–18 words and ends with a question mark.
+- Choose a fair TIME LIMIT for the player to answer, in WHOLE seconds. The MINIMUM is 60; you may set a higher value (up to 180) if the question genuinely requires more thought — e.g. when there are many similarly-titled bullets, or the player must cross-reference details. Default to 60 unless you have a clear reason to extend.
+
+Respond in EXACTLY this format and nothing else:
+QUESTION: <your question>
+ANSWER: <exact TITLE of one Truth Bullet from the list above>
+TIME: <whole-second integer, minimum 60, maximum 180>`;
+
+                        const out = await generateTrialDialogue(prompt, { maxTokens: 180, temperature: 0.8 });
+                        const qMatch = out.match(/QUESTION:\s*(.+)/i);
+                        const aMatch = out.match(/ANSWER:\s*(.+)/i);
+                        const tMatch = out.match(/TIME:\s*(\d+)/i);
+                        if (qMatch && aMatch) {
+                            const candidateQ = qMatch[1].trim().replace(/^["']|["']$/g, '');
+                            const candidateA = aMatch[1].trim().replace(/^["']|["']$/g, '');
+                            // Validate the answer matches a real bullet title (case-insensitive)
+                            // and replace it with the canonical-cased title.
+                            const matched = bullets.find(b => b.title.trim().toLowerCase() === candidateA.toLowerCase());
+                            if (matched && candidateQ.length > 0) {
+                                question = candidateQ;
+                                answer   = matched.title.trim();
+                                if (tMatch) {
+                                    // Clamp model-provided TIME to [60, 180] whole seconds.
+                                    const candidateT = parseInt(tMatch[1], 10);
+                                    if (Number.isFinite(candidateT)) {
+                                        time = Math.max(60, Math.min(180, candidateT));
+                                    }
+                                }
+                            } else {
+                                console.warn('[danganronpa] Question Truth: model answer did not match any bullet title, using fallback.');
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.warn('[danganronpa] Failed to generate Question Truth, using fallback:', err);
+                } finally {
+                    window.clearInterval(softInterval);
+                    loadingEl?.setProgress?.(1);
+                    loadingEl?.hide?.();
+                }
+
+                questionTruthController?.run({ question, answer, time })
+                    ?.then(() => trialManager?.resumeAfterActivity?.());
+            },
             onStartChoosing: ({ characters = [], startIdx = 0 } = {}) => {
                 playTrackFromSetting('trialSuspectChoiceTracks');
                 chooseCharacterController?.run({ characters, startIdx })
@@ -7283,6 +8910,156 @@ debugSTGlobals();
                     console.warn('[danganronpa] onStartPunishmentTime failed:', err);
                 }
                 trialManager?.resumeAfterActivity?.();
+            },
+            onStartScrumDebate: async () => {
+                if (!scrumDebateController) return;
+                // Generate a scenario via the LLM (matching SCRUM_DEBATE_DEFAULT_SCENARIO's
+                // shape).  If anything fails — no truth bullets, parse error,
+                // LLM unavailable — fall through to the hardcoded default in
+                // vfx/scrumDebate.js so the minigame still launches.
+                const loadingEl = showMinigameLoadingState('Loading Scrum Debate', { command: '/scrumdebate' });
+                // Time-based eased progress ramp: scenario generation is a
+                // single LLM call (with one retry on parse fail), so we
+                // can't report real intermediate progress.  Instead, ramp
+                // 0 → ~90% asymptotically over the typical generation
+                // window so the user sees movement; snap to 100% the
+                // moment generation actually completes.
+                let scrumProgress = 0;
+                const scrumProgressStart = performance.now();
+                const SCRUM_PROGRESS_HALF_LIFE_MS = 7000; // 50% of remaining gap closes every ~7s
+                const scrumProgressTick = window.setInterval(() => {
+                    const elapsed = performance.now() - scrumProgressStart;
+                    // 1 - 0.5^(t / halfLife): hits ~50% at 7s, ~75% at 14s, ~87.5% at 21s, cap 90%.
+                    const eased = 1 - Math.pow(0.5, elapsed / SCRUM_PROGRESS_HALF_LIFE_MS);
+                    scrumProgress = Math.min(0.9, eased * 0.9);
+                    loadingEl?.setProgress?.(scrumProgress);
+                }, 120);
+                // Round count tracks the number of ALIVE opposing-team members
+                // that can actually speak (dead classmates never get their own
+                // scenario).  When alive counts are unequal across the two
+                // teams — which happens when the alive-total is odd and the
+                // split is e.g. 4 / 3 — fall back to the smaller of the two
+                // so each round has a paired alive speaker on each side.
+                // Net effect: equal alive teams use the full count; uneven
+                // teams drop one scenario.
+                let roundCount = 3;
+                try {
+                    const teams = buildScrumTeams((name) => characters.get(normalizeName(name))?.dead === true);
+                    const oppAlive    = (teams?.opposing || []).filter(c => !c?._sdDead).length;
+                    const playerAlive = (teams?.player   || []).filter(c => !c?._sdDead).length;
+                    const minAlive    = Math.min(oppAlive, playerAlive);
+                    if (minAlive > 0) roundCount = minAlive;
+                } catch (e) {
+                    console.warn("[danganronpa] Could not size Scrum rounds from alive headcounts; using default 3:", e);
+                }
+                let scenario = null;
+                try {
+                    scenario = await buildScrumDebateScenario({
+                        trialContext:    trialManager?.getTrialContext?.() ?? null,
+                        truthBullets:    getTruthBulletsSnapshot(),
+                        contextMessages: (typeof getContextMessages === "function" ? getContextMessages() : [])
+                            .map(m => ({ isUser: m.isUser, name: m.name, text: m.text })),
+                        roundCount,
+                    });
+                } catch (e) {
+                    console.warn("[danganronpa] Scrum Debate scenario generation threw:", e);
+                }
+                window.clearInterval(scrumProgressTick);
+                loadingEl?.setProgress?.(1.0);
+                // Brief beat at 100% so the user actually sees the bar
+                // finish before the screen tears down.
+                await new Promise(r => setTimeout(r, 180));
+                loadingEl?.hide?.();
+
+                // Generation failed → surface the error to the user instead
+                // of silently falling back to the stubbed scenario, then bail
+                // out without launching the minigame.
+                if (!scenario) {
+                    const errorEl = showMinigameErrorState({
+                        title:    'Scrum Debate generation failed',
+                        subtitle: 'Please try again. Alternatively, generate your own using',
+                        command:  '/scrumdebate',
+                    });
+                    try { await errorEl.onDismissed(); } catch {}
+                    trialManager?.resumeAfterActivity?.();
+                    return;
+                }
+
+                try {
+                    await scrumDebateController.run({ scenario });
+                } finally {
+                    trialManager?.resumeAfterActivity?.();
+                }
+            },
+            onStartMindMine: async () => {
+                if (!mindMineController) return;
+                // Generate three case-relevant statements via the LLM. One of
+                // them will be uncovered by the player and folded back into
+                // the LLM as "A point of relevance is that <statement>...".
+                // Falls through to mindMine.js's hardcoded defaults if
+                // generation fails or returns fewer than three usable lines.
+                const loadingEl = showMinigameLoadingState('Loading Mind Mine', { command: '/mindmine' });
+                loadingEl?.setProgress?.(0);
+                let softProgress = 0;
+                const softInterval = window.setInterval(() => {
+                    softProgress = Math.min(0.95, softProgress + (0.95 - softProgress) * 0.08);
+                    loadingEl?.setProgress?.(softProgress);
+                }, 200);
+
+                let sentences = [];
+                try {
+                    const ctx = trialManager?.getTrialContext?.() ?? {};
+                    const topic = String(ctx.topic || '').trim() || 'a mysterious crime';
+                    const goal  = String(ctx.goal  || '').trim() || 'find the culprit';
+                    const suspectsList = (Array.isArray(ctx.suspects) ? ctx.suspects : [])
+                        .map(s => s?.name).filter(Boolean).join(', ') || 'unknown';
+
+                    const bullets = (getTruthBulletsSnapshot() || [])
+                        .filter(b => b && typeof b.title === 'string' && b.title.trim().length)
+                        .slice(0, 16)
+                        .map((b, i) => {
+                            const title = String(b.title || '').trim();
+                            const desc  = String(b.description || '').trim().replace(/\s+/g, ' ');
+                            return `${i + 1}. ${title}${desc ? ` — ${desc}` : ''}`;
+                        }).join('\n');
+                    const bulletsBlock = bullets ? `\n\nTRUTH BULLETS COLLECTED\n${bullets}` : '';
+
+                    const prompt = `You are generating three statements for a "Mind Mine" round in a Danganronpa-style class trial.
+
+TRIAL CONTEXT
+Topic: ${topic}
+Goal: ${goal}
+Suspects: ${suspectsList}${bulletsBlock}
+
+Produce THREE distinct, plausible STATEMENTS about the case. Each statement must:
+- Be a complete, declarative sentence — NOT a question and NOT prefixed with a label.
+- Be between 6 and 14 words long.
+- Make a specific claim about the case (an alibi, a piece of evidence, a motive, a timeline detail, an inconsistency, who was where, etc.).
+- Be self-contained and read naturally as a continuation of the phrase "A point of relevance is that <statement>".
+- Start with a capital letter and end with NO trailing punctuation (no period or question mark).
+- Be distinct from the other two — no near-duplicates.
+
+Respond in EXACTLY this format and nothing else:
+STATEMENT: <first statement>
+STATEMENT: <second statement>
+STATEMENT: <third statement>`;
+
+                    const out = await generateTrialDialogue(prompt, { maxTokens: 220, temperature: 0.85 });
+                    const matches = [...out.matchAll(/STATEMENT:\s*(.+)/gi)]
+                        .map(m => m[1].trim()
+                            .replace(/^["']|["']$/g, '')
+                            .replace(/[.?!]+\s*$/, ''))
+                        .filter(s => s.length >= 6);
+                    if (matches.length >= 3) sentences = matches.slice(0, 3);
+                } catch (err) {
+                    console.warn('[danganronpa] Failed to generate Mind Mine statements, using fallback:', err);
+                } finally {
+                    window.clearInterval(softInterval);
+                    loadingEl?.setProgress?.(1);
+                    loadingEl?.hide?.();
+                }
+
+                mindMineController.run({ sentences });
             },
             getEquippedSkillsSnapshot,
             attachDraggablePositioning,
@@ -7341,6 +9118,7 @@ debugSTGlobals();
                     } else {
                         console.warn(`[${extensionName}] ⚠️ trialManager not initialized yet.`);
                     }
+                    updateSuspectsFromChat();
                 }, 250);
             }
         };
@@ -7356,8 +9134,15 @@ debugSTGlobals();
             if (msg && !msg.is_user && msg.name) {
                 trialManager?.updateGroupChatSpeaker?.(msg.name);
             }
+            updateSuspectsFromChat();
         };
         eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, handleCharacterMessage);
+
+        document.addEventListener('click', e => {
+            const btn = e.target.closest('.dangan-suspect-refresh-btn');
+            if (!btn) return;
+            updateSuspectsFromChat();
+        });
 
         // On chat change, rebuild the stage (group ↔ 1-on-1 may differ) then snap to latest speaker.
         // Suppress VFX/SFX for the duration of the init + a grace period so the expressions
@@ -7365,14 +9150,32 @@ debugSTGlobals();
         eventSource.on(event_types.CHAT_CHANGED, () => {
             setVfxGcpLoadSuppressed(true);
             setVfxGcpGroupActive(false); // reset until new chat's GCP init completes
+            try { renderMoveToPanel(); renderMinimap(); } catch (e) { console.warn('[Dangan][moveto-panel] render failed:', e); }
+            try { overworldSceneController?.render?.(); } catch (e) { console.warn('[Dangan][overworld] render failed:', e); }
             trialManager?.destroyGroupChatPortraits?.();
+            // Reset trial state synchronously. Deferring this used to leave a
+            // ~300ms window where trialActive was stale from the previous chat;
+            // the trialManager's 1.5s safety poll could fire inside that gap,
+            // see trialActive && isGroupChat() as true for the *new* group, and
+            // briefly mount the trial frame/badge/sticker before the deferred
+            // onChatChanged ran and unmounted them — visible as a flash of the
+            // Class Trial UI on Talk-to-the-Room (and other group entries).
+            trialManager?.onChatChanged?.();
+            // Strip Prome User Sprite from the group's member list if it crept
+            // in before that character was added to the system-name filter.
+            stripPromeFromCurrentGroup();
             setTimeout(async () => {
-                trialManager?.onChatChanged?.();
                 await trialManager?.initGroupChatPortraits?.();
                 const ctx = window.SillyTavern?.getContext?.();
                 setVfxGcpGroupActive(!!(ctx?.groupId));
-                const lastMsg = [...(ctx?.chat || [])].reverse().find(m => !m.is_user && m.name);
-                if (lastMsg?.name) trialManager?.updateGroupChatSpeaker?.(lastMsg.name);
+                const lastMsg = [...(ctx?.chat || [])].reverse().find(m => !m.is_system && m.name);
+                if (lastMsg) {
+                    const speakerName = lastMsg.is_user
+                        ? (ctx?.name1 || ctx?.user_name || ctx?.userName || ctx?.personaName || lastMsg.name)
+                        : lastMsg.name;
+                    if (speakerName) trialManager?.updateGroupChatSpeaker?.(speakerName);
+                }
+                updateSuspectsFromChat();
                 // Grace period for ST's post-load expression updates to settle, then re-enable VFX/SFX.
                 setTimeout(() => setVfxGcpLoadSuppressed(false), 1500);
             }, 300);
@@ -7387,18 +9190,18 @@ debugSTGlobals();
                 }, 500);
             }
 
-            // BGM in-chat-only: start or stop depending on whether we're entering or leaving a chat.
+            // BGM persists across chat transitions. Only autostart when there
+            // is genuinely no track yet — we deliberately do NOT check
+            // `.paused`, since that can read true momentarily during the
+            // chat-load even though the override-and-listener pair below is
+            // already resuming the same element. Restarting via playPhaseTrack
+            // here would create a fresh Audio() and force a 1-2 second buffer
+            // gap, which is exactly the artefact we're trying to eliminate.
             if (!getMonopadSetting('bgmOutsideChats')) {
                 setTimeout(() => {
-                    if (isInCharacterChat()) {
-                        // Entering a chat — start phase track if nothing is playing.
-                        if (!investigationTrackAudio || investigationTrackAudio.paused) {
-                            playPhaseTrack();
-                        }
-                    } else {
-                        // Leaving chat — stop BGM and hide visualizer.
-                        _stopAllBgm();
-                    }
+                    if (!isInCharacterChat()) return;
+                    if (investigationTrackAudio) return;
+                    playPhaseTrack();
                 }, 600);
             }
         });
@@ -7418,6 +9221,42 @@ debugSTGlobals();
         let _pendingExprSrc = null;
         let _exprDebounceTimer = null;
 
+        // When half-sprite mode is on, transform a sprite URL to its -half
+        // variant (e.g. `approval.png?t=…` → `approval-half.png?t=…`). The
+        // mirror gets the raw URL from ST's img.expression element, which
+        // bypasses getSpriteUrl; this helper applies the same -half
+        // preference here. Falls back to the original URL via onerror if the
+        // -half file doesn't exist on the server.
+        function setMirroredSrc(img, src) {
+            if (!img || !src) return;
+            const halfMode = !!extension_settings[extensionName]?.halfspriteMode;
+            // Class trials never use -half sprites. If the incoming src is
+            // itself a -half URL (shouldn't happen now that getChatSpriteUrl
+            // also gates on trial state, but kept as belt-and-braces) we
+            // rewrite it back to the canonical full sprite.
+            if (isTrialUiActive()) {
+                const noHalf = src.replace(/-half(\.[a-z0-9]+)/i, '$1');
+                img.src = noHalf;
+                return;
+            }
+            // Already half-prefixed, or not in half mode — set directly.
+            if (!halfMode || /-half\.[a-z0-9]+(\?|$)/i.test(src)) {
+                img.src = src;
+                return;
+            }
+            const halfSrc = src.replace(/(\.[a-z0-9]+)(\?|$)/i, '-half$1$2');
+            // 404 fallback: if the -half file doesn't exist, drop back to the
+            // original full-body sprite. `once: true` so we don't leak handlers.
+            const onFail = () => { img.src = src; };
+            img.addEventListener('error', onFail, { once: true });
+            // Clear the listener if the half load succeeds (so a later failure
+            // on a different src doesn't accidentally reset to this one).
+            img.addEventListener('load', () => {
+                img.removeEventListener('error', onFail);
+            }, { once: true });
+            img.src = halfSrc;
+        }
+
         function flushExpression() {
             const src = _pendingExprSrc;
             _pendingExprSrc = null;
@@ -7425,7 +9264,7 @@ debugSTGlobals();
             const speakerImg = trialManager?.getGcpSpeakerImg?.();
             if (!speakerImg) return;
             if (speakerImg.parentElement?.classList.contains('gcp-dead')) return;
-            speakerImg.src = src;
+            setMirroredSrc(speakerImg, src);
         }
 
         function onExpressionChange(imgEl) {
@@ -7440,7 +9279,7 @@ debugSTGlobals();
             // Prome user sprite → player slot
             if (imgEl.closest?.('#expression-prome-user')) {
                 const playerImg = trialManager?.getGcpPlayerImg?.();
-                if (playerImg) playerImg.src = src;
+                if (playerImg) setMirroredSrc(playerImg, src);
                 return;
             }
 
@@ -7454,7 +9293,7 @@ debugSTGlobals();
                 const targetImg = trialManager?.getGcpImgForExpressionSrc?.(src);
                 if (targetImg) {
                     if (!targetImg.closest('.dangan-gcp-slot')?.classList.contains('gcp-dead')) {
-                        targetImg.src = src;
+                        setMirroredSrc(targetImg, src);
                         // ST's setImage does a clone-swap in VN mode: the original img is
                         // removed and a clone gets the new src but inherits the OLD
                         // data-expression. Reading data-expression here would give "neutral"
@@ -7472,6 +9311,13 @@ debugSTGlobals();
                     }
                     return;
                 }
+                // targetImg is null — either GCP not yet initialised, or Monokuma whose
+                // overlay img doesn't exist yet.  In either case, if this src belongs to
+                // Monokuma skip it entirely (the overlay handles his expressions directly).
+                try {
+                    const _parts = new URL(src, location.href).pathname.split('/').filter(Boolean);
+                    if (_parts.length >= 2 && decodeURIComponent(_parts[_parts.length - 2]).toLowerCase() === 'monokuma') return;
+                } catch { /* ignore bad src */ }
                 // targetImg is null → GCP not yet initialised; fall through to debounce
                 // so the expression is buffered and applied once the stage is ready.
             }
@@ -7531,8 +9377,70 @@ debugSTGlobals();
         executionCinematicEditor?.open();
     });
 
+    votingScreenController = createVotingScreenController({
+        extensionFolderPath,
+        getCharacters: () => {
+            const chars = [...characters.values()];
+            const playerName = getActivePersonaName();
+            if (playerName && playerName !== 'STUDENT') {
+                chars.push({ name: playerName, isPlayer: true, dead: false, missing: false });
+            }
+            return chars;
+        },
+        getUserAvatarUrl: getActiveUserAvatarUrl,
+        getSpriteUrl: (charName, label = 'neutral') => getSpriteUrl(charName, label),
+        getPlayerName: getActivePersonaName,
+        generateVotes: async (livingNames, playerName) => {
+            const npcs = livingNames.filter(n => n !== playerName);
+            if (!npcs.length) return {};
+
+            // Include recent chat context so the AI can make an informed vote
+            const ctx = window.SillyTavern?.getContext?.();
+            const recentLines = Array.isArray(ctx?.chat)
+                ? ctx.chat.slice(-10)
+                    .filter(m => !m.is_system && m.mes)
+                    .map(m => `${m.name || 'Unknown'}: ${String(m.mes || '').replace(/\n/g, ' ').slice(0, 250)}`)
+                    .join('\n')
+                : '';
+
+            const candidates = livingNames.join(', ');
+            const contextBlock = recentLines ? `\n[Recent trial discussion]\n${recentLines}\n` : '';
+            const prompt = `[Class Trial – Voting Time]${contextBlock}\nStudents casting votes: ${npcs.join(', ')}\nCandidates for blackened: ${candidates}\n\nBased on the evidence, each student casts exactly one vote. List every student's vote:\n${npcs.map(n => `${n}:`).join('\n')}\n`;
+
+            try {
+                const raw = await generateTrialDialogue(prompt, {
+                    maxTokens: 400,
+                    temperature: 0.8,
+                    stop: ['\n\n\n', '---'],
+                });
+                const tally = {};
+                for (const line of raw.split('\n')) {
+                    const m = line.match(/^([^:]+):\s*(.+)/);
+                    if (!m) continue;
+                    const voter    = m[1].trim();
+                    const votedRaw = m[2].trim().replace(/["""'']/g, '').split(/[,.(]/)[0].trim();
+                    // Only count lines where the voter is an NPC
+                    const isNpc = npcs.some(n =>
+                        n.toLowerCase() === voter.toLowerCase() ||
+                        voter.toLowerCase().includes(n.toLowerCase()));
+                    if (!isNpc) continue;
+                    const found = livingNames.find(n =>
+                        n.toLowerCase() === votedRaw.toLowerCase() ||
+                        votedRaw.toLowerCase().includes(n.toLowerCase()) ||
+                        n.toLowerCase().includes(votedRaw.toLowerCase()));
+                    if (found) tally[found] = (tally[found] || 0) + 1;
+                }
+                return tally;
+            } catch (e) {
+                console.warn('[VotingScreen] generateVotes failed:', e);
+                return {};
+            }
+        },
+    });
+
     voteResultsController = createVoteResultsController({
         extensionFolderPath,
+        getCustomGameMasterName,
         getCharacters: () => {
             const chars = [...characters.values()];
             const playerName = getActivePersonaName();
@@ -7565,8 +9473,30 @@ debugSTGlobals();
     };
     questionTimeController   = createQuestionTimeController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, getPlayerSpriteUrl });
     questionTruthController  = createQuestionTruthController({ extensionFolderPath, getTruthBullets: getTruthBulletsSnapshot, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, getPlayerSpriteUrl });
-    hangmansGambitController  = createHangmansGambitController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, pauseDynamicAudio: fadeOutAndPauseBgm, resumeDynamicAudio: resumeBgmAfterHG, playBgm: playHGBgm, getPlayerSpriteUrl });
-    panicTalkActionController = createPanicTalkActionController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme });
+    const tutorialPromptDeps = {
+        isTutorialPromptEnabled: () => getMonopadSetting('minigameTutorialsEnabled') !== false,
+        disableTutorialPrompt:   () => setMonopadSetting('minigameTutorialsEnabled', false),
+    };
+    hangmansGambitController  = createHangmansGambitController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, pauseDynamicAudio: fadeOutAndPauseBgm, resumeDynamicAudio: resumeBgmAfterHG, playBgm: playHGBgm, getPlayerSpriteUrl, ...tutorialPromptDeps });
+    panicTalkActionController = createPanicTalkActionController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, ...tutorialPromptDeps });
+    mindMineController        = createMindMineController({
+        extensionFolderPath,
+        pauseCurrentBgm: fadeOutAndPauseBgm,
+        resumeCurrentBgm: resumeBgmAfterHG,
+        playBgm: playMindMineBgm,
+        onWin: onMindMineWin,
+        getPlayerSpriteUrl,
+        onStart: () => {
+            document.getElementById('dangan-trial-context-panel')?.style.setProperty('display', 'none');
+            document.getElementById('dangan_monopad_button')?.style.setProperty('display', 'none');
+        },
+        onEnd: () => {
+            document.getElementById('dangan-trial-context-panel')?.style.removeProperty('display');
+            document.getElementById('dangan_monopad_button')?.style.removeProperty('display');
+            trialManager?.resumeAfterActivity?.();
+        },
+    });
+    scrumDebateController     = createScrumDebateController({ extensionFolderPath, awardMonocoins, deductMonocoins, getTruthBullets: getTruthBulletsSnapshot, pauseCurrentBgm: fadeOutAndPauseBgm, resumeCurrentBgm: resumeBgmAfterHG, getScrumTracks: () => extension_settings[extensionName]?.trialScrumTracks ?? [], playBgm: playBgmForScrum, getFinalPushTrack: () => findBgmTrackByName('Class Trial - Insurrection'), onWin: onScrumDebateWin, getSpriteUrl, isCharacterDead: (name) => characters.get(normalizeName(name))?.dead === true, getPlayerSpriteUrl, getPlayerName: getActivePersonaName, getCharacterHeightCm, getCustomGameMasterName });
     rebuttalShowdownController = createRebuttalShowdownController({
         extensionFolderPath, getTruthBullets: getTruthBulletsSnapshot,
         awardMonocoins, deductMonocoins, getSpriteUrl,
@@ -7581,6 +9511,18 @@ debugSTGlobals();
     interjectionRunner = createInterjectionCinematicRunner({ extensionFolderPath, getSpriteUrl });
     chooseCharacterController    = createChooseCharacterController({ extensionFolderPath, getLecternUrl, getSpriteUrl, getPlayerSpriteUrl, playSfx, getSfx: () => sfx });
     introduceCharacterController = createIntroduceCharacterController({ extensionFolderPath });
+    chapterEndRosterController   = createChapterEndRosterController({
+        extensionFolderPath,
+        getCharacters:        () => characters,
+        getSpriteUrl,
+        getCharacterHeightCm,
+        getPlayerSpriteUrl,
+        getPlayerName:        getActivePersonaName,
+        findBgmTrackByName,
+        fadeOutAndPauseBgm,
+        playBgmPath,
+        getMonopadVolume:     () => getMonopadSetting('monopadVolume') ?? 50,
+    });
     } catch (error) {
         bootstrapDebugUi();
         console.error(`[${extensionName}] ❌ Load failed:`, error);
@@ -7597,6 +9539,12 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         const ultimate  = args?.ultimate ?? lookupUltimateFromLorebook(name);
         const spriteUrl = await getSpriteUrl(name, 'neutral').catch(() => null);
         await introduceCharacterController?.run({ name, ultimate, spriteUrl });
+        // Remember that this character has now been introduced so subsequent
+        // UI labels (overworld hover, minimap pins, trial sticker, …) stop
+        // masking them as "???". Persists across page reloads via settings.
+        markCharacterIntroduced(name);
+        try { overworldSceneController?.render?.(); } catch (_) {}
+        try { renderMinimap(); } catch (_) {}
         return '';
     },
     namedArgumentList: [
@@ -7625,6 +9573,23 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'endchapter',
+    callback: async () => {
+        const current   = Number(getMonopadSetting('chapterIndex') ?? 0);
+        const fromLabel = getChapterJournalLabel(current);
+        const toLabel   = getChapterJournalLabel(current + 1);
+        await chapterEndRosterController?.run({ fromLabel, toLabel });
+        if (current < 9) {
+            setMonopadSetting('chapterIndex', current + 1);
+            saveSettingsDebounced();
+            updateChapterDisplay();
+        }
+        return '';
+    },
+    helpString: 'Shows the chapter-end survivor roster screen with Trial End music, then advances the chapter.',
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'epiloguechapter',
     callback: () => {
         setMonopadSetting('chapterIndex', 10);
@@ -7636,7 +9601,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'choose',
+    name: 'suspectchoosing',
     callback: async () => {
         const info = await trialManager?.getGcpInfo?.() ?? { characters: [], currentIndex: 0 };
         await chooseCharacterController?.run({ characters: info.characters, startIdx: info.currentIndex });
@@ -7646,7 +9611,18 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'end-trial',
+    name: 'setclasstrialgoal',
+    callback: (_, value) => {
+        const goal = (value ?? '').trim();
+        trialManager?.setTrialContext?.(undefined, goal, undefined);
+        return '';
+    },
+    helpString: 'Sets the overall goal displayed in the Trial Context panel (e.g. <tt>/setclasstrialgoal Who killed Byakuya?</tt>).',
+    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'The trial goal text', typeList: [ARGUMENT_TYPE.STRING], isRequired: true })],
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'endtrial',
     callback: async () => {
         console.log('[Dangan] Manual trial termination requested.');
         trialManager?.endTrial();
@@ -7656,7 +9632,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'nonstop-debate',
+    name: 'nonstopdebate',
     callback: async (args, value) => {
         const lines = [];
         for (let i = 1; i <= 8; i++) {
@@ -7670,7 +9646,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             trialManager?.debugStartNonStopDebateWithLines(lines);
             return '';
         }
-        toastr.info('Please provide at least one line: /nonstop-debate s1-q="Your line"');
+        toastr.info('Please provide at least one line: /nonstopdebate s1-q="Your line"');
         return '';
     },
     namedArguments: [
@@ -7790,11 +9766,11 @@ function buildMpdScenariosFromArgs(args, maxScenarios = 8) {
 }
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'mass-panic-debate',
+    name: 'masspanicdebate',
     callback: async (args) => {
         const scenarios = buildMpdScenariosFromArgs(args, 8);
         if (!scenarios.length) {
-            toastr.info('Provide at least one full scenario: /mass-panic-debate sc1-c1-q="..." sc1-c2-q="..." sc1-c3-q="..."');
+            toastr.info('Provide at least one full scenario: /masspanicdebate sc1-c1-q="..." sc1-c2-q="..." sc1-c3-q="..."');
             return '';
         }
         trialManager?.startMassPanicDebate(scenarios);
@@ -7826,7 +9802,32 @@ makeMpdTestCommand('startMassPanicDebateTestLarge',      9,  'LG');
 makeMpdTestCommand('startMassPanicDebateTestExtraLarge', 12, 'XL');
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'body-discovered',
+    name: 'scrumdebate',
+    callback: async () => {
+        await scrumDebateController?.run();
+        return '';
+    },
+    helpString: 'Starts the Scrum Debate minigame. Two teams clash over contradictory theories; match each opposing key point with the correct rebuttal, then mash to finish each exchange.',
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'mindmine',
+    callback: async (args) => {
+        const raw  = String(args?.sentence ?? args?._ ?? '').trim();
+        const sArr = raw ? raw.split('|').map(s => s.trim()).filter(Boolean) : [];
+        const time = parseInt(args?.time, 10) || 120;
+        await mindMineController?.run({ sentences: sArr, timeLimit: time });
+        return '';
+    },
+    helpString: 'Starts the Mind Mine block-clearing puzzle. Optional named args: sentence="s1|s2|s3" (pipe-separated sentences to uncover), time=120 (seconds).',
+    namedArgumentList: [
+        SlashCommandNamedArgument.fromProps({ name: 'sentence', description: 'Pipe-separated sentences the player must uncover', typeList: [ARGUMENT_TYPE.STRING], isRequired: false }),
+        SlashCommandNamedArgument.fromProps({ name: 'time',     description: 'Time limit in seconds (default 120)',               typeList: [ARGUMENT_TYPE.NUMBER], isRequired: false }),
+    ],
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'bodydiscovery',
     callback: async (args) => {
         const bgName = String(args.bg || '').trim();
         const cinematicName = String(args.cinematic || '').trim();
@@ -7879,7 +9880,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'execute',
+    name: 'punishmenttime',
     callback: async (args) => {
         const charName = String(args.name || '').trim();
         if (!charName) return '';
@@ -7911,19 +9912,19 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'pass-time',
+    name: 'passtime',
     callback: async () => { await passTimeToNight({ source: 'slash_command' }); return ''; },
     helpString: 'Triggers the nighttime announcement, shows a Night Time Start banner, then switches to the Night theme.',
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'go-to-sleep',
+    name: 'gotosleep',
     callback: async () => { await sleepToNextDay({ source: 'slash_command' }); return ''; },
     helpString: 'Advances to the next day, plays the daytime announcement, shows a Free Time Start banner, then switches to the Day theme.',
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'give-truth-bullet',
+    name: 'givetruthbullet',
     callback: (args, description) => {
         const name = String(args.name || '').trim();
         const desc = String(description || '').trim();
@@ -7951,20 +9952,20 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'vote',
+    name: 'votingtime',
     callback: async (args) => {
         const guess  = String(args.guess  || '').trim() || null;
         const result = String(args.result || '').trim() || null;
         await voteResultsController?.run({ guess, result });
         return '';
     },
-    helpString: 'Spins the class trial vote roulette. guess=&lt;name&gt; is who was voted for (required). result=&lt;name&gt; is the actual blackened (optional, random if omitted). Fails if guess ≠ result.',
+    helpString: 'Spins the class trial vote roulette. guess=&lt;name&gt; is who was voted for. result=&lt;name&gt; is the actual blackened (optional, random if omitted). Fails if guess ≠ result.',
     namedArgumentList: [
         SlashCommandNamedArgument.fromProps({
             name: 'guess',
             description: 'The character that was voted for (partial name match)',
             typeList: [ARGUMENT_TYPE.STRING],
-            isRequired: true,
+            isRequired: false,
         }),
         SlashCommandNamedArgument.fromProps({
             name: 'result',
@@ -7972,11 +9973,23 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             typeList: [ARGUMENT_TYPE.STRING],
             isRequired: false,
         }),
+        SlashCommandNamedArgument.fromProps({
+            name: 'characters',
+            description: 'Comma-separated list of all characters in the vote (informational)',
+            typeList: [ARGUMENT_TYPE.STRING],
+            isRequired: false,
+        }),
+        SlashCommandNamedArgument.fromProps({
+            name: 'votes',
+            description: 'Vote tally, e.g. "Name:2,OtherName:1" (informational)',
+            typeList: [ARGUMENT_TYPE.STRING],
+            isRequired: false,
+        }),
     ],
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'question-time',
+    name: 'questiontime',
     callback: async (args) => {
         const title   = String(args.title   || '').trim();
         const time    = Math.max(1, Number(args.time)   || 30);
@@ -8008,7 +10021,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'question-truth',
+    name: 'questiontruth',
     callback: async (args) => {
         const question = String(args.question || '').trim();
         const answer   = String(args.answer   || '').trim();
@@ -8029,13 +10042,1057 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     ],
 }));
 
+// /moveto — moves the player between connected rooms / areas / sub-areas, updates
+// the chat background to the destination pin's BG, and remembers the current
+// location across reloads.
+function getCurrentLocationId() {
+    return extension_settings[extensionName]?.map?.currentLocationId || null;
+}
+function setCurrentLocationId(locationId) {
+    const root = extension_settings[extensionName] ??= {};
+    root.map ??= {};
+    const prev = root.map.currentLocationId || null;
+    root.map.currentLocationId = locationId || null;
+    saveSettingsDebounced();
+    // When the room changes, drop any drag-overrides so the character pins fall
+    // back to the default ring around the *new* room on the next render.
+    if (prev !== root.map.currentLocationId) {
+        _minimapCharPositions.clear();
+        _minimapSig = null;
+    }
+    updateCurrentRoomDisplay();
+}
+
+// Slim transparent slab under the level bar that displays the player's current
+// room name. Styled to match the BGM panel's controls strip (transparent
+// skewed slab) with the same blue italic uppercase label used by
+// "PHASES - DAYTIME" (the .dbgm-playlist-label colour).
+function ensureCurrentRoomPanel() {
+    let panel = document.getElementById('dangan-current-room');
+    if (panel) return panel;
+    const wrapper = document.getElementById('dangan-hud-topright');
+    if (!wrapper) return null; // level bar / hud not built yet — retry next call
+    panel = document.createElement('div');
+    panel.id = 'dangan-current-room';
+    const label = document.createElement('span');
+    label.className = 'dangan-current-room-label';
+    panel.appendChild(label);
+    wrapper.appendChild(panel);
+    return panel;
+}
+
+function updateCurrentRoomDisplay() {
+    const panel = ensureCurrentRoomPanel();
+    if (!panel) return;
+    const label = panel.querySelector('.dangan-current-room-label');
+    if (!label) return;
+    const id = getCurrentLocationId();
+    if (!id) { label.textContent = '—'; return; }
+    const pin = mapPanelController?.getPinByLocationId?.(id);
+    if (pin?.label) { label.textContent = pin.label; return; }
+    if (id.startsWith('area:'))    { label.textContent = id.slice(5); return; }
+    if (id.startsWith('subarea:')) { label.textContent = id.slice(8); return; }
+    label.textContent = id;
+}
+
+// Arrive at a map pin behind a fade-to-black wash. The sfx plays in sync
+// with the fade-in; once we're fully black we do the actual room swap
+// (location id, chat bg, pin BGM, overworld notify, side panels). The
+// visible transition (fade-in + black hold + fade-out) is DECOUPLED from
+// the sfx length — the sfx plays in the background and is allowed to
+// outlive the fade. This keeps the screen-in-black time short.
+//
+// Timing reference (t=0 is the moment the sfx starts):
+//   t=0        → fade-in begins (ROOM_FADE_IN_MS inline override)
+//   t~200ms    → fully black; room-change side effects fire here
+//   t~470ms    → unfade begins (ROOM_BLACK_HOLD_MS past swap)
+//   t~1070ms   → fully unfaded; overlay removed
+//   sfx ends whenever its duration says, independently of the visual.
+const ROOM_FADE_IN_MS = 200;
+const ROOM_BLACK_HOLD_MS = 250; // black-hold past the swap so it settles
+const ROOM_FADE_OUT_MS = 600;
+function performPinArrivalWithFade(pin) {
+    if (!pin) return;
+    const audio = sfx?.change_rooms;
+
+    const fade = document.createElement('div');
+    fade.className = 'dangan-ow-fadeout';
+    // Override the shared 280ms CSS transition with the snappier fade-in.
+    fade.style.transition = `opacity ${ROOM_FADE_IN_MS}ms ease`;
+    document.body.appendChild(fade);
+
+    // Double-rAF so the initial opacity:0 is committed before flipping .on —
+    // otherwise the transition would skip and we'd cut straight to black.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        fade.classList.add('on');
+        document.body.classList.add('dangan-ow-fading');
+        if (audio) playSfx(audio);
+    }));
+
+    // After the fade-in completes, the screen is fully covered — perform the
+    // visible room-change steps behind the black wash. Small buffer past the
+    // fade-in commit so the swap definitely happens behind full opacity.
+    const swapAtMs = ROOM_FADE_IN_MS + 20;
+    setTimeout(() => {
+        setCurrentLocationId(pin.locationId);
+        if (pin.bg)  mapPanelController.switchChatBackground?.(pin.bg);
+        if (pin.bgm) mapPanelController.playPinBgm?.(pin.bgm);
+        mapPanelController.highlightPinByLocationId?.(pin.locationId);
+        // Companion characters (1-on-1 partner or group members) follow the
+        // player into the new room so their overworld presence stays accurate.
+        overworldSceneController?.notifyPlayerMovedTo?.(pin.locationId);
+        renderMoveToPanel();
+        renderMinimap();
+        overworldSceneController?.render?.();
+    }, swapAtMs);
+
+    // Unfade right after the black-hold — independent of sfx duration so the
+    // total room-change feels snappy even when the sfx tail is long.
+    const unfadeStartMs = swapAtMs + ROOM_BLACK_HOLD_MS;
+    setTimeout(() => {
+        fade.style.transition = `opacity ${ROOM_FADE_OUT_MS}ms ease`;
+        fade.classList.remove('on');
+        document.body.classList.remove('dangan-ow-fading');
+    }, unfadeStartMs);
+
+    setTimeout(() => { fade.remove(); }, unfadeStartMs + ROOM_FADE_OUT_MS + 100);
+}
+
+// Resolve a destination string (label/ref/value) against the current pin's
+// connection list and execute the move. Shared by /moveto and the side panel
+// buttons so they behave identically.
+function moveToDestination(raw) {
+    if (!mapPanelController) return false;
+    const currentId = getCurrentLocationId();
+    if (!currentId) return false;
+    const conns = mapPanelController.getConnectionsForLocationId?.(currentId) ?? [];
+    const lcRaw = String(raw || '').trim().toLowerCase();
+    if (!lcRaw) return false;
+    const dest = conns.find(c => c.label?.toLowerCase() === lcRaw)
+              || conns.find(c => c.ref?.toLowerCase() === lcRaw)
+              || conns.find(c => c.value?.toLowerCase() === lcRaw);
+    if (!dest) return false;
+
+    if (dest.kind === 'pin') {
+        const pin = mapPanelController.getPinByLocationId?.(dest.value);
+        if (!pin) return false;
+        // Helper handles fade, sfx, room swap, and all the panel re-renders —
+        // return early so we don't re-render before the fade has even started.
+        performPinArrivalWithFade(pin);
+        return true;
+    } else if (dest.kind === 'area') {
+        mapPanelController.navigateToArea?.(dest.value);
+        setCurrentLocationId(`area:${dest.value}`);
+    } else if (dest.kind === 'subarea') {
+        mapPanelController.navigateToArea?.(dest.areaKey, dest.floorKey);
+        setCurrentLocationId(`subarea:${dest.areaKey}/${dest.floorKey}`);
+    }
+    renderMoveToPanel();
+    renderMinimap();
+    overworldSceneController?.render?.();
+    return true;
+}
+
+// Fixed left-side panel listing every connection from the current location as
+// a "Move to <name>" button. NEVER renders during any Class Trial phase. Always
+// rendered otherwise (with an empty-state hint when the current pin has no
+// connections, or when no current location is set yet) so the player can see
+// the panel exists.
+let _moveToPanelSig = null;
+let _minimapSig = null;
+// Pan offset for the minimap, persisted across re-renders. Reset whenever the
+// underlying floor image changes (so each new floor starts un-panned).
+let _minimapPan = { tx: 0, ty: 0, imageSrc: null };
+let _minimapZoom = 1.0;
+const MINIMAP_ZOOM_MIN  = 1.0;
+const MINIMAP_ZOOM_MAX  = 2.5;
+const MINIMAP_ZOOM_STEP = 0.25;
+
+// Rotated-square minimap rendered bottom-right outside Class Trials.
+// Mirrors the moveTo panel's visibility gates: hides during any trial phase and
+// while the Monopad is open. Shows only the current sub-area's floor + location
+// pins (rooms / monomachines / trials) — no evidence, no bodies, no hover.
+function renderMinimap() {
+    const existing = document.getElementById('dangan-minimap');
+    const removeIt = () => { if (existing) { existing.remove(); _minimapSig = null; } };
+
+    if (isTrialUiActive()) { removeIt(); return; }
+    const monopad = document.getElementById('dangan_monopad_panel');
+    if (monopad?.classList.contains('open')) { removeIt(); return; }
+
+    // Pass the player's current location so the minimap shows THAT floor, not
+    // whatever the Map panel happened to be displaying last.
+    const data = mapPanelController?.getMinimapState?.(getCurrentLocationId());
+    if (!data?.imageSrc) { removeIt(); return; }
+
+    const pinSig = data.pins.map(p => `${p.id}:${p.x}:${p.y}`).join(';');
+    // Include the current location + recent speaker + group composition in the
+    // signature so character pins update when the conversation moves.
+    const ctxSnap = window.SillyTavern?.getContext?.();
+    const lastSpeaker = ctxSnap?.chat
+        ? [...ctxSnap.chat].reverse().find(m => m && !m.is_system && m.name && !m.is_user)?.name
+        : null;
+    const groupSig = ctxSnap?.groupId
+        ? (Array.isArray(ctxSnap.groups) ? ctxSnap.groups : []).find(g => String(g.id) === String(ctxSnap.groupId))?.members?.join(',') || ''
+        : (ctxSnap?.name2 || '');
+    // Include the overworld occupant list so randomization / movement that
+    // shuffles people in/out of the current room rebuilds the pins.
+    const owSig = (() => {
+        const currentId = getCurrentLocationId();
+        if (!currentId) return '';
+        const list = overworldSceneController?.getCharactersInRoom?.(currentId) || [];
+        return list.map(c => `${c.name}/${c.groupId || ''}`).join(',');
+    })();
+    const sig = `${data.areaKey}/${data.floorKey}|${data.imageSrc}|${pinSig}|cur:${getCurrentLocationId() || ''}|spk:${lastSpeaker || ''}|grp:${groupSig}|ow:${owSig}`;
+    if (existing && sig === _minimapSig) return;
+    _minimapSig = sig;
+
+    const root = existing || document.createElement('div');
+    root.id = 'dangan-minimap';
+    root.innerHTML = '';
+
+    const square = document.createElement('div');
+    square.className = 'dangan-minimap-square';
+
+    // Image lives inside an aspect-ratio-matched wrapper so the pin %-coords
+    // (which live in the floor image's coordinate space) align with the image
+    // pixels even though the diamond outer frame is square.
+    const mapWrap = document.createElement('div');
+    mapWrap.className = 'dangan-minimap-map';
+    mapWrap.style.aspectRatio = `${data.mapWidth} / ${data.mapHeight}`;
+
+    const img = document.createElement('img');
+    img.className = 'dangan-minimap-image';
+    img.src = data.imageSrc;
+    img.alt = '';
+    img.draggable = false;
+    mapWrap.appendChild(img);
+
+    const pinLayer = document.createElement('div');
+    pinLayer.className = 'dangan-minimap-pin-layer';
+    const currentId = getCurrentLocationId();
+    const currentPin = (currentId && !currentId.startsWith('area:') && !currentId.startsWith('subarea:'))
+        ? mapPanelController?.getPinByLocationId?.(currentId)
+        : null;
+    for (const p of data.pins) {
+        const isCurrent = currentPin && p.id === currentPin.id;
+        const pin = document.createElement('div');
+        pin.className = `dangan-minimap-pin dangan-minimap-pin-${p.type}${isCurrent ? ' dangan-minimap-pin-current' : ''}`;
+        pin.style.left = `${(p.x / data.mapWidth) * 100}%`;
+        pin.style.top  = `${(p.y / data.mapHeight) * 100}%`;
+        if (p.iconUrl) {
+            const i = document.createElement('img');
+            i.src = p.iconUrl;
+            i.alt = '';
+            i.draggable = false;
+            pin.appendChild(i);
+        }
+        pinLayer.appendChild(pin);
+    }
+    mapWrap.appendChild(pinLayer);
+
+    // Character/location-marker layer — gold pulsing circle for the player's
+    // current room, plus per-character pins (player / speaker / group members).
+    renderMinimapCharacterLayer(mapWrap, data, currentPin);
+
+    square.appendChild(mapWrap);
+
+    root.appendChild(square);
+
+    // Zoom controls — two small rotated-square buttons on the right.
+    const zoomCol = document.createElement('div');
+    zoomCol.className = 'dangan-minimap-zoom';
+    const zoomIn  = document.createElement('button');
+    zoomIn.type = 'button';
+    zoomIn.className = 'dangan-minimap-zoom-btn dangan-minimap-zoom-in';
+    zoomIn.title = 'Zoom in';
+    zoomIn.innerHTML = '<span>+</span>';
+    const zoomOut = document.createElement('button');
+    zoomOut.type = 'button';
+    zoomOut.className = 'dangan-minimap-zoom-btn dangan-minimap-zoom-out';
+    zoomOut.title = 'Zoom out';
+    zoomOut.innerHTML = '<span>−</span>';
+    zoomCol.appendChild(zoomIn);
+    zoomCol.appendChild(zoomOut);
+
+    // Flat-render toggle — diamond on the LEFT side of the minimap, mirroring
+    // the zoom column on the right. Lit when the current room is in flat mode.
+    const flatCol = document.createElement('div');
+    flatCol.className = 'dangan-minimap-flat-toggle-col';
+    const flatBtn = document.createElement('button');
+    flatBtn.type = 'button';
+    flatBtn.className = 'dangan-minimap-zoom-btn dangan-minimap-flat-toggle';
+    const playerRoomId = getCurrentLocationId();
+    const isFlat = playerRoomId ? overworldSceneController?.isRoomFlat?.(playerRoomId) : false;
+    if (isFlat) flatBtn.classList.add('is-active');
+    flatBtn.title = isFlat
+        ? 'This room uses flat sprite rendering — click to re-enable perspective.'
+        : 'Toggle flat sprite rendering for this room.';
+    flatBtn.innerHTML = `<span>${isFlat ? '◆' : '◇'}</span>`;
+    flatBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        overworldSceneController?.toggleCurrentRoomFlat?.();
+        _minimapSig = null;
+        renderMinimap();
+    });
+    flatBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    flatCol.appendChild(flatBtn);
+
+    root.appendChild(flatCol);
+    root.appendChild(zoomCol);
+
+    // UI-hide toggle — diamond button at the BOTTOM of the minimap, mirroring
+    // the flat-toggle column at the top. Hides every visible UI element so
+    // the scene background can be appreciated; clicking anywhere on the
+    // screen while hidden brings the UI back.
+    const hideCol = document.createElement('div');
+    hideCol.className = 'dangan-minimap-ui-toggle-col';
+    const hideBtn = document.createElement('button');
+    hideBtn.type = 'button';
+    hideBtn.className = 'dangan-minimap-zoom-btn dangan-minimap-ui-toggle';
+    hideBtn.title = 'Hide UI (click anywhere to restore)';
+    hideBtn.innerHTML = '<span>◇</span>';
+    hideBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        document.body.classList.add('dangan-ui-hidden');
+    });
+    hideBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    hideCol.appendChild(hideBtn);
+    root.appendChild(hideCol);
+
+    // One-shot global listener that restores the UI on any click while hidden.
+    // Capture phase + stopPropagation so the click that restores the UI doesn't
+    // accidentally trigger something underneath (e.g. a chat message).
+    if (!window._danganUIHideRestoreBound) {
+        window._danganUIHideRestoreBound = true;
+        window.addEventListener('click', (e) => {
+            if (!document.body.classList.contains('dangan-ui-hidden')) return;
+            e.stopPropagation();
+            e.preventDefault();
+            document.body.classList.remove('dangan-ui-hidden');
+        }, true);
+    }
+
+    // Reset pan + zoom if the floor changed; otherwise preserve the player's view.
+    if (_minimapPan.imageSrc !== data.imageSrc) {
+        _minimapPan = { tx: 0, ty: 0, imageSrc: data.imageSrc };
+        _minimapZoom = 1.0;
+    }
+    applyMinimapTransform(mapWrap);
+
+    zoomIn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (_minimapZoom >= MINIMAP_ZOOM_MAX) return;
+        _minimapZoom = Math.min(MINIMAP_ZOOM_MAX, Math.round((_minimapZoom + MINIMAP_ZOOM_STEP) * 100) / 100);
+        applyMinimapTransform(root.querySelector('.dangan-minimap-map'));
+    });
+    zoomOut.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (_minimapZoom <= MINIMAP_ZOOM_MIN) return;
+        _minimapZoom = Math.max(MINIMAP_ZOOM_MIN, Math.round((_minimapZoom - MINIMAP_ZOOM_STEP) * 100) / 100);
+        applyMinimapTransform(root.querySelector('.dangan-minimap-map'));
+    });
+    // Prevent button presses from initiating the diamond drag.
+    zoomIn.addEventListener('pointerdown',  (e) => e.stopPropagation());
+    zoomOut.addEventListener('pointerdown', (e) => e.stopPropagation());
+
+    if (!existing) {
+        document.body.appendChild(root);
+        // Drag is attached to the outer root, not the rotated square — the square's
+        // clip + rotation made hit-testing flaky at high zoom levels. Zoom buttons
+        // and character pins both stop propagation on pointerdown so they remain
+        // independently interactive without triggering a pan.
+        attachMinimapDrag(root);
+    }
+}
+
+// Distinct colours assigned by index to group-chat members other than the
+// player and the active speaker. Cycles when the group is larger than the list.
+const MINIMAP_OTHER_COLORS = [
+    '#56e2ff', '#b366ff', '#8cff66', '#ffb14d', '#ff66bb', '#ffe05a', '#5a9bff', '#9fff5a',
+];
+
+// Per-character drag-override positions for the minimap, keyed by character name.
+// { xPct, yPct } — survives re-renders so the player's manual placement sticks,
+// and is rehydrated from extension_settings on each room render so it also
+// survives page reloads. The on-disk store is partitioned by room id so each
+// room keeps its own arrangement: switching rooms drops the in-memory map and
+// the next render reloads positions for the new room (or starts fresh).
+const _minimapCharPositions = new Map();
+// Per-character teardrop rotation in degrees, keyed by character name. Cached
+// once per character so the teardrop point doesn't change direction on every
+// re-render (which would look chaotic).
+const _minimapCharRotations = new Map();
+
+// Lazy accessor for the persisted store. Shape:
+//   extension_settings[extensionName].map.charPositions = {
+//     [roomId]: { [charName]: { xPct, yPct } },
+//     ...
+//   }
+function getMinimapCharPositionsStore() {
+    const root = extension_settings[extensionName] ??= {};
+    root.map ??= {};
+    root.map.charPositions ??= {};
+    return root.map.charPositions;
+}
+
+// Rehydrate the in-memory Map from settings for the given room id.  Called
+// at the top of each renderMinimapCharacterLayer pass before pins are placed
+// so a fresh page load (or returning to a previously-visited room) shows the
+// player's saved arrangement instead of falling back to the default ring.
+function loadMinimapCharPositions(roomId) {
+    _minimapCharPositions.clear();
+    if (!roomId) return;
+    const store = getMinimapCharPositionsStore();
+    const forRoom = store[roomId];
+    if (!forRoom || typeof forRoom !== 'object') return;
+    for (const [name, pos] of Object.entries(forRoom)) {
+        if (pos && Number.isFinite(pos.xPct) && Number.isFinite(pos.yPct)) {
+            _minimapCharPositions.set(name, { xPct: pos.xPct, yPct: pos.yPct });
+        }
+    }
+}
+
+// Persist a single drag-end position to settings under the current room id.
+// Updates the in-memory Map so subsequent re-renders pick up the change
+// immediately, then debounces a settings save.
+function saveMinimapCharPosition(roomId, name, pos) {
+    if (!roomId || !name || !pos) return;
+    _minimapCharPositions.set(name, pos);
+    const store = getMinimapCharPositionsStore();
+    store[roomId] ??= {};
+    store[roomId][name] = { xPct: pos.xPct, yPct: pos.yPct };
+    saveSettingsDebounced();
+}
+
+function renderMinimapCharacterLayer(mapWrap, data, currentPin) {
+    // Without a known room pin we have nowhere to draw character markers.
+    if (!currentPin) return;
+    // Rehydrate any drag-saved positions for this room from settings before
+    // we read _minimapCharPositions in the loop below.
+    loadMinimapCharPositions(currentPin.id);
+    const xPct = (currentPin.x / data.mapWidth) * 100;
+    const yPct = (currentPin.y / data.mapHeight) * 100;
+
+    const charLayer = document.createElement('div');
+    charLayer.className = 'dangan-minimap-char-layer';
+
+    const playerName = getActivePersonaName?.() || 'You';
+
+    // ── Determine speaker + group members from SillyTavern context ───────
+    const ctx = window.SillyTavern?.getContext?.();
+    const lastMsg = ctx?.chat
+        ? [...ctx.chat].reverse().find(m => m && !m.is_system && m.name && !m.is_user)
+        : null;
+    const speakerName = (lastMsg?.name && lastMsg.name !== playerName) ? lastMsg.name : null;
+
+    // Substrings (case-insensitive) used to skip names when building the
+    // character-pin list. A substring match catches name variants with
+    // suffixes like "Prome User Sprite (Do Not Click)".
+    const EXCLUDED_PIN_SUBSTRINGS = [
+        'prome user sprite',
+        'narrator',
+        'assistant',
+        'sillytavern system',
+    ];
+    const isExcludedPinName = (name) => {
+        if (!name) return true;
+        const lc = String(name).toLowerCase();
+        return EXCLUDED_PIN_SUBSTRINGS.some(s => lc.includes(s));
+    };
+
+    let memberNames = [];
+    if (ctx?.groupId) {
+        const group = (Array.isArray(ctx.groups) ? ctx.groups : []).find(g => String(g.id) === String(ctx.groupId));
+        if (group?.members?.length && Array.isArray(ctx.characters)) {
+            memberNames = group.members
+                .map(avatar => ctx.characters.find(c => c?.avatar === avatar)?.name)
+                .filter(n => n && n !== playerName && !isExcludedPinName(n));
+        }
+    } else if (ctx?.name2 && !isExcludedPinName(ctx.name2) && ctx.name2 !== playerName) {
+        memberNames = [ctx.name2];
+    }
+    // Always merge in overworld characters at the player's current room — so
+    // that when the sprites layer is hidden (in a chat), their minimap pins
+    // remain. Dedup against whoever is already in memberNames from the chat.
+    if (currentPin?.locationId) {
+        const overworldChars = overworldSceneController?.getCharactersInRoom?.(currentPin.locationId) || [];
+        for (const c of overworldChars) {
+            const n = c?.name;
+            if (!n || n === playerName || isExcludedPinName(n)) continue;
+            if (!memberNames.includes(n)) memberNames.push(n);
+        }
+    }
+    // Also drop the speaker if it's a narrator/assistant — the chat's last
+    // "speaker" can be the Narrator and we don't want a red pin for them.
+    const filteredSpeaker = (speakerName && !isExcludedPinName(speakerName)) ? speakerName : null;
+
+    // Build the list of character pins to render around the room.
+    const chars = [];
+    if (playerName) chars.push({ name: playerName, kind: 'player' });
+    if (filteredSpeaker) chars.push({ name: filteredSpeaker, kind: 'speaker' });
+    let otherIdx = 0;
+    for (const name of memberNames) {
+        if (name === filteredSpeaker) continue;
+        if (name === playerName) continue;
+        chars.push({ name, kind: 'other', color: MINIMAP_OTHER_COLORS[otherIdx++ % MINIMAP_OTHER_COLORS.length] });
+    }
+
+    // Arrange around the room in a small ring so they don't all stack — but
+    // honour any drag-override saved in _minimapCharPositions first.
+    const RING_RADIUS_PCT = 9;
+    chars.forEach((c, i) => {
+        const angle = (i / Math.max(1, chars.length)) * Math.PI * 2 - Math.PI / 2;
+        const stored = _minimapCharPositions.get(c.name);
+        const px = stored ? stored.xPct : xPct + Math.cos(angle) * RING_RADIUS_PCT;
+        const py = stored ? stored.yPct : yPct + Math.sin(angle) * RING_RADIUS_PCT;
+        const pin = document.createElement('div');
+        pin.className = `dangan-minimap-char-pin dangan-minimap-char-pin-${c.kind}`;
+        pin.style.left = `${px}%`;
+        pin.style.top  = `${py}%`;
+        // CSS draws the hover tooltip via `content: attr(data-name)`, so feed
+        // the masked display name (??? when uintroduced). The underlying c.name
+        // identity is preserved via the drag handler's `name` argument.
+        pin.dataset.name = getCharacterDisplayName(c.name);
+        if (c.color) pin.style.setProperty('--char-color', c.color);
+        // Teardrop point rotation — random per character, cached so it stays
+        // stable across re-renders. Rotation is applied to a child shape so
+        // the pin wrapper (and its tooltip) stay axis-aligned.
+        let rot = _minimapCharRotations.get(c.name);
+        if (rot === undefined) {
+            rot = Math.floor(Math.random() * 360);
+            _minimapCharRotations.set(c.name, rot);
+        }
+        const shape = document.createElement('div');
+        shape.className = 'dangan-minimap-char-pin-shape';
+        shape.style.setProperty('--pin-angle', `${rot}deg`);
+        pin.appendChild(shape);
+        attachCharPinDrag(pin, c.name, currentPin.id);
+        charLayer.appendChild(pin);
+    });
+
+    mapWrap.appendChild(charLayer);
+}
+
+// Per-pin drag inside the minimap. Independent of the diamond pan handler.
+//
+// Coordinate math: the parent square is rotate(45°) and the map wrapper is
+// translate(tx,ty) rotate(-45°) scale(zoom). The parent rotation and the
+// child counter-rotation cancel out for the *linear* part of the transform,
+// so the only thing that scales the screen delta into wrapper-local coords is
+// the zoom factor:
+//   local_dx = dx / zoom
+//   local_dy = dy / zoom
+// That delta is then converted to a % of the wrapper's natural CSS dimensions.
+function attachCharPinDrag(pin, name, roomId) {
+    pin.style.cursor = 'grab';
+    pin.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const mapWrap = pin.closest('.dangan-minimap-map');
+        if (!mapWrap) return;
+        // clientWidth / clientHeight are layout (unzoomed) dimensions.
+        const W = mapWrap.clientWidth;
+        const H = mapWrap.clientHeight;
+        if (!W || !H) return;
+        const startX = e.clientX;
+        const startY = e.clientY;
+        let lastX = startX;
+        let lastY = startY;
+        let posX = parseFloat(pin.style.left) || 0;
+        let posY = parseFloat(pin.style.top)  || 0;
+        let moved = false;
+        const CLICK_THRESHOLD = 4;  // px before a press becomes a drag
+        try { pin.setPointerCapture?.(e.pointerId); } catch {}
+
+        const onMove = (em) => {
+            const dx = em.clientX - lastX;
+            const dy = em.clientY - lastY;
+            if (!moved) {
+                const totalDx = em.clientX - startX;
+                const totalDy = em.clientY - startY;
+                if (Math.hypot(totalDx, totalDy) >= CLICK_THRESHOLD) {
+                    moved = true;
+                    pin.style.cursor = 'grabbing';
+                } else {
+                    return;
+                }
+            }
+            lastX = em.clientX;
+            lastY = em.clientY;
+            const inv = 1 / _minimapZoom;
+            posX += (dx * inv) * 100 / W;
+            posY += (dy * inv) * 100 / H;
+            pin.style.left = `${posX}%`;
+            pin.style.top  = `${posY}%`;
+        };
+        const endDrag = (eu) => {
+            pin.removeEventListener('pointermove', onMove);
+            pin.removeEventListener('pointerup', endDrag);
+            pin.removeEventListener('pointercancel', endDrag);
+            pin.style.cursor = 'grab';
+            try { pin.releasePointerCapture?.(eu.pointerId); } catch {}
+            if (moved) {
+                saveMinimapCharPosition(roomId, name, { xPct: posX, yPct: posY });
+            } else {
+                selectMinimapPin(pin, name);
+            }
+        };
+        pin.addEventListener('pointermove', onMove);
+        pin.addEventListener('pointerup', endDrag);
+        pin.addEventListener('pointercancel', endDrag);
+    });
+}
+
+// ── Pin selection + keyboard rotation ─────────────────────────────────────
+// Click a pin to select it; press 1 / 2 to rotate its teardrop point in
+// 15° steps. Esc or a click anywhere else deselects.
+let _selectedPinName = null;
+const PIN_ROTATION_STEP_DEG = 15;
+
+function selectMinimapPin(pin, name) {
+    // Clear any previously-selected pin's outline.
+    document.querySelectorAll('.dangan-minimap-char-pin.selected').forEach(el => el.classList.remove('selected'));
+    pin.classList.add('selected');
+    _selectedPinName = name;
+}
+function deselectMinimapPin() {
+    if (!_selectedPinName) return;
+    document.querySelectorAll('.dangan-minimap-char-pin.selected').forEach(el => el.classList.remove('selected'));
+    _selectedPinName = null;
+}
+// Document-level handlers (registered once at module load).
+(function installPinSelectionHandlers() {
+    document.addEventListener('keydown', (e) => {
+        if (!_selectedPinName) return;
+        if (e.key === 'Escape') { e.preventDefault(); deselectMinimapPin(); return; }
+        // Ignore the keys when the user is typing in an input/textarea.
+        const tag = (e.target?.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
+        // '1' = rotate left (counter-clockwise), '2' = rotate right (clockwise).
+        let delta = 0;
+        if (e.key === '1') delta = -PIN_ROTATION_STEP_DEG;
+        else if (e.key === '2') delta = PIN_ROTATION_STEP_DEG;
+        else return;
+        e.preventDefault();
+        const cur = _minimapCharRotations.get(_selectedPinName) ?? 0;
+        const next = ((cur + delta) % 360 + 360) % 360;
+        _minimapCharRotations.set(_selectedPinName, next);
+        // Live-update only the currently-selected pin's shape child; no need
+        // to re-render the whole minimap.
+        const selectedPin = document.querySelector(`.dangan-minimap-char-pin.selected[data-name="${CSS.escape(_selectedPinName)}"]`);
+        const shape = selectedPin?.querySelector('.dangan-minimap-char-pin-shape');
+        if (shape) shape.style.setProperty('--pin-angle', `${next}deg`);
+    });
+    // Any click outside a char-pin deselects.
+    document.addEventListener('pointerdown', (e) => {
+        if (!_selectedPinName) return;
+        if (e.target.closest?.('.dangan-minimap-char-pin')) return;
+        deselectMinimapPin();
+    });
+})();
+
+function applyMinimapTransform(mapWrap) {
+    if (!mapWrap) return;
+    // Counter-rotate the inner content so it stays axis-aligned even though the
+    // parent square is rotated 45°. translate(tx, ty) is applied AFTER the
+    // rotation so screen-space drag deltas map straight to (tx, ty).
+    mapWrap.style.transform =
+        `translate(${_minimapPan.tx}px, ${_minimapPan.ty}px) rotate(-45deg) scale(${_minimapZoom})`;
+}
+
+// Drag-to-pan + pinch-to-zoom handler. The map wrapper's translate happens
+// INSIDE the rotated square's coord system, so a (tx, ty) translate is then
+// rotated 45° on screen by the parent. To make a horizontal drag move the
+// map horizontally, the screen-space delta (dx, dy) is first rotated by -45°
+// before being added:
+//   tx += (dx + dy) / √2
+//   ty += (dy - dx) / √2
+//
+// Pinch: when two pointers are active we switch from drag to pinch mode and
+// scale _minimapZoom by the ratio of current-to-initial finger distance.
+// Trackpad pinch on desktop arrives as a wheel event with ctrlKey set.
+function attachMinimapDrag(target) {
+    const INV_SQRT2 = 1 / Math.SQRT2;
+    const root = target.closest('#dangan-minimap') || target;
+    // pointerId → { x, y }. Multi-pointer gestures (pinch) compare two entries.
+    const pointers = new Map();
+    // Drag state — only meaningful while exactly one pointer is down.
+    let dragging = false;
+    let lastX = 0, lastY = 0;
+    // Pinch state — captured on the second pointerdown, replayed each move.
+    let pinching = false;
+    let pinchStartDist = 0;
+    let pinchStartZoom = 1;
+
+    const mapEl = () => target.querySelector('.dangan-minimap-map');
+
+    function clampZoom(z) {
+        return Math.max(MINIMAP_ZOOM_MIN, Math.min(MINIMAP_ZOOM_MAX, z));
+    }
+
+    function pointerDistance() {
+        const pts = [...pointers.values()];
+        if (pts.length < 2) return 0;
+        const [a, b] = pts;
+        return Math.hypot(b.x - a.x, b.y - a.y);
+    }
+
+    target.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0 && e.pointerType === 'mouse') return;
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        try { target.setPointerCapture?.(e.pointerId); } catch {}
+
+        if (pointers.size === 1) {
+            // Start a drag from the single finger.
+            dragging = true;
+            pinching = false;
+            lastX = e.clientX;
+            lastY = e.clientY;
+            root.classList.add('dragging');
+        } else if (pointers.size === 2) {
+            // Promote to a pinch — drop the in-progress drag so a second
+            // finger landing doesn't yank the pan a frame before the pinch
+            // takes over.
+            dragging = false;
+            pinching = true;
+            pinchStartDist = pointerDistance() || 1;
+            pinchStartZoom = _minimapZoom;
+        }
+        e.preventDefault();
+    });
+
+    target.addEventListener('pointermove', (e) => {
+        const tracked = pointers.get(e.pointerId);
+        if (!tracked) return;
+        tracked.x = e.clientX;
+        tracked.y = e.clientY;
+
+        if (pinching && pointers.size >= 2) {
+            const dist = pointerDistance();
+            if (!dist) return;
+            const next = clampZoom(pinchStartZoom * (dist / pinchStartDist));
+            if (next !== _minimapZoom) {
+                _minimapZoom = next;
+                applyMinimapTransform(mapEl());
+            }
+            return;
+        }
+
+        if (dragging && pointers.size === 1) {
+            const dx = e.clientX - lastX;
+            const dy = e.clientY - lastY;
+            lastX = e.clientX;
+            lastY = e.clientY;
+            _minimapPan.tx += (dx + dy) * INV_SQRT2;
+            _minimapPan.ty += (dy - dx) * INV_SQRT2;
+            applyMinimapTransform(mapEl());
+        }
+    });
+
+    const releasePointer = (e) => {
+        if (!pointers.has(e.pointerId)) return;
+        pointers.delete(e.pointerId);
+        try { target.releasePointerCapture?.(e.pointerId); } catch {}
+
+        if (pointers.size === 1) {
+            // One finger lifted mid-pinch — resume drag from the remaining
+            // finger's current position so we don't jump on the next move.
+            pinching = false;
+            dragging = true;
+            const [remaining] = pointers.values();
+            lastX = remaining.x;
+            lastY = remaining.y;
+        } else if (pointers.size === 0) {
+            dragging = false;
+            pinching = false;
+            root.classList.remove('dragging');
+        }
+    };
+    target.addEventListener('pointerup', releasePointer);
+    target.addEventListener('pointercancel', releasePointer);
+
+    // Trackpad pinch on desktop / mouse wheel zoom. Browsers expose trackpad
+    // pinch as a wheel event with ctrlKey: true. Plain wheel over the map
+    // also zooms — the minimap is a small isolated widget, so any wheel
+    // gesture targeted at it should be zoom rather than page scroll.
+    // deltaY > 0 = pinch out / wheel down → zoom out. The 0.0035 factor tunes
+    // how quickly a trackpad pinch traverses the zoom range.
+    target.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const next = clampZoom(_minimapZoom * Math.exp(-e.deltaY * 0.0035));
+        if (next !== _minimapZoom) {
+            _minimapZoom = next;
+            applyMinimapTransform(mapEl());
+        }
+    }, { passive: false });
+
+    // Touch CSS rule prevents the browser from claiming the gesture for
+    // native page zoom — we need every move event so the pinch tracks the
+    // user's fingers, not the page underneath.
+    target.style.touchAction = 'none';
+}
+
+// True when the Class Trial UI is actually mounted on the page. This is the
+// reliable "we're in a trial" signal — it's set by trialManager only on real
+// group-chat trials, so a stale persisted pre_debate state on an Assistant /
+// Narrator chat doesn't falsely hide the Move To panel and Minimap.
+function isTrialUiActive() {
+    return document.body.classList.contains('dangan-trial-active');
+}
+
+function renderMoveToPanel() {
+    const existing = document.getElementById('dangan-moveto-panel');
+
+    // Hide whenever the Class Trial UI is on screen.
+    if (isTrialUiActive()) {
+        if (existing) { existing.remove(); _moveToPanelSig = null; }
+        return;
+    }
+
+    // Also hide while the Monopad is open — it's a full-screen panel and the
+    // Move To panel would render on top of it otherwise.
+    const monopad = document.getElementById('dangan_monopad_panel');
+    if (monopad?.classList.contains('open')) {
+        if (existing) { existing.remove(); _moveToPanelSig = null; }
+        return;
+    }
+
+    const currentId = getCurrentLocationId();
+    const rawConns = currentId
+        ? (mapPanelController?.getConnectionsForLocationId?.(currentId) ?? [])
+        : [];
+    // Dedupe by kind:value — the upstream list occasionally repeats the same
+    // destination (e.g. a pin connection listed twice in the pin's data),
+    // which surfaces as duplicate "Move to <X>" buttons in the panel.
+    const conns = [];
+    const seenConnKeys = new Set();
+    for (const c of rawConns) {
+        const key = `${c.kind}:${c.value}`;
+        if (seenConnKeys.has(key)) continue;
+        seenConnKeys.add(key);
+        conns.push(c);
+    }
+
+    // Dirty-check signature — short-circuit when nothing observable has changed.
+    // The poll calls this every 2s; without this guard each call would rebuild
+    // the DOM and trigger a visible flicker.
+    const sig = `${currentId || ''}|${conns.map(c => `${c.kind}:${c.value}:${c.label}`).join(';')}`;
+    if (existing && sig === _moveToPanelSig) return;
+    _moveToPanelSig = sig;
+
+    const panel = existing || document.createElement('div');
+    panel.id = 'dangan-moveto-panel';
+    panel.innerHTML = '';
+
+    const title = document.createElement('div');
+    title.className = 'dangan-moveto-title';
+    title.textContent = 'MOVE TO';
+    panel.appendChild(title);
+
+    const list = document.createElement('div');
+    list.className = 'dangan-moveto-list';
+    if (!currentId) {
+        const empty = document.createElement('div');
+        empty.className = 'dangan-moveto-empty';
+        empty.textContent = 'Use /setlocation to set your current location.';
+        list.appendChild(empty);
+    } else if (!conns.length) {
+        const empty = document.createElement('div');
+        empty.className = 'dangan-moveto-empty';
+        empty.textContent = 'No connected rooms from here. Edit the current pin to add some.';
+        list.appendChild(empty);
+    } else {
+        for (const c of conns) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = `dangan-moveto-btn dangan-moveto-kind-${c.kind}`;
+            btn.textContent = c.label;
+            btn.title = c.kind === 'pin' ? `Pin (${c.value})`
+                      : c.kind === 'area' ? `Area (${c.value})`
+                      : `Sub-area (${c.value})`;
+            btn.addEventListener('click', () => moveToDestination(c.label));
+            list.appendChild(btn);
+        }
+    }
+    panel.appendChild(list);
+
+    if (!existing) document.body.appendChild(panel);
+}
+
+// Module-level early-load polling. Runs OUTSIDE the jQuery init callback so
+// rendering retries fire even if the jQuery callback's awaits are still pending
+// (which happens during Assistant / Narrator chat first-load, when CHAT_LOADED
+// has fired before our listeners get a chance to register inside the callback).
+// Each tick is cheap: it just calls the idempotent renderers, which bail out
+// quickly when mapPanelController isn't ready yet or when nothing has changed.
+(function bootstrapMinimapAndMoveToRender() {
+    let elapsed = 0;
+    const STEP = 250;
+    const DURATION = 12000;
+    const tick = () => {
+        try { renderMoveToPanel(); } catch (e) { console.warn('[Dangan][moveto-panel] bootstrap render failed:', e); }
+        try { renderMinimap();    } catch (e) { console.warn('[Dangan][minimap] bootstrap render failed:', e); }
+        // Current-room panel hangs off #dangan-hud-topright, which the reward
+        // system creates lazily. Re-tick keeps the label correct once the
+        // wrapper materialises and once mapPanelController has its pins.
+        try { updateCurrentRoomDisplay(); } catch (e) { console.warn('[Dangan][current-room] bootstrap render failed:', e); }
+        elapsed += STEP;
+        if (elapsed < DURATION) setTimeout(tick, STEP);
+    };
+    // Kick off on the next tick so the function declarations are guaranteed hoisted
+    // and SillyTavern has at least started bootstrapping the DOM.
+    setTimeout(tick, 0);
+
+    // Belt-and-braces — also listen for the DOMContentLoaded event in case the
+    // module loaded before the DOM was ready.
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            try { renderMoveToPanel(); renderMinimap(); } catch {}
+        }, { once: true });
+    }
+})();
+
+function buildMoveToEnumOptions() {
+    if (!mapPanelController) return [];
+    const currentId = getCurrentLocationId();
+    if (!currentId) return [];   // No current location → no connected destinations to offer.
+    const conns = mapPanelController.getConnectionsForLocationId?.(currentId) ?? [];
+    const seen = new Map();
+    for (const c of conns) {
+        if (!c?.label || seen.has(c.label)) continue;
+        const desc = c.kind === 'pin' ? `Pin (${c.value})`
+                   : c.kind === 'area' ? `Area (${c.value})`
+                   : `Sub-area (${c.value})`;
+        seen.set(c.label, new SlashCommandEnumValue(c.label, desc));
+    }
+    return [...seen.values()];
+}
+
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'hangmans-gambit',
+    name: 'moveto',
+    callback: async (args) => {
+        if (!mapPanelController) {
+            console.warn('[Dangan][moveto] Map controller unavailable.');
+            return '';
+        }
+        const raw = String(args.location || args._ || '').trim();
+        if (!raw) {
+            console.warn('[Dangan][moveto] Provide location=<pin label / area name / sub-area>.');
+            return '';
+        }
+
+        if (!getCurrentLocationId()) {
+            console.warn('[Dangan][moveto] No current location set. Use /setlocation first.');
+            return '';
+        }
+        if (!moveToDestination(raw)) {
+            console.warn('[Dangan][moveto] Destination is not connected to the current location:', raw);
+            return '';
+        }
+        return raw;
+    },
+    helpString: 'Moves the player to a connected room/area/sub-area. Updates the chat background to the destination room\'s BG and remembers the current location.',
+    namedArgumentList: [
+        SlashCommandNamedArgument.fromProps({
+            name: 'location',
+            description: 'Destination — picked from connected rooms / sub-areas / areas of the current room.',
+            typeList: [ARGUMENT_TYPE.STRING],
+            isRequired: true,
+            enumProvider: () => buildMoveToEnumOptions(),
+        }),
+    ],
+}));
+
+// /setlocation — directly set the player's current location by ID, regardless of
+// any "Connected To" graph. Accepts a pin locationId, an area key, or a sub-area
+// key in the form "<areaKey>/<floorKey>". Switches the chat background when the
+// resolved target has one.
+function buildSetLocationEnumOptions() {
+    if (!mapPanelController) return [];
+    const out = [];
+    // Only navigable location pins — exclude evidence ('truth-bullet') and body pins.
+    const LOCATION_PIN_TYPES = new Set(['room', 'monomachine', 'trial']);
+    for (const p of (mapPanelController.getAllPins?.() ?? [])) {
+        if (!p?.locationId) continue;
+        if (!LOCATION_PIN_TYPES.has(p.type)) continue;
+        out.push(new SlashCommandEnumValue(p.locationId, `Pin — ${p.label || p.locationId}`));
+    }
+    for (const a of (mapPanelController.getAllAreas?.() ?? [])) {
+        out.push(new SlashCommandEnumValue(a.key, `Area — ${a.label}`));
+        for (const f of (a.floors || [])) {
+            out.push(new SlashCommandEnumValue(`${a.key}/${f.key}`, `Sub-area — ${a.label} › ${f.label}`));
+        }
+    }
+    return out;
+}
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'setlocation',
+    callback: async (args) => {
+        if (!mapPanelController) {
+            console.warn('[Dangan][setlocation] Map controller unavailable.');
+            return '';
+        }
+        const raw = String(args.id || args._ || '').trim();
+        if (!raw) {
+            console.warn('[Dangan][setlocation] Provide id=<pin locationId | areaKey | areaKey/floorKey>.');
+            return '';
+        }
+
+        // 1) Pin lookup by locationId first.
+        const pin = mapPanelController.getPinByLocationId?.(raw);
+        if (pin) {
+            // Helper handles fade, sfx, room swap, and panel/minimap re-renders.
+            performPinArrivalWithFade(pin);
+            return pin.label || pin.locationId;
+        }
+
+        // 2) Sub-area: "<areaKey>/<floorKey>".
+        if (raw.includes('/')) {
+            const d = mapPanelController.describeConnectionRef?.(`subarea:${raw}`);
+            if (d?.kind === 'subarea') {
+                mapPanelController.navigateToArea?.(d.areaKey, d.floorKey);
+                setCurrentLocationId(`subarea:${d.areaKey}/${d.floorKey}`);
+                renderMoveToPanel();
+                renderMinimap();
+                return d.label;
+            }
+        }
+
+        // 3) Area key.
+        const a = mapPanelController.describeConnectionRef?.(`area:${raw}`);
+        if (a?.kind === 'area') {
+            mapPanelController.navigateToArea?.(a.value);
+            setCurrentLocationId(`area:${a.value}`);
+            renderMoveToPanel();
+            renderMinimap();
+            return a.label;
+        }
+
+        console.warn('[Dangan][setlocation] Could not resolve id:', raw);
+        return '';
+    },
+    helpString: 'Sets the player\'s current location to the given pin, area, or sub-area ID — bypassing the "Connected To" check. Switches the chat background when the target pin has one.',
+    namedArgumentList: [
+        SlashCommandNamedArgument.fromProps({
+            name: 'id',
+            description: 'A pin locationId, an areaKey, or a sub-area key (areaKey/floorKey).',
+            typeList: [ARGUMENT_TYPE.STRING],
+            isRequired: true,
+            enumProvider: () => buildSetLocationEnumOptions(),
+        }),
+    ],
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'hangmansgambit',
     callback: async (args) => {
         const question   = String(args.question   || '').trim();
         const answer     = String(args.answer     || '').trim();
-        const time       = Math.max(5,  Number(args.time)       || 60);
-        const health     = Math.max(1,  Number(args.health)     || 3);
+        const time       = Math.max(120, Number(args.time)      || 120);
+        const health     = Math.max(1,  Number(args.health)     || 7);
         const difficulty = Math.min(5, Math.max(1, Number(args.difficulty) || 2));
         if (!question || !answer) {
             console.warn('[HangmansGambit] question and answer are required.');
@@ -8056,7 +11113,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'rebuttal-showdown',
+    name: 'rebuttalshowdown',
     callback: async () => {
         await rebuttalShowdownController?.run();
         return '';
@@ -8079,7 +11136,7 @@ async function triggerInterjectorResponse(characterName) {
 }
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'interject',
+    name: 'interjection',
     callback: async (args) => {
         const ctx  = window.SillyTavern?.getContext?.();
         const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
@@ -8153,7 +11210,7 @@ const RS_SIZES = {
 
 for (const cfg of Object.values(RS_SIZES)) {
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-        name: `rebuttal-showdown-${cfg.suffix}`,
+        name: `rebuttalshowdown-${cfg.suffix}`,
         callback: async (args) => {
             const { opponentName, playerName } = rsGetContext(args);
             const phaseOneLines = rsBuildPhaseOneLines(args, cfg.maxLines);
@@ -8183,7 +11240,7 @@ for (const cfg of Object.values(RS_SIZES)) {
 }
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'pta',
+    name: 'panictalkaction',
     callback: async (args) => {
         const enemyHp  = Math.max(1, Number(args.enemyHp)  || 100);
         const playerHp = Math.max(1, Number(args.playerHp) || 100);
@@ -8291,7 +11348,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'end-trial',
+    name: 'endtrial',
     callback: async () => {
         console.log('[Dangan] Manual trial termination requested.');
         trialManager?.endTrial();

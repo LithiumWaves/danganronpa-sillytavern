@@ -1,0 +1,11 @@
+{
+    "description": "Emotion-font presets detected automatically. Each entry corresponds to a font file in this directory. Add a new font by dropping its file here and adding an entry below.",
+    "fonts": [
+        { "file": "Chomsky.woff" },
+        { "file": "Matcha Cih.ttf" },
+        { "file": "PositionsByArixbored-Regular .otf" },
+        { "file": "Spell of Asia.ttf" },
+        { "file": "Subway_Haze_1.1.ttf" },
+        { "file": "TEXAT BOLD PERSONAL USE___.otf" }
+    ]
+}

@@ -1,3 +1,5 @@
+import { attachCursorSway } from "./cursorSway.js";
+
 const HG_ID    = "dangan-hg-overlay";
 const HG_STYLE = "dangan-hg-style";
 
@@ -53,7 +55,8 @@ function buildLetterPool(answer, fillerCount) {
     return needed.concat(others.slice(0, fillerCount));
 }
 
-function buildStyles() {
+function buildStyles(extPath = "") {
+    const cursorUrl = extPath ? `${extPath}/assets/classtrial/trialcursor.png` : "";
     return `
 #${HG_ID} {
     position: fixed; inset: 0;
@@ -69,6 +72,7 @@ function buildStyles() {
     pointer-events: none;
 }
 #${HG_ID}.hg-on { opacity: 1; pointer-events: auto; }
+#${HG_ID}.hg-on, #${HG_ID}.hg-on * { cursor: none !important; }
 
 /* CRT scanlines */
 #${HG_ID}::before {
@@ -140,28 +144,52 @@ function buildStyles() {
 /* ─── Health & bullet bar ────────────── */
 #hg-status-area {
     position: absolute; top: 18px; right: 18px; z-index: 18;
-    display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
+}
+#hg-status-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    width: 300px;
 }
 #hg-bullet-bar {
-    width: 100%; height: 12px;
-    background: rgba(20, 60, 20, 0.3);
-    border: 1px solid rgba(80, 180, 80, 0.35);
-    border-radius: 3px;
-    overflow: hidden;
+    display: flex;
+    gap: 3px;
+    align-items: center;
+    width: 100%;
+    height: 40px;
 }
-#hg-bt-bar-fill {
-    height: 100%; width: 100%;
-    background: #44ee44;
-    box-shadow: 0 0 8px rgba(80, 255, 80, 0.7);
-    border-radius: 3px;
-    transition: width 80ms linear;
+.hg-bt-stars-bg,
+.hg-bt-stars-fg {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 3px;
+    letter-spacing: 0;
+    white-space: nowrap;
+    pointer-events: none;
+    user-select: none;
+    font-size: 38px;
+    letter-spacing: 2.75px;
 }
-#hg-bt-bar-fill.hg-active {
+.hg-bt-stars-bg {
+    color: rgba(20, 60, 20, 0.6);
+    text-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
+}
+.hg-bt-stars-fg {
+    color: #44ee44;
+    text-shadow: 0 0 8px rgba(80, 255, 80, 0.85), 0 0 14px rgba(80, 220, 80, 0.55);
+    clip-path: inset(0 0 0 0);
+    transition: clip-path 80ms linear;
+}
+.hg-bt-stars-fg.hg-active {
     animation: hgBulletBarPulse 0.38s ease-in-out infinite;
 }
 @keyframes hgBulletBarPulse {
-    0%,100% { background: #44ee44; box-shadow: 0 0 6px rgba(80,255,80,0.7); }
-    50%      { background: #ccffcc; box-shadow: 0 0 18px rgba(160,255,160,1), 0 0 30px rgba(80,220,80,0.6); }
+    0%,100% { color: #44ee44; text-shadow: 0 0 6px rgba(80,255,80,0.7); }
+    50%      { color: #ccffcc; text-shadow: 0 0 18px rgba(160,255,160,1), 0 0 30px rgba(80,220,80,0.6); }
 }
 #hg-bullet-hint {
     font-size: 8px; letter-spacing: 2px;
@@ -240,7 +268,10 @@ function buildStyles() {
     letter-spacing: 2.5px;
     opacity: 0.6; line-height: 1;
 }
-#hg-health { display: flex; gap: 3px; align-items: center; flex-wrap: wrap; justify-content: flex-end; max-width: 300px; }
+#hg-health {     display: flex;
+    gap: 3px;
+    align-items: center;
+    width: 100%; }
 .hg-heart {
     font-size: 38px; color: #ff3399;
     text-shadow: 0 0 10px rgba(255, 50, 150, 0.9), 0 0 22px rgba(255, 0, 100, 0.5);
@@ -260,6 +291,29 @@ function buildStyles() {
     color: rgba(0, 200, 255, 0.35);
     text-shadow: 0 0 14px rgba(0, 180, 255, 0.4);
     pointer-events: none; z-index: 5; user-select: none;
+}
+
+/* Mouse-following reticle with sway */
+#hg-sway-reticle {
+    position: fixed; left: 0; top: 0;
+    width: 96px; height: 96px;
+    background-image: url("${cursorUrl}");
+    background-size: contain; background-repeat: no-repeat; background-position: center;
+    transform: translate(-50%, -50%);
+    pointer-events: none; z-index: 2147483647;
+    will-change: transform;
+    opacity: 0.92;
+}
+#hg-sway-reticle::after {
+    content: '+';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: "Orbitron", "Impact", monospace;
+    font-size: 24px; font-weight: 900; line-height: 1;
+    color: #f0bf70;
+    text-shadow: 0 0 4px rgba(0, 0, 0, 0.65), 0 0 8px rgba(240, 191, 112, 0.6);
+    pointer-events: none;
 }
 
 /* ─── Stock ──────────────────────────── */
@@ -371,7 +425,11 @@ function buildStyles() {
     cursor: pointer; user-select: none;
     display: flex; align-items: center; justify-content: center;
     z-index: 15;
-    transition: filter 120ms ease;
+    transition: filter 220ms ease;
+    /* Default: dark spheres — colour fully desaturated and dimmed. The
+     * letter is hidden via opacity:0 so it can fade in cleanly when the
+     * sheen sweeps or the concentration light catches the bubble. */
+    filter: brightness(0.18) saturate(0.06) contrast(0.9);
 }
 .hg-bubble-letter {
     font-family: "Orbitron", monospace;
@@ -379,13 +437,89 @@ function buildStyles() {
     color: #fff;
     text-shadow: 0 1px 4px rgba(0,0,0,0.9), 0 0 8px rgba(255,255,255,0.3);
     pointer-events: none; user-select: none;
+    opacity: 0;
+    transition: opacity 180ms ease;
 }
-.hg-bubble:hover {
-    filter: brightness(1.3) drop-shadow(0 0 6px rgba(255,255,255,0.5));
+/* Hover is intentionally inert — letters/colours never reveal on hover. */
+body.hg-sheen-on .hg-bubble:not(.hg-stocked-bubble),
+.hg-bubble.hg-bubble-lit {
+    filter: none;
+}
+body.hg-sheen-on .hg-bubble:not(.hg-stocked-bubble) .hg-bubble-letter,
+.hg-bubble.hg-bubble-lit .hg-bubble-letter,
+.hg-bubble.hg-stocked-bubble .hg-bubble-letter {
+    opacity: 1;
 }
 .hg-bubble.hg-stocked-bubble {
     filter: brightness(1.65) drop-shadow(0 0 12px cyan) drop-shadow(0 0 6px rgba(0,200,255,0.9));
 }
+
+/* ─── Diagonal sheen sweep ─────────────
+ * Periodically (3–10 s) a thick sheen sweeps from the left side of the
+ * screen towards the right. The strip itself is rotated 45° so its bright
+ * edge is diagonal (peak top-right, base bottom-left); only its X-position
+ * animates, producing a left→right pass. */
+#hg-sheen-overlay {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    z-index: 17;
+    overflow: hidden;
+    opacity: 0;
+}
+body.hg-sheen-on #hg-sheen-overlay { opacity: 1; }
+
+#hg-sheen-overlay::before {
+    content: "";
+    position: absolute;
+    width: 32vmax;
+    height: 260vmax;
+    top: 50%;
+    left: -70vw;
+    transform: translateY(-50%) rotate(45deg);
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(140, 200, 255, 0.06) 28%,
+        rgba(200, 230, 255, 0.32) 48%,
+        rgba(255, 255, 255, 0.40) 50%,
+        rgba(200, 230, 255, 0.32) 52%,
+        rgba(140, 200, 255, 0.06) 72%,
+        transparent 100%
+    );
+    mix-blend-mode: screen;
+}
+body.hg-sheen-on #hg-sheen-overlay::before {
+    animation: hgSheenSweep 1.4s ease-out forwards;
+}
+@keyframes hgSheenSweep {
+    from { left: -70vw; }
+    to   { left: 130vw; }
+}
+
+/* ─── Concentration light (Shift while charge remains) ─────────────────
+ * A radial halo follows the cursor while Shift is held + bullet-time
+ * charge is available. JS controls its width/height/position; bubbles whose
+ * centres fall inside the light get the .hg-bubble-lit class to drop the
+ * dim filter and reveal their colour + letter. */
+#hg-concentration-light {
+    position: fixed;
+    width: 0; height: 0;
+    left: 50%; top: 50%;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 16;
+    background: radial-gradient(circle,
+        rgba(220, 240, 255, 0.30) 0%,
+        rgba(180, 220, 255, 0.18) 45%,
+        rgba(140, 200, 255, 0.06) 75%,
+        transparent 100%);
+    box-shadow:
+        0 0 40px rgba(180, 220, 255, 0.35),
+        inset 0 0 30px rgba(220, 240, 255, 0.18);
+    mix-blend-mode: screen;
+    opacity: 0;
+}
+#hg-concentration-light.hg-light-on { opacity: 1; }
 
 /* ─── Damage flash ───────────────────── */
 #hg-damage-flash {
@@ -506,6 +640,17 @@ body.hg-shaking { animation: hgScreenShake 80ms steps(2,end) infinite; }
     color: rgba(200, 230, 200, 0.9);
     box-shadow: none;
 }
+.hg-tp-btn.hg-tp-never {
+    border-color: rgba(120, 120, 120, 0.25);
+    color: rgba(170, 170, 170, 0.6);
+    background: rgba(10, 10, 10, 0.6);
+    font-style: italic;
+}
+.hg-tp-btn.hg-tp-never:hover {
+    border-color: rgba(180, 180, 180, 0.55);
+    color: rgba(210, 210, 210, 0.9);
+    box-shadow: none;
+}
 
 /* ─── Tutorial modal ─────────────────────── */
 #hg-tutorial-modal {
@@ -591,9 +736,12 @@ export function createHangmansGambitController({
     resumeDynamicAudio   = null,
     playBgm              = null,
     getPlayerSpriteUrl   = null,
+    isTutorialPromptEnabled = () => true,
+    disableTutorialPrompt   = () => {},
 } = {}) {
 
     let _bgmAudio = null;
+    let _swayDetach = null;
     let _bgmIsDA  = false;
 
     function stopBgm() {
@@ -621,6 +769,7 @@ export function createHangmansGambitController({
 
     function destroy() {
         stopBgm();
+        if (_swayDetach) { try { _swayDetach(); } catch {} _swayDetach = null; }
         document.getElementById(HG_ID)?.remove();
         document.getElementById(HG_STYLE)?.remove();
         document.getElementById("dangan-hg-banner")?.remove();
@@ -629,6 +778,7 @@ export function createHangmansGambitController({
         document.getElementById("hg-tutorial-prompt")?.remove();
         document.getElementById("hg-tutorial-modal")?.remove();
         document.body.classList.remove("hg-shaking");
+        document.body.classList.remove("hg-sheen-on");
     }
 
     async function showGotItBanner() {
@@ -663,7 +813,7 @@ export function createHangmansGambitController({
                 const spriteEl = document.createElement('img');
                 spriteEl.src = spriteUrl;
                 spriteEl.alt = '';
-                spriteEl.style.cssText = 'position:absolute;bottom:-1520px;left:70%;transform:translateX(-50%);height:650%;width:auto;object-fit:contain;object-position:center bottom;pointer-events:none;filter:drop-shadow(rgb(255,255,255) 0px 0px 50px);';
+                spriteEl.style.cssText = 'position:absolute;bottom:-1475px;left:70%;transform:translateX(-50%);height:650%;width:auto;object-fit:contain;object-position:center bottom;pointer-events:none;filter:drop-shadow(rgb(255,255,255) 0px 0px 50px);';
                 inner.appendChild(spriteEl);
             }
         }
@@ -684,6 +834,10 @@ export function createHangmansGambitController({
     }
 
     function showTutorialPrompt() {
+        // User has disabled tutorial prompts in settings — skip straight
+        // through as if they'd chosen "No, just start".
+        if (!isTutorialPromptEnabled()) return Promise.resolve(false);
+
         return new Promise(resolve => {
             const el = document.createElement('div');
             el.id = 'hg-tutorial-prompt';
@@ -694,6 +848,7 @@ export function createHangmansGambitController({
                 <div class="hg-tp-buttons">
                     <button class="hg-tp-btn hg-tp-yes">Let's hear it</button>
                     <button class="hg-tp-btn hg-tp-no">No, just start</button>
+                    <button class="hg-tp-btn hg-tp-never">No, and don't remind me</button>
                 </div>
             `;
             document.body.appendChild(el);
@@ -708,6 +863,10 @@ export function createHangmansGambitController({
             }
             el.querySelector('.hg-tp-yes').addEventListener('click', () => dismiss(true));
             el.querySelector('.hg-tp-no').addEventListener('click', () => dismiss(false));
+            el.querySelector('.hg-tp-never').addEventListener('click', () => {
+                try { disableTutorialPrompt(); } catch {}
+                dismiss(false);
+            });
         });
     }
 
@@ -747,13 +906,13 @@ export function createHangmansGambitController({
         const answerUpper = answer.toUpperCase();
         const letterPool  = buildLetterPool(answer, preset.fillers);
         const speed       = preset.speed;
-        const safeHealth  = Math.max(1, (maxHealth | 0) || 3);
-        const safeTime    = Math.max(5, Number(time) || 60);
+        const safeHealth  = Math.max(1, (maxHealth | 0) || 7);
+        const safeTime    = Math.max(120, Number(time) || 120);
 
         // Inject styles
         const styleEl = document.createElement("style");
         styleEl.id = HG_STYLE;
-        styleEl.textContent = buildStyles();
+        styleEl.textContent = buildStyles(extensionFolderPath);
         document.head.appendChild(styleEl);
 
         // Build anagram HTML
@@ -785,13 +944,18 @@ export function createHangmansGambitController({
                 <div id="hg-anagram-label">ANAGRAM</div>
             </div>
             <div id="hg-status-area">
-                <div id="hg-health">${heartsHTML}</div>
-                <div id="hg-bullet-bar">
-                    <div id="hg-bt-bar-fill"></div>
+                <div id="hg-status-stack">
+                    <div id="hg-health">${heartsHTML}</div>
+                    <div id="hg-bullet-bar">
+                        <div class="hg-bt-stars-bg">★★★★★★★</div>
+                        <div class="hg-bt-stars-fg">★★★★★★★</div>
+                    </div>
                 </div>
             </div>
             <div id="hg-bt-vfx"></div>
             <div id="hg-bt-alert-overlay">${alertRowsHTML}</div>
+            <div id="hg-sheen-overlay"></div>
+            <div id="hg-concentration-light"></div>
             <div id="hg-crosshair">⊕</div>
             <div id="hg-stock-area">
                 <div id="hg-stock-label">STOCK</div>
@@ -807,6 +971,11 @@ export function createHangmansGambitController({
             </div>
         `;
         document.body.appendChild(overlay);
+        const swayReticle = document.createElement("div");
+        swayReticle.id = "hg-sway-reticle";
+        overlay.appendChild(swayReticle);
+        if (_swayDetach) { try { _swayDetach(); } catch {} }
+        _swayDetach = attachCursorSway(swayReticle, overlay);
         requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add("hg-on")));
 
 
@@ -833,32 +1002,55 @@ export function createHangmansGambitController({
             const BT_RECHARGE_RATE = 1 / 10;  // full recharge in 10 s
             let btCharge  = 1.0;              // 0–1
             let btActive  = false;
-            let btAudio   = null;
+
+            // ── Concentration light (screen-center halo while Shift held) ─
+            // Grows unbounded while bullet-time is active (Shift held +
+            // charge remaining); shrinks fast on release so it snaps shut
+            // the moment the player lets go. Anchored to the viewport
+            // centre (not the cursor) so the reveal feels like a spotlight
+            // expanding outward.
+            const LIGHT_EXPAND_RATE   = 200;  // px/s
+            const LIGHT_SHRINK_RATE   = 1500; // px/s (snappier than expand)
+            let lightRadius = 0;
+
+            // ── Diagonal sheen sweep ─────────────────────────────────
+            // Fires every 3–10 s; the body class drives both the dimming
+            // release on bubbles and the sweep animation on #hg-sheen-overlay.
+            const SHEEN_DURATION_MS = 1400;
+            let sheenTimerId = null;
+            function triggerSheen() {
+                if (isResolved) return;
+                document.body.classList.add('hg-sheen-on');
+                // Restart the animation in case the class was already present
+                // (shouldn't happen but defensive).
+                const sheenEl = overlay.querySelector('#hg-sheen-overlay');
+                if (sheenEl) {
+                    sheenEl.style.animation = 'none';
+                    void sheenEl.offsetWidth;
+                    sheenEl.style.animation = '';
+                }
+                window.setTimeout(() => {
+                    document.body.classList.remove('hg-sheen-on');
+                    scheduleSheen();
+                }, SHEEN_DURATION_MS);
+            }
+            function scheduleSheen() {
+                if (isResolved) return;
+                const delay = 3000 + Math.random() * 7000; // 3–10 s
+                sheenTimerId = window.setTimeout(triggerSheen, delay);
+            }
 
             function updateBulletBar() {
-                const fill = overlay.querySelector('#hg-bt-bar-fill');
-                if (!fill) return;
-                fill.style.width = `${btCharge * 100}%`;
-                fill.classList.toggle('hg-active', btActive);
+                const fg = overlay.querySelector('.hg-bt-stars-fg');
+                if (!fg) return;
+                // Drain right-to-left: clip the right edge as charge depletes.
+                const clipRight = Math.max(0, Math.min(100, (1 - btCharge) * 100));
+                fg.style.clipPath = `inset(0 ${clipRight}% 0 0)`;
+                fg.classList.toggle('hg-active', btActive);
             }
 
             function setBulletTimeActive(on) {
                 btActive = on;
-                overlay.querySelector('#hg-bt-vfx')?.classList.toggle('hg-active', on);
-                overlay.querySelector('#hg-bt-alert-overlay')?.classList.toggle('hg-active', on);
-                if (on) {
-                    if (!btAudio) {
-                        btAudio = new Audio(`${extensionFolderPath}/assets/sfx/minigames/slowmo.wav`);
-                        btAudio.loop = true;
-                        btAudio.play().catch(() => {});
-                    }
-                } else {
-                    if (btAudio) {
-                        btAudio.pause();
-                        btAudio.currentTime = 0;
-                        btAudio = null;
-                    }
-                }
             }
 
             const keyAC = new AbortController();
@@ -1220,6 +1412,8 @@ export function createHangmansGambitController({
                 isResolved = true;
                 cancelAnimationFrame(rafId);
                 clearTimeout(recoverTimer);
+                clearTimeout(sheenTimerId);
+                document.body.classList.remove('hg-sheen-on');
                 keyAC.abort();
                 setBulletTimeActive(false);
 
@@ -1245,6 +1439,8 @@ export function createHangmansGambitController({
                 isResolved = true;
                 cancelAnimationFrame(rafId);
                 clearTimeout(recoverTimer);
+                clearTimeout(sheenTimerId);
+                document.body.classList.remove('hg-sheen-on');
                 keyAC.abort();
                 setBulletTimeActive(false);
                 stopBgm();
@@ -1304,6 +1500,45 @@ export function createHangmansGambitController({
                     btCharge = Math.min(1, btCharge + BT_RECHARGE_RATE * dt);
                 }
                 updateBulletBar();
+
+                // ── Concentration light radius + bubble reveal ───────
+                const wantLight = btActive && btCharge > 0;
+                if (wantLight) {
+                    lightRadius = lightRadius + LIGHT_EXPAND_RATE * dt;
+                } else {
+                    lightRadius = Math.max(0, lightRadius - LIGHT_SHRINK_RATE * dt);
+                }
+                const centerX = window.innerWidth  / 2;
+                const centerY = window.innerHeight / 2;
+                const lightEl = overlay.querySelector('#hg-concentration-light');
+                if (lightEl) {
+                    if (lightRadius > 0.5) {
+                        const d = lightRadius * 2;
+                        lightEl.style.width  = `${d}px`;
+                        lightEl.style.height = `${d}px`;
+                        lightEl.style.left   = `${centerX}px`;
+                        lightEl.style.top    = `${centerY}px`;
+                        lightEl.classList.add('hg-light-on');
+                    } else {
+                        lightEl.classList.remove('hg-light-on');
+                    }
+                }
+                // Toggle .hg-bubble-lit on every active bubble based on
+                // distance from the viewport centre against the current radius.
+                if (lightRadius > 0.5) {
+                    const r2 = lightRadius * lightRadius;
+                    overlay.querySelectorAll('.hg-bubble').forEach(b => {
+                        const rect = b.getBoundingClientRect();
+                        const bx = rect.left + rect.width  / 2;
+                        const by = rect.top  + rect.height / 2;
+                        const dx = bx - centerX;
+                        const dy = by - centerY;
+                        b.classList.toggle('hg-bubble-lit', (dx*dx + dy*dy) < r2);
+                    });
+                } else {
+                    overlay.querySelectorAll('.hg-bubble.hg-bubble-lit')
+                        .forEach(b => b.classList.remove('hg-bubble-lit'));
+                }
 
                 // Evaluate speedMult AFTER charge update
                 const speedMult = btActive ? 0.5 : 1.0;
@@ -1366,6 +1601,7 @@ export function createHangmansGambitController({
                 const wantsTutorial = await showTutorialPrompt();
                 if (wantsTutorial) await showTutorialModal();
                 tutorialActive = false;
+                scheduleSheen();
                 const introAudio = new Audio(`${extensionFolderPath}/assets/sfx/minigames/minigame-start.wav`);
                 introAudio.addEventListener('ended', beginBgm, { once: true });
                 introAudio.addEventListener('error', beginBgm, { once: true });
