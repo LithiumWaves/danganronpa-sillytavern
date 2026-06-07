@@ -5739,6 +5739,14 @@ JUDGMENT RULES:
     }
 
     function cleanupDebateUI() {
+        // Was a debate actually on-screen? syncUI() runs cleanupDebateUI() on
+        // IDLE / PRE_DEBATE / TRUTH_BULLET_EXPLANATION — which includes every
+        // CHAT_CHANGED via initFromPersistentState(). stopDebatesTrack() fades
+        // out whatever BGM is currently playing, so calling it unconditionally
+        // ducked the overworld/daily BGM on every chat enter/exit even when no
+        // debate was running. Gate the audio stop on the debate actually being
+        // active (the overlay only exists after setupNonStopDebate()).
+        const wasDebating = !!debateOverlay;
         // Fresh debate session — release the per-hit shot lock so the player
         // can fire again in the next round.
         shotCooldown = false;
@@ -5771,7 +5779,7 @@ JUDGMENT RULES:
         clearWnSpaceTimers();
         
         document.body.classList.remove('dangan-mpd-active');
-        stopDebatesTrack?.();
+        if (wasDebating) stopDebatesTrack?.();
         unsuppressVisualizer?.();
         document.getElementById('dangan-chapter-label')?.style.removeProperty('display');
         document.getElementById('dangan-trial-context-panel')?.style.removeProperty('display');
