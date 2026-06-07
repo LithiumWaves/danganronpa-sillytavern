@@ -435,20 +435,45 @@ function buildStyles(extPath) {
 .sd-portrait-avatar.sd-mirrored { transform: scaleX(-1); }
 
 /* Lectern — sits in front of the character at the portrait's foot.
-   Sized relative to the portrait so closer (taller) portraits get larger lecterns,
-   matching the perspective of the character. */
+   Sized off --ph-depth (the depth-only portrait height) so closer portraits get
+   larger lecterns for perspective, but character-height scaling (baked into --ph)
+   does NOT change podium size — every podium is a default size at a given depth. */
 .sd-portrait-lectern {
     position: absolute;
-    bottom: -4%;
+    bottom: calc(var(--ph-depth, 40vh) * -0.04);
     left: 50%;
     transform: translateX(-50%);
-    height: 70%;
+    height: calc(var(--ph-depth, 40vh) * 0.7);
     width: auto;
     pointer-events: none;
     z-index: 4;
     filter: drop-shadow(0 6px 10px rgba(0,0,0,0.55));
 }
 .sd-portrait-lectern.sd-mirrored { transform: translateX(-50%) scaleX(-1); }
+
+/* Gymnasium horse — boosts short characters (< 145 cm) up to podium height,
+   matching the regular class trial. Like the lectern it's sized off --ph-depth,
+   so it's perspective-scaled by depth but a default size regardless of the
+   character's height. Sits behind the character; the lectern (z 4) covers its front.
+   Ratio mirrors the trial: horse ≈ 0.136× / 0.528× the portrait height. */
+.sd-portrait-horse {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(var(--ph-depth, 40vh) * 0.528);
+    height: calc(var(--ph-depth, 40vh) * 0.136);
+    object-fit: fill;
+    pointer-events: none;
+    z-index: 1;
+    filter: drop-shadow(0 4px 12px rgba(0,0,0,0.6));
+}
+/* Lift the character so their feet rest on top of the horse */
+.sd-portrait.sd-has-horse .sd-portrait-img-wrap {
+    position: relative;
+    z-index: 2;
+    transform: translateY(calc(var(--ph-depth, 40vh) * -0.136));
+}
 
 
 /* ── Cylinder wrap containers — RS-style, one per side ── */
@@ -1075,6 +1100,9 @@ function computePortraitVars(depthIdx, total) {
 // Reference constants for character-height → vh conversion (mirrors GCP formula).
 const SD_REF_HEIGHT_CM = 170;
 const SD_BASE_VH       = 70;  // vh assigned to a 170 cm character at the front position
+// Characters shorter than this get the gymnasium horse to reach podium height,
+// matching the regular class trial (GYMNASTICS_HORSE_MAX_CM in trialManager.js).
+const SD_GYM_HORSE_MAX_CM = 145;
 
 function charTrueHeightVh(name, getCharHeightCm) {
     if (!getCharHeightCm || !name) return null;
@@ -1098,16 +1126,21 @@ function scaledPhFromEl(el, phVh, pbPx) {
 }
 
 function portraitHtml(char, side, depthIdx, total, overrideUrl = null, overrideName = null, forceAlive = false, needsFlip = false, getCharHeightCm = null, lecternUrl = "") {
-    const { pz, pb, phVh, pbPx } = computePortraitVars(depthIdx, total);
+    const { ph: phDepth, pz, pb, phVh, pbPx } = computePortraitVars(depthIdx, total);
     const url        = overrideUrl || charAvatarUrl(char);
     const rawName    = overrideName || String(char?.name || "");
     const initial    = escapeHtml(rawName.trim().charAt(0).toUpperCase() || "?");
     const isDeadChar = !forceAlive && !!char?._sdDead;
+    // Short characters get the gymnasium horse to reach podium height (mirrors the
+    // regular trial). The horse is a default-size prop — see CSS, sized off --ph-depth.
+    const charCm     = getCharHeightCm && rawName ? getCharHeightCm(rawName) : null;
+    const needsHorse = charCm != null && charCm < SD_GYM_HORSE_MAX_CM;
     const classes    = [
         "sd-portrait",
         `sd-portrait-${side}`,
         depthIdx === 0 ? "sd-portrait-leader" : "",
         isDeadChar     ? "sd-portrait-dead"   : "",
+        needsHorse     ? "sd-has-horse"       : "",
     ].filter(Boolean).join(" ");
     const deadAttr    = isDeadChar ? ' data-dead="true"' : '';
     const mirrorClass = needsFlip  ? ' sd-mirrored'      : '';
@@ -1122,7 +1155,14 @@ function portraitHtml(char, side, depthIdx, total, overrideUrl = null, overrideN
     const lecternImg    = lecternUrl
         ? `<img src="${lecternUrl}" alt="" class="sd-portrait-lectern${lecternMirror}" draggable="false" onerror="this.remove()">`
         : "";
-    return `<div class="${classes}"${deadAttr} data-name="${escapeHtml(rawName)}" data-ph-true="${trueVh}" style="--ph:${ph}; --pz:${pz}; --pb:${pb}">
+    // Horse asset lives alongside the lectern in assets/classtrial/; reuse that
+    // resolved path so it honours the custom Game Master opt-out (empty lecternUrl).
+    const horseUrl      = needsHorse && lecternUrl ? lecternUrl.replace(/[^/]+$/, "gymnastics-horse.png") : "";
+    const horseImg      = horseUrl
+        ? `<img src="${horseUrl}" alt="" class="sd-portrait-horse" draggable="false" onerror="this.remove()">`
+        : "";
+    return `<div class="${classes}"${deadAttr} data-name="${escapeHtml(rawName)}" data-ph-true="${trueVh}" style="--ph:${ph}; --ph-depth:${phDepth}; --pz:${pz}; --pb:${pb}">
+        ${horseImg}
         <div class="sd-portrait-img-wrap">
             ${url ? `<img src="${url}" alt="${initial}" class="sd-portrait-avatar${mirrorClass}" onerror="this.remove()">` : ""}
         </div>
@@ -1715,8 +1755,9 @@ export function createScrumDebateController({
                     // Alive portraits cycle through depth positions 0 .. N-1
                     alive.forEach((el, i) => {
                         const depth = N > 0 ? (i - (shift % N) + N) % N : 0;
-                        const { phVh, pbPx, pz, pb } = computePortraitVars(depth, total);
+                        const { ph: phDepth, phVh, pbPx, pz, pb } = computePortraitVars(depth, total);
                         el.style.setProperty('--ph', scaledPhFromEl(el, phVh, pbPx));
+                        el.style.setProperty('--ph-depth', phDepth);
                         el.style.setProperty('--pz', pz);
                         el.style.setProperty('--pb', pb);
                         el.style[edge] = `${depth * step}px`;
@@ -1727,8 +1768,9 @@ export function createScrumDebateController({
                     // Dead portraits pinned after alive — never cycle
                     dead.forEach((el, i) => {
                         const depth = N + i;
-                        const { phVh, pbPx, pz, pb } = computePortraitVars(depth, total);
+                        const { ph: phDepth, phVh, pbPx, pz, pb } = computePortraitVars(depth, total);
                         el.style.setProperty('--ph', scaledPhFromEl(el, phVh, pbPx));
+                        el.style.setProperty('--ph-depth', phDepth);
                         el.style.setProperty('--pz', pz);
                         el.style.setProperty('--pb', pb);
                         el.style[edge] = `${depth * step}px`;
