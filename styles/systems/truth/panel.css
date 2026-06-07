@@ -279,37 +279,13 @@
 .truth-image-col {
     flex-shrink: 0;
     width: 220px;
+    height: fit-content;
     position: relative;
-    background: radial-gradient(ellipse at 50% 60%, rgba(36,10,46,0.97), rgba(8,3,14,1));
-    box-shadow: inset 0 0 60px rgba(0,0,0,0.55);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     overflow: hidden;
-}
-
-.truth-image-col::before,
-.truth-image-col::after {
-    content: '';
-    position: absolute;
-    width: 10px;
-    height: 10px;
-    border-style: solid;
-}
-
-.truth-image-col::before {
-    top: 6px;
-    left: 6px;
-    border-width: 1px 0 0 1px;
-    border-color: rgba(220,100,255,0.55);
-}
-
-.truth-image-col::after {
-    bottom: 6px;
-    right: 6px;
-    border-width: 0 1px 1px 0;
-    border-color: rgba(220,100,255,0.55);
 }
 
 .truth-bullet-img {
