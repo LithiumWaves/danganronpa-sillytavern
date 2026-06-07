@@ -1371,63 +1371,86 @@ function createVnModeController() {
         streamToggleEl.setAttribute('title', streamingEnabled ? 'Disable message streaming' : 'Enable message streaming');
     }
 
-    function parseVnMarkup(text) {
-        const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const escVnHtml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-        // Process bold/italic within a string, wrapping plain runs in `baseClass`
-        const processSpans = (str, baseClass) => {
+    // Parse VN markup into a flat list of { className, text } segments, where `text`
+    // is the *visible* text with markup delimiters already stripped. Rendering and
+    // streaming both build from these so formatting is applied before any character is
+    // shown (delimiters like *, ** and " never appear raw in the UI).
+    function tokenizeVnMarkup(text) {
+        const segments = [];
+        let hasAction = false;
+
+        // Split bold/italic within a string, wrapping plain runs in `baseClass`
+        const pushSpans = (str, baseClass) => {
             const inner = /(\*\*[\s\S]+?\*\*|\*[\s\S]+?\*)/g;
-            let out = '';
             let last = 0;
             let m;
             while ((m = inner.exec(str)) !== null) {
                 if (m.index > last) {
-                    out += `<span class="${baseClass}">${esc(str.slice(last, m.index))}</span>`;
+                    segments.push({ className: baseClass, text: str.slice(last, m.index) });
                 }
                 const r = m[0];
                 if (r.startsWith('**')) {
-                    out += `<span class="dangan-vn-segment dangan-vn-segment-bold">${esc(r.slice(2, -2))}</span>`;
+                    segments.push({ className: 'dangan-vn-segment dangan-vn-segment-bold', text: r.slice(2, -2) });
                 } else {
-                    out += `<span class="dangan-vn-segment dangan-vn-segment-action">${esc(r.slice(1, -1))}</span>`;
+                    segments.push({ className: 'dangan-vn-segment dangan-vn-segment-action', text: r.slice(1, -1) });
                 }
                 last = m.index + r.length;
             }
-            if (last < str.length) out += `<span class="${baseClass}">${esc(str.slice(last))}</span>`;
-            return out || `<span class="${baseClass}">${esc(str)}</span>`;
+            if (last < str.length) segments.push({ className: baseClass, text: str.slice(last) });
         };
 
         const pattern = /(\*\*[\s\S]+?\*\*|\*[\s\S]+?\*|"[^"]*")/g;
-        let html = '';
         let lastIndex = 0;
-        let hasAction = false;
         let match;
 
         while ((match = pattern.exec(text)) !== null) {
             if (match.index > lastIndex) {
-                html += processSpans(
+                pushSpans(
                     text.slice(lastIndex, match.index),
                     'dangan-vn-segment dangan-vn-segment-narrator'
                 );
             }
             const raw = match[0];
             if (raw.startsWith('**')) {
-                html += `<span class="dangan-vn-segment dangan-vn-segment-bold">${esc(raw.slice(2, -2))}</span>`;
+                segments.push({ className: 'dangan-vn-segment dangan-vn-segment-bold', text: raw.slice(2, -2) });
             } else if (raw.startsWith('*')) {
                 hasAction = true;
-                html += `<span class="dangan-vn-segment dangan-vn-segment-action">${esc(raw.slice(1, -1))}</span>`;
+                segments.push({ className: 'dangan-vn-segment dangan-vn-segment-action', text: raw.slice(1, -1) });
             } else {
                 // Dialogue — process nested bold/italic inside the quotes
-                html += processSpans(raw, 'dangan-vn-segment dangan-vn-segment-dialogue');
+                pushSpans(raw, 'dangan-vn-segment dangan-vn-segment-dialogue');
             }
             lastIndex = match.index + raw.length;
         }
         if (lastIndex < text.length) {
-            html += processSpans(
+            pushSpans(
                 text.slice(lastIndex),
                 'dangan-vn-segment dangan-vn-segment-narrator'
             );
         }
-        return { html: html || esc(text), hasAction };
+        return { segments, hasAction };
+    }
+
+    // Render the first `visibleCount` visible characters of `segments` as formatted
+    // HTML. Passing Infinity (the default) renders the whole thing.
+    function renderVnSegments(segments, visibleCount = Infinity) {
+        let remaining = visibleCount;
+        let html = '';
+        for (const seg of segments) {
+            if (remaining <= 0) break;
+            const slice = seg.text.length <= remaining ? seg.text : seg.text.slice(0, remaining);
+            html += `<span class="${seg.className}">${escVnHtml(slice)}</span>`;
+            remaining -= slice.length;
+        }
+        return html;
+    }
+
+    function parseVnMarkup(text) {
+        const { segments, hasAction } = tokenizeVnMarkup(text);
+        const html = renderVnSegments(segments);
+        return { html: html || escVnHtml(text), hasAction };
     }
 
     function applyVnMarkup(targetText) {
@@ -1447,25 +1470,37 @@ function createVnModeController() {
             return;
         }
 
+        // Pre-parse the full response so formatting is applied up front; stream by
+        // revealing visible characters of the already-formatted segments.
+        const { segments, hasAction } = tokenizeVnMarkup(targetText);
+        const totalVisible = segments.reduce((sum, seg) => sum + seg.text.length, 0);
+        textEl.classList.toggle('has-action', hasAction);
+
+        if (totalVisible < 1) {
+            applyVnMarkup(targetText);
+            return;
+        }
+
         const token = streamToken;
+        let revealed = 0;
         const step = () => {
             if (token != streamToken || !textEl) return;
-            const currentLength = textEl.textContent?.length || 0;
-            if (currentLength >= targetText.length) {
+            if (revealed >= totalVisible) {
                 textEl.classList.remove('dangan-vn-text-streaming');
                 streamTimerId = null;
-                applyVnMarkup(targetText);
+                textEl.innerHTML = renderVnSegments(segments);
                 return;
             }
 
-            const remaining = targetText.length - currentLength;
+            const remaining = totalVisible - revealed;
             const delta = remaining > 40 ? 3 : remaining > 18 ? 2 : 1;
-            textEl.textContent = targetText.slice(0, currentLength + delta);
+            revealed = Math.min(totalVisible, revealed + delta);
+            textEl.innerHTML = renderVnSegments(segments, revealed);
             textEl.classList.add('dangan-vn-text-streaming');
             streamTimerId = setTimeout(step, 14);
         };
 
-        textEl.textContent = '';
+        textEl.innerHTML = '';
         step();
     }
 
