@@ -9623,7 +9623,7 @@ STATEMENT: <third statement>`;
         disableTutorialPrompt:   () => setMonopadSetting('minigameTutorialsEnabled', false),
     };
     hangmansGambitController  = createHangmansGambitController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, pauseDynamicAudio: fadeOutAndPauseBgm, resumeDynamicAudio: resumeBgmAfterHG, playBgm: playHGBgm, getPlayerSpriteUrl, ...tutorialPromptDeps });
-    argumentArmamentController = createArgumentArmamentController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, ...tutorialPromptDeps });
+    argumentArmamentController = createArgumentArmamentController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, getPlayerSpriteUrl, ...tutorialPromptDeps });
     mindMineController        = createMindMineController({
         extensionFolderPath,
         pauseCurrentBgm: fadeOutAndPauseBgm,

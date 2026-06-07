@@ -63,7 +63,8 @@ function segmentsIntersect(x1, y1, x2, y2, x3, y3, x4, y4) {
     return t >= 0 && t <= 1 && u >= 0 && u <= 1;
 }
 
-function buildStyles() {
+function buildStyles(extensionFolderPath = "") {
+    const panelImg = `${(extensionFolderPath || "").replace(/\\/g, "/")}/assets/images/minigames/aa-panel.png`;
     return `
     #${RS_ID} {
         position: fixed;
@@ -685,6 +686,25 @@ function buildStyles() {
         text-shadow: 0 0 24px rgba(255,255,255,0.8);
     }
     .rs-result.rs-show { display: flex; }
+    /* Verdict text framed in aa-panel.png, matching the trial victory panels.
+     * The image sits on a ::before pseudo so the theme hue-shift filter only
+     * touches the panel art, leaving the win/loss glow crisp. */
+    .rs-result-panel {
+        position: relative;
+        padding: 56px 96px;
+        white-space: pre-line;
+    }
+    .rs-result-panel::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image: url("${panelImg}");
+        background-size: 100% 100%;
+        background-repeat: no-repeat;
+        pointer-events: none;
+        z-index: -1;
+        filter: var(--dgn-overlay-filter, none);
+    }
     .rs-result.rs-win {
         color: #b4f6ff;
     }
@@ -1435,7 +1455,7 @@ export function createRebuttalShowdownController({
 
         const styleEl = document.createElement("style");
         styleEl.id = RS_STYLE;
-        styleEl.textContent = buildStyles();
+        styleEl.textContent = buildStyles(extensionFolderPath);
         document.head.appendChild(styleEl);
 
         const allBullets = (getTruthBullets?.() || []).map((bullet, index) => ({
@@ -1532,7 +1552,7 @@ export function createRebuttalShowdownController({
                         <img id="rs-counter-img" class="rs-counter-img" alt="COUNTER"/>
                     </div>
                 </div>
-                <div class="rs-result" id="rs-result"></div>
+                <div class="rs-result" id="rs-result"><div class="rs-result-panel"></div></div>
                 <div class="rs-spotlight" id="rs-spotlight-left"></div>
                 <div class="rs-spotlight" id="rs-spotlight-right"></div>
                 <div class="rs-portrait" id="rs-portrait-left">
@@ -1595,6 +1615,7 @@ export function createRebuttalShowdownController({
         const counterEl = overlay.querySelector("#rs-counter");
         const counterImgEl = overlay.querySelector("#rs-counter-img");
         const resultEl = overlay.querySelector("#rs-result");
+        const resultPanelEl = overlay.querySelector(".rs-result-panel");
         const counterBannerSrc = `${(extensionFolderPath || "").replace(/\\/g, "/")}/assets/classtrial/counter.png`;
         if (counterImgEl) counterImgEl.src = counterBannerSrc;
         const speakerNameEl       = overlay.querySelector("#rs-speaker-name");
@@ -2029,7 +2050,7 @@ export function createRebuttalShowdownController({
 
         function showResult(win, text) {
             resultEl.classList.add("rs-show", win ? "rs-win" : "rs-loss");
-            resultEl.textContent = text;
+            (resultPanelEl || resultEl).textContent = text;
         }
 
         async function showRetreat() {

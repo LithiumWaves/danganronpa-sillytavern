@@ -65,10 +65,36 @@ function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
 const SD_EXCLUDED_NAMES = new Set(["narrator", "assistant", "monokuma"]);
 
+// Normalized names of the characters in the active SillyTavern group chat.
+// Scoping the roster to these keeps stray characters carried over in the
+// persistent danganronpa `characters` map (from prior chats/chapters) off the
+// podiums — mirrors getActiveGroupMemberNames()/getVotingRosterCharacters() in
+// index.js. Returns null when not in a group chat so we keep the full roster
+// rather than over-filtering single-character chats.
+function activeGroupMemberKeys(ctx) {
+    if (!ctx?.groupId) return null;
+    const group = (Array.isArray(ctx.groups) ? ctx.groups : []).find(g => String(g.id) === String(ctx.groupId));
+    if (!group?.members?.length || !Array.isArray(ctx.characters)) return null;
+    const keys = new Set(
+        group.members
+            .map(avatar => ctx.characters.find(c => c?.avatar === avatar)?.name)
+            .filter(Boolean)
+            .map(name => String(name).trim().toLowerCase())
+    );
+    return keys.size ? keys : null;
+}
+
 export function buildTeams(isCharacterDead) {
     const ctx  = window.SillyTavern?.getContext?.();
     const allChars = Array.isArray(ctx?.characters) ? ctx.characters : [];
-    const rawChars = allChars.filter(c => !SD_EXCLUDED_NAMES.has(String(c?.name || "").trim().toLowerCase()));
+    const groupKeys = activeGroupMemberKeys(ctx);
+    const rawChars = allChars.filter(c => {
+        const key = String(c?.name || "").trim().toLowerCase();
+        if (SD_EXCLUDED_NAMES.has(key)) return false;
+        // In a group chat → only its members; otherwise keep the full roster.
+        if (groupKeys && !groupKeys.has(key)) return false;
+        return true;
+    });
     if (!rawChars.length) return { opposing: [], player: [] };
 
     // Tag each character with dead status (shallow copy — don't mutate original objects)

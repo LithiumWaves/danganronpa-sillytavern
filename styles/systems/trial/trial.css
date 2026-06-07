@@ -644,7 +644,8 @@ body.dangan-nsd-lie-armed .dangan-tb-bar-bg {
  * stack, and routes the panel image through --dgn-overlay-filter so it
  * picks up the active trial theme's hue-shift. */
 #dangan-scrum-win-notif.dangan-trial-notification.rebuttal-active,
-#dangan-mindmine-win-notif.dangan-trial-notification.rebuttal-active {
+#dangan-mindmine-win-notif.dangan-trial-notification.rebuttal-active,
+#dangan-trial-rebuttal-notif.dangan-trial-notification.rebuttal-active {
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
@@ -661,7 +662,8 @@ body.dangan-nsd-lie-armed .dangan-tb-bar-bg {
     z-index: 9990;
 }
 #dangan-scrum-win-notif.dangan-trial-notification.rebuttal-active::before,
-#dangan-mindmine-win-notif.dangan-trial-notification.rebuttal-active::before {
+#dangan-mindmine-win-notif.dangan-trial-notification.rebuttal-active::before,
+#dangan-trial-rebuttal-notif.dangan-trial-notification.rebuttal-active::before {
     content: "";
     position: absolute;
     inset: 0;
@@ -673,7 +675,8 @@ body.dangan-nsd-lie-armed .dangan-tb-bar-bg {
     filter: var(--dgn-overlay-filter, none);
 }
 #dangan-scrum-win-notif .rebuttal-header,
-#dangan-mindmine-win-notif .rebuttal-header {
+#dangan-mindmine-win-notif .rebuttal-header,
+#dangan-trial-rebuttal-notif .rebuttal-header {
     font-family: "Quickend", "Boldonse", "Orbitron", "Rajdhani", monospace;
 }
 

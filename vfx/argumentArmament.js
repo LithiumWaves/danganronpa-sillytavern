@@ -699,8 +699,25 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
 }
 #aa-result-banner.active { opacity: 1; }
 #aa-result-text {
+    position: relative;
     font-size: 56px; letter-spacing: 8px;
     text-align: center;
+    white-space: pre-line;
+    padding: 56px 88px;
+}
+/* Frame the verdict in aa-panel.png, matching the corner panels. The image
+ * lives on a ::before pseudo so the theme hue-shift filter only touches the
+ * panel art, leaving the win/lose text glow crisp. */
+#aa-result-text::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: url("${panelImg}");
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    pointer-events: none;
+    z-index: -1;
+    filter: var(--dgn-overlay-filter, none);
 }
 #aa-result-text.win {
     color: #22aaff;
@@ -891,6 +908,7 @@ export function createArgumentArmamentController({
     awardMonocoins,
     deductMonocoins,
     restoreTheme,
+    getPlayerSpriteUrl = null,
     isTutorialPromptEnabled = () => true,
     disableTutorialPrompt   = () => {},
 }) {
@@ -1723,6 +1741,21 @@ export function createArgumentArmamentController({
                 `);
                 const banner = document.getElementById('aa-got-it-banner');
                 const inner  = document.getElementById('aa-got-it-banner-inner');
+
+                // Player approval sprite overlay — matches Mind Mine's "Got It!"
+                // banner so the player character peeks up over the banner strip.
+                // The banner geometry is identical, so reuse the same placement.
+                if (typeof getPlayerSpriteUrl === 'function') {
+                    const spriteUrl = await getPlayerSpriteUrl('approval');
+                    if (spriteUrl) {
+                        const spriteEl = document.createElement('img');
+                        spriteEl.src = spriteUrl;
+                        spriteEl.alt = '';
+                        spriteEl.style.cssText = 'position:absolute;bottom:-1475px;left:70%;transform:translateX(-50%);height:650%;width:auto;object-fit:contain;object-position:center bottom;pointer-events:none;filter:drop-shadow(rgb(255,255,255) 0px 0px 50px);';
+                        inner.appendChild(spriteEl);
+                    }
+                }
+
                 await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
                 inner.style.left = '0%';
                 await new Promise(r => setTimeout(r, 3350));
