@@ -4915,6 +4915,31 @@ function applyLecternUI() {
     }
 }
 
+// Sync the voting-wheel face / monocoin custom-image pickers (under Hide
+// Hope's Peak Branding) to their stored mode + uploaded file.
+function applyVoteAssetUI(modeKey, dataKey, valueAttr, rowId, nameId) {
+    const mode = getMonopadSetting(modeKey) ?? 'default';
+    document.querySelectorAll(`[${valueAttr}]`).forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute(valueAttr) === mode);
+    });
+    const row = document.getElementById(rowId);
+    if (row) row.classList.toggle('is-hidden', mode !== 'custom');
+    const nameEl = document.getElementById(nameId);
+    if (nameEl) {
+        nameEl.textContent = getMonopadSetting(dataKey) ? 'Custom file loaded' : 'No file chosen';
+    }
+}
+
+function applyVoteFaceUI() {
+    applyVoteAssetUI('customVoteFaceMode', 'customVoteFaceData', 'data-voteface-value',
+        'dangan-voteface-custom-row', 'dangan-voteface-file-name');
+}
+
+function applyVoteCoinUI() {
+    applyVoteAssetUI('customCoinMode', 'customCoinData', 'data-votecoin-value',
+        'dangan-votecoin-custom-row', 'dangan-votecoin-file-name');
+}
+
 // Read the configured custom Game Master name, or null when default Monokuma
 // mode is selected / no character chosen. Centralised so callers (sprite
 // resolver, isMonokuma) don't duplicate the mode + name checks.
@@ -4922,6 +4947,39 @@ function getCustomGameMasterName() {
     if (getMonopadSetting('gameMasterMode') !== 'custom') return null;
     const name = getMonopadSetting('gameMasterCharacter');
     return (typeof name === 'string' && name.trim()) ? name.trim() : null;
+}
+
+// Resolve the display names of the characters in the active group chat. Used
+// to scope rosters (e.g. Voting Time) to the current Class Trial group rather
+// than the whole persistent `characters` map, which can carry over characters
+// from other chats/chapters. Returns [] when not in a group chat, so callers
+// can fall back to their full roster instead of over-filtering single-char chats.
+function getActiveGroupMemberNames() {
+    const ctx = window.SillyTavern?.getContext?.();
+    if (!ctx?.groupId) return [];
+    const group = (Array.isArray(ctx.groups) ? ctx.groups : []).find(g => String(g.id) === String(ctx.groupId));
+    if (!group?.members?.length || !Array.isArray(ctx.characters)) return [];
+    return group.members
+        .map(avatar => ctx.characters.find(c => c?.avatar === avatar)?.name)
+        .filter(Boolean);
+}
+
+// Build the roster for Voting Time: the members of the current group chat,
+// plus the active persona. Scoping to group membership keeps stray characters
+// (carried over in the persistent `characters` map from prior chats/chapters)
+// off the voting screen and results wheel.
+function getVotingRosterCharacters() {
+    const memberKeys = new Set(getActiveGroupMemberNames().map(n => normalizeName(n)));
+    const chars = [...characters.values()].filter(c => {
+        // Not in a group chat → keep the full roster rather than over-filter.
+        if (memberKeys.size && !memberKeys.has(normalizeName(c.name))) return false;
+        return true;
+    });
+    const playerName = getActivePersonaName();
+    if (playerName && playerName !== 'STUDENT') {
+        chars.push({ name: playerName, isPlayer: true, dead: false, missing: false });
+    }
+    return chars;
 }
 
 // ── Character introduction tracking ─────────────────────────────────────────
@@ -5842,6 +5900,8 @@ function applySettingsTabUI() {
     vnModeController?.setEnabled?.(!!tab.vnModeEnabled);
     applyAnnouncementCustomisationUI();
     applyLecternUI();
+    applyVoteFaceUI();
+    applyVoteCoinUI();
     applyGameMasterUI();
 }
 
@@ -7807,12 +7867,19 @@ $(".monopad-icon").on("mouseenter", function () {
             if (key === "hideTruthBulletImages" || key === "hideGiftImages" || key === "hideHopesPeakBranding") {
                 applyImageVisibilitySettings();
                 if (key === "hideHopesPeakBranding") {
-                    // The Game Master picker only shows under #dangan-branding-extras
-                    // when branding is hidden — re-show branding ⇒ revert mode to
-                    // default Monokuma so a stale "custom" pick can't keep driving
-                    // GM sprites/voice while the user can't see/change it.
-                    if (!next) setMonopadSetting('gameMasterMode', 'default');
+                    // The Game Master / voting-asset pickers only show under
+                    // #dangan-branding-extras when branding is hidden — re-show
+                    // branding ⇒ revert their modes to default so a stale
+                    // "custom" pick can't keep driving GM sprites/voice or the
+                    // voting wheel/coins while the user can't see/change it.
+                    if (!next) {
+                        setMonopadSetting('gameMasterMode', 'default');
+                        setMonopadSetting('customVoteFaceMode', 'default');
+                        setMonopadSetting('customCoinMode', 'default');
+                    }
                     applyGameMasterUI();
+                    applyVoteFaceUI();
+                    applyVoteCoinUI();
                 }
             }
             if (key === "halfspriteMode") {
@@ -7905,6 +7972,52 @@ $(".monopad-icon").on("mouseenter", function () {
             reader.onload = (e) => {
                 setMonopadSetting('customLecternData', e.target.result);
                 const nameEl = document.getElementById('dangan-lectern-file-name');
+                if (nameEl) nameEl.textContent = file.name;
+                saveSettingsDebounced();
+            };
+            reader.readAsDataURL(file);
+        });
+
+        // Voting wheel face — mode toggle (GENERIC / CUSTOM)
+        $(document).on("click", "[data-voteface-value]", function () {
+            const value = String(this.getAttribute('data-voteface-value') || 'default');
+            setMonopadSetting('customVoteFaceMode', value);
+            applyVoteFaceUI();
+            saveSettingsDebounced();
+        });
+        $(document).on("click", "#dangan-voteface-pick", () => {
+            document.getElementById('dangan-voteface-file')?.click();
+        });
+        $(document).on("change", "#dangan-voteface-file", function () {
+            const file = this.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                setMonopadSetting('customVoteFaceData', e.target.result);
+                const nameEl = document.getElementById('dangan-voteface-file-name');
+                if (nameEl) nameEl.textContent = file.name;
+                saveSettingsDebounced();
+            };
+            reader.readAsDataURL(file);
+        });
+
+        // Voting coins — mode toggle (GENERIC / CUSTOM)
+        $(document).on("click", "[data-votecoin-value]", function () {
+            const value = String(this.getAttribute('data-votecoin-value') || 'default');
+            setMonopadSetting('customCoinMode', value);
+            applyVoteCoinUI();
+            saveSettingsDebounced();
+        });
+        $(document).on("click", "#dangan-votecoin-pick", () => {
+            document.getElementById('dangan-votecoin-file')?.click();
+        });
+        $(document).on("change", "#dangan-votecoin-file", function () {
+            const file = this.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                setMonopadSetting('customCoinData', e.target.result);
+                const nameEl = document.getElementById('dangan-votecoin-file-name');
                 if (nameEl) nameEl.textContent = file.name;
                 saveSettingsDebounced();
             };
@@ -9414,14 +9527,7 @@ STATEMENT: <third statement>`;
 
     votingScreenController = createVotingScreenController({
         extensionFolderPath,
-        getCharacters: () => {
-            const chars = [...characters.values()];
-            const playerName = getActivePersonaName();
-            if (playerName && playerName !== 'STUDENT') {
-                chars.push({ name: playerName, isPlayer: true, dead: false, missing: false });
-            }
-            return chars;
-        },
+        getCharacters: getVotingRosterCharacters,
         getUserAvatarUrl: getActiveUserAvatarUrl,
         getSpriteUrl: (charName, label = 'neutral') => getSpriteUrl(charName, label),
         getPlayerName: getActivePersonaName,
@@ -9476,14 +9582,18 @@ STATEMENT: <third statement>`;
     voteResultsController = createVoteResultsController({
         extensionFolderPath,
         getCustomGameMasterName,
-        getCharacters: () => {
-            const chars = [...characters.values()];
-            const playerName = getActivePersonaName();
-            if (playerName && playerName !== 'STUDENT') {
-                chars.push({ name: playerName, isPlayer: true, dead: false, missing: false });
-            }
-            return chars;
+        getCustomVoteFace: () => {
+            const mode = getMonopadSetting('customVoteFaceMode');
+            const data = getMonopadSetting('customVoteFaceData');
+            return (mode === 'custom' && data) ? data : null;
         },
+        getCustomCoin: () => {
+            const mode = getMonopadSetting('customCoinMode');
+            const data = getMonopadSetting('customCoinData');
+            return (mode === 'custom' && data) ? data : null;
+        },
+        isBrandingHidden: () => !!getMonopadSetting('hideHopesPeakBranding'),
+        getCharacters: getVotingRosterCharacters,
         getUserAvatarUrl: getActiveUserAvatarUrl,
         getSpriteUrl: async (charName) => {
             let folder = charName;

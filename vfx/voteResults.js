@@ -104,7 +104,7 @@ function buildStyles() {
 
 // ── Controller ───────────────────────────────────────────────────────────────
 
-export function createVoteResultsController({ getCharacters, getSpriteUrl, getUserAvatarUrl, getCustomGameMasterName, extensionFolderPath }) {
+export function createVoteResultsController({ getCharacters, getSpriteUrl, getUserAvatarUrl, getCustomGameMasterName, getCustomVoteFace, getCustomCoin, isBrandingHidden, extensionFolderPath }) {
 
     function destroy() {
         document.getElementById(OVERLAY_ID)?.remove();
@@ -303,20 +303,25 @@ export function createVoteResultsController({ getCharacters, getSpriteUrl, getUs
             fill: "#000", stroke: "#c8860a", "stroke-width": "3",
         }));
 
-        // Monokuma in centre — fills the full centre circle. In custom Game
-        // Master mode, swap the bundled monokuma-vote-face for the chosen
-        // character's avatar so the wheel reflects whoever's running this
-        // killing game.
+        // Centre face. Priority: an explicitly uploaded custom face, then the
+        // custom Game Master's avatar (so the wheel reflects whoever's running
+        // this killing game), then — when Hope's Peak branding is hidden — a
+        // generic non-branded emblem, otherwise the bundled Monokuma.
         const monoR = Rin - 4;
         const monoClipId = "vr-mono-cp";
         const mc = svgEl("clipPath", { id: monoClipId });
         mc.appendChild(svgEl("circle", { cx, cy, r: monoR.toFixed(2) }));
         defs.appendChild(mc);
+        const brandingHidden = typeof isBrandingHidden === "function" && isBrandingHidden();
         let monoFaceHref = `${extensionFolderPath}/assets/monokuma/monokuma-vote-face.png`;
+        let useGenericFace = false;
+        const customFace = typeof getCustomVoteFace === "function" ? getCustomVoteFace() : null;
         const customGm = typeof getCustomGameMasterName === "function"
             ? getCustomGameMasterName()
             : null;
-        if (customGm) {
+        if (customFace) {
+            monoFaceHref = customFace;
+        } else if (customGm) {
             // The wheel's allChars list is filtered to living roster — the
             // GM may not appear there. Resolve their avatar straight from
             // SillyTavern's character store instead.
@@ -324,17 +329,39 @@ export function createVoteResultsController({ getCharacters, getSpriteUrl, getUs
             const gmChar = stChars.find(c => String(c?.name || '').toLowerCase() === customGm.toLowerCase());
             if (gmChar?.avatar) {
                 monoFaceHref = `/thumbnail?type=avatar&file=${encodeURIComponent(gmChar.avatar)}`;
+            } else if (brandingHidden) {
+                useGenericFace = true;
             }
+        } else if (brandingHidden) {
+            useGenericFace = true;
         }
-        const monoImg = svgEl("image", {
-            href: monoFaceHref,
-            x: (cx - monoR).toFixed(2), y: (cy - monoR).toFixed(2),
-            width: (monoR * 2).toFixed(2), height: (monoR * 2).toFixed(2),
-            "clip-path": `url(#${monoClipId})`,
-            preserveAspectRatio: "xMidYMid meet",
-            opacity: "1",
-        });
-        svg.appendChild(monoImg);
+        if (useGenericFace) {
+            // Generic, non-branded centre: gold disc with a question mark.
+            svg.appendChild(svgEl("circle", {
+                cx, cy, r: monoR.toFixed(2),
+                fill: "url(#vr-gold)", "clip-path": `url(#${monoClipId})`,
+            }));
+            const qm = svgEl("text", {
+                x: cx, y: cy,
+                "text-anchor": "middle", "dominant-baseline": "central",
+                "font-family": "'Arial Black', Impact, sans-serif",
+                "font-size": (monoR * 1.1).toFixed(0),
+                "font-weight": "900",
+                fill: "#0c0018",
+            });
+            qm.textContent = "?";
+            svg.appendChild(qm);
+        } else {
+            const monoImg = svgEl("image", {
+                href: monoFaceHref,
+                x: (cx - monoR).toFixed(2), y: (cy - monoR).toFixed(2),
+                width: (monoR * 2).toFixed(2), height: (monoR * 2).toFixed(2),
+                "clip-path": `url(#${monoClipId})`,
+                preserveAspectRatio: "xMidYMid meet",
+                opacity: "1",
+            });
+            svg.appendChild(monoImg);
+        }
         // Centre ring border (on top)
         svg.appendChild(svgEl("circle", {
             cx, cy, r: (Rin - 2).toFixed(2),
@@ -588,8 +615,19 @@ export function createVoteResultsController({ getCharacters, getSpriteUrl, getUs
         document.body.appendChild(canvas);
         const ctx = canvas.getContext("2d");
 
+        // Coin face. Priority: an explicitly uploaded custom coin, then —
+        // when Hope's Peak branding is hidden — a generic gold coin (the
+        // gold-circle fallback already drawn by frame()), otherwise the
+        // bundled monocoin.
         const img = new Image();
-        img.src = `${folderPath}/assets/images/ui/monocoin.png`;
+        const customCoin = typeof getCustomCoin === "function" ? getCustomCoin() : null;
+        const genericCoins = !customCoin && typeof isBrandingHidden === "function" && isBrandingHidden();
+        if (customCoin) {
+            img.src = customCoin;
+        } else if (!genericCoins) {
+            img.src = `${folderPath}/assets/images/ui/monocoin.png`;
+        }
+        // else: leave img with no src so frame() draws the gold-circle fallback.
 
         const COIN_SIZE     = 38;
         const GRAVITY       = 0.45;
@@ -627,8 +665,13 @@ export function createVoteResultsController({ getCharacters, getSpriteUrl, getUs
             });
         }
 
-        img.onload  = startStreams;
-        img.onerror = startStreams;
+        if (genericCoins) {
+            // No image to load — kick the streams off immediately.
+            startStreams();
+        } else {
+            img.onload  = startStreams;
+            img.onerror = startStreams;
+        }
 
         let lastT = null;
         function frame(t) {
