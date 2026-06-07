@@ -11,7 +11,7 @@ function ensureNotoSansJP() {
 }
 
 function buildStyles({ extensionFolderPath = '' } = {}) {
-    const panelImg = `${extensionFolderPath}/assets/images/minigames/pta-panel.png`;
+    const panelImg = `${extensionFolderPath}/assets/images/minigames/aa-panel.png`;
     return `
     #${QTT_ID} {
         position: fixed;

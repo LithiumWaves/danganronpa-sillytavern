@@ -466,11 +466,11 @@ export function createVotingScreenController({
 
         const living = allChars.filter(c => !c.dead && !c.missing);
 
-        // Pre-load sprites — tile uses 'neutral', portrait uses 'panictalkaction'
+        // Pre-load sprites — tile uses 'neutral', portrait uses 'argumentarmament'
         const imageUrls = await Promise.all(allChars.map(async c => {
             try {
                 const tilePromise     = getSpriteUrl?.(c.name, 'neutral').catch(() => null) ?? Promise.resolve(null);
-                const portraitPromise = getSpriteUrl?.(c.name, 'panictalkaction').catch(() => null) ?? Promise.resolve(null);
+                const portraitPromise = getSpriteUrl?.(c.name, 'argumentarmament').catch(() => null) ?? Promise.resolve(null);
                 let [tile, portrait] = await Promise.all([tilePromise, portraitPromise]);
                 if (c.isPlayer) {
                     const userAvatar = getUserAvatarUrl?.() ?? null;

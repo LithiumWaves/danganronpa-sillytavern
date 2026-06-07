@@ -33,7 +33,7 @@ export function createTrialManager(deps) {
         suppressVisualizer,
         unsuppressVisualizer,
         onStartHangmansGambit,
-        onStartPanicTalkAction,
+        onStartArgumentArmament,
         onStartInterjection,
         onStartVotingTime,
         onStartQuestionTime,
@@ -1523,7 +1523,7 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
                 { cmd: '/interjection', desc: 'Plays the rebuttal interjection cinematic, switches BGM to “New Classmates of the Dead”, then the interjector replies.', opts: ['character — Character name for the interjection sprite (defaults to last speaker)'] },
                 { cmd: '/rebuttalshowdown', desc: 'Starts a Rebuttal Showdown — cut through scrolling statements, then land the correct Truth Blade on the weak point.', opts: ['opponent — Opponent character name (defaults to last speaker)', 'player — Player character name (defaults to Prome player profile)', 's1-q … sN-q — Statement phrases (auto-split into chunks)'] },
                 { cmd: '/scrumdebate', desc: 'Starts a Scrum Debate. The group splits into two teams; debunk each opposing claim with the correct Truth Bullet, then win the final tug-of-war.' },
-                { cmd: '/panictalkaction', desc: 'Starts a Panic Talk Action boss-fight against the current speaker. At least one dialog line is required.', opts: ['dialogA … dialogK (at least one) — Up to 11 dialogue lines', 'enemyHp / playerHp — Starting HP (default 100)', 'phases — Number of phases 1–3 (default 3)', 'nSolution / sSolution / eSolution / wSolution — Direction prompt answer words', 'finalSolution — Final answer (shown uppercased)', 'finalSolutionQuote — Quote line accompanying the final solution', 'bg — Background image (partial name match)'] },
+                { cmd: '/argumentarmament', desc: 'Starts a Argument Armament boss-fight against the current speaker. At least one dialog line is required.', opts: ['dialogA … dialogK (at least one) — Up to 11 dialogue lines', 'enemyHp / playerHp — Starting HP (default 100)', 'phases — Number of phases 1–3 (default 3)', 'nSolution / sSolution / eSolution / wSolution — Direction prompt answer words', 'finalSolution — Final answer (shown uppercased)', 'finalSolutionQuote — Quote line accompanying the final solution', 'bg — Background image (partial name match)'] },
                 { cmd: '/hangmansgambit', desc: 'Starts a Hangman’s Gambit — letters scroll across the screen; stock a letter, match it against the current target position to reveal it.', opts: ['question (required) — Title or prompt', 'answer (required) — Word or phrase to unscramble', 'time — Time limit in seconds (default 60)', 'health — Health points (default 3)', 'difficulty — 1–5 (default 2)'] },
                 { cmd: '/questiontime', desc: 'Timed four-answer multiple choice question. Correct answer triggers GOT IT and awards XP.', opts: ['title (required) — Question text', 'time (required) — Time limit in seconds', 'a1 … a4 (required) — Four answer options', 'correct (required) — Index 1–4 of the correct answer'] },
                 { cmd: '/questiontruth', desc: 'Displays the Truth Bullet list and asks the player to pick the correct one. Correct answer awards Monocoins and GOT IT.', opts: ['question (required) — Statement or prompt', 'answer (required) — Title of the correct Truth Bullet (exact match)', 'time — Optional time limit in seconds'] },
@@ -1854,7 +1854,7 @@ ${historyText}
                             <button id="dangan-start-rebuttal-btn" class="dangan-trial-start-btn" style="display:none">Start Rebuttal Showdown</button>
                             <button id="dangan-start-scrum-btn"    class="dangan-trial-start-btn" style="display:none">Start Scrum Debate</button>
                             <button id="dangan-start-mindmine-btn" class="dangan-trial-start-btn" style="display:none">Start Mind Mine</button>
-                            <button id="dangan-start-pta-btn"      class="dangan-trial-start-btn" style="display:none">Start Panic Talk Action</button>
+                            <button id="dangan-start-aa-btn"      class="dangan-trial-start-btn" style="display:none">Start Argument Armament</button>
                             <button id="dangan-start-qtime-btn"    class="dangan-trial-start-btn" style="display:none">Start Question Time</button>
                             <button id="dangan-start-qtruth-btn"   class="dangan-trial-start-btn" style="display:none">Start Question Truth</button>
                             <button id="dangan-start-interject-btn"  class="dangan-trial-start-btn" style="display:none">Trigger an Interjection</button>
@@ -2004,9 +2004,9 @@ ${historyText}
             notification.remove();
             onStartHangmansGambit?.();
         };
-        notification.querySelector('#dangan-start-pta-btn').onclick = () => {
+        notification.querySelector('#dangan-start-aa-btn').onclick = () => {
             notification.remove();
-            onStartPanicTalkAction?.();
+            onStartArgumentArmament?.();
         };
         notification.querySelector('#dangan-start-interject-btn').onclick = () => {
             notification.remove();
@@ -2283,7 +2283,7 @@ ${historyText}
         dismissBtn.textContent = '✕ DISMISS';
 
         // Speaker-name panel — pinned to the left of the viewport, framed in
-        // pta-panel.png. Carries the current GCP speaker over and follows
+        // aa-panel.png. Carries the current GCP speaker over and follows
         // Prev/Next message navigation via cgNameTextEl, which is updated
         // by updateGroupChatSpeaker whenever the highlighted speaker changes.
         const initialName = currentSpeaker || gcpSlots[Math.round(gcpCurrentFloat)]?.name || '';
@@ -5560,7 +5560,7 @@ ${historyText}
         bannerWrap.remove();
         prefill.remove();
 
-        // ── BREAK transition (copied from PTA endGame win) ──────────
+        // ── BREAK transition (copied from AA endGame win) ──────────
         const breakOverlay = document.createElement('div');
         breakOverlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);opacity:0;transition:opacity 0.3s ease;pointer-events:none;';
         const breakText = document.createElement('div');
@@ -7747,7 +7747,7 @@ ${contextLines}
         onMessageSent,
         getState: () => currentState,
         refreshTrialBadge,
-        // Call this when an external activity (interjection, PTA, minigame, etc.) has
+        // Call this when an external activity (interjection, AA, minigame, etc.) has
         // finished so the controls panel is restored. No-op if a debate is still running.
         resumeAfterActivity: () => {
             if (!trialActive) return;
