@@ -995,7 +995,7 @@ body.mm-shaking { animation: mmScreenShake 80ms steps(2, end) infinite; }
         // SFX finishes; unlocked by startCountdown below.
         overlay?.classList.add('mm-intro-locked');
 
-        // Entry SFX — same start cue used by Panic Talk Action / Hangman's
+        // Entry SFX — same start cue used by Argument Armament / Hangman's
         // Gambit. The countdown only begins once it finishes (or fails to
         // play / errors), so the player gets a beat to read the board.
         const startCountdown = () => {

@@ -180,13 +180,13 @@ export function createSocialPanelController({
         const promePack = getPromeSpritePack?.();
         const spritePromise = char.isPlayer
             ? (promePack
-                ? getSpriteUrl?.(promePack, 'panictalkaction').catch(() => `/characters/${promePack}/neutral.png`)
+                ? getSpriteUrl?.(promePack, 'argumentarmament').catch(() => `/characters/${promePack}/neutral.png`)
                 : (char.name
-                    ? getSpriteUrl?.(char.name, 'panictalkaction')
+                    ? getSpriteUrl?.(char.name, 'argumentarmament')
                         .catch(() => Promise.resolve(getSpriteUrl?.(char.name) || getUserAvatarUrl?.() || ""))
                     : Promise.resolve(getUserAvatarUrl?.() || "")))
             : useTalent
-                ? getSpriteUrl?.(char.name, 'panictalkaction').catch(() => getSpriteUrl?.(char.name))
+                ? getSpriteUrl?.(char.name, 'argumentarmament').catch(() => getSpriteUrl?.(char.name))
                 : Promise.resolve(getSpriteUrl?.(char.name));
         spritePromise.then(spriteUrl => {
             if (getActiveSocialCharacterId() !== spriteOpenedId) return;

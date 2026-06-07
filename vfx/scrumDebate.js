@@ -107,7 +107,7 @@ function charAvatarUrl(char) {
 function buildStyles(extPath) {
     const monoUrl       = extPath ? `/${extPath}/assets/monokuma/monokuma_idle.png`             : "";
     const scrumBgUrl    = extPath ? `/${extPath}/assets/images/minigames/scrum.png`             : "";
-    const panelUrl      = extPath ? `/${extPath}/assets/images/minigames/pta-panel.png`         : "";
+    const panelUrl      = extPath ? `/${extPath}/assets/images/minigames/aa-panel.png`         : "";
     return `
 /* ── Overlay root ── */
 #${SD_ID} {
@@ -604,7 +604,7 @@ function buildStyles(extPath) {
 }
 
 /* ── Hint panel — sits beneath the speaker-scenario bar.  Uses
- * pta-panel.png as the chrome and Question-Truth-style HINT button →
+ * aa-panel.png as the chrome and Question-Truth-style HINT button →
  * "K-e" reveal with grey X-decoys flanking the actual first/last letters. */
 .sd-hint-panel {
     position: absolute;

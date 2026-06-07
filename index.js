@@ -32,7 +32,7 @@ import { createVotingScreenController } from "./vfx/votingScreen.js";
 import { createQuestionTimeController } from "./vfx/questionTime.js";
 import { createQuestionTruthController } from "./vfx/questionTruth.js";
 import { createHangmansGambitController } from "./vfx/hangmansGambit.js";
-import { createPanicTalkActionController } from "./vfx/panicTalkAction.js";
+import { createArgumentArmamentController } from "./vfx/argumentArmament.js";
 import { createScrumDebateController, buildTeams as buildScrumTeams } from "./vfx/scrumDebate.js";
 import { createMindMineController } from "./vfx/mindMine.js";
 import { createChooseCharacterController } from "./vfx/chooseCharacter.js";
@@ -74,7 +74,7 @@ let votingScreenController  = null;
 let questionTimeController    = null;
 let questionTruthController   = null;
 let hangmansGambitController    = null;
-let panicTalkActionController   = null;
+let argumentArmamentController   = null;
 let scrumDebateController      = null;
 let mindMineController         = null;
 let rebuttalShowdownController  = null;
@@ -2873,11 +2873,11 @@ const BGM_TRACK_TABS = [
     { key: "trial-mindmine",         settingKey: "trialMindMineTracks",       listId: "trial-mindmine-tracks-list",         selectedId: "trial-mindmine-selected-list" },
     { key: "trial-interjection",     settingKey: "trialInterjectionTracks",   listId: "trial-interjection-tracks-list",     selectedId: "trial-interjection-selected-list" },
     { key: "trial-suspect-choice",   settingKey: "trialSuspectChoiceTracks",  listId: "trial-suspect-choice-tracks-list",   selectedId: "trial-suspect-choice-selected-list" },
-    { key: "pta-phase1",             settingKey: "ptaPhase1Tracks",           listId: "pta-phase1-tracks-list",             selectedId: "pta-phase1-selected-list" },
-    { key: "pta-phase2",             settingKey: "ptaPhase2Tracks",           listId: "pta-phase2-tracks-list",             selectedId: "pta-phase2-selected-list" },
-    { key: "pta-phase3",             settingKey: "ptaPhase3Tracks",           listId: "pta-phase3-tracks-list",             selectedId: "pta-phase3-selected-list" },
+    { key: "aa-phase1",             settingKey: "aaPhase1Tracks",           listId: "aa-phase1-tracks-list",             selectedId: "aa-phase1-selected-list" },
+    { key: "aa-phase2",             settingKey: "aaPhase2Tracks",           listId: "aa-phase2-tracks-list",             selectedId: "aa-phase2-selected-list" },
+    { key: "aa-phase3",             settingKey: "aaPhase3Tracks",           listId: "aa-phase3-tracks-list",             selectedId: "aa-phase3-selected-list" },
     // legacy keys — no longer shown in UI but kept so existing saved tracks still load
-    { key: "trial-pta",              settingKey: "trialPtaTracks",            listId: "trial-pta-tracks-list",              selectedId: "trial-pta-selected-list" },
+    { key: "trial-aa",              settingKey: "trialAaTracks",            listId: "trial-aa-tracks-list",              selectedId: "trial-aa-selected-list" },
     { key: "trial-reenactment",      settingKey: "trialReenactmentTracks",    listId: "trial-reenactment-tracks-list",      selectedId: "trial-reenactment-selected-list" },
     { key: "trial-closing",          settingKey: "trialClosingTracks",        listId: "trial-closing-tracks-list",          selectedId: "trial-closing-selected-list" },
     { key: "trial-voting",           settingKey: "trialVotingTracks",         listId: "trial-voting-tracks-list",           selectedId: "trial-voting-selected-list" },
@@ -2927,9 +2927,9 @@ const BGM_PLAYLIST_LABELS = {
     trialMindMineTracks:     'MIND MINE',
     trialInterjectionTracks: 'INTERJECTION',
     trialSuspectChoiceTracks:'SUSPECT CHOICE',
-    ptaPhase1Tracks:         'PHASE 1',
-    ptaPhase2Tracks:         'PHASE 2',
-    ptaPhase3Tracks:         'PHASE 3',
+    aaPhase1Tracks:         'PHASE 1',
+    aaPhase2Tracks:         'PHASE 2',
+    aaPhase3Tracks:         'PHASE 3',
 };
 
 const BGM_PLAYLIST_PARENTS = {
@@ -2947,9 +2947,9 @@ const BGM_PLAYLIST_PARENTS = {
     trialMindMineTracks:     'TRIAL',
     trialInterjectionTracks: 'TRIAL',
     trialSuspectChoiceTracks:'TRIAL',
-    ptaPhase1Tracks:         'PANIC TALK ACTION',
-    ptaPhase2Tracks:         'PANIC TALK ACTION',
-    ptaPhase3Tracks:         'PANIC TALK ACTION',
+    aaPhase1Tracks:         'ARGUMENT ARMAMENT',
+    aaPhase2Tracks:         'ARGUMENT ARMAMENT',
+    aaPhase3Tracks:         'ARGUMENT ARMAMENT',
 };
 
 // Briefly armed by callers that wrap a chat transition; during the window any
@@ -8522,17 +8522,17 @@ ANSWER: <UPPERCASEWORD>`;
                 hangmansGambitController?.run({ question, answer, time: 120, health: 7, difficulty: 2 })
                     ?.then(() => trialManager?.resumeAfterActivity?.());
             },
-            onStartPanicTalkAction: async () => {
-                // Resolve the current speaker as the PTA enemy
+            onStartArgumentArmament: async () => {
+                // Resolve the current speaker as the AA enemy
                 const speakerName = trialManager?.getGcpSpeakerName?.() ?? null;
 
-                // mainSprite: dedicated panictalkaction sprite, falls back to neutral via getSpriteUrl
+                // mainSprite: dedicated argumentarmament sprite, falls back to neutral via getSpriteUrl
                 // defeatSprite: surprised reaction, falls back to neutral
                 let mainSprite   = null;
                 let defeatSprite = null;
                 if (speakerName) {
                     [mainSprite, defeatSprite] = await Promise.all([
-                        getSpriteUrl(speakerName, 'panictalkaction').catch(() => null),
+                        getSpriteUrl(speakerName, 'argumentarmament').catch(() => null),
                         getSpriteUrl(speakerName, 'surprised').catch(() => null),
                     ]);
                 }
@@ -8550,7 +8550,7 @@ ANSWER: <UPPERCASEWORD>`;
                 // Loading overlay + soft progress while the LLM drafts the
                 // suspect's defensive dialogs and the four cardinal-direction
                 // sentences that form the Final Argument.
-                const loadingEl = showMinigameLoadingState('Loading Panic Talk Action', { command: '/panictalkaction' });
+                const loadingEl = showMinigameLoadingState('Loading Argument Armament', { command: '/argumentarmament' });
                 loadingEl?.setProgress?.(0);
                 let softProgress = 0;
                 const softInterval = window.setInterval(() => {
@@ -8575,13 +8575,13 @@ ANSWER: <UPPERCASEWORD>`;
                         .map(s => s?.name).filter(Boolean).join(', ') || 'unknown';
                     const enemy = speakerName || 'the suspect';
 
-                    const prompt = `You are scripting a Panic Talk Action — a Danganronpa-style 1-on-1 confrontation between the player and a panicking suspect.
+                    const prompt = `You are scripting a Argument Armament — a Danganronpa-style 1-on-1 confrontation between the player and a panicking suspect.
 
 TRIAL CONTEXT
 Topic: ${topic}
 Goal: ${goal}
 Suspects: ${suspects}
-Accused (PTA opponent): ${enemy}
+Accused (AA opponent): ${enemy}
 
 The minigame works like this:
 1. ${enemy} shouts defensive STATEMENTS while the player attacks. The player breaks each statement in turn.
@@ -8638,7 +8638,7 @@ QUOTE: <climactic accusation>`;
                         && [...'NSEW'].every(c => order.includes(c));
 
                     if (statementMatches.length >= 3 && north && south && east && west && validOrder && quote) {
-                        // PTA caps at 11 statements; trim if the model over-shot.
+                        // AA caps at 11 statements; trim if the model over-shot.
                         dialogs            = statementMatches.slice(0, 11);
                         NSolution          = north;
                         SSolution          = south;
@@ -8648,14 +8648,14 @@ QUOTE: <climactic accusation>`;
                         FinalSolutionQuote = quote;
                     }
                 } catch (err) {
-                    console.warn('[danganronpa] Failed to generate Panic Talk Action, using fallback:', err);
+                    console.warn('[danganronpa] Failed to generate Argument Armament, using fallback:', err);
                 } finally {
                     window.clearInterval(softInterval);
                     loadingEl?.setProgress?.(1);
                     loadingEl?.hide?.();
                 }
 
-                panicTalkActionController?.run({
+                argumentArmamentController?.run({
                     enemyHp: 100, playerHp: 100, phases: 3,
                     dialogs,
                     NSolution, SSolution, ESolution, WSolution,
@@ -8664,7 +8664,7 @@ QUOTE: <climactic accusation>`;
                     mainSprite,
                     defeatSprite,
                     getPhaseTrack: (phaseNum) => {
-                        const key = `ptaPhase${phaseNum}Tracks`;
+                        const key = `aaPhase${phaseNum}Tracks`;
                         const tracks = getMonopadSetting(key) || [];
                         if (!tracks.length) return null;
                         return tracks[Math.floor(Math.random() * tracks.length)] || null;
@@ -9478,7 +9478,7 @@ STATEMENT: <third statement>`;
         disableTutorialPrompt:   () => setMonopadSetting('minigameTutorialsEnabled', false),
     };
     hangmansGambitController  = createHangmansGambitController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, pauseDynamicAudio: fadeOutAndPauseBgm, resumeDynamicAudio: resumeBgmAfterHG, playBgm: playHGBgm, getPlayerSpriteUrl, ...tutorialPromptDeps });
-    panicTalkActionController = createPanicTalkActionController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, ...tutorialPromptDeps });
+    argumentArmamentController = createArgumentArmamentController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, ...tutorialPromptDeps });
     mindMineController        = createMindMineController({
         extensionFolderPath,
         pauseCurrentBgm: fadeOutAndPauseBgm,
@@ -11240,7 +11240,7 @@ for (const cfg of Object.values(RS_SIZES)) {
 }
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'panictalkaction',
+    name: 'argumentarmament',
     callback: async (args) => {
         const enemyHp  = Math.max(1, Number(args.enemyHp)  || 100);
         const playerHp = Math.max(1, Number(args.playerHp) || 100);
@@ -11270,50 +11270,50 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             }
         }
         if (dialogs.length === 0) {
-            console.warn('[PTA] At least one dialog (dialogA–dialogK) is required.');
+            console.warn('[AA] At least one dialog (dialogA–dialogK) is required.');
             return '';
         }
         const clairvoyance = getEquippedSkillsSnapshot().includes('shop_skill_clairvoyance');
 
-        // Resolve character-specific PTA sprites
+        // Resolve character-specific AA sprites
         let mainSprite = null;
         let defeatSprite = null;
-        const ptaCtx = window.SillyTavern?.getContext?.();
+        const aaCtx = window.SillyTavern?.getContext?.();
         // name2 is the current character's display name in SillyTavern context;
         // fall back to window.characters[window.this_chid] for reliability
-        const ptaCharName = String(
-            ptaCtx?.name2 ||
+        const aaCharName = String(
+            aaCtx?.name2 ||
             (window.this_chid != null && Array.isArray(window.characters)
                 ? window.characters[window.this_chid]?.name
                 : '') ||
             ''
         ).trim();
-        if (ptaCharName) {
+        if (aaCharName) {
             // Resolve the sprite folder (avatar filename without extension)
-            let ptaFolder = ptaCharName;
+            let aaFolder = aaCharName;
             if (Array.isArray(window.characters)) {
-                const stChar = window.characters.find(c => c.name === ptaCharName);
-                if (stChar?.avatar) ptaFolder = stChar.avatar.replace(/\.[^.]+$/, '');
+                const stChar = window.characters.find(c => c.name === aaCharName);
+                if (stChar?.avatar) aaFolder = stChar.avatar.replace(/\.[^.]+$/, '');
             }
             try {
-                const resp = await fetch(`/api/sprites/get?name=${encodeURIComponent(ptaFolder)}`);
+                const resp = await fetch(`/api/sprites/get?name=${encodeURIComponent(aaFolder)}`);
                 if (resp.ok) {
                     const sprites = await resp.json();
-                    // Only use a sprite explicitly named 'panictalkaction' — no neutral fallback
-                    const ptaSprite = sprites.find(s => String(s.label || '').toLowerCase() === 'panictalkaction');
-                    if (ptaSprite?.path) {
-                        mainSprite = ptaSprite.path;
-                        defeatSprite = ptaSprite.path;
+                    // Only use a sprite explicitly named 'argumentarmament' — no neutral fallback
+                    const aaSprite = sprites.find(s => String(s.label || '').toLowerCase() === 'argumentarmament');
+                    if (aaSprite?.path) {
+                        mainSprite = aaSprite.path;
+                        defeatSprite = aaSprite.path;
                     }
                 }
             } catch { /* fall through to tester images */ }
         }
 
-        const won = await panicTalkActionController?.run({ enemyHp, playerHp, phases, dialogs, NSolution, SSolution, ESolution, WSolution, FinalSolution, FinalSolutionQuote, BG, clairvoyance, mainSprite, defeatSprite });
-        if (won) awardXp(XP_REWARDS.panicTalkAction ?? 18, 'panic talk action completed');
+        const won = await argumentArmamentController?.run({ enemyHp, playerHp, phases, dialogs, NSolution, SSolution, ESolution, WSolution, FinalSolution, FinalSolutionQuote, BG, clairvoyance, mainSprite, defeatSprite });
+        if (won) awardXp(XP_REWARDS.argumentArmament ?? 18, 'argument armament completed');
         return '';
     },
-    helpString: 'Displays a Danganronpa-style Panic Talk Action minigame. Dialog pieces appear on a 3×3 grid and zoom in — shoot them with mouse clicks or arrow keys + Space before they expire. Orange text damages the opponent; pink text hurts you when broken; blue text needs two hits. Defeat the opponent to enter the Final Argument phase.',
+    helpString: 'Displays a Danganronpa-style Argument Armament minigame. Dialog pieces appear on a 3×3 grid and zoom in — shoot them with mouse clicks or arrow keys + Space before they expire. Orange text damages the opponent; pink text hurts you when broken; blue text needs two hits. Defeat the opponent to enter the Final Argument phase.',
     namedArgumentList: [
         SlashCommandNamedArgument.fromProps({ name: 'enemyHp',      description: 'Opponent starting HP (default 100)',                         typeList: [ARGUMENT_TYPE.NUMBER], isRequired: false }),
         SlashCommandNamedArgument.fromProps({ name: 'playerHp',     description: 'Player starting HP (default 100)',                           typeList: [ARGUMENT_TYPE.NUMBER], isRequired: false }),

@@ -1013,7 +1013,7 @@ export function createOverworldSceneController({
         // it. getSpriteUrl falls back to neutral if the label has no sprite.
         // Class-trial-only poses are excluded from the random pool (and any
         // previously-saved expression matching them is re-picked).
-        const OW_EXCLUDED_EXPRESSIONS = new Set(["mugshot", "interjection", "panictalkaction"]);
+        const OW_EXCLUDED_EXPRESSIONS = new Set(["mugshot", "interjection", "argumentarmament"]);
         let expressionDirty = false;
         const resolved = await Promise.all(groupList.map(async ([gid, members]) => {
             const sprites = await Promise.all(members.map(async (m) => {

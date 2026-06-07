@@ -1,5 +1,5 @@
-const PTA_ID    = "dangan-pta-overlay";
-const PTA_STYLE = "dangan-pta-style";
+const AA_ID    = "dangan-aa-overlay";
+const AA_STYLE = "dangan-aa-style";
 const AMMO_MAX  = 6;
 
 const PHASE_CONFIG = {
@@ -37,9 +37,9 @@ function randomDialogType() {
 }
 
 function buildStyles({ extensionFolderPath = '' } = {}) {
-    const panelImg = `${extensionFolderPath}/assets/images/minigames/pta-panel.png`;
+    const panelImg = `${extensionFolderPath}/assets/images/minigames/aa-panel.png`;
     return `
-#${PTA_ID} {
+#${AA_ID} {
     position: fixed; inset: 0;
     z-index: 2147483645;
     background: radial-gradient(ellipse at 50% 60%, #3a0060 0%, #1a0030 55%, #0d0018 100%);
@@ -49,10 +49,10 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     pointer-events: none;
     user-select: none;
 }
-#${PTA_ID}.pta-on { opacity: 1; pointer-events: auto; }
+#${AA_ID}.aa-on { opacity: 1; pointer-events: auto; }
 
 /* Stage spotlights effect */
-#${PTA_ID}::before {
+#${AA_ID}::before {
     content: "";
     position: absolute; inset: 0;
     background:
@@ -63,7 +63,7 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
 }
 
 /* Scanline overlay */
-#${PTA_ID}::after {
+#${AA_ID}::after {
     content: "";
     position: absolute; inset: 0;
     background: repeating-linear-gradient(
@@ -75,7 +75,7 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
 }
 
 /* ─── Corner panels ──────────────────────────────────── */
-.pta-panel {
+.aa-panel {
     position: absolute;
     z-index: 16;
     pointer-events: all;
@@ -86,7 +86,7 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     border: none;
     border-radius: 0;
 }
-.pta-panel::before {
+.aa-panel::before {
     content: "";
     position: absolute;
     inset: 0;
@@ -98,33 +98,33 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     transform-origin: center;
 }
 /* Default orientation lives in the top-left corner. */
-#pta-panel-tl::before { transform: none; }
+#aa-panel-tl::before { transform: none; }
 /* Bottom-left: flipped vertically. */
-#pta-panel-bl::before { transform: scaleY(-1); }
+#aa-panel-bl::before { transform: scaleY(-1); }
 /* Top-right: mirrored horizontally. */
-#pta-panel-tr::before,
-#pta-timer-area::before { transform: scaleX(-1); }
+#aa-panel-tr::before,
+#aa-timer-area::before { transform: scaleX(-1); }
 /* Bottom-right: mirrored AND flipped vertically. */
-#pta-panel-br::before { transform: scale(-1, -1); }
-#pta-panel-tl {
+#aa-panel-br::before { transform: scale(-1, -1); }
+#aa-panel-tl {
     top: 16px; left: 16px;
     min-width: 240px;
 }
-#pta-panel-bl {
+#aa-panel-bl {
     bottom: 16px; left: 16px;
     width: 160px; height: 160px;
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
     box-sizing: border-box;
 }
-#pta-panel-br {
+#aa-panel-br {
     bottom: 16px; right: 16px;
     min-width: 240px;
 }
-/* Global PTA timer — top-right corner. Width is locked so individual digit
+/* Global AA timer — top-right corner. Width is locked so individual digit
  * widths in Orbitron can't reflow the panel; numeric text is left-aligned
  * inside that fixed box. */
-#pta-timer-area {
+#aa-timer-area {
     position: absolute;
     top: 16px; right: 16px;
     width: 260px;
@@ -135,13 +135,13 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     pointer-events: none;
     font-family: "Orbitron", "Impact", monospace;
 }
-#pta-timer-label {
+#aa-timer-label {
     font-size: 11px; letter-spacing: 3px;
     color: rgba(255, 180, 100, 0.7);
     margin-bottom: 2px;
     text-align: left;
 }
-#pta-timer {
+#aa-timer {
     display: block;
     width: 100%;
     font-size: 28px;
@@ -157,7 +157,7 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
      * available so each digit / colon occupies the same cell width. */
     font-family: "Orbitron", "Courier New", ui-monospace, monospace;
 }
-#pta-timer.pta-urgent {
+#aa-timer.aa-urgent {
     color: #ff1111;
     text-shadow: 0 0 14px rgba(255, 0, 0, 1);
     animation: ptaBlink 0.45s ease-in-out infinite;
@@ -174,7 +174,7 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
 }
 
 /* ─── Phase label (top barrier left) ────────────────── */
-#pta-phase-label {
+#aa-phase-label {
     font-size: 11px; letter-spacing: 3px;
     color: rgba(255,255,255,0.5);
     white-space: nowrap;
@@ -184,15 +184,15 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
 }
 
 /* ─── HP bars ────────────────────────────────────────── */
-#pta-enemy-bar-wrap {
+#aa-enemy-bar-wrap {
     width: 100%;
 }
-#pta-enemy-name {
+#aa-enemy-name {
     font-size: 11px; letter-spacing: 3px;
     color: rgba(255,160,180,0.85);
     margin-bottom: 3px;
 }
-.pta-bar-track {
+.aa-bar-track {
     width: 100%; height: 13px;
     background: rgba(0,0,0,0.55);
     border: 1px solid #222222;
@@ -200,7 +200,7 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     overflow: hidden;
     position: relative;
 }
-.pta-bar-marker {
+.aa-bar-marker {
     position: absolute;
     top: 0; bottom: 0;
     width: 2px;
@@ -209,60 +209,60 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     z-index: 2;
     pointer-events: none;
 }
-.pta-bar-fill {
+.aa-bar-fill {
     height: 100%; border-radius: 9999px;
     transition: width 0.35s ease;
     position: relative;
 }
-.pta-bar-fill::after {
+.aa-bar-fill::after {
     content: "";
     position: absolute; inset: 0;
     background: linear-gradient(180deg, rgba(255,255,255,0.18) 0%, transparent 100%);
 }
-#pta-enemy-fill  { background: linear-gradient(90deg, #bb1133, #ff3366); }
+#aa-enemy-fill  { background: linear-gradient(90deg, #bb1133, #ff3366); }
 
-#pta-player-bar-wrap {
+#aa-player-bar-wrap {
     width: 100%;
 }
-#pta-player-name {
+#aa-player-name {
     font-size: 11px; letter-spacing: 3px;
     color: rgba(120,200,255,0.85);
     margin-bottom: 3px;
 }
-#pta-enemy-hp-display, #pta-player-hp-display {
+#aa-enemy-hp-display, #aa-player-hp-display {
     font-size: 10px; letter-spacing: 1px;
     opacity: 0.75;
     font-weight: normal;
 }
-#pta-player-fill { background: linear-gradient(90deg, #1155bb, #33aaff); }
+#aa-player-fill { background: linear-gradient(90deg, #1155bb, #33aaff); }
 
 /* ─── Ammo display (bottom barrier right) ───────────── */
-#pta-ammo-wrap {
+#aa-ammo-wrap {
     display: flex; flex-direction: column;
     align-items: center; gap: 4px;
     flex-shrink: 0;
     z-index: 10;
 }
-#pta-ammo-icon {
+#aa-ammo-icon {
     width: 36px; height: 36px;
     object-fit: contain;
     filter: sepia(1) saturate(6) hue-rotate(5deg) drop-shadow(0 0 6px rgba(255,200,0,0.7));
 }
-#pta-ammo-count {
+#aa-ammo-count {
     font-size: 20px; font-weight: bold;
     color: #ffe066;
     text-shadow: 0 0 10px rgba(255,200,0,0.7);
     letter-spacing: 1px;
     line-height: 1;
 }
-#pta-ammo-label {
+#aa-ammo-label {
     font-size: 9px; letter-spacing: 2px;
     color: rgba(255,255,255,0.45);
     margin-top: 2px;
 }
 
 /* ─── Reload indicator (inside ammo panel) ───────────── */
-#pta-reload-indicator {
+#aa-reload-indicator {
     position: absolute;
     bottom: 10px; left: 50%;
     transform: translateX(-50%);
@@ -274,15 +274,15 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     white-space: nowrap;
     text-align: center;
 }
-#pta-reload-indicator.active {
+#aa-reload-indicator.active {
     display: block;
-    animation: pta-blink 0.6s infinite;
+    animation: aa-blink 0.6s infinite;
 }
-@keyframes pta-blink {
+@keyframes aa-blink {
     0%,100% { opacity: 1; }
     50%      { opacity: 0.25; }
 }
-@keyframes pta-shake {
+@keyframes aa-shake {
     0%        { transform: translate(0, 0) rotate(0deg); }
     15%       { transform: translate(-3px, -2px) rotate(-0.4deg); }
     30%       { transform: translate(3px, 2px) rotate(0.4deg); }
@@ -292,13 +292,13 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     90%       { transform: translate(1px, -1px) rotate(0.1deg); }
     100%      { transform: translate(0, 0) rotate(0deg); }
 }
-#${PTA_ID}.pta-shaking {
-    animation: pta-shake 0.35s ease-out forwards;
+#${AA_ID}.aa-shaking {
+    animation: aa-shake 0.35s ease-out forwards;
 }
 
 
 /* ─── 3×3 Grid ───────────────────────────────────────── */
-#pta-grid {
+#aa-grid {
     position: absolute;
     left: 50%; top: 50%;
     transform: translate(-50%, -50%);
@@ -309,7 +309,7 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     z-index: 5;
 }
 
-.pta-cell {
+.aa-cell {
     background: rgba(255,255,255,0.04);
     border: 1.5px solid rgba(255,255,255,0.18);
     border-radius: 5px;
@@ -318,27 +318,27 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     cursor: pointer;
     transition: border-color 0.12s;
 }
-.pta-cell:hover {
+.aa-cell:hover {
     border-color: rgba(255,255,255,0.45);
 }
-@keyframes pta-cell-warn {
+@keyframes aa-cell-warn {
     0%   { background: rgba(255,255,255,0.04); }
     50%  { background: rgba(255,40,100,0.06); }
     80%  { background: rgba(255,40,100,0.20); }
     100% { background: rgba(255,40,100,0.42); }
 }
-.pta-cell.pta-cell-active {
-    animation: pta-cell-warn var(--cell-warn-dur, 6000ms) linear forwards;
+.aa-cell.aa-cell-active {
+    animation: aa-cell-warn var(--cell-warn-dur, 6000ms) linear forwards;
 }
-@keyframes pta-cell-warn-out {
+@keyframes aa-cell-warn-out {
     0%   { background: var(--cell-warn-snapshot, rgba(255,40,100,0.20)); }
     100% { background: rgba(255,40,100,0.00); }
 }
-.pta-cell.pta-cell-fading {
-    animation: pta-cell-warn-out 0.18s ease-out forwards;
+.aa-cell.aa-cell-fading {
+    animation: aa-cell-warn-out 0.18s ease-out forwards;
 }
 /* ─── Reticule ───────────────────────────────────────── */
-#pta-reticule {
+#aa-reticule {
     position: absolute;
     width: 340px; height: 220px;
     pointer-events: none;
@@ -349,18 +349,18 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     filter: drop-shadow(0 0 5px rgba(0, 255, 80, 0.9))
             drop-shadow(0 0 10px rgba(0, 255, 80, 0.6));
 }
-#pta-reticule span {
+#aa-reticule span {
     position: absolute;
     width: 20px; height: 20px;
     border-color: #00ff50;
     border-style: solid;
     border-width: 0;
 }
-#pta-reticule span:nth-child(1) { top: 16px;  left: 16px;  border-top-width: 2.5px; border-left-width: 2.5px;  }
-#pta-reticule span:nth-child(2) { top: 16px;  right: 16px; border-top-width: 2.5px; border-right-width: 2.5px; }
-#pta-reticule span:nth-child(3) { bottom: 16px; left: 16px;  border-bottom-width: 2.5px; border-left-width: 2.5px;  }
-#pta-reticule span:nth-child(4) { bottom: 16px; right: 16px; border-bottom-width: 2.5px; border-right-width: 2.5px; }
-#pta-reticule::before {
+#aa-reticule span:nth-child(1) { top: 16px;  left: 16px;  border-top-width: 2.5px; border-left-width: 2.5px;  }
+#aa-reticule span:nth-child(2) { top: 16px;  right: 16px; border-top-width: 2.5px; border-right-width: 2.5px; }
+#aa-reticule span:nth-child(3) { bottom: 16px; left: 16px;  border-bottom-width: 2.5px; border-left-width: 2.5px;  }
+#aa-reticule span:nth-child(4) { bottom: 16px; right: 16px; border-bottom-width: 2.5px; border-right-width: 2.5px; }
+#aa-reticule::before {
     content: '';
     position: absolute;
     top: 50%; left: 50%;
@@ -371,106 +371,106 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
 }
 
 /* ─── Dialog text pieces ─────────────────────────────── */
-.pta-dialog {
+.aa-dialog {
     position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
     text-align: center; padding: 10px;
     font-size: 18px; font-weight: bold;
     line-height: 1.3; pointer-events: none;
     transform-origin: center;
-    animation: pta-zoom-in linear both;
+    animation: aa-zoom-in linear both;
 }
-.pta-dialog.pta-normal {
+.aa-dialog.aa-normal {
     color: #ffffff;
     text-shadow: 2px 2px 4px #000, -1px -1px 3px #000, 0 0 6px rgba(255,255,255,0.7);
 }
-.pta-dialog.pta-pink {
+.aa-dialog.aa-pink {
     color: #ff69b4;
     text-shadow: 2px 2px 4px #000, -1px -1px 3px #000, 0 0 8px rgba(255,105,180,0.9);
 }
-.pta-dialog.pta-orange {
+.aa-dialog.aa-orange {
     color: #ff8c00;
     text-shadow: 2px 2px 4px #000, -1px -1px 3px #000, 0 0 8px rgba(255,140,0,0.9);
 }
-.pta-dialog.pta-blue {
+.aa-dialog.aa-blue {
     color: #4da6ff;
     text-shadow: 2px 2px 4px #000, -1px -1px 3px #000, 0 0 8px rgba(77,166,255,0.9);
 }
-.pta-dialog.pta-blue-hit {
+.aa-dialog.aa-blue-hit {
     color: #ff8c00;
     text-shadow: 2px 2px 4px #000, -1px -1px 3px #000, 0 0 8px rgba(255,140,0,0.9);
 }
-.pta-miss-label {
+.aa-miss-label {
     position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
     font-size: 15px; font-weight: bold; letter-spacing: 2px;
     color: #44ff88;
     text-shadow: 0 0 8px rgba(68,255,136,0.9);
     pointer-events: none;
-    animation: pta-miss-fade 0.6s ease forwards;
+    animation: aa-miss-fade 0.6s ease forwards;
 }
-@keyframes pta-miss-fade {
+@keyframes aa-miss-fade {
     0%   { opacity: 1; transform: scale(0.8) translateY(0); }
     60%  { opacity: 1; transform: scale(1.1) translateY(-6px); }
     100% { opacity: 0; transform: scale(1.0) translateY(-12px); }
 }
-.pta-hit-burst {
+.aa-hit-burst {
     position: absolute;
     top: calc(50% - 55px); left: calc(50% - 55px);
     width: 110px; height: 110px;
     pointer-events: none;
     z-index: 15;
     border-radius: 50%;
-    animation: pta-burst-core 0.35s ease-out forwards;
+    animation: aa-burst-core 0.35s ease-out forwards;
 }
-.pta-hit-burst::after {
+.aa-hit-burst::after {
     content: '';
     position: absolute;
     top: calc(50% - 45px); left: calc(50% - 45px);
     width: 90px; height: 90px;
     border-radius: 50%;
     border: 4px solid rgba(255, 255, 255, 0.9);
-    animation: pta-burst-ring 0.35s ease-out forwards;
+    animation: aa-burst-ring 0.35s ease-out forwards;
 }
-@keyframes pta-burst-core {
+@keyframes aa-burst-core {
     0%   { background: radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,220,80,0.85) 35%, rgba(255,100,30,0.5) 65%, transparent 100%); transform: scale(0.1); opacity: 1; }
     50%  { background: radial-gradient(circle, rgba(255,255,255,0.9) 0%, rgba(255,200,50,0.7) 35%, rgba(255,80,10,0.3) 65%, transparent 100%); transform: scale(1.1); opacity: 0.85; }
     100% { background: radial-gradient(circle, rgba(255,255,255,0) 0%, rgba(255,180,30,0) 50%, transparent 100%); transform: scale(1.4); opacity: 0; }
 }
-@keyframes pta-burst-ring {
+@keyframes aa-burst-ring {
     0%   { transform: scale(0.1); opacity: 1; }
     60%  { transform: scale(1.0); opacity: 0.8; }
     100% { transform: scale(1.5); opacity: 0; }
 }
 
-@keyframes pta-zoom-in {
+@keyframes aa-zoom-in {
     0%   { transform: scale(0.25) rotate(var(--rot-start, 0deg)); opacity: 0; }
     7%   { opacity: 1; }
     80%  { transform: scale(1.55) rotate(var(--rot-end,   0deg)); opacity: 1; }
     93%  { opacity: 0.5; }
     100% { transform: scale(1.75) rotate(var(--rot-end,   0deg)); opacity: 0; }
 }
-@keyframes pta-dialog-die {
+@keyframes aa-dialog-die {
     0%   { opacity: 1; }
     100% { opacity: 0; transform: scale(1.6) rotate(var(--rot-end, 0deg)); }
 }
-.pta-dialog.pta-dying {
-    animation: pta-dialog-die 0.18s ease-out forwards !important;
+.aa-dialog.aa-dying {
+    animation: aa-dialog-die 0.18s ease-out forwards !important;
 }
 
 /* ─── Screen flash (red = player damage, orange = enemy hit, blue = blue dialog hit) */
-#pta-damage-flash {
+#aa-damage-flash {
     position: absolute; inset: 0;
-    background: var(--pta-flash-bg, rgba(255,0,0,0.38));
+    background: var(--aa-flash-bg, rgba(255,0,0,0.38));
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.08s;
     z-index: 20;
 }
-#pta-damage-flash.flash { opacity: 1; }
+#aa-damage-flash.flash { opacity: 1; }
 
 /* ─── Phase transition banner ────────────────────────── */
-#pta-phase-banner {
+#aa-phase-banner {
     position: absolute; inset: 0;
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
@@ -480,33 +480,33 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     pointer-events: none;
     transition: opacity 0.3s;
 }
-#pta-phase-banner.active {
+#aa-phase-banner.active {
     opacity: 1;
     pointer-events: auto;
 }
-#pta-phase-banner-text {
+#aa-phase-banner-text {
     font-size: 52px; letter-spacing: 10px;
     color: #ffffff;
     text-shadow: 0 0 30px rgba(200,100,255,0.9), 0 0 60px rgba(200,100,255,0.4);
-    animation: pta-phase-pulse 1s ease infinite;
+    animation: aa-phase-pulse 1s ease infinite;
 }
-@keyframes pta-phase-pulse {
+@keyframes aa-phase-pulse {
     0%,100% { text-shadow: 0 0 30px rgba(200,100,255,0.9), 0 0 60px rgba(200,100,255,0.4); }
     50%     { text-shadow: 0 0 50px rgba(255,150,255,1),   0 0 90px rgba(200,100,255,0.7); }
 }
 
 /* ─── Final Solution overlay ─────────────────────────── */
-#pta-final-overlay {
+#aa-final-overlay {
     position: absolute; inset: 0;
     display: none;
     align-items: center; justify-content: center;
     background: none;
     z-index: 60;
 }
-#pta-final-overlay.active { display: flex; }
+#aa-final-overlay.active { display: flex; }
 
 /* ─── Final argument quote ───────────────────────────── */
-#pta-final-quote {
+#aa-final-quote {
     position: absolute;
     top: 50%; left: 50%;
     transform: translate(-50%, -50%) scale(1);
@@ -525,17 +525,17 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     word-wrap: break-word;
     overflow-wrap: break-word;
 }
-#pta-final-quote.pta-quote-active {
-    animation: pta-quote-in 5s linear forwards;
+#aa-final-quote.aa-quote-active {
+    animation: aa-quote-in 5s linear forwards;
 }
-#pta-final-quote.pta-quote-dying {
-    animation: pta-quote-die 0.3s ease-out forwards !important;
+#aa-final-quote.aa-quote-dying {
+    animation: aa-quote-die 0.3s ease-out forwards !important;
 }
-@keyframes pta-quote-die {
+@keyframes aa-quote-die {
     0%   { opacity: 0.75; }
     100% { opacity: 0; }
 }
-@keyframes pta-quote-in {
+@keyframes aa-quote-in {
     0%   { transform: translate(-50%, -50%) scale(0.15); opacity: 0; }
     15%  { opacity: 0.6; }
     85%  { transform: translate(-50%, -50%) scale(1.03); opacity: 0.85; }
@@ -543,7 +543,7 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
 }
 
 /* Direction boxes — anchored to overlay edges */
-.pta-dir-box {
+.aa-dir-box {
     position: absolute;
     width: 62px; height: 62px;
     border-radius: 8px;
@@ -554,52 +554,52 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     z-index: 5;
 }
 
-#pta-dir-N {
+#aa-dir-N {
     top: 24px; left: 50%; transform: translateX(-50%);
     background: #bb1133; border-color: #ff3366;
     box-shadow: 0 0 16px rgba(255,50,100,0.5);
 }
-#pta-dir-N:hover       { transform: translateX(-50%) scale(1.08); }
-#pta-dir-N.pta-dir-pressed { transform: translateX(-50%) scale(0.93); }
+#aa-dir-N:hover       { transform: translateX(-50%) scale(1.08); }
+#aa-dir-N.aa-dir-pressed { transform: translateX(-50%) scale(0.93); }
 
-#pta-dir-S {
+#aa-dir-S {
     bottom: 24px; left: 50%; transform: translateX(-50%);
     background: #6622aa; border-color: #9944dd;
     box-shadow: 0 0 16px rgba(153,68,221,0.5);
 }
-#pta-dir-S:hover       { transform: translateX(-50%) scale(1.08); }
-#pta-dir-S.pta-dir-pressed { transform: translateX(-50%) scale(0.93); }
+#aa-dir-S:hover       { transform: translateX(-50%) scale(1.08); }
+#aa-dir-S.aa-dir-pressed { transform: translateX(-50%) scale(0.93); }
 
-#pta-dir-W {
+#aa-dir-W {
     left: 24px; top: 50%; transform: translateY(-50%);
     background: #227733; border-color: #44cc66;
     box-shadow: 0 0 16px rgba(68,204,102,0.5);
 }
-#pta-dir-W:hover       { transform: translateY(-50%) scale(1.08); }
-#pta-dir-W.pta-dir-pressed { transform: translateY(-50%) scale(0.93); }
+#aa-dir-W:hover       { transform: translateY(-50%) scale(1.08); }
+#aa-dir-W.aa-dir-pressed { transform: translateY(-50%) scale(0.93); }
 
-#pta-dir-E {
+#aa-dir-E {
     right: 24px; top: 50%; transform: translateY(-50%);
     background: #1133aa; border-color: #3366ff;
     box-shadow: 0 0 16px rgba(51,102,255,0.5);
 }
-#pta-dir-E:hover       { transform: translateY(-50%) scale(1.08); }
-#pta-dir-E.pta-dir-pressed { transform: translateY(-50%) scale(0.93); }
+#aa-dir-E:hover       { transform: translateY(-50%) scale(1.08); }
+#aa-dir-E.aa-dir-pressed { transform: translateY(-50%) scale(0.93); }
 
-.pta-dir-box.pta-dir-used {
+.aa-dir-box.aa-dir-used {
     opacity: 0.3;
     cursor: default;
     pointer-events: none;
 }
 
-.pta-dir-arrow {
+.aa-dir-arrow {
     font-size: 30px; color: #fff;
     text-shadow: 0 0 6px rgba(255,255,255,0.5);
     pointer-events: none;
 }
 
 /* Solution text near each edge button */
-.pta-dir-solution {
+.aa-dir-solution {
     position: absolute;
     font-size: 44px; font-weight: bold;
     letter-spacing: 4px;
@@ -609,14 +609,14 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     pointer-events: none;
     transition: opacity 0.5s ease;
 }
-#pta-sol-N { top: 104px;    left: 50%;   transform: translateX(-50%); text-align: center; text-shadow: -1px -1px 0 #ff3366, 1px -1px 0 #ff3366, -1px 1px 0 #ff3366, 1px 1px 0 #ff3366, 0 0 14px rgba(255,51,102,0.7); }
-#pta-sol-S { bottom: 104px; left: 50%;   transform: translateX(-50%); text-align: center; text-shadow: -1px -1px 0 #9944dd, 1px -1px 0 #9944dd, -1px 1px 0 #9944dd, 1px 1px 0 #9944dd, 0 0 14px rgba(153,68,221,0.7); }
-#pta-sol-W { left: 104px;   top: 50%;    transform: translateY(-50%); writing-mode: vertical-rl; text-orientation: mixed; text-shadow: -1px -1px 0 #44cc66, 1px -1px 0 #44cc66, -1px 1px 0 #44cc66, 1px 1px 0 #44cc66, 0 0 14px rgba(68,204,102,0.7); }
-#pta-sol-E { right: 104px;  top: 50%;    transform: translateY(-50%); writing-mode: vertical-rl; text-orientation: mixed; text-shadow: -1px -1px 0 #3366ff, 1px -1px 0 #3366ff, -1px 1px 0 #3366ff, 1px 1px 0 #3366ff, 0 0 14px rgba(51,102,255,0.7); }
-.pta-dir-solution.pta-sol-hidden { opacity: 0 !important; pointer-events: none; }
+#aa-sol-N { top: 104px;    left: 50%;   transform: translateX(-50%); text-align: center; text-shadow: -1px -1px 0 #ff3366, 1px -1px 0 #ff3366, -1px 1px 0 #ff3366, 1px 1px 0 #ff3366, 0 0 14px rgba(255,51,102,0.7); }
+#aa-sol-S { bottom: 104px; left: 50%;   transform: translateX(-50%); text-align: center; text-shadow: -1px -1px 0 #9944dd, 1px -1px 0 #9944dd, -1px 1px 0 #9944dd, 1px 1px 0 #9944dd, 0 0 14px rgba(153,68,221,0.7); }
+#aa-sol-W { left: 104px;   top: 50%;    transform: translateY(-50%); writing-mode: vertical-rl; text-orientation: mixed; text-shadow: -1px -1px 0 #44cc66, 1px -1px 0 #44cc66, -1px 1px 0 #44cc66, 1px 1px 0 #44cc66, 0 0 14px rgba(68,204,102,0.7); }
+#aa-sol-E { right: 104px;  top: 50%;    transform: translateY(-50%); writing-mode: vertical-rl; text-orientation: mixed; text-shadow: -1px -1px 0 #3366ff, 1px -1px 0 #3366ff, -1px 1px 0 #3366ff, 1px 1px 0 #3366ff, 0 0 14px rgba(51,102,255,0.7); }
+.aa-dir-solution.aa-sol-hidden { opacity: 0 !important; pointer-events: none; }
 
 /* Chosen sentence — accumulates above the S solution text */
-#pta-chosen-sentence {
+#aa-chosen-sentence {
     position: absolute;
     bottom: 168px; left: 50%;
     transform: translateX(-50%);
@@ -627,51 +627,51 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     z-index: 10;
     text-align: center;
 }
-.pta-chosen-word {
+.aa-chosen-word {
     font-size: 20px; font-weight: bold;
     letter-spacing: 2px;
     color: #fff;
     white-space: nowrap;
 }
 /* Trapeze float-up on success */
-@keyframes pta-float-trapeze {
+@keyframes aa-float-trapeze {
     0%   { -webkit-transform: translateX(-50%) translateY(0)      perspective(600px) rotateX(0deg);  transform: translateX(-50%) translateY(0)      perspective(600px) rotateX(0deg);  opacity: 1; }
     35%  { -webkit-transform: translateX(-50%) translateY(-16vh)  perspective(500px) rotateX(8deg);  transform: translateX(-50%) translateY(-16vh)  perspective(500px) rotateX(8deg);  opacity: 1; }
     65%  { -webkit-transform: translateX(-50%) translateY(-32vh)  perspective(420px) rotateX(22deg); transform: translateX(-50%) translateY(-32vh)  perspective(420px) rotateX(22deg); opacity: 0.85; }
     100% { -webkit-transform: translateX(-50%) translateY(-44vh)  perspective(320px) rotateX(42deg); transform: translateX(-50%) translateY(-44vh)  perspective(320px) rotateX(42deg); opacity: 0; }
 }
-#pta-chosen-sentence.pta-float-up {
-    animation: pta-float-trapeze 0.5s ease-in forwards;
+#aa-chosen-sentence.aa-float-up {
+    animation: aa-float-trapeze 0.5s ease-in forwards;
     -webkit-transform-origin: bottom center;
     transform-origin: bottom center;
 }
 
 /* Sequence input display */
-@keyframes pta-seq-shake {
+@keyframes aa-seq-shake {
     0%,100% { transform: translateX(0); }
     20%     { transform: translateX(-5px); }
     60%     { transform: translateX(5px); }
 }
 
 /* ─── Final argument countdown timer (HG style) ─────── */
-#pta-final-timer-area {
+#aa-final-timer-area {
     position: absolute;
     top: 20px; left: 24px;
     text-align: left;
     z-index: 6;
 }
-#pta-final-timer-label {
+#aa-final-timer-label {
     font-size: 11px; letter-spacing: 3px;
     color: #dd88ff;
     text-shadow: 0 0 8px rgba(200,80,255,0.6);
     margin-bottom: 2px;
 }
-#pta-final-timer {
+#aa-final-timer {
     font-size: 32px; font-weight: 700; letter-spacing: 3px;
     color: #ffaa00;
     text-shadow: 0 0 10px #ff8800, 0 0 3px #ffcc00;
 }
-#pta-final-timer.pta-urgent {
+#aa-final-timer.aa-urgent {
     color: #ff1111;
     text-shadow: 0 0 14px rgba(255,0,0,1);
     animation: ptaBlink 0.45s ease-in-out infinite;
@@ -679,17 +679,17 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
 @keyframes ptaBlink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
 
 /* Failure flash */
-#pta-final-fail-flash {
+#aa-final-fail-flash {
     position: absolute; inset: 0;
     background: rgba(255,0,80,0.3);
     opacity: 0; pointer-events: none;
     transition: opacity 0.1s;
     z-index: 2;
 }
-#pta-final-fail-flash.flash { opacity: 1; }
+#aa-final-fail-flash.flash { opacity: 1; }
 
 /* ─── Result banner ──────────────────────────────────── */
-#pta-result-banner {
+#aa-result-banner {
     position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
     opacity: 0; pointer-events: none;
@@ -697,22 +697,22 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     z-index: 70;
     background: rgba(0,0,0,0.6);
 }
-#pta-result-banner.active { opacity: 1; }
-#pta-result-text {
+#aa-result-banner.active { opacity: 1; }
+#aa-result-text {
     font-size: 56px; letter-spacing: 8px;
     text-align: center;
 }
-#pta-result-text.win {
+#aa-result-text.win {
     color: #22aaff;
     text-shadow: 0 0 30px rgba(34,170,255,0.8), 0 0 60px rgba(34,170,255,0.4);
 }
-#pta-result-text.lose {
+#aa-result-text.lose {
     color: #ff2244;
     text-shadow: 0 0 30px rgba(255,34,68,0.8), 0 0 60px rgba(255,34,68,0.4);
 }
 
 /* ─── Tutorial prompt bar ────────────────────────────── */
-#pta-tutorial-prompt {
+#aa-tutorial-prompt {
     position: fixed; bottom: 0; left: 0; right: 0;
     z-index: 2147483646;
     background: rgba(10, 0, 24, 0.97);
@@ -724,17 +724,17 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     opacity: 0; transform: translateY(12px);
     transition: opacity 280ms ease, transform 280ms ease;
 }
-#pta-tutorial-prompt.pta-tp-on { opacity: 1; transform: translateY(0); }
-.pta-tp-text {
+#aa-tutorial-prompt.aa-tp-on { opacity: 1; transform: translateY(0); }
+.aa-tp-text {
     color: rgba(220, 200, 235, 0.92);
     font-size: clamp(13px, 2vw, 17px);
     line-height: 1.6;
     margin-bottom: 18px;
 }
-.pta-tp-buttons {
+.aa-tp-buttons {
     display: flex; justify-content: center; gap: 16px;
 }
-.pta-tp-btn {
+.aa-tp-btn {
     padding: 9px 28px;
     border-radius: 4px;
     border: 1.5px solid rgba(200, 80, 255, 0.55);
@@ -745,32 +745,32 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
-.pta-tp-btn:hover {
+.aa-tp-btn:hover {
     background: rgba(120, 30, 200, 0.6);
     border-color: rgba(220, 120, 255, 0.85);
     color: #fff;
 }
-.pta-tp-btn.pta-tp-no {
+.aa-tp-btn.aa-tp-no {
     background: rgba(20, 0, 36, 0.7);
     border-color: rgba(140, 60, 180, 0.4);
     color: rgba(200, 170, 230, 0.9);
     box-shadow: none;
 }
-.pta-tp-btn.pta-tp-never {
+.aa-tp-btn.aa-tp-never {
     background: rgba(12, 0, 22, 0.65);
     border-color: rgba(110, 110, 120, 0.3);
     color: rgba(190, 180, 200, 0.7);
     font-style: italic;
     box-shadow: none;
 }
-.pta-tp-btn.pta-tp-never:hover {
+.aa-tp-btn.aa-tp-never:hover {
     background: rgba(40, 20, 60, 0.55);
     border-color: rgba(170, 170, 180, 0.55);
     color: rgba(230, 220, 240, 0.92);
 }
 
 /* ─── Tutorial modal ─────────────────────────────────── */
-#pta-tutorial-modal {
+#aa-tutorial-modal {
     position: fixed; inset: 0;
     z-index: 2147483647;
     background: rgba(4, 0, 18, 0.88);
@@ -780,8 +780,8 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     padding: 20px;
     box-sizing: border-box;
 }
-#pta-tutorial-modal.pta-tm-on { opacity: 1; }
-.pta-tm-inner {
+#aa-tutorial-modal.aa-tm-on { opacity: 1; }
+.aa-tm-inner {
     background: rgba(8, 0, 24, 0.98);
     border: 2px solid rgba(180, 60, 255, 0.45);
     box-shadow: 0 0 40px rgba(150, 40, 220, 0.2), 0 0 80px rgba(80, 0, 200, 0.12);
@@ -791,25 +791,25 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     display: flex; flex-direction: column;
     overflow: hidden;
 }
-.pta-tm-header {
+.aa-tm-header {
     padding: 16px 22px 12px;
     border-bottom: 1px solid rgba(180, 60, 255, 0.25);
     flex-shrink: 0;
 }
-.pta-tm-title {
+.aa-tm-title {
     font-family: "Orbitron", "Impact", monospace;
     font-size: clamp(16px, 3vw, 22px);
     font-weight: 900; letter-spacing: 0.06em;
     color: rgba(220, 160, 255, 0.95);
     text-shadow: 0 0 14px rgba(180, 80, 255, 0.6);
 }
-.pta-tm-img {
+.aa-tm-img {
     width: 100%; display: block;
     flex-shrink: 0;
     height: auto;
     border-radius: 0;
 }
-.pta-tm-body {
+.aa-tm-body {
     padding: 20px 24px;
     color: rgba(220, 200, 240, 0.88);
     font-size: clamp(12px, 1.8vw, 14px);
@@ -817,14 +817,14 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     overflow-y: auto;
     flex: 1;
 }
-.pta-tm-body strong { color: rgba(220, 160, 255, 0.95); }
-.pta-tm-footer {
+.aa-tm-body strong { color: rgba(220, 160, 255, 0.95); }
+.aa-tm-footer {
     padding: 14px 24px 18px;
     border-top: 1px solid rgba(180, 60, 255, 0.2);
     display: flex; justify-content: flex-end;
     flex-shrink: 0;
 }
-.pta-tm-close {
+.aa-tm-close {
     font-family: "Noto Sans JP", "Noto Sans", sans-serif;
     font-size: 14px; font-weight: 700;
     padding: 9px 30px;
@@ -836,13 +836,13 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     letter-spacing: 0.05em;
     transition: background 140ms, box-shadow 140ms;
 }
-.pta-tm-close:hover {
+.aa-tm-close:hover {
     background: rgba(60, 10, 100, 0.95);
     box-shadow: 0 0 12px rgba(180, 60, 255, 0.4);
 }
 
 /* ─── Custom background image ────────────────────────── */
-#pta-bg {
+#aa-bg {
     position: absolute; inset: 0;
     z-index: 0;
     background-size: cover;
@@ -851,7 +851,7 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
 }
 
 /* ─── Character sprite ───────────────────────────────── */
-#pta-sprite {
+#aa-sprite {
     position: absolute;
     width: 531px;
     height: 1050px;
@@ -861,32 +861,32 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     pointer-events: none;
     transition: left 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
-#pta-sprite img {
+#aa-sprite img {
     width: 100%;
     height: 100%;
     object-fit: contain;
     object-position: center center;
     display: block;
-    animation: pta-sprite-glow 2.7s ease-in-out infinite;
+    animation: aa-sprite-glow 2.7s ease-in-out infinite;
 }
-@keyframes pta-sprite-glow {
+@keyframes aa-sprite-glow {
     0%   { filter: drop-shadow(0 0 2px rgba(255, 80, 180, 0.55)); }
     50%  { filter: drop-shadow(0 0 7px rgba(255, 80, 180, 1)) drop-shadow(0 0 13px rgba(255, 80, 180, 0.5)); }
     100% { filter: drop-shadow(0 0 2px rgba(255, 80, 180, 0.55)); }
 }
-@keyframes pta-sprite-flash {
+@keyframes aa-sprite-flash {
     0%   { filter: brightness(1); }
     35%  { filter: brightness(20) saturate(0); }
     65%  { filter: brightness(15) saturate(0); }
     100% { filter: brightness(1); }
 }
-#pta-sprite.pta-sprite-flashing {
-    animation: pta-sprite-flash 0.5s ease-out forwards;
+#aa-sprite.aa-sprite-flashing {
+    animation: aa-sprite-flash 0.5s ease-out forwards;
 }
 `;
 }
 
-export function createPanicTalkActionController({
+export function createArgumentArmamentController({
     extensionFolderPath,
     awardMonocoins,
     deductMonocoins,
@@ -911,13 +911,13 @@ export function createPanicTalkActionController({
         if (bgmAudio)        { try { bgmAudio.pause();        bgmAudio.src        = ''; } catch(_) {} bgmAudio        = null; }
         if (_heartbeatAudio) { try { _heartbeatAudio.pause(); _heartbeatAudio.src = ''; } catch(_) {} _heartbeatAudio = null; }
         if (overlayEl) { overlayEl.remove(); overlayEl = null; }
-        document.getElementById('pta-got-it-banner')?.remove();
-        document.getElementById('pta-got-it-prefill')?.remove();
-        document.getElementById('pta-final-blow-banner')?.remove();
-        document.getElementById('pta-final-blow-prefill')?.remove();
-        document.getElementById('pta-tutorial-prompt')?.remove();
-        document.getElementById('pta-tutorial-modal')?.remove();
-        const s = document.getElementById(PTA_STYLE);
+        document.getElementById('aa-got-it-banner')?.remove();
+        document.getElementById('aa-got-it-prefill')?.remove();
+        document.getElementById('aa-final-blow-banner')?.remove();
+        document.getElementById('aa-final-blow-prefill')?.remove();
+        document.getElementById('aa-tutorial-prompt')?.remove();
+        document.getElementById('aa-tutorial-modal')?.remove();
+        const s = document.getElementById(AA_STYLE);
         if (s) s.remove();
     }
 
@@ -967,124 +967,124 @@ export function createPanicTalkActionController({
 
         // ── Build DOM ────────────────────────────────────────────
         const styleEl = document.createElement('style');
-        styleEl.id    = PTA_STYLE;
+        styleEl.id    = AA_STYLE;
         styleEl.textContent = buildStyles({ extensionFolderPath });
         document.head.appendChild(styleEl);
 
 
         overlayEl = document.createElement('div');
-        overlayEl.id = PTA_ID;
+        overlayEl.id = AA_ID;
         overlayEl.innerHTML = `
-            <div id="pta-damage-flash"></div>
-            ${BG ? `<div id="pta-bg" style="background-image:url('${BG.replace(/'/g, '%27')}')"></div>` : ''}
+            <div id="aa-damage-flash"></div>
+            ${BG ? `<div id="aa-bg" style="background-image:url('${BG.replace(/'/g, '%27')}')"></div>` : ''}
 
-            <div id="pta-panel-tl" class="pta-panel">
-                <div id="pta-phase-label">PHASE 1</div>
-                <div id="pta-enemy-bar-wrap">
-                    <div id="pta-enemy-name">OPPONENT${clairvoyance ? ' <span id="pta-enemy-hp-display"></span>' : ''}</div>
-                    <div class="pta-bar-track">
-                        <div class="pta-bar-fill" id="pta-enemy-fill" style="width:100%"></div>
-                        ${maxPhases >= 2 ? '<div class="pta-bar-marker" style="left:50%"></div>' : ''}
-                        ${maxPhases >= 3 ? '<div class="pta-bar-marker" style="left:25%"></div>' : ''}
+            <div id="aa-panel-tl" class="aa-panel">
+                <div id="aa-phase-label">PHASE 1</div>
+                <div id="aa-enemy-bar-wrap">
+                    <div id="aa-enemy-name">OPPONENT${clairvoyance ? ' <span id="aa-enemy-hp-display"></span>' : ''}</div>
+                    <div class="aa-bar-track">
+                        <div class="aa-bar-fill" id="aa-enemy-fill" style="width:100%"></div>
+                        ${maxPhases >= 2 ? '<div class="aa-bar-marker" style="left:50%"></div>' : ''}
+                        ${maxPhases >= 3 ? '<div class="aa-bar-marker" style="left:25%"></div>' : ''}
                     </div>
                 </div>
             </div>
 
-            <div id="pta-panel-bl" class="pta-panel">
-                <div id="pta-ammo-wrap">
-                    <img id="pta-ammo-icon" src="${extensionFolderPath}/assets/icons/artillery-shell.svg" alt=""/>
-                    <div id="pta-ammo-count">×${AMMO_MAX}</div>
-                    <div id="pta-ammo-label">AMMO</div>
+            <div id="aa-panel-bl" class="aa-panel">
+                <div id="aa-ammo-wrap">
+                    <img id="aa-ammo-icon" src="${extensionFolderPath}/assets/icons/artillery-shell.svg" alt=""/>
+                    <div id="aa-ammo-count">×${AMMO_MAX}</div>
+                    <div id="aa-ammo-label">AMMO</div>
                 </div>
-                <div id="pta-reload-indicator">RELOADING…</div>
+                <div id="aa-reload-indicator">RELOADING…</div>
             </div>
 
-            <div id="pta-panel-br" class="pta-panel">
-                <div id="pta-player-bar-wrap">
-                    <div id="pta-player-name">YOU${clairvoyance ? ' <span id="pta-player-hp-display"></span>' : ''}</div>
-                    <div class="pta-bar-track">
-                        <div class="pta-bar-fill" id="pta-player-fill" style="width:100%"></div>
+            <div id="aa-panel-br" class="aa-panel">
+                <div id="aa-player-bar-wrap">
+                    <div id="aa-player-name">YOU${clairvoyance ? ' <span id="aa-player-hp-display"></span>' : ''}</div>
+                    <div class="aa-bar-track">
+                        <div class="aa-bar-fill" id="aa-player-fill" style="width:100%"></div>
                     </div>
                 </div>
             </div>
 
-            <div id="pta-timer-area" class="pta-panel">
-                <div id="pta-timer-label">TIME</div>
-                <div id="pta-timer">01:30:000</div>
+            <div id="aa-timer-area" class="aa-panel">
+                <div id="aa-timer-label">TIME</div>
+                <div id="aa-timer">01:30:000</div>
             </div>
 
-            <div id="pta-grid">
+            <div id="aa-grid">
                 ${Array.from({ length: 9 }, (_, i) =>
-                    `<div class="pta-cell" data-cell="${i}"></div>`
+                    `<div class="aa-cell" data-cell="${i}"></div>`
                 ).join('')}
-                <div id="pta-reticule"><span></span><span></span><span></span><span></span></div>
+                <div id="aa-reticule"><span></span><span></span><span></span><span></span></div>
             </div>
 
-            <div id="pta-sprite">
-                <img src="${mainSprite || extensionFolderPath + '/assets/images/minigames/pta-tester-main.webp'}" alt=""/>
+            <div id="aa-sprite">
+                <img src="${mainSprite || extensionFolderPath + '/assets/images/minigames/aa-tester-main.webp'}" alt=""/>
             </div>
 
-            <div id="pta-phase-banner">
-                <div id="pta-phase-banner-text"></div>
+            <div id="aa-phase-banner">
+                <div id="aa-phase-banner-text"></div>
             </div>
 
-            <div id="pta-final-overlay">
-                <div id="pta-final-fail-flash"></div>
-                <div id="pta-final-quote"></div>
-                <div id="pta-final-timer-area">
-                    <div id="pta-final-timer-label">TIME</div>
-                    <div id="pta-final-timer">00:07:500</div>
+            <div id="aa-final-overlay">
+                <div id="aa-final-fail-flash"></div>
+                <div id="aa-final-quote"></div>
+                <div id="aa-final-timer-area">
+                    <div id="aa-final-timer-label">TIME</div>
+                    <div id="aa-final-timer">00:07:500</div>
                 </div>
-                <div id="pta-dir-N" class="pta-dir-box"><span class="pta-dir-arrow">▲</span></div>
-                <div id="pta-dir-S" class="pta-dir-box"><span class="pta-dir-arrow">▼</span></div>
-                <div id="pta-dir-W" class="pta-dir-box"><span class="pta-dir-arrow">◀</span></div>
-                <div id="pta-dir-E" class="pta-dir-box"><span class="pta-dir-arrow">▶</span></div>
-                <div class="pta-dir-solution" id="pta-sol-N">${NSolution || ''}</div>
-                <div class="pta-dir-solution" id="pta-sol-S">${SSolution || ''}</div>
-                <div class="pta-dir-solution" id="pta-sol-W">${WSolution || ''}</div>
-                <div class="pta-dir-solution" id="pta-sol-E">${ESolution || ''}</div>
-                <div id="pta-chosen-sentence"></div>
+                <div id="aa-dir-N" class="aa-dir-box"><span class="aa-dir-arrow">▲</span></div>
+                <div id="aa-dir-S" class="aa-dir-box"><span class="aa-dir-arrow">▼</span></div>
+                <div id="aa-dir-W" class="aa-dir-box"><span class="aa-dir-arrow">◀</span></div>
+                <div id="aa-dir-E" class="aa-dir-box"><span class="aa-dir-arrow">▶</span></div>
+                <div class="aa-dir-solution" id="aa-sol-N">${NSolution || ''}</div>
+                <div class="aa-dir-solution" id="aa-sol-S">${SSolution || ''}</div>
+                <div class="aa-dir-solution" id="aa-sol-W">${WSolution || ''}</div>
+                <div class="aa-dir-solution" id="aa-sol-E">${ESolution || ''}</div>
+                <div id="aa-chosen-sentence"></div>
             </div>
 
-            <div id="pta-result-banner">
-                <div id="pta-result-text"></div>
+            <div id="aa-result-banner">
+                <div id="aa-result-text"></div>
             </div>
         `;
         document.body.appendChild(overlayEl);
         if (BG) overlayEl.style.background = 'none';
-        requestAnimationFrame(() => requestAnimationFrame(() => overlayEl.classList.add('pta-on')));
+        requestAnimationFrame(() => requestAnimationFrame(() => overlayEl.classList.add('aa-on')));
 
         return new Promise(resolve => {
 
             // ── DOM refs ─────────────────────────────────────────
-            const cells         = [...overlayEl.querySelectorAll('.pta-cell')];
-            const enemyFill     = overlayEl.querySelector('#pta-enemy-fill');
-            const playerFill    = overlayEl.querySelector('#pta-player-fill');
-            const ammoCountEl   = overlayEl.querySelector('#pta-ammo-count');
-            const reloadInd     = overlayEl.querySelector('#pta-reload-indicator');
-            const ammoPanelEl   = overlayEl.querySelector('#pta-panel-bl');
-            const phaseLabel    = overlayEl.querySelector('#pta-phase-label');
-            const phaseBanner   = overlayEl.querySelector('#pta-phase-banner');
-            const phaseBannerTx = overlayEl.querySelector('#pta-phase-banner-text');
-            const finalOverlay  = overlayEl.querySelector('#pta-final-overlay');
-            const finalQuoteEl      = overlayEl.querySelector('#pta-final-quote');
-            const chosenSentenceEl  = overlayEl.querySelector('#pta-chosen-sentence');
-            const resultBanner  = overlayEl.querySelector('#pta-result-banner');
-            const resultText    = overlayEl.querySelector('#pta-result-text');
-            const damageFlash   = overlayEl.querySelector('#pta-damage-flash');
-            const failFlash     = overlayEl.querySelector('#pta-final-fail-flash');
-            const finalTimerEl = overlayEl.querySelector('#pta-final-timer');
+            const cells         = [...overlayEl.querySelectorAll('.aa-cell')];
+            const enemyFill     = overlayEl.querySelector('#aa-enemy-fill');
+            const playerFill    = overlayEl.querySelector('#aa-player-fill');
+            const ammoCountEl   = overlayEl.querySelector('#aa-ammo-count');
+            const reloadInd     = overlayEl.querySelector('#aa-reload-indicator');
+            const ammoPanelEl   = overlayEl.querySelector('#aa-panel-bl');
+            const phaseLabel    = overlayEl.querySelector('#aa-phase-label');
+            const phaseBanner   = overlayEl.querySelector('#aa-phase-banner');
+            const phaseBannerTx = overlayEl.querySelector('#aa-phase-banner-text');
+            const finalOverlay  = overlayEl.querySelector('#aa-final-overlay');
+            const finalQuoteEl      = overlayEl.querySelector('#aa-final-quote');
+            const chosenSentenceEl  = overlayEl.querySelector('#aa-chosen-sentence');
+            const resultBanner  = overlayEl.querySelector('#aa-result-banner');
+            const resultText    = overlayEl.querySelector('#aa-result-text');
+            const damageFlash   = overlayEl.querySelector('#aa-damage-flash');
+            const failFlash     = overlayEl.querySelector('#aa-final-fail-flash');
+            const finalTimerEl = overlayEl.querySelector('#aa-final-timer');
 
-            // ── Global PTA timer (bottom-right) ──────────────────
+            // ── Global AA timer (bottom-right) ──────────────────
             // Counts the player's overall budget for the whole confrontation.
             // Hitting 0 ends the game as a loss.
-            const PTA_TIMER_MS = 90_000; // 90 s — adjust if needed
-            const globalTimerEl = overlayEl.querySelector('#pta-timer');
+            const AA_TIMER_MS = 90_000; // 90 s — adjust if needed
+            const globalTimerEl = overlayEl.querySelector('#aa-timer');
             let globalTimerRaf   = null;
             let globalTimerStart = 0;
             function tickGlobalTimer(now) {
                 if (isResolved) return;
-                const remaining = Math.max(0, PTA_TIMER_MS - (now - globalTimerStart));
+                const remaining = Math.max(0, AA_TIMER_MS - (now - globalTimerStart));
                 if (globalTimerEl) {
                     const mins   = Math.floor(remaining / 60000);
                     const secs   = Math.floor((remaining % 60000) / 1000);
@@ -1093,7 +1093,7 @@ export function createPanicTalkActionController({
                         String(mins).padStart(2,'0') + ':' +
                         String(secs).padStart(2,'0') + ':' +
                         String(millis).padStart(3,'0');
-                    globalTimerEl.classList.toggle('pta-urgent', remaining < 10_000);
+                    globalTimerEl.classList.toggle('aa-urgent', remaining < 10_000);
                 }
                 if (remaining <= 0) {
                     globalTimerRaf = null;
@@ -1127,7 +1127,7 @@ export function createPanicTalkActionController({
                     String(mins).padStart(2,'0') + ':' +
                     String(secs).padStart(2,'0') + ':' +
                     String(millis).padStart(3,'0');
-                finalTimerEl.classList.toggle('pta-urgent', remaining < 2000);
+                finalTimerEl.classList.toggle('aa-urgent', remaining < 2000);
                 if (remaining > 0) timerRafId = requestAnimationFrame(tickTimerFrame);
             }
 
@@ -1135,7 +1135,7 @@ export function createPanicTalkActionController({
                 cancelAnimationFrame(timerRafId);
                 timerStartTs = performance.now();
                 finalTimerEl.textContent = '00:07:500';
-                finalTimerEl.classList.remove('pta-urgent');
+                finalTimerEl.classList.remove('aa-urgent');
                 timerRafId = requestAnimationFrame(tickTimerFrame);
             }
 
@@ -1145,7 +1145,7 @@ export function createPanicTalkActionController({
             }
 
             // ── UI helpers ───────────────────────────────────────
-            const reticule = overlayEl.querySelector('#pta-reticule');
+            const reticule = overlayEl.querySelector('#aa-reticule');
             function updateCursor() {
                 const col = cursorCell % 3;
                 const row = Math.floor(cursorCell / 3);
@@ -1155,7 +1155,7 @@ export function createPanicTalkActionController({
             updateCursor();
 
             // ── Character sprite movement ────────────────────────
-            const spriteEl  = overlayEl.querySelector('#pta-sprite');
+            const spriteEl  = overlayEl.querySelector('#aa-sprite');
             const spriteImg = spriteEl.querySelector('img');
             // left values for columns 0, 1, 2 — sprite centered within each column
             const SPRITE_COL_LEFTS = ['calc(50% - 612px)', 'calc(50% - 266px)', 'calc(50% + 80px)'];
@@ -1180,8 +1180,8 @@ export function createPanicTalkActionController({
                 }, 3000);
             }
 
-            const enemyHpDisplay  = overlayEl.querySelector('#pta-enemy-hp-display');
-            const playerHpDisplay = overlayEl.querySelector('#pta-player-hp-display');
+            const enemyHpDisplay  = overlayEl.querySelector('#aa-enemy-hp-display');
+            const playerHpDisplay = overlayEl.querySelector('#aa-player-hp-display');
 
             function updateBars() {
                 enemyFill.style.width  = `${Math.max(0, (currentEnemyHp  / maxEnemyHp)  * 100)}%`;
@@ -1205,10 +1205,10 @@ export function createPanicTalkActionController({
                 currentPlayerHp = Math.max(0, currentPlayerHp - amount);
                 updateBars();
                 flashScreen('red');
-                overlayEl.classList.remove('pta-shaking');
+                overlayEl.classList.remove('aa-shaking');
                 void overlayEl.offsetWidth;
-                overlayEl.classList.add('pta-shaking');
-                setTimeout(() => overlayEl.classList.remove('pta-shaking'), 360);
+                overlayEl.classList.add('aa-shaking');
+                setTimeout(() => overlayEl.classList.remove('aa-shaking'), 360);
                 damageSfx.currentTime = 0;
                 damageSfx.play().catch(() => {});
                 checkPlayerDeath();
@@ -1221,7 +1221,7 @@ export function createPanicTalkActionController({
                     blue:   'rgba(77,166,255,0.38)',
                     white:  'rgba(255,255,255,0.18)',
                 }[color] ?? 'rgba(255,0,0,0.38)';
-                damageFlash.style.setProperty('--pta-flash-bg', bg);
+                damageFlash.style.setProperty('--aa-flash-bg', bg);
                 damageFlash.classList.remove('flash');
                 requestAnimationFrame(() => {
                     damageFlash.classList.add('flash');
@@ -1236,11 +1236,11 @@ export function createPanicTalkActionController({
                     bgmAudio = null;
                 }
                 const customSrc = getPhaseTrack?.(phaseNum) ?? null;
-                const src = customSrc || `${extensionFolderPath}/assets/bgm/Panic Talk Action Phase ${phaseNum}.mp3`;
+                const src = customSrc || `${extensionFolderPath}/assets/bgm/Argument Armament Phase ${phaseNum}.mp3`;
                 bgmAudio = new Audio(src);
                 bgmAudio.loop = (phaseNum === 3);
                 bgmAudio.volume = 0.7;
-                bgmAudio.play().catch(err => console.warn(`[PTA] Phase ${phaseNum} BGM play failed (file missing?):`, err));
+                bgmAudio.play().catch(err => console.warn(`[AA] Phase ${phaseNum} BGM play failed (file missing?):`, err));
             }
 
             // ── Dialog spawning ──────────────────────────────────
@@ -1264,14 +1264,14 @@ export function createPanicTalkActionController({
                 const rotEnd   = (Math.random() * 50 - 25).toFixed(1);
 
                 const el = document.createElement('div');
-                el.className = `pta-dialog pta-${type}`;
+                el.className = `aa-dialog aa-${type}`;
                 el.style.animationDuration = `${duration}ms`;
                 el.style.setProperty('--rot-start', `${rotStart}deg`);
                 el.style.setProperty('--rot-end',   `${rotEnd}deg`);
                 el.textContent = dialogText;
                 cells[cellIdx].appendChild(el);
                 cells[cellIdx].style.setProperty('--cell-warn-dur', `${duration}ms`);
-                cells[cellIdx].classList.add('pta-cell-active');
+                cells[cellIdx].classList.add('aa-cell-active');
 
                 const timeoutId = setTimeout(() => {
                     if (!activeDialogs.has(cellIdx)) return;
@@ -1289,7 +1289,7 @@ export function createPanicTalkActionController({
 
             function resetCellWarn(cellIdx) {
                 const cell = cells[cellIdx];
-                cell.classList.remove('pta-cell-active', 'pta-cell-fading');
+                cell.classList.remove('aa-cell-active', 'aa-cell-fading');
                 cell.style.removeProperty('--cell-warn-dur');
                 cell.style.removeProperty('--cell-warn-snapshot');
             }
@@ -1298,11 +1298,11 @@ export function createPanicTalkActionController({
                 const cell = cells[cellIdx];
                 // Snapshot the computed background so the fade-out starts from the current colour
                 const snapshot = getComputedStyle(cell).background || getComputedStyle(cell).backgroundColor;
-                cell.classList.remove('pta-cell-active');
+                cell.classList.remove('aa-cell-active');
                 cell.style.setProperty('--cell-warn-snapshot', snapshot);
-                cell.classList.add('pta-cell-fading');
+                cell.classList.add('aa-cell-fading');
                 setTimeout(() => {
-                    cell.classList.remove('pta-cell-fading');
+                    cell.classList.remove('aa-cell-fading');
                     cell.style.removeProperty('--cell-warn-dur');
                     cell.style.removeProperty('--cell-warn-snapshot');
                 }, 200);
@@ -1440,14 +1440,14 @@ export function createPanicTalkActionController({
 
             // ── Despawn a dialog with a fade-out ─────────────────
             function despawnDialogEl(el) {
-                el.classList.add('pta-dying');
+                el.classList.add('aa-dying');
                 setTimeout(() => el.remove(), 200);
             }
 
             // ── Hit burst effect ──────────────────────────────────
             function showHitBurst(cellIdx) {
                 const burst = document.createElement('div');
-                burst.className = 'pta-hit-burst';
+                burst.className = 'aa-hit-burst';
                 cells[cellIdx].appendChild(burst);
                 setTimeout(() => burst.remove(), 380);
             }
@@ -1465,7 +1465,7 @@ export function createPanicTalkActionController({
                 if (!activeDialogs.has(cellIdx)) {
                     new Audio(`${extensionFolderPath}/assets/sfx/minigames/empty-grid-hit.wav`).play().catch(() => {});
                     const miss = document.createElement('div');
-                    miss.className = 'pta-miss-label';
+                    miss.className = 'aa-miss-label';
                     miss.textContent = 'MISS!';
                     cells[cellIdx].appendChild(miss);
                     setTimeout(() => miss.remove(), 600);
@@ -1481,8 +1481,8 @@ export function createPanicTalkActionController({
                         new Audio(`${extensionFolderPath}/assets/sfx/minigames/hit-other.wav`).play().catch(() => {});
                         if (info.hitCount < 2) {
                             // First hit – turn orange, flash blue
-                            info.el.classList.remove('pta-blue');
-                            info.el.classList.add('pta-blue-hit');
+                            info.el.classList.remove('aa-blue');
+                            info.el.classList.add('aa-blue-hit');
                             flashScreen('blue');
                             checkPhaseTransition();
                             if (ammo <= 0) startAutoReload();
@@ -1545,23 +1545,23 @@ export function createPanicTalkActionController({
             function triggerFinalQuote() {
                 if (!FinalSolutionQuote) return;
                 finalQuoteEl.textContent = FinalSolutionQuote;
-                finalQuoteEl.classList.remove('pta-quote-active');
+                finalQuoteEl.classList.remove('aa-quote-active');
                 void finalQuoteEl.offsetWidth; // reflow to restart animation
-                finalQuoteEl.classList.add('pta-quote-active');
+                finalQuoteEl.classList.add('aa-quote-active');
             }
 
             function resetFinalSolTexts() {
-                overlayEl.querySelectorAll('.pta-dir-solution').forEach(el => el.classList.remove('pta-sol-hidden'));
-                overlayEl.querySelectorAll('.pta-dir-box').forEach(el => el.classList.remove('pta-dir-used'));
+                overlayEl.querySelectorAll('.aa-dir-solution').forEach(el => el.classList.remove('aa-sol-hidden'));
+                overlayEl.querySelectorAll('.aa-dir-box').forEach(el => el.classList.remove('aa-dir-used'));
                 chosenSentenceEl.innerHTML = '';
             }
 
             function fadeInSolTexts() {
                 // Hide all immediately, then stagger fade-in
-                overlayEl.querySelectorAll('.pta-dir-solution').forEach(el => el.classList.add('pta-sol-hidden'));
+                overlayEl.querySelectorAll('.aa-dir-solution').forEach(el => el.classList.add('aa-sol-hidden'));
                 ['N', 'W', 'E', 'S'].forEach((dir, i) => {
                     setTimeout(() => {
-                        overlayEl.querySelector(`#pta-sol-${dir}`)?.classList.remove('pta-sol-hidden');
+                        overlayEl.querySelector(`#aa-sol-${dir}`)?.classList.remove('aa-sol-hidden');
                     }, 300 + i * 160);
                 });
                 // Input and timer start immediately
@@ -1571,8 +1571,8 @@ export function createPanicTalkActionController({
             }
 
             const combatUIEls = () => [
-                overlayEl.querySelector('#pta-grid'),
-                ...overlayEl.querySelectorAll('.pta-panel'),
+                overlayEl.querySelector('#aa-grid'),
+                ...overlayEl.querySelectorAll('.aa-panel'),
             ];
 
             function fadeCombatUI(fadeOut) {
@@ -1603,7 +1603,7 @@ export function createPanicTalkActionController({
                 transitionLock = false;
                 finalInputSeq  = [];
                 chosenSentenceEl.innerHTML = '';
-                overlayEl.querySelectorAll('.pta-dir-box').forEach(el => el.classList.remove('pta-dir-used'));
+                overlayEl.querySelectorAll('.aa-dir-box').forEach(el => el.classList.remove('aa-dir-used'));
                 if (bgmAudio) { try { bgmAudio.pause(); bgmAudio.src = ''; } catch(_) {} bgmAudio = null; }
                 finalOverlay.classList.add('active');
                 updateSeqDisplay();
@@ -1631,26 +1631,26 @@ export function createPanicTalkActionController({
                 updateSeqDisplay();
 
                 // Hide the solution label for this direction
-                const solEl = overlayEl.querySelector(`#pta-sol-${dir}`);
+                const solEl = overlayEl.querySelector(`#aa-sol-${dir}`);
                 const solText = solEl ? solEl.textContent.trim() : '';
-                if (solEl) solEl.classList.add('pta-sol-hidden');
+                if (solEl) solEl.classList.add('aa-sol-hidden');
 
                 // Append to chosen sentence
                 if (solText) {
                     const color = DIR_OUTLINE_COLORS[dir] || '#fff';
                     const span = document.createElement('span');
-                    span.className = 'pta-chosen-word';
+                    span.className = 'aa-chosen-word';
                     span.textContent = solText;
                     span.style.textShadow = `-1px -1px 0 ${color}, 1px -1px 0 ${color}, -1px 1px 0 ${color}, 1px 1px 0 ${color}, 0 0 8px ${color}, 2px 2px 5px #000, -1px -1px 4px #000`;
                     chosenSentenceEl.appendChild(span);
                 }
 
-                const box = overlayEl.querySelector(`#pta-dir-${dir}`);
+                const box = overlayEl.querySelector(`#aa-dir-${dir}`);
                 if (box) {
-                    box.classList.add('pta-dir-pressed');
+                    box.classList.add('aa-dir-pressed');
                     setTimeout(() => {
-                        box.classList.remove('pta-dir-pressed');
-                        box.classList.add('pta-dir-used');
+                        box.classList.remove('aa-dir-pressed');
+                        box.classList.add('aa-dir-used');
                     }, 200);
                 }
 
@@ -1682,7 +1682,7 @@ export function createPanicTalkActionController({
                 // Called when enemy is defeated again after a failed attempt
                 finalInputSeq = [];
                 chosenSentenceEl.innerHTML = '';
-                overlayEl.querySelectorAll('.pta-dir-box').forEach(el => el.classList.remove('pta-dir-used'));
+                overlayEl.querySelectorAll('.aa-dir-box').forEach(el => el.classList.remove('aa-dir-used'));
                 updateSeqDisplay();
                 // Ensure sprite is inside final overlay
                 if (!finalOverlay.contains(spriteEl)) {
@@ -1703,9 +1703,9 @@ export function createPanicTalkActionController({
                 audio.play().catch(() => {});
 
                 // Prefill bar sweeps in
-                document.getElementById('pta-got-it-prefill')?.remove();
+                document.getElementById('aa-got-it-prefill')?.remove();
                 const prefill = document.createElement('div');
-                prefill.id = 'pta-got-it-prefill';
+                prefill.id = 'aa-got-it-prefill';
                 prefill.style.cssText = 'position:fixed;top:33.33%;left:0;right:0;height:33.34%;z-index:2147483646;background:#000;pointer-events:none;transform:scaleX(0);transform-origin:center;transition:transform 0.045s ease-out;';
                 document.body.appendChild(prefill);
                 await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
@@ -1713,16 +1713,16 @@ export function createPanicTalkActionController({
                 await new Promise(r => setTimeout(r, 55));
 
                 // Banner slides in
-                document.getElementById('pta-got-it-banner')?.remove();
+                document.getElementById('aa-got-it-banner')?.remove();
                 document.body.insertAdjacentHTML('beforeend', `
-                    <div id="pta-got-it-banner" style="position:fixed;top:33.33%;left:0;right:0;height:33.34%;z-index:2147483647;pointer-events:none;overflow:hidden;border-top:6px solid #000;border-bottom:6px solid #000;">
-                        <div id="pta-got-it-banner-inner" style="position:absolute;top:0;bottom:0;left:100%;width:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;transition:left 0.325s cubic-bezier(0.22,0.61,0.36,1);">
+                    <div id="aa-got-it-banner" style="position:fixed;top:33.33%;left:0;right:0;height:33.34%;z-index:2147483647;pointer-events:none;overflow:hidden;border-top:6px solid #000;border-bottom:6px solid #000;">
+                        <div id="aa-got-it-banner-inner" style="position:absolute;top:0;bottom:0;left:100%;width:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;transition:left 0.325s cubic-bezier(0.22,0.61,0.36,1);">
                             <img style="width:100%;height:100%;object-fit:cover;object-position:center;display:block;" src="${extensionFolderPath}/assets/images/minigames/got-it-banner.png" alt="Got It"/>
                         </div>
                     </div>
                 `);
-                const banner = document.getElementById('pta-got-it-banner');
-                const inner  = document.getElementById('pta-got-it-banner-inner');
+                const banner = document.getElementById('aa-got-it-banner');
+                const inner  = document.getElementById('aa-got-it-banner-inner');
                 await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
                 inner.style.left = '0%';
                 await new Promise(r => setTimeout(r, 3350));
@@ -1739,16 +1739,16 @@ export function createPanicTalkActionController({
 
             async function showFinalBlowBanner() {
                 // Banner slides in from the LEFT
-                document.getElementById('pta-final-blow-banner')?.remove();
+                document.getElementById('aa-final-blow-banner')?.remove();
                 document.body.insertAdjacentHTML('beforeend', `
-                    <div id="pta-final-blow-banner" style="position:fixed;top:33.33%;left:0;right:0;height:33.34%;z-index:2147483647;pointer-events:none;overflow:hidden;">
-                        <div id="pta-final-blow-banner-inner" style="position:absolute;top:0;bottom:0;right:100%;width:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;transition:right 0.325s cubic-bezier(0.22,0.61,0.36,1);">
+                    <div id="aa-final-blow-banner" style="position:fixed;top:33.33%;left:0;right:0;height:33.34%;z-index:2147483647;pointer-events:none;overflow:hidden;">
+                        <div id="aa-final-blow-banner-inner" style="position:absolute;top:0;bottom:0;right:100%;width:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;transition:right 0.325s cubic-bezier(0.22,0.61,0.36,1);">
                             <img style="width:100%;height:100%;object-fit:cover;object-position:center;display:block;" src="${extensionFolderPath}/assets/images/minigames/final-blow-banner.png" alt="Final Blow"/>
                         </div>
                     </div>
                 `);
-                const banner = document.getElementById('pta-final-blow-banner');
-                const inner  = document.getElementById('pta-final-blow-banner-inner');
+                const banner = document.getElementById('aa-final-blow-banner');
+                const inner  = document.getElementById('aa-final-blow-banner-inner');
                 await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
                 inner.style.right = '0%';
                 await new Promise(r => setTimeout(r, 2500));
@@ -1768,20 +1768,20 @@ export function createPanicTalkActionController({
                     stopTimerAnimation();
 
                     // Despawn quote quickly, then float chosen words up
-                    finalQuoteEl.classList.remove('pta-quote-active');
-                    finalQuoteEl.classList.add('pta-quote-dying');
+                    finalQuoteEl.classList.remove('aa-quote-active');
+                    finalQuoteEl.classList.add('aa-quote-dying');
                     setTimeout(() => {
-                        chosenSentenceEl.classList.add('pta-float-up');
+                        chosenSentenceEl.classList.add('aa-float-up');
                         new Audio(`${extensionFolderPath}/assets/sfx/minigames/final-shot.wav`).play().catch(() => {});
                     }, 350);
 
                     // Float animation finishes ~1900ms in; show banner, then flash sprite
                     setTimeout(() => showGotItBanner().then(() => {
                         clearTimeout(spriteMoveTimer);
-                        spriteEl.classList.add('pta-sprite-flashing');
+                        spriteEl.classList.add('aa-sprite-flashing');
                         setTimeout(() => {
-                            spriteImg.src = defeatSprite || `${extensionFolderPath}/assets/images/minigames/pta-tester-final.webp`;
-                            new Audio(`${extensionFolderPath}/assets/sfx/minigames/pta-end.wav`).play().catch(() => {});
+                            spriteImg.src = defeatSprite || `${extensionFolderPath}/assets/images/minigames/aa-tester-final.webp`;
+                            new Audio(`${extensionFolderPath}/assets/sfx/minigames/aa-end.wav`).play().catch(() => {});
                         }, 250);
                         setTimeout(() => endGame(true), 600);
                     }), 1900);
@@ -1828,9 +1828,9 @@ export function createPanicTalkActionController({
                 resultBanner.classList.add('active');
 
                 if (won) {
-                    awardMonocoins?.(10, 'Panic Talk Action victory');
+                    awardMonocoins?.(10, 'Argument Armament victory');
                 } else {
-                    deductMonocoins?.(5, 'Panic Talk Action defeat');
+                    deductMonocoins?.(5, 'Argument Armament defeat');
                 }
 
                 setTimeout(() => {
@@ -1860,7 +1860,7 @@ export function createPanicTalkActionController({
 
             // ── Mouse: final direction boxes ──────────────────────
             ['N', 'S', 'E', 'W'].forEach(dir => {
-                overlayEl.querySelector(`#pta-dir-${dir}`)
+                overlayEl.querySelector(`#aa-dir-${dir}`)
                     ?.addEventListener('click', () => onFinalDirPress(dir));
             });
 
@@ -1923,31 +1923,31 @@ export function createPanicTalkActionController({
 
                 return new Promise(resolve => {
                     const el = document.createElement('div');
-                    el.id = 'pta-tutorial-prompt';
+                    el.id = 'aa-tutorial-prompt';
                     el.innerHTML = `
-                        <div class="pta-tp-text">
-                            The minigame <strong>Panic Talk Action</strong> is about to begin. Would you like to hear an explanation?
+                        <div class="aa-tp-text">
+                            The minigame <strong>Argument Armament</strong> is about to begin. Would you like to hear an explanation?
                         </div>
-                        <div class="pta-tp-buttons">
-                            <button class="pta-tp-btn pta-tp-yes">Yes, please!</button>
-                            <button class="pta-tp-btn pta-tp-no">No, let's go!</button>
-                            <button class="pta-tp-btn pta-tp-never">No, and don't remind me</button>
+                        <div class="aa-tp-buttons">
+                            <button class="aa-tp-btn aa-tp-yes">Yes, please!</button>
+                            <button class="aa-tp-btn aa-tp-no">No, let's go!</button>
+                            <button class="aa-tp-btn aa-tp-never">No, and don't remind me</button>
                         </div>
                     `;
                     document.body.appendChild(el);
-                    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('pta-tp-on')));
+                    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('aa-tp-on')));
 
-                    el.querySelector('.pta-tp-yes').addEventListener('click', () => {
-                        el.classList.remove('pta-tp-on');
+                    el.querySelector('.aa-tp-yes').addEventListener('click', () => {
+                        el.classList.remove('aa-tp-on');
                         setTimeout(() => { el.remove(); resolve(true); }, 300);
                     });
-                    el.querySelector('.pta-tp-no').addEventListener('click', () => {
-                        el.classList.remove('pta-tp-on');
+                    el.querySelector('.aa-tp-no').addEventListener('click', () => {
+                        el.classList.remove('aa-tp-on');
                         setTimeout(() => { el.remove(); resolve(false); }, 300);
                     });
-                    el.querySelector('.pta-tp-never').addEventListener('click', () => {
+                    el.querySelector('.aa-tp-never').addEventListener('click', () => {
                         try { disableTutorialPrompt(); } catch {}
-                        el.classList.remove('pta-tp-on');
+                        el.classList.remove('aa-tp-on');
                         setTimeout(() => { el.remove(); resolve(false); }, 300);
                     });
                 });
@@ -1956,26 +1956,26 @@ export function createPanicTalkActionController({
             function showTutorialModal() {
                 return new Promise(resolve => {
                     const modal = document.createElement('div');
-                    modal.id = 'pta-tutorial-modal';
+                    modal.id = 'aa-tutorial-modal';
                     modal.innerHTML = `
-                        <div class="pta-tm-inner">
-                            <div class="pta-tm-header">
-                                <div class="pta-tm-title">Panic Talk Action</div>
+                        <div class="aa-tm-inner">
+                            <div class="aa-tm-header">
+                                <div class="aa-tm-title">Argument Armament</div>
                             </div>
-                            <img class="pta-tm-img" src="${extensionFolderPath}/assets/images/minigames/pta-tutorial.png" alt=""/>
-                            <div class="pta-tm-body">
-                                <strong>Panic Talk Action</strong> is a minigame where you are tasked with combating your opponent's <strong>Statements</strong>. <strong>Statements</strong> will fill the 3×3 grid at random, and zoom closer to the camera, making the grid cell glow red gradually. After a small amount of time glowing red, you will take damage to your <strong>Health</strong>. Running out of <strong>Health</strong>, visible in the bottom-right. Run out of health and it's game over! To combat a <strong>Statement</strong>, simply click the grid cell you wish to <strong>Shoot</strong>, or use the Arrow Keys and the Space bar to <strong>Shoot</strong>. <strong>Shooting</strong> consumes 1 <strong>Ammo</strong>; you can reload <strong>Ammo</strong> by pressing the R key, or clicking the <strong>Ammo</strong> icon, or by running out of <strong>Ammo</strong>. Shooting a <strong>White Statement</strong> prevents you from taking damage. Shooting a <strong>Yellow Statement</strong> prevents you from taking damage and deals damage to your opponent. Shooting a <strong>Blue Statement</strong> will deal damage to your opponent and turn the <strong>Blue Statement</strong> into a <strong>Yellow Statement</strong>. Shooting a <strong>Pink Statement</strong> will deal damage to yourself, so watch out! But don't worry! Letting a <strong>Pink Statement</strong> turn red won't deal damage to you! After enough damage is dealt, your opponent — and their <strong>Statements</strong> — will speed up. Damage your opponent enough and you'll enter the <strong>Final Question</strong>! During the <strong>Final Question</strong>, you'll need to make a <strong>Final Answer</strong> that answers the opponent's <strong>Final Question</strong> by using the Arrow Keys; there are four options, so think quickly and with confidence! Getting the <strong>Final Answer</strong> wrong or running out of time will give the opponent some <strong>Health</strong> back, and deal some damage to you, so try not to mess up! It's all or nothing now..!
+                            <img class="aa-tm-img" src="${extensionFolderPath}/assets/images/minigames/aa-tutorial.png" alt=""/>
+                            <div class="aa-tm-body">
+                                <strong>Argument Armament</strong> is a minigame where you are tasked with combating your opponent's <strong>Statements</strong>. <strong>Statements</strong> will fill the 3×3 grid at random, and zoom closer to the camera, making the grid cell glow red gradually. After a small amount of time glowing red, you will take damage to your <strong>Health</strong>. Running out of <strong>Health</strong>, visible in the bottom-right. Run out of health and it's game over! To combat a <strong>Statement</strong>, simply click the grid cell you wish to <strong>Shoot</strong>, or use the Arrow Keys and the Space bar to <strong>Shoot</strong>. <strong>Shooting</strong> consumes 1 <strong>Ammo</strong>; you can reload <strong>Ammo</strong> by pressing the R key, or clicking the <strong>Ammo</strong> icon, or by running out of <strong>Ammo</strong>. Shooting a <strong>White Statement</strong> prevents you from taking damage. Shooting a <strong>Yellow Statement</strong> prevents you from taking damage and deals damage to your opponent. Shooting a <strong>Blue Statement</strong> will deal damage to your opponent and turn the <strong>Blue Statement</strong> into a <strong>Yellow Statement</strong>. Shooting a <strong>Pink Statement</strong> will deal damage to yourself, so watch out! But don't worry! Letting a <strong>Pink Statement</strong> turn red won't deal damage to you! After enough damage is dealt, your opponent — and their <strong>Statements</strong> — will speed up. Damage your opponent enough and you'll enter the <strong>Final Question</strong>! During the <strong>Final Question</strong>, you'll need to make a <strong>Final Answer</strong> that answers the opponent's <strong>Final Question</strong> by using the Arrow Keys; there are four options, so think quickly and with confidence! Getting the <strong>Final Answer</strong> wrong or running out of time will give the opponent some <strong>Health</strong> back, and deal some damage to you, so try not to mess up! It's all or nothing now..!
                             </div>
-                            <div class="pta-tm-footer">
-                                <button class="pta-tm-close">OK, let's go!</button>
+                            <div class="aa-tm-footer">
+                                <button class="aa-tm-close">OK, let's go!</button>
                             </div>
                         </div>
                     `;
                     document.body.appendChild(modal);
-                    requestAnimationFrame(() => requestAnimationFrame(() => modal.classList.add('pta-tm-on')));
+                    requestAnimationFrame(() => requestAnimationFrame(() => modal.classList.add('aa-tm-on')));
 
-                    modal.querySelector('.pta-tm-close').addEventListener('click', () => {
-                        modal.classList.remove('pta-tm-on');
+                    modal.querySelector('.aa-tm-close').addEventListener('click', () => {
+                        modal.classList.remove('aa-tm-on');
                         setTimeout(() => { modal.remove(); resolve(); }, 280);
                     });
                 });

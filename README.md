@@ -40,7 +40,7 @@ Supplied in this extension are a wide array of minigames, including:
 - **Mass Panic Debates (MPD):** Also using LLM generation, three characters will talk simultaneously in a frantic debate - Again, using a Truth Bullet on a Weak Spot will preformat your next response. Commenced either via the UI, or through the `/masspanicdebate` command.
 - **Interjections (INT) & Rebuttal Showdown (RBS):** Be surprised as a character interrupts your message! Clash against this single character in a one-on-one debate, using the same LLM generation and preformatting as before. Commenced either via the UI, or through the `/interjection` and `/rebuttalshowdown` command.
 - **Scrum Debates (SCD):** Splits the group into two teams based on emotion, where the opposition will present an opposing theory; completing a Scrum Debate will align all the characters on your team in terms of thinking and preformat your next response.  Commenced either via the UI, or through the `/scrumdebate` command.
-- **Panic Talk Action (PTA):** Acts as a 'boss fight' of sorts against a character; this is purely for roleplay purposes, but rewards Monocoins. Commenced either via the UI, or through the `/panictalkaction` command.
+- **Argument Armament (AA):** Acts as a 'boss fight' of sorts against a character; this is purely for roleplay purposes, but rewards Monocoins. Commenced either via the UI, or through the `/argumentarmament` command.
 - **Hangman's Gambit (HMG):** Presents a term or sentence that is critical to the current Class Trial, and tasks the user with solving it by matching letters in order. Commenced either via the UI, or through the `/hangmansgambit` command.
 - **Question Truth (QTT):** Gets your LLM to generate a question revolving around the current Class Trial that has an associated Truth Bullet answer. Can help you figure new branches of discussion. Commenced either via the UI, or through the `/questiontruth` command.
 - **Question Time (QTM):** Gets your LLM to generate a four-answer question revolving around the current Class Trial that has a definitive answer. Can help you figure new branches of discussion. Commenced either via the UI, or through the `/questiontime` command.
@@ -101,7 +101,7 @@ V3C| BODY_DISCOVERY
 | **Truth Bullets** | Toggle | On | Plays the Truth Bullet obtain animation when one is discovered in chat |
 | **MonoMono BGM Volume** | Slider (0–100) | 40 | Volume for the MonoMono machine background track |
 | **Play BGM in Assistant Chat** | Toggle | Off | Keeps phase BGM playing outside of group chats |
-| **BGM Tracks** | File multi-select | — | Assign audio files to each game phase. Available phases: Shop, Daytime, Nighttime, Investigation, Trial General, Trial Preparation, Non-Stop Debates, Mass Panic Debates, Scrum Debates, Hangman's Gambit, Rebuttal Showdown, Interjection, Suspect Choice, PTA Phase 1/2/3 |
+| **BGM Tracks** | File multi-select | — | Assign audio files to each game phase. Available phases: Shop, Daytime, Nighttime, Investigation, Trial General, Trial Preparation, Non-Stop Debates, Mass Panic Debates, Scrum Debates, Hangman's Gambit, Rebuttal Showdown, Interjection, Suspect Choice, AA Phase 1/2/3 |
 ---
 
 ### Display
@@ -265,8 +265,8 @@ Starts the Scrum Debate minigame. The group splits into two teams; debunk each o
 
 ---
 
-#### `/panictalkaction`
-Starts a Panic Talk Action boss-fight sequence against the current speaker character. At least one `dialog` line is required.
+#### `/argumentarmament`
+Starts a Argument Armament boss-fight sequence against the current speaker character. At least one `dialog` line is required.
 | Option | Required | Default | Description |
 | --- | --- | --- | --- |
 | `dialogA` … `dialogK` | At least one | — | Up to 11 dialogue lines displayed during the encounter |

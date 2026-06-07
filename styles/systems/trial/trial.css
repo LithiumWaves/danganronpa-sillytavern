@@ -637,7 +637,7 @@ body.dangan-nsd-lie-armed .dangan-tb-bar-bg {
 }
 
 /* ── Scrum Debate post-minigame chat-response context ────────────────────
- * Wraps the "SCRUM DEBATE VICTORY" notification in pta-panel.png instead
+ * Wraps the "SCRUM DEBATE VICTORY" notification in aa-panel.png instead
  * of the generic notification chrome.  Strips the inherited background /
  * border / pulse glow from .dangan-trial-notification.rebuttal-active so
  * only the panel artwork shows, scopes the title font to the Quickend
@@ -665,7 +665,7 @@ body.dangan-nsd-lie-armed .dangan-tb-bar-bg {
     content: "";
     position: absolute;
     inset: 0;
-    background-image: url('../../../assets/images/minigames/pta-panel.png');
+    background-image: url('../../../assets/images/minigames/aa-panel.png');
     background-size: 100% 100%;
     background-repeat: no-repeat;
     z-index: -1;
@@ -719,7 +719,7 @@ body.dangan-nsd-lie-armed .dangan-tb-bar-bg {
     background: #ff9900;
 }
 
-#dangan-start-pta-btn {
+#dangan-start-aa-btn {
     background: #ff4466;
 }
 
@@ -1344,7 +1344,7 @@ body.dangan-mpd-active #dangan-bullet-intro-cylinder .dangan-cyl-line {
     box-shadow: 0 0 5px white;
 }
 
-/* ─── NSD shot burst (mirrors PTA hit burst) ──── */
+/* ─── NSD shot burst (mirrors AA hit burst) ──── */
 @keyframes nsd-burst-core {
     0%   { background: radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,220,80,0.85) 35%, rgba(255,100,30,0.5) 65%, transparent 100%); transform: scale(0.1); opacity: 1; }
     50%  { background: radial-gradient(circle, rgba(255,255,255,0.9) 0%, rgba(255,200,50,0.7) 35%, rgba(255,80,10,0.3) 65%, transparent 100%); transform: scale(1.1); opacity: 0.85; }
@@ -1992,7 +1992,7 @@ body.dangan-mpd-active #dangan-bullet-intro-cylinder .dangan-cyl-line {
     border-color: rgba(255, 255, 255, 0.55);
 }
 
-/* Speaker-name panel — left-edge card framed in pta-panel.png. */
+/* Speaker-name panel — left-edge card framed in aa-panel.png. */
 .dangan-cg-name-panel {
     position: fixed;
     left: 414px;
@@ -2015,7 +2015,7 @@ body.dangan-mpd-active #dangan-bullet-intro-cylinder .dangan-cyl-line {
     content: "";
     position: absolute;
     inset: 0;
-    background-image: url('../../../assets/images/minigames/pta-panel.png');
+    background-image: url('../../../assets/images/minigames/aa-panel.png');
     background-size: 100% 100%;
     background-repeat: no-repeat;
     z-index: -1;
