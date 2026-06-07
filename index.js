@@ -10361,9 +10361,9 @@ function renderMinimap() {
     const isFlat = playerRoomId ? overworldSceneController?.isRoomFlat?.(playerRoomId) : false;
     if (isFlat) flatBtn.classList.add('is-active');
     flatBtn.title = isFlat
-        ? 'This room uses flat sprite rendering — click to re-enable perspective.'
-        : 'Toggle flat sprite rendering for this room.';
-    flatBtn.innerHTML = `<span>${isFlat ? '◆' : '◇'}</span>`;
+        ? 'Perspective locked (flat rendering) — click to unlock and restore perspective.'
+        : 'Lock this room to flat rendering (disable perspective).';
+    flatBtn.innerHTML = `<span><i class="fa-solid ${isFlat ? 'fa-lock' : 'fa-lock-open'}"></i></span>`;
     flatBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         overworldSceneController?.toggleCurrentRoomFlat?.();
@@ -10385,8 +10385,8 @@ function renderMinimap() {
     const hideBtn = document.createElement('button');
     hideBtn.type = 'button';
     hideBtn.className = 'dangan-minimap-zoom-btn dangan-minimap-ui-toggle';
-    hideBtn.title = 'Hide UI (click anywhere to restore)';
-    hideBtn.innerHTML = '<span>◇</span>';
+    hideBtn.title = 'Photo Mode — hide the UI (click anywhere to restore)';
+    hideBtn.innerHTML = '<span><i class="fa-solid fa-camera"></i></span>';
     hideBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         document.body.classList.add('dangan-ui-hidden');
@@ -10735,6 +10735,10 @@ function applyMinimapTransform(mapWrap) {
     // rotation so screen-space drag deltas map straight to (tx, ty).
     mapWrap.style.transform =
         `translate(${_minimapPan.tx}px, ${_minimapPan.ty}px) rotate(-45deg) scale(${_minimapZoom})`;
+    // Expose the current zoom so descendants (e.g. character-name tooltips) can
+    // counter-scale by 1/zoom and stay a constant on-screen size instead of
+    // ballooning with the map.
+    mapWrap.style.setProperty('--minimap-zoom', _minimapZoom);
 }
 
 // Drag-to-pan + pinch-to-zoom handler. The map wrapper's translate happens

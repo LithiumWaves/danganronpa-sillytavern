@@ -1697,7 +1697,12 @@ body.dangan-theme-night         #dangan-moveto-panel { filter: grayscale(1) brig
     position: absolute;
     left: 50%;
     bottom: calc(100% + 6px);
-    transform: translateX(-50%);
+    /* The pin (and this pseudo-element) live inside .dangan-minimap-map, which
+     * is scaled by the zoom level. Counter-scale by 1/zoom so the label keeps a
+     * constant on-screen size instead of rendering oversized when zoomed in.
+     * Anchored at the bottom centre so it stays pinned just above the marker. */
+    transform-origin: center bottom;
+    transform: translateX(-50%) scale(calc(1 / var(--minimap-zoom, 1)));
     padding: 3px 7px;
     background: rgba(8, 6, 18, 0.92);
     border: 1px solid rgba(255, 130, 220, 0.6);
@@ -1751,6 +1756,9 @@ body.dangan-theme-night         #dangan-moveto-panel { filter: grayscale(1) brig
     width: 30px;
     height: 30px;
     padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     transform: rotate(45deg);
     background: rgba(8, 6, 18, 0.92);
     border: 2px solid rgba(255, 130, 220, 0.7);
@@ -1771,11 +1779,18 @@ body.dangan-theme-night         #dangan-moveto-panel { filter: grayscale(1) brig
     transform: rotate(45deg) scale(0.93);
 }
 .dangan-minimap-zoom-btn > span {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     transform: rotate(-45deg);
     font-size: 18px;
     font-weight: 900;
     line-height: 1;
+}
+/* FontAwesome glyphs (perspective lock, Photo Mode camera) render half the
+ * size of the +/− text so they sit comfortably inside the diamond button. */
+.dangan-minimap-zoom-btn > span > i {
+    font-size: 9px;
 }
 
 /* Theme hue-shifts for the zoom buttons match the diamond. */
