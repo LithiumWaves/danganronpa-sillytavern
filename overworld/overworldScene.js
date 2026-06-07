@@ -160,9 +160,9 @@ export function createOverworldSceneController({
 
     // Bind hover FX (click reticle + sfx) on the visible sprite. The cursor
     // reticle is suppressed in edit mode; instead each enter/leave drives the
-    // parent group's .is-hovered class via the same delayed-release tracker
-    // used by the ± scale buttons, so moving the cursor sprite ↔ button
-    // doesn't flicker.
+    // group's edit-frame active state via the same delayed-release tracker used
+    // by the frame's ± buttons + resize handle, so moving the cursor sprite ↔
+    // control doesn't flicker.
     function attachSpriteHoverFx(spriteEl, groupEl) {
         spriteEl.addEventListener("mouseenter", (e) => {
             if (editMode) { markGroupHovered(groupEl); return; }
@@ -182,28 +182,66 @@ export function createOverworldSceneController({
         });
     }
 
-    // Sprite ↔ ± button hover tracking. A short delay before removing
-    // .is-hovered bridges the cursor's transit through the (pointer-events:
-    // none) group space between visible sprite and absolute-positioned button.
+    // The active group's edit-frame shows its blue border + ± buttons + resize
+    // handle; every other frame shows just its thin dashed boundary. Only one
+    // group is active at a time.
+    function setEditActiveGroup(groupEl) {
+        if (activeEditGroup === groupEl) return;
+        if (activeEditGroup) {
+            activeEditGroup._owFrame?.classList.remove("is-active");
+            // Drives the blue (vs amber) silhouette outline on the sprite.
+            activeEditGroup.classList.remove("is-edit-active");
+        }
+        activeEditGroup = groupEl;
+        if (groupEl) {
+            groupEl._owFrame?.classList.add("is-active");
+            groupEl.classList.add("is-edit-active");
+        }
+    }
+
+    // Clicking a character SELECTS it: its frame stays active (blue) regardless
+    // of the cursor, and hovering other characters becomes inert (see the lock
+    // in markGroupHovered) — so an overlapping neighbour can't steal focus.
+    // Passing null deselects and hands control back to plain hover.
+    function setSelectedEditGroup(groupEl) {
+        const prev = selectedEditGroup;
+        selectedEditGroup = groupEl;
+        if (groupEl) { setEditActiveGroup(groupEl); return; }
+        // Deselected — revert to hover: keep the just-released group active only
+        // if the cursor is still over it, otherwise clear.
+        if (prev?.querySelector(".dangan-ow-sprite:hover")) setEditActiveGroup(prev);
+        else setEditActiveGroup(null);
+    }
+
+    // Sprite ↔ frame-control hover tracking. The visible sprite and the frame's
+    // controls live in separate DOM subtrees (the frame is in the overlay
+    // layer, not inside the group), so moving the cursor sprite → button fires
+    // a mouseleave then a mouseenter. A short delay before deactivating bridges
+    // that transit so the controls don't flicker.
     function markGroupHovered(groupEl) {
-        groupEl.classList.add("is-hovered");
+        // While a character is selected, hovering any OTHER character is inert.
+        if (selectedEditGroup && groupEl !== selectedEditGroup) return;
         if (groupEl._owHoverLeaveTimer) {
             clearTimeout(groupEl._owHoverLeaveTimer);
             groupEl._owHoverLeaveTimer = null;
         }
+        setEditActiveGroup(groupEl);
     }
     function scheduleGroupUnhover(groupEl) {
+        // The locked selection never deactivates on hover-out.
+        if (groupEl === selectedEditGroup) return;
         if (groupEl._owHoverLeaveTimer) clearTimeout(groupEl._owHoverLeaveTimer);
-        // The group itself is pointer-events: none, so the cursor crosses
-        // empty group-layout space between the visible sprite and the
-        // absolute-positioned ± buttons without firing any events. A generous
-        // delay covers slow cursor transit; the :hover recheck inside means a
-        // fast user pays nothing.
+        // A generous delay covers slow cursor transit between the sprite and the
+        // frame's controls; the recheck inside means a fast user pays nothing.
         groupEl._owHoverLeaveTimer = setTimeout(() => {
-            if (!groupEl.querySelector(":hover")) {
-                groupEl.classList.remove("is-hovered");
-            }
             groupEl._owHoverLeaveTimer = null;
+            // Keep active if the cursor actually landed on the sprite or a frame
+            // control, or while a drag/resize on this group is still in flight.
+            const onSprite = groupEl.querySelector(".dangan-ow-sprite:hover");
+            const onFrame = groupEl._owFrame?.querySelector(":hover");
+            const busy = dragState?.groupEl === groupEl || resizeState?.groupEl === groupEl;
+            if (onSprite || onFrame || busy) return;
+            if (activeEditGroup === groupEl) setEditActiveGroup(null);
         }, 280);
     }
     function attachGroupHoverTracking(el, groupEl) {
@@ -326,8 +364,126 @@ export function createOverworldSceneController({
     // and verticalOffsetVh onto each member's state entry.
     let editMode = false;
     let dragState = null;
+    let resizeState = null;
+    // The group whose edit-frame currently shows its controls (hovered or being
+    // dragged/resized). Drives .is-active on the frame and the 1/2 keyboard
+    // shortcuts — we can't lean on CSS :hover anymore because the group box is
+    // pointer-events: none in edit mode (events land on the visible sprite).
+    let activeEditGroup = null;
+    // The clicked/locked character. While set, its frame stays blue and hover
+    // on other characters is ignored. Click it again (or click another) to
+    // change. Cleared on exit / re-render.
+    let selectedEditGroup = null;
+    let editOverlayEl = null;
     // Strip is positioned at bottom: 22vh. Drag-Y math anchors against this.
     const STRIP_BOTTOM_VH = 22;
+
+    // ── Edit-mode overlay frames ─────────────────────────────────────────────
+    // Each on-stage group gets a dashed selection frame drawn in the overlay
+    // layer. Crucially the frame is sized from the group's VISIBLE bounds
+    // (getBoundingClientRect on its sprites — already the post-transform box,
+    // see measureStripBounds) rather than the group's 75vh layout box, so the
+    // boundary hugs the character instead of stretching to the top of the
+    // window. Controls (± buttons + resize handle) live on the frame and reveal
+    // when the group is active.
+
+    // Union of a group's visible sprite rects, in viewport coordinates.
+    function groupVisibleRect(groupEl) {
+        let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+        for (const spriteEl of groupEl.querySelectorAll(".dangan-ow-sprite")) {
+            const k = spriteEl.getBoundingClientRect();
+            if (k.width === 0 && k.height === 0) continue;
+            if (k.left < l) l = k.left;
+            if (k.top < t) t = k.top;
+            if (k.right > r) r = k.right;
+            if (k.bottom > b) b = k.bottom;
+        }
+        if (!isFinite(l)) return null;
+        return { left: l, top: t, width: r - l, height: b - t };
+    }
+
+    function positionFrame(groupEl) {
+        const frame = groupEl._owFrame;
+        if (!frame) return;
+        const rect = groupVisibleRect(groupEl);
+        if (!rect) { frame.style.display = "none"; return; }
+        frame.style.display = "";
+        frame.style.left = `${rect.left}px`;
+        frame.style.top = `${rect.top}px`;
+        frame.style.width = `${rect.width}px`;
+        frame.style.height = `${rect.height}px`;
+    }
+
+    // Reposition all frames, or just one (passed during drag/resize so we don't
+    // walk every sprite on the stage on each mousemove).
+    function layoutEditFrames(onlyGroupEl) {
+        if (!editMode) return;
+        if (onlyGroupEl) { positionFrame(onlyGroupEl); return; }
+        const root = getDomRoot();
+        if (!root) return;
+        for (const groupEl of root.querySelectorAll(".dangan-ow-group")) positionFrame(groupEl);
+    }
+
+    function onEditViewportChange() { layoutEditFrames(); }
+
+    function buildFrameControls(groupEl, frame) {
+        const mk = (cls, txt, dir) => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = `dangan-ow-scale-btn ${cls}`;
+            btn.textContent = txt;
+            // mousedown stopProp so the click doesn't start a group drag.
+            btn.addEventListener("mousedown", (e) => e.stopPropagation());
+            btn.addEventListener("click", (e) => { e.stopPropagation(); onScaleBtnClick(groupEl, dir); });
+            attachGroupHoverTracking(btn, groupEl);
+            frame.appendChild(btn);
+        };
+        mk("dangan-ow-scale-minus", "−", -1);
+        mk("dangan-ow-scale-plus", "+", +1);
+
+        const handle = document.createElement("div");
+        handle.className = "dangan-ow-resize-handle";
+        handle.title = "Drag to resize";
+        handle.addEventListener("mousedown", (e) => onResizeStart(e, groupEl));
+        attachGroupHoverTracking(handle, groupEl);
+        frame.appendChild(handle);
+    }
+
+    function mountEditOverlay() {
+        const root = getDomRoot();
+        if (!root) return;
+        unmountEditOverlay();
+        const overlay = document.createElement("div");
+        overlay.className = "dangan-ow-edit-overlay";
+        for (const groupEl of root.querySelectorAll(".dangan-ow-group")) {
+            const frame = document.createElement("div");
+            frame.className = "dangan-ow-frame";
+            groupEl._owFrame = frame;
+            buildFrameControls(groupEl, frame);
+            overlay.appendChild(frame);
+        }
+        root.appendChild(overlay);
+        editOverlayEl = overlay;
+        layoutEditFrames();
+        window.addEventListener("resize", onEditViewportChange, { passive: true });
+    }
+
+    function unmountEditOverlay() {
+        window.removeEventListener("resize", onEditViewportChange, { passive: true });
+        const root = getDomRoot();
+        if (root) {
+            for (const groupEl of root.querySelectorAll(".dangan-ow-group")) {
+                if (groupEl._owHoverLeaveTimer) {
+                    clearTimeout(groupEl._owHoverLeaveTimer);
+                    groupEl._owHoverLeaveTimer = null;
+                }
+                groupEl._owFrame = null;
+            }
+        }
+        if (editOverlayEl) { editOverlayEl.remove(); editOverlayEl = null; }
+        selectedEditGroup = null;
+        setEditActiveGroup(null);
+    }
 
     function setGroupVerticalOffsetLive(groupEl, offsetVh) {
         const perspective = scaleFromVerticalOffset(offsetVh);
@@ -360,6 +516,55 @@ export function createOverworldSceneController({
         groupEl.dataset.customScale = String(rounded);
         groupEl.classList.add("has-custom-scale");
         applyGroupCustomScale(groupEl, rounded);
+        layoutEditFrames(groupEl);
+    }
+
+    // ── Resize handle (smooth scale) ─────────────────────────────────────────
+    // Dragging the frame's bottom-right handle scales the group continuously.
+    // Scale tracks the pointer's distance from the group's feet-anchor relative
+    // to where the drag started, so grabbing the handle never makes the sprite
+    // jump.
+    function onResizeStart(e, groupEl) {
+        if (!editMode || resizeState) return;
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = groupVisibleRect(groupEl);
+        if (!rect) return;
+        const anchorX = rect.left + rect.width / 2;
+        const anchorY = rect.top + rect.height; // feet (transform-origin bottom)
+        resizeState = {
+            groupEl,
+            anchorX,
+            anchorY,
+            startDist: Math.max(1, Math.hypot(e.clientX - anchorX, e.clientY - anchorY)),
+            startScale: parseFloat(groupEl.dataset.customScale) || 1,
+            moved: false,
+        };
+        markGroupHovered(groupEl);
+        window.addEventListener("mousemove", onResizeMove);
+        window.addEventListener("mouseup", onResizeEnd);
+    }
+
+    function onResizeMove(e) {
+        if (!resizeState) return;
+        const { groupEl, anchorX, anchorY, startDist, startScale } = resizeState;
+        if (!groupEl.isConnected) { onResizeEnd(); return; }
+        const dist = Math.hypot(e.clientX - anchorX, e.clientY - anchorY);
+        const next = Math.max(CUSTOM_SCALE_MIN, Math.min(CUSTOM_SCALE_MAX,
+            startScale * (dist / startDist)));
+        const rounded = Math.round(next * 100) / 100;
+        groupEl.dataset.customScale = String(rounded);
+        groupEl.classList.add("has-custom-scale");
+        applyGroupCustomScale(groupEl, rounded);
+        layoutEditFrames(groupEl);
+        resizeState.moved = true;
+    }
+
+    function onResizeEnd() {
+        window.removeEventListener("mousemove", onResizeMove);
+        window.removeEventListener("mouseup", onResizeEnd);
+        resizeState = null;
     }
 
     function onGroupDragStart(e) {
@@ -383,6 +588,10 @@ export function createOverworldSceneController({
             lastCustomX: null,
             lastOffsetVh: null,
         };
+        // Pressing a character lights its frame immediately (bypasses the hover
+        // lock — this is an explicit interaction). Selection is finalised on
+        // mouseup so we can tell a click apart from a drag.
+        setEditActiveGroup(groupEl);
         window.addEventListener("mousemove", onGroupDragMove);
         window.addEventListener("mouseup", onGroupDragEnd);
     }
@@ -416,6 +625,7 @@ export function createOverworldSceneController({
         ));
         dragState.groupEl.style.setProperty("--ow-custom-x", String(customX));
         setGroupVerticalOffsetLive(dragState.groupEl, offsetVh);
+        layoutEditFrames(dragState.groupEl);
         dragState.lastCustomX = customX;
         dragState.lastOffsetVh = offsetVh;
     }
@@ -423,10 +633,17 @@ export function createOverworldSceneController({
     function onGroupDragEnd() {
         window.removeEventListener("mousemove", onGroupDragMove);
         window.removeEventListener("mouseup", onGroupDragEnd);
+        const groupEl = dragState?.groupEl;
         if (dragState?.moved && dragState.lastCustomX != null) {
             // Stash final values on the DOM node — they're read off at save.
-            dragState.groupEl.dataset.customX = String(dragState.lastCustomX);
-            dragState.groupEl.dataset.customVertOffsetVh = String(dragState.lastOffsetVh);
+            groupEl.dataset.customX = String(dragState.lastCustomX);
+            groupEl.dataset.customVertOffsetVh = String(dragState.lastOffsetVh);
+            // A drag keeps the dragged character selected.
+            setSelectedEditGroup(groupEl);
+        } else if (groupEl) {
+            // A click (press without drag) toggles selection: select this
+            // character, or deselect it if it was already the selected one.
+            setSelectedEditGroup(selectedEditGroup === groupEl ? null : groupEl);
         }
         dragState = null;
     }
@@ -445,6 +662,7 @@ export function createOverworldSceneController({
         // Tear the hover cursor down if it's showing — edit mode replaces
         // the click-reticle with the OS move cursor.
         try { teardownCursor(); } catch (_) {}
+        mountEditOverlay();
         updateEditButtonLabel();
     }
 
@@ -484,12 +702,17 @@ export function createOverworldSceneController({
 
     function exitEditModeAndSave() {
         if (!editMode) return;
-        // Drop any in-flight drag so we don't try to write to a removed node.
+        // Drop any in-flight drag/resize so we don't try to write to a removed node.
         if (dragState) { onGroupDragEnd(); }
-        commitEditPositionsToState();
+        if (resizeState) { onResizeEnd(); }
+        // Flip the flag and tear the overlay down BEFORE committing — commit
+        // calls notifySceneChanged(), which can trigger a re-render; with
+        // editMode already false the render won't re-mount a stale overlay.
         editMode = false;
+        unmountEditOverlay();
         document.body.classList.remove("dangan-ow-edit-mode");
         updateEditButtonLabel();
+        commitEditPositionsToState();
     }
 
     function toggleEditMode() {
@@ -1155,37 +1378,17 @@ export function createOverworldSceneController({
                 // is the transformed visual box, not the group's wider layout
                 // box. The handler walks up to the parent group internally.
                 spriteEl.addEventListener("mousedown", onGroupDragStart);
-                // Hover FX + edit-mode hover state both fire on the sprite —
+                // Hover FX + edit-mode active state both fire on the sprite —
                 // see attachSpriteHoverFx for the multi-sprite counting logic
-                // that keeps the cursor / .is-hovered stable across siblings.
+                // that keeps the cursor / frame active state stable across
+                // siblings.
                 attachSpriteHoverFx(spriteEl, groupEl);
 
                 groupEl.appendChild(spriteEl);
             }
-            // Manual ±/+ scale buttons (visible on hover in edit mode).
-            const minusBtn = document.createElement("button");
-            minusBtn.type = "button";
-            minusBtn.className = "dangan-ow-scale-btn dangan-ow-scale-minus";
-            minusBtn.textContent = "−";
-            minusBtn.addEventListener("mousedown", (e) => e.stopPropagation());
-            minusBtn.addEventListener("click", (e) => {
-                e.stopPropagation();
-                onScaleBtnClick(groupEl, -1);
-            });
-            attachGroupHoverTracking(minusBtn, groupEl);
-            groupEl.appendChild(minusBtn);
-
-            const plusBtn = document.createElement("button");
-            plusBtn.type = "button";
-            plusBtn.className = "dangan-ow-scale-btn dangan-ow-scale-plus";
-            plusBtn.textContent = "+";
-            plusBtn.addEventListener("mousedown", (e) => e.stopPropagation());
-            plusBtn.addEventListener("click", (e) => {
-                e.stopPropagation();
-                onScaleBtnClick(groupEl, +1);
-            });
-            attachGroupHoverTracking(plusBtn, groupEl);
-            groupEl.appendChild(plusBtn);
+            // The ± scale buttons + resize handle live on the edit-overlay frame
+            // (built per group by mountEditOverlay), not inside the group — so
+            // they're sized/placed against the visible sprite, not the 75vh box.
 
             groupStrip.appendChild(groupEl);
         }
@@ -1224,8 +1427,15 @@ export function createOverworldSceneController({
         const liveRoot = getDomRoot();
         if (liveRoot) liveRoot.replaceWith(root);
         else document.body.appendChild(root);
+        // If a re-render happened mid edit-session (e.g. window resize →
+        // scheduleRender), rebuild the overlay against the fresh group DOM.
+        if (editMode) mountEditOverlay();
         if (groupStrip) {
-            fitStripWhenImagesReady(groupStrip, flatMode, () => myToken !== renderToken).catch(() => {});
+            fitStripWhenImagesReady(groupStrip, flatMode, () => myToken !== renderToken)
+                // Crowd-fit shifts/scales sprites asynchronously after layout;
+                // re-snap the frames once it settles so they stay snug.
+                .then(() => { if (editMode) layoutEditFrames(); })
+                .catch(() => {});
         }
     }
 
@@ -1904,11 +2114,12 @@ export function createOverworldSceneController({
         }, { passive: true });
 
         // 1 / 2 keyboard shortcuts as substitutes for the − / + scale buttons.
-        // Only fire in edit mode and only when a group is currently :hover —
-        // applies to whichever group the cursor is over, so the user can
-        // hover a sprite + tap the keys instead of clicking small buttons.
-        // Ignored while typing in inputs / textareas / contenteditable so the
-        // chat composer isn't hijacked.
+        // Only fire in edit mode and only for the active group (the one whose
+        // frame is currently showing its controls), so the user can hover a
+        // sprite + tap the keys instead of clicking small buttons. We track the
+        // active group in JS rather than via CSS :hover because the group box is
+        // pointer-events: none in edit mode. Ignored while typing in inputs /
+        // textareas / contenteditable so the chat composer isn't hijacked.
         window.addEventListener("keydown", (e) => {
             if (!editMode) return;
             if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -1918,12 +2129,9 @@ export function createOverworldSceneController({
             if (e.key === "1") direction = -1;
             else if (e.key === "2") direction = +1;
             else return;
-            const root = getDomRoot();
-            if (!root) return;
-            const hovered = root.querySelector(".dangan-ow-group:hover");
-            if (!hovered) return;
+            if (!activeEditGroup || !activeEditGroup.isConnected) return;
             e.preventDefault();
-            onScaleBtnClick(hovered, direction);
+            onScaleBtnClick(activeEditGroup, direction);
         });
     }
 

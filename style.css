@@ -881,42 +881,17 @@ body.dangan-theme-damaged       { --ow-theme-rgb: 235, 60, 60; }
      * placed sprite size stays exactly what they saw during the drag. */
     --ow-fit: 1;
 }
-/* Edit mode: every group is draggable. */
-body.dangan-ow-edit-mode #dangan-overworld .dangan-ow-group {
-    /* In edit mode the entire group layout box (including empty space around
-     * the transformed visual sprite) is the hover region — so the cursor can
-     * coast from the visible sprite over to the absolute-positioned ± buttons
-     * without ever leaving :hover. Default group is pointer-events: none for
-     * non-edit-mode (so the click-box matches the visible sprite); edit mode
-     * needs the wider hover zone instead. */
-    pointer-events: auto;
-    outline: 2px dashed rgba(255, 200, 100, 0.45);
-    outline-offset: 6px;
-    transition: outline-color 120ms ease;
-}
-/* Hit-area expander — invisible pseudo-element that extends the hoverable
- * region out to match the visual outline. Without this, pointer-events
- * follow the layout border-box (which is INSIDE the outline-offset gap), so
- * :hover would drop the moment the cursor crosses the visible boundary box
- * even though it still appears to be inside the dashed outline. The ::before
- * stays a child of the group so :hover on it propagates to the group, and
- * z-index: -1 puts it behind the sprite/buttons so it doesn't intercept
- * clicks. */
-body.dangan-ow-edit-mode #dangan-overworld .dangan-ow-group::before {
-    content: '';
-    position: absolute;
-    inset: -8px;
-    pointer-events: auto;
-    z-index: -1;
-}
+/* Edit mode: the visible sprite is the drag target. We deliberately do NOT
+ * touch the group's pointer-events here — it stays pointer-events: none so its
+ * 75vh layout box (mostly empty space stacked above the character) never
+ * intercepts events. That means two characters whose tall layout boxes overlap
+ * stay independently grabbable: each sprite only catches the pointer where it
+ * is actually drawn. The dashed selection boundary + ± buttons + resize handle
+ * are drawn by the JS edit-overlay (.dangan-ow-frame), sized from the sprite's
+ * visible rect, so they hug the character instead of stretching to the top of
+ * the window. */
 body.dangan-ow-edit-mode #dangan-overworld .dangan-ow-sprite {
     cursor: move;
-}
-/* Hovered group: aqua outline + ± buttons revealed. CSS :hover now fires
- * reliably because pointer-events: auto on the group covers the empty
- * layout space between visual sprite and absolute-positioned buttons. */
-body.dangan-ow-edit-mode #dangan-overworld .dangan-ow-group:hover {
-    outline-color: rgba(0, 230, 255, 0.9);
 }
 body.dangan-ow-edit-mode #dangan-overworld .dangan-ow-sprite-ghost {
     opacity: 0 !important;
@@ -934,6 +909,71 @@ body.dangan-ow-edit-mode #dangan-ow-cursor { display: none !important; }
 body.dangan-monopad-open #dangan-ow-cursor,
 body.dangan-trial-active #dangan-ow-cursor,
 body.dangan-minigame-active #dangan-ow-cursor { display: none !important; }
+
+/* ── Edit-mode selection overlay ─────────────────────────────────────────────
+ * A JS-positioned layer of frames, one per on-stage group, each sized from the
+ * group's VISIBLE sprite rect (not the 75vh layout box). The selection boundary
+ * itself is drawn as a silhouette outline ON the sprite (see further down) so
+ * it hugs the character rather than a rectangle — the frame is now an invisible
+ * container that only docks the controls (± buttons, resize handle). The layer
+ * is pointer-events: none so drags fall through to the sprite; only the controls
+ * opt back into pointer events. */
+.dangan-ow-edit-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 4;
+}
+#dangan-overworld .dangan-ow-frame {
+    /* position: fixed → viewport coordinates. No transformed/filtered ancestor
+     * (#dangan-overworld is position: fixed with no transform), so the JS-set
+     * left/top/width/height in clientX-space land exactly on the sprite. */
+    position: fixed;
+    box-sizing: border-box;
+    pointer-events: none;
+}
+
+/* ── Silhouette selection outline ────────────────────────────────────────────
+ * Stacked drop-shadows trace the sprite PNG's alpha edge, giving an outline
+ * that wraps the character instead of a box. Thickness is divided by --ow-scale
+ * (inherited from the parent .dangan-ow-sprite) so that — since the filter is
+ * rasterised in the img's local space and THEN scaled by the parent transform —
+ * it lands at a constant ~2px on screen no matter the perspective/custom scale.
+ * Amber for idle sprites, blue for the active/selected one. */
+body.dangan-ow-edit-mode #dangan-overworld .dangan-ow-sprite-img {
+    --ow-outline-w: calc(2px / var(--ow-scale, 1));
+    --ow-outline-c: rgba(255, 200, 100, 0.85);
+    filter:
+        drop-shadow(0 8px 12px rgba(0, 0, 0, 0.45))
+        drop-shadow(var(--ow-outline-w) 0 0 var(--ow-outline-c))
+        drop-shadow(calc(-1 * var(--ow-outline-w)) 0 0 var(--ow-outline-c))
+        drop-shadow(0 var(--ow-outline-w) 0 var(--ow-outline-c))
+        drop-shadow(0 calc(-1 * var(--ow-outline-w)) 0 var(--ow-outline-c));
+}
+body.dangan-ow-edit-mode #dangan-overworld .dangan-ow-group.is-edit-active .dangan-ow-sprite-img {
+    --ow-outline-w: calc(2.5px / var(--ow-scale, 1));
+    --ow-outline-c: rgba(0, 230, 255, 0.95);
+}
+
+/* Bottom-right corner handle — drag to scale the group smoothly. */
+#dangan-overworld .dangan-ow-resize-handle {
+    position: absolute;
+    right: -9px;
+    bottom: -9px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: rgba(0, 230, 255, 0.92);
+    border: 2px solid rgba(12, 12, 18, 0.85);
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+    cursor: nwse-resize;
+    pointer-events: auto;
+    display: none;
+    z-index: 5;
+}
+#dangan-overworld .dangan-ow-frame.is-active .dangan-ow-resize-handle {
+    display: block;
+}
 
 /* ── ±/+ scale buttons (edit mode) ──────────────────────────────────────── */
 #dangan-overworld .dangan-ow-scale-btn {
@@ -965,16 +1005,15 @@ body.dangan-minigame-active #dangan-ow-cursor { display: none !important; }
     color: #111;
     transform: translateY(-50%) scale(1.08);
 }
-/* Position close to the group's edges so the cursor can move sprite ↔ button
- * with minimal empty-space transit. */
-#dangan-overworld .dangan-ow-scale-minus { left: -16px; }
-#dangan-overworld .dangan-ow-scale-plus  { right: -16px; }
-/* Scale buttons appear only on the currently-hovered group. CSS :hover is
- * reliable here because the group itself has pointer-events: auto in edit
- * mode (see rule above) — the cursor stays inside the group's layout box
- * while transiting from the visible sprite to the absolute-positioned
- * button, so :hover never drops. */
-body.dangan-ow-edit-mode #dangan-overworld .dangan-ow-group:hover .dangan-ow-scale-btn {
+/* Docked just outside the frame's left/right edges — i.e. at the visible
+ * sprite's sides — so the cursor reaches them with minimal transit. */
+#dangan-overworld .dangan-ow-scale-minus { left: -18px; }
+#dangan-overworld .dangan-ow-scale-plus  { right: -18px; }
+/* Scale buttons appear only on the active group's frame. Active state is
+ * tracked in JS (setEditActiveGroup) rather than CSS :hover, because the group
+ * box is pointer-events: none in edit mode and the controls live in a separate
+ * overlay subtree. */
+#dangan-overworld .dangan-ow-frame.is-active .dangan-ow-scale-btn {
     display: flex;
 }
 
@@ -1437,6 +1476,48 @@ body.dangan-monopad-open #dangan-overworld { display: none !important; }
  * the top slot, still on the right side. */
 #dangan-overworld .dangan-ow-edit-btn.dangan-ow-edit-btn-solo {
     top: 186px;
+}
+/* Photo Mode: once editing starts, hide every room action button except the
+ * Save toggle so the room reads as a clean placement canvas. The Save button
+ * is then promoted to the top slot regardless of how many buttons it shared
+ * the column with before. Driven by the body class (no :has()) so it flips
+ * instantly with edit mode and survives re-renders. */
+body.dangan-ow-edit-mode #dangan-overworld .dangan-ow-room-btn:not(.dangan-ow-edit-btn) {
+    display: none;
+}
+body.dangan-ow-edit-mode #dangan-overworld .dangan-ow-edit-btn {
+    top: 186px;
+}
+/* Fuller Photo Mode: fade out the surrounding HUD + chat chrome too, so the
+ * room is a clean canvas with nothing but the character sprites, their edit
+ * frames, and the Save button. This mirrors the body.dangan-ui-hidden set but
+ * deliberately leaves #dangan-overworld's OWN children alone (the sprite strip,
+ * the .dangan-ow-edit-overlay frames, and the Save button all live inside it
+ * and must stay visible/interactive). Opacity + pointer-events (not display)
+ * matches the existing hide pattern and gives a smooth fade-out. */
+body.dangan-ow-edit-mode #dangan-minimap,
+body.dangan-ow-edit-mode #dangan-moveto-panel,
+body.dangan-ow-edit-mode #dangan-bgm-panel,
+body.dangan-ow-edit-mode #dangan-vn-overlay,
+body.dangan-ow-edit-mode #dangan-chapter-label,
+body.dangan-ow-edit-mode #dangan-hud-topright,
+body.dangan-ow-edit-mode #dangan_monopad_button,
+body.dangan-ow-edit-mode #sheld,
+body.dangan-ow-edit-mode #send_form,
+body.dangan-ow-edit-mode #top-bar,
+body.dangan-ow-edit-mode #top-settings-holder {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 320ms ease;
+}
+/* #dangan-bgm-display pins its own opacity to 1 via a forwards-fill animation,
+ * which beats non-!important author rules — kill the animation and force it
+ * (same workaround the body.dangan-ui-hidden rule uses). */
+body.dangan-ow-edit-mode #dangan-bgm-display {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    animation: none !important;
+    transition: opacity 320ms ease;
 }
 
 /* ── Grab Group Members modal ─────────────────────────────────────────────
