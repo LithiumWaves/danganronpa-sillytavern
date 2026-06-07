@@ -1144,7 +1144,20 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
             // reflect the pre-trial #sheld height (overworld 100px cap) and the
             // dialogue ends up pinned to a stale offset until the user resizes.
             // Two rAFs: first lets style recalc commit, second lets layout commit.
-            requestAnimationFrame(() => requestAnimationFrame(updateInputHeight));
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+                updateInputHeight();
+                // #sheld's horizontal position is owned by SillyTavern's JS
+                // (Moving UI inset / chat-width layout), not our CSS. The
+                // overworld→trial transition changes #sheld's box — the height
+                // cap is lifted by the `:not(.dangan-trial-active)` scope — but
+                // ST isn't notified, so the chat shell stays horizontally
+                // misaligned until the next resize event re-runs ST's layout.
+                // Fire that resize ourselves so the user doesn't have to nudge
+                // the window. Layout has already settled (two rAFs above), so
+                // ST measures the final trial box. This mirrors the exact manual
+                // workaround and is the horizontal analog of --dgn-input-height.
+                window.dispatchEvent(new Event('resize'));
+            }));
         }
     }
 
