@@ -4592,11 +4592,24 @@ async function getSpriteUrl(charName, label = "neutral") {
         const matchLabel = (s) => String(s.label || '').toLowerCase() === lcLabel;
         const labelMatches = sprites.filter(matchLabel);
         const neutralMatches = sprites.filter(s => String(s.label || '').toLowerCase() === 'neutral');
-        // Pick a non-half variant if both exist, else any.
-        const fullDesired = labelMatches.find(s => !isHalfSpritePath(s)) ?? labelMatches[0];
-        if (fullDesired?.path) return fullDesired.path;
-        const fullNeutral = neutralMatches.find(s => !isHalfSpritePath(s)) ?? neutralMatches[0];
-        return fullNeutral?.path ?? null;
+        // Full-body contexts (overworld, class trials, chapter rosters, UI
+        // pickers) must NEVER render a -half crop. A half sprite dropped into a
+        // full-body slot renders as a floating upper-body fragment — and inside
+        // the NSD lectern frame the cropped art ends up behind the podium, so
+        // the character appears to vanish (this is the "characters disappear in
+        // NSD in half-sprite mode" bug: a sprite pack built for half-sprite mode
+        // often has -half-only variants for some emotions, and whichever
+        // scenario happens to use that emotion drops the speaker).
+        //
+        // So prefer the full <label>, then fall back to the full neutral pose.
+        // Only use a -half variant as an absolute last resort, when the
+        // character has no full sprite at all (a blank slot is worse).
+        const labelFull = labelMatches.find(s => !isHalfSpritePath(s));
+        if (labelFull?.path) return labelFull.path;
+        const neutralFull = neutralMatches.find(s => !isHalfSpritePath(s));
+        if (neutralFull?.path) return neutralFull.path;
+        const anyHalf = labelMatches[0] ?? neutralMatches[0];
+        return anyHalf?.path ?? null;
     } catch {
         return null;
     }
