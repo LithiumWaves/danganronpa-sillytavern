@@ -4306,6 +4306,240 @@ body.dangan-hide-hopes-peak-branding .settings-header-cog {
     outline: none;
 }
 
+/* SHOP + "+ CREATE" buttons sit side by side in the skills grid header.
+   Scoped to :not([hidden]) so the row still collapses on non-Skills tabs —
+   a bare `display: flex` would override the [hidden] attribute's display:none. */
+.items-grid-header #items-skill-shop-row:not([hidden]) {
+    display: flex;
+    gap: 6px;
+}
+
+/* ----- Custom Skill creation modal ----- */
+.csk-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483599;
+    background: rgba(8, 2, 10, 0.88);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+
+.csk-modal-window {
+    width: min(480px, 94%);
+    max-height: calc(100dvh - 64px);
+    border: 1px solid rgba(255, 191, 208, 0.42);
+    border-radius: 12px;
+    background: linear-gradient(160deg, rgba(43, 14, 24, 0.98), rgba(68, 22, 39, 0.96));
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.csk-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(255, 191, 208, 0.22);
+    flex-shrink: 0;
+}
+
+.csk-modal-title {
+    font-size: 13px;
+    letter-spacing: 0.14em;
+    color: rgba(255, 235, 242, 0.92);
+}
+
+.csk-modal-close {
+    border: 1px solid rgba(255, 191, 208, 0.5);
+    border-radius: 4px;
+    background: rgba(66, 21, 38, 0.9);
+    color: #ffe7ef;
+    width: 26px;
+    height: 26px;
+    cursor: pointer;
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+/* In the modal the form fills the scrollable body — drop the standalone panel chrome. */
+.csk-modal .csk-create-panel {
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    background: none;
+    overflow-y: auto;
+    padding: 12px 16px;
+}
+
+/* ----- Custom Skill creation ----- */
+.items-shop-entry-tag {
+    font-size: 8px;
+    letter-spacing: 0.08em;
+    color: #ffd24a;
+    border: 1px solid rgba(255, 210, 74, 0.5);
+    border-radius: 3px;
+    padding: 0 3px;
+    vertical-align: middle;
+}
+
+.items-shop-entry-delete {
+    border: 1px solid rgba(255, 150, 170, 0.5);
+    border-radius: 4px;
+    padding: 2px 6px;
+    background: rgba(120, 26, 44, 0.8);
+    color: rgba(255, 220, 228, 0.9);
+    font-size: 10px;
+    cursor: pointer;
+}
+
+.csk-add-btn {
+    border: 1px solid rgba(255, 205, 220, 0.42);
+    border-radius: 4px;
+    padding: 5px 10px;
+    background: rgba(88, 31, 49, 0.76);
+    color: rgba(255, 228, 237, 0.9);
+    font-size: 10px;
+    letter-spacing: 0.07em;
+    cursor: pointer;
+}
+
+.csk-create-panel {
+    margin: 0 12px 12px;
+    padding: 10px;
+    border: 1px solid rgba(255, 195, 212, 0.3);
+    border-radius: 6px;
+    background: rgba(45, 15, 25, 0.7);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.csk-input {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid rgba(255, 195, 212, 0.32);
+    border-radius: 4px;
+    padding: 5px 7px;
+    background: rgba(58, 19, 32, 0.7);
+    color: #ffeaf0;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+}
+
+.csk-meta-row {
+    display: flex;
+    gap: 8px;
+}
+
+.csk-field {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    color: rgba(255, 210, 223, 0.78);
+}
+
+.csk-effects-head {
+    margin-top: 4px;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    color: #ffb6c8;
+}
+
+.csk-effects-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.csk-effects-list.csk-invalid {
+    outline: 1px solid #ff6b8a;
+    border-radius: 4px;
+    padding: 4px;
+}
+
+.csk-effect-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.csk-effect-param {
+    flex: 2;
+    min-width: 0;
+}
+
+.csk-effect-type {
+    flex: 0 0 56px;
+}
+
+.csk-effect-value {
+    flex: 0 0 64px;
+}
+
+.csk-effect-param,
+.csk-effect-type,
+.csk-effect-value {
+    border: 1px solid rgba(255, 195, 212, 0.32);
+    border-radius: 4px;
+    padding: 4px 5px;
+    background: rgba(58, 19, 32, 0.7);
+    color: #ffeaf0;
+    font-size: 10px;
+}
+
+.csk-effect-remove {
+    flex: 0 0 auto;
+    border: 1px solid rgba(255, 150, 170, 0.5);
+    border-radius: 4px;
+    padding: 3px 7px;
+    background: rgba(120, 26, 44, 0.8);
+    color: rgba(255, 220, 228, 0.9);
+    font-size: 10px;
+    cursor: pointer;
+}
+
+.csk-create-status {
+    min-height: 12px;
+    font-size: 9px;
+    letter-spacing: 0.07em;
+    color: #ff8aa3;
+}
+
+.csk-create-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.csk-create-cancel,
+.csk-create-submit {
+    border-radius: 4px;
+    padding: 5px 12px;
+    font-size: 10px;
+    letter-spacing: 0.07em;
+    cursor: pointer;
+}
+
+.csk-create-cancel {
+    border: 1px solid rgba(255, 205, 220, 0.42);
+    background: rgba(58, 19, 32, 0.7);
+    color: rgba(255, 228, 237, 0.84);
+}
+
+.csk-create-submit {
+    border: 1px solid rgba(255, 210, 74, 0.55);
+    background: rgba(120, 84, 16, 0.65);
+    color: #fff3d6;
+}
+
 .items-shop-hint {
     margin-top: 6px;
     font-size: 9px;
@@ -4355,6 +4589,16 @@ body.dangan-hide-hopes-peak-branding .settings-header-cog {
     color: #ffeaf0;
     font-family: "Noto Sans JP", "Rajdhani", "Orbitron", monospace;
     font-weight: 500;
+}
+
+.items-shop-entry-desc {
+    margin-top: 4px;
+    font-size: 9px;
+    letter-spacing: 0.03em;
+    line-height: 1.35;
+    color: rgba(255, 224, 233, 0.82);
+    font-family: "Noto Sans JP", "Rajdhani", "Orbitron", monospace;
+    font-style: italic;
 }
 
 .items-shop-entry-effect {

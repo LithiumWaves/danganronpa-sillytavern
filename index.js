@@ -11,7 +11,7 @@ import { initTruthBullets, handleTruthBullet, setNextTruthBulletSfxVariant, getT
 import { buildDecagram, crackShard, shatterShard } from "./trust/trustDecagram.js";
 import { initTrustAnimations, playTrustRankUp, playTrustRankDown, playTrustMaxed, playTrustToDistrustTransition, playDistrustRankDown, playDistrustRankUp, playDistrustToTrustRecovery } from "./trust/trustAnimations.js";
 import { increaseTrust, decreaseTrust } from "./trust/trustAPI.js";
-import { createItemsPanelController } from "./items/itemsPanel.js";
+import { createItemsPanelController, SKILL_PARAM_MAP, applySkillModifier } from "./items/itemsPanel.js";
 import { createRewardSystem } from "./items/rewardSystem.js";
 import { createSocialPanelController } from "./social/socialPanel.js";
 import { extractUltimateFromNotes, isIgnoredCharacter, lookupUltimateFromLorebook, normalizeList, normalizeName } from "./social/characterUtils.js";
@@ -23,7 +23,7 @@ import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "./core/monokumaLes
 import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers } from "./monokuma/announcementController.js";
 import { createClassTrialMenuController } from "./trial/menu/classTrialMenu.js";
 import { createTrialManager, TrialPhases } from "./trial/trialManager.js";
-import { initVfxSystem, onVfxChatChanged, setExpressionTarget, setVfxGcpLoadSuppressed, setVfxGcpGroupActive, triggerVfxOnElement } from "./vfx/vfxSystem.js";
+import { initVfxSystem, onVfxChatChanged, setExpressionTarget, setEmotionBiasResolver, setVfxGcpLoadSuppressed, setVfxGcpGroupActive, triggerVfxOnElement } from "./vfx/vfxSystem.js";
 import { initEmotionFontsSystem, getEmotionFont } from "./vfx/emotionFontsSystem.js";
 import { createBdaCinematicEditor } from "./vfx/bdaCinematicEditor.js";
 import { createExecutionCinematicEditor } from "./vfx/executionCinematicEditor.js";
@@ -859,7 +859,7 @@ function applyRewardDifficultyProfile(profileKey) {
 }
 
 function awardMonocoins(amount = 0, reason = "") {
-    rewards?.awardMonocoins(amount, reason);
+    rewards?.awardMonocoins(resolveSkillParam("monocoinGen", amount), reason);
 }
 
 function deductMonocoins(amount = 0, reason = "") {
@@ -871,7 +871,7 @@ function increaseTrustWithRewards(char) {
 }
 
 function awardXp(amount = 0, reason = "") {
-    rewards?.awardXp(amount, reason);
+    rewards?.awardXp(resolveSkillParam("playerExp", amount), reason);
 }
 
 function openMonopadConfirmDialog({ title = "CONFIRM ACTION", message = "", confirmLabel = "CONFIRM", cancelLabel = "CANCEL" } = {}) {
@@ -1104,6 +1104,74 @@ function getEquippedSkillsSnapshot() {
     const inventory = extension_settings[extensionName]?.inventory || {};
     const equipped = inventory.equippedSkills || {};
     return Object.keys(equipped).filter(skillId => Number(equipped[skillId] || 0) > 0);
+}
+
+// Aggregate the effects of all equipped Custom Skills into a flat modifier map:
+//   { <paramKey>: { percent, absolute }, ... }
+// Percents and absolutes each SUM additively across every equipped custom skill.
+// Equipped IDs that aren't custom skills (built-in shop skills) are ignored here.
+function getActiveSkillModifiers() {
+    const inventory = extension_settings[extensionName]?.inventory || {};
+    const customSkills = inventory.customSkills || {};
+    const acc = {};
+    for (const skillId of getEquippedSkillsSnapshot()) {
+        const skill = customSkills[skillId];
+        if (!skill || !Array.isArray(skill.effects)) continue;
+        for (const effect of skill.effects) {
+            const param = SKILL_PARAM_MAP[effect?.parameter];
+            if (!param) continue;
+            const bucket = acc[param.key] || (acc[param.key] = { percent: 0, absolute: 0 });
+            const value = Number(effect.value) || 0;
+            if (effect.valueType === "absolute") bucket.absolute += value;
+            else bucket.percent += value;
+        }
+    }
+    return acc;
+}
+
+// Resolve a single tunable parameter against the currently-equipped custom skills.
+// `base` is the value the minigame would use with no skills equipped (may be dynamic).
+// Returns the modified value, clamped to the parameter's safe range from the registry.
+function resolveSkillParam(key, base) {
+    const param = SKILL_PARAM_MAP[key];
+    if (!param) return base;
+    const mods = getActiveSkillModifiers();
+    return applySkillModifier(base, mods[key], {
+        clampMin: param.clampMin,
+        clampMax: param.clampMax,
+        integer: param.integer,
+    });
+}
+
+// Collect per-emotion bias (percentage points) from equipped custom skills.
+// Returns e.g. { love: 25, joy: 10 } — the chance each favored emotion is
+// fired in place of whatever emotion would otherwise play.
+function getEmotionBias() {
+    const mods = getActiveSkillModifiers();
+    const bias = {};
+    for (const [key, mod] of Object.entries(mods)) {
+        const param = SKILL_PARAM_MAP[key];
+        if (!param?.emotion) continue;
+        const pts = (Number(mod.percent) || 0) + (Number(mod.absolute) || 0);
+        if (pts > 0) bias[param.emotionName] = (bias[param.emotionName] || 0) + pts;
+    }
+    return bias;
+}
+
+// Given the emotion that would otherwise fire, roll against equipped emotion-bias
+// skills and possibly substitute a favored emotion. Each favored emotion occupies
+// a slice of the 0–100 roll equal to its summed bias; the remainder keeps the
+// original. Returns the (possibly overridden) emotion label.
+function rollBiasedEmotion(emotion) {
+    const bias = getEmotionBias();
+    const entries = Object.entries(bias).filter(([, p]) => p > 0);
+    if (!entries.length) return emotion;
+    let roll = Math.random() * 100;
+    for (const [emo, pts] of entries) {
+        if (roll < pts) return emo;
+        roll -= pts;
+    }
+    return emotion;
 }
 
 function getTruthBulletsSnapshot() {
@@ -7449,6 +7517,7 @@ jQuery(async () => {
             getItemsPanelController: () => itemsPanelController,
             increaseTrust,
             getCoinLabel: () => getMonopadSetting('hideHopesPeakBranding') ? 'COINS' : 'MONOCOINS',
+            resolveSkillParam,
         });
 
         socialPanelController = createSocialPanelController({
@@ -8523,6 +8592,7 @@ debugSTGlobals();
     vfxCleanup = initVfxSystem();
     initEmotionFontsSystem();
     setExpressionTarget(() => trialManager?.getGcpSpeakerImg?.() ?? document.getElementById('expression-image'));
+    setEmotionBiasResolver(rollBiasedEmotion);
 
     function promptForBlackened(suggested = '') {
         return new Promise(resolve => {
@@ -8948,7 +9018,7 @@ ANSWER: <answer>`;
                     loadingEl?.hide?.();
                 }
 
-                questionTimeController?.run({ title, time: 30, answers, correct })
+                questionTimeController?.run({ title, time: resolveSkillParam("qttTimer", 30), answers, correct })
                     ?.then(() => trialManager?.resumeAfterActivity?.());
             },
             onStartQuestionTruth: async () => {
@@ -9038,7 +9108,7 @@ TIME: <whole-second integer, minimum 60, maximum 180>`;
                     loadingEl?.hide?.();
                 }
 
-                questionTruthController?.run({ question, answer, time })
+                questionTruthController?.run({ question, answer, time: resolveSkillParam("qthTimer", time), playerHp: resolveSkillParam("qthHealth", 5) })
                     ?.then(() => trialManager?.resumeAfterActivity?.());
             },
             onStartChoosing: ({ characters = [], startIdx = 0 } = {}) => {
@@ -9147,7 +9217,11 @@ TIME: <whole-second integer, minimum 60, maximum 180>`;
                 }
 
                 try {
-                    await scrumDebateController.run({ scenario });
+                    await scrumDebateController.run({
+                        scenario,
+                        timerMs: resolveSkillParam("scrumTimer", 180000),
+                        playerHp: resolveSkillParam("scrumHealth", 3),
+                    });
                 } finally {
                     trialManager?.resumeAfterActivity?.();
                 }
@@ -9220,9 +9294,15 @@ STATEMENT: <third statement>`;
                     loadingEl?.hide?.();
                 }
 
-                mindMineController.run({ sentences });
+                mindMineController.run({
+                    sentences,
+                    timeLimit: resolveSkillParam("mindMineTimer", 120),
+                    penaltyMs: resolveSkillParam("mindMinePenalty", 10) * 1000,
+                });
             },
             getEquippedSkillsSnapshot,
+            resolveSkillParam,
+            rollBiasedEmotion,
             attachDraggablePositioning,
             applyCustomUiPosition,
             awardXp,
@@ -9962,7 +10042,10 @@ makeMpdTestCommand('startMassPanicDebateTestExtraLarge', 12, 'XL');
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'scrumdebate',
     callback: async () => {
-        await scrumDebateController?.run();
+        await scrumDebateController?.run({
+            timerMs: resolveSkillParam("scrumTimer", 180000),
+            playerHp: resolveSkillParam("scrumHealth", 3),
+        });
         return '';
     },
     helpString: 'Starts the Scrum Debate minigame. Two teams clash over contradictory theories; match each opposing key point with the correct rebuttal, then mash to finish each exchange.',
@@ -9974,7 +10057,11 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         const raw  = String(args?.sentence ?? args?._ ?? '').trim();
         const sArr = raw ? raw.split('|').map(s => s.trim()).filter(Boolean) : [];
         const time = parseInt(args?.time, 10) || 120;
-        await mindMineController?.run({ sentences: sArr, timeLimit: time });
+        await mindMineController?.run({
+            sentences: sArr,
+            timeLimit: resolveSkillParam("mindMineTimer", time),
+            penaltyMs: resolveSkillParam("mindMinePenalty", 10) * 1000,
+        });
         return '';
     },
     helpString: 'Starts the Mind Mine block-clearing puzzle. Optional named args: sentence="s1|s2|s3" (pipe-separated sentences to uncover), time=120 (seconds).',
@@ -10162,7 +10249,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             console.warn('[QuestionTime] title and all four answers are required.');
             return '';
         }
-        const won = await questionTimeController?.run({ title, time, answers, correct });
+        const won = await questionTimeController?.run({ title, time: resolveSkillParam("qttTimer", time), answers, correct });
         if (won) awardXp(XP_REWARDS.questionTime ?? 8, 'question time completed');
         return '';
     },
@@ -10188,7 +10275,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             return '';
         }
         const time = args.time ? Number(args.time) : 0;
-        const won = await questionTruthController?.run({ question, answer, time });
+        const won = await questionTruthController?.run({ question, answer, time: resolveSkillParam("qthTimer", time), playerHp: resolveSkillParam("qthHealth", 5) });
         if (won) awardXp(XP_REWARDS.questionTruth ?? 10, 'question truth completed');
         return '';
     },
@@ -11253,14 +11340,18 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     callback: async (args) => {
         const question   = String(args.question   || '').trim();
         const answer     = String(args.answer     || '').trim();
-        const time       = Math.max(120, Number(args.time)      || 120);
-        const health     = Math.max(1,  Number(args.health)     || 7);
+        const time       = resolveSkillParam("hangmanTimer",  Math.max(120, Number(args.time)   || 120));
+        const health     = resolveSkillParam("hangmanHealth", Math.max(1,   Number(args.health) || 7));
         const difficulty = Math.min(5, Math.max(1, Number(args.difficulty) || 2));
         if (!question || !answer) {
             console.warn('[HangmansGambit] question and answer are required.');
             return '';
         }
-        const won = await hangmansGambitController?.run({ question, answer, time, health, difficulty });
+        const spotlightScale = resolveSkillParam("hangmanSpotlight", 1);
+        const resolveSpeed = (base) => resolveSkillParam("hangmanSpeed", base);
+        const concDrain = resolveSkillParam("hangmanConcDrain", 1 / 3);
+        const concRegen = resolveSkillParam("hangmanConcRegen", 1 / 10);
+        const won = await hangmansGambitController?.run({ question, answer, time, health, difficulty, spotlightScale, resolveSpeed, concDrain, concRegen });
         if (won) awardXp(XP_REWARDS.hangmansGambit ?? 15, "hangman's gambit completed");
         return '';
     },
@@ -11404,8 +11495,8 @@ for (const cfg of Object.values(RS_SIZES)) {
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'argumentarmament',
     callback: async (args) => {
-        const enemyHp  = Math.max(1, Number(args.enemyHp)  || 100);
-        const playerHp = Math.max(1, Number(args.playerHp) || 100);
+        const enemyHp  = resolveSkillParam("aaEnemyHp",  Math.max(1, Number(args.enemyHp)  || 100));
+        const playerHp = resolveSkillParam("aaPlayerHp", Math.max(1, Number(args.playerHp) || 100));
         const phases   = Math.min(3, Math.max(1, Number(args.phases) || 3));
         const dialogs  = ['A','B','C','D','E','F','G','H','I','J','K']
             .map(l => String(args[`dialog${l}`] || args[`Dialog${l}`] || '').trim())
@@ -11471,7 +11562,12 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             } catch { /* fall through to tester images */ }
         }
 
-        const won = await argumentArmamentController?.run({ enemyHp, playerHp, phases, dialogs, NSolution, SSolution, ESolution, WSolution, FinalSolution, FinalSolutionQuote, BG, clairvoyance, mainSprite, defeatSprite });
+        const ammoMax  = resolveSkillParam("aaAmmo",       6);
+        const reloadMs = resolveSkillParam("aaReloadTime", 500);
+        const timerMs  = resolveSkillParam("aaTimer",      90000);
+        const damage   = resolveSkillParam("aaDamage",     1);
+        const damageTakenMult = resolveSkillParam("aaDamageTaken", 1);
+        const won = await argumentArmamentController?.run({ enemyHp, playerHp, phases, dialogs, NSolution, SSolution, ESolution, WSolution, FinalSolution, FinalSolutionQuote, BG, clairvoyance, mainSprite, defeatSprite, ammoMax, reloadMs, timerMs, damage, damageTakenMult });
         if (won) awardXp(XP_REWARDS.argumentArmament ?? 18, 'argument armament completed');
         return '';
     },

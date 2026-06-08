@@ -898,16 +898,18 @@ export function createHangmansGambitController({
         });
     }
 
-    async function run({ question, answer, time, health: maxHealth, difficulty }) {
+    async function run({ question, answer, time, health: maxHealth, difficulty, spotlightScale = 1, resolveSpeed = null, concDrain = 1 / 3, concRegen = 1 / 10 }) {
         destroy();
         pauseDynamicAudio?.();
 
         const preset      = getDifficultyPreset(difficulty);
         const answerUpper = answer.toUpperCase();
         const letterPool  = buildLetterPool(answer, preset.fillers);
-        const speed       = preset.speed;
+        const speed       = typeof resolveSpeed === "function" ? resolveSpeed(preset.speed) : preset.speed;
         const safeHealth  = Math.max(1, (maxHealth | 0) || 7);
-        const safeTime    = Math.max(120, Number(time) || 120);
+        // Floor at 10s only as a safety net — the caller already floors the base
+        // at 120s and clamps any custom-skill modifier to a sane range.
+        const safeTime    = Math.max(10, Number(time) || 120);
 
         // Inject styles
         const styleEl = document.createElement("style");
@@ -998,8 +1000,8 @@ export function createHangmansGambitController({
             let timerLastWall  = null;
 
             // ── Bullet-time state ─────────────────────────────────────
-            const BT_DRAIN_RATE    = 1 / 3;   // full depletion in 3 s
-            const BT_RECHARGE_RATE = 1 / 10;  // full recharge in 10 s
+            const BT_DRAIN_RATE    = Math.max(0.01, Number(concDrain) || (1 / 3));   // concentration consumption /s (base: full depletion in 3 s)
+            const BT_RECHARGE_RATE = Math.max(0.01, Number(concRegen) || (1 / 10));  // concentration regen /s (base: full recharge in 10 s)
             let btCharge  = 1.0;              // 0–1
             let btActive  = false;
 
@@ -1009,7 +1011,7 @@ export function createHangmansGambitController({
             // the moment the player lets go. Anchored to the viewport
             // centre (not the cursor) so the reveal feels like a spotlight
             // expanding outward.
-            const LIGHT_EXPAND_RATE   = 200;  // px/s
+            const LIGHT_EXPAND_RATE   = 200 * (Number(spotlightScale) || 1);  // px/s; scaled by custom-skill spotlight size
             const LIGHT_SHRINK_RATE   = 1500; // px/s (snappier than expand)
             let lightRadius = 0;
 

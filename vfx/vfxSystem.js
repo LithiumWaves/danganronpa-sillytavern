@@ -10,6 +10,16 @@ const VFX_SFX_BASE = `${extensionFolderPath}/assets/sfx/reactions/`;
 let expressionTargetFn = null;
 export function setExpressionTarget(fn) { expressionTargetFn = fn; }
 
+// Optional emotion-bias hook from a Custom Skill: given the emotion that would
+// otherwise fire, may return a different (favored) emotion to play instead.
+let emotionBiasResolver = null;
+export function setEmotionBiasResolver(fn) { emotionBiasResolver = typeof fn === "function" ? fn : null; }
+function biasExpression(expression) {
+    if (!emotionBiasResolver) return expression;
+    const next = emotionBiasResolver(expression);
+    return (next && VFX_MAP[next]) ? next : expression;
+}
+
 // Suppresses VFX/SFX during GCP initial sprite load so expressions that fire
 // from the MutationObserver while portraits are being set up don't play sounds.
 let vfxGcpLoadSuppressed = false;
@@ -568,6 +578,7 @@ function playOnElement(expression, $img, { ignoreMute = false, htmlTarget = null
 
 function triggerVfx(expression) {
     if (vfxGcpLoadSuppressed) return;
+    expression = biasExpression(expression);
     if (!isEnabledForEmotion(expression)) return;
     if (!VFX_MAP[expression]) return;
     // Small delay to let the expression swap animation settle
@@ -586,6 +597,7 @@ function triggerVfx(expression) {
 // triggerVfx for the same expression immediately after.
 export function triggerVfxOnElement(expression, imgEl) {
     if (vfxGcpLoadSuppressed) return;
+    expression = biasExpression(expression);
     if (!isEnabledForEmotion(expression)) return;
     if (!VFX_MAP[expression]) return;
     vfxLastExpression = expression;

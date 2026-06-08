@@ -955,8 +955,20 @@ export function createArgumentArmamentController({
         mainSprite = null,
         defeatSprite = null,
         getPhaseTrack = null,
+        ammoMax: rawAmmoMax,
+        reloadMs: rawReloadMs,
+        timerMs: rawTimerMs,
+        damage: rawDamage,
+        damageTakenMult: rawDamageTakenMult,
     }) {
         destroy();
+
+        // Custom-skill-tunable parameters (fall back to module defaults).
+        const ammoMax  = Math.max(1, Math.round(Number(rawAmmoMax)  || AMMO_MAX));
+        const reloadMs = Math.max(1, Number(rawReloadMs) || 500);
+        const aaTimerMs = Math.max(1000, Number(rawTimerMs) || 90_000);
+        const enemyDamage = Math.max(1, Math.round(Number(rawDamage) || 1));
+        const damageTakenMult = Math.max(0, Number(rawDamageTakenMult) || 1);
 
         const maxEnemyHp  = Math.max(1, Number(rawEnemyHp)  || 100);
         const maxPlayerHp = Math.max(1, Number(rawPlayerHp) || 100);
@@ -968,7 +980,7 @@ export function createArgumentArmamentController({
         let currentEnemyHp  = maxEnemyHp;
         let currentPlayerHp = maxPlayerHp;
         let phase           = 1;
-        let ammo            = AMMO_MAX;
+        let ammo            = ammoMax;
         let isReloading     = false;
         let isResolved      = false;
         let tutorialActive  = true;
@@ -1011,7 +1023,7 @@ export function createArgumentArmamentController({
             <div id="aa-panel-bl" class="aa-panel">
                 <div id="aa-ammo-wrap">
                     <img id="aa-ammo-icon" src="${extensionFolderPath}/assets/icons/artillery-shell.svg" alt=""/>
-                    <div id="aa-ammo-count">×${AMMO_MAX}</div>
+                    <div id="aa-ammo-count">×${ammoMax}</div>
                     <div id="aa-ammo-label">AMMO</div>
                 </div>
                 <div id="aa-reload-indicator">RELOADING…</div>
@@ -1096,7 +1108,7 @@ export function createArgumentArmamentController({
             // ── Global AA timer (bottom-right) ──────────────────
             // Counts the player's overall budget for the whole confrontation.
             // Hitting 0 ends the game as a loss.
-            const AA_TIMER_MS = 90_000; // 90 s — adjust if needed
+            const AA_TIMER_MS = aaTimerMs; // base 90 s; tunable via custom skills
             const globalTimerEl = overlayEl.querySelector('#aa-timer');
             let globalTimerRaf   = null;
             let globalTimerStart = 0;
@@ -1220,7 +1232,7 @@ export function createArgumentArmamentController({
             damageSfx.load();
 
             function damagePlayer(amount) {
-                currentPlayerHp = Math.max(0, currentPlayerHp - amount);
+                currentPlayerHp = Math.max(0, currentPlayerHp - amount * damageTakenMult);
                 updateBars();
                 flashScreen('red');
                 overlayEl.classList.remove('aa-shaking');
@@ -1437,23 +1449,23 @@ export function createArgumentArmamentController({
             function tickReload() {
                 if (isResolved) { stopReload(); return; }
                 new Audio(`${extensionFolderPath}/assets/sfx/minigames/reload.wav`).play().catch(() => {});
-                ammo = Math.min(AMMO_MAX, ammo + 1);
+                ammo = Math.min(ammoMax, ammo + 1);
                 updateAmmoUI();
-                if (ammo >= AMMO_MAX) stopReload();
+                if (ammo >= ammoMax) stopReload();
             }
 
             function startAutoReload() {
                 if (isReloading || transitionLock) return;
                 isReloading = true;
                 reloadInd.classList.add('active');
-                reloadTimer = setInterval(tickReload, 500);
+                reloadTimer = setInterval(tickReload, reloadMs);
             }
 
             function startManualReload() {
-                if (isReloading || ammo >= AMMO_MAX || transitionLock) return;
+                if (isReloading || ammo >= ammoMax || transitionLock) return;
                 isReloading = true;
                 reloadInd.classList.add('active');
-                reloadTimer = setInterval(tickReload, 500);
+                reloadTimer = setInterval(tickReload, reloadMs);
             }
 
             // ── Despawn a dialog with a fade-out ─────────────────
@@ -1493,8 +1505,8 @@ export function createArgumentArmamentController({
 
                     if (type === 'blue') {
                         info.hitCount++;
-                        // Every hit on blue deals 1HP to opponent
-                        currentEnemyHp = Math.max(0, currentEnemyHp - 1);
+                        // Every hit on blue deals damage to opponent
+                        currentEnemyHp = Math.max(0, currentEnemyHp - enemyDamage);
                         updateBars();
                         new Audio(`${extensionFolderPath}/assets/sfx/minigames/hit-other.wav`).play().catch(() => {});
                         if (info.hitCount < 2) {
@@ -1530,7 +1542,7 @@ export function createArgumentArmamentController({
                         if (type === 'pink') {
                             damagePlayer(1);
                         } else if (type === 'orange') {
-                            currentEnemyHp = Math.max(0, currentEnemyHp - 1);
+                            currentEnemyHp = Math.max(0, currentEnemyHp - enemyDamage);
                             flashScreen('orange');
                             updateBars();
                             checkPhaseTransition();

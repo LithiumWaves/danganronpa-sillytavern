@@ -355,14 +355,315 @@ const itemCatalog = [
     { id: "drv3_date_ticket", name: "Date Ticket", category: "gift", rarity: "SR", description: "A ticket that's used to profess your adoration to someone.", effect: "I choo-choo-choose you." },
     { id: "drv3_monomergen_c", name: "Monomergen-C", category: "gift", rarity: "N", description: "A suspicious-looking energy drink. Not only will it increase your energy a hundredfold, but it can also manipulate time itself.", effect: "Increases energy a hundredfold and can manipulate time itself." },
 
-    { id: "shop_skill_lie_detector_earring", name: "Lie Detector Earring", category: "skill", rarity: "R", description: "An earring attuned to tiny tells and tonal slips.", effect: "Highlights suspicious dialogue beats." },
-    { id: "shop_skill_dramatic_pause_plus", name: "Dramatic Pause+", category: "skill", rarity: "N", description: "A stagecraft micro-module for timing your words.", effect: "Adds impact before major rebuttals." },
-    { id: "shop_skill_monokuma_warranty", name: "Monokuma Warranty", category: "skill", rarity: "SR", description: "A suspicious service contract stamped with a bear seal.", effect: "Survive one terrible bargain (maybe)." },
-    { id: "shop_skill_protagonist_hair_flip", name: "Protagonist Hair Flip", category: "skill", rarity: "R", description: "A dramatic flourish practiced in reflective surfaces.", effect: "Temporarily boosts confidence in tense scenes." },
     { id: "shop_skill_clairvoyance", name: "Clairvoyance", category: "skill", rarity: "R", description: "A subtle sharpening of perception — you begin to read the room's pulse.", effect: "Displays HP values for you and your opponent during Argument Armament." },
     { id: "shop_skill_beta_block", name: "Beta Block", category: "skill", rarity: "R", description: "A strategic read of panic — you sense the pressure before the chains appear.", effect: "Shows the number of hits required to break column locks during Mass Panic Debate." },
-    { id: "shop_skill_seating_plan_copy", name: "Seating Plan Copy", category: "skill", rarity: "R", description: "A rough diagram scratched from memory — everyone's position, clear.", effect: "Reveals the seating arrangement during Mass Panic Debate. Toggle view with Tab." },
 ];
+
+// ---------------------------------------------------------------------------
+// Custom Skill parameter registry
+// ---------------------------------------------------------------------------
+// Single source of truth for the tunable minigame parameters a player-authored
+// "Custom Skill" can modify. Used by the skill-creation UI (to build the effect
+// dropdowns) and by the resolver in index.js (to clamp resolved values).
+//
+// Each entry:
+//   key        - canonical id stored on each effect ({parameter})
+//   label      - display name in the effects builder
+//   group      - section heading in the dropdown
+//   valueTypes - allowed value-type choices for an effect ('percent'|'absolute')
+//   unit       - shown next to the value (informational)
+//   base       - reference/default value (null when the base is dynamic at runtime)
+//   dynamicBase- true when `base` is just a fallback and the real base varies per run
+//   clampMin/clampMax - hard safety bounds applied after the modifier is resolved
+//   integer    - round the resolved value to a whole number
+//   lowerIsBetter - hint for the UI (lower value = buff, e.g. reload time)
+export const SKILL_PARAM_REGISTRY = [
+    { key: "reticuleSize",     label: "NSD — Reticule Size",          group: "Non-Stop Debate", valueTypes: ["percent", "absolute"], unit: "px", base: 120,    clampMin: 40,     clampMax: 400,    integer: true },
+    { key: "reticuleSway",     label: "NSD — Reticule Sway",          group: "Non-Stop Debate", valueTypes: ["percent", "absolute"], unit: "",   base: 9,      clampMin: 0,      clampMax: 40,     integer: false },
+    { key: "btFireSpeed",      label: "NSD — Truth Bullet Fire Speed",group: "Non-Stop Debate",       valueTypes: ["percent", "absolute"], unit: "/s", base: 0.25,   clampMin: 0.05,   clampMax: 1.0,    integer: false },
+    { key: "btReloadSpeed",    label: "NSD — Truth Bullet Reload Speed",group: "Non-Stop Debate",     valueTypes: ["percent", "absolute"], unit: "/s", base: 0.125,  clampMin: 0.02,   clampMax: 1.0,    integer: false },
+    { key: "debateTimer",      label: "NSD — Debate Timer",           group: "Non-Stop Debate", valueTypes: ["percent", "absolute"], unit: "ms", base: 120000, dynamicBase: true, clampMin: 120000, clampMax: 600000, integer: true },
+    { key: "mpdReticuleSize",  label: "MPD — Reticule Size",          group: "Mass Panic Debate", valueTypes: ["percent", "absolute"], unit: "px", base: 120,    clampMin: 40,     clampMax: 400,    integer: true },
+    { key: "mpdReticuleSway",  label: "MPD — Reticule Sway",          group: "Mass Panic Debate", valueTypes: ["percent", "absolute"], unit: "",   base: 9,      clampMin: 0,      clampMax: 40,     integer: false },
+    { key: "mpdBtFireSpeed",   label: "MPD — Truth Bullet Fire Speed",group: "Mass Panic Debate", valueTypes: ["percent", "absolute"], unit: "/s", base: 0.25,   clampMin: 0.05,   clampMax: 1.0,    integer: false },
+    { key: "mpdBtReloadSpeed", label: "MPD — Truth Bullet Reload Speed",group: "Mass Panic Debate", valueTypes: ["percent", "absolute"], unit: "/s", base: 0.125,  clampMin: 0.02,   clampMax: 1.0,    integer: false },
+    { key: "mpdDebateTimer",   label: "MPD — Debate Timer",           group: "Mass Panic Debate", valueTypes: ["percent", "absolute"], unit: "ms", base: 120000, dynamicBase: true, clampMin: 120000, clampMax: 600000, integer: true },
+    { key: "aaPlayerHp",       label: "AA — Your Health",       group: "Argument Armament", valueTypes: ["percent", "absolute"], unit: "hp", base: 100,    dynamicBase: true, clampMin: 1,    clampMax: 9999,   integer: true },
+    { key: "aaEnemyHp",        label: "AA — Enemy Health",      group: "Argument Armament", valueTypes: ["percent", "absolute"], unit: "hp", base: 100,    dynamicBase: true, clampMin: 1,    clampMax: 9999,   integer: true },
+    { key: "aaDamage",         label: "AA — Damage Dealt",      group: "Argument Armament", valueTypes: ["percent", "absolute"], unit: "hp", base: 1,      clampMin: 1,      clampMax: 999,    integer: true },
+    { key: "aaDamageTaken",    label: "AA — Damage Taken",      group: "Argument Armament", valueTypes: ["percent"],             unit: "×",  base: 1,      clampMin: 0,      clampMax: 5,      integer: false, lowerIsBetter: true },
+    { key: "aaAmmo",           label: "AA — Ammo Capacity",     group: "Argument Armament", valueTypes: ["percent", "absolute"], unit: "",   base: 6,      clampMin: 1,      clampMax: 30,     integer: true },
+    { key: "aaReloadTime",     label: "AA — Reload Time",       group: "Argument Armament", valueTypes: ["percent", "absolute"], unit: "ms", base: 500,    clampMin: 100,    clampMax: 3000,   integer: true, lowerIsBetter: true },
+    { key: "aaTimer",          label: "AA — Timer",             group: "Argument Armament", valueTypes: ["percent", "absolute"], unit: "ms", base: 90000,  clampMin: 15000,  clampMax: 600000, integer: true },
+    { key: "hangmanSpeed",     label: "HMG — Letter Speed", group: "Hangman's Gambit",  valueTypes: ["percent", "absolute"], unit: "px/s", base: 155, dynamicBase: true, clampMin: 30,   clampMax: 600,    integer: false, lowerIsBetter: true },
+    { key: "hangmanSpotlight", label: "HMG — Spotlight Size",group: "Hangman's Gambit", valueTypes: ["percent"],             unit: "×",  base: 1,      clampMin: 0.25,   clampMax: 4.0,    integer: false },
+    { key: "hangmanHealth",    label: "HMG — Your Health",  group: "Hangman's Gambit",  valueTypes: ["percent", "absolute"], unit: "hp", base: 7,      dynamicBase: true, clampMin: 1,    clampMax: 99,     integer: true },
+    { key: "hangmanConcDrain", label: "HMG — Concentration Consumption", group: "Hangman's Gambit", valueTypes: ["percent"], unit: "/s", base: 0.3333, clampMin: 0.05, clampMax: 1.0, integer: false, lowerIsBetter: true },
+    { key: "hangmanConcRegen", label: "HMG — Concentration Regeneration", group: "Hangman's Gambit", valueTypes: ["percent"], unit: "/s", base: 0.1,    clampMin: 0.02, clampMax: 1.0, integer: false },
+    { key: "hangmanTimer",     label: "HMG — Timer",        group: "Hangman's Gambit",  valueTypes: ["percent", "absolute"], unit: "s",  base: 120,    dynamicBase: true, clampMin: 30,   clampMax: 1200,   integer: true },
+    { key: "mindMinePenalty",  label: "MDM — Incorrect Block Penalty", group: "Mind Mine", valueTypes: ["percent", "absolute"], unit: "s", base: 10,  clampMin: 0,    clampMax: 120,    integer: true, lowerIsBetter: true },
+    { key: "mindMineTimer",    label: "MDM — Timer",        group: "Mind Mine",         valueTypes: ["percent", "absolute"], unit: "s",  base: 120,    dynamicBase: true, clampMin: 30,   clampMax: 1200,   integer: true },
+    { key: "scrumTimer",       label: "SDB — Timer",        group: "Scrum Debate",      valueTypes: ["percent", "absolute"], unit: "ms", base: 180000, dynamicBase: true, clampMin: 30000, clampMax: 600000, integer: true },
+    { key: "scrumHealth",      label: "SDB — Your Health",  group: "Scrum Debate",      valueTypes: ["percent", "absolute"], unit: "hp", base: 3,      clampMin: 1,      clampMax: 99,     integer: true },
+    { key: "qthTimer",         label: "QTH — Timer",        group: "Question Truth",    valueTypes: ["percent", "absolute"], unit: "s",  base: 0,      dynamicBase: true, clampMin: 0,    clampMax: 1200,   integer: true },
+    { key: "qthHealth",        label: "QTH — Your Health",  group: "Question Truth",    valueTypes: ["percent", "absolute"], unit: "hp", base: 5,      clampMin: 1,      clampMax: 99,     integer: true },
+    { key: "qttTimer",         label: "QTT — Timer",        group: "Question Time",     valueTypes: ["percent", "absolute"], unit: "s",  base: 30,     dynamicBase: true, clampMin: 0,    clampMax: 1200,   integer: true },
+    { key: "monocoinGen",      label: "Monocoin Generation",    group: "Rewards",           valueTypes: ["percent", "absolute"], unit: "",   base: null,   dynamicBase: true, clampMin: 0,    clampMax: 1e9,    integer: true },
+    { key: "playerExp",        label: "Player EXP Gain",        group: "Rewards",           valueTypes: ["percent", "absolute"], unit: "",   base: null,   dynamicBase: true, clampMin: 0,    clampMax: 1e9,    integer: true },
+    { key: "trustExp",         label: "Trust Fragment Gain",    group: "Rewards",           valueTypes: ["percent", "absolute"], unit: "",   base: null,   dynamicBase: true, clampMin: 0,    clampMax: 1e9,    integer: true },
+];
+
+// Emotion-bias parameters — one per canonical emotion (kept in sync with
+// vfx/vfxSystem.js VFX_MAP and vfx/emotionFontsSystem.js EMOTIONS). Unlike the
+// gameplay params above these aren't base-value multipliers: their value is a
+// percentage-point chance that the favored emotion is fired instead of the one
+// that would otherwise play (consumed by getEmotionBias()/rollBiasedEmotion()
+// in index.js, NOT resolveSkillParam). Flagged with `emotion: true`.
+const SKILL_EMOTION_NAMES = [
+    "realization", "surprise", "fear", "anger", "joy", "excitement",
+    "sadness", "grief", "nervousness", "disgust", "embarrassment", "love",
+];
+for (const emo of SKILL_EMOTION_NAMES) {
+    SKILL_PARAM_REGISTRY.push({
+        key: `emotion_${emo}`,
+        label: `Emotion: ${emo.charAt(0).toUpperCase()}${emo.slice(1)}`,
+        group: "Influence Character Emotion Chance",
+        valueTypes: ["percent"],
+        unit: "% chance",
+        base: null,
+        emotion: true,
+        emotionName: emo,
+        clampMin: 0,
+        clampMax: 100,
+        integer: false,
+    });
+}
+
+export const SKILL_PARAM_MAP = Object.fromEntries(SKILL_PARAM_REGISTRY.map(p => [p.key, p]));
+
+// Pure modifier application + clamp. Shared by the resolver in index.js.
+//   base * (1 + percent/100) + absolute, clamped to the parameter's safe range.
+export function applySkillModifier(base, mod, { clampMin = -Infinity, clampMax = Infinity, integer = false } = {}) {
+    const m = mod || {};
+    let v = Number(base) * (1 + (Number(m.percent) || 0) / 100) + (Number(m.absolute) || 0);
+    if (!Number.isFinite(v)) v = Number(base);
+    v = Math.min(clampMax, Math.max(clampMin, v));
+    return integer ? Math.round(v) : v;
+}
+
+// ---------------------------------------------------------------------------
+// Default Custom Skills — canonical Danganronpa cast skills, seeded once into
+// inventory.customSkills (see loadInventoryState). Each maps the original skill
+// to the closest tunable effect(s); some original effects (lock-on, auto-target,
+// statement-count reduction, gauge "recovery") have no dedicated parameter, so
+// they are approximated and the flavour is preserved in the description.
+// "Focus Gauge" ≈ concentration/bullet-time meter; "Influence Gauge" ≈ debate
+// health; "Bullet Time Battle" is treated as the Non-Stop Debate shooting.
+const _fx = (parameter, valueType, value) => ({ parameter, valueType, value });
+// Trial-wide health (Influence Gauge) boost across the battle minigames.
+const _influence = (pct) => [
+    _fx("hangmanHealth", "percent", pct), _fx("aaPlayerHp", "percent", pct),
+    _fx("scrumHealth", "percent", pct), _fx("qthHealth", "percent", pct),
+];
+// Focus Gauge "lasts longer" — slower concentration drain.
+const _focusCapacity = (pct) => [ _fx("btFireSpeed", "percent", -pct), _fx("hangmanConcDrain", "percent", -pct) ];
+// Focus Gauge "recovers faster" — quicker concentration regen.
+const _focusRegen = (pct) => [ _fx("btReloadSpeed", "percent", pct), _fx("hangmanConcRegen", "percent", pct) ];
+
+const DEFAULT_SKILLS = [
+    { id: "custom_skill_def_extraordinary_focus", name: "Extraordinary Focus", rarity: "N", skillPointCost: 2, cost: 8,  effects: _focusCapacity(15),
+      description: "Your Focus drains a little more slowly while concentrating in Non-Stop Debate and Hangman's Gambit." },
+    { id: "custom_skill_def_ambidextrousness", name: "Ambidextrousness", rarity: "R", skillPointCost: 4, cost: 16, effects: [_fx("reticuleSize", "percent", 30)],
+      description: "Enlarges your Non-Stop Debate reticule, making statements easier to lock onto." },
+
+    { id: "custom_skill_def_cool_and_composed", name: "Cool and Composed", rarity: "N", skillPointCost: 2, cost: 8, effects: [_fx("reticuleSway", "percent", -20)],
+      description: "Steadies your Non-Stop Debate reticule, reducing its sway a little." },
+    { id: "custom_skill_def_envious_influence", name: "Envious Influence", rarity: "R", skillPointCost: 4, cost: 16, effects: _influence(50),
+      description: "Greatly increases your health across Class Trial battles." },
+
+    { id: "custom_skill_def_raise", name: "Raise", rarity: "R", skillPointCost: 0, cost: 12, effects: [_fx("monocoinGen", "percent", 200)],
+      description: "Triples the Monocoins you earn." },
+    { id: "custom_skill_def_menacing_focus", name: "Menacing Focus", rarity: "R", skillPointCost: 4, cost: 16, effects: _focusCapacity(25),
+      description: "Your Focus drains much more slowly while concentrating in Non-Stop Debate and Hangman's Gambit." },
+
+    { id: "custom_skill_def_algorithm", name: "Algorithm", rarity: "N", skillPointCost: 2, cost: 8, effects: [_fx("debateTimer", "percent", 25)],
+      description: "Extends the Non-Stop Debate time limit." },
+    { id: "custom_skill_def_cheat_code", name: "Cheat Code", rarity: "N", skillPointCost: 2, cost: 8, effects: [_fx("debateTimer", "percent", 400)],
+      description: "Stretches the Non-Stop Debate time limit to its maximum, so it barely runs down." },
+
+    { id: "custom_skill_def_handiwork", name: "Handiwork", rarity: "R", skillPointCost: 4, cost: 16, effects: [_fx("aaReloadTime", "percent", -50), _fx("btReloadSpeed", "percent", 100)],
+      description: "Halves your Argument Armament reload time and sharply speeds Non-Stop Debate Focus recovery." },
+    { id: "custom_skill_def_delusion", name: "Delusion", rarity: "SR", skillPointCost: 5, cost: 20, effects: _influence(30),
+      description: "Increases your health across Class Trial battles." },
+
+    { id: "custom_skill_def_trance", name: "Trance", rarity: "R", skillPointCost: 4, cost: 16, effects: _focusRegen(40),
+      description: "Your Focus recovers more quickly in Non-Stop Debate and Hangman's Gambit." },
+    { id: "custom_skill_def_charisma", name: "Charisma", rarity: "SR", skillPointCost: 5, cost: 20, effects: _influence(60),
+      description: "Greatly increases your health across Class Trial battles." },
+
+    { id: "custom_skill_def_attentive_influence", name: "Attentive Influence", rarity: "N", skillPointCost: 2, cost: 8, effects: _influence(20),
+      description: "Slightly increases your health across Class Trial battles." },
+    { id: "custom_skill_def_steel_patience", name: "Steel Patience", rarity: "R", skillPointCost: 3, cost: 12, effects: [_fx("aaDamageTaken", "percent", -40)],
+      description: "Reduces the damage you take in Argument Armament." },
+
+    { id: "custom_skill_def_neural_liberation", name: "Neural Liberation", rarity: "SR", skillPointCost: 5, cost: 20, effects: _focusCapacity(35),
+      description: "Your Focus drains drastically more slowly while concentrating in Non-Stop Debate and Hangman's Gambit." },
+
+    { id: "custom_skill_def_robot_jock", name: "Robot Jock", rarity: "R", skillPointCost: 3, cost: 12, effects: [_fx("btReloadSpeed", "percent", 50)],
+      description: "Speeds up your Truth Bullet recharge in Non-Stop Debate." },
+    { id: "custom_skill_def_kinetic_depth_perception", name: "Kinetic Depth Perception", rarity: "N", skillPointCost: 2, cost: 8, effects: [_fx("reticuleSize", "percent", 40)],
+      description: "Enlarges your Non-Stop Debate reticule, making weak points easier to hit." },
+
+    { id: "custom_skill_def_downshift", name: "Downshift", rarity: "N", skillPointCost: 1, cost: 6, effects: [_fx("reticuleSway", "percent", -30)],
+      description: "Slows your Non-Stop Debate reticule, steadying its sway." },
+    { id: "custom_skill_def_upshift", name: "Upshift", rarity: "N", skillPointCost: 1, cost: 6, effects: [_fx("reticuleSway", "percent", 30)],
+      description: "Speeds up your Non-Stop Debate reticule, increasing its sway." },
+
+    { id: "custom_skill_def_breathing_technique", name: "Breathing Technique", rarity: "R", skillPointCost: 4, cost: 16, effects: _focusRegen(50),
+      description: "Your Focus recovers quickly in Non-Stop Debate and Hangman's Gambit." },
+    { id: "custom_skill_def_tranquility", name: "Tranquility", rarity: "R", skillPointCost: 3, cost: 12, effects: [_fx("reticuleSway", "percent", -100)],
+      description: "Completely steadies your Non-Stop Debate reticule, removing all sway." },
+
+    { id: "custom_skill_def_melodious_voice", name: "Melodious Voice", rarity: "R", skillPointCost: 3, cost: 12, effects: [_fx("aaDamage", "absolute", 2)],
+      description: "Increases the damage your shots deal in Argument Armament." },
+
+    { id: "custom_skill_def_vocabulary", name: "Vocabulary", rarity: "R", skillPointCost: 3, cost: 12, effects: [_fx("aaAmmo", "absolute", 3)],
+      description: "Increases your ammo capacity in Argument Armament." },
+
+    { id: "custom_skill_def_crystal_prediction", name: "Crystal Prediction", rarity: "SR", skillPointCost: 5, cost: 20, effects: [_fx("reticuleSize", "percent", 30), _fx("debateTimer", "percent", 30)],
+      description: "Enlarges your Non-Stop Debate reticule and extends its time limit." },
+    { id: "custom_skill_def_lost_in_thought", name: "Lost in Thought", rarity: "R", skillPointCost: 3, cost: 12, effects: [_fx("debateTimer", "percent", 50), _fx("hangmanTimer", "percent", 50), _fx("aaTimer", "percent", 50)],
+      description: "Extends the time limit in Non-Stop Debate, Hangman's Gambit, and Argument Armament." },
+
+    { id: "custom_skill_def_trigger_happy", name: "Trigger Happy", rarity: "R", skillPointCost: 3, cost: 12, effects: [_fx("btReloadSpeed", "percent", 60)],
+      description: "Quickens your Truth Bullet recharge in Non-Stop Debate." },
+
+    // --- Second skill set. Skills sharing a name with one above are omitted to
+    // avoid duplicate effects, as are skills for minigames not present here.
+    // Some effects are approximated onto the closest supported battle.
+    { id: "custom_skill_def_peach_muscle", name: "Peach Muscle", rarity: "R", skillPointCost: 3, cost: 12, effects: [_fx("btReloadSpeed", "percent", 70)],
+      description: "Greatly speeds up your Truth Bullet recharge in Non-Stop Debate." },
+    { id: "custom_skill_def_sting", name: "Sting", rarity: "R", skillPointCost: 3, cost: 12, effects: [_fx("monocoinGen", "percent", 50)],
+      description: "Increases the Monocoins you earn." },
+    { id: "custom_skill_def_silver_spoon", name: "Silver Spoon", rarity: "R", skillPointCost: 3, cost: 12, effects: [_fx("aaDamageTaken", "percent", -60)],
+      description: "Greatly reduces the damage you take in Argument Armament." },
+    { id: "custom_skill_def_infinity_unlimited_flame", name: "Infinity Unlimited Flame", rarity: "R", skillPointCost: 4, cost: 16, effects: [_fx("btFireSpeed", "percent", -50)],
+      description: "Your Focus drains much more slowly while concentrating in Non-Stop Debate." },
+    { id: "custom_skill_def_pivot_turn", name: "Pivot Turn", rarity: "R", skillPointCost: 3, cost: 12, effects: [_fx("mindMinePenalty", "percent", -100)],
+      description: "Removes the time penalty for mistakes in Mind Mine." },
+    { id: "custom_skill_def_auto_focus", name: "Auto Focus", rarity: "R", skillPointCost: 3, cost: 12, effects: [_fx("reticuleSize", "percent", 50)],
+      description: "Greatly enlarges your Non-Stop Debate reticule, making weak points far easier to hit." },
+    { id: "custom_skill_def_silent_massage", name: "Silent Massage", rarity: "SR", skillPointCost: 5, cost: 20, effects: [_fx("btReloadSpeed", "percent", 60), _fx("hangmanConcRegen", "percent", 60)],
+      description: "Your Focus recovers much faster in Non-Stop Debate and Hangman's Gambit." },
+    { id: "custom_skill_def_power_of_life_and_death", name: "Power of Life and Death", rarity: "R", skillPointCost: 4, cost: 16, effects: [_fx("aaEnemyHp", "percent", -40)],
+      description: "Weakens your opponent in Argument Armament." },
+    { id: "custom_skill_def_lightning_flash", name: "Lightning Flash", rarity: "SR", skillPointCost: 5, cost: 20, effects: [_fx("aaDamage", "percent", 100)],
+      description: "Doubles the damage your shots deal in Argument Armament." },
+    { id: "custom_skill_def_tasting", name: "Tasting", rarity: "SR", skillPointCost: 5, cost: 20, effects: [_fx("reticuleSize", "percent", 35), _fx("debateTimer", "percent", 35)],
+      description: "Enlarges your Non-Stop Debate reticule and extends its time limit." },
+    { id: "custom_skill_def_excellent_blade", name: "Excellent Blade", rarity: "R", skillPointCost: 4, cost: 16, effects: [_fx("aaDamage", "absolute", 3)],
+      description: "Increases the damage your shots deal in Argument Armament." },
+    { id: "custom_skill_def_fine_sword", name: "Fine Sword", rarity: "SR", skillPointCost: 6, cost: 24, effects: [_fx("aaDamage", "absolute", 6)],
+      description: "Greatly increases the damage your shots deal in Argument Armament." },
+    { id: "custom_skill_def_moodmaker", name: "Moodmaker", rarity: "SR", skillPointCost: 6, cost: 24, effects: [_fx("aaEnemyHp", "percent", -25)],
+      description: "Weakens your opponent in Argument Armament." },
+
+    // --- Third skill set. Name-duplicates and skills for absent minigames are
+    // omitted. Each effect array is unique; some effects are approximated onto
+    // the nearest supported minigame.
+    { id: "custom_skill_def_minds_eye", name: "Mind's Eye", rarity: "R", skillPointCost: 4, cost: 16, effects: [_fx("reticuleSize", "percent", 20)],
+      description: "Enlarges your Non-Stop Debate reticule, revealing weak points more easily." },
+    { id: "custom_skill_def_saint_mikos_ability", name: "Saint Miko's Ability", rarity: "R", skillPointCost: 4, cost: 16, effects: [_fx("mpdReticuleSize", "percent", 30)],
+      description: "Enlarges your Mass Panic Debate reticule." },
+    { id: "custom_skill_def_librarians_glare", name: "Librarian's Glare", rarity: "R", skillPointCost: 4, cost: 16, effects: [_fx("mpdReticuleSway", "percent", -40)],
+      description: "Steadies your Mass Panic Debate reticule, reducing its sway." },
+    { id: "custom_skill_def_first_strike", name: "First Strike", rarity: "R", skillPointCost: 4, cost: 16, effects: [_fx("scrumTimer", "percent", 25)],
+      description: "Extends the time limit in Scrum Debate." },
+    { id: "custom_skill_def_just_a_peek", name: "Just a Peek", rarity: "R", skillPointCost: 4, cost: 16, effects: [_fx("hangmanSpotlight", "percent", 50)],
+      description: "Enlarges the concentration spotlight in Hangman's Gambit." },
+    { id: "custom_skill_def_safety_first", name: "Safety First", rarity: "R", skillPointCost: 4, cost: 16, effects: [_fx("mindMinePenalty", "percent", -50), _fx("mindMineTimer", "percent", 20)],
+      description: "Halves the mistake time penalty and extends the time limit in Mind Mine." },
+    { id: "custom_skill_def_high_tension", name: "High Tension", rarity: "R", skillPointCost: 4, cost: 16, effects: [_fx("aaDamage", "percent", 50)],
+      description: "Boosts the damage your shots deal in Argument Armament." },
+    { id: "custom_skill_def_atuas_intuition", name: "Atua's Intuition", rarity: "R", skillPointCost: 6, cost: 24, effects: [_fx("hangmanSpotlight", "percent", 100)],
+      description: "Doubles the size of the concentration spotlight in Hangman's Gambit." },
+    { id: "custom_skill_def_wild_awakening", name: "Wild Awakening", rarity: "R", skillPointCost: 6, cost: 24, effects: [_fx("aaDamage", "percent", 75)],
+      description: "Greatly boosts the damage your shots deal in Argument Armament." },
+    { id: "custom_skill_def_abracadabra", name: "Abracadabra", rarity: "SR", skillPointCost: 24, cost: 96, effects: [_fx("reticuleSize", "percent", 60)],
+      description: "Greatly enlarges your Non-Stop Debate reticule, making weak points far easier to hit." },
+    { id: "custom_skill_def_digital_love", name: "Digital Love", rarity: "SR", skillPointCost: 32, cost: 128, effects: [_fx("reticuleSize", "percent", 70)],
+      description: "Massively enlarges your Non-Stop Debate reticule, all but locking on to weak points." },
+    { id: "custom_skill_def_piano_duet", name: "Piano Duet", rarity: "R", skillPointCost: 5, cost: 20, effects: [_fx("scrumHealth", "percent", 40)],
+      description: "Increases your health in Scrum Debate." },
+    { id: "custom_skill_def_bed_making", name: "Bed Making", rarity: "SR", skillPointCost: 16, cost: 64, effects: _focusRegen(70),
+      description: "Your Focus recovers very quickly in Non-Stop Debate and Hangman's Gambit." },
+    { id: "custom_skill_def_kind_lie", name: "Kind Lie", rarity: "R", skillPointCost: 6, cost: 24, effects: [_fx("aaDamageTaken", "percent", -30)],
+      description: "Reduces the damage you take in Argument Armament." },
+    { id: "custom_skill_def_supernatural_phenomenon", name: "Supernatural Phenomenon", rarity: "SR", skillPointCost: 16, cost: 64, effects: [_fx("reticuleSize", "percent", 55)],
+      description: "Greatly enlarges your Non-Stop Debate reticule, drawing your aim onto weak points." },
+    { id: "custom_skill_def_financing", name: "Financing", rarity: "SR", skillPointCost: 32, cost: 128, effects: [_fx("monocoinGen", "percent", 100)],
+      description: "Doubles the Monocoins you earn." },
+    { id: "custom_skill_def_xxx_ray_goggles", name: "XXX-Ray Goggles", rarity: "R", skillPointCost: 6, cost: 24, effects: [_fx("mindMineTimer", "percent", 30)],
+      description: "Extends the time limit in Mind Mine." },
+    { id: "custom_skill_def_viability", name: "Viability", rarity: "SR", skillPointCost: 15, cost: 60, effects: _influence(25),
+      description: "Modestly increases your health across Class Trial battles." },
+    { id: "custom_skill_def_killer_smash", name: "Killer Smash", rarity: "SR", skillPointCost: 8, cost: 32, effects: [_fx("reticuleSize", "percent", 25)],
+      description: "Enlarges your Non-Stop Debate reticule a little." },
+    { id: "custom_skill_def_laws_of_the_globe", name: "Laws of the Globe", rarity: "R", skillPointCost: 6, cost: 24, effects: [_fx("aaReloadTime", "percent", -30)],
+      description: "Speeds up reloading in Argument Armament." },
+    { id: "custom_skill_def_2d_love", name: "2D Love", rarity: "R", skillPointCost: 6, cost: 24, effects: [_fx("mindMinePenalty", "percent", -40)],
+      description: "Reduces the mistake time penalty in Mind Mine." },
+    { id: "custom_skill_def_laser_beam", name: "Laser Beam", rarity: "SR", skillPointCost: 8, cost: 32, effects: [_fx("btReloadSpeed", "percent", 80)],
+      description: "Rapidly speeds up your Truth Bullet recharge in Non-Stop Debate." },
+    { id: "custom_skill_def_machine_gun", name: "Machine Gun", rarity: "SR", skillPointCost: 8, cost: 32, effects: [_fx("btReloadSpeed", "percent", 90)],
+      description: "Drastically speeds up your Truth Bullet recharge in Non-Stop Debate." },
+    { id: "custom_skill_def_shotgun", name: "Shotgun", rarity: "SR", skillPointCost: 16, cost: 64, effects: [_fx("reticuleSize", "percent", 45)],
+      description: "Enlarges your Non-Stop Debate reticule for wider shots." },
+    { id: "custom_skill_def_grenade", name: "Grenade", rarity: "SR", skillPointCost: 24, cost: 96, effects: [_fx("reticuleSize", "percent", 65)],
+      description: "Greatly enlarges your Non-Stop Debate reticule for powerful shots." },
+    { id: "custom_skill_def_point_blank", name: "Point Blank", rarity: "SR", skillPointCost: 8, cost: 32, effects: [_fx("reticuleSize", "percent", 15)],
+      description: "Slightly enlarges your Non-Stop Debate reticule." },
+    { id: "custom_skill_def_initial_a", name: "Initial A", rarity: "R", skillPointCost: 6, cost: 24, effects: [_fx("hangmanSpeed", "percent", -20)],
+      description: "Slows the scrolling letters in Hangman's Gambit." },
+    { id: "custom_skill_def_zanbato", name: "Zanbato", rarity: "R", skillPointCost: 6, cost: 24, effects: [_fx("aaDamage", "absolute", 4)],
+      description: "Increases the damage your shots deal in Argument Armament." },
+    { id: "custom_skill_def_operation_giant_roller", name: "Operation Giant Roller", rarity: "R", skillPointCost: 6, cost: 24, effects: [_fx("mindMinePenalty", "percent", -30)],
+      description: "Reduces the mistake time penalty in Mind Mine." },
+    { id: "custom_skill_def_undo_trois", name: "Undo Trois", rarity: "R", skillPointCost: 4, cost: 16, effects: [_fx("mindMinePenalty", "percent", -20)],
+      description: "Reduces the mistake time penalty in Mind Mine a little." },
+    { id: "custom_skill_def_beat_heaven", name: "Beat Heaven", rarity: "R", skillPointCost: 6, cost: 24, effects: [_fx("aaDamageTaken", "percent", -50)],
+      description: "Reduces the damage you take in Argument Armament." },
+
+    // --- Emotion-sway skills. Each raises the chance of one emotion being fired by 25%.
+    { id: "custom_skill_def_sex_appeal", name: "Sex Appeal", rarity: "N", skillPointCost: 2, cost: 8, effects: [_fx("emotion_love", "percent", 25)],
+      description: "Increases the chance of characters being swayed to the Love emotion by 25%." },
+    { id: "custom_skill_def_intuitive_aura", name: "Intuitive Aura", rarity: "N", skillPointCost: 2, cost: 8, effects: [_fx("emotion_realization", "percent", 25)],
+      description: "Increases the chance of characters being swayed to the Realization emotion by 25%." },
+    { id: "custom_skill_def_plot_twister", name: "Plot Twister", rarity: "N", skillPointCost: 2, cost: 8, effects: [_fx("emotion_surprise", "percent", 25)],
+      description: "Increases the chance of characters being swayed to the Surprise emotion by 25%." },
+    { id: "custom_skill_def_menacing_menacing_menacing", name: "Menacing Menacing Menacing", rarity: "N", skillPointCost: 2, cost: 8, effects: [_fx("emotion_fear", "percent", 25)],
+      description: "Increases the chance of characters being swayed to the Fear emotion by 25%." },
+    { id: "custom_skill_def_certified_asshole", name: "Certified Asshole", rarity: "N", skillPointCost: 2, cost: 8, effects: [_fx("emotion_anger", "percent", 25)],
+      description: "Increases the chance of characters being swayed to the Anger emotion by 25%." },
+    { id: "custom_skill_def_comedian", name: "Comedian", rarity: "N", skillPointCost: 2, cost: 8, effects: [_fx("emotion_joy", "percent", 25)],
+      description: "Increases the chance of characters being swayed to the Joy emotion by 25%." },
+    { id: "custom_skill_def_electrifying_presence", name: "Electrifying Presence", rarity: "N", skillPointCost: 2, cost: 8, effects: [_fx("emotion_excitement", "percent", 25)],
+      description: "Increases the chance of characters being swayed to the Excitement emotion by 25%." },
+    { id: "custom_skill_def_major_bummer", name: "Major Bummer", rarity: "N", skillPointCost: 2, cost: 8, effects: [_fx("emotion_sadness", "percent", 25)],
+      description: "Increases the chance of characters being swayed to the Sadness emotion by 25%." },
+    { id: "custom_skill_def_black_hole_heart", name: "Black Hole Heart", rarity: "N", skillPointCost: 2, cost: 8, effects: [_fx("emotion_grief", "percent", 25)],
+      description: "Increases the chance of characters being swayed to the Grief emotion by 25%." },
+    { id: "custom_skill_def_intimidation_factor", name: "Intimidation Factor", rarity: "N", skillPointCost: 2, cost: 8, effects: [_fx("emotion_nervousness", "percent", 25)],
+      description: "Increases the chance of characters being swayed to the Nervousness emotion by 25%." },
+    { id: "custom_skill_def_overwhelming_stench", name: "Overwhelming Stench", rarity: "N", skillPointCost: 2, cost: 8, effects: [_fx("emotion_disgust", "percent", 25)],
+      description: "Increases the chance of characters being swayed to the Disgust emotion by 25%." },
+    { id: "custom_skill_def_cringelord", name: "Cringelord", rarity: "N", skillPointCost: 2, cost: 8, effects: [_fx("emotion_embarrassment", "percent", 25)],
+      description: "Increases the chance of characters being swayed to the Embarrassment emotion by 25%." },
+];
+
+// Default cast skills are seeded into customSkills but are treated as BASE skills:
+// they cannot be deleted and don't show the "CUSTOM" tag. Identified by id prefix.
+const isBaseSkill = (id) => typeof id === "string" && id.startsWith("custom_skill_def_");
 
 export function createItemsPanelController({ extensionName, extension_settings, saveSettingsDebounced, playSfx, getSfx, onGiftUseRequest }) {
     let activeItemsFilter = "all";
@@ -371,13 +672,8 @@ export function createItemsPanelController({ extensionName, extension_settings, 
     let itemSearchQuery = "";
 
     const placeholderSkillShopCatalog = [
-        { id: "shop_skill_lie_detector_earring", name: "Lie Detector Earring", cost: 1, skillPointCost: 8, teaserEffect: "Highlights suspicious dialogue beats." },
-        { id: "shop_skill_dramatic_pause_plus", name: "Dramatic Pause+", cost: 1, skillPointCost: 6, teaserEffect: "Adds impact before major rebuttals." },
-        { id: "shop_skill_monokuma_warranty", name: "Monokuma Warranty", cost: 1, skillPointCost: 12, teaserEffect: "Survive one terrible bargain (maybe)." },
-        { id: "shop_skill_protagonist_hair_flip", name: "Protagonist Hair Flip", cost: 1, skillPointCost: 7, teaserEffect: "Temporarily boosts confidence in tense scenes." },
         { id: "shop_skill_clairvoyance", name: "Clairvoyance", cost: 10, skillPointCost: 2, teaserEffect: "Displays HP values for you and your opponent during Argument Armament." },
         { id: "shop_skill_beta_block", name: "Beta Block", cost: 10, skillPointCost: 2, teaserEffect: "Shows the number of hits required to break column locks during Mass Panic Debate." },
-        { id: "shop_skill_seating_plan_copy", name: "Seating Plan Copy", cost: 10, skillPointCost: 2, teaserEffect: "Reveals the seating arrangement during Mass Panic Debate. Toggle view with Tab." },
     ];
 
 
@@ -393,11 +689,61 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         ext.inventory.equippedSkills ||= {};
         ext.inventory.customKeyItems ||= {};
         ext.inventory.customGifts ||= {};
+        ext.inventory.customSkills ||= {};
         ext.inventory.itemImages ||= {};
+
+        // Seed and keep the canonical base skills in sync. A per-id ledger records
+        // which defaults have been offered, so newly-added defaults reach existing
+        // saves while a default the player deletes stays deleted. Base skills are
+        // not user-editable, so a present one is always refreshed to the canonical
+        // definition (this also brings old saves' descriptions up to date).
+        ext.inventory._seededDefaultSkillIds ||= [];
+        const seededDefaults = new Set(ext.inventory._seededDefaultSkillIds);
+        // Migrate the old one-shot boolean: anything already present counts as seeded.
+        if (ext.inventory._defaultSkillsSeeded) {
+            for (const id of Object.keys(ext.inventory.customSkills)) {
+                if (id.startsWith("custom_skill_def_")) seededDefaults.add(id);
+            }
+            delete ext.inventory._defaultSkillsSeeded;
+        }
+        let seededAny = false;
+        for (const s of DEFAULT_SKILLS) {
+            const canonical = {
+                name: s.name,
+                rarity: s.rarity,
+                description: s.description,
+                cost: s.cost,
+                skillPointCost: s.skillPointCost,
+                effects: s.effects.map(e => ({ ...e })),
+            };
+            const existing = ext.inventory.customSkills[s.id];
+            if (existing) {
+                // Refresh in place if anything drifted from the canonical definition.
+                if (JSON.stringify(existing) !== JSON.stringify(canonical)) {
+                    ext.inventory.customSkills[s.id] = canonical;
+                    seededAny = true;
+                }
+            } else if (!seededDefaults.has(s.id)) {
+                ext.inventory.customSkills[s.id] = canonical;
+                seededAny = true;
+            }
+            seededDefaults.add(s.id);
+        }
+        if (seededDefaults.size !== ext.inventory._seededDefaultSkillIds.length) seededAny = true;
+        if (seededAny) {
+            ext.inventory._seededDefaultSkillIds = [...seededDefaults];
+            saveSettingsDebounced();
+        }
 
         delete ext.inventory.skills.s_micro_focus;
         delete ext.inventory.skills.s_false_lead;
         delete ext.inventory.keyItems.k_student_profile;
+
+        // Retired placeholder skills — clean up any owned/equipped entries in old saves.
+        for (const retiredId of ["shop_skill_lie_detector_earring", "shop_skill_dramatic_pause_plus", "shop_skill_monokuma_warranty", "shop_skill_protagonist_hair_flip", "shop_skill_seating_plan_copy"]) {
+            delete ext.inventory.skills?.[retiredId];
+            delete ext.inventory.equippedSkills?.[retiredId];
+        }
     }
 
     function getInventoryBucket(category) {
@@ -473,7 +819,21 @@ export function createItemsPanelController({ extensionName, extension_settings, 
             }))
             .filter(item => item.quantity > 0);
 
-        const items = [...catalogItems, ...customKeyItems, ...customGifts];
+        const customSkills = Object.entries(inv.customSkills || {})
+            .filter(([id]) => Number(inv.skills?.[id] || 0) > 0)
+            .map(([id, data]) => ({
+                id,
+                name: data.name,
+                description: data.description || summarizeSkillEffects(data.effects),
+                category: "skill",
+                rarity: data.rarity || "N",
+                effect: summarizeSkillEffects(data.effects),
+                quantity: 1,
+                catalogIndex: -1,
+                isCustom: !isBaseSkill(id),
+            }));
+
+        const items = [...catalogItems, ...customKeyItems, ...customGifts, ...customSkills];
 
         if (activeItemsFilter !== "all") {
             return sortOwnedItems(items.filter(item => item.category === activeItemsFilter));
@@ -488,7 +848,20 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         return "KEY ITEM";
     }
     function getSkillShopEntry(skillId) {
-        return placeholderSkillShopCatalog.find(skill => skill.id === skillId) || null;
+        const builtIn = placeholderSkillShopCatalog.find(skill => skill.id === skillId);
+        if (builtIn) return builtIn;
+        const custom = extension_settings[extensionName].inventory?.customSkills?.[skillId];
+        if (custom) {
+            return {
+                id: skillId,
+                name: custom.name,
+                cost: Number(custom.cost || 0),
+                skillPointCost: Number(custom.skillPointCost || 0),
+                teaserEffect: summarizeSkillEffects(custom.effects) || (custom.description || ""),
+                isCustom: !isBaseSkill(skillId),
+            };
+        }
+        return null;
     }
 
     function getSkillPointCost(skillId) {
@@ -958,6 +1331,87 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         return id;
     }
 
+    // --- Custom Skills -----------------------------------------------------
+    function sanitizeSkillEffects(effects) {
+        if (!Array.isArray(effects)) return [];
+        return effects
+            .map(e => {
+                const param = SKILL_PARAM_MAP[e?.parameter];
+                if (!param) return null;
+                let valueType = String(e?.valueType || param.valueTypes[0]);
+                if (!param.valueTypes.includes(valueType)) valueType = param.valueTypes[0];
+                const value = Number(e?.value);
+                if (!Number.isFinite(value)) return null;
+                return {
+                    parameter: param.key,
+                    valueType,
+                    value,
+                };
+            })
+            .filter(Boolean);
+    }
+
+    function summarizeSkillEffects(effects) {
+        const list = sanitizeSkillEffects(effects);
+        if (!list.length) return "";
+        return list
+            .map(e => {
+                const label = SKILL_PARAM_MAP[e.parameter]?.label || e.parameter;
+                const sign = e.value >= 0 ? "+" : "";
+                const suffix = e.valueType === "percent" ? "%" : "";
+                return `${label} ${sign}${e.value}${suffix}`;
+            })
+            .join(" · ");
+    }
+
+    function createCustomSkill({ name, rarity, description, cost, skillPointCost, effects, imageBase64 } = {}) {
+        loadInventoryState();
+        const inv = extension_settings[extensionName].inventory;
+        const id = "custom_skill_" + Date.now();
+        inv.customSkills[id] = {
+            name: String(name || "").trim() || "Custom Skill",
+            rarity: rarity || "N",
+            description: String(description || "").trim(),
+            cost: Math.max(0, Math.round(Number(cost) || 0)),
+            skillPointCost: Math.max(0, Math.round(Number(skillPointCost) || 0)),
+            effects: sanitizeSkillEffects(effects),
+        };
+        if (imageBase64) inv.itemImages[id] = imageBase64;
+        saveSettingsDebounced();
+        return id;
+    }
+
+    function updateCustomSkill(id, patch = {}) {
+        loadInventoryState();
+        const inv = extension_settings[extensionName].inventory;
+        const skill = inv.customSkills?.[id];
+        if (!skill) return false;
+        if (patch.name !== undefined) skill.name = String(patch.name).trim() || skill.name;
+        if (patch.rarity !== undefined) skill.rarity = patch.rarity || skill.rarity;
+        if (patch.description !== undefined) skill.description = String(patch.description).trim();
+        if (patch.cost !== undefined) skill.cost = Math.max(0, Math.round(Number(patch.cost) || 0));
+        if (patch.skillPointCost !== undefined) skill.skillPointCost = Math.max(0, Math.round(Number(patch.skillPointCost) || 0));
+        if (patch.effects !== undefined) skill.effects = sanitizeSkillEffects(patch.effects);
+        if (patch.imageBase64) inv.itemImages[id] = patch.imageBase64;
+        saveSettingsDebounced();
+        return true;
+    }
+
+    function removeCustomSkill(id) {
+        loadInventoryState();
+        const inv = extension_settings[extensionName].inventory;
+        if (!inv.customSkills?.[id]) return false;
+        if (isBaseSkill(id)) return false;  // base (default cast) skills are not erasable
+        // Refund SP if it was equipped before removing.
+        if (isSkillEquipped(id)) unequipSkill(id);
+        delete inv.customSkills[id];
+        delete inv.skills?.[id];
+        delete inv.equippedSkills?.[id];
+        delete inv.itemImages?.[id];
+        saveSettingsDebounced();
+        return true;
+    }
+
     function saveItemImage(itemId, base64) {
         loadInventoryState();
         const inv = extension_settings[extensionName].inventory;
@@ -1179,19 +1633,36 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         const inventory = extension_settings[extensionName].inventory || {};
         const trustFragments = Number(inventory.trustFragments || 0);
 
-        return placeholderSkillShopCatalog.map(skill => ({
+        const builtIn = placeholderSkillShopCatalog.map(skill => ({
             ...skill,
+            description: getItemById(skill.id)?.description || "",
             available: trustFragments >= skill.cost,
             owned: Number(inventory.skills?.[skill.id] || 0) > 0,
             skillPointCost: Number(skill.skillPointCost || 0),
             futureEffectHook: skill.teaserEffect,
+            isCustom: false,
         }));
+
+        const custom = Object.entries(inventory.customSkills || {}).map(([id, data]) => ({
+            id,
+            name: data.name,
+            description: data.description || "",
+            cost: Number(data.cost || 0),
+            skillPointCost: Number(data.skillPointCost || 0),
+            teaserEffect: summarizeSkillEffects(data.effects) || (data.description || ""),
+            available: trustFragments >= Number(data.cost || 0),
+            owned: Number(inventory.skills?.[id] || 0) > 0,
+            futureEffectHook: summarizeSkillEffects(data.effects) || (data.description || ""),
+            isCustom: !isBaseSkill(id),
+        }));
+
+        return [...builtIn, ...custom];
     }
 
     function buySkillFromShop(skillId) {
         loadInventoryState();
 
-        const skill = placeholderSkillShopCatalog.find(entry => entry.id === skillId);
+        const skill = getSkillShopEntry(skillId);
         if (!skill) return false;
 
         const inventory = extension_settings[extensionName].inventory;
@@ -1208,21 +1679,58 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         return true;
     }
 
+    function escapeHtml(str) {
+        return String(str ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    function buildSkillParamOptions(selectedKey) {
+        const groups = {};
+        SKILL_PARAM_REGISTRY.forEach(p => { (groups[p.group] ||= []).push(p); });
+        return Object.entries(groups)
+            .map(([group, params]) =>
+                `<optgroup label="${escapeHtml(group)}">` +
+                params.map(p => `<option value="${p.key}" ${p.key === selectedKey ? "selected" : ""}>${escapeHtml(p.label)}</option>`).join("") +
+                `</optgroup>`)
+            .join("");
+    }
+
+    function buildValueTypeOptions(paramKey, selected) {
+        const param = SKILL_PARAM_MAP[paramKey] || SKILL_PARAM_REGISTRY[0];
+        return param.valueTypes
+            .map(t => `<option value="${t}" ${t === selected ? "selected" : ""}>${t === "percent" ? "%" : "ABS"}</option>`)
+            .join("");
+    }
+
+    function buildEffectRowHtml(effect) {
+        const paramKey = effect?.parameter || SKILL_PARAM_REGISTRY[0].key;
+        const valueType = effect?.valueType;
+        const value = Number.isFinite(Number(effect?.value)) ? Number(effect.value) : 0;
+        return `
+            <div class="csk-effect-row">
+                <select class="csk-effect-param">${buildSkillParamOptions(paramKey)}</select>
+                <select class="csk-effect-type">${buildValueTypeOptions(paramKey, valueType)}</select>
+                <input type="number" class="csk-effect-value" value="${value}" step="any">
+                <button type="button" class="csk-effect-remove" title="Remove">✕</button>
+            </div>`;
+    }
+
     function renderSkillShopDetails() {
         const $detail = $("#items-detail-panel");
         if (!$detail.length) return;
 
         const skillRows = getSkillShopListings()
             .map(skill => `
-                <div class="items-shop-entry" data-shop-skill-id="${skill.id}">
+                <div class="items-shop-entry" data-shop-skill-id="${skill.id}" data-custom="${skill.isCustom ? "1" : "0"}">
                     <div class="items-shop-entry-main">
-                        <div class="items-shop-entry-name">${skill.name.toUpperCase()}</div>
-                        <div class="items-shop-entry-effect">EFFECT: ${skill.futureEffectHook.toUpperCase()}</div>
+                        <div class="items-shop-entry-name">${escapeHtml(skill.name.toUpperCase())}${skill.isCustom ? ' <span class="items-shop-entry-tag">CUSTOM</span>' : ''}</div>
+                        ${skill.description ? `<div class="items-shop-entry-desc">${escapeHtml(skill.description)}</div>` : ''}
+                        <div class="items-shop-entry-effect">EFFECT: ${escapeHtml((skill.futureEffectHook || "—").toUpperCase())}</div>
                         <div class="items-shop-entry-effect">EQUIP COST: ${skill.skillPointCost} SP</div>
                     </div>
                     <div class="items-shop-entry-meta">
                         <div class="items-shop-entry-cost">◈ x${skill.cost} TRUST FRAGMENT</div>
                         <button class="items-shop-entry-buy" type="button" ${skill.owned || !skill.available ? "disabled" : ""}>${skill.owned ? "OWNED" : "BUY"}</button>
+                        ${skill.isCustom ? '<button class="items-shop-entry-delete" type="button" title="Delete custom skill">✕</button>' : ''}
                     </div>
                 </div>
             `)
@@ -1231,7 +1739,7 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         $detail.html(`
             <div class="items-panel-title">SKILL SHOP</div>
             <div class="items-shop-placeholder-title">TRUST FRAGMENT EXCHANGE</div>
-            <div class="items-shop-placeholder-copy">SELECT A SKILL TO PURCHASE WITH TRUST FRAGMENTS. THESE SKILLS CAN BE OWNED NOW AND THEIR EFFECTS WILL EXPAND OVER TIME.</div>
+            <div class="items-shop-placeholder-copy">SELECT A SKILL TO PURCHASE WITH TRUST FRAGMENTS. CUSTOM SKILLS YOU CREATE APPEAR HERE TOO.</div>
             <div class="items-shop-list">${skillRows}</div>
         `);
 
@@ -1246,16 +1754,130 @@ export function createItemsPanelController({ extensionName, extension_settings, 
             renderSkillsItemsPanel();
             renderSkillShopDetails();
         });
+
+        $detail.find(".items-shop-entry-delete").on("click", (evt) => {
+            const skillId = evt.currentTarget.closest(".items-shop-entry")?.dataset.shopSkillId;
+            if (!skillId) return;
+            if (!removeCustomSkill(skillId)) return;
+
+            playSfx(getSfx().click);
+            renderSkillsItemsPanel();
+            renderSkillShopDetails();
+        });
+    }
+
+    function renderCreateSkillForm() {
+        $(".csk-modal").remove();
+        $(document.body).append(`
+            <div class="csk-modal">
+                <div class="csk-modal-window">
+                    <div class="csk-modal-header">
+                        <span class="csk-modal-title">CREATE CUSTOM SKILL</span>
+                        <button type="button" class="csk-modal-close" title="Close">✕</button>
+                    </div>
+                    <div class="csk-create-panel">
+                        <input class="csk-input csk-name" placeholder="SKILL NAME..." maxlength="60" autocomplete="off" spellcheck="false">
+                        <textarea class="csk-input csk-desc" placeholder="DESCRIPTION (OPTIONAL)..." maxlength="300" rows="2"></textarea>
+                        <div class="csk-meta-row">
+                            <label class="csk-field">RARITY
+                                <select class="csk-input csk-rarity"><option value="N">N</option><option value="R">R</option><option value="SR">SR</option></select>
+                            </label>
+                            <label class="csk-field">BUY COST (◈)
+                                <input type="number" class="csk-input csk-cost" min="0" value="0">
+                            </label>
+                            <label class="csk-field">EQUIP COST (SP)
+                                <input type="number" class="csk-input csk-sp" min="0" value="0">
+                            </label>
+                        </div>
+                        <div class="csk-effects-head">EFFECTS (APPLIED WHILE EQUIPPED)</div>
+                        <div class="csk-effects-list"></div>
+                        <button type="button" class="csk-add-effect csk-add-btn">+ ADD EFFECT</button>
+                        <div class="csk-create-status" id="csk-create-status"></div>
+                        <div class="csk-create-actions">
+                            <button type="button" class="csk-create-cancel">CANCEL</button>
+                            <button type="button" class="csk-create-submit">CREATE</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `);
+
+        const $modal = $(".csk-modal");
+        const $panel = $modal.find(".csk-create-panel");
+        const closeModal = () => $modal.remove();
+
+        // Start with one effect row ready to fill in.
+        $panel.find(".csk-effects-list").append(buildEffectRowHtml());
+        $panel.find(".csk-name").focus();
+
+        $modal.find(".csk-add-effect").on("click", () => {
+            $panel.find(".csk-effects-list").removeClass("csk-invalid").append(buildEffectRowHtml());
+        });
+
+        // Keep value-type options in sync with the selected parameter (delegated
+        // within this modal instance, which is removed on close).
+        $modal.on("change", ".csk-effect-param", (evt) => {
+            const $row = $(evt.currentTarget).closest(".csk-effect-row");
+            const current = $row.find(".csk-effect-type").val();
+            $row.find(".csk-effect-type").html(buildValueTypeOptions(evt.currentTarget.value, current));
+        });
+        $modal.on("click", ".csk-effect-remove", (evt) => {
+            $(evt.currentTarget).closest(".csk-effect-row").remove();
+        });
+
+        // Close on ✕, CANCEL, or backdrop click (not when clicking inside the window).
+        $modal.find(".csk-modal-close, .csk-create-cancel").on("click", () => {
+            playSfx(getSfx().click);
+            closeModal();
+        });
+        $modal.on("click", (e) => {
+            if (e.target === $modal[0]) closeModal();
+        });
+
+        $modal.find(".csk-create-submit").on("click", () => {
+            const name = $panel.find(".csk-name").val().trim();
+            const effects = $panel.find(".csk-effects-list .csk-effect-row").map((_, row) => {
+                const $r = $(row);
+                return { parameter: $r.find(".csk-effect-param").val(), valueType: $r.find(".csk-effect-type").val(), value: Number($r.find(".csk-effect-value").val()) };
+            }).get();
+            if (!name) { $modal.find("#csk-create-status").text("NAME IS REQUIRED."); $panel.find(".csk-name").focus(); return; }
+            if (!effects.length) {
+                $modal.find("#csk-create-status").text("ADD AT LEAST ONE EFFECT.");
+                $panel.find(".csk-effects-list").addClass("csk-invalid");
+                return;
+            }
+
+            createCustomSkill({
+                name,
+                rarity: $panel.find(".csk-rarity").val(),
+                description: $panel.find(".csk-desc").val(),
+                cost: $panel.find(".csk-cost").val(),
+                skillPointCost: $panel.find(".csk-sp").val(),
+                effects,
+            });
+            playSfx(getSfx().click);
+            closeModal();
+            renderSkillsItemsPanel();
+            renderSkillShopDetails();
+        });
     }
 
     function bindSkillShopButton() {
-        const $button = $("#items-skill-shop-button");
-        if (!$button.length) return;
+        const $shopButton = $("#items-skill-shop-button");
+        if ($shopButton.length) {
+            $shopButton.off("click").on("click", () => {
+                playSfx(getSfx().click);
+                renderSkillShopDetails();
+            });
+        }
 
-        $button.off("click").on("click", () => {
-            playSfx(getSfx().click);
-            renderSkillShopDetails();
-        });
+        const $createButton = $("#items-create-skill-button");
+        if ($createButton.length) {
+            $createButton.off("click").on("click", () => {
+                playSfx(getSfx().click);
+                renderCreateSkillForm();
+            });
+        }
     }
 
 
@@ -1265,7 +1887,7 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         const inventory = extension_settings[extensionName].inventory || {};
         const skillPoints = Number(inventory.skillPoints || 0);
 
-        const ownedSkills = itemCatalog
+        const catalogSkills = itemCatalog
             .filter(item => item.category === "skill" && Number(inventory.skills?.[item.id] || 0) > 0)
             .map(item => ({
                 id: item.id,
@@ -1274,7 +1896,21 @@ export function createItemsPanelController({ extensionName, extension_settings, 
                 effect: item.effect,
                 equipped: isSkillEquipped(item.id),
                 skillPointCost: getSkillPointCost(item.id),
-            }))
+            }));
+
+        const customSkills = Object.entries(inventory.customSkills || {})
+            .filter(([id]) => Number(inventory.skills?.[id] || 0) > 0)
+            .map(([id, data]) => ({
+                id,
+                name: data.name,
+                rarity: data.rarity || "N",
+                effect: summarizeSkillEffects(data.effects) || (data.description || ""),
+                equipped: isSkillEquipped(id),
+                skillPointCost: getSkillPointCost(id),
+                isCustom: !isBaseSkill(id),
+            }));
+
+        const ownedSkills = [...catalogSkills, ...customSkills]
             .sort((a, b) => Number(b.equipped) - Number(a.equipped) || rarityScore(b.rarity) - rarityScore(a.rarity) || a.name.localeCompare(b.name));
 
         return { skillPoints, skills: ownedSkills };
@@ -1389,5 +2025,8 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         getGiftPoolWithCounts,
         createCustomGift,
         removeCustomGift,
+        createCustomSkill,
+        updateCustomSkill,
+        removeCustomSkill,
     };
 }

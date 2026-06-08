@@ -180,6 +180,7 @@ export function createMindMineController({
     let timerInterval  = null;
     let timerLastWall  = null;
     let timeRemaining  = 120000;
+    let penaltyMs      = 10000;  // time lost per isolated-block click (skill-tunable)
     let sentences     = [];
     let sentenceState   = [];   // 'hidden' | 'revealed' | 'collected'
     let sentenceEls     = [];
@@ -273,7 +274,7 @@ export function createMindMineController({
 
     /* ── damage ──────────────────────────────────────────────────────── */
     function applyDamage(cellI) {
-        timeRemaining = Math.max(0, timeRemaining - 10000);
+        timeRemaining = Math.max(0, timeRemaining - penaltyMs);
         updateTimerEl();
         overlay?.classList.add('mm-damage');
         setTimeout(() => overlay?.classList.remove('mm-damage'), 500);
@@ -285,7 +286,7 @@ export function createMindMineController({
             const rect = el.getBoundingClientRect();
             const label = document.createElement('div');
             label.className = 'mm-penalty-label';
-            label.textContent = '-10 sec!';
+            label.textContent = `-${Math.round(penaltyMs / 1000)} sec!`;
             label.style.left = `${rect.left + rect.width / 2}px`;
             label.style.top  = `${rect.top}px`;
             overlay.appendChild(label);
@@ -960,8 +961,11 @@ body.mm-shaking { animation: mmScreenShake 80ms steps(2, end) infinite; }
     }
 
     /* ── public API ──────────────────────────────────────────────────── */
-    function run({ sentences: sArr = [], timeLimit = 120 } = {}) {
+    function run({ sentences: sArr = [], timeLimit = 120, penaltyMs: penaltyArg } = {}) {
         if (isRunning) return;
+
+        // Custom-skill-tunable incorrect-block penalty (default 10 s).
+        penaltyMs = Math.max(0, Number(penaltyArg) || 10000);
 
         sentences = (Array.isArray(sArr) ? sArr : [sArr])
             .map(s => String(s ?? '').trim())

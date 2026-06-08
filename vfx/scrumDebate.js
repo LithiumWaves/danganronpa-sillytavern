@@ -1260,11 +1260,15 @@ export function createScrumDebateController({
         return null;
     }
 
-    async function run({ scenario = SCRUM_DEBATE_DEFAULT_SCENARIO } = {}) {
+    async function run({ scenario = SCRUM_DEBATE_DEFAULT_SCENARIO, timerMs: rawTimerMs, playerHp: rawPlayerHp } = {}) {
         destroy();
 
         const rounds = Array.isArray(scenario?.rounds) ? scenario.rounds : [];
         if (!rounds.length) return false;
+
+        // Custom-skill-tunable parameters (fall back to module defaults).
+        const sdTimerMs = Math.max(1000, Number(rawTimerMs) || SD_TIMER_DURATION_MS);
+        const maxHealth = Math.max(1, Math.round(Number(rawPlayerHp) || 3));
 
         // ── Truth bullets ──────────────────────────────────────────────────
         let bullets = [];
@@ -1498,7 +1502,7 @@ export function createScrumDebateController({
         return new Promise((resolve) => {
             // ── State ──────────────────────────────────────────────────────
             let resolved    = false;
-            let health      = 3;
+            let health      = maxHealth;
             let bulletIdx   = 0;
             let phase       = "debate"; // "debate" | "tug"
             let uiReady     = false;   // true once the intro finishes and the debate UI is visible
@@ -1674,7 +1678,7 @@ export function createScrumDebateController({
             }
 
             // ── UI helpers ─────────────────────────────────────────────────
-            const MAX_HEALTH = 3;
+            const MAX_HEALTH = maxHealth;
             function renderHearts() {
                 if (!hpGaugeEl) return;
                 const pct = Math.max(0, Math.min(100, (health / MAX_HEALTH) * 100));
@@ -2011,7 +2015,7 @@ export function createScrumDebateController({
             // zero so the debateFrame caller can trigger the loss path.
             function updateTimer(nowMs) {
                 if (!timerEl || !sdTimerStartTs) return false;
-                const remaining = Math.max(0, SD_TIMER_DURATION_MS - (nowMs - sdTimerStartTs));
+                const remaining = Math.max(0, sdTimerMs - (nowMs - sdTimerStartTs));
                 const mins   = Math.floor(remaining / 60000);
                 const secs   = Math.floor((remaining % 60000) / 1000);
                 const millis = Math.floor(remaining % 1000);
