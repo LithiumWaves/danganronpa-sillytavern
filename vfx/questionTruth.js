@@ -558,7 +558,7 @@ export function createQuestionTruthController({ extensionFolderPath = '', getTru
         document.getElementById(QTT_STYLE)?.remove();
     }
 
-    async function run({ question, answer, time = 0 }) {
+    async function run({ question, answer, time = 0, playerHp: rawPlayerHp }) {
         destroy();
         ensureNotoSansJP();
 
@@ -572,7 +572,7 @@ export function createQuestionTruthController({ extensionFolderPath = '', getTru
         const hasTimer = time > 0;
         const totalMs  = time * 1000;
 
-        const MAX_HEALTH = 5;
+        const MAX_HEALTH = Math.max(1, Math.round(Number(rawPlayerHp) || 5));
         let health = MAX_HEALTH;
         const heartsMaskUrl = `url("${extensionFolderPath}/assets/classtrial/hearts.svg")`;
         const starsMaskUrl  = `url("${extensionFolderPath}/assets/classtrial/stars.svg")`;

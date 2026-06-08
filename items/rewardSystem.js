@@ -1,4 +1,4 @@
-export function createRewardSystem({ extensionName, extensionFolderPath, extension_settings, saveSettingsDebounced, monocoinRewards, xpRewards, getItemsPanelController, increaseTrust, getCoinLabel = () => 'MONOCOINS' }) {
+export function createRewardSystem({ extensionName, extensionFolderPath, extension_settings, saveSettingsDebounced, monocoinRewards, xpRewards, getItemsPanelController, increaseTrust, getCoinLabel = () => 'MONOCOINS', resolveSkillParam = (_key, amount) => amount }) {
     let monocoinToastTimeout = null;
     let xpPopupTimeout = null;
     let levelUpPopupTimeout = null;
@@ -291,7 +291,7 @@ export function createRewardSystem({ extensionName, extensionFolderPath, extensi
     }
 
     function awardTrustFragments(amount = 0, reason = "") {
-        const reward = Math.max(0, Number(amount || 0));
+        const reward = Math.max(0, Math.round(resolveSkillParam("trustExp", Number(amount || 0))));
         if (!reward) return;
 
         const ext = ensureExtensionState();

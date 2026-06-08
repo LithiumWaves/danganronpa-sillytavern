@@ -109,8 +109,8 @@
     position: absolute;
     left: 0;
     top: 0;
-    width: 120px;
-    height: 120px;
+    width: var(--dangan-reticle-size, 120px);
+    height: var(--dangan-reticle-size, 120px);
     background-image: url('../../../assets/classtrial/trialcursor.png');
     background-size: contain;
     background-repeat: no-repeat;

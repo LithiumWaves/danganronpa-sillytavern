@@ -45,6 +45,8 @@ export function createTrialManager(deps) {
         onStartScrumDebate,
         onStartMindMine,
         getEquippedSkillsSnapshot,
+        resolveSkillParam = (_key, base) => base,
+        rollBiasedEmotion = (emotion) => emotion,
         attachDraggablePositioning,
         applyCustomUiPosition,
         awardXp,
@@ -117,7 +119,11 @@ export function createTrialManager(deps) {
     // never shorter than two minutes; LLM-supplied scenarios may request more.
     function setDebateTimeLimit(ms) {
         const requested = Number(ms);
-        debateTimerDurationMs = Math.max(DEBATE_TIMER_MIN_MS, Number.isFinite(requested) ? requested : 0);
+        const base = Math.max(DEBATE_TIMER_MIN_MS, Number.isFinite(requested) ? requested : 0);
+        // Custom skills may extend/shorten the timer (registry clamps to the 2-min floor).
+        // NSD and MPD have separate skill parameters.
+        const timerKey = currentState === TrialPhases.MASS_PANIC_DEBATE ? 'mpdDebateTimer' : 'debateTimer';
+        debateTimerDurationMs = resolveSkillParam(timerKey, base);
     }
 
     function updateDebateTimer(nowMs) {
@@ -197,8 +203,11 @@ export function createTrialManager(deps) {
     let btConcentrateActive = false;
     let btConcentrateRaf = null;
     let btLastTs = null;
-    const BT_DRAIN_RATE    = 1 / 4;  // full drain in 4 s
-    const BT_RECHARGE_RATE = 1 / 8;  // full refill in 8 s
+    const BT_DRAIN_RATE_BASE    = 1 / 4;  // full drain in 4 s
+    const BT_RECHARGE_RATE_BASE = 1 / 8;  // full refill in 8 s
+    // Custom-skill-tunable rates; re-resolved at each debate start (see refreshDebateSkillState).
+    let BT_DRAIN_RATE    = BT_DRAIN_RATE_BASE;
+    let BT_RECHARGE_RATE = BT_RECHARGE_RATE_BASE;
     let nsdActiveBullets = null;  // filtered bullet list for the current NSD; null = use full list
     let adjacentHideTimer = null;
     let keysPressed = new Set();
@@ -3344,6 +3353,10 @@ ${historyText}
 
         reticleEl = document.createElement('div');
         reticleEl.id = 'dangan-trial-reticle';
+        // Custom-skill-tunable reticle size (CSS var consumed by the stylesheet).
+        // NSD and MPD have separate skill parameters.
+        const reticleSizeKey = currentState === TrialPhases.MASS_PANIC_DEBATE ? 'mpdReticuleSize' : 'reticuleSize';
+        reticleEl.style.setProperty('--dangan-reticle-size', `${resolveSkillParam(reticleSizeKey, 120)}px`);
 
         // Build speedlines overlay
         const slOverlay = document.createElement('div');
@@ -3556,6 +3569,7 @@ ${historyText}
         // weak point under the reticle even when the sway offsets it from the mouse.
         detachReticleSway?.();
         detachReticleSway = attachCursorSway(reticleEl, debateOverlay, {
+            amplitude: resolveSkillParam(currentState === TrialPhases.MASS_PANIC_DEBATE ? 'mpdReticuleSway' : 'reticuleSway', 9),
             onFrame: (sx, sy) => {
                 // The swayed reticle position is the cursor for all gameplay logic:
                 // White-noise hover, space-fire burst origin, MPD column selection,
@@ -3598,6 +3612,12 @@ ${historyText}
         const equipped = typeof getEquippedSkillsSnapshot === 'function' ? getEquippedSkillsSnapshot() : [];
         mpdSkillSeatingPlanCopy = equipped.includes('shop_skill_seating_plan_copy');
         mpdSkillBetaBlock       = equipped.includes('shop_skill_beta_block');
+
+        // Re-resolve custom-skill-tunable truth-bullet rates for this debate run
+        // (NSD and MPD have separate skill parameters).
+        const mpdRates = currentState === TrialPhases.MASS_PANIC_DEBATE;
+        BT_DRAIN_RATE    = resolveSkillParam(mpdRates ? 'mpdBtFireSpeed'   : 'btFireSpeed',   BT_DRAIN_RATE_BASE);
+        BT_RECHARGE_RATE = resolveSkillParam(mpdRates ? 'mpdBtReloadSpeed' : 'btReloadSpeed', BT_RECHARGE_RATE_BASE);
 
         // Seating debug is hidden by default; only revealed when SEATING PLAN COPY is equipped
         const seatingDbgEl = debateOverlay.querySelector('#dangan-seating-debug');
@@ -4599,7 +4619,9 @@ ${historyText}
     async function updateDebatePortraits(speakerName, emotion) {
         const name = String(speakerName || '').trim();
         if (!name) return;
-        const emo = String(emotion || '').trim().toLowerCase() || 'neutral';
+        // Custom-skill emotion bias may substitute a favored emotion before the
+        // sprite + VFX are committed (keeps both coherent in trials).
+        const emo = rollBiasedEmotion(String(emotion || '').trim().toLowerCase() || 'neutral');
 
         const speakerChanged = portraitSpeaker !== name;
         if (!speakerChanged && portraitEmotion === emo) return;
