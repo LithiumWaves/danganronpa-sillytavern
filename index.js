@@ -8371,6 +8371,24 @@ $(".monopad-icon").on("mouseenter", function () {
             if (statusEl) statusEl.textContent = "All characters reset to ???.";
         });
 
+        $("#dangan_clear_trial_context").on("click", async function () {
+            const statusEl = document.getElementById("dangan_clear_trial_context_status");
+            const confirmed = await openMonopadConfirmDialog({
+                title: "CLEAR CLASS TRIAL CONTEXT",
+                message: "Clear this chat's trial debate history, topic, goal, and suspects? An in-progress trial keeps running, but the AI starts from a clean slate.",
+                confirmLabel: "CLEAR",
+                cancelLabel: "CANCEL",
+            });
+            if (!confirmed) {
+                if (statusEl) statusEl.textContent = "Clear cancelled.";
+                return;
+            }
+            const hadContext = trialManager?.clearTrialContext?.();
+            if (statusEl) statusEl.textContent = hadContext === false
+                ? "No trial context to clear."
+                : "Trial context cleared.";
+        });
+
 loadSettings();
 ensureTimeTrackerState();
 renderTimeTrackerUi();
