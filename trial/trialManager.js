@@ -1836,6 +1836,37 @@ ${historyText}
         updateContextPanel();
     }
 
+    // Wipe the accumulated AI context for the current chat/group's trial:
+    // the debate history fed to the model, plus the topic, goal, and suspects.
+    // The trial state (currentTrialState) is intentionally left untouched so a
+    // trial that's already running stays running — this just gives it a clean
+    // slate to continue from. Returns true if anything was actually cleared.
+    function clearTrialContext() {
+        const hadContext = persistentDebateHistory.length > 0
+            || !!trialContext.topic
+            || !!trialContext.goal
+            || trialContext.suspects.length > 0;
+
+        persistentDebateHistory = [];
+        trialContext = { topic: '', goal: '', suspects: [] };
+
+        if (typeof saveSettingsDebounced === 'function') {
+            const key = getTrialPersistenceKey();
+            const saved = extensionSettings[extensionName]?.trials?.[key];
+            if (saved) {
+                saved.persistentDebateHistory = [];
+                saved.trialTopic = '';
+                saved.trialGoal  = '';
+                saveSettingsDebounced();
+            }
+        }
+
+        updateControlPanelTopic();
+        updateContextPanel();
+        console.log('[Dangan][Trial] Cleared trial context for current chat/group.');
+        return hadContext;
+    }
+
     function showPreDebateNotification() {
         if (document.getElementById('dangan-trial-pre-debate-notif')) return;
 
@@ -7800,6 +7831,7 @@ ${contextLines}
         phases: TrialPhases,
         setTrialContext,
         getTrialContext: () => ({ ...trialContext, suspects: trialContext.suspects.slice() }),
+        clearTrialContext,
         endTrial,
         initGroupChatPortraits,
         updateGroupChatSpeaker,
