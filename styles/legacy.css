@@ -1378,6 +1378,16 @@ body.dangan-theme-investigation #dangan_monopad_button {
 .map-pin-edit-input:focus {
     border-color: rgba(100, 180, 255, 0.7);
 }
+.map-pin-edit-hint {
+    font-size: 9px;
+    line-height: 1.4;
+    letter-spacing: 0.02em;
+    color: rgba(160, 195, 245, 0.5);
+}
+.map-pin-edit-hint b {
+    color: rgba(190, 220, 255, 0.8);
+    font-weight: 600;
+}
 .map-pin-edit-conn-search {
     margin-bottom: 4px;
 }

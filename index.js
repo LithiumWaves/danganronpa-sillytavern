@@ -4640,6 +4640,49 @@ function isHalfSpritePath(s) {
     return /-half\.[a-z0-9]+(\?|$)/i.test(String(s?.path || ''));
 }
 
+// Per-location forced outfits. A Location Pin can carry an `outfitPrefix`
+// (e.g. "pool-"); while the scene's current location is that pin, sprite
+// lookups try `<prefix><emotion>` first (pool-neutral, pool-love, …) so a
+// character is "forced" into that outfit. Characters lacking the prefixed
+// sprite simply fall back to their normal one (see callers below).
+function getActiveOutfitPrefix() {
+    try {
+        const id = getCurrentLocationId();
+        if (!id) return '';
+        const pin = mapPanelController?.getPinByLocationId?.(id);
+        return String(pin?.outfitPrefix || '').trim();
+    } catch { return ''; }
+}
+
+// Stem of a sprite's actual filename (path-based), lowercased, no dir/ext/query.
+// Needed because ST's /api/sprites/get collapses the `label` field at the first
+// '-' (see note above isHalfSpritePath), so "pool-neutral.png" reports label
+// "pool" — the only reliable way to match a prefixed outfit is the real filename.
+function spriteFileStem(s) {
+    const base = String(s?.path || '').split('/').pop().split('?')[0];
+    return base.replace(/\.[a-z0-9]+$/i, '').toLowerCase();
+}
+
+// Find a forced-outfit sprite for `<prefix><label>` by exact filename stem.
+// Tries the exact emotion first, then the outfit's neutral (`<prefix>neutral`)
+// so a character keeps the outfit even when they lack that specific emotion's
+// variant — being "forced" into the pool outfit matters more than the exact
+// face. Returns null only when the character has NO outfit sprite at all, which
+// signals the callers to fall back to the normal (un-prefixed) sprite.
+// preferHalf flips the full/-half preference for half-sprite chat mode.
+function pickForcedOutfitSprite(sprites, prefix, label, preferHalf) {
+    const lcLabel = String(label || '').toLowerCase();
+    const tryLabels = lcLabel === 'neutral' ? ['neutral'] : [lcLabel, 'neutral'];
+    for (const lbl of tryLabels) {
+        const want = (String(prefix) + lbl).toLowerCase(); // e.g. "pool-love"
+        const full = sprites.find(s => spriteFileStem(s) === want);
+        const half = sprites.find(s => spriteFileStem(s) === want + '-half');
+        const hit = preferHalf ? (half?.path ?? full?.path) : (full?.path ?? half?.path);
+        if (hit) return hit;
+    }
+    return null;
+}
+
 // Default sprite resolver. Always prefers the FULL sprite over a -half variant
 // — half-sprite mode is a chat-only concern (overworld characters, chapter
 // end rosters, choose-character UI, etc. must always render full body).
@@ -4656,6 +4699,14 @@ async function getSpriteUrl(charName, label = "neutral") {
         const resp = await fetch(`/api/sprites/get?name=${encodeURIComponent(folder)}`);
         if (!resp.ok) return null;
         const sprites = await resp.json();
+        // Forced outfit (per current Location Pin) takes priority. If the
+        // character has no sprite for this outfit/emotion, fall through to the
+        // normal resolution below so they keep their usual sprite.
+        const outfitPrefix = getActiveOutfitPrefix();
+        if (outfitPrefix) {
+            const forced = pickForcedOutfitSprite(sprites, outfitPrefix, label, false);
+            if (forced) return forced;
+        }
         const lcLabel = String(label || '').toLowerCase();
         const matchLabel = (s) => String(s.label || '').toLowerCase() === lcLabel;
         const labelMatches = sprites.filter(matchLabel);
@@ -4706,6 +4757,14 @@ async function getChatSpriteUrl(charName, label = "neutral") {
         const resp = await fetch(`/api/sprites/get?name=${encodeURIComponent(folder)}`);
         if (!resp.ok) return null;
         const sprites = await resp.json();
+        // Forced outfit (per current Location Pin) takes priority — prefer the
+        // -half crop here since this is the half-sprite chat path. Falls through
+        // to the normal chain when the character lacks the outfit sprite.
+        const outfitPrefix = getActiveOutfitPrefix();
+        if (outfitPrefix) {
+            const forced = pickForcedOutfitSprite(sprites, outfitPrefix, label, true);
+            if (forced) return forced;
+        }
         const lcLabel = String(label || '').toLowerCase();
         const matchLabel = (s) => String(s.label || '').toLowerCase() === lcLabel;
         // Fallback chain: <label>-half → <label> → neutral-half → neutral.
@@ -9403,6 +9462,12 @@ STATEMENT: <third statement>`;
             updateSuspectsFromChat();
         });
 
+        // Re-apply forced outfits to the on-screen sprites. Assigned by
+        // setupExpressionMirror below; called after chat entry settles to beat
+        // the entry-time race where ST's clone-swap / overworld expression pass
+        // overwrites our first outfit set. No-op until the mirror is set up.
+        let reapplyOutfitToSprites = () => {};
+
         // On chat change, rebuild the stage (group ↔ 1-on-1 may differ) then snap to latest speaker.
         // Suppress VFX/SFX for the duration of the init + a grace period so the expressions
         // that fire as ST re-renders the chat don't play sounds — then lift automatically.
@@ -9438,6 +9503,12 @@ STATEMENT: <third statement>`;
                 // Grace period for ST's post-load expression updates to settle, then re-enable VFX/SFX.
                 setTimeout(() => setVfxGcpLoadSuppressed(false), 1500);
             }, 300);
+            // Re-apply forced outfits after entry settles — staggered to land after
+            // ST's clone-swap fade (~400ms) and the overworld's 350ms expression
+            // pass, which otherwise overwrite our first-entry outfit set.
+            setTimeout(() => reapplyOutfitToSprites(), 700);
+            setTimeout(() => reapplyOutfitToSprites(), 1400);
+            setTimeout(() => reapplyOutfitToSprites(), 2500);
 
             // Dynamic Audio fires its own CHAT_CHANGED handler and restarts #audio_bgm.
             // If we own the BGM (investigationTrackAudio is active), silence DA's element
@@ -9485,36 +9556,79 @@ STATEMENT: <third statement>`;
         // mirror gets the raw URL from ST's img.expression element, which
         // bypasses getSpriteUrl; this helper applies the same -half
         // preference here. Falls back to the original URL via onerror if the
-        // -half file doesn't exist on the server.
+        // -half file doesn't exist on the server. (Forced-outfit prefixing is
+        // handled separately in onExpressionChange via the sprites API, since
+        // outfit sprites can use a different file extension than the base.)
         function setMirroredSrc(img, src) {
             if (!img || !src) return;
             const halfMode = !!extension_settings[extensionName]?.halfspriteMode;
-            // Class trials never use -half sprites. If the incoming src is
-            // itself a -half URL (shouldn't happen now that getChatSpriteUrl
-            // also gates on trial state, but kept as belt-and-braces) we
-            // rewrite it back to the canonical full sprite.
             if (isTrialUiActive()) {
                 const noHalf = src.replace(/-half(\.[a-z0-9]+)/i, '$1');
                 img.src = noHalf;
                 return;
             }
-            // Already half-prefixed, or not in half mode — set directly.
             if (!halfMode || /-half\.[a-z0-9]+(\?|$)/i.test(src)) {
                 img.src = src;
                 return;
             }
             const halfSrc = src.replace(/(\.[a-z0-9]+)(\?|$)/i, '-half$1$2');
-            // 404 fallback: if the -half file doesn't exist, drop back to the
-            // original full-body sprite. `once: true` so we don't leak handlers.
             const onFail = () => { img.src = src; };
             img.addEventListener('error', onFail, { once: true });
-            // Clear the listener if the half load succeeds (so a later failure
-            // on a different src doesn't accidentally reset to this one).
             img.addEventListener('load', () => {
                 img.removeEventListener('error', onFail);
             }, { once: true });
             img.src = halfSrc;
         }
+
+        // Forced-outfit resolver for the chat/overworld expression image. Given
+        // ST's raw expression `src` (e.g. ".../neutral.png?t=1") and the active
+        // outfit prefix, look up the real outfit file via the sprites API and
+        // set it on `img`. This matches by filename STEM (like getSpriteUrl), so
+        // it finds `pool-neutral.webp` even though the base sprite is a .png —
+        // string-rewriting the URL would wrongly keep the .png extension. Leaves
+        // `img` on its base sprite when the character has no outfit sprite.
+        async function applyOutfitInPlace(img, src, prefix) {
+            let folder = '', label = '';
+            try {
+                const parts = new URL(src, location.href).pathname.split('/').filter(Boolean);
+                folder = decodeURIComponent(parts[parts.length - 2] || '');
+                label = decodeURIComponent(parts[parts.length - 1] || '')
+                    .replace(/\.[^.]+$/, '').replace(/-half$/i, '');
+            } catch { return; }
+            if (!folder || !label) return;
+            let sprites;
+            try {
+                const resp = await fetch(`/api/sprites/get?name=${encodeURIComponent(folder)}`);
+                if (!resp.ok) return;
+                sprites = await resp.json();
+            } catch { return; }
+            const halfMode = !!extension_settings[extensionName]?.halfspriteMode && !isTrialUiActive();
+            const url = pickForcedOutfitSprite(sprites, prefix, label, halfMode);
+            if (window.__DREX_OUTFIT_DEBUG) console.log('[DREX-outfit] applyOutfitInPlace', { folder, label, prefix, resolved: url });
+            // The resolved filename starts with the prefix, so the observer
+            // re-fire it triggers is short-circuited by the guard in onExpressionChange.
+            if (url && img) img.src = url;
+        }
+
+        // Sweep every visible expression sprite and force the active outfit onto
+        // any that aren't already wearing it. Used as an entry-time safety net
+        // (see CHAT_CHANGED) since the live observer can lose the first-entry
+        // race against ST's sprite mount.
+        reapplyOutfitToSprites = () => {
+            const prefix = getActiveOutfitPrefix();
+            if (!prefix) return;
+            const imgs = document.querySelectorAll('#visual-novel-wrapper img.expression, #expression-image, .expression-holder img');
+            const lcPrefix = prefix.toLowerCase();
+            imgs.forEach(img => {
+                const src = img.src;
+                if (!src || src === location.href) return;
+                try {
+                    const fn = decodeURIComponent(new URL(src, location.href).pathname.split('/').pop() || '');
+                    if (fn.toLowerCase().startsWith(lcPrefix)) return; // already wearing the outfit
+                } catch { return; }
+                applyOutfitInPlace(img, src, prefix);
+            });
+        };
 
         function flushExpression() {
             const src = _pendingExprSrc;
@@ -9535,12 +9649,34 @@ STATEMENT: <third statement>`;
             const src = imgEl.src;
             if (!src || src === location.href) return;
 
+            if (window.__DREX_OUTFIT_DEBUG) console.log('[DREX-outfit] onExpressionChange', { src, prefix: getActiveOutfitPrefix(), curLoc: getCurrentLocationId(), cls: imgEl.className, id: imgEl.id, parent: imgEl.parentElement?.className });
+
+            // Forced-outfit recursion guard: ST only ever emits base emotion
+            // filenames (neutral.png, surprised.png …). A "<prefix>…" filename
+            // can only be our own in-place rewrite below, re-firing the observer
+            // — skip it (the visible sprite is set; mirror/VFX already ran).
+            const activeOutfit = getActiveOutfitPrefix();
+            if (activeOutfit) {
+                try {
+                    const fn = decodeURIComponent(new URL(src, location.href).pathname.split('/').pop() || '');
+                    if (fn.toLowerCase().startsWith(activeOutfit.toLowerCase())) return;
+                } catch { /* ignore bad src */ }
+            }
+
             // Prome user sprite → player slot
             if (imgEl.closest?.('#expression-prome-user')) {
                 const playerImg = trialManager?.getGcpPlayerImg?.();
                 if (playerImg) setMirroredSrc(playerImg, src);
                 return;
             }
+
+            // Force the per-location outfit onto the ST-managed expression image
+            // ITSELF (the on-screen chat / overworld conversation sprite). In plain
+            // chat / overworld this element IS what's visible and nothing else
+            // rewrites it. Resolved via the sprites API (handles a differing file
+            // extension, e.g. base neutral.png vs pool-neutral.webp); the resulting
+            // prefixed src re-fires the observer and is caught by the guard above.
+            if (activeOutfit) applyOutfitInPlace(imgEl, src, activeOutfit);
 
             // Group chat: match to the specific character's slot by URL folder.
             // We fire VFX/SFX here directly via triggerVfxOnElement so that:
