@@ -1762,6 +1762,11 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                             </div>
                         </div>
                         <div class="map-pin-edit-field">
+                            <div class="map-pin-edit-label">FORCED OUTFIT</div>
+                            <input type="text" class="map-pin-edit-input map-pin-edit-outfit" value="${escapeHtml(pin.outfitPrefix || '')}" maxlength="40" placeholder="e.g. pool-" autocomplete="off" />
+                            <div class="map-pin-edit-hint">Forces character sprites to this outfit while the scene is here. Type the sprite prefix <b>including the trailing hyphen</b> — e.g. <b>pool-</b> pulls pool-neutral, pool-love, pool-grief. Characters without these sprites keep their normal ones.</div>
+                        </div>
+                        <div class="map-pin-edit-field">
                             <div class="map-pin-edit-label">CONNECTED TO</div>
                             <input type="text" class="map-pin-edit-input map-pin-edit-conn-search" placeholder="Search…" autocomplete="off" />
                             <div class="map-pin-edit-conn-list">
@@ -1868,6 +1873,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                 }
                 pin.bg = String($modal.find(".map-pin-edit-bg-btn").attr('data-bg') || '');
                 pin.bgm = String($modal.find(".map-pin-edit-bgm-btn").attr('data-bgm') || '');
+                pin.outfitPrefix = String($modal.find(".map-pin-edit-outfit").val() || '').trim();
                 pin.connectedTo = $modal.find(".map-pin-edit-conn:checked").map(function () { return this.value; }).get();
                 saveCustomPins();
                 $modal.remove();
