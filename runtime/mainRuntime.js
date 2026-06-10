@@ -4424,7 +4424,7 @@ $(".monopad-icon").on("mouseenter", function () {
 
         $("#dangan_nsd_line_source").on("change", function () {
             const nextSource = String(this.value || "").trim();
-            const normalizedSource = ["default", "main", "openrouter"].includes(nextSource)
+            const normalizedSource = ["main", "openrouter"].includes(nextSource)
                 ? nextSource
                 : defaultSettings.nsdLineSource;
             setMonopadSetting("nsdLineSource", normalizedSource);
@@ -4434,7 +4434,7 @@ $(".monopad-icon").on("mouseenter", function () {
 
         $("#dangan_mpd_line_source").on("change", function () {
             const nextSource = String(this.value || "").trim();
-            const normalizedSource = ["default", "main", "openrouter"].includes(nextSource)
+            const normalizedSource = ["main", "openrouter"].includes(nextSource)
                 ? nextSource
                 : defaultSettings.mpdLineSource;
             setMonopadSetting("mpdLineSource", normalizedSource);

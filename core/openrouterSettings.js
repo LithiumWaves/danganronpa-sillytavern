@@ -23,12 +23,12 @@ export function createOpenRouterSettingsManager({ extensionName, extension_setti
             settingsChanged = true;
         }
 
-        if (!hadNsdLineSource || !["default", "main", "openrouter"].includes(extension_settings[extensionName].nsdLineSource)) {
+        if (!hadNsdLineSource || !["main", "openrouter"].includes(extension_settings[extensionName].nsdLineSource)) {
             extension_settings[extensionName].nsdLineSource = generationProvider;
             settingsChanged = true;
         }
 
-        if (!hadMpdLineSource || !["default", "main", "openrouter"].includes(extension_settings[extensionName].mpdLineSource)) {
+        if (!hadMpdLineSource || !["main", "openrouter"].includes(extension_settings[extensionName].mpdLineSource)) {
             extension_settings[extensionName].mpdLineSource = generationProvider;
             settingsChanged = true;
         }

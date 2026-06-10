@@ -1,7 +1,6 @@
 // trial/trialManager.js
 
 import { attachCursorSway } from "../vfx/cursorSway.js";
-import { MPD_TEST_SCENARIOS } from "../vfx/massPanicDebate.js";
 
 export const TrialPhases = {
     IDLE: 'idle',
@@ -352,21 +351,6 @@ export function createTrialManager(deps) {
         ["This is impossible...", "What if they're right?!", "I don't want to hear this!", "That's not fair!"],
     ];
 
-    const PREWRITTEN_NSD_LINE_POOL = [
-        "There's no way anyone could have entered the room without a key!",
-        "The [[security footage]] clearly shows the door was locked all night.",
-        "I was with someone the entire time — I have a perfect alibi!",
-        "None of you were even near the scene when it happened...",
-        "The [[evidence]] you're pointing to doesn't prove anything at all!",
-        "That's a complete lie and you know it!",
-        "The [[time of death]] throws your whole argument into chaos!",
-        "There were two sets of footprints leading away from the scene.",
-        "The [[weapon]] was moved after the murder, wasn't it?!",
-        "Someone in this room is hiding a crucial piece of the truth!",
-        "Your [[alibi]] falls apart the second we compare the timestamps.",
-        "The locked room only matters if we ignore what happened before dawn!",
-    ];
-
     function normalizeGenerationSource(value) {
         const normalized = String(value || '').trim().toLowerCase();
         return normalized === 'default' || normalized === 'main' || normalized === 'openrouter'
@@ -382,15 +366,19 @@ export function createTrialManager(deps) {
     }
 
     function getNsdLineSource() {
-        return normalizeGenerationSource(extensionSettings?.[extensionName]?.nsdLineSource)
-            || normalizeGenerationSource(extensionSettings?.[extensionName]?.generationProvider)
-            || 'main';
+        const configuredSource = normalizeGenerationSource(extensionSettings?.[extensionName]?.nsdLineSource);
+        if (configuredSource === 'openrouter') return 'openrouter';
+        return normalizeGenerationSource(extensionSettings?.[extensionName]?.generationProvider) === 'openrouter'
+            ? 'openrouter'
+            : 'main';
     }
 
     function getMpdLineSource() {
-        return normalizeGenerationSource(extensionSettings?.[extensionName]?.mpdLineSource)
-            || normalizeGenerationSource(extensionSettings?.[extensionName]?.generationProvider)
-            || 'main';
+        const configuredSource = normalizeGenerationSource(extensionSettings?.[extensionName]?.mpdLineSource);
+        if (configuredSource === 'openrouter') return 'openrouter';
+        return normalizeGenerationSource(extensionSettings?.[extensionName]?.generationProvider) === 'openrouter'
+            ? 'openrouter'
+            : 'main';
     }
 
     function hashWhiteNoiseSeed(value) {
@@ -436,27 +424,6 @@ export function createTrialManager(deps) {
             : (generateTrialDialogueWithMainApi || generateTrialDialogue);
         if (typeof generator !== 'function') return null;
         return generator(prompt, options);
-    }
-
-    function getPrewrittenNsdStatement({ sectionIndex, sectionsCount, speakerName }) {
-        const seed = `${speakerName}|${sectionIndex}|${sectionsCount}|${persistentDebateHistory.join('|')}`;
-        const raw = PREWRITTEN_NSD_LINE_POOL[hashWhiteNoiseSeed(seed) % PREWRITTEN_NSD_LINE_POOL.length] || '...';
-        return ensureSingleWeakPointMarker(raw);
-    }
-
-    function getPrewrittenMpdScenarioLines({ weakColumn, speakerTrio, scenarioIndex, scenarioCount }) {
-        const seed = `${speakerTrio.map(s => s?.name || '').join('|')}|${scenarioIndex}|${scenarioCount}|${persistentDebateHistory.join('|')}`;
-        const sourceScenario = MPD_TEST_SCENARIOS[hashWhiteNoiseSeed(seed) % MPD_TEST_SCENARIOS.length];
-        const sourceLines = Array.isArray(sourceScenario?.texts)
-            ? sourceScenario.texts.map(entry => extractDialogueOnly(entry?.text) || stripSurroundingQuotes(String(entry?.text || '').replace(/\[\[/g, '').replace(/\]\]/g, '')))
-            : [];
-        if (sourceLines.length !== 3 || sourceLines.some(line => !line)) return null;
-
-        const sourceWeakColumn = Math.max(0, sourceScenario.texts.findIndex(entry => /\[\[.*?\]\]/.test(String(entry?.text || ''))));
-        const rotation = (weakColumn - sourceWeakColumn + sourceLines.length) % sourceLines.length;
-        const rotated = sourceLines.map((_, index) => sourceLines[(index - rotation + sourceLines.length) % sourceLines.length]);
-
-        return rotated.map((line, index) => index === weakColumn ? `"[[${line}]]"` : `"${line}"`);
     }
 
     function parseMpdScenarios(rawScenarios) {
@@ -6240,9 +6207,6 @@ JUDGMENT RULES:
 
     async function generateSectionStatement({ speakerName, debateSoFarText, context, sectionIndex, sectionsCount }) {
         const nsdLineSource = getNsdLineSource();
-        if (nsdLineSource === 'default') {
-            return getPrewrittenNsdStatement({ sectionIndex, sectionsCount, speakerName });
-        }
 
         const contextLines = context
             .slice(-14)
@@ -6467,9 +6431,6 @@ Rules:
     // weakColumn slot gets wrapped in [[…]] so it's flagged as the weak spot.
     async function generateMpdScenarioStatements({ speakerTrio, weakColumn, debateSoFarText, context, scenarioIndex, scenarioCount }) {
         const mpdLineSource = getMpdLineSource();
-        if (mpdLineSource === 'default') {
-            return getPrewrittenMpdScenarioLines({ weakColumn, speakerTrio, scenarioIndex, scenarioCount });
-        }
 
         const contextLines = context
             .slice(-12)
