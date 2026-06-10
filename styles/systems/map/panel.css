@@ -1784,6 +1784,11 @@ body.dangan-trial-vn-chat-hidden #chat {
     font-family: "Orbitron", "Rajdhani", monospace;
 }
 
+.dangan-vn-manage-chat-files {
+    padding: 0 9px;
+    font-family: "Orbitron", "Rajdhani", monospace;
+}
+
 .dangan-vn-frame.move-unlocked {
     cursor: move;
 }

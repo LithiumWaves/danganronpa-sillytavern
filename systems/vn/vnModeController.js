@@ -181,6 +181,7 @@ function createVnModeController() {
         <div class="dangan-vn-frame" role="dialog" aria-live="polite" aria-label="Dangan Visual Novel dialogue">
             <div class="dangan-vn-controls">
                 <button type="button" class="dangan-vn-control dangan-vn-transcript-toggle" id="dangan-vn-transcript-toggle" aria-label="Open transcript" title="Open transcript">TRANSCRIPT</button>
+                <button type="button" class="dangan-vn-control dangan-vn-manage-chat-files" id="dangan-vn-manage-chat-files" aria-label="Manage chat files" title="Manage chat files">FILES</button>
                 <button type="button" class="dangan-vn-control dangan-vn-clear-chat" id="dangan-vn-clear-chat" aria-label="Clear all chat messages" title="Clear all chat messages">🗑️</button>
                 <button type="button" class="dangan-vn-control dangan-vn-lock" id="dangan-vn-lock" aria-label="Unlock Visual Novel box movement" title="Unlock Visual Novel box movement">🔒</button>
             </div>
@@ -215,6 +216,7 @@ function createVnModeController() {
     const lockBtnEl = host.querySelector('#dangan-vn-lock');
     const clearChatBtnEl = host.querySelector('#dangan-vn-clear-chat');
     const transcriptToggleEl = host.querySelector('#dangan-vn-transcript-toggle');
+    const manageChatFilesBtnEl = host.querySelector('#dangan-vn-manage-chat-files');
     const transcriptEl = host.querySelector('#dangan-vn-transcript');
     const transcriptCloseEl = host.querySelector('#dangan-vn-transcript-close');
     const transcriptBodyEl = host.querySelector('#dangan-vn-transcript-body');
@@ -401,6 +403,38 @@ function createVnModeController() {
         if (transcriptOpen) {
             renderTranscript();
         }
+    }
+
+    function getManageChatFilesControl() {
+        const directMatch = document.getElementById('option_select_chat');
+        if (directMatch && !directMatch.closest('#dangan-vn-overlay')) return directMatch;
+
+        const controls = Array.from(document.querySelectorAll('button, .menu_button, [role="button"], a'));
+        for (const control of controls) {
+            if (!(control instanceof Element)) continue;
+            if (control.closest('#dangan-vn-overlay')) continue;
+            const label = `${control.getAttribute('aria-label') || ''} ${control.getAttribute('title') || ''} ${control.textContent || ''}`.toLowerCase();
+            if (!label.includes('manage chat files')) continue;
+            if (!isElementVisible(control)) continue;
+            return control;
+        }
+
+        return null;
+    }
+
+    function openManageChatFiles() {
+        const control = getManageChatFilesControl();
+        if (!control) return false;
+        if (window.$) {
+            window.$(control).trigger('click');
+            return true;
+        }
+        if (typeof control.click === 'function') {
+            control.click();
+            return true;
+        }
+        control.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        return true;
     }
 
     function updateBottomOffset() {
@@ -850,6 +884,12 @@ function createVnModeController() {
         setTranscriptOpen(false);
     });
 
+    manageChatFilesBtnEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openManageChatFiles();
+    });
+
     prevBtnEl?.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -881,6 +921,7 @@ function createVnModeController() {
         const target = event.target;
         if (target instanceof Element && target.closest('.dangan-vn-lock')) return;
         if (target instanceof Element && target.closest('.dangan-vn-clear-chat')) return;
+        if (target instanceof Element && target.closest('.dangan-vn-manage-chat-files')) return;
 
         isDragging = true;
         movedDuringPointer = false;
@@ -929,6 +970,7 @@ function createVnModeController() {
         if (target instanceof Element && target.closest('.dangan-vn-lock')) return;
         if (target instanceof Element && target.closest('.dangan-vn-clear-chat')) return;
         if (target instanceof Element && target.closest('.dangan-vn-transcript-toggle')) return;
+        if (target instanceof Element && target.closest('.dangan-vn-manage-chat-files')) return;
         if (target instanceof Element && target.closest('.dangan-vn-nav-button')) return;
         advance();
     });

@@ -8688,6 +8688,12 @@ body.dangan-trial-vn-chat-hidden #chat {
     letter-spacing: 0.06em;
 }
 
+.dangan-vn-manage-chat-files {
+    padding: 0 9px;
+    font-family: "Orbitron", "Rajdhani", monospace;
+    letter-spacing: 0.06em;
+}
+
 .dangan-vn-stream-toggle {
     padding: 0 8px;
     font-family: "Orbitron", "Rajdhani", monospace;
