@@ -74,6 +74,9 @@ export const defaultSettings = {
     whiteNoiseLineSource: "main",
     nsdLineSource: "main",
     mpdLineSource: "main",
+    whiteNoisePromptTemplate: "",
+    nsdPromptTemplate: "",
+    mpdPromptTemplate: "",
     talentImagesForAnalysis: false,
     monopadButtonEnabled: true,
     welcomeSeen: false,
@@ -115,6 +118,66 @@ export const defaultSettings = {
         phase: "day",
         dayActionUsed: false,
     },
+};
+
+export const DEFAULT_TRIAL_PROMPT_TEMPLATES = {
+    nsd: `You are {{speakerName}}.
+
+Write the next spoken line for a Danganronpa-style Non-stop Debate.
+
+Rules:
+- Stay fully in character.
+- Output ONLY spoken dialogue in double quotes.
+- No narration, no actions, no inner thoughts.
+- 1-2 sentences.
+- Use facts and implications from the context.
+- Your line should respond naturally to what others have said so far.
+- Inside the quotes, you MUST mark EXACTLY ONE weak point (a contradiction or key claim) using [[WEAK POINT]] format.
+- Example: "The [[locked door]] proves that the killer must still be inside this very room!"
+- The weak point should be short: 1-3 words.
+- No other markup and no speaker labels.
+
+MARKER: {{debateMarker}}
+
+CHARACTER DATA:
+{{sourceText}}
+
+DEBATE SO FAR (most recent lines):
+{{debateSoFarText}}
+
+RECENT CONTEXT:
+{{contextLines}}
+
+SECTION: {{sectionNumber}} / {{sectionsCount}}`,
+    whiteNoise: `You are generating background crowd noise for a Danganronpa-style class trial.
+The following statement was just made:
+"{{statement}}"
+
+Write exactly 4 short, raw reactions from {{nameList}} watching the debate.
+Rules:
+- Each reaction is 2-7 words. No names, no punctuation beyond ! ? ... or -
+- Make them varied: shocked, dismissive, panicked, muttering, angry, etc.
+- Output EXACTLY 4 lines, one reaction per line. Nothing else.`,
+    mpd: `You are scripting a Danganronpa-style Mass Panic Debate. Three students shout over each other simultaneously - one of them lets slip the weak point that drives the debate.
+
+SCENARIO {{scenarioNumber}} / {{scenarioCount}}
+
+SPEAKERS (left -> right column order):
+{{speakerList}}
+
+Rules:
+- Output EXACTLY 3 lines, one per column in order, no labels, no numbering, no blank lines.
+- Each line is a single spoken sentence (6-18 words), in double quotes.
+- Stay in character for each speaker. Lines should feel like they're being shouted simultaneously - overlapping accusations, panic, deflection.
+- Column {{weakColumnNumber}}'s line is the WEAK POINT. Wrap its FULL sentence (inside the quotes) in [[double brackets]]. Example: "[[The locked door proves the killer is still in this room!]]"
+- The other two lines must NOT contain [[...]] markers.
+- No narration, no actions, no inner thoughts, no speaker labels.
+
+DEBATE SO FAR (most recent lines):
+{{debateSoFarText}}
+
+RECENT CHAT CONTEXT:
+{{contextLines}}`,
 };
 
 export const REWARD_DIFFICULTY_LABELS = {

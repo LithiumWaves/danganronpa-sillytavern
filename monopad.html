@@ -1054,6 +1054,39 @@
                     </select>
                 </div>
                 <div class="settings-note">Secondary API uses the OpenRouter model and key configured in AI Generation.</div>
+
+                <details class="settings-prompt-editor">
+                    <summary class="settings-prompt-summary">EDIT WHITE NOISE PROMPT</summary>
+                    <div class="settings-prompt-body">
+                        <div class="settings-prompt-help">Placeholders: <code>{{statement}}</code>, <code>{{nameList}}</code></div>
+                        <textarea id="dangan_white_noise_prompt_template" class="settings-prompt-textarea" data-setting="whiteNoisePromptTemplate" data-template-key="whiteNoise" rows="11" spellcheck="false"></textarea>
+                        <div class="settings-prompt-actions">
+                            <button type="button" class="settings-small-button settings-prompt-reset" data-setting="whiteNoisePromptTemplate" data-template-key="whiteNoise">RESET TO DEFAULT</button>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="settings-prompt-editor">
+                    <summary class="settings-prompt-summary">EDIT NON-STOP DEBATE PROMPT</summary>
+                    <div class="settings-prompt-body">
+                        <div class="settings-prompt-help">Placeholders: <code>{{speakerName}}</code>, <code>{{debateMarker}}</code>, <code>{{sourceText}}</code>, <code>{{debateSoFarText}}</code>, <code>{{contextLines}}</code>, <code>{{sectionNumber}}</code>, <code>{{sectionsCount}}</code></div>
+                        <textarea id="dangan_nsd_prompt_template" class="settings-prompt-textarea" data-setting="nsdPromptTemplate" data-template-key="nsd" rows="18" spellcheck="false"></textarea>
+                        <div class="settings-prompt-actions">
+                            <button type="button" class="settings-small-button settings-prompt-reset" data-setting="nsdPromptTemplate" data-template-key="nsd">RESET TO DEFAULT</button>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="settings-prompt-editor">
+                    <summary class="settings-prompt-summary">EDIT MASS PANIC DEBATE PROMPT</summary>
+                    <div class="settings-prompt-body">
+                        <div class="settings-prompt-help">Placeholders: <code>{{scenarioNumber}}</code>, <code>{{scenarioCount}}</code>, <code>{{speakerList}}</code>, <code>{{weakColumnNumber}}</code>, <code>{{debateSoFarText}}</code>, <code>{{contextLines}}</code></div>
+                        <textarea id="dangan_mpd_prompt_template" class="settings-prompt-textarea" data-setting="mpdPromptTemplate" data-template-key="mpd" rows="17" spellcheck="false"></textarea>
+                        <div class="settings-prompt-actions">
+                            <button type="button" class="settings-small-button settings-prompt-reset" data-setting="mpdPromptTemplate" data-template-key="mpd">RESET TO DEFAULT</button>
+                        </div>
+                    </div>
+                </details>
             </section>
 
         </div>
