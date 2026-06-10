@@ -2589,6 +2589,16 @@ function applySettingsTabUI() {
         whiteNoiseSourceSelect.value = tab.whiteNoiseLineSource || defaultSettings.whiteNoiseLineSource;
     }
 
+    const nsdLineSourceSelect = document.getElementById("dangan_nsd_line_source");
+    if (nsdLineSourceSelect) {
+        nsdLineSourceSelect.value = tab.nsdLineSource || defaultSettings.nsdLineSource;
+    }
+
+    const mpdLineSourceSelect = document.getElementById("dangan_mpd_line_source");
+    if (mpdLineSourceSelect) {
+        mpdLineSourceSelect.value = tab.mpdLineSource || defaultSettings.mpdLineSource;
+    }
+
     const rewardDifficultySelect = document.getElementById("dangan_reward_difficulty");
     if (rewardDifficultySelect) {
         rewardDifficultySelect.value = clampRewardDifficulty(tab.rewardDifficulty || defaultSettings.rewardDifficulty);
@@ -2629,7 +2639,9 @@ function applySettingsTabUI() {
 
     const showOpenRouterControls =
         (providerSelect?.value || tab.generationProvider) === "openrouter" ||
-        (whiteNoiseSourceSelect?.value || tab.whiteNoiseLineSource) === "openrouter";
+        (whiteNoiseSourceSelect?.value || tab.whiteNoiseLineSource) === "openrouter" ||
+        (nsdLineSourceSelect?.value || tab.nsdLineSource) === "openrouter" ||
+        (mpdLineSourceSelect?.value || tab.mpdLineSource) === "openrouter";
     document.querySelectorAll(".settings-openrouter-only").forEach(el => {
         el.classList.toggle("is-hidden", !showOpenRouterControls);
     });
@@ -4406,6 +4418,26 @@ $(".monopad-icon").on("mouseenter", function () {
                 ? nextSource
                 : defaultSettings.whiteNoiseLineSource;
             setMonopadSetting("whiteNoiseLineSource", normalizedSource);
+            applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
+        });
+
+        $("#dangan_nsd_line_source").on("change", function () {
+            const nextSource = String(this.value || "").trim();
+            const normalizedSource = ["default", "main", "openrouter"].includes(nextSource)
+                ? nextSource
+                : defaultSettings.nsdLineSource;
+            setMonopadSetting("nsdLineSource", normalizedSource);
+            applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
+        });
+
+        $("#dangan_mpd_line_source").on("change", function () {
+            const nextSource = String(this.value || "").trim();
+            const normalizedSource = ["default", "main", "openrouter"].includes(nextSource)
+                ? nextSource
+                : defaultSettings.mpdLineSource;
+            setMonopadSetting("mpdLineSource", normalizedSource);
             applySettingsTabUI();
             mapPanelController?.handleSettingsChanged?.();
         });

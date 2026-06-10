@@ -1,6 +1,7 @@
 // trial/trialManager.js
 
 import { attachCursorSway } from "../vfx/cursorSway.js";
+import { MPD_TEST_SCENARIOS } from "../vfx/massPanicDebate.js";
 
 export const TrialPhases = {
     IDLE: 'idle',
@@ -351,17 +352,45 @@ export function createTrialManager(deps) {
         ["This is impossible...", "What if they're right?!", "I don't want to hear this!", "That's not fair!"],
     ];
 
+    const PREWRITTEN_NSD_LINE_POOL = [
+        "There's no way anyone could have entered the room without a key!",
+        "The [[security footage]] clearly shows the door was locked all night.",
+        "I was with someone the entire time — I have a perfect alibi!",
+        "None of you were even near the scene when it happened...",
+        "The [[evidence]] you're pointing to doesn't prove anything at all!",
+        "That's a complete lie and you know it!",
+        "The [[time of death]] throws your whole argument into chaos!",
+        "There were two sets of footprints leading away from the scene.",
+        "The [[weapon]] was moved after the murder, wasn't it?!",
+        "Someone in this room is hiding a crucial piece of the truth!",
+        "Your [[alibi]] falls apart the second we compare the timestamps.",
+        "The locked room only matters if we ignore what happened before dawn!",
+    ];
+
+    function normalizeGenerationSource(value) {
+        const normalized = String(value || '').trim().toLowerCase();
+        return normalized === 'default' || normalized === 'main' || normalized === 'openrouter'
+            ? normalized
+            : '';
+    }
+
     function getWhiteNoiseLineSource() {
-        const configuredSource = String(extensionSettings?.[extensionName]?.whiteNoiseLineSource || '').trim().toLowerCase();
-        if (configuredSource === 'default' || configuredSource === 'main' || configuredSource === 'openrouter') {
-            return configuredSource;
-        }
+        const configuredSource = normalizeGenerationSource(extensionSettings?.[extensionName]?.whiteNoiseLineSource);
+        if (configuredSource) return configuredSource;
+        if (extensionSettings?.[extensionName]?.whiteNoiseGenerationEnabled === false) return 'default';
+        return normalizeGenerationSource(extensionSettings?.[extensionName]?.generationProvider) || 'main';
+    }
 
-        const legacyToggle = extensionSettings?.[extensionName]?.whiteNoiseGenerationEnabled;
-        if (legacyToggle === false) return 'default';
+    function getNsdLineSource() {
+        return normalizeGenerationSource(extensionSettings?.[extensionName]?.nsdLineSource)
+            || normalizeGenerationSource(extensionSettings?.[extensionName]?.generationProvider)
+            || 'main';
+    }
 
-        const generationProvider = String(extensionSettings?.[extensionName]?.generationProvider || 'main').trim().toLowerCase();
-        return generationProvider === 'openrouter' ? 'openrouter' : 'main';
+    function getMpdLineSource() {
+        return normalizeGenerationSource(extensionSettings?.[extensionName]?.mpdLineSource)
+            || normalizeGenerationSource(extensionSettings?.[extensionName]?.generationProvider)
+            || 'main';
     }
 
     function hashWhiteNoiseSeed(value) {
@@ -398,6 +427,36 @@ export function createTrialManager(deps) {
 
         if (typeof generator !== 'function') return null;
         return generator(prompt, options);
+    }
+
+    async function generateDebateWithConfiguredSource(source, prompt, options) {
+        if (source === 'default') return null;
+        const generator = source === 'openrouter'
+            ? generateTrialDialogueWithOpenRouter
+            : (generateTrialDialogueWithMainApi || generateTrialDialogue);
+        if (typeof generator !== 'function') return null;
+        return generator(prompt, options);
+    }
+
+    function getPrewrittenNsdStatement({ sectionIndex, sectionsCount, speakerName }) {
+        const seed = `${speakerName}|${sectionIndex}|${sectionsCount}|${persistentDebateHistory.join('|')}`;
+        const raw = PREWRITTEN_NSD_LINE_POOL[hashWhiteNoiseSeed(seed) % PREWRITTEN_NSD_LINE_POOL.length] || '...';
+        return ensureSingleWeakPointMarker(raw);
+    }
+
+    function getPrewrittenMpdScenarioLines({ weakColumn, speakerTrio, scenarioIndex, scenarioCount }) {
+        const seed = `${speakerTrio.map(s => s?.name || '').join('|')}|${scenarioIndex}|${scenarioCount}|${persistentDebateHistory.join('|')}`;
+        const sourceScenario = MPD_TEST_SCENARIOS[hashWhiteNoiseSeed(seed) % MPD_TEST_SCENARIOS.length];
+        const sourceLines = Array.isArray(sourceScenario?.texts)
+            ? sourceScenario.texts.map(entry => extractDialogueOnly(entry?.text) || stripSurroundingQuotes(String(entry?.text || '').replace(/\[\[/g, '').replace(/\]\]/g, '')))
+            : [];
+        if (sourceLines.length !== 3 || sourceLines.some(line => !line)) return null;
+
+        const sourceWeakColumn = Math.max(0, sourceScenario.texts.findIndex(entry => /\[\[.*?\]\]/.test(String(entry?.text || ''))));
+        const rotation = (weakColumn - sourceWeakColumn + sourceLines.length) % sourceLines.length;
+        const rotated = sourceLines.map((_, index) => sourceLines[(index - rotation + sourceLines.length) % sourceLines.length]);
+
+        return rotated.map((line, index) => index === weakColumn ? `"[[${line}]]"` : `"${line}"`);
     }
 
     function parseMpdScenarios(rawScenarios) {
@@ -6180,6 +6239,11 @@ JUDGMENT RULES:
     }
 
     async function generateSectionStatement({ speakerName, debateSoFarText, context, sectionIndex, sectionsCount }) {
+        const nsdLineSource = getNsdLineSource();
+        if (nsdLineSource === 'default') {
+            return getPrewrittenNsdStatement({ sectionIndex, sectionsCount, speakerName });
+        }
+
         const contextLines = context
             .slice(-14)
             .map(m => `${m.isUser ? 'YOU' : m.name}: ${m.text}`)
@@ -6223,7 +6287,11 @@ ${contextLines}
 SECTION: ${sectionIndex + 1} / ${sectionsCount}
 `.trim();
 
-        if (typeof generateTrialDialogue !== 'function') {
+        if (
+            typeof generateTrialDialogue !== 'function' &&
+            typeof generateTrialDialogueWithMainApi !== 'function' &&
+            typeof generateTrialDialogueWithOpenRouter !== 'function'
+        ) {
             return ensureSingleWeakPointMarker('...');
         }
 
@@ -6237,7 +6305,7 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
 
         for (let attempt = 0; attempt < 2; attempt++) {
             const out = String(
-                await generateTrialDialogue(prompt, {
+                await generateDebateWithConfiguredSource(nsdLineSource, prompt, {
                     maxTokens: 160,
                     temperature: 0.75 + attempt * 0.1,
                 }) || ''
@@ -6398,6 +6466,11 @@ Rules:
     // One LLM call → 3 simultaneous shouted lines for an MPD scenario; the
     // weakColumn slot gets wrapped in [[…]] so it's flagged as the weak spot.
     async function generateMpdScenarioStatements({ speakerTrio, weakColumn, debateSoFarText, context, scenarioIndex, scenarioCount }) {
+        const mpdLineSource = getMpdLineSource();
+        if (mpdLineSource === 'default') {
+            return getPrewrittenMpdScenarioLines({ weakColumn, speakerTrio, scenarioIndex, scenarioCount });
+        }
+
         const contextLines = context
             .slice(-12)
             .map(m => `${m.isUser ? 'YOU' : m.name}: ${m.text}`)
@@ -6430,11 +6503,15 @@ RECENT CHAT CONTEXT:
 ${contextLines}
 `.trim();
 
-        if (typeof generateTrialDialogue !== 'function') return null;
+        if (
+            typeof generateTrialDialogue !== 'function' &&
+            typeof generateTrialDialogueWithMainApi !== 'function' &&
+            typeof generateTrialDialogueWithOpenRouter !== 'function'
+        ) return null;
 
         for (let attempt = 0; attempt < 2; attempt++) {
             const out = String(
-                await generateTrialDialogue(prompt, {
+                await generateDebateWithConfiguredSource(mpdLineSource, prompt, {
                     maxTokens: 220,
                     temperature: 0.78 + attempt * 0.08,
                 }) || ''

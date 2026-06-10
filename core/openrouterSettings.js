@@ -2,22 +2,35 @@ export function createOpenRouterSettingsManager({ extensionName, extension_setti
     let runtimeOpenRouterApiKey = "";
 
     function loadSettings() {
+        const existingSettings = extension_settings[extensionName] || {};
+        const hadWhiteNoiseLineSource = Object.prototype.hasOwnProperty.call(existingSettings, "whiteNoiseLineSource");
+        const hadNsdLineSource = Object.prototype.hasOwnProperty.call(existingSettings, "nsdLineSource");
+        const hadMpdLineSource = Object.prototype.hasOwnProperty.call(existingSettings, "mpdLineSource");
         extension_settings[extensionName] ||= {};
         extension_settings[extensionName] = {
             ...defaultSettings,
-            ...extension_settings[extensionName]
+            ...existingSettings
         };
 
         extension_settings[extensionName].giftJudgements ||= {};
-        const legacyWhiteNoiseToggle = extension_settings[extensionName].whiteNoiseGenerationEnabled;
-        if (!["default", "main", "openrouter"].includes(extension_settings[extensionName].whiteNoiseLineSource)) {
-            if (legacyWhiteNoiseToggle === false) {
-                extension_settings[extensionName].whiteNoiseLineSource = "default";
-            } else {
-                extension_settings[extensionName].whiteNoiseLineSource =
-                    extension_settings[extensionName].generationProvider === "openrouter" ? "openrouter" : "main";
-            }
-            saveSettingsDebounced();
+        const generationProvider = extension_settings[extensionName].generationProvider === "openrouter" ? "openrouter" : "main";
+        const legacyWhiteNoiseToggle = existingSettings.whiteNoiseGenerationEnabled;
+        let settingsChanged = false;
+
+        if (!hadWhiteNoiseLineSource || !["default", "main", "openrouter"].includes(extension_settings[extensionName].whiteNoiseLineSource)) {
+            extension_settings[extensionName].whiteNoiseLineSource =
+                legacyWhiteNoiseToggle === false ? "default" : generationProvider;
+            settingsChanged = true;
+        }
+
+        if (!hadNsdLineSource || !["default", "main", "openrouter"].includes(extension_settings[extensionName].nsdLineSource)) {
+            extension_settings[extensionName].nsdLineSource = generationProvider;
+            settingsChanged = true;
+        }
+
+        if (!hadMpdLineSource || !["default", "main", "openrouter"].includes(extension_settings[extensionName].mpdLineSource)) {
+            extension_settings[extensionName].mpdLineSource = generationProvider;
+            settingsChanged = true;
         }
 
         const storedLegacyKey = String(extension_settings[extensionName].openrouterApiKey || "").trim();
@@ -26,8 +39,10 @@ export function createOpenRouterSettingsManager({ extensionName, extension_setti
 
         if (!shouldRemember && storedLegacyKey) {
             delete extension_settings[extensionName].openrouterApiKey;
-            saveSettingsDebounced();
+            settingsChanged = true;
         }
+
+        if (settingsChanged) saveSettingsDebounced();
     }
 
     function getMonopadSetting(key) {
