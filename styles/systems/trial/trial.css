@@ -714,8 +714,14 @@ body.dangan-nsd-lie-armed .dangan-tb-bar-bg {
 }
 
 #dangan-load-truth-bullets-btn {
-    background: #2f66ff;
+    display: block;
+    width: 100%;
+    background: rgba(8, 12, 20, 0.92);
     color: white;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
 }
 
 #dangan-start-mpdebate-btn {

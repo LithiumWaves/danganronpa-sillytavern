@@ -510,6 +510,49 @@ body.dangan-trial-active .dgn-controls-grid .dangan-trial-start-btn:active {
     background: rgba(var(--dgn-neon-rgb), 0.32) !important;
 }
 
+body.dangan-trial-active .dgn-controls-footer {
+    margin: 10px -18px -12px;
+    padding: 8px 10px 10px;
+    border-top: 1px solid var(--dgn-neon-faint);
+    background:
+        linear-gradient(180deg, rgba(var(--dgn-neon-rgb), 0.08), rgba(3, 6, 12, 0.78)),
+        rgba(6, 2, 12, 0.62);
+    box-shadow: inset 0 1px 0 rgba(var(--dgn-neon-rgb), 0.08);
+}
+
+body.dangan-trial-active .dgn-controls-footer .dgn-controls-footer-btn {
+    width: 100%;
+    min-height: 30px;
+    background: rgba(4, 6, 12, 0.78) !important;
+    color: var(--dgn-neon) !important;
+    border: 1.5px solid var(--dgn-neon) !important;
+    border-radius: 0 !important;
+    box-shadow:
+        0 0 8px var(--dgn-neon-faint),
+        inset 0 0 12px rgba(var(--dgn-neon-rgb), 0.10);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px !important;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    padding: 8px 10px !important;
+    transition: background 0.15s ease, box-shadow 0.15s ease, color 0.15s ease, transform 0.1s ease;
+}
+
+body.dangan-trial-active .dgn-controls-footer .dgn-controls-footer-btn:hover {
+    background: rgba(var(--dgn-neon-rgb), 0.18) !important;
+    color: #fff !important;
+    box-shadow:
+        0 0 14px var(--dgn-neon),
+        inset 0 0 14px rgba(var(--dgn-neon-rgb), 0.20);
+    transform: translateY(-1px);
+}
+
+body.dangan-trial-active .dgn-controls-footer .dgn-controls-footer-btn:active {
+    transform: translateY(0);
+    background: rgba(var(--dgn-neon-rgb), 0.28) !important;
+}
+
 /* Hide legacy group labels inside neon panel */
 body.dangan-trial-active #dangan-trial-pre-debate-notif .dangan-trial-group-label {
     display: none;

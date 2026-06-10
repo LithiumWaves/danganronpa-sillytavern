@@ -2008,7 +2008,6 @@ ${historyText}
                         </div>
                         <div class="dgn-controls-grid dangan-trial-btn-group--minigames">
                             <button id="dangan-start-nonstop-btn"  class="dangan-trial-start-btn" style="display:none">Start Non-Stop Debate</button>
-                            <button id="dangan-load-truth-bullets-btn" class="dangan-trial-start-btn" style="display:none" type="button" aria-label="Load Truth Bullets">Load Truth Bullets</button>
                             <button id="dangan-start-hangman-btn"  class="dangan-trial-start-btn" style="display:none">Start Hangman's Gambit</button>
                             <button id="dangan-start-mpdebate-btn" class="dangan-trial-start-btn" style="display:none">Start Mass Panic Debate</button>
                             <button id="dangan-start-rebuttal-btn" class="dangan-trial-start-btn" style="display:none">Start Rebuttal Showdown</button>
@@ -2022,6 +2021,9 @@ ${historyText}
                             <button id="dangan-start-voting-btn"     class="dangan-trial-start-btn" style="display:none">Start Voting Time</button>
                             <button id="dangan-start-punishment-btn" class="dangan-trial-start-btn" style="display:none">Start Punishment Time</button>
                             <button id="dangan-start-showcg-btn"     class="dangan-trial-start-btn" style="display:none">Show CG</button>
+                        </div>
+                        <div class="dgn-controls-footer">
+                            <button id="dangan-load-truth-bullets-btn" class="dangan-trial-start-btn dgn-controls-footer-btn" style="display:none" type="button" aria-label="Load Truth Bullets">Load Truth Bullets</button>
                         </div>
                     </div>
                     ${isGroupChat() ? `
