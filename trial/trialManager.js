@@ -2008,6 +2008,7 @@ ${historyText}
                         </div>
                         <div class="dgn-controls-grid dangan-trial-btn-group--minigames">
                             <button id="dangan-start-nonstop-btn"  class="dangan-trial-start-btn" style="display:none">Start Non-Stop Debate</button>
+                            <button id="dangan-load-truth-bullets-btn" class="dangan-trial-start-btn" style="display:none" type="button" aria-label="Load Truth Bullets">Load Truth Bullets</button>
                             <button id="dangan-start-hangman-btn"  class="dangan-trial-start-btn" style="display:none">Start Hangman's Gambit</button>
                             <button id="dangan-start-mpdebate-btn" class="dangan-trial-start-btn" style="display:none">Start Mass Panic Debate</button>
                             <button id="dangan-start-rebuttal-btn" class="dangan-trial-start-btn" style="display:none">Start Rebuttal Showdown</button>
@@ -2155,6 +2156,7 @@ ${historyText}
             notification.remove();
             void startNonStopDebate();
         };
+        notification.querySelector('#dangan-load-truth-bullets-btn').onclick = () => {};
         notification.querySelector('#dangan-start-mpdebate-btn').onclick = () => {
             notification.remove();
             void startMassPanicDebateGenerated();
