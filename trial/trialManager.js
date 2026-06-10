@@ -1713,6 +1713,148 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
         document.body.appendChild(modal);
     }
 
+    function getManualDebateTruthBulletIds() {
+        const saved = extensionSettings?.[extensionName]?.manualDebateTruthBulletIds;
+        return Array.isArray(saved) ? saved.filter(id => typeof id === 'string' && id.trim()) : [];
+    }
+
+    function setManualDebateTruthBulletIds(ids) {
+        if (!extensionSettings[extensionName]) extensionSettings[extensionName] = {};
+        extensionSettings[extensionName].manualDebateTruthBulletIds = Array.isArray(ids)
+            ? Array.from(new Set(ids.filter(id => typeof id === 'string' && id.trim())))
+            : [];
+        saveSettingsDebounced?.();
+    }
+
+    function getManualDebateTruthBullets() {
+        const selectedIds = new Set(getManualDebateTruthBulletIds());
+        if (!selectedIds.size) return [];
+        const bullets = getTruthBullets().filter(tb => selectedIds.has(tb?.id));
+        if (bullets.length !== selectedIds.size) {
+            setManualDebateTruthBulletIds(bullets.map(tb => tb.id));
+        }
+        return bullets;
+    }
+
+    function getConfiguredDebateBullets() {
+        const manualBullets = getManualDebateTruthBullets();
+        if (manualBullets.length) return manualBullets;
+
+        const bulletCap = nsdBulletCount(currentDebateSections);
+        return selectNsdBullets(preparedDebateSections || [], bulletCap);
+    }
+
+    function showTruthBulletLoadoutModal() {
+        if (document.getElementById('dgn-truth-loadout-modal')) return;
+
+        const bullets = getTruthBullets();
+        const validBulletIds = new Set(bullets.map(tb => tb?.id).filter(Boolean));
+        const savedIds = new Set(getManualDebateTruthBulletIds().filter(id => validBulletIds.has(id)));
+        if (savedIds.size !== getManualDebateTruthBulletIds().length) {
+            setManualDebateTruthBulletIds(Array.from(savedIds));
+        }
+        const modal = document.createElement('div');
+        modal.id = 'dgn-truth-loadout-modal';
+        modal.className = 'dgn-truth-loadout-modal';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+
+        const bulletCards = bullets.length
+            ? bullets.map(tb => `
+                <button
+                    type="button"
+                    class="dgn-truth-loadout-item${savedIds.has(tb.id) ? ' is-selected' : ''}"
+                    data-bullet-id="${escapeHtml(tb.id)}"
+                    aria-pressed="${savedIds.has(tb.id) ? 'true' : 'false'}"
+                >
+                    <span class="dgn-truth-loadout-item-title">${escapeHtml(tb.title || 'Untitled Truth Bullet')}</span>
+                    <span class="dgn-truth-loadout-item-desc">${escapeHtml(tb.description || 'No description logged.')}</span>
+                </button>
+            `).join('')
+            : `<div class="dgn-truth-loadout-empty">No Truth Bullets logged yet. Add some in the Monopad before creating a loadout.</div>`;
+
+        modal.innerHTML = `
+            <div class="dgn-truth-loadout-backdrop"></div>
+            <div class="dgn-truth-loadout-card" role="document">
+                <div class="dgn-truth-loadout-header">
+                    <span>Truth Bullet Loadout</span>
+                    <button type="button" class="dgn-truth-loadout-close" aria-label="Close">✕</button>
+                </div>
+                <div class="dgn-truth-loadout-subhead">
+                    <span class="dgn-truth-loadout-status">Selected ${savedIds.size} of ${bullets.length}</span>
+                    <span class="dgn-truth-loadout-note">Selected bullets will appear in the next NSD or MPD.</span>
+                </div>
+                <div class="dgn-truth-loadout-body">
+                    <div class="dgn-truth-loadout-grid">${bulletCards}</div>
+                </div>
+                <div class="dgn-truth-loadout-actions">
+                    <button type="button" class="dgn-truth-loadout-action" data-action="all">Use All</button>
+                    <button type="button" class="dgn-truth-loadout-action" data-action="clear">Auto Select</button>
+                    <button type="button" class="dgn-truth-loadout-action dgn-truth-loadout-action--primary" data-action="done">Done</button>
+                </div>
+            </div>
+        `;
+
+        const updateSummary = () => {
+            const selectedCount = modal.querySelectorAll('.dgn-truth-loadout-item.is-selected').length;
+            const statusEl = modal.querySelector('.dgn-truth-loadout-status');
+            if (statusEl) statusEl.textContent = `Selected ${selectedCount} of ${bullets.length}`;
+        };
+
+        const syncStoredSelection = () => {
+            const ids = Array.from(modal.querySelectorAll('.dgn-truth-loadout-item.is-selected'))
+                .map(el => el.getAttribute('data-bullet-id'))
+                .filter(Boolean);
+            setManualDebateTruthBulletIds(ids);
+            updateSummary();
+        };
+
+        const close = () => {
+            modal.remove();
+            document.removeEventListener('keydown', onKeydown);
+        };
+
+        const onKeydown = (e) => {
+            if (e.key === 'Escape') close();
+        };
+
+        modal.querySelector('.dgn-truth-loadout-close')?.addEventListener('click', close);
+        modal.querySelector('.dgn-truth-loadout-backdrop')?.addEventListener('click', close);
+        modal.querySelectorAll('.dgn-truth-loadout-item').forEach((item) => {
+            item.addEventListener('click', () => {
+                item.classList.toggle('is-selected');
+                item.setAttribute('aria-pressed', item.classList.contains('is-selected') ? 'true' : 'false');
+                syncStoredSelection();
+            });
+        });
+
+        modal.querySelectorAll('.dgn-truth-loadout-action').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const action = btn.getAttribute('data-action');
+                if (action === 'all') {
+                    modal.querySelectorAll('.dgn-truth-loadout-item').forEach((item) => {
+                        item.classList.add('is-selected');
+                        item.setAttribute('aria-pressed', 'true');
+                    });
+                    syncStoredSelection();
+                    return;
+                }
+                if (action === 'clear') {
+                    modal.querySelectorAll('.dgn-truth-loadout-item').forEach((item) => {
+                        item.classList.remove('is-selected');
+                        item.setAttribute('aria-pressed', 'false');
+                    });
+                    syncStoredSelection();
+                    return;
+                }
+                close();
+            });
+        });
+
+        document.addEventListener('keydown', onKeydown);
+        document.body.appendChild(modal);
+    }
+
     function uninstallBgmAccordion() {
         const wrapper = document.getElementById('dangan-bgm-panel');
         const bgm = document.getElementById('dangan-bgm-display');
@@ -2158,7 +2300,9 @@ ${historyText}
             notification.remove();
             void startNonStopDebate();
         };
-        notification.querySelector('#dangan-load-truth-bullets-btn').onclick = () => {};
+        notification.querySelector('#dangan-load-truth-bullets-btn').onclick = () => {
+            showTruthBulletLoadoutModal();
+        };
         notification.querySelector('#dangan-start-mpdebate-btn').onclick = () => {
             notification.remove();
             void startMassPanicDebateGenerated();
@@ -3745,8 +3889,7 @@ ${historyText}
         };
 
         // Select relevant bullets for this NSD based on section count
-        const bulletCap = nsdBulletCount(currentDebateSections);
-        nsdActiveBullets = selectNsdBullets(preparedDebateSections || [], bulletCap);
+        nsdActiveBullets = getConfiguredDebateBullets();
         selectedTruthBulletIndex = 0;
 
         // Snapshot equipped skills for this entire debate run (covers both NSD and MPD)
