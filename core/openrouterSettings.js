@@ -9,6 +9,16 @@ export function createOpenRouterSettingsManager({ extensionName, extension_setti
         };
 
         extension_settings[extensionName].giftJudgements ||= {};
+        const legacyWhiteNoiseToggle = extension_settings[extensionName].whiteNoiseGenerationEnabled;
+        if (!["default", "main", "openrouter"].includes(extension_settings[extensionName].whiteNoiseLineSource)) {
+            if (legacyWhiteNoiseToggle === false) {
+                extension_settings[extensionName].whiteNoiseLineSource = "default";
+            } else {
+                extension_settings[extensionName].whiteNoiseLineSource =
+                    extension_settings[extensionName].generationProvider === "openrouter" ? "openrouter" : "main";
+            }
+            saveSettingsDebounced();
+        }
 
         const storedLegacyKey = String(extension_settings[extensionName].openrouterApiKey || "").trim();
         const shouldRemember = !!extension_settings[extensionName].openrouterRememberApiKey;

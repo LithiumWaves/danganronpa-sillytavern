@@ -3812,15 +3812,16 @@ ${prompt}
 async function generateTrialDialogue(prompt, { maxTokens = 140, temperature = 0.7, topP = 0.9, stop = ["USER:", "ASSISTANT:", "###"] } = {}) {
     const fullPrompt = String(prompt || "").trim();
 
+    if (isOpenRouterGenerationEnabled()) {
+        return generateWithOpenRouter(fullPrompt, {
+            maxTokens,
+            temperature,
+            topP,
+            stop,
+        });
+    }
+
     if (!window.SillyTavern?.getContext) {
-        if (isOpenRouterGenerationEnabled()) {
-            return generateWithOpenRouter(fullPrompt, {
-                maxTokens,
-                temperature,
-                topP,
-                stop,
-            });
-        }
         throw new Error("SillyTavern context unavailable");
     }
 
@@ -3838,6 +3839,38 @@ async function generateTrialDialogue(prompt, { maxTokens = 140, temperature = 0.
     });
 
     return (result || "").trim();
+}
+
+async function generateTrialDialogueWithMainApi(prompt, { maxTokens = 140, temperature = 0.7, topP = 0.9, stop = ["USER:", "ASSISTANT:", "###"] } = {}) {
+    const fullPrompt = String(prompt || "").trim();
+
+    if (!window.SillyTavern?.getContext) {
+        throw new Error("SillyTavern context unavailable");
+    }
+
+    const ctx = SillyTavern.getContext();
+    if (!ctx.generateRaw) {
+        throw new Error("generateRaw not available");
+    }
+
+    const result = await ctx.generateRaw({
+        prompt: fullPrompt,
+        max_tokens: maxTokens,
+        temperature,
+        top_p: topP,
+        stop,
+    });
+
+    return (result || "").trim();
+}
+
+async function generateTrialDialogueWithOpenRouter(prompt, { maxTokens = 140, temperature = 0.7, topP = 0.9, stop = ["USER:", "ASSISTANT:", "###"] } = {}) {
+    return generateWithOpenRouter(String(prompt || "").trim(), {
+        maxTokens,
+        temperature,
+        topP,
+        stop,
+    });
 }
 
 // Parses the LLM's Scrum Debate response into a scenario object.  Returns
@@ -6033,6 +6066,11 @@ function applySettingsTabUI() {
         providerSelect.value = tab.generationProvider || defaultSettings.generationProvider;
     }
 
+    const whiteNoiseSourceSelect = document.getElementById("dangan_white_noise_line_source");
+    if (whiteNoiseSourceSelect) {
+        whiteNoiseSourceSelect.value = tab.whiteNoiseLineSource || defaultSettings.whiteNoiseLineSource;
+    }
+
     const rewardDifficultySelect = document.getElementById("dangan_reward_difficulty");
     if (rewardDifficultySelect) {
         rewardDifficultySelect.value = clampRewardDifficulty(tab.rewardDifficulty || defaultSettings.rewardDifficulty);
@@ -6071,7 +6109,9 @@ function applySettingsTabUI() {
         connectionStatusEl.textContent = "";
     }
 
-    const showOpenRouterControls = (providerSelect?.value || tab.generationProvider) === "openrouter";
+    const showOpenRouterControls =
+        (providerSelect?.value || tab.generationProvider) === "openrouter" ||
+        (whiteNoiseSourceSelect?.value || tab.whiteNoiseLineSource) === "openrouter";
     document.querySelectorAll(".settings-openrouter-only").forEach(el => {
         el.classList.toggle("is-hidden", !showOpenRouterControls);
     });
@@ -8341,6 +8381,16 @@ $(".monopad-icon").on("mouseenter", function () {
             mapPanelController?.handleSettingsChanged?.();
         });
 
+        $("#dangan_white_noise_line_source").on("change", function () {
+            const nextSource = String(this.value || "").trim();
+            const normalizedSource = ["default", "main", "openrouter"].includes(nextSource)
+                ? nextSource
+                : defaultSettings.whiteNoiseLineSource;
+            setMonopadSetting("whiteNoiseLineSource", normalizedSource);
+            applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
+        });
+
         $("#dangan_reward_difficulty").on("change", function () {
             const nextDifficulty = applyRewardDifficultyProfile(this.value || defaultSettings.rewardDifficulty);
             setMonopadSetting("rewardDifficulty", nextDifficulty);
@@ -8795,6 +8845,8 @@ debugSTGlobals();
             vnModeController,
             getTruthBullets,
             generateTrialDialogue,
+            generateTrialDialogueWithMainApi,
+            generateTrialDialogueWithOpenRouter,
             getCharacterSourceText,
             getEmotionFont,
             onTrialStateChange: () => { renderMoveToPanel(); renderMinimap(); overworldSceneController?.render?.(); },

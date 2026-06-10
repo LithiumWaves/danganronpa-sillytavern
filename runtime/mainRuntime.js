@@ -2584,6 +2584,11 @@ function applySettingsTabUI() {
         providerSelect.value = tab.generationProvider || defaultSettings.generationProvider;
     }
 
+    const whiteNoiseSourceSelect = document.getElementById("dangan_white_noise_line_source");
+    if (whiteNoiseSourceSelect) {
+        whiteNoiseSourceSelect.value = tab.whiteNoiseLineSource || defaultSettings.whiteNoiseLineSource;
+    }
+
     const rewardDifficultySelect = document.getElementById("dangan_reward_difficulty");
     if (rewardDifficultySelect) {
         rewardDifficultySelect.value = clampRewardDifficulty(tab.rewardDifficulty || defaultSettings.rewardDifficulty);
@@ -2622,7 +2627,9 @@ function applySettingsTabUI() {
         connectionStatusEl.textContent = "";
     }
 
-    const showOpenRouterControls = (providerSelect?.value || tab.generationProvider) === "openrouter";
+    const showOpenRouterControls =
+        (providerSelect?.value || tab.generationProvider) === "openrouter" ||
+        (whiteNoiseSourceSelect?.value || tab.whiteNoiseLineSource) === "openrouter";
     document.querySelectorAll(".settings-openrouter-only").forEach(el => {
         el.classList.toggle("is-hidden", !showOpenRouterControls);
     });
@@ -4389,6 +4396,16 @@ $(".monopad-icon").on("mouseenter", function () {
 
         $("#dangan_generation_provider").on("change", function () {
             setMonopadSetting("generationProvider", this.value || defaultSettings.generationProvider);
+            applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
+        });
+
+        $("#dangan_white_noise_line_source").on("change", function () {
+            const nextSource = String(this.value || "").trim();
+            const normalizedSource = ["default", "main", "openrouter"].includes(nextSource)
+                ? nextSource
+                : defaultSettings.whiteNoiseLineSource;
+            setMonopadSetting("whiteNoiseLineSource", normalizedSource);
             applySettingsTabUI();
             mapPanelController?.handleSettingsChanged?.();
         });

@@ -19,6 +19,8 @@ export function createTrialManager(deps) {
         vnModeController,
         getTruthBullets,
         generateTrialDialogue,
+        generateTrialDialogueWithMainApi,
+        generateTrialDialogueWithOpenRouter,
         getCharacterSourceText,
         getEmotionFont,
         onTrialStateChange,
@@ -349,8 +351,17 @@ export function createTrialManager(deps) {
         ["This is impossible...", "What if they're right?!", "I don't want to hear this!", "That's not fair!"],
     ];
 
-    function isWhiteNoiseGenerationEnabled() {
-        return extensionSettings?.[extensionName]?.whiteNoiseGenerationEnabled !== false;
+    function getWhiteNoiseLineSource() {
+        const configuredSource = String(extensionSettings?.[extensionName]?.whiteNoiseLineSource || '').trim().toLowerCase();
+        if (configuredSource === 'default' || configuredSource === 'main' || configuredSource === 'openrouter') {
+            return configuredSource;
+        }
+
+        const legacyToggle = extensionSettings?.[extensionName]?.whiteNoiseGenerationEnabled;
+        if (legacyToggle === false) return 'default';
+
+        const generationProvider = String(extensionSettings?.[extensionName]?.generationProvider || 'main').trim().toLowerCase();
+        return generationProvider === 'openrouter' ? 'openrouter' : 'main';
     }
 
     function hashWhiteNoiseSeed(value) {
@@ -375,6 +386,18 @@ export function createTrialManager(deps) {
         const seed = `${cleanStatement}::${cleanNames.join('|')}`;
         const pool = PREGENERATED_WHITE_NOISE_POOLS[hashWhiteNoiseSeed(seed) % PREGENERATED_WHITE_NOISE_POOLS.length];
         return pool ? [...pool] : null;
+    }
+
+    async function generateWhiteNoiseWithConfiguredSource(prompt, options) {
+        const source = getWhiteNoiseLineSource();
+        if (source === 'default') return null;
+
+        const generator = source === 'openrouter'
+            ? generateTrialDialogueWithOpenRouter
+            : (generateTrialDialogueWithMainApi || generateTrialDialogue);
+
+        if (typeof generator !== 'function') return null;
+        return generator(prompt, options);
     }
 
     function parseMpdScenarios(rawScenarios) {
@@ -6232,14 +6255,18 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
         return ensureSingleWeakPointMarker('...');
     }
 
-    // Build bystander reactions for a debate statement. When White Noise
-    // generation is disabled, or if generation is unavailable, use a curated
-    // prewritten pool instead.
+    // Build bystander reactions for a debate statement. When White Noise is
+    // set to the default source, or if generation is unavailable, use a
+    // curated prewritten pool instead.
     async function generateWhiteNoiseReactions(statement, bystanderNames) {
-        if (!isWhiteNoiseGenerationEnabled()) {
+        if (getWhiteNoiseLineSource() === 'default') {
             return getPreGeneratedWhiteNoiseReactions(statement, bystanderNames);
         }
-        if (typeof generateTrialDialogue !== 'function') {
+        if (
+            typeof generateTrialDialogue !== 'function' &&
+            typeof generateTrialDialogueWithMainApi !== 'function' &&
+            typeof generateTrialDialogueWithOpenRouter !== 'function'
+        ) {
             return getPreGeneratedWhiteNoiseReactions(statement, bystanderNames);
         }
 
@@ -6259,7 +6286,7 @@ Rules:
 
         try {
             const out = String(
-                await generateTrialDialogue(prompt, { maxTokens: 80, temperature: 0.9 }) || ''
+                await generateWhiteNoiseWithConfiguredSource(prompt, { maxTokens: 80, temperature: 0.9 }) || ''
             ).trim();
 
             const lines = out

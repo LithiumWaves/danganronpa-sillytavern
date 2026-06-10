@@ -1031,11 +1031,15 @@
             <section class="settings-section settings-section-trials">
                 <div class="settings-section-title">CLASS TRIALS</div>
 
-                <div class="settings-item">
-                    <span class="settings-label">GENERATE WHITE NOISE LINES</span>
-                    <button class="settings-toggle on" data-setting="whiteNoiseGenerationEnabled"></button>
+                <div class="settings-item settings-item-stack">
+                    <label class="settings-label" for="dangan_white_noise_line_source">WHITE NOISE LINES</label>
+                    <select id="dangan_white_noise_line_source" class="settings-select">
+                        <option value="default">DEFAULT (PREWRITTEN)</option>
+                        <option value="main">MAIN API GENERATION</option>
+                        <option value="openrouter">SECONDARY API (OPENROUTER)</option>
+                    </select>
                 </div>
-                <div class="settings-note">When disabled, class trials use curated White Noise reactions instead of generating new ones.</div>
+                <div class="settings-note">Secondary API uses the OpenRouter model and key configured in AI Generation.</div>
             </section>
 
         </div>
