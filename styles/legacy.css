@@ -1251,7 +1251,7 @@ body.dangan-theme-investigation #dangan_monopad_button {
 .truth-discard-modal {
     position: fixed;
     inset: 0;
-    z-index: 999999;
+    z-index: 2147483647;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -6226,7 +6226,8 @@ body.dangan-hide-hopes-peak-branding .monopad-welcome-cylinder {
     align-items: center;
     justify-content: center;
     pointer-events: none;
-    background: rgba(3, 8, 16, 0.62);
+    overflow: hidden;
+    background: radial-gradient(circle at 50% 35%, rgba(43, 10, 66, 0.64), rgba(2, 4, 14, 0.9));
 }
 
 .dangan-trial-intro-overlay.active {
@@ -6234,97 +6235,7 @@ body.dangan-hide-hopes-peak-branding .monopad-welcome-cylinder {
     pointer-events: auto;
 }
 
-.dangan-trial-intro-shell {
-    box-sizing: border-box;
-    width: min(900px, 92vw);
-    min-height: min(460px, 84vh);
-    max-height: calc(100svh - 32px);
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    gap: 20px;
-    border: 1px solid rgba(159, 232, 255, 0.48);
-    border-radius: 14px;
-    background: linear-gradient(165deg, rgba(7, 22, 39, 0.96), rgba(12, 38, 65, 0.9));
-    box-shadow: 0 16px 42px rgba(0, 0, 0, 0.45);
-    padding: 28px;
-    color: #eef9ff;
-}
-
-.dangan-trial-intro-header h2 {
-    margin: 0;
-    font-size: 30px;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-}
-
-.dangan-trial-intro-header p {
-    margin: 10px 0 0;
-    color: rgba(224, 244, 255, 0.84);
-}
-
-.dangan-trial-intro-actions {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-}
-
-.dangan-trial-intro-actions button {
-    border: 1px solid rgba(170, 234, 255, 0.58);
-    border-radius: 8px;
-    background: rgba(9, 29, 49, 0.92);
-    color: #ecf7ff;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    padding: 10px 16px;
-    cursor: pointer;
-}
-
-.dangan-trial-intro-actions button:hover,
-.dangan-trial-intro-actions button:focus-visible {
-    filter: brightness(1.12);
-    outline: none;
-}
-
-.dangan-trial-case-summary {
-    margin-top: auto;
-    border: 1px solid rgba(161, 226, 255, 0.36);
-    border-radius: 10px;
-    background: rgba(6, 18, 31, 0.72);
-    padding: 14px;
-}
-
-.dangan-trial-case-summary-label {
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: rgba(173, 226, 255, 0.9);
-}
-
-.dangan-trial-case-summary p {
-    margin: 8px 0 0;
-    color: rgba(238, 250, 255, 0.96);
-}
-
-body.dangan-trial-vn-chat-hidden #chat {
-    visibility: hidden;
-}
-
-
-.dangan-trial-intro-cancel {
-    border-color: rgba(255, 167, 167, 0.5) !important;
-    background: rgba(67, 18, 24, 0.9) !important;
-    color: #ffe9ec !important;
-}
-
-
-.dangan-trial-intro-overlay {
-    overflow: hidden;
-    background: radial-gradient(circle at 50% 35%, rgba(43, 10, 66, 0.64), rgba(2, 4, 14, 0.9));
-}
-
+/* ── Animated backdrop: rotating revolver cylinders ── */
 .dangan-trial-backdrop {
     position: absolute;
     inset: 0;
@@ -6384,14 +6295,96 @@ body.dangan-trial-vn-chat-hidden #chat {
     filter: blur(4px);
 }
 
+/* Revolver cylinder (bottom-right), skewed like the Scrum Debate player team */
+.dangan-trial-revolver {
+    position: absolute;
+    right: -48px;
+    bottom: -64px;
+    width: clamp(280px, 36vw, 480px);
+    height: clamp(280px, 36vw, 480px);
+    transform: scaleX(-1) skewX(8deg) skewY(14deg);
+    opacity: 0.85;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.dangan-trial-revolver-line,
+.dangan-trial-revolver-cyl {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+}
+
+.dangan-trial-revolver-line {
+    filter:
+        sepia(1) hue-rotate(195deg) saturate(6) brightness(1.2)
+        drop-shadow(0 0 12px rgba(0, 150, 255, 0.55));
+    opacity: 0.7;
+    transform-origin: center;
+}
+
+/* Lines 1 & 4 spin anti-clockwise, lines 2 & 3 clockwise (per Non-Stop Debate) */
+.dangan-trial-revolver-line--1,
+.dangan-trial-revolver-line--4 {
+    animation: dangan-trial-revolver-spin-ccw 28s linear infinite;
+}
+
+.dangan-trial-revolver-line--2,
+.dangan-trial-revolver-line--3 {
+    animation: dangan-trial-revolver-spin 28s linear infinite;
+}
+
+.dangan-trial-revolver-line--1 { background-image: url("../assets/images/minigames/cylinder-lines-1.webp"); }
+.dangan-trial-revolver-line--2 { background-image: url("../assets/images/minigames/cylinder-lines-2.webp"); }
+.dangan-trial-revolver-line--3 { background-image: url("../assets/images/minigames/cylinder-lines-3.webp"); }
+.dangan-trial-revolver-line--4 { background-image: url("../assets/images/minigames/cylinder-lines-4.webp"); }
+
+.dangan-trial-revolver-cyl {
+    background-image: url("../assets/images/minigames/danganronpa-2x2-revolver-cylinder.webp");
+    filter:
+        sepia(1) hue-rotate(195deg) saturate(6) brightness(1.2)
+        drop-shadow(0 0 18px rgba(0, 150, 255, 0.78))
+        drop-shadow(0 0 45px rgba(0, 100, 255, 0.45));
+    transform-origin: center;
+    animation: dangan-trial-revolver-spin 28s linear infinite;
+}
+
+@keyframes dangan-trial-revolver-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@keyframes dangan-trial-revolver-spin-ccw {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(-360deg); }
+}
+
+@keyframes dangan-trial-cylinder-spin {
+    from { transform: perspective(700px) rotateY(-26deg) rotateZ(8deg) rotate(0deg); }
+    to { transform: perspective(700px) rotateY(-26deg) rotateZ(8deg) rotate(360deg); }
+}
+
+/* ── Shell: flat black panel with neon frame (Danganronpa V3 style) ── */
 .dangan-trial-intro-shell {
+    box-sizing: border-box;
     position: relative;
     z-index: 1;
-    border: 1px solid rgba(246, 76, 224, 0.62);
-    background:
-        linear-gradient(180deg, rgba(10, 6, 24, 0.86), rgba(6, 5, 18, 0.94)),
-        radial-gradient(circle at 80% 30%, rgba(83, 180, 255, 0.22), transparent 55%);
-    box-shadow: 0 0 36px rgba(226, 45, 202, 0.22), 0 0 64px rgba(64, 178, 255, 0.2);
+    width: min(900px, 94vw);
+    max-height: calc(100svh - 28px);
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border: 1px solid rgba(246, 76, 224, 0.5);
+    border-radius: 2px;
+    background: rgba(4, 3, 10, 0.96);
+    box-shadow: 0 0 36px rgba(226, 45, 202, 0.25), 0 0 64px rgba(64, 178, 255, 0.18);
+    padding: 0;
+    overflow: hidden;
+    color: #eef9ff;
 }
 
 .dangan-trial-intro-shell::before,
@@ -6401,64 +6394,1066 @@ body.dangan-trial-vn-chat-hidden #chat {
     left: 0;
     right: 0;
     height: 2px;
+    z-index: 3;
     background: linear-gradient(90deg, rgba(54, 218, 255, 0.85), rgba(242, 45, 214, 0.88), rgba(54, 218, 255, 0.85));
 }
 
 .dangan-trial-intro-shell::before { top: 0; }
 .dangan-trial-intro-shell::after { bottom: 0; }
 
-.dangan-trial-prep-label {
+/* "Court Preparation" — painted/graffiti title */
+.dangan-trial-prep-title {
+    position: relative;
+    margin: 0;
+    padding: 16px 26px 12px;
+    font-family: "Quickend", "Boldonse", "Orbitron", "Rajdhani", monospace;
+    font-size: clamp(26px, 4vw, 34px);
+    font-weight: 800;
+    font-style: italic;
+    line-height: 1;
+    color: #ffffff;
+    text-shadow: 0 2px 0 rgba(0, 0, 0, 0.7), 0 0 16px rgba(120, 220, 255, 0.3);
+}
+
+.dangan-trial-prep-word {
+    position: relative;
     display: inline-block;
-    margin-bottom: 8px;
-    font-size: 15px;
+    margin-right: 12px;
+}
+
+.dangan-trial-prep-word:nth-child(1) .alt {
+    color: #ff5bd5;
+    text-shadow: 0 0 14px rgba(255, 90, 220, 0.6);
+}
+
+.dangan-trial-prep-word:nth-child(2) .alt {
+    color: #5fd8ff;
+    text-shadow: 0 0 14px rgba(95, 216, 255, 0.6);
+}
+
+/* Neon double-rule: cyan line stacked over a magenta line, both glowing */
+.dangan-trial-rule {
+    flex: 0 0 auto;
+    height: 2px;
+    margin: 0;
+    background: linear-gradient(90deg, rgba(95, 216, 255, 0.95) 0%, rgba(95, 216, 255, 0.85) 68%, rgba(95, 216, 255, 0.18) 100%);
+    box-shadow:
+        0 2px 0 rgba(246, 76, 224, 0.9),
+        0 0 10px rgba(95, 216, 255, 0.7),
+        0 3px 12px rgba(246, 76, 224, 0.55);
+}
+
+/* Chapter title bar */
+.dangan-trial-intro-chapter {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 9px 26px;
+    background: rgba(0, 0, 0, 0.6);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 20px;
+    font-weight: 700;
+    font-style: italic;
+    letter-spacing: 0.01em;
+    color: #ff6fd6;
+    text-shadow: 0 0 10px rgba(255, 80, 210, 0.5);
+}
+
+.dangan-trial-intro-chapter[hidden] {
+    display: none;
+}
+
+/* Chapter art band */
+.dangan-trial-prep-banner {
+    position: relative;
+    flex: 0 0 auto;
+    height: 108px;
+    overflow: hidden;
+    background:
+        linear-gradient(90deg, rgba(150, 24, 120, 0.72), rgba(90, 16, 80, 0.42) 58%, rgba(40, 10, 60, 0.18)),
+        radial-gradient(circle at 16% 55%, rgba(255, 120, 230, 0.38), transparent 62%);
+}
+
+.dangan-trial-prep-banner::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: url("../assets/images/ui/stain.png") no-repeat left center / cover;
+    opacity: 0.12;
+    mix-blend-mode: screen;
+    filter: hue-rotate(285deg) saturate(1.6);
+}
+
+/* Case synopsis */
+.dangan-trial-intro-desc {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 12px 26px 14px;
+    background: rgba(0, 0, 0, 0.32);
+    font-size: 16px;
+    font-weight: 600;
+    color: #ff6fd6;
+    text-shadow: 0 0 8px rgba(255, 80, 210, 0.32);
+}
+
+/* Vertical navigation menu (Skills / View Summary / View Truth Bullets / Change Difficulty) */
+.dangan-trial-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 22px;
+}
+
+.dangan-trial-menu-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    box-sizing: border-box;
+    border: none;
+    background: rgba(255, 255, 255, 0.045);
+    color: #c4ccd3;
+    font-size: 21px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    text-align: left;
+    padding: 11px 16px;
+    cursor: pointer;
+    transition: color 0.12s ease;
+}
+
+/* The signature cyan spray-paint selection stroke */
+.dangan-trial-menu-item::before {
+    content: "";
+    position: absolute;
+    left: -6px;
+    top: 50%;
+    width: 102%;
+    height: 152%;
+    transform: translateY(-50%) scaleX(0);
+    transform-origin: left center;
+    background: linear-gradient(90deg, rgba(86, 210, 255, 0.95) 0%, rgba(86, 210, 255, 0.9) 52%, rgba(86, 210, 255, 0.4) 80%, rgba(86, 210, 255, 0) 100%);
+    clip-path: polygon(
+        1% 28%, 5% 10%, 8% 30%, 13% 14%, 18% 32%, 24% 12%, 30% 30%, 37% 16%, 44% 34%, 52% 14%, 60% 32%, 68% 18%, 76% 34%, 84% 20%, 90% 38%, 95% 26%, 100% 46%,
+        97% 70%, 92% 86%, 86% 66%, 79% 88%, 71% 64%, 63% 86%, 55% 66%, 47% 88%, 39% 64%, 31% 86%, 24% 66%, 17% 88%, 11% 66%, 6% 86%, 2% 68%
+    );
+    opacity: 0;
+    transition: transform 0.16s ease, opacity 0.12s ease;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.dangan-trial-menu-item:hover::before,
+.dangan-trial-menu-item:focus-visible::before,
+.dangan-trial-menu-item.is-selected::before,
+.dangan-trial-menu-item[aria-expanded="true"]::before {
+    opacity: 1;
+    transform: translateY(-50%) scaleX(1);
+}
+
+.dangan-trial-menu-item:hover,
+.dangan-trial-menu-item:focus-visible,
+.dangan-trial-menu-item.is-selected,
+.dangan-trial-menu-item[aria-expanded="true"] {
+    outline: none;
+    color: #ffffff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+}
+
+.dangan-trial-menu-label {
+    position: relative;
+    z-index: 2;
+    flex: 1;
+}
+
+.dangan-trial-menu-value {
+    position: relative;
+    z-index: 2;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: #5fd8ff;
+    text-shadow: 0 0 8px rgba(95, 216, 255, 0.6);
+}
+
+.dangan-trial-menu-item:hover .dangan-trial-menu-value,
+.dangan-trial-menu-item.is-selected .dangan-trial-menu-value {
+    color: #eafaff;
+}
+
+/* Actions */
+.dangan-trial-intro-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 22px;
+}
+
+.dangan-trial-intro-actions button {
+    border: none;
+    border-radius: 0;
+    background: rgba(255, 255, 255, 0.05);
+    color: #c4ccd3;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: none;
+    padding: 12px 16px;
+    cursor: pointer;
+    transition: color 0.12s ease, background 0.12s ease, text-shadow 0.12s ease;
+}
+
+.dangan-trial-intro-actions button:focus-visible {
+    outline: none;
+}
+
+.dangan-trial-intro-start {
+    font-size: 24px;
+    text-align: center;
+    color: #d6dde3 !important;
+    background: rgba(255, 255, 255, 0.06) !important;
+}
+
+.dangan-trial-intro-start:hover,
+.dangan-trial-intro-start:focus-visible {
+    color: #ffffff !important;
+    background: linear-gradient(90deg, rgba(86, 210, 255, 0.3), rgba(86, 210, 255, 0.08)) !important;
+    text-shadow: 0 0 12px rgba(95, 216, 255, 0.75);
+}
+
+.dangan-trial-intro-cancel {
+    font-size: 13px;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: rgba(255, 180, 225, 0.85) !important;
+    background: transparent !important;
+}
+
+.dangan-trial-intro-cancel:hover,
+.dangan-trial-intro-cancel:focus-visible {
+    color: #ffd0ec !important;
+    background: rgba(255, 137, 233, 0.08) !important;
+}
+
+.dangan-trial-case-summary {
+    margin-top: auto;
+    border: 1px solid rgba(70, 192, 255, 0.58);
+    border-radius: 10px;
+    background: linear-gradient(165deg, rgba(9, 14, 35, 0.88), rgba(25, 8, 34, 0.85));
+    padding: 14px;
+}
+
+.dangan-trial-case-summary-label {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(173, 226, 255, 0.9);
+}
+
+.dangan-trial-case-summary p {
+    margin: 8px 0 0;
+    color: rgba(238, 250, 255, 0.96);
+}
+
+body.dangan-trial-vn-chat-hidden #chat {
+    visibility: hidden;
+}
+
+/* ── Trial participant picker (after "Begin Class Trial") ── */
+.dangan-trial-roster-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483646;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    box-sizing: border-box;
+    background: radial-gradient(circle at 50% 35%, rgba(43, 10, 66, 0.7), rgba(2, 4, 14, 0.92));
+}
+
+.dangan-trial-roster-overlay.active { display: flex; }
+
+.dangan-trial-roster-shell {
+    display: flex;
+    flex-direction: column;
+    width: min(900px, 95vw);
+    max-height: min(88vh, 800px);
+    background: rgba(4, 3, 10, 0.97);
+    border: 1px solid rgba(246, 76, 224, 0.5);
+    border-radius: 4px;
+    box-shadow: 0 0 36px rgba(226, 45, 202, 0.25), 0 0 64px rgba(64, 178, 255, 0.18);
+    overflow: hidden;
+    color: #eef9ff;
+}
+
+.dangan-trial-roster-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 22px;
+}
+
+.dangan-trial-roster-title {
+    font-family: "Bruno Ace", sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    font-style: italic;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #ff6fe0;
+    text-shadow: 0 0 12px rgba(255, 90, 220, 0.6);
+}
+
+.dangan-trial-roster-count {
+    margin-left: auto;
+    font-family: "Bruno Ace", sans-serif;
+    font-size: 14px;
+    color: #5fdcff;
+}
+
+.dangan-trial-roster-toolbar {
+    display: flex;
+    gap: 10px;
+    padding: 10px 22px 0;
+}
+
+.dangan-trial-roster-toolbar button {
+    border: 1px solid rgba(95, 216, 255, 0.5);
+    background: rgba(10, 40, 60, 0.6);
+    color: #cfeeff;
+    font-size: 12px;
     letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 6px 14px;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.dangan-trial-roster-toolbar button:hover { filter: brightness(1.15); }
+
+.dangan-trial-roster-grid {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 12px;
+    padding: 16px 22px;
+}
+
+.dangan-trial-roster-empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    color: #7f9aa6;
+    padding: 30px;
+    line-height: 1.4;
+}
+
+.dangan-trial-roster-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 8px;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.04);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    color: #c4ccd3;
+    transition: border-color 0.12s ease, background 0.12s ease, transform 0.12s ease;
+}
+
+.dangan-trial-roster-card:hover { transform: translateY(-2px); }
+
+.dangan-trial-roster-card.selected {
+    border-color: #5fdcff;
+    background: rgba(54, 188, 255, 0.14);
+    color: #ffffff;
+    box-shadow: 0 0 14px rgba(95, 216, 255, 0.4);
+}
+
+.dangan-trial-roster-card.is-dead { opacity: 0.6; }
+
+.dangan-trial-roster-avatar {
+    width: 84px;
+    height: 84px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.5) center top / cover no-repeat;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.dangan-trial-roster-avatar-fallback {
+    font-size: 34px;
+    font-weight: 800;
+    color: rgba(180, 210, 230, 0.6);
+}
+
+.dangan-trial-roster-card.has-avatar .dangan-trial-roster-avatar-fallback { display: none; }
+
+.dangan-trial-roster-name {
+    font-size: 14px;
+    font-weight: 600;
+    text-align: center;
+    line-height: 1.2;
+    word-break: break-word;
+}
+
+.dangan-trial-roster-card.is-dead .dangan-trial-roster-name::after {
+    content: " ☠";
+    color: #ff6b6b;
+}
+
+.dangan-trial-roster-badge {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 900;
+    background: #5fdcff;
+    color: #04222e;
+    opacity: 0;
+    transform: scale(0.6);
+    transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.dangan-trial-roster-card.selected .dangan-trial-roster-badge {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.dangan-trial-roster-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px 22px;
+}
+
+.dangan-trial-roster-confirm {
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-align: center;
+    padding: 12px;
+    border: none;
+    cursor: pointer;
+    color: #f3fbff;
+    background: linear-gradient(90deg, rgba(29, 103, 158, 0.92), rgba(45, 188, 252, 0.9));
+}
+
+.dangan-trial-roster-confirm:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    filter: grayscale(0.3);
+}
+
+.dangan-trial-roster-confirm:hover:not(:disabled) { filter: brightness(1.12); }
+
+.dangan-trial-roster-cancel {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    text-align: center;
+    padding: 8px;
+    border: none;
+    cursor: pointer;
+    color: rgba(255, 180, 225, 0.85);
+    background: transparent;
+}
+
+.dangan-trial-roster-cancel:hover { color: #ffd0ec; }
+
+/* ── Info modal that surfaces a Monopad tab (Chapter Summary / Truth Bullets)
+   above the Class Trial preparation screen ── */
+.dangan-trial-info-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483646;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    box-sizing: border-box;
+    background: rgba(2, 4, 14, 0.82);
+}
+
+.dangan-trial-info-overlay.active {
+    display: flex;
+}
+
+.dangan-trial-info-shell {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: min(1040px, 95vw);
+    height: min(84vh, 780px);
+    border: 1px solid rgba(246, 76, 224, 0.62);
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(10, 6, 24, 0.97), rgba(6, 5, 18, 0.99));
+    box-shadow: 0 0 36px rgba(226, 45, 202, 0.22), 0 0 64px rgba(64, 178, 255, 0.2);
+    overflow: hidden;
+}
+
+.dangan-trial-info-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 13px 18px;
+    border-bottom: 1px solid rgba(120, 200, 255, 0.25);
+}
+
+.dangan-trial-info-title {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
     color: #63d8ff;
     text-shadow: 0 0 10px rgba(103, 219, 255, 0.6);
 }
 
-.dangan-trial-intro-header h2 {
-    color: #ff5bd5;
-    text-shadow: 0 0 14px rgba(255, 88, 226, 0.55);
+.dangan-trial-info-close {
+    border: 1px solid rgba(255, 137, 233, 0.5);
+    border-radius: 6px;
+    background: rgba(102, 20, 90, 0.6);
+    color: #ffe9ec;
+    font-size: 15px;
+    line-height: 1;
+    padding: 7px 13px;
+    cursor: pointer;
 }
 
-.dangan-trial-case-summary {
-    border-color: rgba(70, 192, 255, 0.58);
-    background: linear-gradient(165deg, rgba(9, 14, 35, 0.88), rgba(25, 8, 34, 0.85));
+.dangan-trial-info-close:hover,
+.dangan-trial-info-close:focus-visible {
+    filter: brightness(1.18);
+    outline: none;
 }
 
-.dangan-trial-intro-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
+.dangan-trial-info-body {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
 }
 
-.dangan-trial-intro-start {
-    grid-column: 1 / -1;
-    font-size: 26px;
-    letter-spacing: 0.06em;
-    border-color: rgba(79, 225, 255, 0.72) !important;
-    background: linear-gradient(90deg, rgba(29, 103, 158, 0.92), rgba(45, 188, 252, 0.9)) !important;
-    color: #f3fbff !important;
+/* The relocated Monopad panel is position:absolute; inset:0 — fill the body. */
+.dangan-trial-info-body > .monopad-panel-content {
+    position: absolute;
+    inset: 0;
 }
 
-.dangan-trial-intro-skills {
-    border-color: rgba(63, 218, 255, 0.62) !important;
-    background: linear-gradient(90deg, rgba(27, 100, 149, 0.82), rgba(45, 180, 250, 0.78)) !important;
+/* ── Skills modal (opens above the Class Trial prep screen) ── */
+.dangan-trial-skills-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483646;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    box-sizing: border-box;
+    overflow: hidden;
+    background: radial-gradient(circle at 50% 40%, rgba(6, 30, 32, 0.86), rgba(1, 8, 12, 0.94));
 }
 
-.dangan-trial-intro-cancel {
-    border-color: rgba(255, 137, 233, 0.58) !important;
-    background: linear-gradient(90deg, rgba(102, 20, 90, 0.85), rgba(66, 18, 72, 0.82)) !important;
+.dangan-trial-skills-overlay.active {
+    display: flex;
 }
 
-@keyframes dangan-trial-cylinder-spin {
-    from { transform: perspective(700px) rotateY(-26deg) rotateZ(8deg) rotate(0deg); }
-    to { transform: perspective(700px) rotateY(-26deg) rotateZ(8deg) rotate(360deg); }
+/* Teal, blurred, rotating revolver cylinder in the bottom-right */
+.dangan-trial-skills-backdrop {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.dangan-trial-skills-cylinder {
+    position: absolute;
+    right: -7%;
+    bottom: -14%;
+    width: min(46vw, 470px);
+    height: min(64vh, 640px);
+    border-radius: 50%;
+    border: 4px solid rgba(58, 226, 211, 0.75);
+    box-shadow: 0 0 52px rgba(46, 222, 204, 0.5), inset 0 0 30px rgba(46, 222, 204, 0.4);
+    transform: perspective(700px) rotateY(-24deg) rotateZ(8deg);
+    animation: dangan-trial-cylinder-spin 11s linear infinite;
+    filter: blur(3px);
+    opacity: 0.7;
+}
+
+.dangan-trial-skills-cylinder::before {
+    content: "";
+    position: absolute;
+    inset: 10% 18%;
+    border-radius: 50%;
+    border: 2px solid rgba(120, 240, 228, 0.55);
+}
+
+.dangan-trial-skills-shell {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: min(1180px, 97vw);
+    max-height: min(90vh, 840px);
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    color: #eef9ff;
+    font-family: "Segoe UI", system-ui, sans-serif;
+}
+
+.dts-close {
+    position: absolute;
+    top: -16px;
+    right: -52px;
+    z-index: 5;
+    border: 1px solid rgba(255, 137, 233, 0.5);
+    border-radius: 6px;
+    background: rgba(40, 8, 34, 0.85);
+    color: #ffe9ec;
+    font-size: 15px;
+    line-height: 1;
+    padding: 7px 12px;
+    cursor: pointer;
+}
+
+.dts-close:hover,
+.dts-close:focus-visible {
+    filter: brightness(1.2);
+    outline: none;
+}
+
+.dts-body {
+    display: flex;
+    gap: 14px;
+    flex: 1;
+    min-height: 0;
+}
+
+/* ── Panes (SKILL LIST / SET SKILL) ── */
+.dts-pane {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background: rgba(3, 8, 14, 0.82);
+}
+
+.dts-pane-list {
+    flex: 1.25;
+    border: 2px solid rgba(86, 200, 255, 0.55);
+    box-shadow: 0 0 16px rgba(86, 200, 255, 0.18), inset 0 0 22px rgba(20, 60, 90, 0.4);
+}
+
+.dts-pane-set {
+    flex: 1;
+    border: 2px solid rgba(255, 90, 220, 0.5);
+    box-shadow: 0 0 16px rgba(255, 90, 220, 0.16), inset 0 0 22px rgba(60, 18, 60, 0.4);
+}
+
+.dts-head {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 18px;
+    flex: 0 0 auto;
+}
+
+.dts-head-list {
+    background: linear-gradient(90deg, rgba(22, 64, 86, 0.95), rgba(10, 30, 46, 0.5));
+    clip-path: polygon(0 0, 100% 0, calc(100% - 22px) 100%, 0 100%);
+}
+
+.dts-head-set {
+    background: linear-gradient(90deg, rgba(66, 20, 72, 0.95), rgba(32, 10, 46, 0.5));
+}
+
+.dts-head-title {
+    font-family: "Bruno Ace", sans-serif;
+    font-size: 20px;
+    font-weight: 800;
+    font-style: italic;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.dts-head-list .dts-head-title {
+    color: #5fdcff;
+    text-shadow: 0 0 10px rgba(95, 216, 255, 0.6);
+}
+
+.dts-head-set .dts-head-title {
+    color: #ff6fe0;
+    text-shadow: 0 0 10px rgba(255, 90, 220, 0.6);
+}
+
+.dts-head-count {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+}
+
+.dts-head-list .dts-head-count { color: #c7efff; }
+.dts-head-set .dts-head-count { color: #ffffff; }
+.dts-sp-count { display: inline-flex; align-items: center; }
+.dts-spark { color: #5fdcff; margin-right: 3px; }
+.dts-slot-label { color: #ffd54a; font-size: 12px; margin-right: 8px; }
+
+.dts-trust { display: inline-flex; align-items: center; color: #b6f48e; }
+.dts-trust-icon { color: #8ee861; margin-right: 3px; }
+
+.dts-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 8px;
+}
+
+.dts-list::-webkit-scrollbar { width: 8px; }
+.dts-list::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.3); }
+.dts-pane-list .dts-list::-webkit-scrollbar-thumb { background: rgba(95, 216, 255, 0.6); border-radius: 4px; }
+.dts-pane-set .dts-list::-webkit-scrollbar-thumb { background: rgba(255, 90, 220, 0.55); border-radius: 4px; }
+
+.dts-empty {
+    padding: 26px;
+    text-align: center;
+    color: #7f9aa6;
+    letter-spacing: 0.08em;
+    font-size: 13px;
+}
+
+/* ── Skill rows ── */
+.dts-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: auto;
+    padding-left: 12px;
+    cursor: pointer;
+    background: linear-gradient(180deg, rgba(72, 80, 90, 0.92), rgba(24, 28, 36, 0.96));
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    transition: filter 0.1s ease;
+}
+
+.dts-row:hover { filter: brightness(1.14); }
+
+.dts-row.selected {
+    background: linear-gradient(180deg, #74d8ff, #2ba2dd);
+    border-color: #d4f3ff;
+    box-shadow: 0 0 14px rgba(95, 216, 255, 0.55);
+}
+
+.dts-row-check {
+    flex: 0 0 auto;
+    width: 20px;
+    text-align: center;
+    color: #ffd54a;
+    font-size: 18px;
+    font-weight: 900;
+    text-shadow: 0 0 6px rgba(255, 213, 74, 0.6);
+}
+
+.dts-row-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 18px;
+    color: #eef4f8;
+}
+
+.dts-row.locked .dts-row-name { color: #8893a0; }
+.dts-row.selected .dts-row-name { color: #06232f; text-shadow: none; font-weight: 600; }
+.dts-row.selected .dts-row-check { color: #0c3a14; text-shadow: none; }
+
+.dts-row-cost {
+    flex: 0 0 78px;
+    width: 78px;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 12px 0 20px;
+    margin-left: 6px;
+    background: linear-gradient(180deg, rgba(38, 42, 50, 0.96), rgba(12, 14, 18, 0.98));
+    clip-path: polygon(16px 0, 100% 0, 100% 100%, 0 100%);
+}
+
+.dts-row.selected .dts-row-cost {
+    background: linear-gradient(180deg, rgba(18, 86, 116, 0.95), rgba(6, 38, 58, 0.98));
+}
+
+#dts-sp,
+#dts-slot {
+    font-family: "Bruno Ace", sans-serif;
+}
+
+.dts-cost {
+    font-family: "Bruno Ace", sans-serif;
+    font-size: 18px;
+    font-weight: 800;
+    color: #e3ecf2;
+}
+
+/* Star pinned left, number pinned right, across a uniform-width cost area */
+.dts-cost:not(.boxed) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+}
+
+.dts-cost.dim { color: #6b7682; }
+.dts-cost .dts-spark { color: #8fdcff; margin-right: 1px; }
+.dts-cost.dim .dts-spark { color: #4d5a64; }
+
+.dts-cost.boxed {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 26px;
+    height: 26px;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    background: rgba(0, 0, 0, 0.45);
+    color: #ffffff;
+}
+
+/* ── Center column (action + stat boxes) ── */
+.dts-center {
+    flex: 0 0 224px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 4px 0;
+}
+
+.dts-action {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 90px;
+}
+
+.dts-action-btn {
+    position: relative;
+    width: 200px;
+    height: 84px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 22px;
+    font-weight: 800;
+    font-style: italic;
+    letter-spacing: 0.04em;
+}
+
+.dts-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.dts-action-label {
+    position: relative;
+    z-index: 1;
+    font-family: "Bruno Ace", sans-serif;
+}
+
+/* SET — teal right-pointing arrow */
+.dts-action-set { color: #7ef3e6; filter: drop-shadow(0 0 10px rgba(58, 226, 211, 0.7)); }
+.dts-action-set::before,
+.dts-action-set::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    clip-path: polygon(0% 24%, 60% 24%, 60% 2%, 100% 50%, 60% 98%, 60% 76%, 0% 76%);
+}
+.dts-action-set::before { background: #3ae2d3; }
+.dts-action-set::after { background: #04161a; transform: scale(0.84); transform-origin: center; }
+
+/* REMOVE — magenta left-pointing arrow */
+.dts-action-remove { color: #ff8ce8; filter: drop-shadow(0 0 10px rgba(255, 90, 220, 0.7)); }
+.dts-action-remove::before,
+.dts-action-remove::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    clip-path: polygon(100% 24%, 40% 24%, 40% 2%, 0% 50%, 40% 98%, 40% 76%, 100% 76%);
+}
+.dts-action-remove::before { background: #ff4fd8; }
+.dts-action-remove::after { background: #16041a; transform: scale(0.84); transform-origin: center; }
+
+/* BUY — magenta speech bubble */
+.dts-action-buy {
+    width: auto;
+    min-width: 150px;
+    height: auto;
+    padding: 12px 22px;
+    border: 3px solid #ff4fd8;
+    border-radius: 22px;
+    color: #ff8ce8;
+    background: rgba(20, 4, 18, 0.82);
+    box-shadow: 0 0 16px rgba(255, 90, 220, 0.5);
+}
+
+.dts-action-buy::after {
+    content: "";
+    position: absolute;
+    left: 60px;
+    bottom: -14px;
+    width: 0;
+    height: 0;
+    border-left: 10px solid transparent;
+    border-right: 10px solid transparent;
+    border-top: 14px solid #ff4fd8;
+}
+
+/* Stat boxes */
+.dts-stat {
+    position: relative;
+    width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border: 2px solid;
+    background: rgba(4, 8, 12, 0.72);
+}
+
+.dts-stat-health { border-color: #ff4fd8; box-shadow: inset 0 0 12px rgba(255, 90, 220, 0.18); }
+.dts-stat-conc { border-color: #7ef06a; box-shadow: inset 0 0 12px rgba(140, 232, 97, 0.18); }
+
+.dts-stat-label {
+    font-size: 16px;
+    font-weight: 700;
+    font-style: italic;
+    letter-spacing: 0.02em;
+}
+
+.dts-stat-health .dts-stat-label { color: #ff9ae0; }
+.dts-stat-conc .dts-stat-label { color: #b6f48e; }
+
+.dts-stat-pips {
+    margin-left: auto;
+    font-size: 17px;
+    letter-spacing: 2px;
+    white-space: nowrap;
+}
+
+.dts-stat-health .dts-stat-pips { color: #ff5bd5; text-shadow: 0 0 8px rgba(255, 90, 220, 0.6); }
+.dts-stat-conc .dts-stat-pips { color: #8ee861; text-shadow: 0 0 8px rgba(140, 232, 97, 0.6); }
+
+.dts-stat-up {
+    position: absolute;
+    top: -13px;
+    left: 8px;
+    font-size: 12px;
+    font-weight: 800;
+    font-style: italic;
+    color: #ffd54a;
+    text-shadow: 0 0 8px rgba(255, 213, 74, 0.75);
+}
+
+/* ── Notice bar ── */
+.dts-notice {
+    position: relative;
+    flex: 0 0 auto;
+    border: 2px solid rgba(86, 200, 255, 0.45);
+    background: rgba(2, 10, 20, 0.85);
+    box-shadow: inset 0 0 22px rgba(20, 50, 80, 0.4);
+    padding: 8px 16px 14px;
+}
+
+.dts-notice-tab {
+    display: inline-block;
+    padding: 3px 26px 3px 12px;
+    background: linear-gradient(90deg, rgba(22, 64, 86, 0.95), rgba(10, 30, 46, 0.4));
+    clip-path: polygon(0 0, 100% 0, calc(100% - 16px) 100%, 0 100%);
+    font-size: 15px;
+    font-weight: 800;
+    font-style: italic;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #5fdcff;
+    text-shadow: 0 0 10px rgba(95, 216, 255, 0.6);
+}
+
+.dts-notice-inner {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 8px;
+}
+
+.dts-type-badge {
+    flex: 0 0 auto;
+    width: 92px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 6px;
+    border: 1px solid rgba(95, 216, 255, 0.5);
+    background: rgba(8, 24, 38, 0.7);
+}
+
+.dts-type-name {
+    font-size: 14px;
+    font-weight: 800;
+    color: #aee6ff;
+    text-align: center;
+    line-height: 1.1;
+}
+
+.dts-type-label {
+    font-size: 11px;
+    font-weight: 800;
+    font-style: italic;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #5fdcff;
+}
+
+.dts-notice-text {
+    flex: 1;
+    min-width: 0;
+    font-size: 18px;
+    line-height: 1.35;
+    color: #eef9ff;
+    white-space: pre-line;
 }
 
 @media (max-width: 700px) {
- 
-
     .dangan-trial-intro-overlay {
         align-items: flex-end;
         justify-content: center;
@@ -6469,21 +7464,39 @@ body.dangan-trial-vn-chat-hidden #chat {
 
     .dangan-trial-intro-shell {
         width: min(100%, 540px);
-        min-height: 0;
         max-height: calc(100svh - max(16px, env(safe-area-inset-top) + env(safe-area-inset-bottom)));
-        border-radius: 12px;
-        padding: 14px;
-        gap: 12px;
+        border-radius: 4px;
+        padding: 0;
+        gap: 0;
         overflow: auto;
         margin: 0 auto;
     }
 
-    .dangan-trial-intro-header h2 {
-        font-size: 22px;
+    .dangan-trial-prep-title {
+        font-size: 24px;
+        padding: 12px 16px 9px;
     }
 
-    .dangan-trial-intro-header p {
+    .dangan-trial-intro-chapter {
+        font-size: 16px;
+        padding: 8px 16px;
+    }
+
+    .dangan-trial-prep-banner {
+        height: 76px;
+    }
+
+    .dangan-trial-intro-desc {
         font-size: 13px;
+        padding: 10px 16px 12px;
+    }
+
+    .dangan-trial-menu {
+        padding: 8px 14px 10px;
+    }
+
+    .dangan-trial-menu-item {
+        font-size: 18px;
     }
 
     .dangan-trial-cylinder,
@@ -6503,9 +7516,7 @@ body.dangan-trial-vn-chat-hidden #chat {
     }
 
     .dangan-trial-intro-actions {
-        display: grid;
-        grid-template-columns: 1fr;
-        gap: 10px;
+        padding: 8px 14px 14px;
     }
 
     .dangan-trial-intro-actions button {
@@ -6516,6 +7527,45 @@ body.dangan-trial-vn-chat-hidden #chat {
     .dangan-trial-intro-start {
         font-size: 19px;
     }
+
+    .dangan-trial-info-overlay {
+        padding: 8px;
+    }
+
+    .dangan-trial-info-shell {
+        width: 100%;
+        height: calc(100svh - 16px);
+        border-radius: 10px;
+    }
+
+    .dangan-trial-skills-shell {
+        width: 100%;
+        max-height: calc(100svh - 16px);
+    }
+
+    .dts-body {
+        flex-direction: column;
+        gap: 8px;
+        overflow-y: auto;
+    }
+
+    .dts-center {
+        flex: 0 0 auto;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .dts-center .dts-action { flex: 1 0 100%; }
+    .dts-stat { width: auto; flex: 1; }
+
+    .dts-pane-list,
+    .dts-pane-set {
+        flex: 0 0 auto;
+        max-height: 38vh;
+    }
+
+    .dts-notice-text { font-size: 15px; }
 }
 
 .map-machine-overlay {

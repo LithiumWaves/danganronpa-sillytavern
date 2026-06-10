@@ -355,8 +355,8 @@ const itemCatalog = [
     { id: "drv3_date_ticket", name: "Date Ticket", category: "gift", rarity: "SR", description: "A ticket that's used to profess your adoration to someone.", effect: "I choo-choo-choose you." },
     { id: "drv3_monomergen_c", name: "Monomergen-C", category: "gift", rarity: "N", description: "A suspicious-looking energy drink. Not only will it increase your energy a hundredfold, but it can also manipulate time itself.", effect: "Increases energy a hundredfold and can manipulate time itself." },
 
-    { id: "shop_skill_clairvoyance", name: "Clairvoyance", category: "skill", rarity: "R", description: "A subtle sharpening of perception — you begin to read the room's pulse.", effect: "Displays HP values for you and your opponent during Argument Armament." },
-    { id: "shop_skill_beta_block", name: "Beta Block", category: "skill", rarity: "R", description: "A strategic read of panic — you sense the pressure before the chains appear.", effect: "Shows the number of hits required to break column locks during Mass Panic Debate." },
+    { id: "shop_skill_clairvoyance", name: "Clairvoyance", category: "skill", rarity: "R", description: "A subtle sharpening of perception — you begin to read the room's pulse.", effect: "Argument Armament - Displays HP values for you and your opponent during Argument Armament." },
+    { id: "shop_skill_beta_block", name: "Beta Block", category: "skill", rarity: "R", description: "A strategic read of panic — you sense the pressure before the chains appear.", effect: "Mass Panic Debate - Shows the number of hits required to break column locks during Mass Panic Debate." },
 ];
 
 // ---------------------------------------------------------------------------
@@ -378,39 +378,39 @@ const itemCatalog = [
 //   integer    - round the resolved value to a whole number
 //   lowerIsBetter - hint for the UI (lower value = buff, e.g. reload time)
 export const SKILL_PARAM_REGISTRY = [
-    { key: "reticuleSize",     label: "NSD — Reticule Size",          group: "Non-Stop Debate", valueTypes: ["percent", "absolute"], unit: "px", base: 120,    clampMin: 40,     clampMax: 400,    integer: true },
-    { key: "reticuleSway",     label: "NSD — Reticule Sway",          group: "Non-Stop Debate", valueTypes: ["percent", "absolute"], unit: "",   base: 9,      clampMin: 0,      clampMax: 40,     integer: false },
-    { key: "btFireSpeed",      label: "NSD — Truth Bullet Fire Speed",group: "Non-Stop Debate",       valueTypes: ["percent", "absolute"], unit: "/s", base: 0.25,   clampMin: 0.05,   clampMax: 1.0,    integer: false },
-    { key: "btReloadSpeed",    label: "NSD — Truth Bullet Reload Speed",group: "Non-Stop Debate",     valueTypes: ["percent", "absolute"], unit: "/s", base: 0.125,  clampMin: 0.02,   clampMax: 1.0,    integer: false },
-    { key: "debateTimer",      label: "NSD — Debate Timer",           group: "Non-Stop Debate", valueTypes: ["percent", "absolute"], unit: "ms", base: 120000, dynamicBase: true, clampMin: 120000, clampMax: 600000, integer: true },
-    { key: "mpdReticuleSize",  label: "MPD — Reticule Size",          group: "Mass Panic Debate", valueTypes: ["percent", "absolute"], unit: "px", base: 120,    clampMin: 40,     clampMax: 400,    integer: true },
-    { key: "mpdReticuleSway",  label: "MPD — Reticule Sway",          group: "Mass Panic Debate", valueTypes: ["percent", "absolute"], unit: "",   base: 9,      clampMin: 0,      clampMax: 40,     integer: false },
-    { key: "mpdBtFireSpeed",   label: "MPD — Truth Bullet Fire Speed",group: "Mass Panic Debate", valueTypes: ["percent", "absolute"], unit: "/s", base: 0.25,   clampMin: 0.05,   clampMax: 1.0,    integer: false },
-    { key: "mpdBtReloadSpeed", label: "MPD — Truth Bullet Reload Speed",group: "Mass Panic Debate", valueTypes: ["percent", "absolute"], unit: "/s", base: 0.125,  clampMin: 0.02,   clampMax: 1.0,    integer: false },
-    { key: "mpdDebateTimer",   label: "MPD — Debate Timer",           group: "Mass Panic Debate", valueTypes: ["percent", "absolute"], unit: "ms", base: 120000, dynamicBase: true, clampMin: 120000, clampMax: 600000, integer: true },
-    { key: "aaPlayerHp",       label: "AA — Your Health",       group: "Argument Armament", valueTypes: ["percent", "absolute"], unit: "hp", base: 100,    dynamicBase: true, clampMin: 1,    clampMax: 9999,   integer: true },
-    { key: "aaEnemyHp",        label: "AA — Enemy Health",      group: "Argument Armament", valueTypes: ["percent", "absolute"], unit: "hp", base: 100,    dynamicBase: true, clampMin: 1,    clampMax: 9999,   integer: true },
-    { key: "aaDamage",         label: "AA — Damage Dealt",      group: "Argument Armament", valueTypes: ["percent", "absolute"], unit: "hp", base: 1,      clampMin: 1,      clampMax: 999,    integer: true },
-    { key: "aaDamageTaken",    label: "AA — Damage Taken",      group: "Argument Armament", valueTypes: ["percent"],             unit: "×",  base: 1,      clampMin: 0,      clampMax: 5,      integer: false, lowerIsBetter: true },
-    { key: "aaAmmo",           label: "AA — Ammo Capacity",     group: "Argument Armament", valueTypes: ["percent", "absolute"], unit: "",   base: 6,      clampMin: 1,      clampMax: 30,     integer: true },
-    { key: "aaReloadTime",     label: "AA — Reload Time",       group: "Argument Armament", valueTypes: ["percent", "absolute"], unit: "ms", base: 500,    clampMin: 100,    clampMax: 3000,   integer: true, lowerIsBetter: true },
-    { key: "aaTimer",          label: "AA — Timer",             group: "Argument Armament", valueTypes: ["percent", "absolute"], unit: "ms", base: 90000,  clampMin: 15000,  clampMax: 600000, integer: true },
-    { key: "hangmanSpeed",     label: "HMG — Letter Speed", group: "Hangman's Gambit",  valueTypes: ["percent", "absolute"], unit: "px/s", base: 155, dynamicBase: true, clampMin: 30,   clampMax: 600,    integer: false, lowerIsBetter: true },
-    { key: "hangmanSpotlight", label: "HMG — Spotlight Size",group: "Hangman's Gambit", valueTypes: ["percent"],             unit: "×",  base: 1,      clampMin: 0.25,   clampMax: 4.0,    integer: false },
-    { key: "hangmanHealth",    label: "HMG — Your Health",  group: "Hangman's Gambit",  valueTypes: ["percent", "absolute"], unit: "hp", base: 7,      dynamicBase: true, clampMin: 1,    clampMax: 99,     integer: true },
-    { key: "hangmanConcDrain", label: "HMG — Concentration Consumption", group: "Hangman's Gambit", valueTypes: ["percent"], unit: "/s", base: 0.3333, clampMin: 0.05, clampMax: 1.0, integer: false, lowerIsBetter: true },
-    { key: "hangmanConcRegen", label: "HMG — Concentration Regeneration", group: "Hangman's Gambit", valueTypes: ["percent"], unit: "/s", base: 0.1,    clampMin: 0.02, clampMax: 1.0, integer: false },
-    { key: "hangmanTimer",     label: "HMG — Timer",        group: "Hangman's Gambit",  valueTypes: ["percent", "absolute"], unit: "s",  base: 120,    dynamicBase: true, clampMin: 30,   clampMax: 1200,   integer: true },
-    { key: "mindMinePenalty",  label: "MDM — Incorrect Block Penalty", group: "Mind Mine", valueTypes: ["percent", "absolute"], unit: "s", base: 10,  clampMin: 0,    clampMax: 120,    integer: true, lowerIsBetter: true },
-    { key: "mindMineTimer",    label: "MDM — Timer",        group: "Mind Mine",         valueTypes: ["percent", "absolute"], unit: "s",  base: 120,    dynamicBase: true, clampMin: 30,   clampMax: 1200,   integer: true },
-    { key: "scrumTimer",       label: "SDB — Timer",        group: "Scrum Debate",      valueTypes: ["percent", "absolute"], unit: "ms", base: 180000, dynamicBase: true, clampMin: 30000, clampMax: 600000, integer: true },
-    { key: "scrumHealth",      label: "SDB — Your Health",  group: "Scrum Debate",      valueTypes: ["percent", "absolute"], unit: "hp", base: 3,      clampMin: 1,      clampMax: 99,     integer: true },
-    { key: "qthTimer",         label: "QTH — Timer",        group: "Question Truth",    valueTypes: ["percent", "absolute"], unit: "s",  base: 0,      dynamicBase: true, clampMin: 0,    clampMax: 1200,   integer: true },
-    { key: "qthHealth",        label: "QTH — Your Health",  group: "Question Truth",    valueTypes: ["percent", "absolute"], unit: "hp", base: 5,      clampMin: 1,      clampMax: 99,     integer: true },
-    { key: "qttTimer",         label: "QTT — Timer",        group: "Question Time",     valueTypes: ["percent", "absolute"], unit: "s",  base: 30,     dynamicBase: true, clampMin: 0,    clampMax: 1200,   integer: true },
-    { key: "monocoinGen",      label: "Monocoin Generation",    group: "Rewards",           valueTypes: ["percent", "absolute"], unit: "",   base: null,   dynamicBase: true, clampMin: 0,    clampMax: 1e9,    integer: true },
-    { key: "playerExp",        label: "Player EXP Gain",        group: "Rewards",           valueTypes: ["percent", "absolute"], unit: "",   base: null,   dynamicBase: true, clampMin: 0,    clampMax: 1e9,    integer: true },
-    { key: "trustExp",         label: "Trust Fragment Gain",    group: "Rewards",           valueTypes: ["percent", "absolute"], unit: "",   base: null,   dynamicBase: true, clampMin: 0,    clampMax: 1e9,    integer: true },
+    { key: "reticuleSize",     label: "Non-Stop Debate — Reticule Size",          group: "Non-Stop Debate", valueTypes: ["percent", "absolute"], unit: "px", base: 120,    clampMin: 40,     clampMax: 400,    integer: true },
+    { key: "reticuleSway",     label: "Non-Stop Debate — Reticule Sway",          group: "Non-Stop Debate", valueTypes: ["percent", "absolute"], unit: "",   base: 9,      clampMin: 0,      clampMax: 40,     integer: false },
+    { key: "btFireSpeed",      label: "Non-Stop Debate — Truth Bullet Fire Speed",group: "Non-Stop Debate",       valueTypes: ["percent", "absolute"], unit: "/s", base: 0.25,   clampMin: 0.05,   clampMax: 1.0,    integer: false },
+    { key: "btReloadSpeed",    label: "Non-Stop Debate — Truth Bullet Reload Speed",group: "Non-Stop Debate",     valueTypes: ["percent", "absolute"], unit: "/s", base: 0.125,  clampMin: 0.02,   clampMax: 1.0,    integer: false },
+    { key: "debateTimer",      label: "Non-Stop Debate — Debate Timer",           group: "Non-Stop Debate", valueTypes: ["percent", "absolute"], unit: "ms", base: 120000, dynamicBase: true, clampMin: 120000, clampMax: 600000, integer: true },
+    { key: "mpdReticuleSize",  label: "Mass Panic Debate — Reticule Size",          group: "Mass Panic Debate", valueTypes: ["percent", "absolute"], unit: "px", base: 120,    clampMin: 40,     clampMax: 400,    integer: true },
+    { key: "mpdReticuleSway",  label: "Mass Panic Debate — Reticule Sway",          group: "Mass Panic Debate", valueTypes: ["percent", "absolute"], unit: "",   base: 9,      clampMin: 0,      clampMax: 40,     integer: false },
+    { key: "mpdBtFireSpeed",   label: "Mass Panic Debate — Truth Bullet Fire Speed",group: "Mass Panic Debate", valueTypes: ["percent", "absolute"], unit: "/s", base: 0.25,   clampMin: 0.05,   clampMax: 1.0,    integer: false },
+    { key: "mpdBtReloadSpeed", label: "Mass Panic Debate — Truth Bullet Reload Speed",group: "Mass Panic Debate", valueTypes: ["percent", "absolute"], unit: "/s", base: 0.125,  clampMin: 0.02,   clampMax: 1.0,    integer: false },
+    { key: "mpdDebateTimer",   label: "Mass Panic Debate — Debate Timer",           group: "Mass Panic Debate", valueTypes: ["percent", "absolute"], unit: "ms", base: 120000, dynamicBase: true, clampMin: 120000, clampMax: 600000, integer: true },
+    { key: "aaPlayerHp",       label: "Argument Armament — Your Health",       group: "Argument Armament", valueTypes: ["percent", "absolute"], unit: "hp", base: 100,    dynamicBase: true, clampMin: 1,    clampMax: 9999,   integer: true },
+    { key: "aaEnemyHp",        label: "Argument Armament — Enemy Health",      group: "Argument Armament", valueTypes: ["percent", "absolute"], unit: "hp", base: 100,    dynamicBase: true, clampMin: 1,    clampMax: 9999,   integer: true },
+    { key: "aaDamage",         label: "Argument Armament — Damage Dealt",      group: "Argument Armament", valueTypes: ["percent", "absolute"], unit: "hp", base: 1,      clampMin: 1,      clampMax: 999,    integer: true },
+    { key: "aaDamageTaken",    label: "Argument Armament — Damage Taken",      group: "Argument Armament", valueTypes: ["percent"],             unit: "×",  base: 1,      clampMin: 0,      clampMax: 5,      integer: false, lowerIsBetter: true },
+    { key: "aaAmmo",           label: "Argument Armament — Ammo Capacity",     group: "Argument Armament", valueTypes: ["percent", "absolute"], unit: "",   base: 6,      clampMin: 1,      clampMax: 30,     integer: true },
+    { key: "aaReloadTime",     label: "Argument Armament — Reload Time",       group: "Argument Armament", valueTypes: ["percent", "absolute"], unit: "ms", base: 500,    clampMin: 100,    clampMax: 3000,   integer: true, lowerIsBetter: true },
+    { key: "aaTimer",          label: "Argument Armament — Timer",             group: "Argument Armament", valueTypes: ["percent", "absolute"], unit: "ms", base: 90000,  clampMin: 15000,  clampMax: 600000, integer: true },
+    { key: "hangmanSpeed",     label: "Hangman's Gambit — Letter Speed", group: "Hangman's Gambit",  valueTypes: ["percent", "absolute"], unit: "px/s", base: 155, dynamicBase: true, clampMin: 30,   clampMax: 600,    integer: false, lowerIsBetter: true },
+    { key: "hangmanSpotlight", label: "Hangman's Gambit — Spotlight Size",group: "Hangman's Gambit", valueTypes: ["percent"],             unit: "×",  base: 1,      clampMin: 0.25,   clampMax: 4.0,    integer: false },
+    { key: "hangmanHealth",    label: "Hangman's Gambit — Your Health",  group: "Hangman's Gambit",  valueTypes: ["percent", "absolute"], unit: "hp", base: 7,      dynamicBase: true, clampMin: 1,    clampMax: 99,     integer: true },
+    { key: "hangmanConcDrain", label: "Hangman's Gambit — Concentration Consumption", group: "Hangman's Gambit", valueTypes: ["percent"], unit: "/s", base: 0.3333, clampMin: 0.05, clampMax: 1.0, integer: false, lowerIsBetter: true },
+    { key: "hangmanConcRegen", label: "Hangman's Gambit — Concentration Regeneration", group: "Hangman's Gambit", valueTypes: ["percent"], unit: "/s", base: 0.1,    clampMin: 0.02, clampMax: 1.0, integer: false },
+    { key: "hangmanTimer",     label: "Hangman's Gambit — Timer",        group: "Hangman's Gambit",  valueTypes: ["percent", "absolute"], unit: "s",  base: 120,    dynamicBase: true, clampMin: 30,   clampMax: 1200,   integer: true },
+    { key: "mindMinePenalty",  label: "Mind Mine — Incorrect Block Penalty", group: "Mind Mine", valueTypes: ["percent", "absolute"], unit: "s", base: 10,  clampMin: 0,    clampMax: 120,    integer: true, lowerIsBetter: true },
+    { key: "mindMineTimer",    label: "Mind Mine — Timer",        group: "Mind Mine",         valueTypes: ["percent", "absolute"], unit: "s",  base: 120,    dynamicBase: true, clampMin: 30,   clampMax: 1200,   integer: true },
+    { key: "scrumTimer",       label: "Scrum Debate — Timer",        group: "Scrum Debate",      valueTypes: ["percent", "absolute"], unit: "ms", base: 180000, dynamicBase: true, clampMin: 30000, clampMax: 600000, integer: true },
+    { key: "scrumHealth",      label: "Scrum Debate — Your Health",  group: "Scrum Debate",      valueTypes: ["percent", "absolute"], unit: "hp", base: 3,      clampMin: 1,      clampMax: 99,     integer: true },
+    { key: "qthTimer",         label: "Question Truth — Timer",        group: "Question Truth",    valueTypes: ["percent", "absolute"], unit: "s",  base: 0,      dynamicBase: true, clampMin: 0,    clampMax: 1200,   integer: true },
+    { key: "qthHealth",        label: "Question Truth — Your Health",  group: "Question Truth",    valueTypes: ["percent", "absolute"], unit: "hp", base: 5,      clampMin: 1,      clampMax: 99,     integer: true },
+    { key: "qttTimer",         label: "Question Time — Timer",        group: "Question Time",     valueTypes: ["percent", "absolute"], unit: "s",  base: 30,     dynamicBase: true, clampMin: 0,    clampMax: 1200,   integer: true },
+    { key: "monocoinGen",      label: "General - Monocoin Generation",    group: "Rewards",           valueTypes: ["percent", "absolute"], unit: "",   base: null,   dynamicBase: true, clampMin: 0,    clampMax: 1e9,    integer: true },
+    { key: "playerExp",        label: "General - EXP Gain",        group: "Rewards",           valueTypes: ["percent", "absolute"], unit: "",   base: null,   dynamicBase: true, clampMin: 0,    clampMax: 1e9,    integer: true },
+    { key: "trustExp",         label: "General - Trust Fragment Gain",    group: "Rewards",           valueTypes: ["percent", "absolute"], unit: "",   base: null,   dynamicBase: true, clampMin: 0,    clampMax: 1e9,    integer: true },
 ];
 
 // Emotion-bias parameters — one per canonical emotion (kept in sync with
@@ -426,7 +426,7 @@ const SKILL_EMOTION_NAMES = [
 for (const emo of SKILL_EMOTION_NAMES) {
     SKILL_PARAM_REGISTRY.push({
         key: `emotion_${emo}`,
-        label: `Emotion: ${emo.charAt(0).toUpperCase()}${emo.slice(1)}`,
+        label: `Emotion - ${emo.charAt(0).toUpperCase()}${emo.slice(1)}`,
         group: "Influence Character Emotion Chance",
         valueTypes: ["percent"],
         unit: "% chance",
@@ -672,8 +672,8 @@ export function createItemsPanelController({ extensionName, extension_settings, 
     let itemSearchQuery = "";
 
     const placeholderSkillShopCatalog = [
-        { id: "shop_skill_clairvoyance", name: "Clairvoyance", cost: 10, skillPointCost: 2, teaserEffect: "Displays HP values for you and your opponent during Argument Armament." },
-        { id: "shop_skill_beta_block", name: "Beta Block", cost: 10, skillPointCost: 2, teaserEffect: "Shows the number of hits required to break column locks during Mass Panic Debate." },
+        { id: "shop_skill_clairvoyance", name: "Clairvoyance", cost: 10, skillPointCost: 2, teaserEffect: "Argument Armament - Displays HP values for you and your opponent during Argument Armament." },
+        { id: "shop_skill_beta_block", name: "Beta Block", cost: 10, skillPointCost: 2, teaserEffect: "Mass Panic Debate - Shows the number of hits required to break column locks during Mass Panic Debate." },
     ];
 
 
@@ -1929,11 +1929,113 @@ export function createItemsPanelController({ extensionName, extension_settings, 
             };
         }
 
+        // Keep the Skills Shop UI in sync (SP total / buttons change on equip).
+        renderSkillsItemsPanel();
+        renderSkillShopDetails();
+
         return {
             changed: true,
             equipped: !equipped,
             snapshot: getTrialSkillEntries(),
         };
+    }
+
+    // Per-skill stat ratings shown in the trial Skill List. The two gauges the
+    // skill effects feed into are surfaced under game-facing names:
+    //   Health        ← "Influence Gauge" (trial-wide HP) params
+    //   Concentration ← "Focus Gauge" (bullet-time / concentration) params
+    const HEALTH_STAT_PARAMS = new Set(["aaPlayerHp", "hangmanHealth", "scrumHealth", "qthHealth"]);
+    const CONCENTRATION_STAT_PARAMS = new Set(["btFireSpeed", "btReloadSpeed", "hangmanConcDrain", "hangmanConcRegen"]);
+
+    function pctToPips(pct) {
+        if (pct <= 0) return 0;
+        if (pct < 15) return 1;
+        if (pct < 30) return 2;
+        if (pct < 45) return 3;
+        if (pct < 60) return 4;
+        return 5;
+    }
+
+    function getSkillEffects(skillId) {
+        const inventory = extension_settings[extensionName].inventory || {};
+        const custom = inventory.customSkills?.[skillId];
+        if (Array.isArray(custom?.effects)) return custom.effects;
+        const item = getItemById(skillId);
+        return Array.isArray(item?.effects) ? item.effects : [];
+    }
+
+    // Rate a skill 0–5 on Health and Concentration by the strongest effect it
+    // applies to each gauge's parameters.
+    function getSkillStatRatings(skillId) {
+        let health = 0;
+        let concentration = 0;
+        for (const effect of getSkillEffects(skillId)) {
+            const magnitude = Math.abs(Number(effect?.value) || 0);
+            if (HEALTH_STAT_PARAMS.has(effect?.parameter)) health = Math.max(health, magnitude);
+            else if (CONCENTRATION_STAT_PARAMS.has(effect?.parameter)) concentration = Math.max(concentration, magnitude);
+        }
+        return { health: pctToPips(health), concentration: pctToPips(concentration) };
+    }
+
+    // Combined view for the trial-prep Skill List: every shop/owned skill with
+    // its buy/equip affordances, plus SP and slot totals.
+    function getTrialSkillBrowser() {
+        loadInventoryState();
+        const inventory = extension_settings[extensionName].inventory || {};
+        const skillPoints = Number(inventory.skillPoints || 0);
+        const trustFragments = Number(inventory.trustFragments || 0);
+
+        const ownedById = new Map(getTrialSkillEntries().skills.map(s => [s.id, s]));
+        const shopById = new Map(getSkillShopListings().map(s => [s.id, s]));
+
+        const ids = new Set([...ownedById.keys(), ...shopById.keys()]);
+
+        let slotUsed = 0;
+        const skills = [];
+        ids.forEach(id => {
+            const o = ownedById.get(id);
+            const s = shopById.get(id);
+            const isOwned = Boolean(o) || Boolean(s?.owned);
+            const equipped = Boolean(o?.equipped);
+            const skillPointCost = Number((o?.skillPointCost ?? s?.skillPointCost) || 0);
+            const cost = Number(s?.cost || 0);
+            if (equipped) slotUsed += skillPointCost;
+            const ratings = getSkillStatRatings(id);
+            skills.push({
+                id,
+                name: o?.name || s?.name || "UNKNOWN SKILL",
+                rarity: o?.rarity || s?.rarity || "N",
+                effect: o?.effect || s?.teaserEffect || s?.description || "",
+                skillPointCost,
+                cost,
+                owned: isOwned,
+                equipped,
+                purchasable: Boolean(s),
+                canBuy: !isOwned && Boolean(s) && trustFragments >= cost,
+                canEquip: isOwned && !equipped && skillPoints >= skillPointCost,
+                health: ratings.health,
+                concentration: ratings.concentration,
+            });
+        });
+
+        skills.sort((a, b) =>
+            Number(b.equipped) - Number(a.equipped) ||
+            Number(b.owned) - Number(a.owned) ||
+            rarityScore(b.rarity) - rarityScore(a.rarity) ||
+            a.name.localeCompare(b.name));
+
+        return { skillPoints, trustFragments, slotUsed, slotTotal: skillPoints + slotUsed, skills };
+    }
+
+    // Purchase a skill from the trial-prep Skill List (same currency/rules as the
+    // shop), then refresh the Skills Shop UI so both stay in sync.
+    function buyTrialSkill(skillId) {
+        const purchased = buySkillFromShop(skillId);
+        if (purchased) {
+            renderSkillsItemsPanel();
+            renderSkillShopDetails();
+        }
+        return { changed: purchased, snapshot: getTrialSkillBrowser() };
     }
 
     function bindWindowApi() {
@@ -2021,7 +2123,9 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         getMonoMonoDupeChance,
         spinMonoMonoMachine,
         getTrialSkillEntries,
+        getTrialSkillBrowser,
         toggleTrialSkillEquip,
+        buyTrialSkill,
         getGiftPoolWithCounts,
         createCustomGift,
         removeCustomGift,

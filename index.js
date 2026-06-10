@@ -3476,9 +3476,229 @@ async function triggerTrialStartFromMapPin() {
     const accepted = await classTrialMenuController?.open?.();
     if (!accepted) return false;
 
-    console.log("[Dangan][Trial] Begin Class Trial selected from map pin.");
+    const roster = await openTrialRosterModal();
+    if (!roster) return false; // cancelled the participant picker
+
+    extension_settings[extensionName].trialRoster = roster;
+    saveSettingsDebounced();
+
+    console.log(`[Dangan][Trial] Begin Class Trial with ${roster.length} participant(s):`, roster);
+    await createClassTrialGroupChat(roster);
     trialManager?.start();
     return true;
+}
+
+// Create a fresh group chat for the trial containing the chosen participants,
+// then open it. Members are matched to SillyTavern characters by name → avatar.
+async function createClassTrialGroupChat(roster) {
+    try {
+        const ctx = window.SillyTavern?.getContext?.();
+        const stChars = Array.isArray(ctx?.characters) ? ctx.characters : [];
+
+        const members = [];
+        const memberNames = [];
+        (Array.isArray(roster) ? roster : []).forEach(name => {
+            const avatar = stChars.find(c => c?.name === name)?.avatar;
+            if (avatar) { members.push(avatar); memberNames.push(name); }
+        });
+
+        if (!members.length) {
+            console.warn("[Dangan][Trial] No matching SillyTavern characters for the selected roster; skipping group creation.", roster);
+            return null;
+        }
+
+        const chatId = typeof ctx?.humanizedDateTime === "function" ? ctx.humanizedDateTime() : String(Date.now());
+        const groupName = `Class Trial - ${memberNames.join(", ")}`;
+
+        const payload = {
+            name: groupName,
+            members,
+            avatar_url: "img/ai4.png",
+            allow_self_responses: false,
+            hideMutedSprites: true,
+            activation_strategy: 0, // NATURAL
+            generation_mode: 0,     // SWAP
+            disabled_members: [],
+            fav: false,
+            chat_id: chatId,
+            chats: [chatId],
+            auto_mode_delay: 5,
+        };
+
+        const resp = await fetch("/api/groups/create", {
+            method: "POST",
+            headers: getRequestHeaders(),
+            body: JSON.stringify(payload),
+        });
+        if (!resp.ok) {
+            console.error("[Dangan][Trial] Failed to create Class Trial group chat:", resp.status, resp.statusText);
+            return null;
+        }
+
+        const data = await resp.json();
+        console.log(`[Dangan][Trial] Created Class Trial group "${groupName}" (${data.id}) with ${members.length} member(s).`);
+
+        // Refresh ST's character/group lists so openGroupById can resolve the new
+        // group (the in-memory `groups` array won't include it until we reload).
+        if (typeof ctx?.getCharacters === "function") {
+            try { await ctx.getCharacters(); } catch {}
+        }
+        await new Promise(r => setTimeout(r, 150));
+        await openGroupById(data.id);
+        return data.id;
+    } catch (err) {
+        console.error("[Dangan][Trial] Error creating Class Trial group chat:", err);
+        return null;
+    }
+}
+
+// Participant picker shown after "Begin Class Trial": choose which characters
+// from the roster are pulled into the trial. Resolves to an array of selected
+// names, or null if cancelled.
+function openTrialRosterModal() {
+    return new Promise((resolve) => {
+        const list = [...characters.values()];
+
+        document.getElementById("dangan-trial-roster-overlay")?.remove();
+        const overlay = document.createElement("div");
+        overlay.id = "dangan-trial-roster-overlay";
+        overlay.className = "dangan-trial-roster-overlay";
+        overlay.innerHTML = `
+            <div class="dangan-trial-roster-shell" role="dialog" aria-modal="true" aria-labelledby="dangan-trial-roster-title">
+                <div class="dangan-trial-roster-head">
+                    <span class="dangan-trial-roster-title" id="dangan-trial-roster-title">Select Participants</span>
+                    <span class="dangan-trial-roster-count"><span id="dangan-trial-roster-count-n">0</span> SELECTED</span>
+                </div>
+                <div class="dangan-trial-rule"></div>
+                <div class="dangan-trial-roster-toolbar">
+                    <button type="button" id="dangan-trial-roster-all">Select All</button>
+                    <button type="button" id="dangan-trial-roster-none">Clear</button>
+                </div>
+                <div class="dangan-trial-roster-grid" id="dangan-trial-roster-grid"></div>
+                <div class="dangan-trial-rule"></div>
+                <div class="dangan-trial-roster-actions">
+                    <button type="button" class="dangan-trial-roster-confirm" id="dangan-trial-roster-confirm">Begin Class Trial</button>
+                    <button type="button" class="dangan-trial-roster-cancel" id="dangan-trial-roster-cancel">Cancel</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        const gridEl = overlay.querySelector("#dangan-trial-roster-grid");
+        const countEl = overlay.querySelector("#dangan-trial-roster-count-n");
+        const confirmBtn = overlay.querySelector("#dangan-trial-roster-confirm");
+        const selected = new Set();
+        const cards = [];
+
+        function updateCount() {
+            if (countEl) countEl.textContent = String(selected.size);
+            if (confirmBtn) confirmBtn.disabled = selected.size === 0;
+        }
+
+        if (!list.length) {
+            gridEl.innerHTML = `<div class="dangan-trial-roster-empty">No characters available. Characters appear here once they've shown up in the chat.</div>`;
+        }
+
+        list.forEach((c) => {
+            const name = c?.name || "Unknown";
+            const isDead = !!c?.dead;
+
+            const card = document.createElement("button");
+            card.type = "button";
+            card.className = "dangan-trial-roster-card" + (isDead ? " is-dead" : "");
+            card.dataset.name = name;
+            card.innerHTML = `
+                <div class="dangan-trial-roster-avatar"><span class="dangan-trial-roster-avatar-fallback"></span></div>
+                <div class="dangan-trial-roster-name"></div>
+                <div class="dangan-trial-roster-badge">✓</div>
+            `;
+            card.querySelector(".dangan-trial-roster-name").textContent = name;
+            card.querySelector(".dangan-trial-roster-avatar-fallback").textContent = name.charAt(0).toUpperCase();
+
+            if (!isDead) {
+                selected.add(name);
+                card.classList.add("selected");
+                card.setAttribute("aria-pressed", "true");
+            } else {
+                card.setAttribute("aria-pressed", "false");
+            }
+
+            card.addEventListener("click", () => {
+                if (selected.has(name)) {
+                    selected.delete(name);
+                    card.classList.remove("selected");
+                    card.setAttribute("aria-pressed", "false");
+                } else {
+                    selected.add(name);
+                    card.classList.add("selected");
+                    card.setAttribute("aria-pressed", "true");
+                }
+                updateCount();
+                playSfx?.(sfx.click);
+            });
+
+            gridEl.appendChild(card);
+            cards.push(card);
+
+            // Use the Class Roster profile image; keep the letter fallback if it
+            // fails to load (preload so the fallback only hides on success).
+            const portraitUrl = `/characters/${encodeURIComponent(name)}.png`;
+            const probe = new Image();
+            probe.onload = () => {
+                const av = card.querySelector(".dangan-trial-roster-avatar");
+                if (av) av.style.backgroundImage = `url("${portraitUrl}")`;
+                card.classList.add("has-avatar");
+            };
+            probe.onerror = () => {};
+            probe.src = portraitUrl;
+        });
+
+        updateCount();
+
+        let settled = false;
+        const finish = (result) => {
+            if (settled) return;
+            settled = true;
+            document.removeEventListener("keydown", onKeydown);
+            overlay.remove();
+            resolve(result);
+        };
+        const onKeydown = (event) => { if (event.key === "Escape") finish(null); };
+
+        overlay.querySelector("#dangan-trial-roster-all").addEventListener("click", () => {
+            cards.forEach(card => {
+                selected.add(card.dataset.name);
+                card.classList.add("selected");
+                card.setAttribute("aria-pressed", "true");
+            });
+            updateCount();
+            playSfx?.(sfx.click);
+        });
+        overlay.querySelector("#dangan-trial-roster-none").addEventListener("click", () => {
+            selected.clear();
+            cards.forEach(card => {
+                card.classList.remove("selected");
+                card.setAttribute("aria-pressed", "false");
+            });
+            updateCount();
+            playSfx?.(sfx.click);
+        });
+        confirmBtn.addEventListener("click", () => {
+            if (!selected.size) return;
+            playSfx?.(sfx.click);
+            finish([...selected]);
+        });
+        overlay.querySelector("#dangan-trial-roster-cancel").addEventListener("click", () => {
+            playSfx?.(sfx.click);
+            finish(null);
+        });
+        overlay.addEventListener("click", (event) => {
+            if (event.target === overlay) finish(null);
+        });
+        document.addEventListener("keydown", onKeydown);
+
+        requestAnimationFrame(() => overlay.classList.add("active"));
+    });
 }
 
 /* =========================
@@ -5110,7 +5330,14 @@ function getActiveGroupMemberNames() {
 // off the voting screen and results wheel.
 function getVotingRosterCharacters() {
     const memberKeys = new Set(getActiveGroupMemberNames().map(n => normalizeName(n)));
+    // Participants chosen in the "Begin Class Trial" picker, if any.
+    const rosterList = extension_settings[extensionName]?.trialRoster;
+    const rosterKeys = Array.isArray(rosterList) && rosterList.length
+        ? new Set(rosterList.map(n => normalizeName(n)))
+        : null;
     const chars = [...characters.values()].filter(c => {
+        // Restrict to the chosen trial participants when a roster was picked.
+        if (rosterKeys && !rosterKeys.has(normalizeName(c.name))) return false;
         // Not in a group chat → keep the full roster rather than over-filter.
         if (memberKeys.size && !memberKeys.has(normalizeName(c.name))) return false;
         return true;
@@ -5237,6 +5464,96 @@ function setActiveMonopadTab(tab) {
 
     $(".monopad-panel-content").removeClass("active");
     $(`.monopad-panel-content[data-panel="${tab}"]`).addClass("active");
+}
+
+// ── Trial-prep info modal ───────────────────────────────────────────────────
+// Surfaces a Monopad tab's content (Chapter Summary / Truth Bullets) in a modal
+// stacked above the Class Trial preparation screen. Rather than re-render the
+// content, the live panel node is relocated into the modal so all existing
+// rendering and event wiring keep working, then restored to the Monopad on close.
+let trialInfoModalState = null;
+
+function ensureTrialInfoOverlay() {
+    let overlay = document.getElementById("dangan-trial-info-overlay");
+    if (overlay) return overlay;
+
+    overlay = document.createElement("div");
+    overlay.id = "dangan-trial-info-overlay";
+    overlay.className = "dangan-trial-info-overlay";
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.innerHTML = `
+        <div class="dangan-trial-info-shell" role="dialog" aria-modal="true" aria-labelledby="dangan-trial-info-title">
+            <div class="dangan-trial-info-head">
+                <span class="dangan-trial-info-title" id="dangan-trial-info-title"></span>
+                <button type="button" class="dangan-trial-info-close" id="dangan-trial-info-close" aria-label="Close">&#10005;</button>
+            </div>
+            <div class="dangan-trial-info-body" id="dangan-trial-info-body"></div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    overlay.querySelector("#dangan-trial-info-close")?.addEventListener("click", () => closeTrialInfoModal());
+    overlay.addEventListener("click", (event) => {
+        if (event.target === overlay) closeTrialInfoModal();
+    });
+    // Capture-phase Escape so it closes this modal without reaching the prep
+    // overlay's bubble-phase Escape handler (which would cancel the trial).
+    document.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape") return;
+        if (!overlay.classList.contains("active")) return;
+        event.stopPropagation();
+        closeTrialInfoModal();
+    }, true);
+
+    return overlay;
+}
+
+function openTrialInfoModal(title, panelSelector, onShow) {
+    const overlay = ensureTrialInfoOverlay();
+    const body = overlay.querySelector("#dangan-trial-info-body");
+    const titleEl = overlay.querySelector("#dangan-trial-info-title");
+    const node = document.querySelector(panelSelector);
+    if (!node || !body) return;
+
+    if (trialInfoModalState) closeTrialInfoModal();
+
+    if (titleEl) titleEl.textContent = String(title || "");
+    trialInfoModalState = {
+        node,
+        parent: node.parentNode,
+        nextSibling: node.nextSibling,
+        hadActive: node.classList.contains("active"),
+    };
+
+    node.classList.add("active");
+    body.appendChild(node);
+    overlay.classList.add("active");
+    overlay.setAttribute("aria-hidden", "false");
+    playSfx(sfx.click);
+
+    try { onShow?.(); } catch (err) { console.error("[Dangan][Trial] info modal render failed", err); }
+}
+
+function closeTrialInfoModal() {
+    const overlay = document.getElementById("dangan-trial-info-overlay");
+    const state = trialInfoModalState;
+    trialInfoModalState = null;
+
+    if (state?.node) {
+        if (!state.hadActive) state.node.classList.remove("active");
+        if (state.parent) {
+            // Guard against a stale sibling reference if the container changed.
+            const ref = state.nextSibling && state.nextSibling.parentNode === state.parent
+                ? state.nextSibling
+                : null;
+            state.parent.insertBefore(state.node, ref);
+        }
+    }
+
+    if (overlay) {
+        overlay.classList.remove("active");
+        overlay.setAttribute("aria-hidden", "true");
+    }
 }
 
 function setMapToHopesPeakFloorOneForLesson() {
@@ -8462,12 +8779,36 @@ classTrialMenuController = createClassTrialMenuController({
     extensionSettings: extension_settings,
     buildExtensionPathCandidates,
     getTrialSkillEntries: () => itemsPanelController?.getTrialSkillEntries?.() || { skillPoints: 0, skills: [] },
+    getTrialSkillBrowser: () => itemsPanelController?.getTrialSkillBrowser?.() || { skillPoints: 0, trustFragments: 0, slotUsed: 0, slotTotal: 0, skills: [] },
     toggleTrialSkillEquip: (skillId) => itemsPanelController?.toggleTrialSkillEquip?.(skillId) || { changed: false },
+    buyTrialSkill: (skillId) => itemsPanelController?.buyTrialSkill?.(skillId) || { changed: false },
     playSfx,
     getSfx: () => sfx,
     onOpen: () => fadeOutAndPauseBgm(),
     onClose: () => fadeInAndResumeBgm(),
     getPreparationTracks: () => getMonopadSetting("trialPreparationTracks") || [],
+    getChapterLabel: () => getChapterLabel(),
+    getDifficultyLabel: () => {
+        const key = clampRewardDifficulty(getMonopadSetting("rewardDifficulty") || defaultSettings.rewardDifficulty);
+        return REWARD_DIFFICULTY_LABELS[key] || key.toUpperCase();
+    },
+    cycleDifficulty: () => {
+        const order = ["easy", "normal", "hard"];
+        const current = clampRewardDifficulty(getMonopadSetting("rewardDifficulty") || defaultSettings.rewardDifficulty);
+        const next = order[(order.indexOf(current) + 1) % order.length];
+        const applied = applyRewardDifficultyProfile(next);
+        setMonopadSetting("rewardDifficulty", applied);
+        const select = document.getElementById("dangan_reward_difficulty");
+        if (select) select.value = applied;
+        applySettingsTabUI();
+        return REWARD_DIFFICULTY_LABELS[applied] || applied.toUpperCase();
+    },
+    onViewSummary: () => {
+        openTrialInfoModal("Chapter Summary", '.monopad-panel-content[data-panel="chapters"]', () => renderChaptersPanel());
+    },
+    onViewTruthBullets: () => {
+        openTrialInfoModal("Truth Bullets", '.monopad-panel-content[data-panel="truth"]', () => window.renderTruthBullets?.());
+    },
 });
 window.startClassTrial = async () => {
     return triggerTrialStartFromMapPin();
