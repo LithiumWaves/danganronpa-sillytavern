@@ -985,12 +985,6 @@
                     </select>
                 </div>
 
-                <div class="settings-item">
-                    <span class="settings-label">GENERATE WHITE NOISE LINES</span>
-                    <button class="settings-toggle on" data-setting="whiteNoiseGenerationEnabled"></button>
-                </div>
-                <div class="settings-note">When disabled, class trials use curated White Noise reactions instead of generating new ones.</div>
-
                 <div class="settings-item settings-item-stack settings-openrouter-only" id="dangan_openrouter_model_wrap">
                     <label class="settings-label" for="dangan_openrouter_model">OPENROUTER MODEL</label>
                     <input
@@ -1032,6 +1026,16 @@
                     </div>
                     <div class="settings-note">Clears this chat's trial debate history, topic, goal, and suspects so the AI starts from a clean slate. An in-progress trial keeps running.</div>
                 </div>
+            </section>
+
+            <section class="settings-section settings-section-trials">
+                <div class="settings-section-title">CLASS TRIALS</div>
+
+                <div class="settings-item">
+                    <span class="settings-label">GENERATE WHITE NOISE LINES</span>
+                    <button class="settings-toggle on" data-setting="whiteNoiseGenerationEnabled"></button>
+                </div>
+                <div class="settings-note">When disabled, class trials use curated White Noise reactions instead of generating new ones.</div>
             </section>
 
         </div>

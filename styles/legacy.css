@@ -3889,6 +3889,21 @@ body.dangan-hide-hopes-peak-branding .settings-header-cog {
     border-radius: 999px;
 }
 
+.settings-section-trials {
+    max-height: 230px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.settings-section-trials::-webkit-scrollbar {
+    width: 6px;
+}
+
+.settings-section-trials::-webkit-scrollbar-thumb {
+    background: rgba(102, 172, 255, 0.45);
+    border-radius: 999px;
+}
+
 #dangan_crt_slider {
     width: 130px;
     accent-color: #54dfff;
