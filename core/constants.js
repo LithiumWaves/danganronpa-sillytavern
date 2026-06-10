@@ -71,6 +71,7 @@ export const defaultSettings = {
     hideTruthBulletImages: false,
     hideGiftImages: false,
     minigameTutorialsEnabled: true,
+    whiteNoiseGenerationEnabled: true,
     talentImagesForAnalysis: false,
     monopadButtonEnabled: true,
     welcomeSeen: false,

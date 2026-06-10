@@ -334,6 +334,49 @@ export function createTrialManager(deps) {
         return arr.length ? arr : null;
     }
 
+    const PREGENERATED_WHITE_NOISE_POOLS = [
+        ["That's impossible!", "No way...", "You're reaching!", "That makes no sense!"],
+        ["Hold on a second!", "That cannot be right!", "Stop talking nonsense!", "I don't buy it!"],
+        ["Wait... what?!", "You're lying!", "Give me a break!", "That changes everything!"],
+        ["Shut up already!", "You're wrong!", "I hate this...", "This is bad!"],
+        ["No no no!", "That proves nothing!", "I can't accept that!", "This is ridiculous!"],
+        ["Seriously?!", "You're twisting it!", "That sounds fake!", "I don't believe it!"],
+        ["Quit bluffing!", "That is absurd!", "What are you saying?!", "This is getting worse..."],
+        ["There's no chance!", "You're kidding, right?!", "That doesn't add up!", "I won't fall for that!"],
+        ["Stop making things up!", "That sounds dangerous...", "I can't listen to this!", "You're cornering us!"],
+        ["You're off base!", "That is not what happened!", "This is all wrong!", "Don't jump to that conclusion!"],
+        ["Calm down already!", "That is way too suspicious!", "I refuse to believe that!", "You're pushing it!"],
+        ["This is impossible...", "What if they're right?!", "I don't want to hear this!", "That's not fair!"],
+    ];
+
+    function isWhiteNoiseGenerationEnabled() {
+        return extensionSettings?.[extensionName]?.whiteNoiseGenerationEnabled !== false;
+    }
+
+    function hashWhiteNoiseSeed(value) {
+        const source = String(value || '');
+        let hash = 0;
+        for (let i = 0; i < source.length; i++) {
+            hash = ((hash << 5) - hash + source.charCodeAt(i)) | 0;
+        }
+        return Math.abs(hash);
+    }
+
+    function getPreGeneratedWhiteNoiseReactions(statement, bystanderNames = []) {
+        const cleanStatement = stripSurroundingQuotes(
+            String(statement || '')
+                .replace(/\[\[/g, '')
+                .replace(/\]\]/g, '')
+                .trim()
+        ).toLowerCase();
+        const cleanNames = Array.isArray(bystanderNames)
+            ? bystanderNames.map(name => String(name || '').trim().toLowerCase()).filter(Boolean)
+            : [];
+        const seed = `${cleanStatement}::${cleanNames.join('|')}`;
+        const pool = PREGENERATED_WHITE_NOISE_POOLS[hashWhiteNoiseSeed(seed) % PREGENERATED_WHITE_NOISE_POOLS.length];
+        return pool ? [...pool] : null;
+    }
+
     function parseMpdScenarios(rawScenarios) {
         return rawScenarios
             .filter(s => (s.texts || []).every(t => {
@@ -6189,10 +6232,16 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
         return ensureSingleWeakPointMarker('...');
     }
 
-    // Generate 4 short bystander reactions to a debate statement.
-    // Returns a string[] or null if generation is unavailable or fails.
+    // Build bystander reactions for a debate statement. When White Noise
+    // generation is disabled, or if generation is unavailable, use a curated
+    // prewritten pool instead.
     async function generateWhiteNoiseReactions(statement, bystanderNames) {
-        if (typeof generateTrialDialogue !== 'function') return null;
+        if (!isWhiteNoiseGenerationEnabled()) {
+            return getPreGeneratedWhiteNoiseReactions(statement, bystanderNames);
+        }
+        if (typeof generateTrialDialogue !== 'function') {
+            return getPreGeneratedWhiteNoiseReactions(statement, bystanderNames);
+        }
 
         const nameList = bystanderNames.length
             ? bystanderNames.slice(0, 6).join(', ')
@@ -6217,10 +6266,13 @@ Rules:
                 .split('\n')
                 .map(l => l.replace(/^\d+[.)]\s*/, '').replace(/^[-*•]\s*/, '').trim())
                 .filter(l => l.length >= 2 && l.length <= 60);
+            const uniqueLines = [...new Set(lines)];
 
-            return lines.length >= 2 ? lines.slice(0, 6) : null;
+            return uniqueLines.length >= 2
+                ? uniqueLines.slice(0, 6)
+                : getPreGeneratedWhiteNoiseReactions(statement, bystanderNames);
         } catch {
-            return null;
+            return getPreGeneratedWhiteNoiseReactions(statement, bystanderNames);
         }
     }
 
