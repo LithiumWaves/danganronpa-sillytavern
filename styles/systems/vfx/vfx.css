@@ -951,3 +951,233 @@
         padding: 10px 12px;
     }
 }
+
+/* =============================================================================
+   Emotion Sprite Manager
+   (reuses .monopad-vfx-overlay / -window / -header / -body from above)
+   ============================================================================= */
+
+.monopad-sprite-window {
+    width: min(760px, 96vw);
+    max-height: 86vh;
+}
+
+.monopad-sprite-overlay.busy .monopad-vfx-window {
+    pointer-events: none;
+    opacity: 0.7;
+}
+
+.monopad-sprite-target-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: "Rajdhani", monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: rgba(188, 215, 255, 0.8);
+    text-transform: uppercase;
+}
+
+#monopad-sprite-target {
+    background: rgba(5, 14, 25, 0.85);
+    border: 1px solid rgba(117, 241, 255, 0.4);
+    border-radius: 4px;
+    color: #e8f3ff;
+    font-family: "Rajdhani", monospace;
+    font-size: 12px;
+    padding: 4px 8px;
+    max-width: 220px;
+}
+
+.monopad-sprite-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.monopad-sprite-placeholder {
+    font-family: "Rajdhani", monospace;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    color: rgba(188, 215, 255, 0.6);
+    text-align: center;
+    padding: 28px 0;
+}
+
+.monopad-sprite-cell {
+    padding: 8px 10px;
+    border: 1px solid rgba(121, 170, 255, 0.18);
+    border-radius: 6px;
+    background: rgba(10, 18, 36, 0.6);
+}
+
+.monopad-sprite-cell-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.monopad-sprite-emotion {
+    font-family: "Orbitron", monospace;
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    color: #c8e8ff;
+    text-transform: uppercase;
+}
+
+.monopad-sprite-add {
+    width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    border: 1px solid rgba(117, 241, 255, 0.45);
+    background: rgba(5, 14, 25, 0.85);
+    color: #c8e8ff;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+
+.monopad-sprite-add:hover {
+    border-color: rgba(159, 252, 255, 0.9);
+    box-shadow: 0 0 12px rgba(117, 241, 255, 0.3);
+    transform: translateY(-1px);
+}
+
+.monopad-sprite-tiles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.monopad-sprite-tile {
+    position: relative;
+    width: 104px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.monopad-sprite-tile .monopad-sprite-img,
+.monopad-sprite-empty-inner {
+    width: 104px;
+    height: 104px;
+    border-radius: 6px;
+    box-sizing: border-box;
+}
+
+.monopad-sprite-img {
+    object-fit: contain;
+    background:
+        linear-gradient(45deg, rgba(255, 255, 255, 0.04) 25%, transparent 25%, transparent 75%, rgba(255, 255, 255, 0.04) 75%) 0 0/16px 16px,
+        rgba(4, 8, 16, 0.9);
+    border: 1px solid rgba(121, 170, 255, 0.28);
+}
+
+.monopad-sprite-tile.empty {
+    cursor: pointer;
+}
+
+.monopad-sprite-empty-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border: 1px dashed rgba(121, 170, 255, 0.4);
+    background: rgba(6, 12, 24, 0.55);
+    color: rgba(160, 200, 255, 0.75);
+    font-family: "Rajdhani", monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.monopad-sprite-tile.empty:hover .monopad-sprite-empty-inner {
+    border-color: rgba(159, 252, 255, 0.85);
+    color: #d6efff;
+    background: rgba(12, 22, 42, 0.7);
+}
+
+.monopad-sprite-plus {
+    font-size: 22px;
+    line-height: 1;
+}
+
+.monopad-sprite-tile-name {
+    font-family: "Rajdhani", monospace;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: rgba(188, 215, 255, 0.75);
+    text-align: center;
+    text-transform: lowercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.monopad-sprite-name-input {
+    width: 104px;
+    box-sizing: border-box;
+    background: rgba(5, 14, 25, 0.85);
+    border: 1px solid rgba(117, 241, 255, 0.4);
+    border-radius: 4px;
+    color: #e8f3ff;
+    font-family: "Rajdhani", monospace;
+    font-size: 11px;
+    text-align: center;
+    padding: 3px 4px;
+}
+
+.monopad-sprite-name-input:focus {
+    outline: none;
+    border-color: rgba(159, 252, 255, 0.9);
+    box-shadow: 0 0 10px rgba(117, 241, 255, 0.25);
+}
+
+.monopad-sprite-tile-actions {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.12s;
+}
+
+.monopad-sprite-tile:hover .monopad-sprite-tile-actions {
+    opacity: 1;
+}
+
+.monopad-sprite-tile-actions button {
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    border: 1px solid rgba(117, 241, 255, 0.5);
+    background: rgba(3, 8, 16, 0.9);
+    color: #d6efff;
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.monopad-sprite-tile-actions button:hover {
+    border-color: rgba(159, 252, 255, 0.9);
+    box-shadow: 0 0 10px rgba(117, 241, 255, 0.3);
+}
+
+.monopad-sprite-delete:hover {
+    border-color: rgba(255, 120, 140, 0.9) !important;
+    box-shadow: 0 0 10px rgba(255, 90, 120, 0.35) !important;
+    color: #ffd6de;
+}
