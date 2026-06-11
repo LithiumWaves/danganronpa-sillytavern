@@ -9538,7 +9538,7 @@ QUOTE: <climactic accusation>`;
 
                 let title   = 'Who is the blackened?';
                 let answers = ['Suspect A', 'Suspect B', 'Suspect C', 'Suspect D'];
-                let correct = 0;
+                let correct = 1;
                 try {
                     const ctx = trialManager?.getTrialContext?.() ?? {};
                     const topic    = String(ctx.topic || '').trim() || 'a mysterious crime';
@@ -9589,12 +9589,13 @@ ANSWER: <answer>${qtimeExtraContextBlocks}`;
                     if (qMatch && aMatches.length >= 4) {
                         const cleanQuestion = qMatch[1].trim().replace(/^["']|["']$/g, '');
                         const four = aMatches.slice(0, 4);
-                        const correctIdx = four.findIndex(a => /^\*/.test(a));
-                        const cleaned = four.map(a => a.replace(/^\*\s*/, '').trim()).filter(Boolean);
-                        if (cleaned.length === 4 && correctIdx >= 0 && cleanQuestion.length > 0) {
+                        const correctIdx = four.findIndex(a => /^\s*\*/.test(a));
+                        const cleaned = four.map(a => a.replace(/^\s*\*\s*/, '').trim());
+                        const allPresent = cleaned.every(a => a.length > 0);
+                        if (allPresent && correctIdx >= 0 && cleanQuestion.length > 0) {
                             title   = cleanQuestion;
                             answers = cleaned;
-                            correct = correctIdx;
+                            correct = correctIdx + 1;
                         }
                     }
                 } catch (err) {
