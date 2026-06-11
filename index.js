@@ -170,6 +170,34 @@ function pushRecentLocationMention(entry) {
     }
 }
 
+function getDanganExtensionPromptText(promptKey) {
+    const ctx = window.SillyTavern?.getContext?.();
+    const candidates = [
+        ctx?.extensionPrompts,
+        ctx?.extension_prompts,
+        ctx?.extension_prompt,
+        window.extensionPrompts,
+        window.extension_prompts,
+        window.extension_prompt,
+    ];
+
+    for (const candidate of candidates) {
+        if (!candidate) continue;
+        const value = candidate[promptKey];
+        if (typeof value === "string" && value.trim()) return value.trim();
+    }
+
+    return "";
+}
+
+function buildRecentChatContextLines(maxLines = 14) {
+    const contextMessages = typeof getContextMessages === "function" ? getContextMessages() : [];
+    return (Array.isArray(contextMessages) ? contextMessages : [])
+        .slice(-maxLines)
+        .map(m => `${m.isUser ? "YOU" : (m.name || "NARRATOR")}: ${m.text}`)
+        .join("\n");
+}
+
 function buildRecentLocationPresence() {
     const latestBySpeaker = new Map();
 
@@ -6119,6 +6147,36 @@ function applySettingsTabUI() {
         mpdLineSourceSelect.value = tab.mpdLineSource || defaultSettings.mpdLineSource;
     }
 
+    const qtimeRecentCheckbox = document.getElementById("dangan_qtime_use_recent_context");
+    if (qtimeRecentCheckbox) {
+        qtimeRecentCheckbox.checked = tab.questionTimeUseRecentContext ?? defaultSettings.questionTimeUseRecentContext;
+    }
+
+    const qtimeDebateCheckbox = document.getElementById("dangan_qtime_use_debate_history");
+    if (qtimeDebateCheckbox) {
+        qtimeDebateCheckbox.checked = tab.questionTimeUseDebateHistory ?? defaultSettings.questionTimeUseDebateHistory;
+    }
+
+    const qtruthRecentCheckbox = document.getElementById("dangan_qtruth_use_recent_context");
+    if (qtruthRecentCheckbox) {
+        qtruthRecentCheckbox.checked = tab.questionTruthUseRecentContext ?? defaultSettings.questionTruthUseRecentContext;
+    }
+
+    const qtruthDebateCheckbox = document.getElementById("dangan_qtruth_use_debate_history");
+    if (qtruthDebateCheckbox) {
+        qtruthDebateCheckbox.checked = tab.questionTruthUseDebateHistory ?? defaultSettings.questionTruthUseDebateHistory;
+    }
+
+    const hangmanRecentCheckbox = document.getElementById("dangan_hangman_use_recent_context");
+    if (hangmanRecentCheckbox) {
+        hangmanRecentCheckbox.checked = tab.hangmansGambitUseRecentContext ?? defaultSettings.hangmansGambitUseRecentContext;
+    }
+
+    const hangmanDebateCheckbox = document.getElementById("dangan_hangman_use_debate_history");
+    if (hangmanDebateCheckbox) {
+        hangmanDebateCheckbox.checked = tab.hangmansGambitUseDebateHistory ?? defaultSettings.hangmansGambitUseDebateHistory;
+    }
+
     document.querySelectorAll(".settings-prompt-textarea").forEach((el) => {
         const settingKey = el.dataset.setting;
         const templateKey = el.dataset.templateKey;
@@ -8473,6 +8531,30 @@ $(".monopad-icon").on("mouseenter", function () {
             mapPanelController?.handleSettingsChanged?.();
         });
 
+        $("#dangan_qtime_use_recent_context").on("change", function () {
+            setMonopadSetting("questionTimeUseRecentContext", this.checked);
+        });
+
+        $("#dangan_qtime_use_debate_history").on("change", function () {
+            setMonopadSetting("questionTimeUseDebateHistory", this.checked);
+        });
+
+        $("#dangan_qtruth_use_recent_context").on("change", function () {
+            setMonopadSetting("questionTruthUseRecentContext", this.checked);
+        });
+
+        $("#dangan_qtruth_use_debate_history").on("change", function () {
+            setMonopadSetting("questionTruthUseDebateHistory", this.checked);
+        });
+
+        $("#dangan_hangman_use_recent_context").on("change", function () {
+            setMonopadSetting("hangmansGambitUseRecentContext", this.checked);
+        });
+
+        $("#dangan_hangman_use_debate_history").on("change", function () {
+            setMonopadSetting("hangmansGambitUseDebateHistory", this.checked);
+        });
+
         $(document).on("input change blur", ".settings-prompt-textarea", function () {
             const settingKey = this.dataset.setting;
             const templateKey = this.dataset.templateKey;
@@ -8997,6 +9079,19 @@ debugSTGlobals();
                     const suspects = (Array.isArray(ctx.suspects) ? ctx.suspects : [])
                         .map(s => s?.name).filter(Boolean).join(', ') || 'unknown';
 
+                    const hangmanExtraContextBlocks = (() => {
+                        const blocks = [];
+                        if (getMonopadSetting('hangmansGambitUseDebateHistory') === true) {
+                            const history = getDanganExtensionPromptText('dangan_debate_history');
+                            blocks.push(`DEBATE HISTORY\n${history || 'NONE'}`);
+                        }
+                        if (getMonopadSetting('hangmansGambitUseRecentContext') === true) {
+                            const contextLines = buildRecentChatContextLines(14);
+                            blocks.push(`RECENT CHAT CONTEXT\n${contextLines || 'NONE'}`);
+                        }
+                        return blocks.length ? `\n\n${blocks.join('\n\n')}` : '';
+                    })();
+
                     const prompt = `You are generating a Hangman's Gambit puzzle for a Danganronpa-style class trial.
 
 TRIAL CONTEXT
@@ -9013,7 +9108,7 @@ REQUIREMENTS
 
 Respond in EXACTLY this format and nothing else:
 QUESTION: <your question>
-ANSWER: <UPPERCASEWORD>`;
+ANSWER: <UPPERCASEWORD>${hangmanExtraContextBlocks}`;
 
                     const out = await generateTrialDialogue(prompt, { maxTokens: 80, temperature: 0.85 });
                     const qMatch = out.match(/QUESTION:\s*(.+)/i);
@@ -9272,6 +9367,19 @@ QUOTE: <climactic accusation>`;
                     const suspects = (Array.isArray(ctx.suspects) ? ctx.suspects : [])
                         .map(s => s?.name).filter(Boolean).join(', ') || 'unknown';
 
+                    const qtimeExtraContextBlocks = (() => {
+                        const blocks = [];
+                        if (getMonopadSetting('questionTimeUseDebateHistory') === true) {
+                            const history = getDanganExtensionPromptText('dangan_debate_history');
+                            blocks.push(`DEBATE HISTORY\n${history || 'NONE'}`);
+                        }
+                        if (getMonopadSetting('questionTimeUseRecentContext') === true) {
+                            const contextLines = buildRecentChatContextLines(14);
+                            blocks.push(`RECENT CHAT CONTEXT\n${contextLines || 'NONE'}`);
+                        }
+                        return blocks.length ? `\n\n${blocks.join('\n\n')}` : '';
+                    })();
+
                     const prompt = `You are generating a Question Time round for a Danganronpa-style class trial.
 
 TRIAL CONTEXT
@@ -9294,7 +9402,7 @@ QUESTION: <your question>
 ANSWER: <answer>
 ANSWER: *<correct answer>
 ANSWER: <answer>
-ANSWER: <answer>`;
+ANSWER: <answer>${qtimeExtraContextBlocks}`;
 
                     const out = await generateTrialDialogue(prompt, { maxTokens: 160, temperature: 0.85 });
                     const qMatch  = out.match(/QUESTION:\s*(.+)/i);
@@ -9371,6 +9479,19 @@ ANSWER: <answer>`;
                             return `${i + 1}. TITLE: ${title}\n   DESCRIPTION: ${desc || '(no description)'}`;
                         }).join('\n');
 
+                        const qtruthExtraContextBlocks = (() => {
+                            const blocks = [];
+                            if (getMonopadSetting('questionTruthUseDebateHistory') === true) {
+                                const history = getDanganExtensionPromptText('dangan_debate_history');
+                                blocks.push(`DEBATE HISTORY\n${history || 'NONE'}`);
+                            }
+                            if (getMonopadSetting('questionTruthUseRecentContext') === true) {
+                                const contextLines = buildRecentChatContextLines(14);
+                                blocks.push(`RECENT CHAT CONTEXT\n${contextLines || 'NONE'}`);
+                            }
+                            return blocks.length ? `\n\n${blocks.join('\n\n')}` : '';
+                        })();
+
                         const prompt = `You are generating a "Question Truth" round for a Danganronpa-style class trial about: ${topic}.
 
 The player has collected these Truth Bullets — each has a TITLE and a DESCRIPTION:
@@ -9391,7 +9512,7 @@ REQUIREMENTS
 Respond in EXACTLY this format and nothing else:
 QUESTION: <your question>
 ANSWER: <exact TITLE of one Truth Bullet from the list above>
-TIME: <whole-second integer, minimum 60, maximum 180>`;
+TIME: <whole-second integer, minimum 60, maximum 180>${qtruthExtraContextBlocks}`;
 
                         const out = await generateTrialDialogue(prompt, { maxTokens: 180, temperature: 0.8 });
                         const qMatch = out.match(/QUESTION:\s*(.+)/i);
