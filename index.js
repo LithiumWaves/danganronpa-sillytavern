@@ -7572,6 +7572,7 @@ jQuery(async () => {
     bindDebugControlEvents();
 
     try {
+        reportFullscreenOverlayDebug("A", "index.js:boot", "Entered extension boot try block");
         const settingsHtml = await loadExtensionHtmlFile("example.html");
         $("#extensions_settings2").append(settingsHtml);
 
@@ -10179,6 +10180,10 @@ STATEMENT: <third statement>`;
     } catch (error) {
         bootstrapDebugUi();
         console.error(`[${extensionName}] ❌ Load failed:`, error);
+        reportFullscreenOverlayDebug("A", "index.js:boot", "Extension boot try block threw", {
+            message: String(error?.message || error || ""),
+            stack: String(error?.stack || ""),
+        });
     }
 });
 
