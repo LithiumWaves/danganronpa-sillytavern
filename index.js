@@ -200,13 +200,13 @@ function buildRecentChatContextLines(maxLines = 14) {
 
 function normalizeGenerationSource(value) {
     const normalized = String(value || "").trim().toLowerCase();
-    return normalized === "openrouter" ? "openrouter" : "main";
+    return normalized === "openrouter" || normalized === "main" ? normalized : "";
 }
 
 function getConfiguredGenerationSource(settingKey) {
     const configuredSource = normalizeGenerationSource(getMonopadSetting(settingKey));
-    if (configuredSource === "openrouter") return "openrouter";
-    return normalizeGenerationSource(getMonopadSetting("generationProvider"));
+    if (configuredSource) return configuredSource;
+    return normalizeGenerationSource(getMonopadSetting("generationProvider")) || "main";
 }
 
 async function generateWithConfiguredSource(settingKey, prompt, options) {

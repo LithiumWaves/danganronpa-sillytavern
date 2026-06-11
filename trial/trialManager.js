@@ -386,7 +386,7 @@ export function createTrialManager(deps) {
 
     function getNsdLineSource() {
         const configuredSource = normalizeGenerationSource(extensionSettings?.[extensionName]?.nsdLineSource);
-        if (configuredSource === 'openrouter') return 'openrouter';
+        if (configuredSource === 'openrouter' || configuredSource === 'main') return configuredSource;
         return normalizeGenerationSource(extensionSettings?.[extensionName]?.generationProvider) === 'openrouter'
             ? 'openrouter'
             : 'main';
@@ -394,7 +394,7 @@ export function createTrialManager(deps) {
 
     function getMpdLineSource() {
         const configuredSource = normalizeGenerationSource(extensionSettings?.[extensionName]?.mpdLineSource);
-        if (configuredSource === 'openrouter') return 'openrouter';
+        if (configuredSource === 'openrouter' || configuredSource === 'main') return configuredSource;
         return normalizeGenerationSource(extensionSettings?.[extensionName]?.generationProvider) === 'openrouter'
             ? 'openrouter'
             : 'main';
