@@ -27,6 +27,16 @@
 - Overlay root element creation + insertion + computed z-index
 - Any thrown exceptions during overlay init
 
+## Evidence (Collected)
+- 2026-06-11: Question Time via Controls Panel
+  - Trial panel button handler fired: `hasCallback: true`
+  - Trial callback entered, but `questionTimeController: false`
+  - Loading overlay created: `loadingEl: true`
+  - `questionTimeController?.run(...)` returned `undefined` (`hasRunResult: false`)
+
+## Interim Conclusion
+- Hypothesis 2 is strongly supported: fullscreen minigame controllers are not initialized (controller variables are null), so overlay `.run()` is never called.
+- Next: determine why controller initialization never runs or crashes (capture global errors + controller-init entry probe).
+
 ## Notes
 - No business logic changes allowed before we collect runtime evidence (instrumentation first).
-

@@ -101,6 +101,25 @@ function reportFullscreenOverlayDebug(hypothesisId, location, msg, data = {}) {
         }),
     }).catch(() => {});
 }
+
+// #region debug-point A:global-errors
+try {
+    window.addEventListener("error", (e) => {
+        reportFullscreenOverlayDebug("A", "window:error", "Unhandled error", {
+            message: String(e?.message || ""),
+            filename: String(e?.filename || ""),
+            lineno: e?.lineno,
+            colno: e?.colno,
+        });
+    });
+    window.addEventListener("unhandledrejection", (e) => {
+        const reason = e?.reason;
+        reportFullscreenOverlayDebug("A", "window:unhandledrejection", "Unhandled promise rejection", {
+            reason: typeof reason === "string" ? reason : (reason?.message || String(reason || "")),
+        });
+    });
+} catch {}
+// #endregion
 // #endregion
 
 const openRouterSettings = createOpenRouterSettingsManager({
@@ -10091,6 +10110,13 @@ STATEMENT: <third statement>`;
         if (!prome?.enableUserSprite || !prome?.userSprite) return null;
         return getSpriteUrl(prome.userSprite, emotion).catch(() => null);
     };
+    // #region debug-point A:controller-init-enter
+    reportFullscreenOverlayDebug("A", "index.js:create-minigame-controllers", "About to initialize fullscreen minigame controllers", {
+        hasCreateQuestionTimeController: typeof createQuestionTimeController === "function",
+        hasCreateQuestionTruthController: typeof createQuestionTruthController === "function",
+        hasCreateHangmansGambitController: typeof createHangmansGambitController === "function",
+    });
+    // #endregion
     questionTimeController   = createQuestionTimeController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, getPlayerSpriteUrl });
     questionTruthController  = createQuestionTruthController({ extensionFolderPath, getTruthBullets: getTruthBulletsSnapshot, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, getPlayerSpriteUrl });
     const tutorialPromptDeps = {
