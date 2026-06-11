@@ -312,10 +312,6 @@ Displays the Truth Bullet list and asks the player to select the correct one for
 | `time` | No | None | Optional time limit in seconds |
 ---
 
-## Notes and current behavior
-- Class Trials and what they entail are still under development and should come out soon.
-- Skill shop entries are available for ownership/equip-cost display; deeper skill effects can be expanded over time.
-
 ## Q&A
 - **Q: How do gifts work?**
   **A: First and foremost, gifts are obtained through a gacha minigame on the MonoMono Machine, accessible through the map tab. To use them, access your inventory, select the gift and press use. The next character who sends a message in chat will receive and judge it, granting you either a rank up or down or simply staying neutral.**
