@@ -198,6 +198,28 @@ function buildRecentChatContextLines(maxLines = 14) {
         .join("\n");
 }
 
+function normalizeGenerationSource(value) {
+    const normalized = String(value || "").trim().toLowerCase();
+    return normalized === "openrouter" ? "openrouter" : "main";
+}
+
+function getConfiguredGenerationSource(settingKey) {
+    const configuredSource = normalizeGenerationSource(getMonopadSetting(settingKey));
+    if (configuredSource === "openrouter") return "openrouter";
+    return normalizeGenerationSource(getMonopadSetting("generationProvider"));
+}
+
+async function generateWithConfiguredSource(settingKey, prompt, options) {
+    const source = getConfiguredGenerationSource(settingKey);
+    const generator = source === "openrouter"
+        ? generateTrialDialogueWithOpenRouter
+        : (generateTrialDialogueWithMainApi || generateTrialDialogue);
+    if (typeof generator !== "function") {
+        throw new Error(`No generator available for source: ${source}`);
+    }
+    return generator(prompt, options);
+}
+
 function buildRecentLocationPresence() {
     const latestBySpeaker = new Map();
 
@@ -4121,7 +4143,7 @@ ${contextLines || "NONE"}
     for (let attempt = 0; attempt < attempts; attempt++) {
         let out = "";
         try {
-            out = String(await generateTrialDialogue(prompt, {
+            out = String(await generateWithConfiguredSource("scrumDebateLineSource", prompt, {
                 maxTokens,
                 temperature: 0.78 + attempt * 0.07,
             }) || "").trim();
@@ -6147,6 +6169,36 @@ function applySettingsTabUI() {
         mpdLineSourceSelect.value = tab.mpdLineSource || defaultSettings.mpdLineSource;
     }
 
+    const hangmanLineSourceSelect = document.getElementById("dangan_hangman_line_source");
+    if (hangmanLineSourceSelect) {
+        hangmanLineSourceSelect.value = tab.hangmansGambitLineSource || defaultSettings.hangmansGambitLineSource;
+    }
+
+    const qtimeLineSourceSelect = document.getElementById("dangan_qtime_line_source");
+    if (qtimeLineSourceSelect) {
+        qtimeLineSourceSelect.value = tab.questionTimeLineSource || defaultSettings.questionTimeLineSource;
+    }
+
+    const qtruthLineSourceSelect = document.getElementById("dangan_qtruth_line_source");
+    if (qtruthLineSourceSelect) {
+        qtruthLineSourceSelect.value = tab.questionTruthLineSource || defaultSettings.questionTruthLineSource;
+    }
+
+    const argumentArmamentLineSourceSelect = document.getElementById("dangan_argumentarmament_line_source");
+    if (argumentArmamentLineSourceSelect) {
+        argumentArmamentLineSourceSelect.value = tab.argumentArmamentLineSource || defaultSettings.argumentArmamentLineSource;
+    }
+
+    const scrumLineSourceSelect = document.getElementById("dangan_scrum_line_source");
+    if (scrumLineSourceSelect) {
+        scrumLineSourceSelect.value = tab.scrumDebateLineSource || defaultSettings.scrumDebateLineSource;
+    }
+
+    const mindMineLineSourceSelect = document.getElementById("dangan_mindmine_line_source");
+    if (mindMineLineSourceSelect) {
+        mindMineLineSourceSelect.value = tab.mindMineLineSource || defaultSettings.mindMineLineSource;
+    }
+
     const qtimeRecentCheckbox = document.getElementById("dangan_qtime_use_recent_context");
     if (qtimeRecentCheckbox) {
         qtimeRecentCheckbox.checked = tab.questionTimeUseRecentContext ?? defaultSettings.questionTimeUseRecentContext;
@@ -6230,7 +6282,13 @@ function applySettingsTabUI() {
         (providerSelect?.value || tab.generationProvider) === "openrouter" ||
         (whiteNoiseSourceSelect?.value || tab.whiteNoiseLineSource) === "openrouter" ||
         (nsdLineSourceSelect?.value || tab.nsdLineSource) === "openrouter" ||
-        (mpdLineSourceSelect?.value || tab.mpdLineSource) === "openrouter";
+        (mpdLineSourceSelect?.value || tab.mpdLineSource) === "openrouter" ||
+        (hangmanLineSourceSelect?.value || tab.hangmansGambitLineSource) === "openrouter" ||
+        (qtimeLineSourceSelect?.value || tab.questionTimeLineSource) === "openrouter" ||
+        (qtruthLineSourceSelect?.value || tab.questionTruthLineSource) === "openrouter" ||
+        (argumentArmamentLineSourceSelect?.value || tab.argumentArmamentLineSource) === "openrouter" ||
+        (scrumLineSourceSelect?.value || tab.scrumDebateLineSource) === "openrouter" ||
+        (mindMineLineSourceSelect?.value || tab.mindMineLineSource) === "openrouter";
     document.querySelectorAll(".settings-openrouter-only").forEach(el => {
         el.classList.toggle("is-hidden", !showOpenRouterControls);
     });
@@ -8531,6 +8589,66 @@ $(".monopad-icon").on("mouseenter", function () {
             mapPanelController?.handleSettingsChanged?.();
         });
 
+        $("#dangan_hangman_line_source").on("change", function () {
+            const nextSource = String(this.value || "").trim();
+            const normalizedSource = ["main", "openrouter"].includes(nextSource)
+                ? nextSource
+                : defaultSettings.hangmansGambitLineSource;
+            setMonopadSetting("hangmansGambitLineSource", normalizedSource);
+            applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
+        });
+
+        $("#dangan_qtime_line_source").on("change", function () {
+            const nextSource = String(this.value || "").trim();
+            const normalizedSource = ["main", "openrouter"].includes(nextSource)
+                ? nextSource
+                : defaultSettings.questionTimeLineSource;
+            setMonopadSetting("questionTimeLineSource", normalizedSource);
+            applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
+        });
+
+        $("#dangan_qtruth_line_source").on("change", function () {
+            const nextSource = String(this.value || "").trim();
+            const normalizedSource = ["main", "openrouter"].includes(nextSource)
+                ? nextSource
+                : defaultSettings.questionTruthLineSource;
+            setMonopadSetting("questionTruthLineSource", normalizedSource);
+            applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
+        });
+
+        $("#dangan_argumentarmament_line_source").on("change", function () {
+            const nextSource = String(this.value || "").trim();
+            const normalizedSource = ["main", "openrouter"].includes(nextSource)
+                ? nextSource
+                : defaultSettings.argumentArmamentLineSource;
+            setMonopadSetting("argumentArmamentLineSource", normalizedSource);
+            applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
+        });
+
+        $("#dangan_scrum_line_source").on("change", function () {
+            const nextSource = String(this.value || "").trim();
+            const normalizedSource = ["main", "openrouter"].includes(nextSource)
+                ? nextSource
+                : defaultSettings.scrumDebateLineSource;
+            setMonopadSetting("scrumDebateLineSource", normalizedSource);
+            applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
+        });
+
+        $("#dangan_mindmine_line_source").on("change", function () {
+            const nextSource = String(this.value || "").trim();
+            const normalizedSource = ["main", "openrouter"].includes(nextSource)
+                ? nextSource
+                : defaultSettings.mindMineLineSource;
+            setMonopadSetting("mindMineLineSource", normalizedSource);
+            applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
+        });
+
         $("#dangan_qtime_use_recent_context").on("change", function () {
             setMonopadSetting("questionTimeUseRecentContext", this.checked);
         });
@@ -9110,7 +9228,7 @@ Respond in EXACTLY this format and nothing else:
 QUESTION: <your question>
 ANSWER: <UPPERCASEWORD>${hangmanExtraContextBlocks}`;
 
-                    const out = await generateTrialDialogue(prompt, { maxTokens: 80, temperature: 0.85 });
+                    const out = await generateWithConfiguredSource("hangmansGambitLineSource", prompt, { maxTokens: 80, temperature: 0.85 });
                     const qMatch = out.match(/QUESTION:\s*(.+)/i);
                     const aMatch = out.match(/ANSWER:\s*([A-Za-z]+)/i);
                     if (qMatch && aMatch) {
@@ -9229,7 +9347,7 @@ WEST: <west sentence>
 ORDER: <4-letter permutation of NSEW>
 QUOTE: <climactic accusation>`;
 
-                    const out = await generateTrialDialogue(prompt, { maxTokens: 600, temperature: 0.85 });
+                    const out = await generateWithConfiguredSource("argumentArmamentLineSource", prompt, { maxTokens: 600, temperature: 0.85 });
 
                     const statementMatches = [...out.matchAll(/STATEMENT:\s*(.+)/gi)]
                         .map(m => m[1].trim().replace(/^["']|["']$/g, ''))
@@ -9404,7 +9522,7 @@ ANSWER: *<correct answer>
 ANSWER: <answer>
 ANSWER: <answer>${qtimeExtraContextBlocks}`;
 
-                    const out = await generateTrialDialogue(prompt, { maxTokens: 160, temperature: 0.85 });
+                    const out = await generateWithConfiguredSource("questionTimeLineSource", prompt, { maxTokens: 160, temperature: 0.85 });
                     const qMatch  = out.match(/QUESTION:\s*(.+)/i);
                     const aMatches = [...out.matchAll(/ANSWER:\s*(.+)/gi)].map(m => m[1].trim());
                     if (qMatch && aMatches.length >= 4) {
@@ -9514,7 +9632,7 @@ QUESTION: <your question>
 ANSWER: <exact TITLE of one Truth Bullet from the list above>
 TIME: <whole-second integer, minimum 60, maximum 180>${qtruthExtraContextBlocks}`;
 
-                        const out = await generateTrialDialogue(prompt, { maxTokens: 180, temperature: 0.8 });
+                        const out = await generateWithConfiguredSource("questionTruthLineSource", prompt, { maxTokens: 180, temperature: 0.8 });
                         const qMatch = out.match(/QUESTION:\s*(.+)/i);
                         const aMatch = out.match(/ANSWER:\s*(.+)/i);
                         const tMatch = out.match(/TIME:\s*(\d+)/i);
@@ -9726,7 +9844,7 @@ STATEMENT: <first statement>
 STATEMENT: <second statement>
 STATEMENT: <third statement>`;
 
-                    const out = await generateTrialDialogue(prompt, { maxTokens: 220, temperature: 0.85 });
+                    const out = await generateWithConfiguredSource("mindMineLineSource", prompt, { maxTokens: 220, temperature: 0.85 });
                     const matches = [...out.matchAll(/STATEMENT:\s*(.+)/gi)]
                         .map(m => m[1].trim()
                             .replace(/^["']|["']$/g, '')
