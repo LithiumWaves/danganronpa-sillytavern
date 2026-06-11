@@ -84,6 +84,7 @@ let introduceCharacterController = null;
 let chapterEndRosterController   = null;
 let audioVisualizer              = null;
 let overworldSceneController     = null;
+let reapplyOutfitToSprites       = () => {};
 
 // #region debug-point A:overlay-report
 function reportFullscreenOverlayDebug(hypothesisId, location, msg, data = {}) {
@@ -9714,7 +9715,7 @@ STATEMENT: <third statement>`;
         // setupExpressionMirror below; called after chat entry settles to beat
         // the entry-time race where ST's clone-swap / overworld expression pass
         // overwrites our first outfit set. No-op until the mirror is set up.
-        let reapplyOutfitToSprites = () => {};
+        reapplyOutfitToSprites = () => {};
 
         // On chat change, rebuild the stage (group ↔ 1-on-1 may differ) then snap to latest speaker.
         // Suppress VFX/SFX for the duration of the init + a grace period so the expressions
