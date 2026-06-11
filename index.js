@@ -181,18 +181,79 @@ function getDanganExtensionPromptText(promptKey) {
         window.extension_prompt,
     ];
 
+    const unwrap = (value) => {
+        if (!value) return "";
+        if (typeof value === "string") return value.trim();
+        if (Array.isArray(value)) {
+            for (const entry of value) {
+                const got = unwrap(entry);
+                if (got) return got;
+            }
+            return "";
+        }
+        if (typeof value === "object") {
+            const fields = ["value", "prompt", "text", "content"];
+            for (const field of fields) {
+                const got = unwrap(value[field]);
+                if (got) return got;
+            }
+        }
+        return "";
+    };
+
+    const getViaAccessor = (container) => {
+        if (!container) return "";
+        if (typeof container.get === "function") {
+            return unwrap(container.get(promptKey));
+        }
+        return unwrap(container[promptKey]);
+    };
+
     for (const candidate of candidates) {
-        if (!candidate) continue;
-        const value = candidate[promptKey];
-        if (typeof value === "string" && value.trim()) return value.trim();
+        const got = getViaAccessor(candidate);
+        if (got) return got;
     }
 
     return "";
 }
 
 function buildRecentChatContextLines(maxLines = 14) {
-    const contextMessages = typeof getContextMessages === "function" ? getContextMessages() : [];
-    return (Array.isArray(contextMessages) ? contextMessages : [])
+    const htmlDecodeBuffer = document.createElement("div");
+    const toPlainText = (value) => {
+        const raw = String(value || "").trim();
+        if (!raw) return "";
+        htmlDecodeBuffer.innerHTML = raw;
+        return String(htmlDecodeBuffer.textContent || htmlDecodeBuffer.innerText || "").trim();
+    };
+
+    const ctx = window.SillyTavern?.getContext?.();
+    const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+    const fromCtx = chat
+        .map((msg) => {
+            const isUser = msg?.is_user === true || msg?.isUser === true || String(msg?.is_user ?? msg?.isUser ?? "").toLowerCase() === "true";
+            const isSystem = msg?.is_system === true || msg?.isSystem === true || msg?.is_system_message === true || String(msg?.is_system ?? msg?.isSystem ?? msg?.is_system_message ?? "").toLowerCase() === "true";
+            const name = String(msg?.name || msg?.ch_name || msg?.character_name || msg?.display_name || "").trim();
+            const textRaw = msg?.mes ?? msg?.message ?? msg?.content ?? msg?.swipe_info?.[msg?.swipe_id || 0]?.mes ?? "";
+            const text = toPlainText(textRaw).replace(/\s+/g, " ").trim();
+            return { isUser, isSystem, name, text };
+        })
+        .filter(m => !m.isSystem && m.text);
+
+    const fromDom = Array.from(document.querySelectorAll(".mes"))
+        .map((msgEl) => {
+            const isUser = msgEl.getAttribute("is_user") === "true";
+            const isSystem = msgEl.getAttribute("is_system") === "true";
+            const name = String(msgEl.getAttribute("ch_name") || msgEl.getAttribute("name") || "").trim();
+            const mesTextEl = msgEl.querySelector(".mes_text");
+            const html = mesTextEl?.innerHTML || mesTextEl?.textContent || "";
+            const text = toPlainText(html).replace(/\s+/g, " ").trim();
+            return { isUser, isSystem, name, text };
+        })
+        .filter(m => !m.isSystem && m.text);
+
+    const messages = fromCtx.length ? fromCtx : fromDom;
+
+    return messages
         .slice(-maxLines)
         .map(m => `${m.isUser ? "YOU" : (m.name || "NARRATOR")}: ${m.text}`)
         .join("\n");
