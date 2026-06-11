@@ -1785,8 +1785,12 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
                     data-bullet-id="${escapeHtml(tb.id)}"
                     aria-pressed="${savedIds.has(tb.id) ? 'true' : 'false'}"
                 >
-                    <span class="dgn-truth-loadout-item-title">${escapeHtml(tb.title || 'Untitled Truth Bullet')}</span>
-                    <span class="dgn-truth-loadout-item-desc">${escapeHtml(tb.description || 'No description logged.')}</span>
+                    <img src="scripts/extensions/third-party/danganronpa-extension/assets/icons/artillery-shell.svg" alt="" class="truth-bullet-icon">
+                    <span class="dgn-truth-loadout-item-text">
+                        <span class="dgn-truth-loadout-item-title">${escapeHtml((tb.title || 'Untitled Truth Bullet').toUpperCase())}</span>
+                        <span class="dgn-truth-loadout-item-desc">${escapeHtml(tb.description || 'No description logged.')}</span>
+                    </span>
+                    ${tb.image ? `<img src="${escapeHtml(tb.image)}" alt="" class="dgn-truth-loadout-item-img">` : ''}
                 </button>
             `).join('')
             : `<div class="dgn-truth-loadout-empty">No Truth Bullets logged yet. Add some in the Monopad before creating a loadout.</div>`;
@@ -1800,7 +1804,7 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
                 </div>
                 <div class="dgn-truth-loadout-subhead">
                     <span class="dgn-truth-loadout-status">Selected ${savedIds.size} of ${bullets.length}</span>
-                    <span class="dgn-truth-loadout-note">Selected bullets will appear in the next NSD or MPD.</span>
+                    <span class="dgn-truth-loadout-note">Selected bullets will appear in the next Non-Stop Debate, Mass Panic Debate, Scrum Debate or Rebuttal Showdown.</span>
                 </div>
                 <div class="dgn-truth-loadout-body">
                     <div class="dgn-truth-loadout-grid">${bulletCards}</div>
@@ -6932,13 +6936,28 @@ JUDGMENT RULES:
         if (!ctx) return [];
 
         const groupId = ctx.groupId ?? ctx.group_id;
+        const inGroupChat = groupId != null && groupId !== '';
         const chars = Array.isArray(ctx.characters) ? ctx.characters : [];
-        
-        // Strategy 1: Characters directly in the context (unmuted candidates)
+
+        // In a group chat, ctx.characters is the FULL app roster — the seating plan
+        // must be limited to THIS group's members. Resolve them up front and use the
+        // set to constrain every candidate strategy below, so non-group characters can
+        // never leak in via a fallback. Outside a group chat, groupSet stays null and
+        // the strategies behave exactly as before.
+        const groupRoster = inGroupChat
+            ? getGroupChatMemberNames().filter(n => n && !isAssistantLikeName(n))
+            : [];
+        const groupSet = groupRoster.length
+            ? new Set(groupRoster.map(normalizeLooseName))
+            : null;
+        const inGroup = (n) => !groupSet || groupSet.has(normalizeLooseName(n));
+
+        // Strategy 1: Characters directly in the context (unmuted candidates),
+        // constrained to the active group when we know its membership.
         const ctxCandidates = chars
             .filter(c => isSpeakerCandidateChar(c, ctx))
             .map(c => String(c?.name || '').trim())
-            .filter(n => n && !isAssistantLikeName(n));
+            .filter(n => n && !isAssistantLikeName(n) && inGroup(n));
 
         // Strategy 2: Intersection of DOM and context (active speakers)
         const domNames = getActiveChatMemberNamesFromDom();
@@ -6953,37 +6972,53 @@ JUDGMENT RULES:
 
         // Strategy 3: Group metadata
         const groupNames = getActiveGroupMemberNames(ctx);
-        if (groupId != null && groupId !== '' && groupNames.length) {
-            const filteredGroup = groupNames.filter(n => !isGroupMemberMuted(n) && !isAssistantLikeName(n));
+        if (inGroupChat && groupNames.length) {
+            const filteredGroup = groupNames.filter(n => !isGroupMemberMuted(n) && !isAssistantLikeName(n) && inGroup(n));
             if (filteredGroup.length) {
                 return Array.from(new Set(filteredGroup))
                     .map(name => ({ name }));
             }
         }
 
-        // Strategy 4: Fallback to any unmuted character in the current context
+        // Strategy 4: Fallback to candidates (already group-constrained above)
         if (ctxCandidates.length) {
             return Array.from(new Set(ctxCandidates))
                 .map(name => ({ name }));
         }
 
-        // Strategy 5: Single character chat fallback
-        const activeCharId = ctx.characterId ?? ctx.character_id ?? ctx.charaId ?? ctx.char_id;
-        if (activeCharId != null) {
-            const sid = String(activeCharId).trim();
-            const allChars = [
-                ...chars,
-                ...(Array.isArray(window.characters) ? window.characters : []),
-            ];
-            const found = allChars.find(c => String(c?.id ?? c?.characterId ?? c?.char_id ?? '').trim() === sid);
-            const name = String(found?.name || ctx.characterName || ctx.character_name || '').trim();
-            if (name && !isGroupMemberMuted(name) && !isAssistantLikeName(name)) return [{ name }];
+        // Strategy 4b: In a group chat where ctx.characters lookups missed but we
+        // still resolved a roster, seat the group members directly rather than
+        // falling through to arbitrary roster characters below.
+        if (groupSet) {
+            const direct = groupRoster.filter(n => !isGroupMemberMuted(n));
+            if (direct.length) {
+                return Array.from(new Set(direct))
+                    .map(name => ({ name }));
+            }
         }
 
-        // Strategy 6: Absolute fallback - if we still have nothing, take anyone from ctx.characters
-        if (chars.length) {
-            const first = chars.find(c => !isAssistantLikeName(c?.name));
-            if (first?.name) return [{ name: first.name }];
+        // Strategies 5 & 6 are single-character / absolute fallbacks that reach into
+        // the full roster — only valid OUTSIDE a group chat. A group chat must never
+        // fall through to an arbitrary character.
+        if (!inGroupChat) {
+            // Strategy 5: Single character chat fallback
+            const activeCharId = ctx.characterId ?? ctx.character_id ?? ctx.charaId ?? ctx.char_id;
+            if (activeCharId != null) {
+                const sid = String(activeCharId).trim();
+                const allChars = [
+                    ...chars,
+                    ...(Array.isArray(window.characters) ? window.characters : []),
+                ];
+                const found = allChars.find(c => String(c?.id ?? c?.characterId ?? c?.char_id ?? '').trim() === sid);
+                const name = String(found?.name || ctx.characterName || ctx.character_name || '').trim();
+                if (name && !isGroupMemberMuted(name) && !isAssistantLikeName(name)) return [{ name }];
+            }
+
+            // Strategy 6: Absolute fallback - if we still have nothing, take anyone from ctx.characters
+            if (chars.length) {
+                const first = chars.find(c => !isAssistantLikeName(c?.name));
+                if (first?.name) return [{ name: first.name }];
+            }
         }
 
         return [];

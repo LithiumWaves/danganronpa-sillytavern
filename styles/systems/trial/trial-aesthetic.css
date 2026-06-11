@@ -1241,22 +1241,23 @@ body.dangan-trial-active .dgn-fx-commands-btn:hover {
     padding: 18px;
 }
 .dgn-truth-loadout-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 .dgn-truth-loadout-item {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: flex-start;
     gap: 8px;
     width: 100%;
-    min-height: 112px;
-    padding: 14px 16px;
+    padding: 10px 12px;
     background:
         linear-gradient(180deg, rgba(var(--dgn-neon-rgb), 0.08), rgba(5, 8, 16, 0.86)),
         rgba(6, 2, 12, 0.85);
     border: 1.5px solid var(--dgn-neon-faint);
+    border-left-width: 3px;
+    border-left-color: transparent;
     color: #f5e6f8;
     text-align: left;
     box-shadow: inset 0 0 10px rgba(var(--dgn-neon-rgb), 0.06);
@@ -1266,7 +1267,32 @@ body.dangan-trial-active .dgn-fx-commands-btn:hover {
 .dgn-truth-loadout-item:hover {
     border-color: var(--dgn-neon);
     box-shadow: 0 0 12px var(--dgn-neon-faint), inset 0 0 12px rgba(var(--dgn-neon-rgb), 0.12);
-    transform: translateY(-1px);
+    transform: translateX(2px);
+}
+.dgn-truth-loadout-item .truth-bullet-icon {
+    width: 26px;
+    height: 26px;
+    object-fit: contain;
+    filter: brightness(0) invert(1) opacity(0.75);
+    flex-shrink: 0;
+}
+.dgn-truth-loadout-item-text {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+.dgn-truth-loadout-item-img {
+    flex-shrink: 0;
+    align-self: center;
+    width: 256px;
+    height: auto;
+    object-fit: contain;
+    border: 1px solid var(--dgn-neon-faint);
+    border-radius: 30px;
+    background: rgba(6, 2, 12, 0.6);
+    box-shadow: inset 0 0 8px rgba(var(--dgn-neon-rgb), 0.12);
 }
 .dgn-truth-loadout-item.is-selected {
     border-color: var(--dgn-neon);
@@ -1278,6 +1304,7 @@ body.dangan-trial-active .dgn-fx-commands-btn:hover {
         inset 0 0 16px rgba(var(--dgn-neon-rgb), 0.16);
 }
 .dgn-truth-loadout-item-title {
+    display: block;
     color: var(--dgn-neon);
     font-family: 'Orbitron', sans-serif;
     font-size: 12px;
@@ -1287,6 +1314,7 @@ body.dangan-trial-active .dgn-fx-commands-btn:hover {
     line-height: 1.35;
 }
 .dgn-truth-loadout-item-desc {
+    display: block;
     color: rgba(245, 230, 248, 0.86);
     font-size: 12px;
     line-height: 1.5;
