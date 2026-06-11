@@ -3643,6 +3643,71 @@ body.dangan-hide-hopes-peak-branding .settings-header-cog {
     resize: vertical;
 }
 
+.settings-prompt-editor {
+    margin-top: 8px;
+    border: 1px solid rgba(126, 173, 255, 0.18);
+    border-radius: 6px;
+    background: rgba(6, 14, 24, 0.42);
+}
+
+.settings-prompt-summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 8px 10px;
+    color: #9deeff;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    user-select: none;
+}
+
+.settings-prompt-summary::-webkit-details-marker {
+    display: none;
+}
+
+.settings-prompt-summary::before {
+    content: "▸";
+    display: inline-block;
+    margin-right: 8px;
+    transition: transform 0.15s ease;
+}
+
+.settings-prompt-editor[open] .settings-prompt-summary::before {
+    transform: rotate(90deg);
+}
+
+.settings-prompt-body {
+    padding: 0 10px 10px;
+}
+
+.settings-prompt-help {
+    margin: 0 0 8px;
+    color: rgba(215, 226, 244, 0.72);
+    font-size: 9px;
+    line-height: 1.45;
+}
+
+.settings-prompt-textarea {
+    width: 100%;
+    min-height: 120px;
+    background: rgba(9, 20, 34, 0.88);
+    border: 1px solid rgba(126, 173, 255, 0.35);
+    border-radius: 5px;
+    color: #d7e2f4;
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    line-height: 1.45;
+    padding: 8px 9px;
+    resize: vertical;
+    box-sizing: border-box;
+}
+
+.settings-prompt-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 8px;
+}
+
 /* BGM Track Tabs */
 .bgm-tracks-tabs {
     display: flex;
@@ -3885,6 +3950,21 @@ body.dangan-hide-hopes-peak-branding .settings-header-cog {
 }
 
 .settings-section-ai::-webkit-scrollbar-thumb {
+    background: rgba(102, 172, 255, 0.45);
+    border-radius: 999px;
+}
+
+.settings-section-trials {
+    max-height: 230px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.settings-section-trials::-webkit-scrollbar {
+    width: 6px;
+}
+
+.settings-section-trials::-webkit-scrollbar-thumb {
     background: rgba(102, 172, 255, 0.45);
     border-radius: 999px;
 }
@@ -9733,6 +9813,12 @@ body.dangan-trial-vn-chat-hidden #chat {
 }
 
 .dangan-vn-transcript-toggle {
+    padding: 0 9px;
+    font-family: "Orbitron", "Rajdhani", monospace;
+    letter-spacing: 0.06em;
+}
+
+.dangan-vn-manage-chat-files {
     padding: 0 9px;
     font-family: "Orbitron", "Rajdhani", monospace;
     letter-spacing: 0.06em;

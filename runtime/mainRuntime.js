@@ -10,7 +10,7 @@ import { createSocialPanelController } from "../social/socialPanel.js";
 import { extractUltimateFromNotes, isIgnoredCharacter, lookupUltimateFromLorebook, normalizeList, normalizeName } from "../social/characterUtils.js";
 import { createMapPanelController } from "../map/mapPanel.js";
 import { getLocationPromptReference, resolveLocationIdFromText } from "../map/locationPresence.js";
-import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, TRIAL_START_REGEX, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "../core/constants.js";
+import { DEFAULT_TRIAL_PROMPT_TEMPLATES, INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, TRIAL_START_REGEX, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "../core/constants.js";
 import { createOpenRouterSettingsManager } from "../core/openrouterSettings.js";
 import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "../core/monokumaLessonScript.js";
 import { createRecentLocationTracker } from "../core/locationPresenceHistory.js";
@@ -2584,6 +2584,32 @@ function applySettingsTabUI() {
         providerSelect.value = tab.generationProvider || defaultSettings.generationProvider;
     }
 
+    const whiteNoiseSourceSelect = document.getElementById("dangan_white_noise_line_source");
+    if (whiteNoiseSourceSelect) {
+        whiteNoiseSourceSelect.value = tab.whiteNoiseLineSource || defaultSettings.whiteNoiseLineSource;
+    }
+
+    const nsdLineSourceSelect = document.getElementById("dangan_nsd_line_source");
+    if (nsdLineSourceSelect) {
+        nsdLineSourceSelect.value = tab.nsdLineSource || defaultSettings.nsdLineSource;
+    }
+
+    const mpdLineSourceSelect = document.getElementById("dangan_mpd_line_source");
+    if (mpdLineSourceSelect) {
+        mpdLineSourceSelect.value = tab.mpdLineSource || defaultSettings.mpdLineSource;
+    }
+
+    document.querySelectorAll(".settings-prompt-textarea").forEach((el) => {
+        const settingKey = el.dataset.setting;
+        const templateKey = el.dataset.templateKey;
+        if (!settingKey || !templateKey) return;
+        const fallbackTemplate = DEFAULT_TRIAL_PROMPT_TEMPLATES[templateKey] || "";
+        const savedTemplate = typeof tab[settingKey] === "string" && tab[settingKey].length
+            ? tab[settingKey]
+            : fallbackTemplate;
+        el.value = savedTemplate;
+    });
+
     const rewardDifficultySelect = document.getElementById("dangan_reward_difficulty");
     if (rewardDifficultySelect) {
         rewardDifficultySelect.value = clampRewardDifficulty(tab.rewardDifficulty || defaultSettings.rewardDifficulty);
@@ -2622,7 +2648,11 @@ function applySettingsTabUI() {
         connectionStatusEl.textContent = "";
     }
 
-    const showOpenRouterControls = (providerSelect?.value || tab.generationProvider) === "openrouter";
+    const showOpenRouterControls =
+        (providerSelect?.value || tab.generationProvider) === "openrouter" ||
+        (whiteNoiseSourceSelect?.value || tab.whiteNoiseLineSource) === "openrouter" ||
+        (nsdLineSourceSelect?.value || tab.nsdLineSource) === "openrouter" ||
+        (mpdLineSourceSelect?.value || tab.mpdLineSource) === "openrouter";
     document.querySelectorAll(".settings-openrouter-only").forEach(el => {
         el.classList.toggle("is-hidden", !showOpenRouterControls);
     });
@@ -4391,6 +4421,55 @@ $(".monopad-icon").on("mouseenter", function () {
             setMonopadSetting("generationProvider", this.value || defaultSettings.generationProvider);
             applySettingsTabUI();
             mapPanelController?.handleSettingsChanged?.();
+        });
+
+        $("#dangan_white_noise_line_source").on("change", function () {
+            const nextSource = String(this.value || "").trim();
+            const normalizedSource = ["default", "main", "openrouter"].includes(nextSource)
+                ? nextSource
+                : defaultSettings.whiteNoiseLineSource;
+            setMonopadSetting("whiteNoiseLineSource", normalizedSource);
+            applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
+        });
+
+        $("#dangan_nsd_line_source").on("change", function () {
+            const nextSource = String(this.value || "").trim();
+            const normalizedSource = ["main", "openrouter"].includes(nextSource)
+                ? nextSource
+                : defaultSettings.nsdLineSource;
+            setMonopadSetting("nsdLineSource", normalizedSource);
+            applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
+        });
+
+        $("#dangan_mpd_line_source").on("change", function () {
+            const nextSource = String(this.value || "").trim();
+            const normalizedSource = ["main", "openrouter"].includes(nextSource)
+                ? nextSource
+                : defaultSettings.mpdLineSource;
+            setMonopadSetting("mpdLineSource", normalizedSource);
+            applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
+        });
+
+        $(document).on("input change blur", ".settings-prompt-textarea", function () {
+            const settingKey = this.dataset.setting;
+            const templateKey = this.dataset.templateKey;
+            if (!settingKey || !templateKey) return;
+            const fallbackTemplate = DEFAULT_TRIAL_PROMPT_TEMPLATES[templateKey] || "";
+            setMonopadSetting(settingKey, this.value === fallbackTemplate ? "" : this.value);
+        });
+
+        $(document).on("click", ".settings-prompt-reset", function () {
+            const settingKey = this.dataset.setting;
+            const templateKey = this.dataset.templateKey;
+            if (!settingKey || !templateKey) return;
+            setMonopadSetting(settingKey, "");
+            const textarea = document.querySelector(`.settings-prompt-textarea[data-setting="${settingKey}"]`);
+            if (textarea instanceof HTMLTextAreaElement) {
+                textarea.value = DEFAULT_TRIAL_PROMPT_TEMPLATES[templateKey] || "";
+            }
         });
 
         $("#dangan_reward_difficulty").on("change", function () {

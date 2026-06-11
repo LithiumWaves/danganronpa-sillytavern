@@ -1,5 +1,6 @@
 // trial/trialManager.js
 
+import { DEFAULT_TRIAL_PROMPT_TEMPLATES } from "../core/constants.js";
 import { attachCursorSway } from "../vfx/cursorSway.js";
 
 export const TrialPhases = {
@@ -19,6 +20,8 @@ export function createTrialManager(deps) {
         vnModeController,
         getTruthBullets,
         generateTrialDialogue,
+        generateTrialDialogueWithMainApi,
+        generateTrialDialogueWithOpenRouter,
         getCharacterSourceText,
         getEmotionFont,
         onTrialStateChange,
@@ -62,6 +65,24 @@ export function createTrialManager(deps) {
         const base = extensionFolderPath || `scripts/extensions/third-party/${extensionName}`;
         return `${base}/assets/classtrial/${name}`;
     }
+
+    // #region debug-point E:overlay-report
+    function reportFullscreenOverlayDebug(hypothesisId, location, msg, data = {}) {
+        fetch("http://127.0.0.1:7777/event", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                sessionId: "fullscreen-overlays-broken",
+                runId: "pre-fix",
+                hypothesisId,
+                location,
+                msg: `[DEBUG] ${msg}`,
+                data,
+                ts: Date.now(),
+            }),
+        }).catch(() => {});
+    }
+    // #endregion
 
     let currentState = TrialPhases.IDLE;
     let trialActive  = false;  // true only while a trial is in progress; false after /end-trial
@@ -332,6 +353,109 @@ export function createTrialManager(deps) {
             ? wn.map(s => String(s || '').trim()).filter(Boolean)
             : [String(wn).trim()].filter(Boolean);
         return arr.length ? arr : null;
+    }
+
+    const PREGENERATED_WHITE_NOISE_POOLS = [
+        ["That's impossible!", "No way...", "You're reaching!", "That makes no sense!"],
+        ["Hold on a second!", "That cannot be right!", "Stop talking nonsense!", "I don't buy it!"],
+        ["Wait... what?!", "You're lying!", "Give me a break!", "That changes everything!"],
+        ["Shut up already!", "You're wrong!", "I hate this...", "This is bad!"],
+        ["No no no!", "That proves nothing!", "I can't accept that!", "This is ridiculous!"],
+        ["Seriously?!", "You're twisting it!", "That sounds fake!", "I don't believe it!"],
+        ["Quit bluffing!", "That is absurd!", "What are you saying?!", "This is getting worse..."],
+        ["There's no chance!", "You're kidding, right?!", "That doesn't add up!", "I won't fall for that!"],
+        ["Stop making things up!", "That sounds dangerous...", "I can't listen to this!", "You're cornering us!"],
+        ["You're off base!", "That is not what happened!", "This is all wrong!", "Don't jump to that conclusion!"],
+        ["Calm down already!", "That is way too suspicious!", "I refuse to believe that!", "You're pushing it!"],
+        ["This is impossible...", "What if they're right?!", "I don't want to hear this!", "That's not fair!"],
+    ];
+
+    function normalizeGenerationSource(value) {
+        const normalized = String(value || '').trim().toLowerCase();
+        return normalized === 'default' || normalized === 'main' || normalized === 'openrouter'
+            ? normalized
+            : '';
+    }
+
+    function getWhiteNoiseLineSource() {
+        const configuredSource = normalizeGenerationSource(extensionSettings?.[extensionName]?.whiteNoiseLineSource);
+        if (configuredSource) return configuredSource;
+        if (extensionSettings?.[extensionName]?.whiteNoiseGenerationEnabled === false) return 'default';
+        return normalizeGenerationSource(extensionSettings?.[extensionName]?.generationProvider) || 'main';
+    }
+
+    function getNsdLineSource() {
+        const configuredSource = normalizeGenerationSource(extensionSettings?.[extensionName]?.nsdLineSource);
+        if (configuredSource === 'openrouter' || configuredSource === 'main') return configuredSource;
+        return normalizeGenerationSource(extensionSettings?.[extensionName]?.generationProvider) === 'openrouter'
+            ? 'openrouter'
+            : 'main';
+    }
+
+    function getMpdLineSource() {
+        const configuredSource = normalizeGenerationSource(extensionSettings?.[extensionName]?.mpdLineSource);
+        if (configuredSource === 'openrouter' || configuredSource === 'main') return configuredSource;
+        return normalizeGenerationSource(extensionSettings?.[extensionName]?.generationProvider) === 'openrouter'
+            ? 'openrouter'
+            : 'main';
+    }
+
+    function getPromptTemplate(settingKey, templateKey) {
+        const configured = extensionSettings?.[extensionName]?.[settingKey];
+        if (typeof configured === 'string' && configured.length) return configured;
+        return DEFAULT_TRIAL_PROMPT_TEMPLATES[templateKey] || '';
+    }
+
+    function renderPromptTemplate(template, variables) {
+        return String(template || '').replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (match, key) => {
+            if (!Object.prototype.hasOwnProperty.call(variables, key)) return match;
+            return String(variables[key] ?? '');
+        });
+    }
+
+    function hashWhiteNoiseSeed(value) {
+        const source = String(value || '');
+        let hash = 0;
+        for (let i = 0; i < source.length; i++) {
+            hash = ((hash << 5) - hash + source.charCodeAt(i)) | 0;
+        }
+        return Math.abs(hash);
+    }
+
+    function getPreGeneratedWhiteNoiseReactions(statement, bystanderNames = []) {
+        const cleanStatement = stripSurroundingQuotes(
+            String(statement || '')
+                .replace(/\[\[/g, '')
+                .replace(/\]\]/g, '')
+                .trim()
+        ).toLowerCase();
+        const cleanNames = Array.isArray(bystanderNames)
+            ? bystanderNames.map(name => String(name || '').trim().toLowerCase()).filter(Boolean)
+            : [];
+        const seed = `${cleanStatement}::${cleanNames.join('|')}`;
+        const pool = PREGENERATED_WHITE_NOISE_POOLS[hashWhiteNoiseSeed(seed) % PREGENERATED_WHITE_NOISE_POOLS.length];
+        return pool ? [...pool] : null;
+    }
+
+    async function generateWhiteNoiseWithConfiguredSource(prompt, options) {
+        const source = getWhiteNoiseLineSource();
+        if (source === 'default') return null;
+
+        const generator = source === 'openrouter'
+            ? generateTrialDialogueWithOpenRouter
+            : (generateTrialDialogueWithMainApi || generateTrialDialogue);
+
+        if (typeof generator !== 'function') return null;
+        return generator(prompt, options);
+    }
+
+    async function generateDebateWithConfiguredSource(source, prompt, options) {
+        if (source === 'default') return null;
+        const generator = source === 'openrouter'
+            ? generateTrialDialogueWithOpenRouter
+            : (generateTrialDialogueWithMainApi || generateTrialDialogue);
+        if (typeof generator !== 'function') return null;
+        return generator(prompt, options);
     }
 
     function parseMpdScenarios(rawScenarios) {
@@ -1607,6 +1731,148 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
         document.body.appendChild(modal);
     }
 
+    function getManualDebateTruthBulletIds() {
+        const saved = extensionSettings?.[extensionName]?.manualDebateTruthBulletIds;
+        return Array.isArray(saved) ? saved.filter(id => typeof id === 'string' && id.trim()) : [];
+    }
+
+    function setManualDebateTruthBulletIds(ids) {
+        if (!extensionSettings[extensionName]) extensionSettings[extensionName] = {};
+        extensionSettings[extensionName].manualDebateTruthBulletIds = Array.isArray(ids)
+            ? Array.from(new Set(ids.filter(id => typeof id === 'string' && id.trim())))
+            : [];
+        saveSettingsDebounced?.();
+    }
+
+    function getManualDebateTruthBullets() {
+        const selectedIds = new Set(getManualDebateTruthBulletIds());
+        if (!selectedIds.size) return [];
+        const bullets = getTruthBullets().filter(tb => selectedIds.has(tb?.id));
+        if (bullets.length !== selectedIds.size) {
+            setManualDebateTruthBulletIds(bullets.map(tb => tb.id));
+        }
+        return bullets;
+    }
+
+    function getConfiguredDebateBullets() {
+        const manualBullets = getManualDebateTruthBullets();
+        if (manualBullets.length) return manualBullets;
+
+        const bulletCap = nsdBulletCount(currentDebateSections);
+        return selectNsdBullets(preparedDebateSections || [], bulletCap);
+    }
+
+    function showTruthBulletLoadoutModal() {
+        if (document.getElementById('dgn-truth-loadout-modal')) return;
+
+        const bullets = getTruthBullets();
+        const validBulletIds = new Set(bullets.map(tb => tb?.id).filter(Boolean));
+        const savedIds = new Set(getManualDebateTruthBulletIds().filter(id => validBulletIds.has(id)));
+        if (savedIds.size !== getManualDebateTruthBulletIds().length) {
+            setManualDebateTruthBulletIds(Array.from(savedIds));
+        }
+        const modal = document.createElement('div');
+        modal.id = 'dgn-truth-loadout-modal';
+        modal.className = 'dgn-truth-loadout-modal';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+
+        const bulletCards = bullets.length
+            ? bullets.map(tb => `
+                <button
+                    type="button"
+                    class="dgn-truth-loadout-item${savedIds.has(tb.id) ? ' is-selected' : ''}"
+                    data-bullet-id="${escapeHtml(tb.id)}"
+                    aria-pressed="${savedIds.has(tb.id) ? 'true' : 'false'}"
+                >
+                    <span class="dgn-truth-loadout-item-title">${escapeHtml(tb.title || 'Untitled Truth Bullet')}</span>
+                    <span class="dgn-truth-loadout-item-desc">${escapeHtml(tb.description || 'No description logged.')}</span>
+                </button>
+            `).join('')
+            : `<div class="dgn-truth-loadout-empty">No Truth Bullets logged yet. Add some in the Monopad before creating a loadout.</div>`;
+
+        modal.innerHTML = `
+            <div class="dgn-truth-loadout-backdrop"></div>
+            <div class="dgn-truth-loadout-card" role="document">
+                <div class="dgn-truth-loadout-header">
+                    <span>Truth Bullet Loadout</span>
+                    <button type="button" class="dgn-truth-loadout-close" aria-label="Close">✕</button>
+                </div>
+                <div class="dgn-truth-loadout-subhead">
+                    <span class="dgn-truth-loadout-status">Selected ${savedIds.size} of ${bullets.length}</span>
+                    <span class="dgn-truth-loadout-note">Selected bullets will appear in the next NSD or MPD.</span>
+                </div>
+                <div class="dgn-truth-loadout-body">
+                    <div class="dgn-truth-loadout-grid">${bulletCards}</div>
+                </div>
+                <div class="dgn-truth-loadout-actions">
+                    <button type="button" class="dgn-truth-loadout-action" data-action="all">Use All</button>
+                    <button type="button" class="dgn-truth-loadout-action" data-action="clear">Auto Select</button>
+                    <button type="button" class="dgn-truth-loadout-action dgn-truth-loadout-action--primary" data-action="done">Done</button>
+                </div>
+            </div>
+        `;
+
+        const updateSummary = () => {
+            const selectedCount = modal.querySelectorAll('.dgn-truth-loadout-item.is-selected').length;
+            const statusEl = modal.querySelector('.dgn-truth-loadout-status');
+            if (statusEl) statusEl.textContent = `Selected ${selectedCount} of ${bullets.length}`;
+        };
+
+        const syncStoredSelection = () => {
+            const ids = Array.from(modal.querySelectorAll('.dgn-truth-loadout-item.is-selected'))
+                .map(el => el.getAttribute('data-bullet-id'))
+                .filter(Boolean);
+            setManualDebateTruthBulletIds(ids);
+            updateSummary();
+        };
+
+        const close = () => {
+            modal.remove();
+            document.removeEventListener('keydown', onKeydown);
+        };
+
+        const onKeydown = (e) => {
+            if (e.key === 'Escape') close();
+        };
+
+        modal.querySelector('.dgn-truth-loadout-close')?.addEventListener('click', close);
+        modal.querySelector('.dgn-truth-loadout-backdrop')?.addEventListener('click', close);
+        modal.querySelectorAll('.dgn-truth-loadout-item').forEach((item) => {
+            item.addEventListener('click', () => {
+                item.classList.toggle('is-selected');
+                item.setAttribute('aria-pressed', item.classList.contains('is-selected') ? 'true' : 'false');
+                syncStoredSelection();
+            });
+        });
+
+        modal.querySelectorAll('.dgn-truth-loadout-action').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const action = btn.getAttribute('data-action');
+                if (action === 'all') {
+                    modal.querySelectorAll('.dgn-truth-loadout-item').forEach((item) => {
+                        item.classList.add('is-selected');
+                        item.setAttribute('aria-pressed', 'true');
+                    });
+                    syncStoredSelection();
+                    return;
+                }
+                if (action === 'clear') {
+                    modal.querySelectorAll('.dgn-truth-loadout-item').forEach((item) => {
+                        item.classList.remove('is-selected');
+                        item.setAttribute('aria-pressed', 'false');
+                    });
+                    syncStoredSelection();
+                    return;
+                }
+                close();
+            });
+        });
+
+        document.addEventListener('keydown', onKeydown);
+        document.body.appendChild(modal);
+    }
+
     function uninstallBgmAccordion() {
         const wrapper = document.getElementById('dangan-bgm-panel');
         const bgm = document.getElementById('dangan-bgm-display');
@@ -1916,6 +2182,9 @@ ${historyText}
                             <button id="dangan-start-punishment-btn" class="dangan-trial-start-btn" style="display:none">Start Punishment Time</button>
                             <button id="dangan-start-showcg-btn"     class="dangan-trial-start-btn" style="display:none">Show CG</button>
                         </div>
+                        <div class="dgn-controls-footer">
+                            <button id="dangan-load-truth-bullets-btn" class="dangan-trial-start-btn dgn-controls-footer-btn" style="display:none" type="button" aria-label="Load Truth Bullets">Load Truth Bullets</button>
+                        </div>
                     </div>
                     ${isGroupChat() ? `
                     <div class="dgn-trial-section dangan-trial-btn-group--seating"${hasSeatingPlanCopy ? '' : ' style="display:none"'}>
@@ -2049,11 +2318,19 @@ ${historyText}
             notification.remove();
             void startNonStopDebate();
         };
+        notification.querySelector('#dangan-load-truth-bullets-btn').onclick = () => {
+            showTruthBulletLoadoutModal();
+        };
         notification.querySelector('#dangan-start-mpdebate-btn').onclick = () => {
             notification.remove();
             void startMassPanicDebateGenerated();
         };
         notification.querySelector('#dangan-start-hangman-btn').onclick = () => {
+            // #region debug-point E:hangman-button
+            reportFullscreenOverlayDebug("E", "trialManager.js:#dangan-start-hangman-btn", "Clicked Hangman's Gambit trial-panel button", {
+                hasCallback: typeof onStartHangmansGambit === "function",
+            });
+            // #endregion
             notification.remove();
             onStartHangmansGambit?.();
         };
@@ -2087,10 +2364,20 @@ ${historyText}
             onStartPunishmentTime?.({ characterName: speakerName });
         };
         notification.querySelector('#dangan-start-qtime-btn').onclick = () => {
+            // #region debug-point E:qtime-button
+            reportFullscreenOverlayDebug("E", "trialManager.js:#dangan-start-qtime-btn", "Clicked Question Time trial-panel button", {
+                hasCallback: typeof onStartQuestionTime === "function",
+            });
+            // #endregion
             notification.remove();
             onStartQuestionTime?.();
         };
         notification.querySelector('#dangan-start-qtruth-btn').onclick = () => {
+            // #region debug-point E:qtruth-button
+            reportFullscreenOverlayDebug("E", "trialManager.js:#dangan-start-qtruth-btn", "Clicked Question Truth trial-panel button", {
+                hasCallback: typeof onStartQuestionTruth === "function",
+            });
+            // #endregion
             notification.remove();
             onStartQuestionTruth?.();
         };
@@ -3635,8 +3922,7 @@ ${historyText}
         };
 
         // Select relevant bullets for this NSD based on section count
-        const bulletCap = nsdBulletCount(currentDebateSections);
-        nsdActiveBullets = selectNsdBullets(preparedDebateSections || [], bulletCap);
+        nsdActiveBullets = getConfiguredDebateBullets();
         selectedTruthBulletIndex = 0;
 
         // Snapshot equipped skills for this entire debate run (covers both NSD and MPD)
@@ -6114,6 +6400,8 @@ JUDGMENT RULES:
     }
 
     async function generateSectionStatement({ speakerName, debateSoFarText, context, sectionIndex, sectionsCount }) {
+        const nsdLineSource = getNsdLineSource();
+
         const contextLines = context
             .slice(-14)
             .map(m => `${m.isUser ? 'YOU' : m.name}: ${m.text}`)
@@ -6126,38 +6414,24 @@ JUDGMENT RULES:
         // Capture current debate state for persistent context injection
         const debateMarker = `[NSD_SECTION_${sectionIndex + 1}_OF_${sectionsCount}]`;
         
-        const prompt = `
-You are ${speakerName}.
+        const prompt = renderPromptTemplate(
+            getPromptTemplate('nsdPromptTemplate', 'nsd'),
+            {
+                speakerName,
+                debateMarker,
+                sourceText: sourceText || 'NO CHARACTER DATA AVAILABLE.',
+                debateSoFarText: debateSoFarText || 'NONE',
+                contextLines: contextLines || 'NONE',
+                sectionNumber: sectionIndex + 1,
+                sectionsCount,
+            }
+        ).trim();
 
-Write the next spoken line for a Danganronpa-style Non-stop Debate.
-
-Rules:
-- Stay fully in character.
-- Output ONLY spoken dialogue in double quotes.
-- No narration, no actions, no inner thoughts.
-- 1–2 sentences.
-- Use facts and implications from the context.
-- Your line should respond naturally to what others have said so far.
-- Inside the quotes, you MUST mark EXACTLY ONE weak point (a contradiction or key claim) using [[WEAK POINT]] format.
-- Example: "The [[locked door]] proves that the killer must still be inside this very room!"
-- The weak point should be short: 1-3 words.
-- No other markup and no speaker labels.
-
-MARKER: ${debateMarker}
-
-CHARACTER DATA:
-${sourceText || 'NO CHARACTER DATA AVAILABLE.'}
-
-DEBATE SO FAR (most recent lines):
-${debateSoFarText || 'NONE'}
-
-RECENT CONTEXT:
-${contextLines}
-
-SECTION: ${sectionIndex + 1} / ${sectionsCount}
-`.trim();
-
-        if (typeof generateTrialDialogue !== 'function') {
+        if (
+            typeof generateTrialDialogue !== 'function' &&
+            typeof generateTrialDialogueWithMainApi !== 'function' &&
+            typeof generateTrialDialogueWithOpenRouter !== 'function'
+        ) {
             return ensureSingleWeakPointMarker('...');
         }
 
@@ -6171,7 +6445,7 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
 
         for (let attempt = 0; attempt < 2; attempt++) {
             const out = String(
-                await generateTrialDialogue(prompt, {
+                await generateDebateWithConfiguredSource(nsdLineSource, prompt, {
                     maxTokens: 160,
                     temperature: 0.75 + attempt * 0.1,
                 }) || ''
@@ -6189,38 +6463,49 @@ SECTION: ${sectionIndex + 1} / ${sectionsCount}
         return ensureSingleWeakPointMarker('...');
     }
 
-    // Generate 4 short bystander reactions to a debate statement.
-    // Returns a string[] or null if generation is unavailable or fails.
+    // Build bystander reactions for a debate statement. When White Noise is
+    // set to the default source, or if generation is unavailable, use a
+    // curated prewritten pool instead.
     async function generateWhiteNoiseReactions(statement, bystanderNames) {
-        if (typeof generateTrialDialogue !== 'function') return null;
+        if (getWhiteNoiseLineSource() === 'default') {
+            return getPreGeneratedWhiteNoiseReactions(statement, bystanderNames);
+        }
+        if (
+            typeof generateTrialDialogue !== 'function' &&
+            typeof generateTrialDialogueWithMainApi !== 'function' &&
+            typeof generateTrialDialogueWithOpenRouter !== 'function'
+        ) {
+            return getPreGeneratedWhiteNoiseReactions(statement, bystanderNames);
+        }
 
         const nameList = bystanderNames.length
             ? bystanderNames.slice(0, 6).join(', ')
             : 'the other students';
 
-        const prompt = `You are generating background crowd noise for a Danganronpa-style class trial.
-The following statement was just made:
-"${stripSurroundingQuotes(statement)}"
-
-Write exactly 4 short, raw reactions from ${nameList} watching the debate.
-Rules:
-- Each reaction is 2–7 words. No names, no punctuation beyond ! ? ... or —
-- Make them varied: shocked, dismissive, panicked, muttering, angry, etc.
-- Output EXACTLY 4 lines, one reaction per line. Nothing else.`.trim();
+        const prompt = renderPromptTemplate(
+            getPromptTemplate('whiteNoisePromptTemplate', 'whiteNoise'),
+            {
+                statement: stripSurroundingQuotes(statement),
+                nameList,
+            }
+        ).trim();
 
         try {
             const out = String(
-                await generateTrialDialogue(prompt, { maxTokens: 80, temperature: 0.9 }) || ''
+                await generateWhiteNoiseWithConfiguredSource(prompt, { maxTokens: 80, temperature: 0.9 }) || ''
             ).trim();
 
             const lines = out
                 .split('\n')
                 .map(l => l.replace(/^\d+[.)]\s*/, '').replace(/^[-*•]\s*/, '').trim())
                 .filter(l => l.length >= 2 && l.length <= 60);
+            const uniqueLines = [...new Set(lines)];
 
-            return lines.length >= 2 ? lines.slice(0, 6) : null;
+            return uniqueLines.length >= 2
+                ? uniqueLines.slice(0, 6)
+                : getPreGeneratedWhiteNoiseReactions(statement, bystanderNames);
         } catch {
-            return null;
+            return getPreGeneratedWhiteNoiseReactions(statement, bystanderNames);
         }
     }
 
@@ -6319,6 +6604,8 @@ Rules:
     // One LLM call → 3 simultaneous shouted lines for an MPD scenario; the
     // weakColumn slot gets wrapped in [[…]] so it's flagged as the weak spot.
     async function generateMpdScenarioStatements({ speakerTrio, weakColumn, debateSoFarText, context, scenarioIndex, scenarioCount }) {
+        const mpdLineSource = getMpdLineSource();
+
         const contextLines = context
             .slice(-12)
             .map(m => `${m.isUser ? 'YOU' : m.name}: ${m.text}`)
@@ -6328,34 +6615,27 @@ Rules:
             .map((s, i) => `Column ${i + 1}: ${s.name}${i === weakColumn ? '  ← WEAK-POINT speaker' : ''}`)
             .join('\n');
 
-        const prompt = `
-You are scripting a Danganronpa-style Mass Panic Debate. Three students shout over each other simultaneously — one of them lets slip the weak point that drives the debate.
+        const prompt = renderPromptTemplate(
+            getPromptTemplate('mpdPromptTemplate', 'mpd'),
+            {
+                scenarioNumber: scenarioIndex + 1,
+                scenarioCount,
+                speakerList,
+                weakColumnNumber: weakColumn + 1,
+                debateSoFarText: debateSoFarText || 'NONE',
+                contextLines: contextLines || 'NONE',
+            }
+        ).trim();
 
-SCENARIO ${scenarioIndex + 1} / ${scenarioCount}
-
-SPEAKERS (left → right column order):
-${speakerList}
-
-Rules:
-- Output EXACTLY 3 lines, one per column in order, no labels, no numbering, no blank lines.
-- Each line is a single spoken sentence (6–18 words), in double quotes.
-- Stay in character for each speaker. Lines should feel like they're being shouted simultaneously — overlapping accusations, panic, deflection.
-- Column ${weakColumn + 1}'s line is the WEAK POINT. Wrap its FULL sentence (inside the quotes) in [[double brackets]]. Example: "[[The locked door proves the killer is still in this room!]]"
-- The other two lines must NOT contain [[…]] markers.
-- No narration, no actions, no inner thoughts, no speaker labels.
-
-DEBATE SO FAR (most recent lines):
-${debateSoFarText || 'NONE'}
-
-RECENT CHAT CONTEXT:
-${contextLines}
-`.trim();
-
-        if (typeof generateTrialDialogue !== 'function') return null;
+        if (
+            typeof generateTrialDialogue !== 'function' &&
+            typeof generateTrialDialogueWithMainApi !== 'function' &&
+            typeof generateTrialDialogueWithOpenRouter !== 'function'
+        ) return null;
 
         for (let attempt = 0; attempt < 2; attempt++) {
             const out = String(
-                await generateTrialDialogue(prompt, {
+                await generateDebateWithConfiguredSource(mpdLineSource, prompt, {
                     maxTokens: 220,
                     temperature: 0.78 + attempt * 0.08,
                 }) || ''

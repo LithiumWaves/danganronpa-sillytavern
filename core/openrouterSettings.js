@@ -2,13 +2,72 @@ export function createOpenRouterSettingsManager({ extensionName, extension_setti
     let runtimeOpenRouterApiKey = "";
 
     function loadSettings() {
+        const existingSettings = extension_settings[extensionName] || {};
+        const hadWhiteNoiseLineSource = Object.prototype.hasOwnProperty.call(existingSettings, "whiteNoiseLineSource");
+        const hadNsdLineSource = Object.prototype.hasOwnProperty.call(existingSettings, "nsdLineSource");
+        const hadMpdLineSource = Object.prototype.hasOwnProperty.call(existingSettings, "mpdLineSource");
+        const hadHangmansGambitLineSource = Object.prototype.hasOwnProperty.call(existingSettings, "hangmansGambitLineSource");
+        const hadQuestionTimeLineSource = Object.prototype.hasOwnProperty.call(existingSettings, "questionTimeLineSource");
+        const hadQuestionTruthLineSource = Object.prototype.hasOwnProperty.call(existingSettings, "questionTruthLineSource");
+        const hadArgumentArmamentLineSource = Object.prototype.hasOwnProperty.call(existingSettings, "argumentArmamentLineSource");
+        const hadScrumDebateLineSource = Object.prototype.hasOwnProperty.call(existingSettings, "scrumDebateLineSource");
+        const hadMindMineLineSource = Object.prototype.hasOwnProperty.call(existingSettings, "mindMineLineSource");
         extension_settings[extensionName] ||= {};
         extension_settings[extensionName] = {
             ...defaultSettings,
-            ...extension_settings[extensionName]
+            ...existingSettings
         };
 
         extension_settings[extensionName].giftJudgements ||= {};
+        const generationProvider = extension_settings[extensionName].generationProvider === "openrouter" ? "openrouter" : "main";
+        const legacyWhiteNoiseToggle = existingSettings.whiteNoiseGenerationEnabled;
+        let settingsChanged = false;
+
+        if (!hadWhiteNoiseLineSource || !["default", "main", "openrouter"].includes(extension_settings[extensionName].whiteNoiseLineSource)) {
+            extension_settings[extensionName].whiteNoiseLineSource =
+                legacyWhiteNoiseToggle === false ? "default" : generationProvider;
+            settingsChanged = true;
+        }
+
+        if (!hadNsdLineSource || !["main", "openrouter"].includes(extension_settings[extensionName].nsdLineSource)) {
+            extension_settings[extensionName].nsdLineSource = generationProvider;
+            settingsChanged = true;
+        }
+
+        if (!hadMpdLineSource || !["main", "openrouter"].includes(extension_settings[extensionName].mpdLineSource)) {
+            extension_settings[extensionName].mpdLineSource = generationProvider;
+            settingsChanged = true;
+        }
+
+        if (!hadHangmansGambitLineSource || !["main", "openrouter"].includes(extension_settings[extensionName].hangmansGambitLineSource)) {
+            extension_settings[extensionName].hangmansGambitLineSource = generationProvider;
+            settingsChanged = true;
+        }
+
+        if (!hadQuestionTimeLineSource || !["main", "openrouter"].includes(extension_settings[extensionName].questionTimeLineSource)) {
+            extension_settings[extensionName].questionTimeLineSource = generationProvider;
+            settingsChanged = true;
+        }
+
+        if (!hadQuestionTruthLineSource || !["main", "openrouter"].includes(extension_settings[extensionName].questionTruthLineSource)) {
+            extension_settings[extensionName].questionTruthLineSource = generationProvider;
+            settingsChanged = true;
+        }
+
+        if (!hadArgumentArmamentLineSource || !["main", "openrouter"].includes(extension_settings[extensionName].argumentArmamentLineSource)) {
+            extension_settings[extensionName].argumentArmamentLineSource = generationProvider;
+            settingsChanged = true;
+        }
+
+        if (!hadScrumDebateLineSource || !["main", "openrouter"].includes(extension_settings[extensionName].scrumDebateLineSource)) {
+            extension_settings[extensionName].scrumDebateLineSource = generationProvider;
+            settingsChanged = true;
+        }
+
+        if (!hadMindMineLineSource || !["main", "openrouter"].includes(extension_settings[extensionName].mindMineLineSource)) {
+            extension_settings[extensionName].mindMineLineSource = generationProvider;
+            settingsChanged = true;
+        }
 
         const storedLegacyKey = String(extension_settings[extensionName].openrouterApiKey || "").trim();
         const shouldRemember = !!extension_settings[extensionName].openrouterRememberApiKey;
@@ -16,8 +75,10 @@ export function createOpenRouterSettingsManager({ extensionName, extension_setti
 
         if (!shouldRemember && storedLegacyKey) {
             delete extension_settings[extensionName].openrouterApiKey;
-            saveSettingsDebounced();
+            settingsChanged = true;
         }
+
+        if (settingsChanged) saveSettingsDebounced();
     }
 
     function getMonopadSetting(key) {

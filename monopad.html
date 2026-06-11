@@ -1028,6 +1028,138 @@
                 </div>
             </section>
 
+            <section class="settings-section settings-section-trials">
+                <div class="settings-section-title">CLASS TRIALS</div>
+
+                <div class="settings-item settings-item-stack">
+                    <label class="settings-label" for="dangan_white_noise_line_source">WHITE NOISE LINES</label>
+                    <select id="dangan_white_noise_line_source" class="settings-select">
+                        <option value="default">DEFAULT (PREWRITTEN)</option>
+                        <option value="main">MAIN API GENERATION</option>
+                        <option value="openrouter">SECONDARY API (OPENROUTER)</option>
+                    </select>
+                </div>
+                <div class="settings-item settings-item-stack">
+                    <label class="settings-label" for="dangan_nsd_line_source">NON-STOP DEBATE LINES</label>
+                    <select id="dangan_nsd_line_source" class="settings-select">
+                        <option value="main">MAIN API GENERATION</option>
+                        <option value="openrouter">SECONDARY API (OPENROUTER)</option>
+                    </select>
+                </div>
+                <div class="settings-item settings-item-stack">
+                    <label class="settings-label" for="dangan_mpd_line_source">MASS PANIC DEBATE LINES</label>
+                    <select id="dangan_mpd_line_source" class="settings-select">
+                        <option value="main">MAIN API GENERATION</option>
+                        <option value="openrouter">SECONDARY API (OPENROUTER)</option>
+                    </select>
+                </div>
+                <div class="settings-item settings-item-stack">
+                    <label class="settings-label" for="dangan_hangman_line_source">HANGMAN'S GAMBIT GENERATION</label>
+                    <select id="dangan_hangman_line_source" class="settings-select">
+                        <option value="main">MAIN API GENERATION</option>
+                        <option value="openrouter">SECONDARY API (OPENROUTER)</option>
+                    </select>
+                </div>
+                <div class="settings-item settings-item-stack">
+                    <label class="settings-label" for="dangan_qtime_line_source">QUESTION TIME GENERATION</label>
+                    <select id="dangan_qtime_line_source" class="settings-select">
+                        <option value="main">MAIN API GENERATION</option>
+                        <option value="openrouter">SECONDARY API (OPENROUTER)</option>
+                    </select>
+                </div>
+                <div class="settings-item settings-item-stack">
+                    <label class="settings-label" for="dangan_qtruth_line_source">QUESTION TRUTH GENERATION</label>
+                    <select id="dangan_qtruth_line_source" class="settings-select">
+                        <option value="main">MAIN API GENERATION</option>
+                        <option value="openrouter">SECONDARY API (OPENROUTER)</option>
+                    </select>
+                </div>
+                <div class="settings-item settings-item-stack">
+                    <label class="settings-label" for="dangan_argumentarmament_line_source">ARGUMENT ARMAMENT GENERATION</label>
+                    <select id="dangan_argumentarmament_line_source" class="settings-select">
+                        <option value="main">MAIN API GENERATION</option>
+                        <option value="openrouter">SECONDARY API (OPENROUTER)</option>
+                    </select>
+                </div>
+                <div class="settings-item settings-item-stack">
+                    <label class="settings-label" for="dangan_scrum_line_source">SCRUM DEBATE GENERATION</label>
+                    <select id="dangan_scrum_line_source" class="settings-select">
+                        <option value="main">MAIN API GENERATION</option>
+                        <option value="openrouter">SECONDARY API (OPENROUTER)</option>
+                    </select>
+                </div>
+                <div class="settings-item settings-item-stack">
+                    <label class="settings-label" for="dangan_mindmine_line_source">MIND MINE GENERATION</label>
+                    <select id="dangan_mindmine_line_source" class="settings-select">
+                        <option value="main">MAIN API GENERATION</option>
+                        <option value="openrouter">SECONDARY API (OPENROUTER)</option>
+                    </select>
+                </div>
+                <div class="settings-note">Secondary API uses the OpenRouter model and key configured in AI Generation.</div>
+
+                <div class="settings-item settings-item-stack">
+                    <span class="settings-label">MINIGAME GENERATION CONTEXT</span>
+                    <label class="settings-checkbox-row" for="dangan_qtime_use_recent_context">
+                        <input id="dangan_qtime_use_recent_context" type="checkbox" />
+                        <span>QUESTION TIME: INCLUDE RECENT CHAT</span>
+                    </label>
+                    <label class="settings-checkbox-row" for="dangan_qtime_use_debate_history">
+                        <input id="dangan_qtime_use_debate_history" type="checkbox" />
+                        <span>QUESTION TIME: INCLUDE DEBATE HISTORY</span>
+                    </label>
+                    <label class="settings-checkbox-row" for="dangan_qtruth_use_recent_context">
+                        <input id="dangan_qtruth_use_recent_context" type="checkbox" />
+                        <span>QUESTION TRUTH: INCLUDE RECENT CHAT</span>
+                    </label>
+                    <label class="settings-checkbox-row" for="dangan_qtruth_use_debate_history">
+                        <input id="dangan_qtruth_use_debate_history" type="checkbox" />
+                        <span>QUESTION TRUTH: INCLUDE DEBATE HISTORY</span>
+                    </label>
+                    <label class="settings-checkbox-row" for="dangan_hangman_use_recent_context">
+                        <input id="dangan_hangman_use_recent_context" type="checkbox" />
+                        <span>HANGMAN'S GAMBIT: INCLUDE RECENT CHAT</span>
+                    </label>
+                    <label class="settings-checkbox-row" for="dangan_hangman_use_debate_history">
+                        <input id="dangan_hangman_use_debate_history" type="checkbox" />
+                        <span>HANGMAN'S GAMBIT: INCLUDE DEBATE HISTORY</span>
+                    </label>
+                    <div class="settings-note">Debate history is captured from Non-stop / Mass Panic debates. Recent chat is the latest messages in this chat.</div>
+                </div>
+
+                <details class="settings-prompt-editor">
+                    <summary class="settings-prompt-summary">EDIT WHITE NOISE PROMPT</summary>
+                    <div class="settings-prompt-body">
+                        <div class="settings-prompt-help">Placeholders: <code>{{statement}}</code>, <code>{{nameList}}</code></div>
+                        <textarea id="dangan_white_noise_prompt_template" class="settings-prompt-textarea" data-setting="whiteNoisePromptTemplate" data-template-key="whiteNoise" rows="11" spellcheck="false"></textarea>
+                        <div class="settings-prompt-actions">
+                            <button type="button" class="settings-small-button settings-prompt-reset" data-setting="whiteNoisePromptTemplate" data-template-key="whiteNoise">RESET TO DEFAULT</button>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="settings-prompt-editor">
+                    <summary class="settings-prompt-summary">EDIT NON-STOP DEBATE PROMPT</summary>
+                    <div class="settings-prompt-body">
+                        <div class="settings-prompt-help">Placeholders: <code>{{speakerName}}</code>, <code>{{debateMarker}}</code>, <code>{{sourceText}}</code>, <code>{{debateSoFarText}}</code>, <code>{{contextLines}}</code>, <code>{{sectionNumber}}</code>, <code>{{sectionsCount}}</code></div>
+                        <textarea id="dangan_nsd_prompt_template" class="settings-prompt-textarea" data-setting="nsdPromptTemplate" data-template-key="nsd" rows="18" spellcheck="false"></textarea>
+                        <div class="settings-prompt-actions">
+                            <button type="button" class="settings-small-button settings-prompt-reset" data-setting="nsdPromptTemplate" data-template-key="nsd">RESET TO DEFAULT</button>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="settings-prompt-editor">
+                    <summary class="settings-prompt-summary">EDIT MASS PANIC DEBATE PROMPT</summary>
+                    <div class="settings-prompt-body">
+                        <div class="settings-prompt-help">Placeholders: <code>{{scenarioNumber}}</code>, <code>{{scenarioCount}}</code>, <code>{{speakerList}}</code>, <code>{{weakColumnNumber}}</code>, <code>{{debateSoFarText}}</code>, <code>{{contextLines}}</code></div>
+                        <textarea id="dangan_mpd_prompt_template" class="settings-prompt-textarea" data-setting="mpdPromptTemplate" data-template-key="mpd" rows="17" spellcheck="false"></textarea>
+                        <div class="settings-prompt-actions">
+                            <button type="button" class="settings-small-button settings-prompt-reset" data-setting="mpdPromptTemplate" data-template-key="mpd">RESET TO DEFAULT</button>
+                        </div>
+                    </div>
+                </details>
+            </section>
+
         </div>
     </div>
 </div>

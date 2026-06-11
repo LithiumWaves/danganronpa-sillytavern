@@ -17,7 +17,7 @@ import { createSocialPanelController } from "./social/socialPanel.js";
 import { extractUltimateFromNotes, isIgnoredCharacter, lookupUltimateFromLorebook, normalizeList, normalizeName } from "./social/characterUtils.js";
 import { createMapPanelController } from "./map/mapPanel.js";
 import { getLocationPromptReference, resolveLocationIdFromText } from "./map/locationPresence.js";
-import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, TRIAL_CONTEXT_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
+import { DEFAULT_TRIAL_PROMPT_TEMPLATES, INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, TRIAL_CONTEXT_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "./core/monokumaLessonScript.js";
 import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers } from "./monokuma/announcementController.js";
@@ -84,6 +84,44 @@ let introduceCharacterController = null;
 let chapterEndRosterController   = null;
 let audioVisualizer              = null;
 let overworldSceneController     = null;
+let reapplyOutfitToSprites       = () => {};
+
+// #region debug-point A:overlay-report
+function reportFullscreenOverlayDebug(hypothesisId, location, msg, data = {}) {
+    fetch("http://127.0.0.1:7777/event", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            sessionId: "fullscreen-overlays-broken",
+            runId: "pre-fix",
+            hypothesisId,
+            location,
+            msg: `[DEBUG] ${msg}`,
+            data,
+            ts: Date.now(),
+        }),
+    }).catch(() => {});
+}
+
+// #region debug-point A:global-errors
+try {
+    window.addEventListener("error", (e) => {
+        reportFullscreenOverlayDebug("A", "window:error", "Unhandled error", {
+            message: String(e?.message || ""),
+            filename: String(e?.filename || ""),
+            lineno: e?.lineno,
+            colno: e?.colno,
+        });
+    });
+    window.addEventListener("unhandledrejection", (e) => {
+        const reason = e?.reason;
+        reportFullscreenOverlayDebug("A", "window:unhandledrejection", "Unhandled promise rejection", {
+            reason: typeof reason === "string" ? reason : (reason?.message || String(reason || "")),
+        });
+    });
+} catch {}
+// #endregion
+// #endregion
 
 const openRouterSettings = createOpenRouterSettingsManager({
     extensionName,
@@ -130,6 +168,117 @@ function pushRecentLocationMention(entry) {
     if (overflow > 0) {
         recentLocationMentions.splice(0, overflow);
     }
+}
+
+function getDanganExtensionPromptText(promptKey) {
+    const ctx = window.SillyTavern?.getContext?.();
+    const candidates = [
+        ctx?.extensionPrompts,
+        ctx?.extension_prompts,
+        ctx?.extension_prompt,
+        window.extensionPrompts,
+        window.extension_prompts,
+        window.extension_prompt,
+    ];
+
+    const unwrap = (value) => {
+        if (!value) return "";
+        if (typeof value === "string") return value.trim();
+        if (Array.isArray(value)) {
+            for (const entry of value) {
+                const got = unwrap(entry);
+                if (got) return got;
+            }
+            return "";
+        }
+        if (typeof value === "object") {
+            const fields = ["value", "prompt", "text", "content"];
+            for (const field of fields) {
+                const got = unwrap(value[field]);
+                if (got) return got;
+            }
+        }
+        return "";
+    };
+
+    const getViaAccessor = (container) => {
+        if (!container) return "";
+        if (typeof container.get === "function") {
+            return unwrap(container.get(promptKey));
+        }
+        return unwrap(container[promptKey]);
+    };
+
+    for (const candidate of candidates) {
+        const got = getViaAccessor(candidate);
+        if (got) return got;
+    }
+
+    return "";
+}
+
+function buildRecentChatContextLines(maxLines = 14) {
+    const htmlDecodeBuffer = document.createElement("div");
+    const toPlainText = (value) => {
+        const raw = String(value || "").trim();
+        if (!raw) return "";
+        htmlDecodeBuffer.innerHTML = raw;
+        return String(htmlDecodeBuffer.textContent || htmlDecodeBuffer.innerText || "").trim();
+    };
+
+    const ctx = window.SillyTavern?.getContext?.();
+    const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+    const fromCtx = chat
+        .map((msg) => {
+            const isUser = msg?.is_user === true || msg?.isUser === true || String(msg?.is_user ?? msg?.isUser ?? "").toLowerCase() === "true";
+            const isSystem = msg?.is_system === true || msg?.isSystem === true || msg?.is_system_message === true || String(msg?.is_system ?? msg?.isSystem ?? msg?.is_system_message ?? "").toLowerCase() === "true";
+            const name = String(msg?.name || msg?.ch_name || msg?.character_name || msg?.display_name || "").trim();
+            const textRaw = msg?.mes ?? msg?.message ?? msg?.content ?? msg?.swipe_info?.[msg?.swipe_id || 0]?.mes ?? "";
+            const text = toPlainText(textRaw).replace(/\s+/g, " ").trim();
+            return { isUser, isSystem, name, text };
+        })
+        .filter(m => !m.isSystem && m.text);
+
+    const fromDom = Array.from(document.querySelectorAll(".mes"))
+        .map((msgEl) => {
+            const isUser = msgEl.getAttribute("is_user") === "true";
+            const isSystem = msgEl.getAttribute("is_system") === "true";
+            const name = String(msgEl.getAttribute("ch_name") || msgEl.getAttribute("name") || "").trim();
+            const mesTextEl = msgEl.querySelector(".mes_text");
+            const html = mesTextEl?.innerHTML || mesTextEl?.textContent || "";
+            const text = toPlainText(html).replace(/\s+/g, " ").trim();
+            return { isUser, isSystem, name, text };
+        })
+        .filter(m => !m.isSystem && m.text);
+
+    const messages = fromCtx.length ? fromCtx : fromDom;
+
+    return messages
+        .slice(-maxLines)
+        .map(m => `${m.isUser ? "YOU" : (m.name || "NARRATOR")}: ${m.text}`)
+        .join("\n");
+}
+
+function normalizeGenerationSource(value) {
+    const normalized = String(value || "").trim().toLowerCase();
+    return normalized === "openrouter" || normalized === "main" ? normalized : "";
+}
+
+function getConfiguredGenerationSource(settingKey) {
+    const configuredSource = normalizeGenerationSource(getMonopadSetting(settingKey));
+    if (configuredSource) return configuredSource;
+    return normalizeGenerationSource(getMonopadSetting("generationProvider")) || "main";
+}
+
+async function generateWithConfiguredSource(settingKey, prompt, options) {
+    const source = getConfiguredGenerationSource(settingKey);
+    const generator = source === "openrouter"
+        ? generateTrialDialogueWithOpenRouter
+        : (generateTrialDialogueWithMainApi || generateTrialDialogue);
+    if (typeof generator !== "function") {
+        throw new Error(`No generator available for source: ${source}`);
+    }
+    return generator(prompt, options);
 }
 
 function buildRecentLocationPresence() {
@@ -1318,6 +1467,7 @@ function createVnModeController() {
             <div class="dangan-vn-controls">
                 <button type="button" class="dangan-vn-control dangan-vn-stream-toggle" id="dangan-vn-stream-toggle" aria-label="Disable message streaming" title="Disable message streaming">STREAM: ON</button>
                 <button type="button" class="dangan-vn-control dangan-vn-transcript-toggle" id="dangan-vn-transcript-toggle" aria-label="Open transcript" title="Open transcript">TRANSCRIPT</button>
+                <button type="button" class="dangan-vn-control dangan-vn-manage-chat-files" id="dangan-vn-manage-chat-files" aria-label="Manage chat files" title="Manage chat files">FILES</button>
                 <button type="button" class="dangan-vn-control dangan-vn-extra-actions" id="dangan-vn-extra-actions" aria-label="Message actions" title="Message actions">···</button>
                 <button type="button" class="dangan-vn-control dangan-vn-edit-message" id="dangan-vn-edit-message" aria-label="Edit current message" title="Edit current message">✏</button>
                 <button type="button" class="dangan-vn-control dangan-vn-clear-chat" id="dangan-vn-clear-chat" aria-label="Clear all chat messages" title="Clear all chat messages">🗑</button>
@@ -1355,6 +1505,7 @@ function createVnModeController() {
     const streamToggleEl = host.querySelector('#dangan-vn-stream-toggle');
     const lockBtnEl = host.querySelector('#dangan-vn-lock');
     const transcriptToggleEl = host.querySelector('#dangan-vn-transcript-toggle');
+    const manageChatFilesBtnEl = host.querySelector('#dangan-vn-manage-chat-files');
     const transcriptEl = host.querySelector('#dangan-vn-transcript');
     const transcriptCloseEl = host.querySelector('#dangan-vn-transcript-close');
     const transcriptBodyEl = host.querySelector('#dangan-vn-transcript-body');
@@ -1719,6 +1870,38 @@ function createVnModeController() {
         if (transcriptOpen) {
             renderTranscript();
         }
+    }
+
+    function getManageChatFilesControl() {
+        const directMatch = document.getElementById('option_select_chat');
+        if (directMatch && !directMatch.closest('#dangan-vn-overlay')) return directMatch;
+
+        const controls = Array.from(document.querySelectorAll('button, .menu_button, [role="button"], a'));
+        for (const control of controls) {
+            if (!(control instanceof Element)) continue;
+            if (control.closest('#dangan-vn-overlay')) continue;
+            const label = `${control.getAttribute('aria-label') || ''} ${control.getAttribute('title') || ''} ${control.textContent || ''}`.toLowerCase();
+            if (!label.includes('manage chat files')) continue;
+            if (!isElementVisible(control)) continue;
+            return control;
+        }
+
+        return null;
+    }
+
+    function openManageChatFiles() {
+        const control = getManageChatFilesControl();
+        if (!control) return false;
+        if (window.$) {
+            window.$(control).trigger('click');
+            return true;
+        }
+        if (typeof control.click === 'function') {
+            control.click();
+            return true;
+        }
+        control.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        return true;
     }
 
     function updateBottomOffset() {
@@ -2197,6 +2380,12 @@ function createVnModeController() {
         setTranscriptOpen(false);
     });
 
+    manageChatFilesBtnEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openManageChatFiles();
+    });
+
     prevBtnEl?.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -2408,6 +2597,7 @@ function createVnModeController() {
         const target = event.target;
         if (target instanceof Element && target.closest('.dangan-vn-lock')) return;
         if (target instanceof Element && target.closest('.dangan-vn-clear-chat')) return;
+        if (target instanceof Element && target.closest('.dangan-vn-manage-chat-files')) return;
 
         isDragging = true;
         movedDuringPointer = false;
@@ -2458,6 +2648,7 @@ function createVnModeController() {
         if (target instanceof Element && target.closest('.dangan-vn-edit-message')) return;
         if (target instanceof Element && target.closest('.dangan-vn-extra-actions')) return;
         if (target instanceof Element && target.closest('.dangan-vn-transcript-toggle')) return;
+        if (target instanceof Element && target.closest('.dangan-vn-manage-chat-files')) return;
         if (target instanceof Element && target.closest('.dangan-vn-stream-toggle')) return;
         if (target instanceof Element && target.closest('.dangan-vn-nav-button')) return;
         advance();
@@ -3990,15 +4181,16 @@ ${prompt}
 async function generateTrialDialogue(prompt, { maxTokens = 140, temperature = 0.7, topP = 0.9, stop = ["USER:", "ASSISTANT:", "###"] } = {}) {
     const fullPrompt = String(prompt || "").trim();
 
+    if (isOpenRouterGenerationEnabled()) {
+        return generateWithOpenRouter(fullPrompt, {
+            maxTokens,
+            temperature,
+            topP,
+            stop,
+        });
+    }
+
     if (!window.SillyTavern?.getContext) {
-        if (isOpenRouterGenerationEnabled()) {
-            return generateWithOpenRouter(fullPrompt, {
-                maxTokens,
-                temperature,
-                topP,
-                stop,
-            });
-        }
         throw new Error("SillyTavern context unavailable");
     }
 
@@ -4016,6 +4208,38 @@ async function generateTrialDialogue(prompt, { maxTokens = 140, temperature = 0.
     });
 
     return (result || "").trim();
+}
+
+async function generateTrialDialogueWithMainApi(prompt, { maxTokens = 140, temperature = 0.7, topP = 0.9, stop = ["USER:", "ASSISTANT:", "###"] } = {}) {
+    const fullPrompt = String(prompt || "").trim();
+
+    if (!window.SillyTavern?.getContext) {
+        throw new Error("SillyTavern context unavailable");
+    }
+
+    const ctx = SillyTavern.getContext();
+    if (!ctx.generateRaw) {
+        throw new Error("generateRaw not available");
+    }
+
+    const result = await ctx.generateRaw({
+        prompt: fullPrompt,
+        max_tokens: maxTokens,
+        temperature,
+        top_p: topP,
+        stop,
+    });
+
+    return (result || "").trim();
+}
+
+async function generateTrialDialogueWithOpenRouter(prompt, { maxTokens = 140, temperature = 0.7, topP = 0.9, stop = ["USER:", "ASSISTANT:", "###"] } = {}) {
+    return generateWithOpenRouter(String(prompt || "").trim(), {
+        maxTokens,
+        temperature,
+        topP,
+        stop,
+    });
 }
 
 // Parses the LLM's Scrum Debate response into a scenario object.  Returns
@@ -4200,7 +4424,7 @@ ${contextLines || "NONE"}
     for (let attempt = 0; attempt < attempts; attempt++) {
         let out = "";
         try {
-            out = String(await generateTrialDialogue(prompt, {
+            out = String(await generateWithConfiguredSource("scrumDebateLineSource", prompt, {
                 maxTokens,
                 temperature: 0.78 + attempt * 0.07,
             }) || "").trim();
@@ -6308,6 +6532,92 @@ function applySettingsTabUI() {
         providerSelect.value = tab.generationProvider || defaultSettings.generationProvider;
     }
 
+    const whiteNoiseSourceSelect = document.getElementById("dangan_white_noise_line_source");
+    if (whiteNoiseSourceSelect) {
+        whiteNoiseSourceSelect.value = tab.whiteNoiseLineSource || defaultSettings.whiteNoiseLineSource;
+    }
+
+    const nsdLineSourceSelect = document.getElementById("dangan_nsd_line_source");
+    if (nsdLineSourceSelect) {
+        nsdLineSourceSelect.value = tab.nsdLineSource || defaultSettings.nsdLineSource;
+    }
+
+    const mpdLineSourceSelect = document.getElementById("dangan_mpd_line_source");
+    if (mpdLineSourceSelect) {
+        mpdLineSourceSelect.value = tab.mpdLineSource || defaultSettings.mpdLineSource;
+    }
+
+    const hangmanLineSourceSelect = document.getElementById("dangan_hangman_line_source");
+    if (hangmanLineSourceSelect) {
+        hangmanLineSourceSelect.value = tab.hangmansGambitLineSource || defaultSettings.hangmansGambitLineSource;
+    }
+
+    const qtimeLineSourceSelect = document.getElementById("dangan_qtime_line_source");
+    if (qtimeLineSourceSelect) {
+        qtimeLineSourceSelect.value = tab.questionTimeLineSource || defaultSettings.questionTimeLineSource;
+    }
+
+    const qtruthLineSourceSelect = document.getElementById("dangan_qtruth_line_source");
+    if (qtruthLineSourceSelect) {
+        qtruthLineSourceSelect.value = tab.questionTruthLineSource || defaultSettings.questionTruthLineSource;
+    }
+
+    const argumentArmamentLineSourceSelect = document.getElementById("dangan_argumentarmament_line_source");
+    if (argumentArmamentLineSourceSelect) {
+        argumentArmamentLineSourceSelect.value = tab.argumentArmamentLineSource || defaultSettings.argumentArmamentLineSource;
+    }
+
+    const scrumLineSourceSelect = document.getElementById("dangan_scrum_line_source");
+    if (scrumLineSourceSelect) {
+        scrumLineSourceSelect.value = tab.scrumDebateLineSource || defaultSettings.scrumDebateLineSource;
+    }
+
+    const mindMineLineSourceSelect = document.getElementById("dangan_mindmine_line_source");
+    if (mindMineLineSourceSelect) {
+        mindMineLineSourceSelect.value = tab.mindMineLineSource || defaultSettings.mindMineLineSource;
+    }
+
+    const qtimeRecentCheckbox = document.getElementById("dangan_qtime_use_recent_context");
+    if (qtimeRecentCheckbox) {
+        qtimeRecentCheckbox.checked = tab.questionTimeUseRecentContext ?? defaultSettings.questionTimeUseRecentContext;
+    }
+
+    const qtimeDebateCheckbox = document.getElementById("dangan_qtime_use_debate_history");
+    if (qtimeDebateCheckbox) {
+        qtimeDebateCheckbox.checked = tab.questionTimeUseDebateHistory ?? defaultSettings.questionTimeUseDebateHistory;
+    }
+
+    const qtruthRecentCheckbox = document.getElementById("dangan_qtruth_use_recent_context");
+    if (qtruthRecentCheckbox) {
+        qtruthRecentCheckbox.checked = tab.questionTruthUseRecentContext ?? defaultSettings.questionTruthUseRecentContext;
+    }
+
+    const qtruthDebateCheckbox = document.getElementById("dangan_qtruth_use_debate_history");
+    if (qtruthDebateCheckbox) {
+        qtruthDebateCheckbox.checked = tab.questionTruthUseDebateHistory ?? defaultSettings.questionTruthUseDebateHistory;
+    }
+
+    const hangmanRecentCheckbox = document.getElementById("dangan_hangman_use_recent_context");
+    if (hangmanRecentCheckbox) {
+        hangmanRecentCheckbox.checked = tab.hangmansGambitUseRecentContext ?? defaultSettings.hangmansGambitUseRecentContext;
+    }
+
+    const hangmanDebateCheckbox = document.getElementById("dangan_hangman_use_debate_history");
+    if (hangmanDebateCheckbox) {
+        hangmanDebateCheckbox.checked = tab.hangmansGambitUseDebateHistory ?? defaultSettings.hangmansGambitUseDebateHistory;
+    }
+
+    document.querySelectorAll(".settings-prompt-textarea").forEach((el) => {
+        const settingKey = el.dataset.setting;
+        const templateKey = el.dataset.templateKey;
+        if (!settingKey || !templateKey) return;
+        const fallbackTemplate = DEFAULT_TRIAL_PROMPT_TEMPLATES[templateKey] || "";
+        const savedTemplate = typeof tab[settingKey] === "string" && tab[settingKey].length
+            ? tab[settingKey]
+            : fallbackTemplate;
+        el.value = savedTemplate;
+    });
+
     const rewardDifficultySelect = document.getElementById("dangan_reward_difficulty");
     if (rewardDifficultySelect) {
         rewardDifficultySelect.value = clampRewardDifficulty(tab.rewardDifficulty || defaultSettings.rewardDifficulty);
@@ -6346,7 +6656,17 @@ function applySettingsTabUI() {
         connectionStatusEl.textContent = "";
     }
 
-    const showOpenRouterControls = (providerSelect?.value || tab.generationProvider) === "openrouter";
+    const showOpenRouterControls =
+        (providerSelect?.value || tab.generationProvider) === "openrouter" ||
+        (whiteNoiseSourceSelect?.value || tab.whiteNoiseLineSource) === "openrouter" ||
+        (nsdLineSourceSelect?.value || tab.nsdLineSource) === "openrouter" ||
+        (mpdLineSourceSelect?.value || tab.mpdLineSource) === "openrouter" ||
+        (hangmanLineSourceSelect?.value || tab.hangmansGambitLineSource) === "openrouter" ||
+        (qtimeLineSourceSelect?.value || tab.questionTimeLineSource) === "openrouter" ||
+        (qtruthLineSourceSelect?.value || tab.questionTruthLineSource) === "openrouter" ||
+        (argumentArmamentLineSourceSelect?.value || tab.argumentArmamentLineSource) === "openrouter" ||
+        (scrumLineSourceSelect?.value || tab.scrumDebateLineSource) === "openrouter" ||
+        (mindMineLineSourceSelect?.value || tab.mindMineLineSource) === "openrouter";
     document.querySelectorAll(".settings-openrouter-only").forEach(el => {
         el.classList.toggle("is-hidden", !showOpenRouterControls);
     });
@@ -7747,6 +8067,7 @@ jQuery(async () => {
     bindDebugControlEvents();
 
     try {
+        reportFullscreenOverlayDebug("A", "index.js:boot", "Entered extension boot try block");
         const settingsHtml = await loadExtensionHtmlFile("example.html");
         $("#extensions_settings2").append(settingsHtml);
 
@@ -8616,6 +8937,139 @@ $(".monopad-icon").on("mouseenter", function () {
             mapPanelController?.handleSettingsChanged?.();
         });
 
+        $("#dangan_white_noise_line_source").on("change", function () {
+            const nextSource = String(this.value || "").trim();
+            const normalizedSource = ["default", "main", "openrouter"].includes(nextSource)
+                ? nextSource
+                : defaultSettings.whiteNoiseLineSource;
+            setMonopadSetting("whiteNoiseLineSource", normalizedSource);
+            applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
+        });
+
+        $("#dangan_nsd_line_source").on("change", function () {
+            const nextSource = String(this.value || "").trim();
+            const normalizedSource = ["main", "openrouter"].includes(nextSource)
+                ? nextSource
+                : defaultSettings.nsdLineSource;
+            setMonopadSetting("nsdLineSource", normalizedSource);
+            applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
+        });
+
+        $("#dangan_mpd_line_source").on("change", function () {
+            const nextSource = String(this.value || "").trim();
+            const normalizedSource = ["main", "openrouter"].includes(nextSource)
+                ? nextSource
+                : defaultSettings.mpdLineSource;
+            setMonopadSetting("mpdLineSource", normalizedSource);
+            applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
+        });
+
+        $("#dangan_hangman_line_source").on("change", function () {
+            const nextSource = String(this.value || "").trim();
+            const normalizedSource = ["main", "openrouter"].includes(nextSource)
+                ? nextSource
+                : defaultSettings.hangmansGambitLineSource;
+            setMonopadSetting("hangmansGambitLineSource", normalizedSource);
+            applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
+        });
+
+        $("#dangan_qtime_line_source").on("change", function () {
+            const nextSource = String(this.value || "").trim();
+            const normalizedSource = ["main", "openrouter"].includes(nextSource)
+                ? nextSource
+                : defaultSettings.questionTimeLineSource;
+            setMonopadSetting("questionTimeLineSource", normalizedSource);
+            applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
+        });
+
+        $("#dangan_qtruth_line_source").on("change", function () {
+            const nextSource = String(this.value || "").trim();
+            const normalizedSource = ["main", "openrouter"].includes(nextSource)
+                ? nextSource
+                : defaultSettings.questionTruthLineSource;
+            setMonopadSetting("questionTruthLineSource", normalizedSource);
+            applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
+        });
+
+        $("#dangan_argumentarmament_line_source").on("change", function () {
+            const nextSource = String(this.value || "").trim();
+            const normalizedSource = ["main", "openrouter"].includes(nextSource)
+                ? nextSource
+                : defaultSettings.argumentArmamentLineSource;
+            setMonopadSetting("argumentArmamentLineSource", normalizedSource);
+            applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
+        });
+
+        $("#dangan_scrum_line_source").on("change", function () {
+            const nextSource = String(this.value || "").trim();
+            const normalizedSource = ["main", "openrouter"].includes(nextSource)
+                ? nextSource
+                : defaultSettings.scrumDebateLineSource;
+            setMonopadSetting("scrumDebateLineSource", normalizedSource);
+            applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
+        });
+
+        $("#dangan_mindmine_line_source").on("change", function () {
+            const nextSource = String(this.value || "").trim();
+            const normalizedSource = ["main", "openrouter"].includes(nextSource)
+                ? nextSource
+                : defaultSettings.mindMineLineSource;
+            setMonopadSetting("mindMineLineSource", normalizedSource);
+            applySettingsTabUI();
+            mapPanelController?.handleSettingsChanged?.();
+        });
+
+        $("#dangan_qtime_use_recent_context").on("change", function () {
+            setMonopadSetting("questionTimeUseRecentContext", this.checked);
+        });
+
+        $("#dangan_qtime_use_debate_history").on("change", function () {
+            setMonopadSetting("questionTimeUseDebateHistory", this.checked);
+        });
+
+        $("#dangan_qtruth_use_recent_context").on("change", function () {
+            setMonopadSetting("questionTruthUseRecentContext", this.checked);
+        });
+
+        $("#dangan_qtruth_use_debate_history").on("change", function () {
+            setMonopadSetting("questionTruthUseDebateHistory", this.checked);
+        });
+
+        $("#dangan_hangman_use_recent_context").on("change", function () {
+            setMonopadSetting("hangmansGambitUseRecentContext", this.checked);
+        });
+
+        $("#dangan_hangman_use_debate_history").on("change", function () {
+            setMonopadSetting("hangmansGambitUseDebateHistory", this.checked);
+        });
+
+        $(document).on("input change blur", ".settings-prompt-textarea", function () {
+            const settingKey = this.dataset.setting;
+            const templateKey = this.dataset.templateKey;
+            if (!settingKey || !templateKey) return;
+            const fallbackTemplate = DEFAULT_TRIAL_PROMPT_TEMPLATES[templateKey] || "";
+            setMonopadSetting(settingKey, this.value === fallbackTemplate ? "" : this.value);
+        });
+
+        $(document).on("click", ".settings-prompt-reset", function () {
+            const settingKey = this.dataset.setting;
+            const templateKey = this.dataset.templateKey;
+            if (!settingKey || !templateKey) return;
+            setMonopadSetting(settingKey, "");
+            const textarea = document.querySelector(`.settings-prompt-textarea[data-setting="${settingKey}"]`);
+            if (textarea instanceof HTMLTextAreaElement) {
+                textarea.value = DEFAULT_TRIAL_PROMPT_TEMPLATES[templateKey] || "";
+            }
+        });
+
         $("#dangan_reward_difficulty").on("change", function () {
             const nextDifficulty = applyRewardDifficultyProfile(this.value || defaultSettings.rewardDifficulty);
             setMonopadSetting("rewardDifficulty", nextDifficulty);
@@ -9094,6 +9548,8 @@ debugSTGlobals();
             vnModeController,
             getTruthBullets,
             generateTrialDialogue,
+            generateTrialDialogueWithMainApi,
+            generateTrialDialogueWithOpenRouter,
             getCharacterSourceText,
             getEmotionFont,
             onTrialStateChange: () => { renderMoveToPanel(); renderMinimap(); overworldSceneController?.render?.(); },
@@ -9113,11 +9569,21 @@ debugSTGlobals();
             unsuppressVisualizer: () => audioVisualizer.unsuppress(),
             showMinigameLoadingState,
             onStartHangmansGambit: async () => {
+                // #region debug-point B:hangman-trial-entry
+                reportFullscreenOverlayDebug("B", "index.js:onStartHangmansGambit", "Entered Hangman's Gambit trial callback", {
+                    hangmansGambitController: Boolean(hangmansGambitController),
+                });
+                // #endregion
                 // Show a loading overlay and silence whatever BGM was
                 // playing before the click. The controller starts the HG
                 // OST itself from inside playBgm after the tutorial closes,
                 // so the pre-game window stays quiet.
                 const loadingEl = showHangmanLoadingState();
+                // #region debug-point B:hangman-loading
+                reportFullscreenOverlayDebug("B", "index.js:onStartHangmansGambit", "Created Hangman loading overlay", {
+                    loadingEl: Boolean(loadingEl),
+                });
+                // #endregion
                 fadeOutAndPauseBgm().catch(() => {});
 
                 // Generate a contextual question/answer from the trial context.
@@ -9132,6 +9598,19 @@ debugSTGlobals();
                     const goal     = String(ctx.goal  || '').trim() || 'find the culprit';
                     const suspects = (Array.isArray(ctx.suspects) ? ctx.suspects : [])
                         .map(s => s?.name).filter(Boolean).join(', ') || 'unknown';
+
+                    const hangmanExtraContextBlocks = (() => {
+                        const blocks = [];
+                        if (getMonopadSetting('hangmansGambitUseDebateHistory') === true) {
+                            const history = getDanganExtensionPromptText('dangan_debate_history');
+                            blocks.push(`DEBATE HISTORY\n${history || 'NONE'}`);
+                        }
+                        if (getMonopadSetting('hangmansGambitUseRecentContext') === true) {
+                            const contextLines = buildRecentChatContextLines(14);
+                            blocks.push(`RECENT CHAT CONTEXT\n${contextLines || 'NONE'}`);
+                        }
+                        return blocks.length ? `\n\n${blocks.join('\n\n')}` : '';
+                    })();
 
                     const prompt = `You are generating a Hangman's Gambit puzzle for a Danganronpa-style class trial.
 
@@ -9149,9 +9628,9 @@ REQUIREMENTS
 
 Respond in EXACTLY this format and nothing else:
 QUESTION: <your question>
-ANSWER: <UPPERCASEWORD>`;
+ANSWER: <UPPERCASEWORD>${hangmanExtraContextBlocks}`;
 
-                    const out = await generateTrialDialogue(prompt, { maxTokens: 80, temperature: 0.85 });
+                    const out = await generateWithConfiguredSource("hangmansGambitLineSource", prompt, { maxTokens: 80, temperature: 0.85 });
                     const qMatch = out.match(/QUESTION:\s*(.+)/i);
                     const aMatch = out.match(/ANSWER:\s*([A-Za-z]+)/i);
                     if (qMatch && aMatch) {
@@ -9168,8 +9647,16 @@ ANSWER: <UPPERCASEWORD>`;
                     loadingEl?.hide?.();
                 }
 
-                hangmansGambitController?.run({ question, answer, time: 120, health: 7, difficulty: 2 })
-                    ?.then(() => trialManager?.resumeAfterActivity?.());
+                const hangmanRun = hangmansGambitController?.run({ question, answer, time: 120, health: 7, difficulty: 2 });
+                // #region debug-point B:hangman-run
+                reportFullscreenOverlayDebug("B", "index.js:onStartHangmansGambit", "Invoked Hangman controller run()", {
+                    hasRunResult: Boolean(hangmanRun),
+                    thenable: Boolean(hangmanRun && typeof hangmanRun.then === "function"),
+                    questionLength: question.length,
+                    answerLength: answer.length,
+                });
+                // #endregion
+                hangmanRun?.then(() => trialManager?.resumeAfterActivity?.());
             },
             onStartArgumentArmament: async () => {
                 // Resolve the current speaker as the AA enemy
@@ -9262,7 +9749,7 @@ WEST: <west sentence>
 ORDER: <4-letter permutation of NSEW>
 QUOTE: <climactic accusation>`;
 
-                    const out = await generateTrialDialogue(prompt, { maxTokens: 600, temperature: 0.85 });
+                    const out = await generateWithConfiguredSource("argumentArmamentLineSource", prompt, { maxTokens: 600, temperature: 0.85 });
 
                     const statementMatches = [...out.matchAll(/STATEMENT:\s*(.+)/gi)]
                         .map(m => m[1].trim().replace(/^["']|["']$/g, ''))
@@ -9364,11 +9851,21 @@ QUOTE: <climactic accusation>`;
                 trialManager?.resumeAfterActivity?.();
             },
             onStartQuestionTime: async () => {
+                // #region debug-point C:qtime-trial-entry
+                reportFullscreenOverlayDebug("C", "index.js:onStartQuestionTime", "Entered Question Time trial callback", {
+                    questionTimeController: Boolean(questionTimeController),
+                });
+                // #endregion
                 // Show a loading overlay while the LLM drafts a question + 4
                 // answers from the current trial context. Falls back to a
                 // generic suspect picker if generation fails or the model
                 // returns something we can't parse cleanly.
                 const loadingEl = showMinigameLoadingState('Loading Question Time', { command: '/questiontime' });
+                // #region debug-point C:qtime-loading
+                reportFullscreenOverlayDebug("C", "index.js:onStartQuestionTime", "Created Question Time loading overlay", {
+                    loadingEl: Boolean(loadingEl),
+                });
+                // #endregion
                 loadingEl?.setProgress?.(0);
                 // Question Time is one generateRaw call, so there's no true
                 // segment-by-segment progress. Drive a soft asymptotic
@@ -9382,13 +9879,26 @@ QUOTE: <climactic accusation>`;
 
                 let title   = 'Who is the blackened?';
                 let answers = ['Suspect A', 'Suspect B', 'Suspect C', 'Suspect D'];
-                let correct = 0;
+                let correct = 1;
                 try {
                     const ctx = trialManager?.getTrialContext?.() ?? {};
                     const topic    = String(ctx.topic || '').trim() || 'a mysterious crime';
                     const goal     = String(ctx.goal  || '').trim() || 'find the culprit';
                     const suspects = (Array.isArray(ctx.suspects) ? ctx.suspects : [])
                         .map(s => s?.name).filter(Boolean).join(', ') || 'unknown';
+
+                    const qtimeExtraContextBlocks = (() => {
+                        const blocks = [];
+                        if (getMonopadSetting('questionTimeUseDebateHistory') === true) {
+                            const history = getDanganExtensionPromptText('dangan_debate_history');
+                            blocks.push(`DEBATE HISTORY\n${history || 'NONE'}`);
+                        }
+                        if (getMonopadSetting('questionTimeUseRecentContext') === true) {
+                            const contextLines = buildRecentChatContextLines(14);
+                            blocks.push(`RECENT CHAT CONTEXT\n${contextLines || 'NONE'}`);
+                        }
+                        return blocks.length ? `\n\n${blocks.join('\n\n')}` : '';
+                    })();
 
                     const prompt = `You are generating a Question Time round for a Danganronpa-style class trial.
 
@@ -9412,20 +9922,21 @@ QUESTION: <your question>
 ANSWER: <answer>
 ANSWER: *<correct answer>
 ANSWER: <answer>
-ANSWER: <answer>`;
+ANSWER: <answer>${qtimeExtraContextBlocks}`;
 
-                    const out = await generateTrialDialogue(prompt, { maxTokens: 160, temperature: 0.85 });
+                    const out = await generateWithConfiguredSource("questionTimeLineSource", prompt, { maxTokens: 160, temperature: 0.85 });
                     const qMatch  = out.match(/QUESTION:\s*(.+)/i);
                     const aMatches = [...out.matchAll(/ANSWER:\s*(.+)/gi)].map(m => m[1].trim());
                     if (qMatch && aMatches.length >= 4) {
                         const cleanQuestion = qMatch[1].trim().replace(/^["']|["']$/g, '');
                         const four = aMatches.slice(0, 4);
-                        const correctIdx = four.findIndex(a => /^\*/.test(a));
-                        const cleaned = four.map(a => a.replace(/^\*\s*/, '').trim()).filter(Boolean);
-                        if (cleaned.length === 4 && correctIdx >= 0 && cleanQuestion.length > 0) {
+                        const correctIdx = four.findIndex(a => /^\s*\*/.test(a));
+                        const cleaned = four.map(a => a.replace(/^\s*\*\s*/, '').trim());
+                        const allPresent = cleaned.every(a => a.length > 0);
+                        if (allPresent && correctIdx >= 0 && cleanQuestion.length > 0) {
                             title   = cleanQuestion;
                             answers = cleaned;
-                            correct = correctIdx;
+                            correct = correctIdx + 1;
                         }
                     }
                 } catch (err) {
@@ -9436,15 +9947,33 @@ ANSWER: <answer>`;
                     loadingEl?.hide?.();
                 }
 
-                questionTimeController?.run({ title, time: resolveSkillParam("qttTimer", 30), answers, correct })
-                    ?.then(() => trialManager?.resumeAfterActivity?.());
+                const questionTimeRun = questionTimeController?.run({ title, time: resolveSkillParam("qttTimer", 30), answers, correct });
+                // #region debug-point C:qtime-run
+                reportFullscreenOverlayDebug("C", "index.js:onStartQuestionTime", "Invoked Question Time controller run()", {
+                    hasRunResult: Boolean(questionTimeRun),
+                    thenable: Boolean(questionTimeRun && typeof questionTimeRun.then === "function"),
+                    answersCount: Array.isArray(answers) ? answers.length : 0,
+                    correct,
+                });
+                // #endregion
+                questionTimeRun?.then(() => trialManager?.resumeAfterActivity?.());
             },
             onStartQuestionTruth: async () => {
+                // #region debug-point D:qtruth-trial-entry
+                reportFullscreenOverlayDebug("D", "index.js:onStartQuestionTruth", "Entered Question Truth trial callback", {
+                    questionTruthController: Boolean(questionTruthController),
+                });
+                // #endregion
                 // Generate a question whose correct answer is exactly one of
                 // the player's collected Truth Bullet titles.  Falls back to
                 // the prior stub if generation fails or there are no bullets
                 // to pick from.
                 const loadingEl = showMinigameLoadingState('Loading Question Truth', { command: '/questiontruth' });
+                // #region debug-point D:qtruth-loading
+                reportFullscreenOverlayDebug("D", "index.js:onStartQuestionTruth", "Created Question Truth loading overlay", {
+                    loadingEl: Boolean(loadingEl),
+                });
+                // #endregion
                 loadingEl?.setProgress?.(0);
                 let softProgress = 0;
                 const softInterval = window.setInterval(() => {
@@ -9471,6 +10000,19 @@ ANSWER: <answer>`;
                             return `${i + 1}. TITLE: ${title}\n   DESCRIPTION: ${desc || '(no description)'}`;
                         }).join('\n');
 
+                        const qtruthExtraContextBlocks = (() => {
+                            const blocks = [];
+                            if (getMonopadSetting('questionTruthUseDebateHistory') === true) {
+                                const history = getDanganExtensionPromptText('dangan_debate_history');
+                                blocks.push(`DEBATE HISTORY\n${history || 'NONE'}`);
+                            }
+                            if (getMonopadSetting('questionTruthUseRecentContext') === true) {
+                                const contextLines = buildRecentChatContextLines(14);
+                                blocks.push(`RECENT CHAT CONTEXT\n${contextLines || 'NONE'}`);
+                            }
+                            return blocks.length ? `\n\n${blocks.join('\n\n')}` : '';
+                        })();
+
                         const prompt = `You are generating a "Question Truth" round for a Danganronpa-style class trial about: ${topic}.
 
 The player has collected these Truth Bullets — each has a TITLE and a DESCRIPTION:
@@ -9491,9 +10033,9 @@ REQUIREMENTS
 Respond in EXACTLY this format and nothing else:
 QUESTION: <your question>
 ANSWER: <exact TITLE of one Truth Bullet from the list above>
-TIME: <whole-second integer, minimum 60, maximum 180>`;
+TIME: <whole-second integer, minimum 60, maximum 180>${qtruthExtraContextBlocks}`;
 
-                        const out = await generateTrialDialogue(prompt, { maxTokens: 180, temperature: 0.8 });
+                        const out = await generateWithConfiguredSource("questionTruthLineSource", prompt, { maxTokens: 180, temperature: 0.8 });
                         const qMatch = out.match(/QUESTION:\s*(.+)/i);
                         const aMatch = out.match(/ANSWER:\s*(.+)/i);
                         const tMatch = out.match(/TIME:\s*(\d+)/i);
@@ -9526,8 +10068,16 @@ TIME: <whole-second integer, minimum 60, maximum 180>`;
                     loadingEl?.hide?.();
                 }
 
-                questionTruthController?.run({ question, answer, time: resolveSkillParam("qthTimer", time), playerHp: resolveSkillParam("qthHealth", 5) })
-                    ?.then(() => trialManager?.resumeAfterActivity?.());
+                const questionTruthRun = questionTruthController?.run({ question, answer, time: resolveSkillParam("qthTimer", time), playerHp: resolveSkillParam("qthHealth", 5) });
+                // #region debug-point D:qtruth-run
+                reportFullscreenOverlayDebug("D", "index.js:onStartQuestionTruth", "Invoked Question Truth controller run()", {
+                    hasRunResult: Boolean(questionTruthRun),
+                    thenable: Boolean(questionTruthRun && typeof questionTruthRun.then === "function"),
+                    questionLength: question.length,
+                    answerLength: answer.length,
+                });
+                // #endregion
+                questionTruthRun?.then(() => trialManager?.resumeAfterActivity?.());
             },
             onStartChoosing: ({ characters = [], startIdx = 0 } = {}) => {
                 playTrackFromSetting('trialSuspectChoiceTracks');
@@ -9697,7 +10247,7 @@ STATEMENT: <first statement>
 STATEMENT: <second statement>
 STATEMENT: <third statement>`;
 
-                    const out = await generateTrialDialogue(prompt, { maxTokens: 220, temperature: 0.85 });
+                    const out = await generateWithConfiguredSource("mindMineLineSource", prompt, { maxTokens: 220, temperature: 0.85 });
                     const matches = [...out.matchAll(/STATEMENT:\s*(.+)/gi)]
                         .map(m => m[1].trim()
                             .replace(/^["']|["']$/g, '')
@@ -9807,7 +10357,7 @@ STATEMENT: <third statement>`;
         // setupExpressionMirror below; called after chat entry settles to beat
         // the entry-time race where ST's clone-swap / overworld expression pass
         // overwrites our first outfit set. No-op until the mirror is set up.
-        let reapplyOutfitToSprites = () => {};
+        reapplyOutfitToSprites = () => {};
 
         // On chat change, rebuild the stage (group ↔ 1-on-1 may differ) then snap to latest speaker.
         // Suppress VFX/SFX for the duration of the init + a grace period so the expressions
@@ -10204,6 +10754,13 @@ STATEMENT: <third statement>`;
         if (!prome?.enableUserSprite || !prome?.userSprite) return null;
         return getSpriteUrl(prome.userSprite, emotion).catch(() => null);
     };
+    // #region debug-point A:controller-init-enter
+    reportFullscreenOverlayDebug("A", "index.js:create-minigame-controllers", "About to initialize fullscreen minigame controllers", {
+        hasCreateQuestionTimeController: typeof createQuestionTimeController === "function",
+        hasCreateQuestionTruthController: typeof createQuestionTruthController === "function",
+        hasCreateHangmansGambitController: typeof createHangmansGambitController === "function",
+    });
+    // #endregion
     questionTimeController   = createQuestionTimeController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, getPlayerSpriteUrl });
     questionTruthController  = createQuestionTruthController({ extensionFolderPath, getTruthBullets: getTruthBulletsSnapshot, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, getPlayerSpriteUrl });
     const tutorialPromptDeps = {
@@ -10211,6 +10768,13 @@ STATEMENT: <third statement>`;
         disableTutorialPrompt:   () => setMonopadSetting('minigameTutorialsEnabled', false),
     };
     hangmansGambitController  = createHangmansGambitController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, pauseDynamicAudio: fadeOutAndPauseBgm, resumeDynamicAudio: resumeBgmAfterHG, playBgm: playHGBgm, getPlayerSpriteUrl, ...tutorialPromptDeps });
+    // #region debug-point A:controller-init
+    reportFullscreenOverlayDebug("A", "index.js:create-minigame-controllers", "Initialized fullscreen minigame controllers", {
+        hangmansGambitController: Boolean(hangmansGambitController),
+        questionTimeController: Boolean(questionTimeController),
+        questionTruthController: Boolean(questionTruthController),
+    });
+    // #endregion
     argumentArmamentController = createArgumentArmamentController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, getPlayerSpriteUrl, ...tutorialPromptDeps });
     mindMineController        = createMindMineController({
         extensionFolderPath,
@@ -10259,6 +10823,10 @@ STATEMENT: <third statement>`;
     } catch (error) {
         bootstrapDebugUi();
         console.error(`[${extensionName}] ❌ Load failed:`, error);
+        reportFullscreenOverlayDebug("A", "index.js:boot", "Extension boot try block threw", {
+            message: String(error?.message || error || ""),
+            stack: String(error?.stack || ""),
+        });
     }
 });
 
@@ -10744,7 +11312,19 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             console.warn('[QuestionTime] title and all four answers are required.');
             return '';
         }
+        // #region debug-point C:qtime-slash-entry
+        reportFullscreenOverlayDebug("C", "index.js:/questiontime", "Entered Question Time slash command", {
+            questionTimeController: Boolean(questionTimeController),
+            answersCount: answers.length,
+            correct,
+        });
+        // #endregion
         const won = await questionTimeController?.run({ title, time: resolveSkillParam("qttTimer", time), answers, correct });
+        // #region debug-point C:qtime-slash-run
+        reportFullscreenOverlayDebug("C", "index.js:/questiontime", "Question Time slash command completed run()", {
+            won: Boolean(won),
+        });
+        // #endregion
         if (won) awardXp(XP_REWARDS.questionTime ?? 8, 'question time completed');
         return '';
     },
@@ -10770,7 +11350,19 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             return '';
         }
         const time = args.time ? Number(args.time) : 0;
+        // #region debug-point D:qtruth-slash-entry
+        reportFullscreenOverlayDebug("D", "index.js:/questiontruth", "Entered Question Truth slash command", {
+            questionTruthController: Boolean(questionTruthController),
+            questionLength: question.length,
+            answerLength: answer.length,
+        });
+        // #endregion
         const won = await questionTruthController?.run({ question, answer, time: resolveSkillParam("qthTimer", time), playerHp: resolveSkillParam("qthHealth", 5) });
+        // #region debug-point D:qtruth-slash-run
+        reportFullscreenOverlayDebug("D", "index.js:/questiontruth", "Question Truth slash command completed run()", {
+            won: Boolean(won),
+        });
+        // #endregion
         if (won) awardXp(XP_REWARDS.questionTruth ?? 10, 'question truth completed');
         return '';
     },
@@ -11846,7 +12438,19 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         const resolveSpeed = (base) => resolveSkillParam("hangmanSpeed", base);
         const concDrain = resolveSkillParam("hangmanConcDrain", 1 / 3);
         const concRegen = resolveSkillParam("hangmanConcRegen", 1 / 10);
+        // #region debug-point B:hangman-slash-entry
+        reportFullscreenOverlayDebug("B", "index.js:/hangmansgambit", "Entered Hangman's Gambit slash command", {
+            hangmansGambitController: Boolean(hangmansGambitController),
+            questionLength: question.length,
+            answerLength: answer.length,
+        });
+        // #endregion
         const won = await hangmansGambitController?.run({ question, answer, time, health, difficulty, spotlightScale, resolveSpeed, concDrain, concRegen });
+        // #region debug-point B:hangman-slash-run
+        reportFullscreenOverlayDebug("B", "index.js:/hangmansgambit", "Hangman's Gambit slash command completed run()", {
+            won: Boolean(won),
+        });
+        // #endregion
         if (won) awardXp(XP_REWARDS.hangmansGambit ?? 15, "hangman's gambit completed");
         return '';
     },
