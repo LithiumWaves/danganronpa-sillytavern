@@ -66,6 +66,24 @@ export function createTrialManager(deps) {
         return `${base}/assets/classtrial/${name}`;
     }
 
+    // #region debug-point E:overlay-report
+    function reportFullscreenOverlayDebug(hypothesisId, location, msg, data = {}) {
+        fetch("http://127.0.0.1:7777/event", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                sessionId: "fullscreen-overlays-broken",
+                runId: "pre-fix",
+                hypothesisId,
+                location,
+                msg: `[DEBUG] ${msg}`,
+                data,
+                ts: Date.now(),
+            }),
+        }).catch(() => {});
+    }
+    // #endregion
+
     let currentState = TrialPhases.IDLE;
     let trialActive  = false;  // true only while a trial is in progress; false after /end-trial
     let currentDebateSections = 0;
@@ -2308,6 +2326,11 @@ ${historyText}
             void startMassPanicDebateGenerated();
         };
         notification.querySelector('#dangan-start-hangman-btn').onclick = () => {
+            // #region debug-point E:hangman-button
+            reportFullscreenOverlayDebug("E", "trialManager.js:#dangan-start-hangman-btn", "Clicked Hangman's Gambit trial-panel button", {
+                hasCallback: typeof onStartHangmansGambit === "function",
+            });
+            // #endregion
             notification.remove();
             onStartHangmansGambit?.();
         };
@@ -2341,10 +2364,20 @@ ${historyText}
             onStartPunishmentTime?.({ characterName: speakerName });
         };
         notification.querySelector('#dangan-start-qtime-btn').onclick = () => {
+            // #region debug-point E:qtime-button
+            reportFullscreenOverlayDebug("E", "trialManager.js:#dangan-start-qtime-btn", "Clicked Question Time trial-panel button", {
+                hasCallback: typeof onStartQuestionTime === "function",
+            });
+            // #endregion
             notification.remove();
             onStartQuestionTime?.();
         };
         notification.querySelector('#dangan-start-qtruth-btn').onclick = () => {
+            // #region debug-point E:qtruth-button
+            reportFullscreenOverlayDebug("E", "trialManager.js:#dangan-start-qtruth-btn", "Clicked Question Truth trial-panel button", {
+                hasCallback: typeof onStartQuestionTruth === "function",
+            });
+            // #endregion
             notification.remove();
             onStartQuestionTruth?.();
         };

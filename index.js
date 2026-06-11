@@ -85,6 +85,24 @@ let chapterEndRosterController   = null;
 let audioVisualizer              = null;
 let overworldSceneController     = null;
 
+// #region debug-point A:overlay-report
+function reportFullscreenOverlayDebug(hypothesisId, location, msg, data = {}) {
+    fetch("http://127.0.0.1:7777/event", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            sessionId: "fullscreen-overlays-broken",
+            runId: "pre-fix",
+            hypothesisId,
+            location,
+            msg: `[DEBUG] ${msg}`,
+            data,
+            ts: Date.now(),
+        }),
+    }).catch(() => {});
+}
+// #endregion
+
 const openRouterSettings = createOpenRouterSettingsManager({
     extensionName,
     extension_settings,
@@ -8928,11 +8946,21 @@ debugSTGlobals();
             unsuppressVisualizer: () => audioVisualizer.unsuppress(),
             showMinigameLoadingState,
             onStartHangmansGambit: async () => {
+                // #region debug-point B:hangman-trial-entry
+                reportFullscreenOverlayDebug("B", "index.js:onStartHangmansGambit", "Entered Hangman's Gambit trial callback", {
+                    hangmansGambitController: Boolean(hangmansGambitController),
+                });
+                // #endregion
                 // Show a loading overlay and silence whatever BGM was
                 // playing before the click. The controller starts the HG
                 // OST itself from inside playBgm after the tutorial closes,
                 // so the pre-game window stays quiet.
                 const loadingEl = showHangmanLoadingState();
+                // #region debug-point B:hangman-loading
+                reportFullscreenOverlayDebug("B", "index.js:onStartHangmansGambit", "Created Hangman loading overlay", {
+                    loadingEl: Boolean(loadingEl),
+                });
+                // #endregion
                 fadeOutAndPauseBgm().catch(() => {});
 
                 // Generate a contextual question/answer from the trial context.
@@ -8983,8 +9011,16 @@ ANSWER: <UPPERCASEWORD>`;
                     loadingEl?.hide?.();
                 }
 
-                hangmansGambitController?.run({ question, answer, time: 120, health: 7, difficulty: 2 })
-                    ?.then(() => trialManager?.resumeAfterActivity?.());
+                const hangmanRun = hangmansGambitController?.run({ question, answer, time: 120, health: 7, difficulty: 2 });
+                // #region debug-point B:hangman-run
+                reportFullscreenOverlayDebug("B", "index.js:onStartHangmansGambit", "Invoked Hangman controller run()", {
+                    hasRunResult: Boolean(hangmanRun),
+                    thenable: Boolean(hangmanRun && typeof hangmanRun.then === "function"),
+                    questionLength: question.length,
+                    answerLength: answer.length,
+                });
+                // #endregion
+                hangmanRun?.then(() => trialManager?.resumeAfterActivity?.());
             },
             onStartArgumentArmament: async () => {
                 // Resolve the current speaker as the AA enemy
@@ -9179,11 +9215,21 @@ QUOTE: <climactic accusation>`;
                 trialManager?.resumeAfterActivity?.();
             },
             onStartQuestionTime: async () => {
+                // #region debug-point C:qtime-trial-entry
+                reportFullscreenOverlayDebug("C", "index.js:onStartQuestionTime", "Entered Question Time trial callback", {
+                    questionTimeController: Boolean(questionTimeController),
+                });
+                // #endregion
                 // Show a loading overlay while the LLM drafts a question + 4
                 // answers from the current trial context. Falls back to a
                 // generic suspect picker if generation fails or the model
                 // returns something we can't parse cleanly.
                 const loadingEl = showMinigameLoadingState('Loading Question Time', { command: '/questiontime' });
+                // #region debug-point C:qtime-loading
+                reportFullscreenOverlayDebug("C", "index.js:onStartQuestionTime", "Created Question Time loading overlay", {
+                    loadingEl: Boolean(loadingEl),
+                });
+                // #endregion
                 loadingEl?.setProgress?.(0);
                 // Question Time is one generateRaw call, so there's no true
                 // segment-by-segment progress. Drive a soft asymptotic
@@ -9251,15 +9297,33 @@ ANSWER: <answer>`;
                     loadingEl?.hide?.();
                 }
 
-                questionTimeController?.run({ title, time: resolveSkillParam("qttTimer", 30), answers, correct })
-                    ?.then(() => trialManager?.resumeAfterActivity?.());
+                const questionTimeRun = questionTimeController?.run({ title, time: resolveSkillParam("qttTimer", 30), answers, correct });
+                // #region debug-point C:qtime-run
+                reportFullscreenOverlayDebug("C", "index.js:onStartQuestionTime", "Invoked Question Time controller run()", {
+                    hasRunResult: Boolean(questionTimeRun),
+                    thenable: Boolean(questionTimeRun && typeof questionTimeRun.then === "function"),
+                    answersCount: Array.isArray(answers) ? answers.length : 0,
+                    correct,
+                });
+                // #endregion
+                questionTimeRun?.then(() => trialManager?.resumeAfterActivity?.());
             },
             onStartQuestionTruth: async () => {
+                // #region debug-point D:qtruth-trial-entry
+                reportFullscreenOverlayDebug("D", "index.js:onStartQuestionTruth", "Entered Question Truth trial callback", {
+                    questionTruthController: Boolean(questionTruthController),
+                });
+                // #endregion
                 // Generate a question whose correct answer is exactly one of
                 // the player's collected Truth Bullet titles.  Falls back to
                 // the prior stub if generation fails or there are no bullets
                 // to pick from.
                 const loadingEl = showMinigameLoadingState('Loading Question Truth', { command: '/questiontruth' });
+                // #region debug-point D:qtruth-loading
+                reportFullscreenOverlayDebug("D", "index.js:onStartQuestionTruth", "Created Question Truth loading overlay", {
+                    loadingEl: Boolean(loadingEl),
+                });
+                // #endregion
                 loadingEl?.setProgress?.(0);
                 let softProgress = 0;
                 const softInterval = window.setInterval(() => {
@@ -9341,8 +9405,16 @@ TIME: <whole-second integer, minimum 60, maximum 180>`;
                     loadingEl?.hide?.();
                 }
 
-                questionTruthController?.run({ question, answer, time: resolveSkillParam("qthTimer", time), playerHp: resolveSkillParam("qthHealth", 5) })
-                    ?.then(() => trialManager?.resumeAfterActivity?.());
+                const questionTruthRun = questionTruthController?.run({ question, answer, time: resolveSkillParam("qthTimer", time), playerHp: resolveSkillParam("qthHealth", 5) });
+                // #region debug-point D:qtruth-run
+                reportFullscreenOverlayDebug("D", "index.js:onStartQuestionTruth", "Invoked Question Truth controller run()", {
+                    hasRunResult: Boolean(questionTruthRun),
+                    thenable: Boolean(questionTruthRun && typeof questionTruthRun.then === "function"),
+                    questionLength: question.length,
+                    answerLength: answer.length,
+                });
+                // #endregion
+                questionTruthRun?.then(() => trialManager?.resumeAfterActivity?.());
             },
             onStartChoosing: ({ characters = [], startIdx = 0 } = {}) => {
                 playTrackFromSetting('trialSuspectChoiceTracks');
@@ -10026,6 +10098,13 @@ STATEMENT: <third statement>`;
         disableTutorialPrompt:   () => setMonopadSetting('minigameTutorialsEnabled', false),
     };
     hangmansGambitController  = createHangmansGambitController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, pauseDynamicAudio: fadeOutAndPauseBgm, resumeDynamicAudio: resumeBgmAfterHG, playBgm: playHGBgm, getPlayerSpriteUrl, ...tutorialPromptDeps });
+    // #region debug-point A:controller-init
+    reportFullscreenOverlayDebug("A", "index.js:create-minigame-controllers", "Initialized fullscreen minigame controllers", {
+        hangmansGambitController: Boolean(hangmansGambitController),
+        questionTimeController: Boolean(questionTimeController),
+        questionTruthController: Boolean(questionTruthController),
+    });
+    // #endregion
     argumentArmamentController = createArgumentArmamentController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, getPlayerSpriteUrl, ...tutorialPromptDeps });
     mindMineController        = createMindMineController({
         extensionFolderPath,
@@ -10559,7 +10638,19 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             console.warn('[QuestionTime] title and all four answers are required.');
             return '';
         }
+        // #region debug-point C:qtime-slash-entry
+        reportFullscreenOverlayDebug("C", "index.js:/questiontime", "Entered Question Time slash command", {
+            questionTimeController: Boolean(questionTimeController),
+            answersCount: answers.length,
+            correct,
+        });
+        // #endregion
         const won = await questionTimeController?.run({ title, time: resolveSkillParam("qttTimer", time), answers, correct });
+        // #region debug-point C:qtime-slash-run
+        reportFullscreenOverlayDebug("C", "index.js:/questiontime", "Question Time slash command completed run()", {
+            won: Boolean(won),
+        });
+        // #endregion
         if (won) awardXp(XP_REWARDS.questionTime ?? 8, 'question time completed');
         return '';
     },
@@ -10585,7 +10676,19 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             return '';
         }
         const time = args.time ? Number(args.time) : 0;
+        // #region debug-point D:qtruth-slash-entry
+        reportFullscreenOverlayDebug("D", "index.js:/questiontruth", "Entered Question Truth slash command", {
+            questionTruthController: Boolean(questionTruthController),
+            questionLength: question.length,
+            answerLength: answer.length,
+        });
+        // #endregion
         const won = await questionTruthController?.run({ question, answer, time: resolveSkillParam("qthTimer", time), playerHp: resolveSkillParam("qthHealth", 5) });
+        // #region debug-point D:qtruth-slash-run
+        reportFullscreenOverlayDebug("D", "index.js:/questiontruth", "Question Truth slash command completed run()", {
+            won: Boolean(won),
+        });
+        // #endregion
         if (won) awardXp(XP_REWARDS.questionTruth ?? 10, 'question truth completed');
         return '';
     },
@@ -11661,7 +11764,19 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         const resolveSpeed = (base) => resolveSkillParam("hangmanSpeed", base);
         const concDrain = resolveSkillParam("hangmanConcDrain", 1 / 3);
         const concRegen = resolveSkillParam("hangmanConcRegen", 1 / 10);
+        // #region debug-point B:hangman-slash-entry
+        reportFullscreenOverlayDebug("B", "index.js:/hangmansgambit", "Entered Hangman's Gambit slash command", {
+            hangmansGambitController: Boolean(hangmansGambitController),
+            questionLength: question.length,
+            answerLength: answer.length,
+        });
+        // #endregion
         const won = await hangmansGambitController?.run({ question, answer, time, health, difficulty, spotlightScale, resolveSpeed, concDrain, concRegen });
+        // #region debug-point B:hangman-slash-run
+        reportFullscreenOverlayDebug("B", "index.js:/hangmansgambit", "Hangman's Gambit slash command completed run()", {
+            won: Boolean(won),
+        });
+        // #endregion
         if (won) awardXp(XP_REWARDS.hangmansGambit ?? 15, "hangman's gambit completed");
         return '';
     },
