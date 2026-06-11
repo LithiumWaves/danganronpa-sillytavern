@@ -20,7 +20,7 @@ The Generation Preset: [TBA]
 - **Map (🌐):** Shows the current Map & Floor, supports custom maps, pin locations, and evidence placement.
 - **Gifts & Skills (🎁):** Shows the Inventory, item browsing, gifting flow, and skill shop display.
 - **Social (👥):** Shows the Roster, trust/distrust progress, and generated profile notes.
-- - **Chapters (📖):** Shows a log of your chats in an easy-to-read, easy-to-revisit format to help you build narratives.
+- **Chapters (📖):** Shows a log of your chats in an easy-to-read, easy-to-revisit format to help you build narratives.
 - **Settings (⚙️):** Shows Audio/display toggles, progression reset, expression configurer, CG creators, generation provider selection and a fun tutorial.
 
 ### Character Introductions
