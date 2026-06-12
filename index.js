@@ -26,6 +26,7 @@ import { createTrialManager, TrialPhases } from "./trial/trialManager.js";
 import { initVfxSystem, onVfxChatChanged, setExpressionTarget, setEmotionBiasResolver, setVfxGcpLoadSuppressed, setVfxGcpGroupActive, triggerVfxOnElement } from "./vfx/vfxSystem.js";
 import { initEmotionFontsSystem, getEmotionFont } from "./vfx/emotionFontsSystem.js";
 import { initSpriteManager } from "./vfx/spriteManager.js";
+import { initMugshotGenerator } from "./vfx/mugshotGenerator.js";
 import { createBdaCinematicEditor } from "./vfx/bdaCinematicEditor.js";
 import { createExecutionCinematicEditor } from "./vfx/executionCinematicEditor.js";
 import { createVoteResultsController } from "./vfx/voteResults.js";
@@ -86,6 +87,7 @@ let chapterEndRosterController   = null;
 let audioVisualizer              = null;
 let overworldSceneController     = null;
 let reapplyOutfitToSprites       = () => {};
+let refreshHalfSpriteDisplay     = () => {};
 
 // #region debug-point A:overlay-report
 function reportFullscreenOverlayDebug(hypothesisId, location, msg, data = {}) {
@@ -5425,6 +5427,10 @@ function applyHalfSpriteMode() {
     // re-run it so the toggle takes effect on the current chat without
     // needing a reload / chat switch.
     try { trialManager?.recomputeGcpFlatLayout?.(); } catch (_) {}
+    // Re-resolve the on-screen sprite src so toggling the mode swaps a -half
+    // crop for the full sprite (or vice-versa) immediately, without waiting
+    // for the next expression change.
+    try { refreshHalfSpriteDisplay(); } catch (_) {}
 }
 
 function applyImageVisibilitySettings() {
@@ -9465,6 +9471,7 @@ debugSTGlobals();
     vfxCleanup = initVfxSystem();
     initEmotionFontsSystem();
     initSpriteManager();
+    initMugshotGenerator();
     setExpressionTarget(() => trialManager?.getGcpSpeakerImg?.() ?? document.getElementById('expression-image'));
     setEmotionBiasResolver(rollBiasedEmotion);
 
@@ -10455,12 +10462,27 @@ STATEMENT: <third statement>`;
         function setMirroredSrc(img, src) {
             if (!img || !src) return;
             const halfMode = !!extension_settings[extensionName]?.halfspriteMode;
-            if (isTrialUiActive()) {
-                const noHalf = src.replace(/-half(\.[a-z0-9]+)/i, '$1');
-                img.src = noHalf;
+            // Half-sprite mode OFF (or inside a trial, which never uses -half):
+            // force the FULL sprite. ST's /api/sprites/get collapses the label at
+            // the first '-', so "neutral-half.png" registers under label "neutral"
+            // and ST's native expression picker can hand us a -half URL even when
+            // the user wants full body. Strip -half here; if the full file doesn't
+            // exist on the server (a pack that ships -half only for this emotion)
+            // onerror restores the -half so the slot isn't left blank.
+            if (isTrialUiActive() || !halfMode) {
+                if (/-half\.[a-z0-9]+(\?|$)/i.test(src)) {
+                    const fullSrc = src.replace(/-half(\.[a-z0-9]+)/i, '$1');
+                    const onFail = () => { img.src = src; };
+                    img.addEventListener('error', onFail, { once: true });
+                    img.addEventListener('load', () => img.removeEventListener('error', onFail), { once: true });
+                    img.src = fullSrc;
+                } else {
+                    img.src = src;
+                }
                 return;
             }
-            if (!halfMode || /-half\.[a-z0-9]+(\?|$)/i.test(src)) {
+            // Half-sprite mode ON: prefer the -half crop, falling back to full on 404.
+            if (/-half\.[a-z0-9]+(\?|$)/i.test(src)) {
                 img.src = src;
                 return;
             }
@@ -10472,6 +10494,23 @@ STATEMENT: <third statement>`;
             }, { once: true });
             img.src = halfSrc;
         }
+        // Re-resolve every on-screen chat/GCP sprite against the CURRENT
+        // half-sprite mode. setMirroredSrc is idempotent w.r.t. its own output
+        // (it detects an already -half src), so feeding each img its own src
+        // adds -half when mode turns on and strips it when mode turns off —
+        // letting the toggle take effect immediately without a new expression.
+        refreshHalfSpriteDisplay = () => {
+            document.querySelectorAll(
+                '.dangan-gcp-slot img:not(.dangan-gcp-horse):not(.dangan-gcp-lectern), ' +
+                '#visual-novel-wrapper img.expression, ' +
+                '#expression-image, .expression-holder img.expression'
+            ).forEach(img => {
+                const cur = img.getAttribute?.('src');
+                if (!cur || cur === location.href) return;
+                if (img.closest?.('.gcp-dead')) return;
+                setMirroredSrc(img, cur);
+            });
+        };
 
         // Forced-outfit resolver for the chat/overworld expression image. Given
         // ST's raw expression `src` (e.g. ".../neutral.png?t=1") and the active
