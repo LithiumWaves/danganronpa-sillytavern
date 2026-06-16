@@ -522,6 +522,8 @@
                             <button class="bgm-tracks-subtab" data-subtab="trial-mindmine">MIND MINE</button>
                             <button class="bgm-tracks-subtab" data-subtab="trial-interjection">INTERJECTION</button>
                             <button class="bgm-tracks-subtab" data-subtab="trial-suspect-choice">SUSPECT CHOICE</button>
+                            <button class="bgm-tracks-subtab" data-subtab="trial-intro">TRIAL INTRO</button>
+                            <button class="bgm-tracks-subtab" data-subtab="trial-breach">BREACH</button>
                         </div>
                         <div class="bgm-tracks-subpanel active" data-subtab="trial-general">
                             <div class="investigation-tracks-wrap">
@@ -591,6 +593,22 @@
                             <div class="investigation-tracks-wrap">
                                 <div id="trial-suspect-choice-tracks-list" class="investigation-tracks-list"></div>
                                 <div id="trial-suspect-choice-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bgm-tracks-subpanel" data-subtab="trial-intro">
+                            <div class="investigation-tracks-wrap">
+                                <div id="trial-intro-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="trial-intro-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bgm-tracks-subpanel" data-subtab="trial-breach">
+                            <div class="investigation-tracks-wrap">
+                                <div id="trial-breach-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="trial-breach-selected-list" class="investigation-selected-list">
                                     <div class="investigation-selected-empty">NONE SELECTED</div>
                                 </div>
                             </div>
@@ -923,6 +941,14 @@
                     <div class="settings-note">Build each character's trial-card <code>mugshot.png</code> from their <code>neutral</code> sprite using the template. Preview and pick scope (current chat / list / all) before saving; existing mugshots are kept unless you tick them to overwrite.</div>
                 </div>
 
+                <div class="settings-item settings-item-stack">
+                    <span class="settings-label">DEATH PORTRAIT GENERATOR</span>
+                    <div class="settings-ai-actions">
+                        <button id="dangan_generate_death_portraits" class="settings-small-button" type="button">GENERATE DEATH PORTRAITS</button>
+                    </div>
+                    <div class="settings-note">Build each character's framed <code>death-portrait.png</code> from their <code>neutral</code> sprite — the portrait sits in the stand frame with the pink X over it. Preview and pick scope (current chat / list / all) before saving; existing portraits are kept unless you tick them to overwrite.</div>
+                </div>
+
 
                 <div class="settings-item settings-item-stack">
                     <span class="settings-label">BODY DISCOVERY CINEMATICS</span>
@@ -952,6 +978,14 @@
                         <span id="dangan_reset_progression_status" class="settings-note"></span>
                     </div>
                     <div class="settings-note">Resets to LV 1, 0 XP, and 10 Skill Points.</div>
+                </div>
+                <div class="settings-item settings-item-stack">
+                    <span class="settings-label">SKILL OWNERSHIP</span>
+                    <div class="settings-ai-actions">
+                        <button id="dangan_reset_skill_ownership" class="settings-small-button" type="button">RESET SKILL OWNERSHIP</button>
+                        <span id="dangan_reset_skill_ownership_status" class="settings-note"></span>
+                    </div>
+                    <div class="settings-note">Un-owns every skill (and un-equips them) so they must be re-bought. Skill points and skill definitions are kept.</div>
                 </div>
                 <div class="settings-item settings-item-stack">
                     <span class="settings-label">TIME DATA</span>
@@ -1458,7 +1492,7 @@
 </audio>
 
 <audio id="investigation_start_sfx" preload="auto">
-    <source src="scripts/extensions/third-party/danganronpa-extension/assets/bgm/mode_switch.mp3" type="audio/mpeg">
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/mode_switch.mp3" type="audio/mpeg">
 </audio>
 
 

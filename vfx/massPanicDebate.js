@@ -112,7 +112,7 @@ export const MPD_TEST_SCENARIOS = [
     {
         texts: [
             { text: "The noise I heard was too precise to have been an accident.", speaker: "" },
-            { text: "[[Someone staged this entire scene to look like a different crime.]]", speaker: "", whiteNoise: ["I bet it was Fuyuhiko...", "That's crazy talk", "No way...", "Could be anyone!"] },
+            { text: "[[Someone staged this entire scene to look like a different crime.]]", speaker: "", whiteNoise: ["I bet it was one of them...", "That's crazy talk", "No way...", "Could be anyone!"] },
             { text: "There's only one explanation that fits all the evidence we have!", speaker: "" },
         ],
     },

@@ -1023,6 +1023,7 @@ export function createHangmansGambitController({
             function triggerSheen() {
                 if (isResolved) return;
                 document.body.classList.add('hg-sheen-on');
+                new Audio(`${extensionFolderPath}/assets/sfx/minigames/hangmans-gambit-light-sheen.wav`).play().catch(() => {});
                 // Restart the animation in case the class was already present
                 // (shouldn't happen but defensive).
                 const sheenEl = overlay.querySelector('#hg-sheen-overlay');
@@ -1589,14 +1590,8 @@ export function createHangmansGambitController({
                         return;
                     }
                 }
-                // Fallback: play directly
-                const bgm = new Audio(`${extensionFolderPath}/assets/bgm/Hangman's Gambit.mp3`);
-                bgm.loop = true;
-                _bgmAudio = bgm;
-                _bgmIsDA  = false;
-                bgm.addEventListener('playing', startGameplay, { once: true });
-                bgm.addEventListener('error',   startGameplay, { once: true });
-                bgm.play().catch(() => startGameplay());
+                // No configured HANGMAN'S GAMBIT track — start gameplay immediately, silent.
+                startGameplay();
             }
 
             (async () => {

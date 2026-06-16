@@ -751,19 +751,8 @@ async function triggerTrialStartFromMapPin() {
 }
 
 function createTrialIntroOstController() {
-    const candidateTracks = buildExtensionPathCandidates()
-        .map(basePath => `${basePath}/assets/bgm/trialunderground.mp3`);
-
+    // BGM comes entirely from the TRIAL > TRIAL INTRO selector tab; plays nothing if unset.
     let activeAudio = null;
-    let activeTrackIndex = -1;
-
-    function moveToNextTrack() {
-        if (!activeAudio) return;
-        if (activeTrackIndex >= candidateTracks.length - 1) return;
-        activeTrackIndex += 1;
-        activeAudio.src = candidateTracks[activeTrackIndex];
-        activeAudio.load();
-    }
 
     function stop() {
         if (!activeAudio) return;
@@ -773,23 +762,18 @@ function createTrialIntroOstController() {
 
     function play() {
         if (!extension_settings[extensionName]?.monopadSounds) return;
-        if (!candidateTracks.length) return;
+        const tracks = extension_settings[extensionName]?.trialIntroTracks || [];
+        if (!tracks.length) return;
 
         if (!activeAudio) {
-            activeTrackIndex = 0;
-            activeAudio = new Audio(candidateTracks[activeTrackIndex]);
+            const path = tracks[Math.floor(Math.random() * tracks.length)];
+            if (!path) return;
+            activeAudio = new Audio(path);
             activeAudio.loop = true;
             activeAudio.preload = "auto";
             activeAudio.volume = 0.42;
-
             activeAudio.addEventListener("error", () => {
-                const previousIndex = activeTrackIndex;
-                moveToNextTrack();
-                if (previousIndex === activeTrackIndex) {
-                    console.warn("[Dangan][Trial] Could not load trialunderground.mp3 from any extension path candidate.");
-                    return;
-                }
-                activeAudio.play().catch(() => {});
+                console.warn("[Dangan][Trial] Could not load configured TRIAL INTRO track:", path);
             });
         }
 
@@ -3110,14 +3094,21 @@ function runBreachSuccessSequence() {
     appendBreachTerminalLine("[FF-LINK] Access code accepted.", { className: "ok" });
     appendBreachTerminalLine("[FF-LINK] Breaching Monopad debug partitions...", { className: "alert" });
 
+    // BGM comes entirely from the TRIAL > BREACH selector tab; plays nothing if unset.
     if (!breachAudio) {
-        breachAudio = new Audio(`${extensionFolderPath}/assets/bgm/nwo.mp3`);
-        breachAudio.loop = true;
-        breachAudio.volume = 0.6;
+        const breachTracks = extension_settings[extensionName]?.trialBreachTracks || [];
+        const path = breachTracks.length ? breachTracks[Math.floor(Math.random() * breachTracks.length)] : null;
+        if (path) {
+            breachAudio = new Audio(path);
+            breachAudio.loop = true;
+            breachAudio.volume = 0.6;
+        }
     }
 
-    breachAudio.currentTime = 0;
-    breachAudio.play().catch(() => {});
+    if (breachAudio) {
+        breachAudio.currentTime = 0;
+        breachAudio.play().catch(() => {});
+    }
 
     clearBreachTerminalTimers();
     let flyCount = 0;

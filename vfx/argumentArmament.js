@@ -162,6 +162,33 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     text-shadow: 0 0 14px rgba(255, 0, 0, 1);
     animation: ptaBlink 0.45s ease-in-out infinite;
 }
+/* Final Solution hint — top-right, beneath the timer. Shows the obfuscated
+ * answer (first letters + X's) so the player can work toward the cardinals'
+ * correct order, mirroring the letter-hiding hints in the other minigames. */
+#aa-hint {
+    position: absolute;
+    top: 74px; right: 16px;
+    width: 300px;
+    z-index: 7;
+    pointer-events: none;
+    text-align: right;
+}
+#aa-hint .aa-hint-label {
+    font-size: 11px; letter-spacing: 3px;
+    color: rgba(255, 180, 100, 0.7);
+    margin-bottom: 2px;
+    font-family: "Orbitron", "Impact", monospace;
+}
+#aa-hint .aa-hint-answer {
+    font-family: "Orbitron", "Courier New", ui-monospace, monospace;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    color: rgba(235, 225, 210, 0.85);
+    text-shadow: 0 0 10px rgba(255, 170, 80, 0.45), 0 1px 3px #000;
+    word-break: break-all;
+    line-height: 1.1;
+}
 @keyframes ptaBarrierPulse {
     0%,100% {
         border-color: rgba(180,60,255,0.55);
@@ -598,7 +625,9 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     pointer-events: none;
 }
 
-/* Solution text near each edge button */
+/* Solution text near each edge button. z-index keeps the words above the
+ * enemy sprite (z-index:1 inside the final overlay) — without it the N/S
+ * labels render behind the centered sprite and vanish. */
 .aa-dir-solution {
     position: absolute;
     font-size: 44px; font-weight: bold;
@@ -608,6 +637,7 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     white-space: nowrap;
     pointer-events: none;
     transition: opacity 0.5s ease;
+    z-index: 8;
 }
 #aa-sol-N { top: 104px;    left: 50%;   transform: translateX(-50%); text-align: center; text-shadow: -1px -1px 0 #ff3366, 1px -1px 0 #ff3366, -1px 1px 0 #ff3366, 1px 1px 0 #ff3366, 0 0 14px rgba(255,51,102,0.7); }
 #aa-sol-S { bottom: 104px; left: 50%;   transform: translateX(-50%); text-align: center; text-shadow: -1px -1px 0 #9944dd, 1px -1px 0 #9944dd, -1px 1px 0 #9944dd, 1px 1px 0 #9944dd, 0 0 14px rgba(153,68,221,0.7); }
@@ -727,6 +757,8 @@ function buildStyles({ extensionFolderPath = '' } = {}) {
     color: #ff2244;
     text-shadow: 0 0 30px rgba(255,34,68,0.8), 0 0 60px rgba(255,34,68,0.4);
 }
+/* ARGUMENT DENIED (lose) is shown unframed — no aa-panel.png behind it. */
+#aa-result-text.lose::before { display: none; }
 
 /* ─── Tutorial prompt bar ────────────────────────────── */
 #aa-tutorial-prompt {
@@ -976,6 +1008,21 @@ export function createArgumentArmamentController({
         const dialogPool  = (dialogs || []).filter(Boolean);
         const finalSeqTarget = (FinalSolution || '').trim().toUpperCase();
 
+        // Obfuscated Final Solution hint (top-right). Each cardinal's word is
+        // reduced to its first letter + a FIXED run of X's (word length hidden),
+        // ordered by the correct answer sequence and dash-joined. e.g. order NSEW
+        // with N:MEAT S:ON E:THE W:BONE → "MXXXXX-OXXXXX-TXXXXX-BXXXXX".
+        const _aaDirWords = { N: NSolution, S: SSolution, E: ESolution, W: WSolution };
+        const _aaObfuscate = (w) => {
+            const s = String(w || '').trim();
+            if (!s) return '';
+            return s[0].toUpperCase() + 'XXXXX';
+        };
+        const finalHintText = (finalSeqTarget.match(/[NSEW]/g) || [])
+            .map(d => _aaObfuscate(_aaDirWords[d]))
+            .filter(Boolean)
+            .join('-');
+
         // ── State ────────────────────────────────────────────────
         let currentEnemyHp  = maxEnemyHp;
         let currentPlayerHp = maxPlayerHp;
@@ -1042,6 +1089,8 @@ export function createArgumentArmamentController({
                 <div id="aa-timer-label">TIME</div>
                 <div id="aa-timer">01:30:000</div>
             </div>
+
+            ${finalHintText ? `<div id="aa-hint"><div class="aa-hint-label">FINAL SOLUTION</div><div class="aa-hint-answer">${finalHintText}</div></div>` : ''}
 
             <div id="aa-grid">
                 ${Array.from({ length: 9 }, (_, i) =>
@@ -1110,19 +1159,24 @@ export function createArgumentArmamentController({
             // Hitting 0 ends the game as a loss.
             const AA_TIMER_MS = aaTimerMs; // base 90 s; tunable via custom skills
             const globalTimerEl = overlayEl.querySelector('#aa-timer');
+            const fmtTimer = (ms) => {
+                const mins   = Math.floor(ms / 60000);
+                const secs   = Math.floor((ms % 60000) / 1000);
+                const millis = Math.floor(ms % 1000);
+                return String(mins).padStart(2,'0') + ':' +
+                       String(secs).padStart(2,'0') + ':' +
+                       String(millis).padStart(3,'0');
+            };
+            // Paint the configured budget immediately so it doesn't flash the
+            // static "01:30:000" placeholder before the timer starts ticking.
+            if (globalTimerEl) globalTimerEl.textContent = fmtTimer(AA_TIMER_MS);
             let globalTimerRaf   = null;
             let globalTimerStart = 0;
             function tickGlobalTimer(now) {
                 if (isResolved) return;
                 const remaining = Math.max(0, AA_TIMER_MS - (now - globalTimerStart));
                 if (globalTimerEl) {
-                    const mins   = Math.floor(remaining / 60000);
-                    const secs   = Math.floor((remaining % 60000) / 1000);
-                    const millis = Math.floor(remaining % 1000);
-                    globalTimerEl.textContent =
-                        String(mins).padStart(2,'0') + ':' +
-                        String(secs).padStart(2,'0') + ':' +
-                        String(millis).padStart(3,'0');
+                    globalTimerEl.textContent = fmtTimer(remaining);
                     globalTimerEl.classList.toggle('aa-urgent', remaining < 10_000);
                 }
                 if (remaining <= 0) {
@@ -1265,12 +1319,13 @@ export function createArgumentArmamentController({
                     try { bgmAudio.pause(); bgmAudio.src = ''; } catch(_) {}
                     bgmAudio = null;
                 }
-                const customSrc = getPhaseTrack?.(phaseNum) ?? null;
-                const src = customSrc || `${extensionFolderPath}/assets/bgm/Argument Armament Phase ${phaseNum}.mp3`;
+                // BGM comes entirely from the ARGUMENT ARMAMENT > PHASE N selector tab.
+                const src = getPhaseTrack?.(phaseNum) ?? null;
+                if (!src) return; // no track configured — play nothing
                 bgmAudio = new Audio(src);
                 bgmAudio.loop = (phaseNum === 3);
                 bgmAudio.volume = 0.7;
-                bgmAudio.play().catch(err => console.warn(`[AA] Phase ${phaseNum} BGM play failed (file missing?):`, err));
+                bgmAudio.play().catch(err => console.warn(`[AA] Phase ${phaseNum} BGM play failed:`, err));
             }
 
             // ── Dialog spawning ──────────────────────────────────

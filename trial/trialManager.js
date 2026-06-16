@@ -25,6 +25,10 @@ export function createTrialManager(deps) {
         getCharacterSourceText,
         getEmotionFont,
         onTrialStateChange,
+        refreshDynamicTheme,
+        resolveHeightCm,
+        getTrialPodiumOffset,
+        setTrialPodiumOffset,
         getSpriteUrl,
         playSfx,
         getSfx,
@@ -1136,6 +1140,25 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
         return !v || v === '—' || v === '-' || v === 'SYSTEM' || v === 'UNKNOWN';
     }
 
+    // Resolve the /characters/<folder> sprite folder for a speaker name, matching
+    // how getSpriteUrl() resolves it and how the Mugshot Generator uploads
+    // mugshot.png: the avatar filename stem, falling back to the name. For the
+    // player the mugshot lives in the Prome user-sprite folder (their persona
+    // name is not a character folder), so route through promeInfo.spritePack.
+    function resolveMugshotFolder(name) {
+        const promeInfo = getPromeInfo();
+        const playerName = promeInfo ? getPlayerName() : null;
+        const lookupName = (playerName && normalizeSeatName(name) === normalizeSeatName(playerName))
+            ? promeInfo.spritePack
+            : name;
+        const stChars = window.characters;
+        if (Array.isArray(stChars)) {
+            const stChar = stChars.find(c => c.name === lookupName);
+            if (stChar?.avatar) return stChar.avatar.replace(/\.[^.]+$/, "");
+        }
+        return lookupName;
+    }
+
     async function refreshTrialSpeakerSticker(rawName) {
         const sticker = document.getElementById('dangan-trial-speaker-sticker');
         if (!sticker) return;
@@ -1164,8 +1187,13 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
         try {
             // 'mugshot' isn't in ST's registered emotion list, so getSpriteUrl
             // can't find it — even when the file exists. Probe the direct
-            // /characters/<name>/mugshot.png path first, then fall back to neutral.
-            const mugshotUrl = `/characters/${encodeURIComponent(name)}/mugshot.png`;
+            // /characters/<folder>/mugshot.png path first, then fall back to
+            // neutral. The folder is resolved the same way the Mugshot Generator
+            // uploads it (avatar stem; the Prome user-sprite folder for the
+            // player) — the speaker name alone is wrong for the player, whose
+            // persona name differs from their sprite folder.
+            const mugshotFolder = resolveMugshotFolder(name);
+            const mugshotUrl = `/characters/${encodeURIComponent(mugshotFolder)}/mugshot.png`;
             const mugshotExists = await new Promise(resolve => {
                 const probe = new Image();
                 probe.onload = () => resolve(true);
@@ -1199,6 +1227,10 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
         // even if trialActive is true for some other group's persisted state.
         if (!isGroupChat()) return;
         document.body.classList.add('dangan-trial-active');
+        // Drop any lingering phase theme (day/night/investigation/damaged) so it
+        // can't bleed its colour over the trial's VN frame / composer / chat shell.
+        // Investigation Mode now persists into trials, which is what surfaced this.
+        document.body.classList.remove('dangan-theme-daily', 'dangan-theme-night', 'dangan-theme-investigation', 'dangan-theme-damaged');
         applyTrialTheme(getCurrentTrialTheme());
 
         if (!document.getElementById('dangan-trial-frame')) {
@@ -1319,6 +1351,9 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
         }
         document.documentElement.style.removeProperty('--dgn-input-height');
         trialSpeakerLastName = '';
+        // Trial no longer owns the theme — restore the day/night/investigation
+        // phase styling for the overworld.
+        try { refreshDynamicTheme?.(); } catch {}
     }
 
     const TRIAL_THEMES = [
@@ -1408,6 +1443,14 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
                 <div class="dgn-fx-seating-hint" id="dgn-fx-seating-hint" style="display:none">Click two seats to swap, then Save.</div>
             </div>
             <div class="dgn-fx-divider" aria-hidden="true"></div>
+            <div class="dgn-fx-podium-row">
+                <label for="dgn-fx-podium-slider" class="dgn-fx-podium-label">Podium Height</label>
+                <div class="dgn-fx-podium-slider-wrap">
+                    <input type="range" id="dgn-fx-podium-slider" class="dgn-fx-podium-slider" min="-300" max="300" value="0">
+                    <span id="dgn-fx-podium-value" class="dgn-fx-podium-value">0px</span>
+                </div>
+            </div>
+            <div class="dgn-fx-divider" aria-hidden="true"></div>
             <div class="dgn-fx-commands-row">
                 <button type="button" id="dgn-fx-commands-btn" class="dgn-fx-commands-btn">View Commands</button>
             </div>
@@ -1425,6 +1468,20 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
         select.addEventListener('change', (e) => applyTrialTheme(e.target.value));
 
         fxSection.querySelector('#dgn-fx-commands-btn').addEventListener('click', showCommandsModal);
+
+        // Podium Height — shifts podiums, gymnasium horses and sprites together.
+        const podiumSlider = fxSection.querySelector('#dgn-fx-podium-slider');
+        const podiumValue  = fxSection.querySelector('#dgn-fx-podium-value');
+        if (podiumSlider) {
+            const initial = (typeof getTrialPodiumOffset === 'function') ? getTrialPodiumOffset() : 0;
+            podiumSlider.value = String(initial);
+            if (podiumValue) podiumValue.textContent = `${initial}px`;
+            podiumSlider.addEventListener('input', (e) => {
+                const v = Number(e.target.value) || 0;
+                if (podiumValue) podiumValue.textContent = `${v}px`;
+                setTrialPodiumOffset?.(v);
+            });
+        }
 
         // ── Seating Plan section (circular diagram + edit/save) ─────────
         const seatingListEl  = fxSection.querySelector('#dgn-fx-seating-list');
@@ -1655,7 +1712,7 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
             items: [
                 { cmd: '/startclasstrial', desc: 'Begin a Class Trial in the current group chat. Converts the chat into a Class Trial chat.' },
                 { cmd: '/endtrial', desc: 'Immediately ends the current Class Trial and clears all persistent trial state.' },
-                { cmd: '/setclasstrialgoal', desc: 'Sets the overall objective text shown in the Trial Context panel.', opts: ['(unnamed, required) — The goal text, e.g. /setclasstrialgoal Who killed Byakuya?'] },
+                { cmd: '/setclasstrialgoal', desc: 'Sets the overall objective text shown in the Trial Context panel.', opts: ['(unnamed, required) — The goal text, e.g. /setclasstrialgoal Who killed the victim?'] },
                 { cmd: '/givetruthbullet', desc: 'Manually adds a Truth Bullet to the Monopad. Add an image via the Truth Bullet Monopad tab afterwards.', opts: ['name (required) — Truth Bullet title; quote if it contains spaces', '(unnamed, required) — The Truth Bullet description'] },
                 { cmd: '/suspectchoosing', desc: 'Opens the character selection screen to single out a suspect. Arrow keys to navigate, Enter to confirm.' },
                 { cmd: '/votingtime', desc: 'Spins the class trial vote roulette. A correct guess awards XP; an incorrect one triggers failure.', opts: ['guess (required) — The character that was voted for (partial name match)', 'result — The actual blackened character (omit to pick randomly)'] },
@@ -1666,7 +1723,7 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
             items: [
                 { cmd: '/nonstopdebate', desc: 'Force-starts a Non-Stop Debate with manually provided lines. Each line supports [[weak spot]] and ((agreement)) markup.', opts: ['s1-q … s8-q (at least one required) — Dialogue lines for sections 1–8', '(unnamed) — Shorthand for a single-line debate'] },
                 { cmd: '/masspanicdebate', desc: 'Starts a Mass Panic Debate with up to 8 scenarios. Each scenario requires all three columns; mark the weak spot in one column with [[brackets]].', opts: ['sc1-c1-q … sc8-c3-q (at least one full scenario) — Dialogue text', 'sc1-c1-speaker … sc8-c3-speaker — Speaker name per column'] },
-                { cmd: '/interjection', desc: 'Plays the rebuttal interjection cinematic, switches BGM to “New Classmates of the Dead”, then the interjector replies.', opts: ['character — Character name for the interjection sprite (defaults to last speaker)'] },
+                { cmd: '/interjection', desc: 'Plays the rebuttal interjection cinematic, switches BGM to the configured INTERJECTION track(s), then the interjector replies.', opts: ['character — Character name for the interjection sprite (defaults to last speaker)'] },
                 { cmd: '/rebuttalshowdown', desc: 'Starts a Rebuttal Showdown — cut through scrolling statements, then land the correct Truth Blade on the weak point.', opts: ['opponent — Opponent character name (defaults to last speaker)', 'player — Player character name (defaults to Prome player profile)', 's1-q … sN-q — Statement phrases (auto-split into chunks)'] },
                 { cmd: '/scrumdebate', desc: 'Starts a Scrum Debate. The group splits into two teams; debunk each opposing claim with the correct Truth Bullet, then win the final tug-of-war.' },
                 { cmd: '/argumentarmament', desc: 'Starts a Argument Armament boss-fight against the current speaker. At least one dialog line is required.', opts: ['dialogA … dialogK (at least one) — Up to 11 dialogue lines', 'enemyHp / playerHp — Starting HP (default 100)', 'phases — Number of phases 1–3 (default 3)', 'nSolution / sSolution / eSolution / wSolution — Direction prompt answer words', 'finalSolution — Final answer (shown uppercased)', 'finalSolutionQuote — Quote line accompanying the final solution', 'bg — Background image (partial name match)'] },
@@ -2398,7 +2455,7 @@ ${historyText}
             const characters = await Promise.all(gcpSlots.map(async s => ({
                 name:     s.name,
                 // characterSpriteUrls is keyed by normalised name and first token to survive
-                // NSD speaker-name abbreviations ("Sonia" vs "Sonia Nevermind")
+                // NSD speaker-name abbreviations ("Alex" vs "Alex Rivera")
                 src:      characterSpriteUrls.get(normalizeSeatName(s.name))
                        || characterSpriteUrls.get(firstToken(s.name))
                        || await getCharSpriteUrl(s.name, characterEmotions.get(s.name) || 'neutral').catch(() => null)
@@ -2822,28 +2879,6 @@ ${historyText}
         nsdHiddenEls.clear();
     }
 
-    // Canonical character heights (cm) keyed by first name and surname, lowercase.
-    // These take priority over any dynamic parsing.
-    const KNOWN_HEIGHTS_CM = new Map([
-        ['monokuma',  75],
-        ['saionji', 130],  ['hiyoko',   130],
-        ['hanamura', 133], ['teruteru', 133],
-        ['kuzuryu',  157], ['fuyuhiko', 157],
-        ['nanami',   160], ['chiaki',   160],
-        ['mioda',    164], ['ibuki',    164],
-        ['koizumi',  165], ['mahiru',   165],
-        ['tsumiki',  165], ['mikan',    165],
-        ['soda',     172], ['kazuichi', 172],
-        ['pekoyama', 172], ['peko',     172],
-        ['nevermind',174], ['sonia',    174],
-        ['owari',    176], ['akane',    176],
-        ['hinata',   179], ['hajime',   179],
-        ['komaeda',  180], ['nagito',   180],
-        ['tanaka',   182], ['gundham',  182],
-        ['togami',   185], ['byakuya',  185],
-        ['nidai',    198], ['nekomaru', 198],
-    ]);
-
     // Parse a cm value out of any freeform height string
     function parseHeightCm(raw) {
         if (!raw) return null;
@@ -2934,9 +2969,12 @@ ${historyText}
         const needle      = String(name).trim().toLowerCase();
         const needleFirst = needle.split(/\s+/)[0];
 
-        // ── 0. Canonical table — check every token of the name ────────
-        for (const token of needle.split(/\s+/)) {
-            if (KNOWN_HEIGHTS_CM.has(token)) return KNOWN_HEIGHTS_CM.get(token);
+        // ── 0. Canonical resolver (index.js getCharacterHeightCm) ─────
+        // Reads extensions.height_cm and parses card prose robustly — the
+        // same height source used by the overworld, scrum debate and roster,
+        // so the gymnasium horse / portrait scaling stay consistent.
+        if (typeof resolveHeightCm === 'function') {
+            try { const cm = resolveHeightCm(name); if (cm) return cm; } catch {}
         }
 
         // ── 1. Extension characters Map (social profile) ──────────────
@@ -2986,7 +3024,7 @@ ${historyText}
     // so extreme heights (e.g. 130 cm vs 198 cm) look visually distinct.
     const BASE_PORTRAIT_PX         = 720;
     const AVG_HEIGHT_CM            = 170;
-    const GYMNASTICS_HORSE_MAX_CM  = 145;  // characters below this height get the gymnastics horse
+    const GYMNASTICS_HORSE_MAX_CM  = 165;  // characters below this height get the gymnastics horse
 
     function needsGymnasticsHorse(name) {
         const cm = getCharacterHeightCm(name);
@@ -3484,8 +3522,8 @@ ${historyText}
             if (playerName) {
                 // Only an EXACT (case-insensitive, trimmed) match swaps in the
                 // Prome user sprite — the old code also matched by first token
-                // so a persona named "Hajime" would override a separate
-                // "Hajime Hinata" NPC's sprite in group chats. The exact match
+                // so a persona named "Alex" would override a separate
+                // "Alex Rivera" NPC's sprite in group chats. The exact match
                 // still handles the legitimate case where the player's persona
                 // name is unique (e.g. "Dawn") and Prome carries the actual
                 // sprite identity via promeInfo.spritePack.
@@ -3535,8 +3573,8 @@ ${historyText}
 
     function buildSeatingPlan(names) {
         // Deduplicate by normalized full name first, then by first-name token.
-        // This catches both exact duplicates ("Nagito" / "nagito") and
-        // partial-name duplicates ("Nagito" / "Nagito Komaeda") that arise when
+        // This catches both exact duplicates ("Alex" / "alex") and
+        // partial-name duplicates ("Alex" / "Alex Rivera") that arise when
         // getChatCardMembers() returns the same character in different name forms.
         const seenFull  = new Map(); // full-normalized → original
         const seenFirst = new Set(); // first-token → already added
@@ -3594,16 +3632,62 @@ ${historyText}
     }
 
     // Returns debateSeatingPlan, building it from the current group members if not yet set.
+    // Complete, render-independent group membership straight from the group
+    // object's `members` (avatars → names). Unlike getChatCardMembers (whose
+    // DOM/active-speaker strategies can return only the subset that has spoken or
+    // rendered so far — which is what made trials open with 12/15 characters until
+    // the speaker changed), this enumerates EVERY member, including the dead and
+    // the not-yet-spoken. ctx.groups is reliable even in ST 1.16.
+    function getFullGroupMemberNames() {
+        const ctx = window.SillyTavern?.getContext?.();
+        if (!ctx) return [];
+        const groupId = String(ctx.groupId ?? ctx.group_id ?? '').trim();
+        if (!groupId) return [];
+        const allChars = [
+            ...(Array.isArray(ctx.characters)    ? ctx.characters    : []),
+            ...(Array.isArray(window.characters) ? window.characters : []),
+        ];
+        const nameFromAvatar = (av) => {
+            if (!av) return null;
+            const ch = allChars.find(c => c?.avatar === av);
+            if (ch?.name) return String(ch.name).trim();
+            // ST 1.16 loads group members shallowly — a member that hasn't been
+            // activated yet may be absent from ctx.characters, so the lookup above
+            // returns nothing and the member silently drops out of the roster
+            // (this is what made trials open with 12/15 until that character spoke).
+            // Fall back to the avatar filename stem (cards are stored as "<Name>.png").
+            const stem = String(av).replace(/\.[^/.]+$/, '').trim();
+            return stem || null;
+        };
+        const allGroups = [
+            ...(Array.isArray(ctx.groups)        ? ctx.groups        : []),
+            ...(Array.isArray(window.groups)     ? window.groups     : []),
+            ...(Array.isArray(window.group_chats)? window.group_chats: []),
+        ];
+        const group = allGroups.find(g => String(g?.id ?? '').trim() === groupId)
+                   ?? ctx.group ?? ctx.groupChat ?? ctx.group_chat ?? null;
+        if (group && Array.isArray(group.members)) {
+            return group.members.map(nameFromAvatar).filter(Boolean);
+        }
+        return [];
+    }
+
     function getOrBuildSeatingPlan() {
         if (!isGroupChat()) return debateSeatingPlan || [];
         if (debateSeatingPlan?.length) return debateSeatingPlan;
-        const members = getChatCardMembers()
-            .map(m => m.name)
+        // Prefer the complete group roster so every member is seated from the very
+        // first build; only fall back to the active-speaker resolver if the group
+        // object isn't readable yet.
+        const full = getFullGroupMemberNames().filter(n => n && !isAssistantLikeName(n));
+        const source = full.length ? full : getChatCardMembers().map(m => m.name);
+        const members = source
             .filter(Boolean)
             .filter(n => !isCharacterMuted(n) || isCharacterDead(n));
         const playerName = getPlayerName();
-        if (playerName) members.push(playerName);
-        if (members.length) debateSeatingPlan = buildSeatingPlan(members);
+        if (playerName && !members.some(n => normalizeLooseName(n) === normalizeLooseName(playerName))) {
+            members.push(playerName);
+        }
+        if (members.length) debateSeatingPlan = buildSeatingPlan(Array.from(new Set(members)));
         return debateSeatingPlan || [];
     }
 
@@ -4991,7 +5075,7 @@ ${historyText}
                 el.style.display = 'block';
                 el.style.filter = grayscale ? 'grayscale(1) brightness(0.6)' : '';
                 // Store under both normalized full-name and first-token so lookups succeed
-                // even when the NSD speaker name ("Sonia") differs from the GCP slot name ("Sonia Nevermind")
+                // even when the NSD speaker name ("Alex") differs from the GCP slot name ("Alex Rivera")
                 characterSpriteUrls.set(normalizeSeatName(charName), url);
                 characterSpriteUrls.set(firstToken(charName), url);
             } catch {
@@ -7342,7 +7426,13 @@ JUDGMENT RULES:
         const sw   = gcpSlotW();
         const w2   = window.innerWidth / 2;
         const dist = (x + sw / 2 - w2) / w2;
-        return `translateX(${x}px) rotateY(${(-dist * GCP_MAX_ROT).toFixed(1)}deg)`;
+        // Lead with the user's Podium Height offset (Controls Panel slider →
+        // --dgn-podium-offset-y). Applying it per-slot rather than on the stage
+        // means the camera-shot animations (which overwrite the *stage* transform)
+        // can't reset it — podiums, horses and sprites all live inside the slot
+        // and shift together. translateY commutes with rotateY so the warp is
+        // unaffected.
+        return `translateY(var(--dgn-podium-offset-y, 0px)) translateX(${x}px) rotateY(${(-dist * GCP_MAX_ROT).toFixed(1)}deg)`;
     }
 
     // Circular shortest-path difference: how many slots is slot i from the center?
@@ -7533,7 +7623,7 @@ JUDGMENT RULES:
         // Also cap slot height so the TALLEST character in the group still
         // fits vertically. scaleWrap scales each sprite by heightPx /
         // BASE_PORTRAIT_PX with origin center-bottom; tall characters
-        // (Sonia, Gundham) come out at 1.15-1.25×, and at slot height 85vh
+        // come out at 1.15-1.25×, and at slot height 85vh
         // that pushes the visual top above the viewport — heads clip. The
         // safe slot height is innerHeight / maxWrapScale, then capped at 85vh
         // so short-character groups still get the lift-the-half-sprite effect.
@@ -7552,9 +7642,8 @@ JUDGMENT RULES:
             // scaleWrap on each slot scales by (heightPx / BASE_PORTRAIT_PX)
             // with origin center-bottom. Visual top of a slot ends up at
             //   slot.bottom_y - maxWrapScale * ACCESSORY_FACTOR * slot.height
-            // because Danganronpa sprite art routinely has accessories
-            // (Sonia's pigtails, Gundham's hair antenna, Ibuki's horns,
-            // Nagito's messy hair) extending well above the geometric head
+            // because sprite art routinely has accessories
+            // (pigtails, hair antennae, horns, messy hair) extending well above the geometric head
             // pixel, drawn right up to the top of the source PNG with no
             // transparent padding. The 1.5 factor reserves room for that
             // overshoot without having to measure each sprite individually.
@@ -7697,7 +7786,7 @@ JUDGMENT RULES:
         if (!gcpSlots.length) return;
         // Query both the standard VN wrapper and any Prome [data-avatar] portrait holders.
         // The latter covers the common case where Prome fires expressions into named containers
-        // (e.g. <div data-avatar="akane-owari"><img class="expression" ...>).
+        // (e.g. <div data-avatar="alex-rivera"><img class="expression" ...>).
         document.querySelectorAll(
             '#visual-novel-wrapper img.expression, #expression-holder img.expression, [data-avatar] img.expression'
         ).forEach(imgEl => {
@@ -7852,9 +7941,9 @@ JUDGMENT RULES:
                     const playerUrl   = await getSpriteUrl(promeInfo.spritePack, 'neutral').catch(() => null);
                     if (gcpStage !== stageRef) return;
                     // Also match by Prome sprite pack name — the player may be using a
-                    // character's sprites (e.g. "Gundham Tanaka") while their persona name
+                    // character's sprites (e.g. "Alex Rivera") while their persona name
                     // differs (e.g. "Dawn"), which would otherwise create a duplicate slot.
-                    // Sprite packs often use hyphenated folder names ("gundham-tanaka"),
+                    // Sprite packs often use hyphenated folder names ("alex-rivera"),
                     // so normalise hyphens/underscores to spaces before token-matching.
                     const spritePackNorm = promeInfo.spritePack.replace(/[-_]/g, ' ');
                     const spriteKey      = normalizeSeatName(spritePackNorm);
@@ -8116,6 +8205,18 @@ JUDGMENT RULES:
             trialActive = true;
             mountTrialAesthetic();
             setState(TrialPhases.PRE_DEBATE);
+            // The carousel may have been built during CHAT_CHANGED while trialActive
+            // was still false — at that point it uses getGroupChatMemberNames (the
+            // active/rendered subset), so freshly-created trials opened seating only
+            // ~12 of 15. Now that the trial is active and the group is loaded, rebuild
+            // from the full seating plan. Deferred so any in-flight build settles and
+            // ctx.groups is populated; it runs behind the trial-entry loading screen.
+            setTimeout(() => {
+                if (!trialActive || !isGroupChat()) return;
+                debateSeatingPlan = null;
+                try { destroyGroupChatPortraits(); } catch {}
+                initGroupChatPortraits();
+            }, 500);
         },
         stop: () => {
             endTrial();
@@ -8192,7 +8293,7 @@ JUDGMENT RULES:
                     if (srcFolderRaw === 'monokuma') {
                         return document.getElementById('dangan-monokuma-overlay')?.querySelector('img') ?? null;
                     }
-                    // Normalize hyphens/underscores to spaces so "akane-owari" matches slot name "akane owari"
+                    // Normalize hyphens/underscores to spaces so "alex-rivera" matches slot name "alex rivera"
                     const srcFolder     = srcFolderRaw.replace(/[-_]/g, ' ').trim();
                     // Pass 1: folder-match using the slot's existing src URL (works once sprites are loaded)
                     for (const slot of gcpSlots) {
@@ -8212,7 +8313,7 @@ JUDGMENT RULES:
                         if (slot.isDead || slot.isMissing) continue;
                         const slotName = normalizeSeatName(slot.name);
                         if (slotName === srcFolder) return slot.img;
-                        // First-token fallback: only when srcFolder is a single word (e.g. "akane"),
+                        // First-token fallback: only when srcFolder is a single word (e.g. "alex"),
                         // to avoid ambiguous matches between characters with the same first name.
                         if (srcFirst === srcFolder && firstToken(slot.name) === srcFirst) return slot.img;
                     }

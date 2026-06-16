@@ -2038,6 +2038,18 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         return { changed: purchased, snapshot: getTrialSkillBrowser() };
     }
 
+    // Un-owns every skill (and un-equips them), so all skills are locked and must
+    // be re-bought from the shop. Leaves skill points and skill *definitions*
+    // (catalog + custom) intact — only ownership is cleared.
+    function resetSkillOwnership() {
+        loadInventoryState();
+        const inv = extension_settings[extensionName].inventory;
+        inv.skills = {};
+        inv.equippedSkills = {};
+        saveSettingsDebounced();
+        renderSkillsItemsPanel();
+    }
+
     function bindWindowApi() {
         window.danganInventory = {
             addGift(itemId, amount = 1) {
@@ -2126,6 +2138,7 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         getTrialSkillBrowser,
         toggleTrialSkillEquip,
         buyTrialSkill,
+        resetSkillOwnership,
         getGiftPoolWithCounts,
         createCustomGift,
         removeCustomGift,

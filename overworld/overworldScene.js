@@ -738,6 +738,7 @@ export function createOverworldSceneController({
         });
         return btn;
     }
+
     function notifySceneChanged() {
         try { onSceneChanged?.(); } catch (e) { console.warn("[Dangan][Overworld] onSceneChanged failed:", e); }
     }
@@ -1318,9 +1319,9 @@ export function createOverworldSceneController({
             for (const m of group.members) {
                 const heightCm = getCharacterHeightCm(m.char.name);
                 // Exaggerate the spread: raw (cm/170) only swings ~0.76-1.17
-                // across the full Danganronpa cast (130cm Hiyoko to 198cm
-                // Nidai), which reads as nearly flat. Multiply the deviation
-                // from the 170cm pivot by 1.8 so the cast visibly tiers.
+                // across a typical cast (a ~130cm character up to a ~198cm one),
+                // which reads as nearly flat. Multiply the deviation from the
+                // 170cm pivot by 1.8 so the cast visibly tiers.
                 const heightScale = (() => {
                     if (!heightCm) return 1;
                     const baseRatio = heightCm / 170;
@@ -2159,7 +2160,7 @@ export function createOverworldSceneController({
     // "Call to the Room" modal — any character in the same area/floor as the
     // player is eligible to be summoned, regardless of which room they're in.
     // Each entry includes a friendly room label resolved via map-panel pins so
-    // the modal can show "Hajime — Hotel Lobby" etc.
+    // the modal can show "Alex — Hotel Lobby" etc.
     function getCharactersInPlayerArea() {
         const playerRoom = getCurrentLocationId();
         const allowedRoomIds = new Set(listSpawnableRoomIds());

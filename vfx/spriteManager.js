@@ -23,7 +23,19 @@ const EMOTIONS = [
     "realization", "surprise", "fear", "anger", "joy", "excitement",
     "sadness", "grief", "nervousness", "disgust", "embarrassment", "love",
 ];
-const MANAGED = ["neutral", ...EMOTIONS];
+// Special-purpose minigame sprites (not emotions) that are also uploadable here.
+// Filenames must match the labels the minigames request via getSpriteUrl():
+// scrumleft (player side) / scrumright (opposing side) in Scrum Debate, and
+// argumentarmament in Argument Armament.
+const SPECIAL_SPRITES = ["scrumleft", "scrumright", "argumentarmament"];
+const MANAGED = ["neutral", ...EMOTIONS, ...SPECIAL_SPRITES];
+
+// Friendlier slot titles for keys that don't read well when simply upper-cased.
+const LABEL_OVERRIDES = {
+    scrumleft: "Scrum Debate Left",
+    scrumright: "Scrum Debate Right",
+    argumentarmament: "Argument Armament",
+};
 
 const OVERLAY_ID = "monopad-sprite-overlay";
 const IMAGE_ACCEPT = "image/png,image/jpeg,image/webp,image/gif,image/apng,.png,.jpg,.jpeg,.webp,.gif,.apng";
@@ -32,6 +44,7 @@ let currentFolder = null;  // sprite folder used by /api/sprites (avatar minus e
 let currentName = null;    // human-readable character name shown in the picker
 let currentSprites = [];   // last fetched sprite list for the selected character
 let busy = false;          // guards against overlapping uploads/deletes
+let getPlayerTarget = null; // () => { name, folder } | null — the player persona's sprite target
 
 // ── Small helpers ─────────────────────────────────────────────────────────────
 
@@ -286,7 +299,7 @@ function renderGrid() {
         return `
             <div class="monopad-sprite-cell" data-emotion="${escapeAttr(emotion)}">
                 <div class="monopad-sprite-cell-head">
-                    <span class="monopad-sprite-emotion">${escapeText(emotion.toUpperCase())}</span>
+                    <span class="monopad-sprite-emotion">${escapeText((LABEL_OVERRIDES[emotion] || emotion).toUpperCase())}</span>
                     <button class="monopad-sprite-add" type="button" data-emotion="${escapeAttr(emotion)}" title="Add outfit variant">＋</button>
                 </div>
                 <div class="monopad-sprite-tiles">${tiles}</div>
@@ -305,11 +318,20 @@ function renderTargetSelect() {
     const sel = document.getElementById("monopad-sprite-target");
     if (!sel) return;
     const chars = getCharacterList();
+    // The player character (persona) sprite folder, when one is configured, is
+    // offered as a dedicated entry at the top so the user can manage their own
+    // sprites alongside the NPC cast.
+    const player = typeof getPlayerTarget === "function" ? getPlayerTarget() : null;
+    const playerOpt = player?.folder
+        ? `<option value="${escapeAttr(player.folder)}" data-name="${escapeAttr(player.name)}" data-player="1">★ ${escapeText(player.name)} (You)</option>`
+        : "";
     sel.innerHTML = `<option value="">— SELECT CHARACTER —</option>` +
+        playerOpt +
         chars.map(c => `<option value="${escapeAttr(c.folder)}" data-name="${escapeAttr(c.name)}">${escapeText(c.name)}</option>`).join("");
 
     // Keep the current selection if still present, else preselect the active chat character.
-    if (currentFolder && chars.some(c => c.folder === currentFolder)) {
+    const knownFolder = (f) => f === player?.folder || chars.some(c => c.folder === f);
+    if (currentFolder && knownFolder(currentFolder)) {
         sel.value = currentFolder;
     } else {
         const active = getActiveCharacterName();
@@ -462,7 +484,9 @@ function closeModal() {
 
 // ── Event wiring ──────────────────────────────────────────────────────────────
 
-export function initSpriteManager() {
+export function initSpriteManager({ getPlayerTarget: playerTargetResolver = null } = {}) {
+    getPlayerTarget = typeof playerTargetResolver === "function" ? playerTargetResolver : null;
+
     const onClick = (e) => {
         if (e.target.closest("#dangan_configure_sprites")) { openModal(); return; }
 

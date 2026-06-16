@@ -41,17 +41,23 @@ const state = {
 };
 
 let _templates = null;         // cached { bg, texture, mask } HTMLImageElements
+let getPlayerTarget = null;    // () => { name, folder } | null — the player persona's sprite target
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function escapeAttr(s) { return String(s ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;"); }
 function escapeText(s) { return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 function toast(kind, msg) { const fn = window.toastr?.[kind]; if (typeof fn === "function") fn(msg); }
 
-function loadImage(url) {
+function loadImage(url, timeoutMs = 15000) {
     return new Promise((resolve, reject) => {
         const img = new Image();
-        img.onload = () => resolve(img);
-        img.onerror = () => reject(new Error(`Failed to load ${url}`));
+        let done = false;
+        const finish = (fn, arg) => { if (!done) { done = true; clearTimeout(timer); fn(arg); } };
+        // A bad/never-resolving URL must not hang forever — it would block the
+        // whole preview pass. Reject on timeout so the cell just fails cleanly.
+        const timer = setTimeout(() => finish(reject, new Error(`Timed out loading ${url}`)), timeoutMs);
+        img.onload = () => finish(resolve, img);
+        img.onerror = () => finish(reject, new Error(`Failed to load ${url}`));
         img.src = url;
     });
 }
@@ -79,6 +85,17 @@ function getCharacterList() {
         })
         .filter(Boolean)
         .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// The full target list: the player persona (when a sprite folder is configured)
+// at the top, followed by the NPC cast. Deduped so a player sprite that happens
+// to be a character folder isn't listed twice.
+function getTargetList() {
+    const npcs = getCharacterList();
+    const player = typeof getPlayerTarget === "function" ? getPlayerTarget() : null;
+    if (!player?.folder) return npcs;
+    const rest = npcs.filter(c => c.folder !== player.folder);
+    return [{ name: `${player.name} (You)`, folder: player.folder, isPlayer: true }, ...rest];
 }
 
 // Names of characters participating in the currently-open chat (group members,
@@ -280,11 +297,13 @@ function setProgress(msg) {
 
 // Build state.items for the active scope, then render the grid + previews.
 async function rebuildItems() {
-    const all = getCharacterList();
+    const all = getTargetList();
     let list = all;
     if (state.scope === "current") {
         const names = getCurrentChatNames();
-        list = all.filter(c => names.has(c.name));
+        // The player is always a participant of the current chat, so keep them
+        // regardless of the chat-member name match used for NPCs.
+        list = all.filter(c => c.isPlayer || names.has(c.name));
     }
     // 'pick' and 'all' both show every character; 'pick' just relies on manual
     // ticking (nothing is auto-checked), 'all' auto-checks the missing ones.
@@ -295,6 +314,7 @@ async function rebuildItems() {
         return {
             name: c.name,
             folder: c.folder,
+            isPlayer: !!c.isPlayer,
             exists,
             neutralUrl: undefined,   // resolved lazily during preview
             img: null,
@@ -323,29 +343,32 @@ function renderGrid() {
         </div>`).join("");
 }
 
-// Lazily resolve each character's neutral sprite and render a preview canvas.
-async function renderPreviews() {
-    for (let i = 0; i < state.items.length; i++) {
-        const it = state.items[i];
-        const thumb = document.querySelector(`[data-thumb="${i}"]`);
-        const statusEl = document.querySelector(`[data-status="${i}"]`);
-        if (!thumb) continue;
-        try {
-            if (it.neutralUrl === undefined) it.neutralUrl = await resolveNeutralUrl(it.folder);
-            if (!it.neutralUrl) {
-                setCellDisabled(i, "no neutral sprite");
-                continue;
-            }
-            if (!it.img) it.img = await loadImage(it.neutralUrl);
-            const canvas = await renderMugshotCanvas(it.img, state.frac);
-            thumb.innerHTML = "";
-            thumb.appendChild(canvas);
-            if (statusEl) statusEl.textContent = it.status || "";
-        } catch (err) {
-            console.warn("[Dangan][Mugshot] preview failed for", it.name, err);
-            setCellDisabled(i, "preview failed");
+// Resolve one character's neutral sprite and render its preview canvas.
+async function renderOnePreview(i) {
+    const it = state.items[i];
+    const thumb = document.querySelector(`[data-thumb="${i}"]`);
+    const statusEl = document.querySelector(`[data-status="${i}"]`);
+    if (!it || !thumb) return;
+    try {
+        if (it.neutralUrl === undefined) it.neutralUrl = await resolveNeutralUrl(it.folder);
+        if (!it.neutralUrl) {
+            setCellDisabled(i, "no neutral sprite");
+            return;
         }
+        if (!it.img) it.img = await loadImage(it.neutralUrl);
+        const canvas = await renderMugshotCanvas(it.img, state.frac);
+        thumb.innerHTML = "";
+        thumb.appendChild(canvas);
+        if (statusEl) statusEl.textContent = it.status || "";
+    } catch (err) {
+        console.warn("[Dangan][Mugshot] preview failed for", it.name, err);
+        setCellDisabled(i, "preview failed");
     }
+}
+
+// Render every preview in parallel so one slow/stuck sprite can't block the rest.
+async function renderPreviews() {
+    await Promise.all(state.items.map((_, i) => renderOnePreview(i)));
 }
 
 function setCellDisabled(i, reason) {
@@ -429,7 +452,9 @@ function closeModal() {
 }
 
 // ── event wiring ─────────────────────────────────────────────────────────────
-export function initMugshotGenerator() {
+export function initMugshotGenerator({ getPlayerTarget: playerTargetResolver = null } = {}) {
+    getPlayerTarget = typeof playerTargetResolver === "function" ? playerTargetResolver : null;
+
     const onClick = (e) => {
         if (e.target.closest("#dangan_generate_mugshots")) { openModal(); return; }
 

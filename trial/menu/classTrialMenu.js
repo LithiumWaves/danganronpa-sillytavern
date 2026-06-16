@@ -1,4 +1,4 @@
-export function createClassTrialMenuController({ extensionName, extensionSettings, buildExtensionPathCandidates, getTrialSkillEntries, getTrialSkillBrowser, toggleTrialSkillEquip, buyTrialSkill, playSfx, getSfx, onOpen, onClose, getPreparationTracks, getChapterLabel, getDifficultyLabel, cycleDifficulty, onViewSummary, onViewTruthBullets }) {
+export function createClassTrialMenuController({ extensionName, extensionSettings, buildExtensionPathCandidates, getTrialSkillEntries, getTrialSkillBrowser, toggleTrialSkillEquip, buyTrialSkill, playSfx, getSfx, onOpen, onClose, getPreparationTracks, getChapterLabel, getDifficultyLabel, cycleDifficulty, onViewSummary, onViewTruthBullets, onChooseBackground }) {
     let activeAudio = null;
     let selectedSkillId = null;
 
@@ -76,6 +76,10 @@ export function createClassTrialMenuController({ extensionName, extensionSetting
                     <button type="button" class="dangan-trial-menu-item" id="dangan-trial-intro-truth">
                         <span class="dangan-trial-menu-label">View Truth Bullets</span>
                     </button>
+                    <button type="button" class="dangan-trial-menu-item" id="dangan-trial-intro-background">
+                        <span class="dangan-trial-menu-label">Choose Background</span>
+                        <span class="dangan-trial-menu-bg-preview dangan-trial-menu-bg-preview-empty" id="dangan-trial-intro-bg-preview" aria-hidden="true"></span>
+                    </button>
                     <button type="button" class="dangan-trial-menu-item" id="dangan-trial-intro-difficulty">
                         <span class="dangan-trial-menu-label">Change Difficulty</span>
                         <span class="dangan-trial-menu-value" id="dangan-trial-intro-difficulty-value"></span>
@@ -91,6 +95,27 @@ export function createClassTrialMenuController({ extensionName, extensionSetting
 
         document.body.appendChild(overlay);
         return overlay;
+    }
+
+    // Show a thumbnail of the currently-chosen background (SillyTavern's active
+    // #bg1) on the right of the Choose Background row. Called on open and after
+    // a new background is picked.
+    function refreshBackgroundPreview() {
+        const el = document.getElementById("dangan-trial-intro-bg-preview");
+        if (!el) return;
+        let url = "";
+        const bg = document.getElementById("bg1") || document.getElementById("bg_custom");
+        if (bg) {
+            const img = getComputedStyle(bg).backgroundImage;
+            if (img && img !== "none") url = img;
+        }
+        if (url) {
+            el.style.backgroundImage = url;
+            el.classList.remove("dangan-trial-menu-bg-preview-empty");
+        } else {
+            el.style.backgroundImage = "";
+            el.classList.add("dangan-trial-menu-bg-preview-empty");
+        }
     }
 
     function setVisible(visible) {
@@ -404,6 +429,7 @@ export function createClassTrialMenuController({ extensionName, extensionSetting
             const skillsBtn = overlay.querySelector("#dangan-trial-intro-skills");
             const summaryBtn = overlay.querySelector("#dangan-trial-intro-summary");
             const truthBtn = overlay.querySelector("#dangan-trial-intro-truth");
+            const backgroundBtn = overlay.querySelector("#dangan-trial-intro-background");
             const difficultyBtn = overlay.querySelector("#dangan-trial-intro-difficulty");
             const difficultyValue = overlay.querySelector("#dangan-trial-intro-difficulty-value");
             const chapterEl = overlay.querySelector("#dangan-trial-intro-chapter");
@@ -419,6 +445,7 @@ export function createClassTrialMenuController({ extensionName, extensionSetting
                 const label = typeof getDifficultyLabel === "function" ? getDifficultyLabel() : "";
                 difficultyValue.textContent = String(label || "");
             }
+            refreshBackgroundPreview();
 
             let settled = false;
             const finish = (accepted) => {
@@ -428,6 +455,7 @@ export function createClassTrialMenuController({ extensionName, extensionSetting
                 skillsBtn?.removeEventListener("click", onSkills);
                 summaryBtn?.removeEventListener("click", onSummary);
                 truthBtn?.removeEventListener("click", onTruth);
+                backgroundBtn?.removeEventListener("click", onBackground);
                 difficultyBtn?.removeEventListener("click", onDifficulty);
                 cancelBtn?.removeEventListener("click", onCancel);
                 startBtn?.removeEventListener("click", onStart);
@@ -447,6 +475,10 @@ export function createClassTrialMenuController({ extensionName, extensionSetting
             const onTruth = () => {
                 playSfx?.(getSfx?.().click);
                 onViewTruthBullets?.();
+            };
+            const onBackground = () => {
+                playSfx?.(getSfx?.().click);
+                onChooseBackground?.();
             };
             const onDifficulty = () => {
                 const nextLabel = typeof cycleDifficulty === "function" ? cycleDifficulty() : "";
@@ -470,6 +502,7 @@ export function createClassTrialMenuController({ extensionName, extensionSetting
             skillsBtn?.addEventListener("click", onSkills);
             summaryBtn?.addEventListener("click", onSummary);
             truthBtn?.addEventListener("click", onTruth);
+            backgroundBtn?.addEventListener("click", onBackground);
             difficultyBtn?.addEventListener("click", onDifficulty);
             cancelBtn?.addEventListener("click", onCancel);
             startBtn?.addEventListener("click", onStart);
@@ -484,5 +517,6 @@ export function createClassTrialMenuController({ extensionName, extensionSetting
     return {
         open,
         close,
+        refreshBackgroundPreview,
     };
 }

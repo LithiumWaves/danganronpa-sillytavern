@@ -26,23 +26,23 @@ const SD_TIMER_DURATION_MS = 3 * 60 * 1000; // 3 minutes
 
 export const SCRUM_DEBATE_DEFAULT_SCENARIO = {
     title: "SCRUM DEBATE",
-    topic: "Was Byakuya killed by Nagito, or by Teruteru?",
-    opposingTheory: "The culprit is Nagito!",
-    playerTheory: "The culprit is Teruteru!",
+    topic: "Was the victim killed by Suspect A, or by Suspect B?",
+    opposingTheory: "The culprit is Suspect A!",
+    playerTheory: "The culprit is Suspect B!",
     rounds: [
         {
             opposingClaim: "Knife",
-            statement: "Byakuya was stabbed, [[the wound was from a piece of equipment - A knife]]!",
+            statement: "The victim was stabbed, [[the wound was from a piece of equipment - A knife]]!",
             correctTruthBulletTitle: "Kitchen Equipment",
         },
         {
             opposingClaim: "Bloodstain Under the Table",
-            statement: "But Byakuya was killed under the table, [[there were no other gaps to launch an attack]]...",
+            statement: "But the victim was killed under the table, [[there were no other gaps to launch an attack]]...",
             correctTruthBulletTitle: "Gaps in Floorboard",
         },
         {
-            opposingClaim: "Teruteru's Account",
-            statement: "It's impossible for Teruteru to be the culprit, he [[responded clearly to Ibuki and all the doors were open]]..!",
+            opposingClaim: "Suspect B's Account",
+            statement: "It's impossible for Suspect B to be the culprit, they [[responded clearly to the witness and all the doors were open]]..!",
             correctTruthBulletTitle: "Fire Door",
         },
     ],
@@ -451,7 +451,7 @@ function buildStyles(extPath) {
 }
 .sd-portrait-lectern.sd-mirrored { transform: translateX(-50%) scaleX(-1); }
 
-/* Gymnasium horse — boosts short characters (< 145 cm) up to podium height,
+/* Gymnasium horse — boosts short characters (< 165 cm) up to podium height,
    matching the regular class trial. Like the lectern it's sized off --ph-depth,
    so it's perspective-scaled by depth but a default size regardless of the
    character's height. Sits behind the character; the lectern (z 4) covers its front.
@@ -1102,7 +1102,7 @@ const SD_REF_HEIGHT_CM = 170;
 const SD_BASE_VH       = 70;  // vh assigned to a 170 cm character at the front position
 // Characters shorter than this get the gymnasium horse to reach podium height,
 // matching the regular class trial (GYMNASTICS_HORSE_MAX_CM in trialManager.js).
-const SD_GYM_HORSE_MAX_CM = 145;
+const SD_GYM_HORSE_MAX_CM = 165;
 
 function charTrueHeightVh(name, getCharHeightCm) {
     if (!getCharHeightCm || !name) return null;
@@ -1252,11 +1252,10 @@ export function createScrumDebateController({
     }
 
     function pickBgmTrack() {
+        // BGM comes entirely from the SCRUM DEBATES selector tab; null = play nothing.
         const tracks = typeof getScrumTracks === "function" ? getScrumTracks() : [];
         if (Array.isArray(tracks) && tracks.length)
             return tracks[Math.floor(Math.random() * tracks.length)];
-        if (extensionFolderPath)
-            return `/${extensionFolderPath}/assets/bgm/Argument -Blade Lock-.mp3`;
         return null;
     }
 

@@ -305,12 +305,21 @@ body.dangan-theme-investigation #dangan-hud-topright {
     font-size: 9px;
     letter-spacing: 0.07em;
     font-style: italic;
+    /* Match the BGM playlist label (.dbgm-playlist-label) exactly: blue by
+     * default/daytime, green at night, hot-pink during investigation. */
     color: #9be8ff;
+    transition: color 0.4s ease;
     font-family: inherit;
     text-transform: uppercase;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+body.dangan-theme-night .dangan-current-room-label {
+    color: #93ff2c;
+}
+body.dangan-theme-investigation .dangan-current-room-label {
+    color: rgba(255, 20, 180, 0.90);
 }
 
 #dangan-level-bar::before {
@@ -970,15 +979,17 @@ body.dangan-halfsprite-mode:not(.dangan-trial-active) #expression-wrapper img:no
 body.dangan-halfsprite-mode:not(.dangan-trial-active) .expression-holder img:not([src*="-half."]) {
     /* Scale 2× (was 3×) — 3× pushed the visible window to the top 33% of the
        source canvas, which means characters whose sprite art has empty space
-       above their head (e.g. Hiyoko) only showed the very tip of their hair.
+       above their head (a short character) only showed the very tip of their hair.
        2× shows the top 50% which covers head + shoulders + upper torso even
-       with substantial top padding, and lines up with the GCP rule below. */
-    transform: scale(2) !important;
+       with substantial top padding, and lines up with the GCP rule below.
+       --dangan-hs-scale / --dangan-hs-offset are the user's global size +
+       vertical-offset adjustment (minimap → Half-Sprite control). */
+    transform: translateY(var(--dangan-hs-offset, 0px)) scale(calc(2 * var(--dangan-hs-scale, 1))) !important;
     transform-origin: 50% 0% !important;
     transition: none !important;
 }
 /* Dangan's own GCP stage — what actually renders in-chat sprites. The img
- * inside .dangan-gcp-scale-wrap is the visible Mahiru etc. The base rule at
+ * inside .dangan-gcp-scale-wrap is the visible character sprite. The base rule at
  * styles/groupChat.css:96 sets `transform-origin: center bottom` on this img;
  * we override to top-center so scaling pushes the bottom out of the slot.
  *
@@ -995,9 +1006,11 @@ body.dangan-halfsprite-mode:not(.dangan-trial-active) .dangan-gcp-scale-wrap img
 body.dangan-halfsprite-mode:not(.dangan-trial-active) .dangan-gcp-slot img:not(.dangan-gcp-horse):not(.dangan-gcp-lectern):not([src*="-half."]) {
     /* See sibling rule for #expression-wrapper above — 2× shows the top 50%
        of the source canvas, so characters whose sprite art has visible head
-       padding (Hiyoko) and characters with normal proportions (Mahiru) both
-       end up with head + upper torso in frame instead of just the very top. */
-    transform: scale(min(2, var(--gcp-half-scale, 2))) !important;
+       padding (short characters) and characters with normal proportions both
+       end up with head + upper torso in frame instead of just the very top.
+       --dangan-hs-scale / --dangan-hs-offset apply the user's global size +
+       vertical-offset adjustment on top of the responsive scale. */
+    transform: translateY(var(--dangan-hs-offset, 0px)) scale(calc(min(2, var(--gcp-half-scale, 2)) * var(--dangan-hs-scale, 1))) !important;
     transform-origin: 50% 0% !important;
     transition: none !important;
 }
@@ -1019,21 +1032,21 @@ body.dangan-halfsprite-mode:not(.dangan-trial-active) .dangan-gcp-slot {
      *
      * Slot height is computed dynamically in gcpPositionSlotsFlat — it's
      * normally 85vh (lifts the half-sprite up by ~30%) but caps at
-     * innerHeight/maxWrapScale so even tall characters (Sonia, Gundham)
+     * innerHeight/maxWrapScale so even tall characters
      * don't have their heads clipped by the viewport's top edge. */
     bottom: 110px !important;
     /* Fallback widened from 55vh → 75vh so toggling half-mode mid-chat
      * (before gcpPositionSlotsFlat has had a chance to write the actual
      * var) doesn't render sprites in a too-narrow box. The runtime value
      * caps at innerHeight / maxWrapScale anyway, so tall accessories
-     * (Sonia's pigtails, Gundham's antenna, Ibuki's horns) still don't
+     * (pigtails, antennae, horns) still don't
      * clip — this only affects the brief pre-layout fallback. */
     height: var(--gcp-half-slot-height, 75vh) !important;
     /* overflow: visible (no clip-path) — the slot's bounding rect is just an
      * anchor for the scale-wrap origin, not a clipping window. CSS spec
      * clamps negative inset() values to 0, so any attempt at "clip only the
      * bottom" via clip-path would still clamp the top to slot.top and chop
-     * off tall accessories (Sonia's pigtails, Gundham's antenna, Ibuki's
+     * off tall accessories (pigtails, antennae,
      * horns). Instead the sprite renders freely:
      *   - Top extends above slot.top into the viewport above (visible).
      *   - Bottom extends below viewport.bottom (off-screen by viewport edge).
@@ -1251,11 +1264,105 @@ body.dangan-theme-damaged       #dangan-ow-cursor { filter: hue-rotate(310deg) s
     pointer-events: auto;
     z-index: 2;
 }
-.dangan-minimap-flat-toggle.is-active {
+.dangan-minimap-flat-toggle.is-active,
+.dangan-minimap-half-toggle.is-active {
     border-color: var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.6)) !important;
     box-shadow:
         0 0 14px var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.4)),
         inset 0 0 8px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Sprite Size & Height adjuster — top vertex of the bottom four-button diamond
+ * (centered, above the Show CG / Half-Sprite row, opposite the Photo Mode
+ * button), only present in Half-Sprite Mode. */
+.dangan-minimap-hs-adjust-col {
+    position: absolute;
+    bottom: 7px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    pointer-events: auto;
+    z-index: 2;
+}
+
+/* Sprite size/offset popover (opened from the minimap control). */
+.dangan-hs-adjust {
+    position: fixed;
+    right: 58px;
+    bottom: 290px;
+    width: 244px;
+    z-index: 2147483600;
+    box-sizing: border-box;
+    padding: 12px 14px;
+    background: rgba(10, 8, 18, 0.96);
+    border: 2px solid rgba(255, 130, 220, 0.7);
+    border-radius: 8px;
+    box-shadow: 0 0 18px rgba(255, 100, 200, 0.35), inset 0 0 10px rgba(0, 0, 0, 0.5);
+    font-family: "Orbitron", "Rajdhani", 'Noto Sans JP', sans-serif;
+    color: rgba(255, 220, 240, 0.95);
+    pointer-events: auto;
+}
+.dangan-hs-adjust-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+.dangan-hs-adjust-title {
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    color: #ff8cd8;
+    text-shadow: 0 0 6px rgba(255, 80, 200, 0.5);
+}
+.dangan-hs-adjust-close {
+    background: transparent;
+    border: 0;
+    color: rgba(255, 200, 230, 0.8);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 2px 4px;
+}
+.dangan-hs-adjust-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0;
+}
+.dangan-hs-adjust-label {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    width: 46px;
+    opacity: 0.85;
+}
+.dangan-hs-adjust-row input[type="range"] {
+    flex: 1;
+    accent-color: #ff66c4;
+    cursor: pointer;
+    min-width: 0;
+}
+.dangan-hs-scale-val,
+.dangan-hs-offset-val {
+    font-size: 11px;
+    width: 46px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.dangan-hs-adjust-reset {
+    margin-top: 8px;
+    width: 100%;
+    padding: 6px;
+    background: rgba(40, 10, 30, 0.85);
+    border: 1px solid rgba(255, 100, 200, 0.5);
+    border-radius: 5px;
+    color: rgba(255, 210, 235, 0.95);
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    cursor: pointer;
+}
+.dangan-hs-adjust-reset:hover {
+    background: rgba(80, 20, 55, 0.9);
 }
 
 /* UI-hide toggle — diamond at the BOTTOM apex of the minimap, mirroring the
@@ -1346,6 +1453,17 @@ body.dangan-ui-hidden * {
     display: none !important;
 }
 
+/* The Narrator is not a character and has no sprite — hide its expression image
+ * instead of leaving a broken-image icon floating mid-screen. Keyed on the alt
+ * SillyTavern stamps on the sprite (case-insensitive), so it auto-restores the
+ * moment a real character speaks. */
+img.expression[alt="Narrator" i],
+#expression-image[alt="Narrator" i],
+#visual-novel-wrapper img.expression[alt="Narrator" i],
+.expression-holder img[alt="Narrator" i] {
+    display: none !important;
+}
+
 /* Hide overworld while a Class Trial is active or the Monopad is open.
  * Both rules toggle via a body class — avoid `body:has()` because it forces
  * the browser to re-evaluate on every DOM mutation under body (~70ms long
@@ -1396,6 +1514,17 @@ body.dangan-monopad-open #dangan-overworld { display: none !important; }
 #dangan-overworld .dangan-ow-edit-btn.dangan-ow-edit-btn-solo {
     top: 186px;
 }
+
+/* While an overworld CG is showing (body.dangan-ow-cg-open, toggled by
+ * cgViewer.js): lift the whole overworld above the CG so its room buttons
+ * (Talk to the Room / Grab Group Members / Call to Your Location, plus Exit
+ * Conversation in chat) stay usable. The root is transparent + pointer-events:
+ * none, so the CG shows through and only the buttons read as floating controls.
+ * The sprite strip is hidden so the CG stays a clean backdrop. Driven by a body
+ * class (not inline styles) so it survives the overworld's re-render, which
+ * replaces #dangan-overworld wholesale. */
+body.dangan-ow-cg-open #dangan-overworld { z-index: 2147483647 !important; }
+body.dangan-ow-cg-open #dangan-overworld .dangan-ow-strip { opacity: 0 !important; pointer-events: none !important; }
 /* Photo Mode: once editing starts, hide every room action button except the
  * Save toggle so the room reads as a clean placement canvas. The Save button
  * is then promoted to the top slot regardless of how many buttons it shared

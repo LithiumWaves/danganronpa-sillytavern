@@ -1529,8 +1529,8 @@ body.dangan-theme-night         #dangan-moveto-panel { filter: grayscale(1) brig
  * JS during Class Trials and while the Monopad is open. */
 #dangan-minimap {
     position: fixed;
-    right: 38px;
-    bottom: 38px;
+    right: 58px;
+    bottom: 56px;
     width: 200px;
     height: 200px;
     /* Below SillyTavern's right-nav-panel drawer (.fillRight, z-index 3000)
@@ -1557,8 +1557,8 @@ body.dangan-theme-night         #dangan-moveto-panel { filter: grayscale(1) brig
     box-shadow: 0 0 12px rgba(0, 0, 0, 0.6);
     z-index: -1;
     pointer-events: none;
-    padding: 7em 10.5em;
-    top: 8em;
+    padding: 7em 12.5em;
+    top: 10em;
     left: 1em;
 }
 
@@ -1762,6 +1762,19 @@ body.dangan-theme-night         #dangan-moveto-panel { filter: grayscale(1) brig
     gap: 24px;
     pointer-events: auto;
 }
+/* Bottom action row — mirrors the zoom +/- row, just above the Photo Mode
+ * button. Holds the Show CG and Half-Sprite Mode diamond controls. */
+.dangan-minimap-action-row {
+    position: absolute;
+    bottom: -18px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 24px;
+    pointer-events: auto;
+}
 .dangan-minimap-zoom-btn {
     width: 30px;
     height: 30px;
@@ -1828,6 +1841,8 @@ body.dangan-theme-night         #dangan-minimap .dangan-minimap-square { border-
     padding-bottom: 10px;
     border-bottom: 1px solid rgba(255, 100, 200, 0.32);
     margin-bottom: 12px;
+    width: 278px;
+    padding-left: 90px;
 }
 .dangan-moveto-list {
     display: flex;
@@ -6660,6 +6675,26 @@ body.dangan-hide-hopes-peak-branding .monopad-welcome-cylinder {
 .dangan-trial-menu-item:hover .dangan-trial-menu-value,
 .dangan-trial-menu-item.is-selected .dangan-trial-menu-value {
     color: #eafaff;
+}
+
+/* Thumbnail of the chosen background, right-aligned in the Choose Background row
+ * (sits above the Difficulty row). */
+.dangan-trial-menu-bg-preview {
+    position: relative;
+    z-index: 2;
+    flex: 0 0 auto;
+    width: 72px;
+    height: 40px;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
+}
+.dangan-trial-menu-bg-preview.dangan-trial-menu-bg-preview-empty {
+    background-color: rgba(255, 255, 255, 0.06);
+    box-shadow: none;
 }
 
 /* Actions */

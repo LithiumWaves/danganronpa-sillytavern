@@ -119,8 +119,8 @@ body.dangan-trial-active #top-settings-holder {
 
 #dangan-trial-badge {
     position: fixed;
-    top: 130px;
-    left: 53px;
+    top: 180px;
+    left: 63px;
     width: 92px;
     height: 110px;
     z-index: 9992;
@@ -176,10 +176,10 @@ body.dangan-trial-active #top-settings-holder {
 
 #dangan-trial-speaker-sticker {
     position: fixed;
-    top: 314px;
-    left: 42px;
+    top: 381px;
+    left: 48px;
     transform: translateY(-50%) rotate(-8deg);
-    width: 229px;
+    width: 256px;
     height: min(560px, 70vh);
     z-index: 9993;
     pointer-events: none;
@@ -1051,6 +1051,47 @@ body.dangan-trial-active .dgn-fx-commands-btn:hover {
     box-shadow: 0 0 10px var(--dgn-neon);
 }
 
+/* ── Podium Height slider (shifts podiums + horses + sprites together) ─────── */
+body.dangan-trial-active .dgn-fx-podium-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+body.dangan-trial-active .dgn-fx-podium-label {
+    color: var(--dgn-neon);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    text-shadow: 0 0 4px var(--dgn-neon-soft);
+    white-space: nowrap;
+}
+body.dangan-trial-active .dgn-fx-podium-slider-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    justify-content: flex-end;
+}
+body.dangan-trial-active .dgn-fx-podium-slider {
+    flex: 1;
+    min-width: 70px;
+    max-width: 130px;
+    accent-color: var(--dgn-neon);
+    cursor: pointer;
+}
+body.dangan-trial-active .dgn-fx-podium-value {
+    color: var(--dgn-neon);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-shadow: 0 0 4px var(--dgn-neon-soft);
+    min-width: 42px;
+    text-align: right;
+}
+
 /* ── Commands modal ──────────────────────────────────────────────────────── */
 
 .dgn-commands-modal {
@@ -1496,7 +1537,10 @@ body.dangan-trial-active #dangan-vn-overlay .dangan-vn-nav-button:hover {
 
 /* SillyTavern composer recolouring while in trial — match BGM panel */
 body.dangan-trial-active #send_form {
-    top: 915px !important;
+    /* Vertical anchor is owned by the VN compose-docking JS, which pins the
+       composer to the viewport bottom in trials (see index.js dockTypingSection).
+       A hardcoded top here (was 915px) overrides that inline value via !important
+       and leaves the panel floating mid-screen on taller viewports. */
     background: var(--dgn-panel-bg) !important;
     border: 1.5px solid var(--dgn-panel-border) !important;
     border-radius: 0 !important;

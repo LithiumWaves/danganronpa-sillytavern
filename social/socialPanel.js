@@ -1,24 +1,3 @@
-// Canonical heights (cm), mirrors trialManager — first/last name tokens, lowercase
-const REPORT_KNOWN_HEIGHTS_CM = new Map([
-    ['monokuma',  75],
-    ['saionji', 130], ['hiyoko',   130],
-    ['hanamura', 133], ['teruteru', 133],
-    ['kuzuryu',  157], ['fuyuhiko', 157],
-    ['nanami',   160], ['chiaki',   160],
-    ['mioda',    164], ['ibuki',    164],
-    ['koizumi',  165], ['mahiru',   165],
-    ['tsumiki',  165], ['mikan',    165],
-    ['soda',     172], ['kazuichi', 172],
-    ['pekoyama', 172], ['peko',     172],
-    ['nevermind',174], ['sonia',    174],
-    ['owari',    176], ['akane',    176],
-    ['hinata',   179], ['hajime',   179],
-    ['komaeda',  180], ['nagito',   180],
-    ['tanaka',   182], ['gundham',  182],
-    ['togami',   185], ['byakuya',  185],
-    ['nidai',    198], ['nekomaru', 198],
-]);
-
 function parseReportHeightCm(raw) {
     if (!raw) return null;
     const s = String(raw).trim();
@@ -33,11 +12,25 @@ function parseReportHeightCm(raw) {
     return null;
 }
 
-function getReportCharacterHeightCm(name) {
+// Resolve a character's height in cm dynamically — no hardcoded roster. The
+// explicit social-profile height wins; otherwise fall back to a height stated in
+// the character card's prose (description / personality / scenario / examples).
+function getReportCharacterHeightCm(name, profileHeight) {
+    const fromProfile = parseReportHeightCm(profileHeight);
+    if (fromProfile) return fromProfile;
     if (!name) return null;
     const needle = String(name).trim().toLowerCase();
-    for (const token of needle.split(/\s+/)) {
-        if (REPORT_KNOWN_HEIGHTS_CM.has(token)) return REPORT_KNOWN_HEIGHTS_CM.get(token);
+    const needleFirst = needle.split(/\s+/)[0];
+    const ctx = window.SillyTavern?.getContext?.();
+    const ctxChars = Array.isArray(ctx?.characters) ? ctx.characters : [];
+    for (const c of ctxChars) {
+        const cName = String(c?.name || "").trim().toLowerCase();
+        const cFirst = cName.split(/\s+/)[0];
+        if (cName !== needle && cFirst !== needleFirst) continue;
+        const blob = [c.description, c.personality, c.scenario, c.mes_example]
+            .map(f => String(f || "")).join(" ");
+        const cm = parseReportHeightCm(blob);
+        if (cm) return cm;
     }
     return null;
 }
@@ -173,7 +166,7 @@ export function createSocialPanelController({
         if (useTalent) {
             $sprite.css("height", "75%");
         } else {
-            applyReportSpriteHeight(getReportCharacterHeightCm(char.name), $sprite);
+            applyReportSpriteHeight(getReportCharacterHeightCm(char.name, char.social?.profile?.height), $sprite);
         }
         applyStampState(char.dead, char.missing, char.mastermind);
         const spriteOpenedId = char.id;
@@ -320,11 +313,9 @@ export function createSocialPanelController({
 
             $report.find(".notes-content").text("ANALYSIS COMPLETE");
 
-            // Refine sprite height from profile if canonical table had no entry
-            if (!getReportCharacterHeightCm(char.name)) {
-                const cm = parseReportHeightCm(profile.height);
-                if (cm) applyReportSpriteHeight(cm, $report.find("#report-sprite-img"));
-            }
+            // Refine sprite height now that the profile (its stated height) exists.
+            const cm = getReportCharacterHeightCm(char.name, profile.height);
+            if (cm) applyReportSpriteHeight(cm, $report.find("#report-sprite-img"));
         });
     }
 

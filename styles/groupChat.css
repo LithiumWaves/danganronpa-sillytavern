@@ -33,6 +33,10 @@
     perspective: 1200px;
     perspective-origin: 50% 100%;
     transform-origin: center 80%;
+    /* NB: the user's Podium Height offset (Controls Panel slider) is applied
+       per-slot in gcpSlotTransform(), NOT here — the camera-shot animations
+       overwrite this element's transform, which would reset a stage-level
+       offset on every speaker change. */
 }
 
 .dangan-gcp-slot {

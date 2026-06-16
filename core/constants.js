@@ -64,8 +64,16 @@ export const defaultSettings = {
     monomonoBgmVolume: 40,
     mapPresencePinsEnabled: true,
     vnModeEnabled: false,
+    // Half-Sprite Mode global adjustments (apply to every character): a size
+    // multiplier on the cropped sprite and a vertical pixel offset.
+    halfspriteScale: 1,
+    halfspriteOffsetY: 0,
     crtEffects: true,
     crtIntensity: 35,
+    // Class Trial courtroom vertical offset (px). Shifts the podiums, gymnasium
+    // horses and character sprites together as one. Positive = raised (up),
+    // negative = lowered. Applied to #dangan-group-chat-stage via --dgn-podium-offset-y.
+    trialPodiumOffsetY: 0,
     bootAnimations: true,
     dynamicThemes: true,
     hideTruthBulletImages: false,
@@ -113,6 +121,8 @@ export const defaultSettings = {
     trialMindMineTracks: [],
     trialInterjectionTracks: [],
     trialSuspectChoiceTracks: [],
+    trialIntroTracks: [],
+    trialBreachTracks: [],
     aaPhase1Tracks: [],
     aaPhase2Tracks: [],
     aaPhase3Tracks: [],
@@ -130,6 +140,9 @@ export const defaultSettings = {
         phase: "day",
         dayActionUsed: false,
     },
+    // Whether Investigation Mode is currently active — persisted so it survives
+    // page refreshes (cleared when time advances to the next phase/day).
+    investigationUnderway: false,
 };
 
 export const DEFAULT_TRIAL_PROMPT_TEMPLATES = {

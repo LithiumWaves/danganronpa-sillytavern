@@ -1390,6 +1390,7 @@ function delay(ms) {
 export function createRebuttalShowdownController({
     extensionFolderPath = "",
     getTruthBullets = null,
+    getRebuttalTracks = null,
     awardMonocoins = null,
     deductMonocoins = null,
     getSpriteUrl = null,
@@ -1474,16 +1475,20 @@ export function createRebuttalShowdownController({
 
         // ── Audio ────────────────────────────────────────────────────────────
         const SFX_BASE = `${(extensionFolderPath || '').replace(/\\/g, '/')}/assets/sfx/rebuttal`;
-        const BGM_PATH = `${(extensionFolderPath || '').replace(/\\/g, '/')}/assets/bgm/Argument -Blade Lock-.mp3`;
         let _bgm = null;
 
         function playSfx(filename) {
             const a = new Audio(`${SFX_BASE}/${filename}`);
             a.play().catch(() => {});
         }
+        // BGM comes from the REBUTTAL SHOWDOWN selector tab; plays nothing if unset.
         function startBgm() {
             if (_bgm) return;
-            _bgm = new Audio(BGM_PATH);
+            const tracks = getRebuttalTracks?.() || [];
+            if (!tracks.length) return;
+            const path = tracks[Math.floor(Math.random() * tracks.length)];
+            if (!path) return;
+            _bgm = new Audio(path);
             _bgm.loop = true;
             _bgm.play().catch(() => {});
         }

@@ -27,6 +27,7 @@ import { initVfxSystem, onVfxChatChanged, setExpressionTarget, setEmotionBiasRes
 import { initEmotionFontsSystem, getEmotionFont } from "./vfx/emotionFontsSystem.js";
 import { initSpriteManager } from "./vfx/spriteManager.js";
 import { initMugshotGenerator } from "./vfx/mugshotGenerator.js";
+import { initDeathPortraitGenerator } from "./vfx/deathPortraitGenerator.js";
 import { createBdaCinematicEditor } from "./vfx/bdaCinematicEditor.js";
 import { createExecutionCinematicEditor } from "./vfx/executionCinematicEditor.js";
 import { createVoteResultsController } from "./vfx/voteResults.js";
@@ -44,6 +45,7 @@ import { createRebuttalShowdownController, createInterjectionCinematicRunner } f
 import { MPD_TEST_SCENARIOS } from "./vfx/massPanicDebate.js";
 import { createAudioVisualizerController } from "./audio/audioVisualizer.js";
 import { createOverworldSceneController } from "./overworld/overworldScene.js";
+import { showCgByBgName, showCgPicker } from "./overworld/cgViewer.js";
 import { user_avatar } from "../../../personas.js";
 
 window.refreshActiveCharacterUI = function () {
@@ -441,6 +443,7 @@ async function passTimeToNight({ source = "manual" } = {}) {
 
     state.phase = TIME_PHASE_NIGHT;
     state.dayActionUsed = true;
+    setInvestigationUnderway(false); // advancing time ends the investigation
 
     saveSettingsDebounced();
     renderTimeTrackerUi();
@@ -461,6 +464,7 @@ async function sleepToNextDay({ source = "manual" } = {}) {
     state.day = Math.max(1, Number(state.day || 1) + 1);
     state.phase = TIME_PHASE_DAY;
     state.dayActionUsed = false;
+    setInvestigationUnderway(false); // advancing to a new day ends the investigation
 
     saveSettingsDebounced();
     renderTimeTrackerUi();
@@ -485,6 +489,7 @@ function resetDayCounter({ source = "manual" } = {}) {
     state.day = 1;
     state.phase = TIME_PHASE_DAY;
     state.dayActionUsed = false;
+    setInvestigationUnderway(false);
 
     saveSettingsDebounced();
     renderTimeTrackerUi();
@@ -2000,7 +2005,17 @@ function createVnModeController() {
         const maxLeft = Math.max(0, viewportWidth - width);
         const left = Math.max(0, Math.min(maxLeft, Math.round(frameRect.left)));
         const maxTop = Math.max(0, viewportHeight - composeHeight - 4);
-        const top = Math.max(0, Math.min(maxTop, Math.round(frameRect.bottom - 1)));
+        // In a Class Trial the VN frame is pinned to the bottom via
+        // `bottom: var(--dgn-input-height)`, and --dgn-input-height is derived
+        // from this composer's top edge. Docking the composer *below the frame*
+        // there creates a feedback loop (frame.bottom → composer.top →
+        // input-height → frame.bottom …) that drifts the whole panel upward.
+        // Break it: pin the composer to the viewport bottom and let the frame
+        // anchor directly above it.
+        const inTrial = document.body.classList.contains('dangan-trial-active');
+        const top = inTrial
+            ? maxTop
+            : Math.max(0, Math.min(maxTop, Math.round(frameRect.bottom - 1)));
 
         ensureComposeCollapseToggle(composeEl);
         composeEl.classList.add('dangan-vn-compose-docked');
@@ -3133,6 +3148,16 @@ let investigationTrackAudio = null;
 let investigationUnderway = false;
 let shopTrackAudio = null;
 
+// Investigation Mode is part of the persistent game state (like the day/phase
+// tracker), so it must survive a page refresh — store it in extension_settings
+// and restore it on boot. Use this setter everywhere the flag changes.
+function setInvestigationUnderway(on) {
+    investigationUnderway = !!on;
+    extension_settings[extensionName] ||= {};
+    extension_settings[extensionName].investigationUnderway = investigationUnderway;
+    saveSettingsDebounced();
+}
+
 function playShopTrack() {
     const tracks = getMonopadSetting("shopTracks") || [];
     if (!tracks.length) return;
@@ -3170,6 +3195,8 @@ const BGM_TRACK_TABS = [
     { key: "trial-mindmine",         settingKey: "trialMindMineTracks",       listId: "trial-mindmine-tracks-list",         selectedId: "trial-mindmine-selected-list" },
     { key: "trial-interjection",     settingKey: "trialInterjectionTracks",   listId: "trial-interjection-tracks-list",     selectedId: "trial-interjection-selected-list" },
     { key: "trial-suspect-choice",   settingKey: "trialSuspectChoiceTracks",  listId: "trial-suspect-choice-tracks-list",   selectedId: "trial-suspect-choice-selected-list" },
+    { key: "trial-intro",            settingKey: "trialIntroTracks",          listId: "trial-intro-tracks-list",            selectedId: "trial-intro-selected-list" },
+    { key: "trial-breach",           settingKey: "trialBreachTracks",         listId: "trial-breach-tracks-list",           selectedId: "trial-breach-selected-list" },
     { key: "aa-phase1",             settingKey: "aaPhase1Tracks",           listId: "aa-phase1-tracks-list",             selectedId: "aa-phase1-selected-list" },
     { key: "aa-phase2",             settingKey: "aaPhase2Tracks",           listId: "aa-phase2-tracks-list",             selectedId: "aa-phase2-selected-list" },
     { key: "aa-phase3",             settingKey: "aaPhase3Tracks",           listId: "aa-phase3-tracks-list",             selectedId: "aa-phase3-selected-list" },
@@ -3224,6 +3251,8 @@ const BGM_PLAYLIST_LABELS = {
     trialMindMineTracks:     'MIND MINE',
     trialInterjectionTracks: 'INTERJECTION',
     trialSuspectChoiceTracks:'SUSPECT CHOICE',
+    trialIntroTracks:        'TRIAL INTRO',
+    trialBreachTracks:       'BREACH',
     aaPhase1Tracks:         'PHASE 1',
     aaPhase2Tracks:         'PHASE 2',
     aaPhase3Tracks:         'PHASE 3',
@@ -3244,6 +3273,8 @@ const BGM_PLAYLIST_PARENTS = {
     trialMindMineTracks:     'TRIAL',
     trialInterjectionTracks: 'TRIAL',
     trialSuspectChoiceTracks:'TRIAL',
+    trialIntroTracks:        'TRIAL',
+    trialBreachTracks:       'TRIAL',
     aaPhase1Tracks:         'ARGUMENT ARMAMENT',
     aaPhase2Tracks:         'ARGUMENT ARMAMENT',
     aaPhase3Tracks:         'ARGUMENT ARMAMENT',
@@ -3651,7 +3682,7 @@ const investigationStartController = {
         const trackDelay = sfxResult?.played ? (sfxResult.durationMs + 120) : 0;
         setTimeout(() => playInvestigationTrack(), trackDelay);
 
-        investigationUnderway = true;
+        setInvestigationUnderway(true);
         renderTimeTrackerUi();
         applyDynamicTheme();
 
@@ -3676,9 +3707,23 @@ async function triggerTrialStartFromMapPin() {
     extension_settings[extensionName].trialRoster = roster;
     saveSettingsDebounced();
 
+    // Close the Monopad (if open) and cover the transition with a loading screen
+    // while the trial chat is created and the Class Trial stage mounts — then fade
+    // the loading screen out to reveal the trial.
+    if (document.body.classList.contains('dangan-monopad-open')) {
+        document.getElementById('dangan_monopad_close')?.click();
+    }
+    const loadingEl = showMinigameLoadingState('Entering the Class Trial');
+
     console.log(`[Dangan][Trial] Begin Class Trial with ${roster.length} participant(s):`, roster);
-    await createClassTrialGroupChat(roster);
-    trialManager?.start();
+    try {
+        await createClassTrialGroupChat(roster);
+        trialManager?.start();
+    } finally {
+        // Let the trial chat load + the stage mount/fade in behind the loading
+        // screen, then fade the loading screen out into the Class Trial.
+        setTimeout(() => loadingEl?.hide?.(), 1600);
+    }
     return true;
 }
 
@@ -3691,9 +3736,17 @@ async function createClassTrialGroupChat(roster) {
 
         const members = [];
         const memberNames = [];
+        // Dead characters are muted (disabled) from the outset so SillyTavern
+        // never auto-triggers them for a reply — they still appear in the trial
+        // (with their dead sprite), they just can't speak.
+        const disabledMembers = [];
         (Array.isArray(roster) ? roster : []).forEach(name => {
             const avatar = stChars.find(c => c?.name === name)?.avatar;
-            if (avatar) { members.push(avatar); memberNames.push(name); }
+            if (avatar) {
+                members.push(avatar);
+                memberNames.push(name);
+                if (characters.get(normalizeName(name))?.dead === true) disabledMembers.push(avatar);
+            }
         });
 
         if (!members.length) {
@@ -3712,7 +3765,7 @@ async function createClassTrialGroupChat(roster) {
             hideMutedSprites: true,
             activation_strategy: 0, // NATURAL
             generation_mode: 0,     // SWAP
-            disabled_members: [],
+            disabled_members: disabledMembers,
             fav: false,
             chat_id: chatId,
             chats: [chatId],
@@ -3739,10 +3792,70 @@ async function createClassTrialGroupChat(roster) {
         }
         await new Promise(r => setTimeout(r, 150));
         await openGroupById(data.id);
+
+        // SillyTavern auto-injects every group member's greeting (first_mes) into a
+        // fresh group chat — and that loop does NOT skip muted/disabled members
+        // (see group-chats.js select_group_chats). So a dead character's greeting
+        // lands in the chat as the "first response" the moment the trial opens,
+        // even though they're muted. Strip those dead-character greetings back out,
+        // then persist + re-render so they never appear.
+        await removeDeadGreetings();
+
         return data.id;
     } catch (err) {
         console.error("[Dangan][Trial] Error creating Class Trial group chat:", err);
         return null;
+    }
+}
+
+// True if `name` belongs to a character flagged dead in our roster. Loose match
+// (exact normalized name OR first-name token) mirrors trialManager.isCharacterDead
+// so it agrees with what the courtroom renders as a death portrait.
+function isDeadCharacterName(name) {
+    const needle = normalizeName(String(name || ""));
+    if (!needle) return false;
+    const needleFirst = needle.split(/\s+/)[0];
+    for (const c of characters.values()) {
+        if (!c?.dead) continue;
+        const cn = normalizeName(String(c.name || ""));
+        if (cn === needle || cn.split(/\s+/)[0] === needleFirst) return true;
+    }
+    return false;
+}
+
+// Remove the auto-injected greeting messages that belong to dead characters from
+// the current (freshly opened) group chat, then persist + re-render. ST adds a
+// greeting for every member regardless of mute state, so this is the only place
+// a dead character's "first message" can be suppressed.
+async function removeDeadGreetings() {
+    try {
+        const ctx = window.SillyTavern?.getContext?.();
+        const chat = ctx?.chat;
+        if (!Array.isArray(chat) || !chat.length) return;
+
+        let removed = 0;
+        for (let i = chat.length - 1; i >= 0; i--) {
+            const m = chat[i];
+            if (!m || m.is_user || m.is_system || !m.name) continue;
+            if (isDeadCharacterName(m.name)) {
+                chat.splice(i, 1);
+                removed++;
+            }
+        }
+        if (!removed) return;
+
+        console.log(`[Dangan][Trial] Removed ${removed} dead-character greeting message(s) from trial open.`);
+        // Mark the chat tainted so ST's fresh-chat greeting loop (getGroupChat,
+        // gated on !metadata.tainted && empty chat) can't re-inject the greetings
+        // when we reload — important if the removal emptied the chat entirely.
+        if (ctx.chatMetadata && typeof ctx.chatMetadata === "object") {
+            ctx.chatMetadata.tainted = true;
+            if (typeof ctx.saveMetadata === "function") { try { await ctx.saveMetadata(); } catch {} }
+        }
+        if (typeof ctx.saveChat === "function") { try { await ctx.saveChat(); } catch {} }
+        if (typeof ctx.reloadCurrentChat === "function") { try { await ctx.reloadCurrentChat(); } catch {} }
+    } catch (err) {
+        console.warn("[Dangan][Trial] removeDeadGreetings failed:", err);
     }
 }
 
@@ -4403,7 +4516,7 @@ DEBATE FORMAT
 
 Respond in EXACTLY this format and nothing else. No JSON, no markdown, no commentary:
 
-OPPOSING_THEORY: <MAX 5 WORDS — the opposing team's accusation as a tiny banner caption (e.g. "Nagito is the killer", "Knife from the kitchen")>
+OPPOSING_THEORY: <MAX 5 WORDS — the opposing team's accusation as a tiny banner caption (e.g. "Suspect A is the killer", "Knife from the kitchen")>
 PLAYER_THEORY: <MAX 5 WORDS — the player's counter-accusation in the same caption style>
 ${roundsFormatSpec}
 
@@ -5146,6 +5259,14 @@ async function getSpriteUrl(charName, label = "neutral") {
         const resp = await fetch(`/api/sprites/get?name=${encodeURIComponent(folder)}`);
         if (!resp.ok) return null;
         const sprites = await resp.json();
+        // Dead characters use the framed Death Portrait (death-portrait.png, built
+        // by the Death Portrait Generator) when one exists, falling back to the
+        // plain `dead` sprite below. Matched by filename stem because ST collapses
+        // the `death-portrait` label to `death`.
+        if (String(label || '').toLowerCase() === 'dead') {
+            const portrait = sprites.find(s => spriteFileStem(s) === 'death-portrait');
+            if (portrait?.path) return portrait.path;
+        }
         // Forced outfit (per current Location Pin) takes priority. If the
         // character has no sprite for this outfit/emotion, fall through to the
         // normal resolution below so they keep their usual sprite.
@@ -5263,27 +5384,51 @@ async function getAvailableExpressionLabels(charName) {
     }
 }
 
-const KNOWN_HEIGHTS_CM = new Map([
-    ['monokuma',75],['saionji',130],['hiyoko',130],['hanamura',133],['teruteru',133],
-    ['kuzuryu',157],['fuyuhiko',157],['nanami',160],['chiaki',160],['mioda',164],
-    ['ibuki',164],['koizumi',165],['mahiru',165],['tsumiki',165],['mikan',165],
-    ['soda',172],['kazuichi',172],['pekoyama',172],['peko',172],['nevermind',174],
-    ['sonia',174],['owari',176],['akane',176],['hinata',179],['hajime',179],
-    ['komaeda',180],['nagito',180],['tanaka',182],['gundham',182],['togami',185],
-    ['byakuya',185],['nidai',198],['nekomaru',198],
-]);
+// Pull a height in centimetres out of free-text (a character card description /
+// persona). Tries, in order: an explicit "height … NNN cm" mention, any
+// plausible "NNN cm", then a feet/inches form like 5'3" (converted). Ranges are
+// sanity-bounded so unrelated numbers (a "30cm knife", "20/20 vision") don't
+// register as a height.
+function parseHeightCmFromText(text) {
+    if (!text) return null;
+    const s = String(text);
+    // Explicit height context, e.g. "Darumi's height is 164cm".
+    let m = s.match(/height[^.\n]{0,40}?(\d{2,3}(?:\.\d+)?)\s*cm/i);
+    if (m) { const n = parseFloat(m[1]); if (n >= 50 && n <= 300) return Math.round(n); }
+    // Any "<num> cm" in a human-height range, e.g. "stands at 179 cm".
+    m = s.match(/(\d{2,3}(?:\.\d+)?)\s*cm\b/i);
+    if (m) { const n = parseFloat(m[1]); if (n >= 100 && n <= 250) return Math.round(n); }
+    // Feet/inches, e.g. 5'3", 5’3”, 5 ft 3 in.
+    m = s.match(/(\d)\s*(?:'|’|ft\b|feet\b)\s*(\d{1,2})\s*(?:"|”|''|in\b|inch|inches)?/i);
+    if (m) {
+        const n = Math.round(parseInt(m[1], 10) * 30.48 + parseInt(m[2], 10) * 2.54);
+        if (n >= 50 && n <= 300) return n;
+    }
+    return null;
+}
+
+const _heightCmCache = new Map(); // name(lower) → cm, for resolved heights only
 
 function getCharacterHeightCm(name) {
     if (!name) return null;
     const needle = String(name).trim().toLowerCase();
-    for (const token of needle.split(/\s+/)) {
-        if (KNOWN_HEIGHTS_CM.has(token)) return KNOWN_HEIGHTS_CM.get(token);
-    }
+    if (_heightCmCache.has(needle)) return _heightCmCache.get(needle);
     const stChars = window.characters;
     if (Array.isArray(stChars)) {
         const match = stChars.find(c => String(c.name || '').trim().toLowerCase() === needle);
-        const raw = String(match?.extensions?.height_cm ?? match?.data?.extensions?.height_cm ?? '').trim();
-        if (raw) { const n = parseFloat(raw); if (n > 0) return n; }
+        if (match) {
+            const raw = String(match?.extensions?.height_cm ?? match?.data?.extensions?.height_cm ?? '').trim();
+            if (raw) { const n = parseFloat(raw); if (n > 0) { _heightCmCache.set(needle, n); return n; } }
+            // Fall back to a height stated in the card's prose (description /
+            // personality / scenario) — many cards only mention it there.
+            const text = [
+                match.description, match.data?.description,
+                match.personality, match.data?.personality,
+                match.scenario, match.data?.scenario,
+            ].filter(Boolean).join('\n');
+            const fromText = parseHeightCmFromText(text);
+            if (fromText) { _heightCmCache.set(needle, fromText); return fromText; }
+        }
     }
     return null;
 }
@@ -5417,12 +5562,30 @@ function getActiveUserAvatarUrl() {
     return `/thumbnail?type=persona&file=${encodeURIComponent(user_avatar)}`;
 }
 
+// The player character's sprites live in the Prome VN "user sprite" folder —
+// the same one getPlayerSpriteUrl() reads from. Returns { name, folder } for the
+// Sprite Manager's target list, or null when no user sprite is configured (in
+// which case there's nowhere the extension would read player sprites from).
+// Folder is resolved the same way getSpriteUrl() does (avatar stem if the user
+// sprite is itself a character).
+function getPlayerSpriteTarget() {
+    const prome = extension_settings?.['Prome-VN-Extension'];
+    if (!prome?.enableUserSprite || !prome?.userSprite) return null;
+    let folder = prome.userSprite;
+    const stChar = Array.isArray(window.characters)
+        ? window.characters.find(c => c.name === folder)
+        : null;
+    if (stChar?.avatar) folder = stChar.avatar.replace(/\.[^.]+$/, "");
+    return { name: getActivePersonaName() || "You", folder };
+}
+
 // Body-class flip driven by the Monopad → Display → HALF-SPRITE MODE toggle.
 // CSS in style.css (body.dangan-halfsprite-mode) scales + clips ST's in-chat
 // sprite to the upper body. Called on toggle and on boot.
 function applyHalfSpriteMode() {
     const on = !!extension_settings[extensionName]?.halfspriteMode;
     document.body.classList.toggle("dangan-halfsprite-mode", on);
+    applyHalfSpriteAdjust();
     // gcpPositionSlotsFlat sets --gcp-half-slot-height for the GCP stage —
     // re-run it so the toggle takes effect on the current chat without
     // needing a reload / chat switch.
@@ -5431,6 +5594,76 @@ function applyHalfSpriteMode() {
     // crop for the full sprite (or vice-versa) immediately, without waiting
     // for the next expression change.
     try { refreshHalfSpriteDisplay(); } catch (_) {}
+}
+
+// Push the user's saved Half-Sprite size + vertical offset into CSS custom
+// properties that the half-sprite transform rules (style.css) consume. Global —
+// the same adjustment applies to every character.
+function applyHalfSpriteAdjust() {
+    const scale  = Number(getMonopadSetting('halfspriteScale'));
+    const offset = Number(getMonopadSetting('halfspriteOffsetY'));
+    const s = Number.isFinite(scale) && scale > 0 ? scale : 1;
+    const o = Number.isFinite(offset) ? offset : 0;
+    document.body.style.setProperty('--dangan-hs-scale', String(s));
+    document.body.style.setProperty('--dangan-hs-offset', `${o}px`);
+}
+
+// Floating popover (toggled from the minimap) with two sliders to live-adjust
+// the half-sprite size + vertical offset. Saved globally via setMonopadSetting.
+function openHalfSpriteAdjustPanel() {
+    const existing = document.getElementById('dangan-hs-adjust');
+    if (existing) { existing.remove(); return; } // toggle closed
+
+    const scale  = Number(getMonopadSetting('halfspriteScale'))  || 1;
+    const offset = Number(getMonopadSetting('halfspriteOffsetY')) || 0;
+
+    const panel = document.createElement('div');
+    panel.id = 'dangan-hs-adjust';
+    panel.className = 'dangan-hs-adjust';
+    panel.innerHTML = `
+        <div class="dangan-hs-adjust-head">
+            <span class="dangan-hs-adjust-title">SPRITE SIZE &amp; HEIGHT</span>
+            <button type="button" class="dangan-hs-adjust-close" aria-label="Close">✕</button>
+        </div>
+        <label class="dangan-hs-adjust-row">
+            <span class="dangan-hs-adjust-label">SIZE</span>
+            <input type="range" class="dangan-hs-scale" min="0.5" max="2" step="0.01" value="${scale}">
+            <span class="dangan-hs-scale-val"></span>
+        </label>
+        <label class="dangan-hs-adjust-row">
+            <span class="dangan-hs-adjust-label">OFFSET</span>
+            <input type="range" class="dangan-hs-offset" min="-600" max="600" step="1" value="${offset}">
+            <span class="dangan-hs-offset-val"></span>
+        </label>
+        <button type="button" class="dangan-hs-adjust-reset">RESET</button>
+    `;
+    document.body.appendChild(panel);
+
+    const scaleInput  = panel.querySelector('.dangan-hs-scale');
+    const offsetInput = panel.querySelector('.dangan-hs-offset');
+    const scaleVal    = panel.querySelector('.dangan-hs-scale-val');
+    const offsetVal   = panel.querySelector('.dangan-hs-offset-val');
+
+    const commit = () => {
+        const s = Number(scaleInput.value) || 1;
+        const o = Number(offsetInput.value) || 0;
+        setMonopadSetting('halfspriteScale', s);
+        setMonopadSetting('halfspriteOffsetY', o);
+        scaleVal.textContent  = `${s.toFixed(2)}×`;
+        offsetVal.textContent = `${o}px`;
+        applyHalfSpriteAdjust();
+        try { trialManager?.recomputeGcpFlatLayout?.(); } catch (_) {}
+    };
+    commit(); // paint current values
+    scaleInput.addEventListener('input', commit);
+    offsetInput.addEventListener('input', commit);
+    panel.querySelector('.dangan-hs-adjust-reset').addEventListener('click', () => {
+        scaleInput.value = '1'; offsetInput.value = '0'; commit();
+    });
+    panel.querySelector('.dangan-hs-adjust-close').addEventListener('click', () => panel.remove());
+    // Don't let interactions leak through to the overworld / minimap underneath.
+    panel.addEventListener('click', (e) => e.stopPropagation());
+    panel.addEventListener('pointerdown', (e) => e.stopPropagation());
 }
 
 function applyImageVisibilitySettings() {
@@ -5676,6 +5909,14 @@ function applyDynamicTheme() {
     const body = document.body;
     body.classList.remove("dangan-theme-daily", "dangan-theme-night", "dangan-theme-investigation", "dangan-theme-damaged");
 
+    // While a Class Trial is active it owns the chat-shell / VN-frame theme via
+    // its own --dgn-neon colour. The phase themes (daily/night/investigation/
+    // damaged) restyle .dangan-vn-frame, the composer and #send_textarea, and
+    // since Investigation Mode now persists into trials they'd otherwise bleed
+    // their pink/blue over the trial colour. Leave the phase classes off so the
+    // trial styling wins; they're re-applied on trial teardown.
+    if (body.classList.contains("dangan-trial-active")) return;
+
     if (!getMonopadSetting("dynamicThemes")) return;
 
     if (investigationUnderway) {
@@ -5866,32 +6107,48 @@ async function fadeInAndResumeBgm(durationMs = 600) {
 let _hgPreviousBgmSelectVal      = null;
 let _hgPreviousInvestigationAudio = null; // investigationTrackAudio saved across scrum/HG BGM switch
 
+// Pick a random track path from a BGM selector setting, or null if none chosen.
+function pickBgmTrackFromSetting(settingKey) {
+    const tracks = getMonopadSetting(settingKey) || [];
+    if (!tracks.length) return null;
+    return tracks[Math.floor(Math.random() * tracks.length)] || null;
+}
+
+// Suspend the ambient (phase) BGM so a minigame's own BGM can take over. The
+// ambient track is remembered once and restored by resumeBgmAfterHG(). Idempotent
+// within a single minigame, so it's safe for a pause-then-play sequence to call it.
+function suspendAmbientBgm() {
+    if (_hgPreviousBgmSelectVal) return; // already suspended
+    _hgPreviousInvestigationAudio = investigationTrackAudio || null;
+    _hgPreviousBgmSelectVal       = $('#audio_bgm_select').val() || '__minigame__';
+    if (investigationTrackAudio) { try { investigationTrackAudio.pause(); } catch (_) {} }
+    investigationTrackAudio = null; // detach so the saved ambient ref survives playBgmPath
+    const daEl = document.getElementById('audio_bgm');
+    if (daEl instanceof HTMLAudioElement && !daEl.paused) daEl.pause();
+}
+
+// Play a minigame track on the extension's OWN element (investigationTrackAudio)
+// rather than Dynamic Audio's #audio_bgm — DA is bgm_locked and #audio_bgm is
+// paused once ambient BGM has played, so the select-change route is silent.
+// Returns the element (or null when no track is configured) so callers can hook
+// its 'playing' event.
+function playMinigameBgmPath(path) {
+    // Always suspend the ambient BGM (and record restore state) even when no track
+    // is configured — the minigame controllers fade the ambient out at startup, so
+    // resumeBgmAfterHG() must have state to restore afterwards.
+    suspendAmbientBgm();
+    if (!path) return null;
+    playBgmPath(path);
+    if (investigationTrackAudio) investigationTrackAudio.loop = true;
+    return investigationTrackAudio;
+}
+
 function playMindMineBgm() {
-    const $sel = $('#audio_bgm_select');
-    if (!$sel.length) return;
-    _hgPreviousBgmSelectVal = _hgPreviousBgmSelectVal ?? $sel.val();
-    const track = findBgmTrackByName('DX Growth Plan');
-    const path  = track ?? `${(extensionFolderPath || '').replace(/\\/g, '/')}/assets/bgm/DX Growth Plan.mp3`;
-    if (!$sel.find(`option[value="${path}"]`).length) {
-        $sel.append(new Option('DX Growth Plan', path));
-    }
-    $sel.val(path).trigger('change');
-    const audioEl = document.getElementById('audio_bgm');
-    if (audioEl) audioEl.loop = true;
+    return playMinigameBgmPath(pickBgmTrackFromSetting('trialMindMineTracks'));
 }
 
 function playHGBgm() {
-    const $sel = $('#audio_bgm_select');
-    if (!$sel.length) return null;
-    _hgPreviousBgmSelectVal = $sel.val();
-    const path = "assets/bgm/Hangman's Gambit.mp3";
-    if (!$sel.find(`option[value="${path}"]`).length) {
-        $sel.append(new Option("Hangman's Gambit", path));
-    }
-    $sel.val(path).trigger('change');
-    const audioEl = document.getElementById('audio_bgm');
-    if (audioEl) audioEl.loop = true;
-    return audioEl;
+    return playMinigameBgmPath(pickBgmTrackFromSetting('trialHangmanTracks'));
 }
 
 function showHangmanLoadingState() {
@@ -5918,6 +6175,7 @@ function showMinigameLoadingState(label = 'Loading', { command = null } = {}) {
         ${hintHtml}
         <div class="hg-loading-dots"><span></span><span></span><span></span></div>
         <div class="hg-loading-progress" style="display:none">0%</div>
+        <div class="hg-loading-elapsed">Time elapsed: 0m 0s</div>
     `;
     // Loading-screen highlight colour follows the active trial theme via
     // --dgn-neon-rgb (set on body.dangan-trial-active.dangan-trial-theme-*).
@@ -5990,6 +6248,18 @@ function showMinigameLoadingState(label = 'Loading', { command = null } = {}) {
             font-family: "Orbitron", "Inter", monospace;
             font-weight: 600;
         }
+        #hg-loading-state .hg-loading-elapsed {
+            margin-top: -8px;
+            font-family: "Noto Sans", "Inter", sans-serif;
+            font-size: 12px;
+            font-weight: 400;
+            letter-spacing: 1px;
+            text-transform: none;
+            color: rgba(190, 200, 210, 0.65);
+            text-shadow: none;
+            text-align: center;
+            font-variant-numeric: tabular-nums;
+        }
     `;
     let styleEl = document.getElementById('hg-loading-state-style');
     if (!styleEl) {
@@ -6002,7 +6272,21 @@ function showMinigameLoadingState(label = 'Loading', { command = null } = {}) {
     // Two-frame nudge so the initial opacity:0 commits before the transition.
     requestAnimationFrame(() => requestAnimationFrame(() => { el.style.opacity = '1'; }));
 
+    // Live "Time elapsed: 0m 42s" readout so the user can track loading time.
+    const _loadStart = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    const _elapsedEl = el.querySelector('.hg-loading-elapsed');
+    const _fmtElapsed = (ms) => {
+        const total = Math.max(0, Math.floor(ms / 1000));
+        return `Time elapsed: ${Math.floor(total / 60)}m ${total % 60}s`;
+    };
+    const _elapsedTimer = window.setInterval(() => {
+        if (!_elapsedEl) return;
+        const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+        _elapsedEl.textContent = _fmtElapsed(now - _loadStart);
+    }, 1000);
+
     el.hide = () => {
+        window.clearInterval(_elapsedTimer);
         el.style.opacity = '0';
         window.setTimeout(() => el.remove(), 340);
     };
@@ -6116,23 +6400,10 @@ function showMinigameErrorState({ title = 'Generation failed', subtitle = '', co
 }
 
 function playBgmForScrum(path) {
-    const $sel = $('#audio_bgm_select');
-    if (!$sel.length) return;
-    // Only save the pre-scrum state the first time — subsequent switches (e.g. Final Push)
-    // must not overwrite it, or teardown will restore the wrong track/audio element.
-    if (!_hgPreviousBgmSelectVal) {
-        _hgPreviousBgmSelectVal = $sel.val();
-        // Detach investigationTrackAudio so the visualizer falls back to #audio_bgm while
-        // the scrum BGM (played via DA on #audio_bgm) is active.  It is restored on teardown.
-        _hgPreviousInvestigationAudio = investigationTrackAudio;
-        investigationTrackAudio = null;
-    }
-    if (!$sel.find(`option[value="${CSS.escape ? path : path}"]`).length) {
-        $sel.append(new Option(path.split('/').pop().replace(/\.[^.]+$/, ''), path));
-    }
-    $sel.val(path).trigger('change');
-    const audioEl = document.getElementById('audio_bgm');
-    if (audioEl) audioEl.loop = true;
+    // Plays on the extension's own element via playMinigameBgmPath. The first call
+    // remembers/suspends the ambient BGM; later switches (e.g. Final Push) just swap
+    // the minigame track. Restored on teardown by resumeBgmAfterHG().
+    playMinigameBgmPath(path);
 }
 
 // Find a track in ST's audio_bgm_select by display name (case-insensitive substring match).
@@ -6151,36 +6422,33 @@ function findBgmTrackByName(name) {
     return found;
 }
 
+// Tear down a minigame's BGM and restore the ambient (phase) track that
+// suspendAmbientBgm()/playMinigameBgmPath() set aside. Idempotent: minigames may
+// call it on multiple teardown paths (win/lose/abort).
 function resumeBgmAfterHG() {
-    const $sel = $('#audio_bgm_select');
-    if (!$sel.length || !_hgPreviousBgmSelectVal) {
-        _hgPreviousBgmSelectVal          = null;
-        _hgPreviousInvestigationAudio    = null;
+    if (!_hgPreviousBgmSelectVal) {
+        _hgPreviousInvestigationAudio = null;
         return;
     }
-    const savedVal      = _hgPreviousBgmSelectVal;
     const savedInvAudio = _hgPreviousInvestigationAudio;
-    _hgPreviousBgmSelectVal          = null;
-    _hgPreviousInvestigationAudio    = null;
+    _hgPreviousBgmSelectVal       = null;
+    _hgPreviousInvestigationAudio = null;
 
-    const audioEl = document.getElementById('audio_bgm');
-    if (audioEl) audioEl.loop = false;
+    // Stop the minigame track currently on our element, if any.
+    if (investigationTrackAudio) {
+        try { investigationTrackAudio.pause(); } catch (_) {}
+        investigationTrackAudio = null;
+    }
+    const daEl = document.getElementById('audio_bgm');
+    if (daEl instanceof HTMLAudioElement) {
+        daEl.loop = false;
+        if (!daEl.paused) daEl.pause();
+    }
 
+    // Restore the ambient (phase) BGM that was playing before the minigame.
     if (savedInvAudio) {
-        // Restore our own audio element — the visualizer watches this, so resuming it
-        // immediately makes the play/pause button reflect the correct playing state.
         investigationTrackAudio = savedInvAudio;
         investigationTrackAudio.play().catch(() => {});
-        // Seed DA's select so its worker doesn't clobber our track on the next poll.
-        $sel.val(savedVal).trigger('change');
-        // Silence #audio_bgm — investigationTrackAudio is the real source.
-        setTimeout(() => {
-            const daEl = document.getElementById('audio_bgm');
-            if (daEl instanceof HTMLAudioElement) daEl.pause();
-        }, 400);
-    } else {
-        // No investigationTrackAudio was active before the scrum — restore via DA only.
-        $sel.val(savedVal).trigger('change');
     }
 }
 
@@ -6485,6 +6753,22 @@ function applyCrtSettings() {
     $("#dangan_crt_value").text(`${intensity}%`);
 }
 
+// Vertical offset for the Class Trial courtroom — shifts podiums, gymnasium
+// horses and character sprites together as one. The slider value is the
+// intuitive "raise" amount (positive = up); CSS translateY needs the inverse.
+// Set on :root so it persists across stage re-creation and applies the moment
+// #dangan-group-chat-stage mounts.
+function applyTrialPodiumOffset() {
+    const raw = Number(getMonopadSetting("trialPodiumOffsetY"));
+    const value = Number.isFinite(raw) ? Math.max(-300, Math.min(300, raw)) : 0;
+    document.documentElement.style.setProperty("--dgn-podium-offset-y", `${-value}px`);
+    // Live readout in the in-trial Controls Panel (built in trialManager.js).
+    const valueEl = document.getElementById("dgn-fx-podium-value");
+    if (valueEl) valueEl.textContent = `${value}px`;
+    const sliderEl = document.getElementById("dgn-fx-podium-slider");
+    if (sliderEl && document.activeElement !== sliderEl) sliderEl.value = String(value);
+}
+
 function applySettingsTabUI() {
     const tab = extension_settings[extensionName];
     const activeDifficulty = applyRewardDifficultyProfile(tab.rewardDifficulty || defaultSettings.rewardDifficulty);
@@ -6679,6 +6963,7 @@ function applySettingsTabUI() {
     });
 
     applyCrtSettings();
+    applyTrialPodiumOffset();
     applyDynamicTheme();
     renderTimeTrackerUi();
     vnModeController?.setEnabled?.(!!tab.vnModeEnabled);
@@ -7147,14 +7432,20 @@ function runBreachSuccessSequence() {
     appendBreachTerminalLine("[FF-LINK] Access code accepted.", { className: "ok" });
     appendBreachTerminalLine("[FF-LINK] Breaching Monopad debug partitions...", { className: "alert" });
 
+    // BGM comes entirely from the TRIAL > BREACH selector tab; plays nothing if unset.
     if (!breachAudio) {
-        breachAudio = new Audio(`${extensionFolderPath}/assets/bgm/nwo.mp3`);
-        breachAudio.loop = true;
-        breachAudio.volume = 0.6;
+        const path = pickBgmTrackFromSetting('trialBreachTracks');
+        if (path) {
+            breachAudio = new Audio(path);
+            breachAudio.loop = true;
+            breachAudio.volume = 0.6;
+        }
     }
 
-    breachAudio.currentTime = 0;
-    breachAudio.play().catch(() => {});
+    if (breachAudio) {
+        breachAudio.currentTime = 0;
+        breachAudio.play().catch(() => {});
+    }
 
     clearBreachTerminalTimers();
     let flyCount = 0;
@@ -8919,18 +9210,15 @@ $(".monopad-icon").on("mouseenter", function () {
             const isPlaying = $(this).hasClass("playing");
 
             if (isPlaying) {
-                const bgm = document.getElementById("audio_bgm");
-                if (bgm instanceof HTMLAudioElement) bgm.pause();
+                // Stop the preview on the extension's own element.
+                _stopAllBgm();
                 $(this).removeClass("playing");
             } else {
-                const $bgmSelect = $("#audio_bgm_select");
-                if ($bgmSelect.length) {
-                    if (!$bgmSelect.find(`option[value="${path}"]`).length) {
-                        const name = path.split("/").pop().replace(/\.[^/.]+$/, "");
-                        $bgmSelect.append(new Option(`asset: ${name}`, path));
-                    }
-                    $bgmSelect.val(path).trigger("change");
-                }
+                // Preview through playBgmPath (investigationTrackAudio) — the same
+                // element the visualiser and transport controls use. Playing via
+                // Dynamic Audio's #audio_bgm doesn't work once any extension BGM has
+                // played, because playBgmPath sets DA's bgm_locked and pauses #audio_bgm.
+                playBgmPath(path);
                 $(".bgm-track-play-btn").removeClass("playing");
                 $(this).addClass("playing");
             }
@@ -9150,6 +9438,24 @@ $(".monopad-icon").on("mouseenter", function () {
             if (statusEl) statusEl.textContent = "Progression reset to LV 1.";
         });
 
+        $("#dangan_reset_skill_ownership").on("click", async function () {
+            const statusEl = document.getElementById("dangan_reset_skill_ownership_status");
+            const confirmed = await openMonopadConfirmDialog({
+                title: "RESET SKILL OWNERSHIP",
+                message: "Un-own every skill and un-equip them all? Skills will be locked until re-bought. Your skill points and skill definitions are kept.",
+                confirmLabel: "RESET",
+                cancelLabel: "CANCEL",
+            });
+
+            if (!confirmed) {
+                if (statusEl) statusEl.textContent = "Reset cancelled.";
+                return;
+            }
+
+            itemsPanelController?.resetSkillOwnership?.();
+            if (statusEl) statusEl.textContent = "All skills un-owned.";
+        });
+
         $("#dangan_reset_day_counter").on("click", async function () {
             const statusEl = document.getElementById("dangan_reset_day_counter_status");
             const confirmed = await openMonopadConfirmDialog({
@@ -9228,8 +9534,12 @@ $(".monopad-icon").on("mouseenter", function () {
 
 loadSettings();
 ensureTimeTrackerState();
+// Restore Investigation Mode from the persisted flag so it survives refreshes;
+// renderTimeTrackerUi + applyDynamicTheme below pick it up.
+investigationUnderway = !!extension_settings[extensionName]?.investigationUnderway;
 renderTimeTrackerUi();
 applyTimeContextToGeneration();
+applyDynamicTheme();
 const initialRewardDifficulty = applyRewardDifficultyProfile(getMonopadSetting("rewardDifficulty") || defaultSettings.rewardDifficulty);
 if (initialRewardDifficulty !== getMonopadSetting("rewardDifficulty")) {
     setMonopadSetting("rewardDifficulty", initialRewardDifficulty);
@@ -9270,6 +9580,24 @@ classTrialMenuController = createClassTrialMenuController({
     onViewTruthBullets: () => {
         openTrialInfoModal("Truth Bullets", '.monopad-panel-content[data-panel="truth"]', () => window.renderTruthBullets?.());
     },
+    // Pick the courtroom background using the same selector as the CG list. The
+    // chosen background is set as SillyTavern's active background, which the trial
+    // stage (gcpBgLoopEl, derived from #bg1) picks up when the trial starts.
+    onChooseBackground: () => {
+        showCgPicker({
+            title: "CHOOSE TRIAL BACKGROUND",
+            onPick: (item) => {
+                const bgfile = item?.bgfile;
+                if (!bgfile) return;
+                const el = Array.from(document.querySelectorAll(".bg_example"))
+                    .find(e => e.getAttribute("bgfile") === bgfile);
+                if (el instanceof HTMLElement) el.click();
+                // Refresh the Court Preparation preview once the new background
+                // has swapped into #bg1.
+                setTimeout(() => classTrialMenuController?.refreshBackgroundPreview?.(), 150);
+            },
+        });
+    },
 });
 window.startClassTrial = async () => {
     return triggerTrialStartFromMapPin();
@@ -9278,7 +9606,7 @@ window.startClassTrial = async () => {
 /**
  * Update the Trial Context panel with the current topic, goal, and top suspects.
  * @param {string} topic    - What is currently being discussed (e.g. "Discussing the Blackout")
- * @param {string} goal     - The trial's overarching goal (e.g. "Who killed Byakuya?")
+ * @param {string} goal     - The trial's overarching goal (e.g. "Who killed the victim?")
  * @param {Array<{name:string,chance:number}>} suspects - Up to 3 suspects with % likelihood
  */
 window.setTrialContext = (topic, goal, suspects) => {
@@ -9357,6 +9685,11 @@ itemsPanelController.loadInventoryState();
 applySettingsTabUI();
 applyImageVisibilitySettings();
 applyHalfSpriteMode();
+// The initial chat's sprites mount asynchronously after boot (and CHAT_CHANGED
+// can be unreliable on first load), so re-apply once they've settled — otherwise
+// the saved Half-Sprite size/offset only shows after the adjust panel is opened.
+setTimeout(() => applyHalfSpriteMode(), 1200);
+setTimeout(() => applyHalfSpriteMode(), 2500);
 applyMonopadLaunchControlState(monopadButtonEl, $panel.get(0));
 
 // Persistent guard against Dynamic Audio playing alongside our BGM. Dangan
@@ -9470,8 +9803,9 @@ debugSTGlobals();
 
     vfxCleanup = initVfxSystem();
     initEmotionFontsSystem();
-    initSpriteManager();
-    initMugshotGenerator();
+    initSpriteManager({ getPlayerTarget: getPlayerSpriteTarget });
+    initMugshotGenerator({ getPlayerTarget: getPlayerSpriteTarget });
+    initDeathPortraitGenerator({ getPlayerTarget: getPlayerSpriteTarget });
     setExpressionTarget(() => trialManager?.getGcpSpeakerImg?.() ?? document.getElementById('expression-image'));
     setEmotionBiasResolver(rollBiasedEmotion);
 
@@ -9562,6 +9896,17 @@ debugSTGlobals();
             getCharacterSourceText,
             getEmotionFont,
             onTrialStateChange: () => { renderMoveToPanel(); renderMinimap(); overworldSceneController?.render?.(); },
+            // Re-apply the day/night/investigation phase theme. The trial owns
+            // the theme while active (applyDynamicTheme bails on dangan-trial-active),
+            // so this restores the correct phase styling once a trial tears down.
+            refreshDynamicTheme: () => { try { applyDynamicTheme(); } catch {} },
+            // Canonical height resolver so the gymnasium horse (<165cm) and the
+            // height-scaled podium portraits use the same source as everything else.
+            resolveHeightCm: getCharacterHeightCm,
+            // In-trial Controls Panel "Podium Height" slider hooks. Read the saved
+            // offset for the initial slider value; persist + apply on change.
+            getTrialPodiumOffset: () => { const v = Number(getMonopadSetting("trialPodiumOffsetY")); return Number.isFinite(v) ? v : 0; },
+            setTrialPodiumOffset: (v) => { setMonopadSetting("trialPodiumOffsetY", Number.isFinite(v) ? v : 0); applyTrialPodiumOffset(); },
             // Inject the chat-aware resolver so the trial / GCP stage prefers
             // -half variants when half-sprite mode is on. Overworld scenes,
             // chapter rosters, UI pickers, etc. still receive the plain
@@ -9800,37 +10145,27 @@ QUOTE: <climactic accusation>`;
                     loadingEl?.hide?.();
                 }
 
+                // AA plays its phase BGM on its own element, so silence the ambient
+                // (phase) BGM for the duration and restore it when AA finishes.
+                suspendAmbientBgm();
                 argumentArmamentController?.run({
-                    enemyHp: 100, playerHp: 100, phases: 3,
+                    enemyHp: 50, playerHp: 50, phases: 3,
+                    timerMs: 300_000, // 5 minutes for AI-generated AAs
                     dialogs,
                     NSolution, SSolution, ESolution, WSolution,
                     FinalSolution, FinalSolutionQuote,
                     BG,
                     mainSprite,
                     defeatSprite,
-                    getPhaseTrack: (phaseNum) => {
-                        const key = `aaPhase${phaseNum}Tracks`;
-                        const tracks = getMonopadSetting(key) || [];
-                        if (!tracks.length) return null;
-                        return tracks[Math.floor(Math.random() * tracks.length)] || null;
-                    },
-                })?.then(() => trialManager?.resumeAfterActivity?.());
+                    getPhaseTrack: (phaseNum) => pickBgmTrackFromSetting(`aaPhase${phaseNum}Tracks`),
+                })?.then(() => {
+                    resumeBgmAfterHG();
+                    trialManager?.resumeAfterActivity?.();
+                })?.catch(() => resumeBgmAfterHG());
             },
             onStartInterjection: ({ characterName } = {}) => {
-                const interjectionTracks = getMonopadSetting('trialInterjectionTracks') || [];
-                if (interjectionTracks.length) {
-                    playTrackFromSetting('trialInterjectionTracks');
-                } else {
-                    // fallback to bundled track
-                    const bgmPath = `${(extensionFolderPath || '').replace(/\\/g, '/')}/assets/bgm/New Classmates of the Dead.mp3`;
-                    const $bgmSelect = $('#audio_bgm_select');
-                    if ($bgmSelect.length) {
-                        if (!$bgmSelect.find(`option[value="${bgmPath}"]`).length) {
-                            $bgmSelect.append(new Option('asset: New Classmates of the Dead', bgmPath));
-                        }
-                        $bgmSelect.val(bgmPath).trigger('change');
-                    }
-                }
+                // BGM comes entirely from the INTERJECTION selector tab; plays nothing if unset.
+                playTrackFromSetting('trialInterjectionTracks');
                 interjectionRunner?.run({ characterName })
                     ?.then(() => triggerInterjectorResponse(characterName))
                     ?.then(() => trialManager?.resumeAfterActivity?.());
@@ -10095,9 +10430,14 @@ TIME: <whole-second integer, minimum 60, maximum 180>${qtruthExtraContextBlocks}
             },
             onStartMassPanicDebate: () => trialManager?.startMassPanicDebate(MPD_TEST_SCENARIOS.slice(0, 6)),
             onStartRebuttalShowdown: (params) => {
-                playTrackFromSetting('trialRebuttalTracks');
+                // BGM is owned by the controller (getRebuttalTracks) so it shares the
+                // showdown's start/stop/fade lifecycle — don't double-play it here.
+                // The controller plays on its own element, so silence the ambient
+                // (phase) BGM for the duration and restore it on finish.
+                suspendAmbientBgm();
                 rebuttalShowdownController?.run(params)
-                    ?.then(() => trialManager?.resumeAfterActivity?.());
+                    ?.then(() => { resumeBgmAfterHG(); trialManager?.resumeAfterActivity?.(); })
+                    ?.catch(() => resumeBgmAfterHG());
             },
             onStartPunishmentTime: async ({ characterName } = {}) => {
                 if (!characterName) return;
@@ -10400,8 +10740,13 @@ STATEMENT: <third statement>`;
                     if (speakerName) trialManager?.updateGroupChatSpeaker?.(speakerName);
                 }
                 updateSuspectsFromChat();
+                // Re-apply Half-Sprite Mode (body class + saved size/offset vars +
+                // GCP layout) for the newly-mounted sprite so the saved adjustment
+                // shows immediately on chat load instead of only after the panel is
+                // opened. Re-run once more after ST's late expression pass settles.
+                applyHalfSpriteMode();
                 // Grace period for ST's post-load expression updates to settle, then re-enable VFX/SFX.
-                setTimeout(() => setVfxGcpLoadSuppressed(false), 1500);
+                setTimeout(() => { setVfxGcpLoadSuppressed(false); applyHalfSpriteMode(); }, 1500);
             }, 300);
             // Re-apply forced outfits after entry settles — staggered to land after
             // ST's clone-swap fade (~400ms) and the overworld's 350ms expression
@@ -10435,6 +10780,21 @@ STATEMENT: <third statement>`;
                 }, 600);
             }
         });
+
+        // Deleting a chat (e.g. an accidentally-created Class Trial) doesn't
+        // reliably fire CHAT_CHANGED with the replacement chat's state, so the
+        // trial UI (GCP lecterns, Trial Context panel, Trial Panel, trial BGM)
+        // can linger in a broken hybrid view until a refresh. Run the same
+        // teardown explicitly — delayed so SillyTavern has loaded the replacement
+        // chat and trialManager.onChatChanged() re-reads its (clean) persisted
+        // trial state rather than the deleted chat's.
+        const onTrialChatRemoved = () => setTimeout(() => {
+            try { trialManager?.destroyGroupChatPortraits?.(); } catch (e) { console.warn('[Dangan] chat-deleted: portrait teardown failed:', e); }
+            try { trialManager?.onChatChanged?.(); } catch (e) { console.warn('[Dangan] chat-deleted: onChatChanged failed:', e); }
+            try { renderMoveToPanel(); renderMinimap(); overworldSceneController?.render?.(); } catch (e) { console.warn('[Dangan] chat-deleted: render failed:', e); }
+        }, 400);
+        try { eventSource.on(event_types.CHAT_DELETED, onTrialChatRemoved); } catch {}
+        try { eventSource.on(event_types.GROUP_CHAT_DELETED, onTrialChatRemoved); } catch {}
 
         console.log(`[${extensionName}] ✅ Chat hooks initialized.`);
     } catch (e) {
@@ -10580,6 +10940,17 @@ STATEMENT: <third statement>`;
             if (!srcAttr) return;
             const src = imgEl.src;
             if (!src || src === location.href) return;
+
+            // Narrator has no sprite — the visible image is hidden via CSS
+            // (img.expression[alt="Narrator" i]); bail here too so we never mirror
+            // or animate the broken Narrator sprite into a GCP/player slot.
+            const _altName = (imgEl.getAttribute('alt') || '').trim().toLowerCase();
+            let _spriteFolder = '';
+            try {
+                const _p = new URL(src, location.href).pathname.split('/').filter(Boolean);
+                _spriteFolder = decodeURIComponent(_p[_p.length - 2] || '').toLowerCase();
+            } catch { /* ignore bad src */ }
+            if (_altName === 'narrator' || _spriteFolder === 'narrator') return;
 
             if (window.__DREX_OUTFIT_DEBUG) console.log('[DREX-outfit] onExpressionChange', { src, prefix: getActiveOutfitPrefix(), curLoc: getCurrentLocationId(), cls: imgEl.className, id: imgEl.id, parent: imgEl.parentElement?.className });
 
@@ -10837,6 +11208,7 @@ STATEMENT: <third statement>`;
     scrumDebateController     = createScrumDebateController({ extensionFolderPath, awardMonocoins, deductMonocoins, getTruthBullets: getTruthBulletsSnapshot, pauseCurrentBgm: fadeOutAndPauseBgm, resumeCurrentBgm: resumeBgmAfterHG, getScrumTracks: () => extension_settings[extensionName]?.trialScrumTracks ?? [], playBgm: playBgmForScrum, getFinalPushTrack: () => findBgmTrackByName('Class Trial - Insurrection'), onWin: onScrumDebateWin, getSpriteUrl, isCharacterDead: (name) => characters.get(normalizeName(name))?.dead === true, getPlayerSpriteUrl, getPlayerName: getActivePersonaName, getCharacterHeightCm, getCustomGameMasterName });
     rebuttalShowdownController = createRebuttalShowdownController({
         extensionFolderPath, getTruthBullets: getTruthBulletsSnapshot,
+        getRebuttalTracks: () => extension_settings[extensionName]?.trialRebuttalTracks ?? [],
         awardMonocoins, deductMonocoins, getSpriteUrl,
         getUserAvatarUrl: getActiveUserAvatarUrl,
         getPromeSpritePack: () => {
@@ -10959,7 +11331,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         trialManager?.setTrialContext?.(undefined, goal, undefined);
         return '';
     },
-    helpString: 'Sets the overall goal displayed in the Trial Context panel (e.g. <tt>/setclasstrialgoal Who killed Byakuya?</tt>).',
+    helpString: 'Sets the overall goal displayed in the Trial Context panel (e.g. <tt>/setclasstrialgoal Who killed the victim?</tt>).',
     unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'The trial goal text', typeList: [ARGUMENT_TYPE.STRING], isRequired: true })],
 }));
 
@@ -11209,6 +11581,15 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         // 3. Investigation banner + SFX + dynamic theme
         investigationStartController.trigger();
         applyDynamicTheme();
+
+        // 4. Reveal the crime-scene background in CG Mode. The underlying ST
+        //    background was already switched under the static (switchBackground),
+        //    so dismissing the CG drops the user straight into investigation with
+        //    the correct scene. Skipped for cinematic BDAs (they own their visuals).
+        if (bgName && !cinematic) {
+            try { showCgByBgName(bgName); }
+            catch (e) { console.warn('[Dangan][BDA] CG Mode reveal failed:', e); }
+        }
         return '';
     },
     helpString: 'Plays the body discovery vignette, then the BDA, then triggers Investigation. Optional: bg=&lt;name&gt; to switch background under static; cinematic=&lt;name&gt; to use a configured BDA cinematic.',
@@ -11732,6 +12113,67 @@ function renderMinimap() {
     hideBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
     hideCol.appendChild(hideBtn);
     root.appendChild(hideCol);
+
+    // Bottom action row — mirrors the zoom +/- row at the top, sitting just above
+    // the Photo Mode button. Two diamond controls: Show CG, and the Half-Sprite
+    // Mode toggle.
+    const actionRow = document.createElement('div');
+    actionRow.className = 'dangan-minimap-action-row';
+
+    const cgBtn = document.createElement('button');
+    cgBtn.type = 'button';
+    cgBtn.className = 'dangan-minimap-zoom-btn dangan-minimap-cg-btn';
+    cgBtn.title = 'Show CG';
+    cgBtn.innerHTML = '<span><i class="fa-solid fa-image"></i></span>';
+    cgBtn.addEventListener('click', (e) => { e.stopPropagation(); showCgPicker(); });
+    cgBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+
+    const halfBtn = document.createElement('button');
+    halfBtn.type = 'button';
+    halfBtn.className = 'dangan-minimap-zoom-btn dangan-minimap-half-toggle';
+    const halfOn = !!getMonopadSetting('halfspriteMode');
+    if (halfOn) halfBtn.classList.add('is-active');
+    halfBtn.title = halfOn
+        ? 'Half-Sprite Mode ON — click to disable'
+        : 'Half-Sprite Mode OFF — click to enable';
+    halfBtn.innerHTML = '<span><i class="fa-solid fa-crop"></i></span>';
+    halfBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // Mirror the settings-toggle handler so the Monopad → Display toggle stays
+        // in sync and the body-class / sprite refresh runs.
+        const next = !getMonopadSetting('halfspriteMode');
+        setMonopadSetting('halfspriteMode', next);
+        applySettingsTabUI();
+        applyHalfSpriteMode();
+        // The size/offset control only exists in half-sprite mode — close its
+        // popover when the mode is switched off.
+        if (!next) document.getElementById('dangan-hs-adjust')?.remove();
+        _minimapSig = null;
+        renderMinimap();
+    });
+    halfBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+
+    actionRow.appendChild(cgBtn);
+    actionRow.appendChild(halfBtn);
+    root.appendChild(actionRow);
+
+    // Only in Half-Sprite Mode: the size/offset adjuster. It's its OWN centered
+    // button forming the TOP vertex of the bottom four-button diamond (above the
+    // Show CG / Half-Sprite row) — kept out of the flex action row so the
+    // Half-Sprite toggle stays on the right rather than being pushed to centre.
+    if (halfOn) {
+        const adjCol = document.createElement('div');
+        adjCol.className = 'dangan-minimap-hs-adjust-col';
+        const adjBtn = document.createElement('button');
+        adjBtn.type = 'button';
+        adjBtn.className = 'dangan-minimap-zoom-btn dangan-minimap-hs-adjust-btn';
+        adjBtn.title = 'Adjust half-sprite size & vertical offset';
+        adjBtn.innerHTML = '<span><i class="fa-solid fa-expand"></i></span>';
+        adjBtn.addEventListener('click', (e) => { e.stopPropagation(); openHalfSpriteAdjustPanel(); });
+        adjBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+        adjCol.appendChild(adjBtn);
+        root.appendChild(adjCol);
+    }
 
     // One-shot global listener that restores the UI on any click while hidden.
     // Capture phase + stopPropagation so the click that restores the UI doesn't
@@ -12508,7 +12950,12 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'rebuttalshowdown',
     callback: async () => {
-        await rebuttalShowdownController?.run();
+        suspendAmbientBgm();
+        try {
+            await rebuttalShowdownController?.run();
+        } finally {
+            resumeBgmAfterHG();
+        }
         return '';
     },
     helpString: 'Starts a Rebuttal Showdown minigame with two phases: cut through scrolling statements with left-click slashes, then right-click the weak point using the correct Truth Blade.',
@@ -12542,15 +12989,8 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             trialManager?.updateGroupChatSpeaker(characterName);
         }
 
-        // Force Dynamic Audio to play New Classmates of the Dead
-        const bgmPath = `${(extensionFolderPath || '').replace(/\\/g, '/')}/assets/bgm/New Classmates of the Dead.mp3`;
-        const $bgmSelect = $('#audio_bgm_select');
-        if ($bgmSelect.length) {
-            if (!$bgmSelect.find(`option[value="${bgmPath}"]`).length) {
-                $bgmSelect.append(new Option('asset: New Classmates of the Dead', bgmPath));
-            }
-            $bgmSelect.val(bgmPath).trigger('change');
-        }
+        // Switch BGM to the configured INTERJECTION track(s); plays nothing if unset.
+        playTrackFromSetting('trialInterjectionTracks');
 
         await interjectionRunner?.run({ characterName });
         await triggerInterjectorResponse(characterName);
@@ -12559,7 +12999,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     namedArguments: [
         SlashCommandNamedArgument.fromProps({ name: 'character', description: 'Character name for the interjection sprite (defaults to last speaker)', typeList: [ARGUMENT_TYPE.STRING] }),
     ],
-    helpString: 'Plays a rebuttal interjection cinematic and switches BGM to New Classmates of the Dead. Use <code>character="Name"</code> to specify who interjects (defaults to the last speaker). If the character differs from the last speaker, the seating plan scrolls to focus on them.',
+    helpString: 'Plays a rebuttal interjection cinematic and switches BGM to the configured INTERJECTION track(s). Use <code>character="Name"</code> to specify who interjects (defaults to the last speaker). If the character differs from the last speaker, the seating plan scrolls to focus on them.',
 }));
 
 // ── Rebuttal Showdown sized commands ────────────────────────────────────────
@@ -12607,14 +13047,19 @@ for (const cfg of Object.values(RS_SIZES)) {
         callback: async (args) => {
             const { opponentName, playerName } = rsGetContext(args);
             const phaseOneLines = rsBuildPhaseOneLines(args, cfg.maxLines);
-            await rebuttalShowdownController?.run({
-                opponentName,
-                playerName,
-                phaseOneLines,
-                initialTimeMs: cfg.initialTimeMs,
-                cutTarget: cfg.cutTarget,
-                maxBullets: cfg.maxBullets,
-            });
+            suspendAmbientBgm();
+            try {
+                await rebuttalShowdownController?.run({
+                    opponentName,
+                    playerName,
+                    phaseOneLines,
+                    initialTimeMs: cfg.initialTimeMs,
+                    cutTarget: cfg.cutTarget,
+                    maxBullets: cfg.maxBullets,
+                });
+            } finally {
+                resumeBgmAfterHG();
+            }
             return '';
         },
         namedArguments: [
@@ -12707,7 +13152,13 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         const timerMs  = resolveSkillParam("aaTimer",      90000);
         const damage   = resolveSkillParam("aaDamage",     1);
         const damageTakenMult = resolveSkillParam("aaDamageTaken", 1);
-        const won = await argumentArmamentController?.run({ enemyHp, playerHp, phases, dialogs, NSolution, SSolution, ESolution, WSolution, FinalSolution, FinalSolutionQuote, BG, clairvoyance, mainSprite, defeatSprite, ammoMax, reloadMs, timerMs, damage, damageTakenMult });
+        suspendAmbientBgm();
+        let won;
+        try {
+            won = await argumentArmamentController?.run({ enemyHp, playerHp, phases, dialogs, NSolution, SSolution, ESolution, WSolution, FinalSolution, FinalSolutionQuote, BG, clairvoyance, mainSprite, defeatSprite, ammoMax, reloadMs, timerMs, damage, damageTakenMult, getPhaseTrack: (phaseNum) => pickBgmTrackFromSetting(`aaPhase${phaseNum}Tracks`) });
+        } finally {
+            resumeBgmAfterHG();
+        }
         if (won) awardXp(XP_REWARDS.argumentArmament ?? 18, 'argument armament completed');
         return '';
     },

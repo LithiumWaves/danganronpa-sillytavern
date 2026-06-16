@@ -24,7 +24,12 @@ import zlib from 'node:zlib';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const templatesDir = join(here, '..', 'assets', 'templates');
-const xcfPath = join(templatesDir, 'mugshot-template.xcf');
+// Generalised: `node tools/extract-mugshot-template.mjs [template.xcf] [out-prefix]`.
+// Defaults reproduce the original mugshot behaviour. Used for the death-portrait
+// template too (death-portrait-template.xcf → death-portrait-{bg,texture,mask}.png).
+const TEMPLATE_FILE = process.argv[2] || 'mugshot-template.xcf';
+const OUT_PREFIX    = process.argv[3] || 'mugshot';
+const xcfPath = join(templatesDir, TEMPLATE_FILE);
 
 // ── XCF parsing ──────────────────────────────────────────────────────────────
 const buf = readFileSync(xcfPath);
@@ -170,33 +175,109 @@ const encodePNG = (w, h, rgba) => {
 // ── Extract + write ──────────────────────────────────────────────────────────
 const layers = Object.fromEntries(layerPtrs.map(decodeLayer).map(l => [l.name, l]));
 
-const need = ['background', 'texture-overlay', 'overlay-space'];
-for (const n of need) {
-    if (!layers[n]) throw new Error(`Template is missing expected layer "${n}"`);
+console.log(`Template ${TEMPLATE_FILE} (${imgW}x${imgH}) — layers:`);
+for (const [n, l] of Object.entries(layers)) {
+    console.log(`  "${n}"  ${l.lw}x${l.lh} @ (${l.offX},${l.offY})  bpp-rgba`);
 }
 
-const bg = layers['background'];
-const tex = layers['texture-overlay'];
-const ov = layers['overlay-space'];
-
-// Mask: the angled card window is the TRANSPARENT region of overlay-space (the
-// magenta chroma guide is opaque). Emit opaque white inside the window,
-// transparent outside, so the runtime can clip with destination-in.
-const mask = Buffer.alloc(ov.lw * ov.lh * 4);
-for (let i = 0; i < ov.lw * ov.lh; i++) {
-    const inside = ov.rgba[i * 4 + 3] < 128; // overlay-space transparent => card window
-    mask[i * 4] = 255; mask[i * 4 + 1] = 255; mask[i * 4 + 2] = 255;
-    mask[i * 4 + 3] = inside ? 255 : 0;
+// Dump mode: write every layer to PNG (canvas-sized, placed at its offset) for
+// visual inspection, then exit. `node … <tpl.xcf> <prefix> --dump`.
+if (process.argv.includes('--dump')) {
+    for (const [n, l] of Object.entries(layers)) {
+        const canvas = Buffer.alloc(imgW * imgH * 4); // transparent
+        for (let y = 0; y < l.lh; y++) {
+            for (let x = 0; x < l.lw; x++) {
+                const cx = x + l.offX, cy = y + l.offY;
+                if (cx < 0 || cy < 0 || cx >= imgW || cy >= imgH) continue;
+                const si = (y * l.lw + x) * 4, di = (cy * imgW + cx) * 4;
+                canvas[di] = l.rgba[si]; canvas[di + 1] = l.rgba[si + 1];
+                canvas[di + 2] = l.rgba[si + 2]; canvas[di + 3] = l.rgba[si + 3];
+            }
+        }
+        const safe = n.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+        const file = `${OUT_PREFIX}-DUMP-${safe}.png`;
+        writeFileSync(join(templatesDir, file), encodePNG(imgW, imgH, canvas));
+        console.log(`  dumped ${file}`);
+    }
+    process.exit(0);
 }
 
-const outputs = [
-    ['mugshot-bg.png', bg.lw, bg.lh, bg.rgba],
-    ['mugshot-texture.png', tex.lw, tex.lh, tex.rgba],
-    ['mugshot-mask.png', ov.lw, ov.lh, mask],
-];
+const hasMugshot = ['background', 'texture-overlay', 'overlay-space'].every(n => layers[n]);
+const hasDeath = layers['Stand'] && layers['Cross'];
+
+let outputs, summary;
+
+if (hasMugshot) {
+    const bg = layers['background'];
+    const tex = layers['texture-overlay'];
+    const ov = layers['overlay-space'];
+
+    // Mask: the angled card window is the TRANSPARENT region of overlay-space (the
+    // magenta chroma guide is opaque). Emit opaque white inside the window,
+    // transparent outside, so the runtime can clip with destination-in.
+    const mask = Buffer.alloc(ov.lw * ov.lh * 4);
+    for (let i = 0; i < ov.lw * ov.lh; i++) {
+        const inside = ov.rgba[i * 4 + 3] < 128; // overlay-space transparent => card window
+        mask[i * 4] = 255; mask[i * 4 + 1] = 255; mask[i * 4 + 2] = 255;
+        mask[i * 4 + 3] = inside ? 255 : 0;
+    }
+    outputs = [
+        [`${OUT_PREFIX}-bg.png`, bg.lw, bg.lh, bg.rgba],
+        [`${OUT_PREFIX}-texture.png`, tex.lw, tex.lh, tex.rgba],
+        [`${OUT_PREFIX}-mask.png`, ov.lw, ov.lh, mask],
+    ];
+    summary = `Mugshot template ${imgW}x${imgH}; texture offset ${tex.offX},${tex.offY} (drawn at that offset at runtime).`;
+} else if (hasDeath) {
+    // Death-portrait template: an ornate picture frame on a stand ("Stand") with a
+    // pink X mark ("Cross"). The character sprite sits in the frame's window; the
+    // window is the transparent region ENCLOSED by the opaque frame. Distinguish it
+    // from the transparent area OUTSIDE the frame (and around the pole) with a flood
+    // fill seeded from the canvas border — anything border-reachable is "outside";
+    // unreached transparent pixels are the window. Both layers are full-canvas at 0,0.
+    const stand = layers['Stand'];
+    const cross = layers['Cross'];
+    const W = imgW, H = imgH;
+    const isT = (i) => stand.rgba[i * 4 + 3] < 128; // transparent frame pixel
+    const outside = new Uint8Array(W * H);
+    const stack = [];
+    const seed = (i) => { if (isT(i) && !outside[i]) { outside[i] = 1; stack.push(i); } };
+    for (let x = 0; x < W; x++) { seed(x); seed((H - 1) * W + x); }
+    for (let y = 0; y < H; y++) { seed(y * W); seed(y * W + (W - 1)); }
+    while (stack.length) {
+        const i = stack.pop(); const x = i % W, y = (i / W) | 0;
+        if (x + 1 < W) seed(i + 1);
+        if (x - 1 >= 0) seed(i - 1);
+        if (y + 1 < H) seed(i + W);
+        if (y - 1 >= 0) seed(i - W);
+    }
+    const mask = Buffer.alloc(W * H * 4);
+    let winMinX = W, winMinY = H, winMaxX = 0, winMaxY = 0, winFound = false;
+    for (let i = 0; i < W * H; i++) {
+        const inWindow = isT(i) && !outside[i];
+        mask[i * 4] = 255; mask[i * 4 + 1] = 255; mask[i * 4 + 2] = 255;
+        mask[i * 4 + 3] = inWindow ? 255 : 0;
+        if (inWindow) {
+            const x = i % W, y = (i / W) | 0;
+            winFound = true;
+            if (x < winMinX) winMinX = x; if (x > winMaxX) winMaxX = x;
+            if (y < winMinY) winMinY = y; if (y > winMaxY) winMaxY = y;
+        }
+    }
+    outputs = [
+        [`${OUT_PREFIX}-stand.png`, stand.lw, stand.lh, stand.rgba],
+        [`${OUT_PREFIX}-cross.png`, cross.lw, cross.lh, cross.rgba],
+        [`${OUT_PREFIX}-mask.png`, W, H, mask],
+    ];
+    summary = winFound
+        ? `Death-portrait template ${imgW}x${imgH}; window bbox x=${winMinX} y=${winMinY} w=${winMaxX - winMinX + 1} h=${winMaxY - winMinY + 1}.`
+        : `Death-portrait template ${imgW}x${imgH}; WARNING: no enclosed window found (frame border may have a gap).`;
+} else {
+    throw new Error(`Unrecognised template; layers: ${Object.keys(layers).map(n => `"${n}"`).join(', ')}`);
+}
+
 for (const [file, w, h, data] of outputs) {
     const dest = join(templatesDir, file);
     writeFileSync(dest, encodePNG(w, h, data));
     console.log(`wrote ${file}  (${w}x${h})`);
 }
-console.log(`\nTemplate ${imgW}x${imgH}; texture offset ${tex.offX},${tex.offY} (drawn at that offset at runtime).`);
+console.log(`\n${summary}`);
