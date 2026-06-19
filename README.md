@@ -2,6 +2,12 @@
 
 Adds a menu based on the Monopad from **Danganronpa V3** with progression, trust tracking, truth-bullet parsing, gift/inventory systems, map navigation, and optional OpenRouter-powered generation.
 
+## Contributing & Contact:
+- To raise a bug, visit the Issues tab and [raise a new Issue](https://github.com/LithiumWaves/danganronpa-extension/issues/new). Please use Labels appropriately and accurately.
+- To raise a suggestion, visit the Issues tab and [raise a new Issue](https://github.com/LithiumWaves/danganronpa-extension/issues/new) and use the `idea` Label.
+- To contribute code, please seek permission from both `@lithiumwaves_` and `@jojicus` on Discord.
+- For copyright issues, please DM either of the above on Discord.
+
 ## Installation:
 1. Place this folder in:
    `scripts/extensions/third-party/danganronpa-extension`
@@ -10,8 +16,9 @@ Alternatively, install directly from SillyTavern by accessing the extensions tab
 3. In chat, click the Monopad crest button to open the UI.
 
 ## Requirements:
-The Lorebook: [TBA]
-The Generation Preset: [TBA]
+- The Lorebook: You can select one of the supplied Lorebooks in `/sample-lorebooks`, or create your own.
+- Character Cards: You can import one (Or multiple) characters from `/sample-character-cards`, or create your own.
+- The Generation Preset: [TBA]
 
 ## What the Extension Includes:
 
