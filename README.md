@@ -329,6 +329,6 @@ Displays the Truth Bullet list and asks the player to select the correct one for
 - Spike Chunsoft for building the Danganronpa franchise.
 - Kazutaka Kodaka as Danganronpa's creator.
 - /u/xReflexx17 on Reddit for creating the Danganronpa V3 Minigame Cut-In Templates.
-- [DrizzleMonster2567] (https://www.deviantart.com/drizzlemonster2567/art/New-DanganRonpa-V3-Killing-Harmony-Class-Trial-UI-942741080) for creating the Danganronpa V3 Class Trial Overlay we use.
-- [lockheartz] (https://www.youtube.com/watch?v=dBXnczvjzj4) for creating the Non-Stop Debate Intro.
-- [game-icons.net] (https://game-icons.net/) for creating a tonne of icons we use.
+- [DrizzleMonster2567](https://www.deviantart.com/drizzlemonster2567/art/New-DanganRonpa-V3-Killing-Harmony-Class-Trial-UI-942741080) for creating the Danganronpa V3 Class Trial Overlay we use.
+- [lockheartz](https://www.youtube.com/watch?v=dBXnczvjzj4) for creating the Non-Stop Debate Intro.
+- [game-icons.net](https://game-icons.net/) for creating a tonne of icons we use.
