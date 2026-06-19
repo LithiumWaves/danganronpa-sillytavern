@@ -68,6 +68,11 @@ export const defaultSettings = {
     // multiplier on the cropped sprite and a vertical pixel offset.
     halfspriteScale: 1,
     halfspriteOffsetY: 0,
+    // Per-chat Half-Sprite size/offset overrides, keyed by chat/group scope
+    // (getInvestigationScopeKey). When the adjust panel's "SAVE FOR THIS CHAT"
+    // toggle is on, the chat's entry here wins over the global values above.
+    // { "<scopeKey>": { scale: <number>, offsetY: <number> } }
+    halfspriteChatOverrides: {},
     crtEffects: true,
     crtIntensity: 35,
     // Class Trial courtroom vertical offset (px). Shifts the podiums, gymnasium

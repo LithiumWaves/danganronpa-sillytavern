@@ -102,10 +102,14 @@ body.dangan-trial-active #top-bar {
     box-shadow: none !important;
 }
 
-/* #top-settings-holder is the visible icon pill — theme + lift above frame. */
+/* #top-settings-holder is the visible icon pill — theme + lift above frame.
+   z-index must beat #sheld (also 9994 in trials, trial-aesthetic.css ~1572) and
+   the side panels (9995): #sheld is later in the DOM, so at an equal z-index it
+   wins the tie and covers the open top-bar drawer (API/settings), making it
+   unclickable. 9996 keeps the holder + its drawers on top and interactive. */
 body.dangan-trial-active #top-settings-holder {
     position: relative !important;
-    z-index: 9994 !important;
+    z-index: 9996 !important;
     width: 1036px !important;
     height: 36px !important;
     background: var(--dgn-panel-bg) !important;
@@ -113,6 +117,11 @@ body.dangan-trial-active #top-settings-holder {
     border-radius: 0 !important;
     box-shadow: var(--dgn-panel-glow) !important;
     box-sizing: border-box !important;
+}
+/* Belt-and-suspenders: if ST renders an open drawer as a fixed-position node
+   (escaping the holder's stacking context), lift it above #sheld directly. */
+body.dangan-trial-active #top-settings-holder .drawer-content {
+    z-index: 9996 !important;
 }
 
 /* ── "1 CLASS TRIAL" crescent badge ──────────────────────────────────────── */

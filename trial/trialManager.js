@@ -7522,6 +7522,29 @@ JUDGMENT RULES:
         gcpPanBackground(Math.round(centerFloat), false);
     }
 
+    // True when `name` is the local player (Prome user sprite) or a system/dummy
+    // entry that must never get its own carousel slot in a non-trial group chat.
+    // Matches the persona name AND the Prome sprite-pack folder, since the two
+    // can differ (persona "Dawn" using "alex-rivera" sprites) — mirrors the
+    // player-slot matching in initGroupChatPortraits. Also catches the
+    // "Prome User Sprite (DO NOT CLICK)" dummy character by substring.
+    function isPlayerOrSystemMember(name) {
+        if (!name) return true;
+        if (isAssistantLikeName(name)) return true;
+        if (String(name).toLowerCase().includes('prome user sprite')) return true;
+        const key   = normalizeSeatName(name);
+        const first = firstToken(name);
+        const ctx = window.SillyTavern?.getContext?.();
+        const playerName = ctx?.name1 || ctx?.user_name || ctx?.userName || ctx?.personaName || '';
+        if (playerName && (normalizeSeatName(playerName) === key || firstToken(playerName) === first)) return true;
+        const spritePack = getPromeInfo()?.spritePack;
+        if (spritePack) {
+            const norm = String(spritePack).replace(/[-_]/g, ' ');
+            if (normalizeSeatName(norm) === key || firstToken(norm) === first) return true;
+        }
+        return false;
+    }
+
     // Returns the names of members currently in this group chat.
     // Uses multiple strategies so we get the actual group members — not the full roster.
     function getGroupChatMemberNames() {
@@ -7554,7 +7577,7 @@ JUDGMENT RULES:
                 if (!avatar || avatar === 'prome-user' || seen.has(avatar)) continue;
                 seen.add(avatar);
                 const name = nameFromAvatar(avatar);
-                if (name) names.push(name);
+                if (name && !isPlayerOrSystemMember(name)) names.push(name);
             }
             if (names.length) return names;
         }
@@ -7571,14 +7594,14 @@ JUDGMENT RULES:
         const group = allGroups.find(g => String(g?.id ?? '').trim() === groupId);
         if (group) {
             const names = (Array.isArray(group.members) ? group.members : [])
-                .map(nameFromAvatar).filter(Boolean);
+                .map(nameFromAvatar).filter(Boolean).filter(n => !isPlayerOrSystemMember(n));
             if (names.length) return names;
         }
 
         // Strategy 3 — ST context group object.
         const ctxGroup = ctx.group ?? ctx.groupChat ?? ctx.group_chat;
         if (ctxGroup && Array.isArray(ctxGroup.members)) {
-            const names = ctxGroup.members.map(nameFromAvatar).filter(Boolean);
+            const names = ctxGroup.members.map(nameFromAvatar).filter(Boolean).filter(n => !isPlayerOrSystemMember(n));
             if (names.length) return names;
         }
 
@@ -7591,7 +7614,7 @@ JUDGMENT RULES:
                     .filter(m => !m.is_user && m.name)
                     .map(m => String(m.name).trim())
                     .filter(Boolean)
-            )];
+            )].filter(n => !isPlayerOrSystemMember(n));
             if (names.length) return names;
         }
 

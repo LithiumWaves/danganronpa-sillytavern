@@ -1948,6 +1948,7 @@ function createVnModeController() {
         composeEl.style.position = '';
         composeEl.style.left = '';
         composeEl.style.top = '';
+        composeEl.style.bottom = '';
         composeEl.style.width = '';
         composeEl.style.maxWidth = '';
         composeEl.style.margin = '';
@@ -2022,7 +2023,19 @@ function createVnModeController() {
         composeEl.classList.toggle('dangan-vn-compose-collapsed', composeCollapsed);
         composeEl.style.position = 'fixed';
         composeEl.style.left = `${left}px`;
-        composeEl.style.top = `${top}px`;
+        // In a Class Trial, pin the composer by its *bottom* edge so it stays
+        // glued to the viewport bottom and grows upward as the textarea expands
+        // (capped via CSS). Anchoring by a measured-height `top` instead leaves
+        // the composer stranded mid-screen when the textarea grows then shrinks
+        // (e.g. after sending a long message) and dockTypingSection hasn't
+        // re-run to recompute `top`. The VN frame follows via --dgn-input-height.
+        if (inTrial) {
+            composeEl.style.top = 'auto';
+            composeEl.style.bottom = '0px';
+        } else {
+            composeEl.style.bottom = 'auto';
+            composeEl.style.top = `${top}px`;
+        }
         composeEl.style.width = `${width}px`;
         composeEl.style.maxWidth = `${width}px`;
         composeEl.style.margin = '0';
@@ -5596,12 +5609,44 @@ function applyHalfSpriteMode() {
     try { refreshHalfSpriteDisplay(); } catch (_) {}
 }
 
-// Push the user's saved Half-Sprite size + vertical offset into CSS custom
-// properties that the half-sprite transform rules (style.css) consume. Global —
-// the same adjustment applies to every character.
+// Per-chat Half-Sprite override helpers. The override is keyed by the current
+// chat/group scope (getInvestigationScopeKey), so the saved size/offset follows
+// the chat rather than applying globally. "scope:unknown" (no chat loaded) is
+// never persisted — there's nothing meaningful to scope it to.
+function getHalfSpriteChatOverride() {
+    const key = getInvestigationScopeKey();
+    if (!key || key === "scope:unknown") return null;
+    const all = extension_settings[extensionName]?.halfspriteChatOverrides;
+    const o = all && all[key];
+    return (o && typeof o === "object") ? o : null;
+}
+
+function setHalfSpriteChatOverride(scale, offsetY) {
+    const key = getInvestigationScopeKey();
+    if (!key || key === "scope:unknown") return false;
+    const all = (extension_settings[extensionName].halfspriteChatOverrides ||= {});
+    all[key] = { scale: Number(scale) || 1, offsetY: Number(offsetY) || 0 };
+    saveSettingsDebounced();
+    return true;
+}
+
+function clearHalfSpriteChatOverride() {
+    const key = getInvestigationScopeKey();
+    const all = extension_settings[extensionName]?.halfspriteChatOverrides;
+    if (all && Object.prototype.hasOwnProperty.call(all, key)) {
+        delete all[key];
+        saveSettingsDebounced();
+    }
+}
+
+// Push the saved Half-Sprite size + vertical offset into CSS custom properties
+// that the half-sprite transform rules (style.css) consume. If the current chat
+// has a saved per-chat override it wins; otherwise the global values apply. The
+// adjustment still applies uniformly to every sprite in the chat.
 function applyHalfSpriteAdjust() {
-    const scale  = Number(getMonopadSetting('halfspriteScale'));
-    const offset = Number(getMonopadSetting('halfspriteOffsetY'));
+    const override = getHalfSpriteChatOverride();
+    const scale  = Number(override ? override.scale   : getMonopadSetting('halfspriteScale'));
+    const offset = Number(override ? override.offsetY : getMonopadSetting('halfspriteOffsetY'));
     const s = Number.isFinite(scale) && scale > 0 ? scale : 1;
     const o = Number.isFinite(offset) ? offset : 0;
     document.body.style.setProperty('--dangan-hs-scale', String(s));
@@ -5609,13 +5654,22 @@ function applyHalfSpriteAdjust() {
 }
 
 // Floating popover (toggled from the minimap) with two sliders to live-adjust
-// the half-sprite size + vertical offset. Saved globally via setMonopadSetting.
+// the half-sprite size + vertical offset. With "SAVE FOR THIS CHAT" off the
+// values are saved globally (setMonopadSetting); with it on they're saved as a
+// per-chat override keyed to the current chat/group, which then wins over global.
 function openHalfSpriteAdjustPanel() {
     const existing = document.getElementById('dangan-hs-adjust');
     if (existing) { existing.remove(); return; } // toggle closed
 
-    const scale  = Number(getMonopadSetting('halfspriteScale'))  || 1;
-    const offset = Number(getMonopadSetting('halfspriteOffsetY')) || 0;
+    // A chat-scoped key must exist for the per-chat toggle to be meaningful.
+    const scopeKey = getInvestigationScopeKey();
+    const canScopeToChat = !!scopeKey && scopeKey !== "scope:unknown";
+
+    // Seed the sliders + toggle from any existing per-chat override, else global.
+    const override = getHalfSpriteChatOverride();
+    const perChat = !!override;
+    const scale  = Number(override ? override.scale   : getMonopadSetting('halfspriteScale'))  || 1;
+    const offset = Number(override ? override.offsetY : getMonopadSetting('halfspriteOffsetY')) || 0;
 
     const panel = document.createElement('div');
     panel.id = 'dangan-hs-adjust';
@@ -5635,6 +5689,10 @@ function openHalfSpriteAdjustPanel() {
             <input type="range" class="dangan-hs-offset" min="-600" max="600" step="1" value="${offset}">
             <span class="dangan-hs-offset-val"></span>
         </label>
+        <label class="dangan-hs-adjust-scope ${canScopeToChat ? '' : 'is-disabled'}">
+            <input type="checkbox" class="dangan-hs-scope-toggle" ${perChat ? 'checked' : ''} ${canScopeToChat ? '' : 'disabled'}>
+            <span>SAVE FOR THIS CHAT</span>
+        </label>
         <button type="button" class="dangan-hs-adjust-reset">RESET</button>
     `;
     document.body.appendChild(panel);
@@ -5643,20 +5701,43 @@ function openHalfSpriteAdjustPanel() {
     const offsetInput = panel.querySelector('.dangan-hs-offset');
     const scaleVal    = panel.querySelector('.dangan-hs-scale-val');
     const offsetVal   = panel.querySelector('.dangan-hs-offset-val');
+    const scopeToggle = panel.querySelector('.dangan-hs-scope-toggle');
 
-    const commit = () => {
+    // Write the current slider values to whichever target the toggle selects,
+    // then live-apply. `persist` is false for the initial paint so opening the
+    // panel doesn't gratuitously write settings.
+    const commit = (persist = true) => {
         const s = Number(scaleInput.value) || 1;
         const o = Number(offsetInput.value) || 0;
-        setMonopadSetting('halfspriteScale', s);
-        setMonopadSetting('halfspriteOffsetY', o);
+        if (persist) {
+            if (scopeToggle.checked && canScopeToChat) {
+                setHalfSpriteChatOverride(s, o);
+            } else {
+                setMonopadSetting('halfspriteScale', s);
+                setMonopadSetting('halfspriteOffsetY', o);
+            }
+        }
         scaleVal.textContent  = `${s.toFixed(2)}×`;
         offsetVal.textContent = `${o}px`;
         applyHalfSpriteAdjust();
         try { trialManager?.recomputeGcpFlatLayout?.(); } catch (_) {}
     };
-    commit(); // paint current values
+    commit(false); // paint current values without writing
     scaleInput.addEventListener('input', commit);
     offsetInput.addEventListener('input', commit);
+    scopeToggle.addEventListener('change', () => {
+        if (scopeToggle.checked) {
+            // Start scoping to this chat — capture the current slider values.
+            setHalfSpriteChatOverride(Number(scaleInput.value) || 1, Number(offsetInput.value) || 0);
+            applyHalfSpriteAdjust();
+        } else {
+            // Stop scoping — drop the override and snap the sliders back to global.
+            clearHalfSpriteChatOverride();
+            scaleInput.value  = String(Number(getMonopadSetting('halfspriteScale'))  || 1);
+            offsetInput.value = String(Number(getMonopadSetting('halfspriteOffsetY')) || 0);
+            commit(false);
+        }
+    });
     panel.querySelector('.dangan-hs-adjust-reset').addEventListener('click', () => {
         scaleInput.value = '1'; offsetInput.value = '0'; commit();
     });
@@ -10811,6 +10892,41 @@ STATEMENT: <third statement>`;
         let _pendingExprSrc = null;
         let _exprDebounceTimer = null;
 
+        // True when an on-screen sprite belongs to the local player (Prome user
+        // sprite). Matched by Prome's dedicated element OR by the sprite folder
+        // resolving to the configured user-sprite pack. The folder check matters:
+        // Prome doesn't always wrap the user sprite in #expression-prome-user, and
+        // without it the player's expression falls through to the group path and
+        // getGcpImgForExpressionSrc's centered-slot fallback stamps the player
+        // sprite onto a real member's GCP slot (the "overwriting a participant"
+        // bug), plus refreshHalfSpriteDisplay spams 404s fetching its -half crop.
+        function getPlayerSpriteFolders() {
+            const out = new Set();
+            const add = (v) => {
+                if (!v) return;
+                const s = String(v).toLowerCase();
+                out.add(s);
+                out.add(s.replace(/[-_]/g, ' '));
+            };
+            const prome = extension_settings?.['Prome-VN-Extension'];
+            if (prome?.enableUserSprite && prome?.userSprite) add(prome.userSprite);
+            add(getPlayerSpriteTarget?.()?.folder);
+            return out;
+        }
+        function spriteFolderOf(srcOrImg) {
+            const src = typeof srcOrImg === 'string' ? srcOrImg : srcOrImg?.src;
+            if (!src) return '';
+            try {
+                const p = new URL(src, location.href).pathname.split('/').filter(Boolean);
+                return decodeURIComponent(p[p.length - 2] || '').toLowerCase();
+            } catch { return ''; }
+        }
+        function isPlayerSpriteImg(img, src) {
+            if (img?.closest?.('#expression-prome-user')) return true;
+            const folder = spriteFolderOf(src ?? img);
+            return !!folder && getPlayerSpriteFolders().has(folder);
+        }
+
         // When half-sprite mode is on, transform a sprite URL to its -half
         // variant (e.g. `approval.png?t=…` → `approval-half.png?t=…`). The
         // mirror gets the raw URL from ST's img.expression element, which
@@ -10868,6 +10984,9 @@ STATEMENT: <third statement>`;
                 const cur = img.getAttribute?.('src');
                 if (!cur || cur === location.href) return;
                 if (img.closest?.('.gcp-dead')) return;
+                // Never half-crop the hidden player sprite — its pack has no -half
+                // variants, which only produces 404 spam.
+                if (isPlayerSpriteImg(img, cur)) return;
                 setMirroredSrc(img, cur);
             });
         };
@@ -10966,8 +11085,11 @@ STATEMENT: <third statement>`;
                 } catch { /* ignore bad src */ }
             }
 
-            // Prome user sprite → player slot
-            if (imgEl.closest?.('#expression-prome-user')) {
+            // Prome user sprite → player slot (or nowhere, in non-trial group
+            // chats where the player has no slot). Matched by element OR sprite
+            // folder so the player sprite never falls through to the group path
+            // below and overwrites a real member's slot.
+            if (isPlayerSpriteImg(imgEl, src)) {
                 const playerImg = trialManager?.getGcpPlayerImg?.();
                 if (playerImg) setMirroredSrc(playerImg, src);
                 return;

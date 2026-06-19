@@ -1348,6 +1348,27 @@ body.dangan-theme-damaged       #dangan-ow-cursor { filter: hue-rotate(310deg) s
     text-align: right;
     font-variant-numeric: tabular-nums;
 }
+.dangan-hs-adjust-scope {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 10px 0 2px;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: rgba(255, 220, 240, 0.9);
+    cursor: pointer;
+}
+.dangan-hs-adjust-scope input[type="checkbox"] {
+    accent-color: #ff66c4;
+    cursor: pointer;
+}
+.dangan-hs-adjust-scope.is-disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+.dangan-hs-adjust-scope.is-disabled input[type="checkbox"] {
+    cursor: not-allowed;
+}
 .dangan-hs-adjust-reset {
     margin-top: 8px;
     width: 100%;
