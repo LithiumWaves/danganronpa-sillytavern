@@ -18,7 +18,6 @@ Alternatively, install directly from SillyTavern by accessing the extensions tab
 ## Requirements:
 - The Lorebook: You can select one of the supplied Lorebooks in `/sample-lorebooks`, or create your own.
 - Character Cards: You can import one (Or multiple) characters from `/sample-character-cards`, or create your own.
-- The Generation Preset: [TBA]
 
 ## What the Extension Includes:
 
