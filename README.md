@@ -1,4 +1,4 @@
-# Danganronpa Extension
+# Danganronpa SillyTavern
 
 Adds a menu based on the Monopad from **Danganronpa V3** with progression, trust tracking, truth-bullet parsing, gift/inventory systems, map navigation, and optional OpenRouter-powered generation.
 
