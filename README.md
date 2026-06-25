@@ -320,13 +320,22 @@ Displays the Truth Bullet list and asks the player to select the correct one for
 
 ## Q&A
 - **Q: How do gifts work?**
+  
   **A: First and foremost, gifts are obtained through a gacha minigame on the MonoMono Machine, accessible through the map tab. To use them, access your inventory, select the gift and press use. The next character who sends a message in chat will receive and judge it, granting you either a rank up or down or simply staying neutral.**
 
+---
+
 - **Q: There's something you didn't explain here. I'm confused. What do I do?**
+  
   **A: Check the settings tab. On the top right is a question mark button with a short tutorial that walks you through the entire Monopad.**
 
+---
+
 - **Q: My characters are really small! What do I do?!**
-  **A: Click either the Padlock (🔓) icon on the minimap to force non-perspective viewing, or click Edit Character Positions in the top-right (Under the Chapter and Level indicators) to reposition characters. Additionally, in your Character Description, include a line that states the character's height (In any unit), such as "`Darumi Amemiya stands at 164cm (5'3").`".**
+
+   **A: Click either the Padlock (🔓) icon on the minimap to force non-perspective viewing, or click Edit Character Positions in the top-right (Under the Chapter and Level indicators) to reposition characters (Click Exit Conversation if you're in a chat). Additionally, in your Character Description, include a line that states the character's height (In any unit), such as "`Darumi Amemiya stands at 164cm (5'3").`".**
+
+---
 
 ## Troubleshooting
 - **Extension not visible:** verify folder path and refresh SillyTavern.
