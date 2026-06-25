@@ -5,8 +5,8 @@ Adds a menu based on the Monopad from **Danganronpa V3** with progression, trust
 ## Contributing & Contact:
 - To raise a bug, visit the Issues tab and [raise a new Issue](https://github.com/LithiumWaves/danganronpa-extension/issues/new). Please use Labels appropriately and accurately.
 - To raise a suggestion, visit the Issues tab and [raise a new Issue](https://github.com/LithiumWaves/danganronpa-extension/issues/new) and use the `idea` Label.
-- To contribute code, please seek permission from both `@lithiumwaves_` and `@jojicus` on Discord.
-- For copyright issues, please DM either of the above on Discord.
+- To contribute code, please open a Pull Request. Only `@lithiumwaves_` and `@jojicus` can merge Pull Requests.
+- For copyright issues, please DM either `@lithiumwaves_` and `@jojicus` on Discord.
 
 ## Installation:
 1. Place this folder in:
@@ -324,6 +324,9 @@ Displays the Truth Bullet list and asks the player to select the correct one for
 
 - **Q: There's something you didn't explain here. I'm confused. What do I do?**
   **A: Check the settings tab. On the top right is a question mark button with a short tutorial that walks you through the entire Monopad.**
+
+- **Q: My characters are really small! What do I do?!**
+  **A: Click either the Padlock (🔓) icon on the minimap to force non-perspective viewing, or click Edit Character Positions in the top-right (Under the Chapter and Level indicators) to reposition characters. Additionally, in your Character Description, include a line that states the character's height (In any unit), such as "`Darumi Amemiya stands at 164cm (5'3").`".**
 
 ## Troubleshooting
 - **Extension not visible:** verify folder path and refresh SillyTavern.
