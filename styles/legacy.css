@@ -3553,6 +3553,10 @@ body.dangan-hide-hopes-peak-branding .settings-header-cog {
     display: none;
 }
 
+.settings-profile-only.is-hidden {
+    display: none;
+}
+
 .settings-checkbox-row {
     display: flex;
     align-items: center;

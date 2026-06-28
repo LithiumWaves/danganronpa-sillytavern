@@ -47,6 +47,7 @@ import { createAudioVisualizerController } from "./audio/audioVisualizer.js";
 import { createOverworldSceneController } from "./overworld/overworldScene.js";
 import { showCgByBgName, showCgPicker } from "./overworld/cgViewer.js";
 import { user_avatar } from "../../../personas.js";
+import { ConnectionManagerRequestService } from "../../shared.js";
 
 window.refreshActiveCharacterUI = function () {
     if (!activeSocialCharacterId || !socialPanelController) return;
@@ -266,7 +267,7 @@ function buildRecentChatContextLines(maxLines = 14) {
 
 function normalizeGenerationSource(value) {
     const normalized = String(value || "").trim().toLowerCase();
-    return normalized === "openrouter" || normalized === "main" ? normalized : "";
+    return ["openrouter", "main", "profile"].includes(normalized) ? normalized : "";
 }
 
 function getConfiguredGenerationSource(settingKey) {
@@ -275,8 +276,87 @@ function getConfiguredGenerationSource(settingKey) {
     return normalizeGenerationSource(getMonopadSetting("generationProvider")) || "main";
 }
 
+// Maps each generation-source setting to the setting that stores the chosen
+// Connection Manager profile id used when that source is set to "profile".
+const SOURCE_PROFILE_KEYS = {
+    generationProvider: "generationProfileId",
+    whiteNoiseLineSource: "whiteNoiseProfileId",
+    nsdLineSource: "nsdProfileId",
+    mpdLineSource: "mpdProfileId",
+    hangmansGambitLineSource: "hangmansGambitProfileId",
+    questionTimeLineSource: "questionTimeProfileId",
+    questionTruthLineSource: "questionTruthProfileId",
+    argumentArmamentLineSource: "argumentArmamentProfileId",
+    scrumDebateLineSource: "scrumDebateProfileId",
+    mindMineLineSource: "mindMineProfileId",
+};
+
+// Each row pairs a source <select> with its connection-profile picker <select>
+// and the setting that stores the chosen profile id. Used to populate the
+// pickers and to show/hide them based on the selected source.
+const PROFILE_PICKER_PAIRS = [
+    ["dangan_generation_provider", "dangan_generation_profile", "generationProfileId"],
+    ["dangan_white_noise_line_source", "dangan_white_noise_profile", "whiteNoiseProfileId"],
+    ["dangan_nsd_line_source", "dangan_nsd_profile", "nsdProfileId"],
+    ["dangan_mpd_line_source", "dangan_mpd_profile", "mpdProfileId"],
+    ["dangan_hangman_line_source", "dangan_hangman_profile", "hangmansGambitProfileId"],
+    ["dangan_qtime_line_source", "dangan_qtime_profile", "questionTimeProfileId"],
+    ["dangan_qtruth_line_source", "dangan_qtruth_profile", "questionTruthProfileId"],
+    ["dangan_argumentarmament_line_source", "dangan_argumentarmament_profile", "argumentArmamentProfileId"],
+    ["dangan_scrum_line_source", "dangan_scrum_profile", "scrumDebateProfileId"],
+    ["dangan_mindmine_line_source", "dangan_mindmine_profile", "mindMineProfileId"],
+];
+
+let connectionProfileDropdownsInited = false;
+
+// Populates each connection-profile picker via the Connection Manager and wires
+// its onChange to persist the chosen profile id. Safe no-op when the Connection
+// Manager extension is unavailable.
+function initConnectionProfileDropdowns() {
+    if (connectionProfileDropdownsInited) return;
+    if (!ConnectionManagerRequestService) return;
+
+    let anyWired = false;
+    for (const [, profileSelectId, settingKey] of PROFILE_PICKER_PAIRS) {
+        if (!document.getElementById(profileSelectId)) continue;
+        try {
+            ConnectionManagerRequestService.handleDropdown(
+                `#${profileSelectId}`,
+                String(getMonopadSetting(settingKey) || ""),
+                (profile) => {
+                    setMonopadSetting(settingKey, profile?.id || "");
+                    applySettingsTabUI();
+                },
+            );
+            anyWired = true;
+        } catch (err) {
+            console.warn(`[${extensionName}] Connection profile dropdown unavailable for #${profileSelectId}:`, err?.message || err);
+        }
+    }
+
+    if (anyWired) connectionProfileDropdownsInited = true;
+}
+
+// Resolves the connection profile id for a given source setting, falling back
+// to the global AI Generation profile when a per-feature one isn't chosen.
+function getProfileIdForSourceSetting(settingKey) {
+    const profileKey = SOURCE_PROFILE_KEYS[settingKey];
+    const direct = profileKey ? String(getMonopadSetting(profileKey) || "").trim() : "";
+    if (direct) return direct;
+    return String(getMonopadSetting("generationProfileId") || "").trim();
+}
+
 async function generateWithConfiguredSource(settingKey, prompt, options) {
     const source = getConfiguredGenerationSource(settingKey);
+
+    if (source === "profile") {
+        const profileId = getProfileIdForSourceSetting(settingKey);
+        if (profileId) {
+            return generateTrialDialogueWithProfile(profileId, prompt, options);
+        }
+        // No profile selected yet — fall back to the main API rather than erroring.
+    }
+
     const generator = source === "openrouter"
         ? generateTrialDialogueWithOpenRouter
         : (generateTrialDialogueWithMainApi || generateTrialDialogue);
@@ -4271,6 +4351,40 @@ async function tryResolvePendingGiftForMessage(msgEl, rawText) {
     pendingGiftResolutionInFlight = false;
 }
 
+// Sends a prompt through SillyTavern's Connection Manager using the given
+// connection profile. The prompt is built in Chat Completion (message array)
+// format and passed through constructPrompt so Text Completion profiles get the
+// correct instruct formatting; the result text is returned as a trimmed string.
+async function generateWithProfile(profileId, prompt, { maxTokens = 300, temperature, topP, stop } = {}) {
+    const id = String(profileId || "").trim();
+    if (!id) {
+        throw new Error("No connection profile selected.");
+    }
+    if (!ConnectionManagerRequestService) {
+        throw new Error("ConnectionManagerRequestService is unavailable.");
+    }
+
+    const messages = [{ role: "user", content: String(prompt || "").trim() }];
+    const constructedPrompt = ConnectionManagerRequestService.constructPrompt(messages, id);
+
+    const overridePayload = {};
+    if (typeof temperature === "number") overridePayload.temperature = temperature;
+    if (typeof topP === "number") overridePayload.top_p = topP;
+    if (Array.isArray(stop) && stop.length) overridePayload.stop = stop;
+
+    const data = await ConnectionManagerRequestService.sendRequest(id, constructedPrompt, maxTokens, undefined, overridePayload);
+    return String(data?.content || "").trim();
+}
+
+async function generateTrialDialogueWithProfile(profileId, prompt, { maxTokens = 140, temperature = 0.7, topP = 0.9, stop = ["USER:", "ASSISTANT:", "###"] } = {}) {
+    return generateWithProfile(profileId, String(prompt || "").trim(), {
+        maxTokens,
+        temperature,
+        topP,
+        stop,
+    });
+}
+
 async function generateIsolated(prompt, { allowDialogue = false, maxTokens = 300 } = {}) {
     const fullPrompt = `
 You are an analysis engine.
@@ -4281,7 +4395,22 @@ You ONLY output structured analytical reports.
 ${prompt}
 `.trim();
 
-    if (isOpenRouterGenerationEnabled()) {
+    const globalSource = getConfiguredGenerationSource("generationProvider");
+
+    if (globalSource === "profile") {
+        const profileId = getProfileIdForSourceSetting("generationProvider");
+        if (profileId) {
+            return generateWithProfile(profileId, fullPrompt, {
+                maxTokens,
+                temperature: 0.25,
+                topP: 0.9,
+                stop: ["USER:", "ASSISTANT:", "###"]
+            });
+        }
+        // No profile selected yet — fall back to the main API below.
+    }
+
+    if (globalSource === "openrouter" || isOpenRouterGenerationEnabled()) {
         return generateWithOpenRouter(fullPrompt, {
             maxTokens,
             temperature: 0.25,
@@ -7043,6 +7172,19 @@ function applySettingsTabUI() {
         el.classList.toggle("is-hidden", !showOpenRouterControls);
     });
 
+    // Show each connection-profile picker only when its source is set to
+    // "profile", and keep its selected value in sync with the stored setting.
+    initConnectionProfileDropdowns();
+    for (const [sourceSelectId, profileSelectId, settingKey] of PROFILE_PICKER_PAIRS) {
+        const profileSelect = document.getElementById(profileSelectId);
+        if (!profileSelect) continue;
+        const sourceSelect = document.getElementById(sourceSelectId);
+        const isProfile = (sourceSelect?.value || "") === "profile";
+        profileSelect.classList.toggle("is-hidden", !isProfile);
+        const stored = String(tab[settingKey] || "");
+        if (stored && profileSelect.value !== stored) profileSelect.value = stored;
+    }
+
     applyCrtSettings();
     applyTrialPodiumOffset();
     applyDynamicTheme();
@@ -9315,7 +9457,7 @@ $(".monopad-icon").on("mouseenter", function () {
 
         $("#dangan_white_noise_line_source").on("change", function () {
             const nextSource = String(this.value || "").trim();
-            const normalizedSource = ["default", "main", "openrouter"].includes(nextSource)
+            const normalizedSource = ["default", "main", "openrouter", "profile"].includes(nextSource)
                 ? nextSource
                 : defaultSettings.whiteNoiseLineSource;
             setMonopadSetting("whiteNoiseLineSource", normalizedSource);
@@ -9325,7 +9467,7 @@ $(".monopad-icon").on("mouseenter", function () {
 
         $("#dangan_nsd_line_source").on("change", function () {
             const nextSource = String(this.value || "").trim();
-            const normalizedSource = ["main", "openrouter"].includes(nextSource)
+            const normalizedSource = ["main", "openrouter", "profile"].includes(nextSource)
                 ? nextSource
                 : defaultSettings.nsdLineSource;
             setMonopadSetting("nsdLineSource", normalizedSource);
@@ -9335,7 +9477,7 @@ $(".monopad-icon").on("mouseenter", function () {
 
         $("#dangan_mpd_line_source").on("change", function () {
             const nextSource = String(this.value || "").trim();
-            const normalizedSource = ["main", "openrouter"].includes(nextSource)
+            const normalizedSource = ["main", "openrouter", "profile"].includes(nextSource)
                 ? nextSource
                 : defaultSettings.mpdLineSource;
             setMonopadSetting("mpdLineSource", normalizedSource);
@@ -9345,7 +9487,7 @@ $(".monopad-icon").on("mouseenter", function () {
 
         $("#dangan_hangman_line_source").on("change", function () {
             const nextSource = String(this.value || "").trim();
-            const normalizedSource = ["main", "openrouter"].includes(nextSource)
+            const normalizedSource = ["main", "openrouter", "profile"].includes(nextSource)
                 ? nextSource
                 : defaultSettings.hangmansGambitLineSource;
             setMonopadSetting("hangmansGambitLineSource", normalizedSource);
@@ -9355,7 +9497,7 @@ $(".monopad-icon").on("mouseenter", function () {
 
         $("#dangan_qtime_line_source").on("change", function () {
             const nextSource = String(this.value || "").trim();
-            const normalizedSource = ["main", "openrouter"].includes(nextSource)
+            const normalizedSource = ["main", "openrouter", "profile"].includes(nextSource)
                 ? nextSource
                 : defaultSettings.questionTimeLineSource;
             setMonopadSetting("questionTimeLineSource", normalizedSource);
@@ -9365,7 +9507,7 @@ $(".monopad-icon").on("mouseenter", function () {
 
         $("#dangan_qtruth_line_source").on("change", function () {
             const nextSource = String(this.value || "").trim();
-            const normalizedSource = ["main", "openrouter"].includes(nextSource)
+            const normalizedSource = ["main", "openrouter", "profile"].includes(nextSource)
                 ? nextSource
                 : defaultSettings.questionTruthLineSource;
             setMonopadSetting("questionTruthLineSource", normalizedSource);
@@ -9375,7 +9517,7 @@ $(".monopad-icon").on("mouseenter", function () {
 
         $("#dangan_argumentarmament_line_source").on("change", function () {
             const nextSource = String(this.value || "").trim();
-            const normalizedSource = ["main", "openrouter"].includes(nextSource)
+            const normalizedSource = ["main", "openrouter", "profile"].includes(nextSource)
                 ? nextSource
                 : defaultSettings.argumentArmamentLineSource;
             setMonopadSetting("argumentArmamentLineSource", normalizedSource);
@@ -9385,7 +9527,7 @@ $(".monopad-icon").on("mouseenter", function () {
 
         $("#dangan_scrum_line_source").on("change", function () {
             const nextSource = String(this.value || "").trim();
-            const normalizedSource = ["main", "openrouter"].includes(nextSource)
+            const normalizedSource = ["main", "openrouter", "profile"].includes(nextSource)
                 ? nextSource
                 : defaultSettings.scrumDebateLineSource;
             setMonopadSetting("scrumDebateLineSource", normalizedSource);
@@ -9395,7 +9537,7 @@ $(".monopad-icon").on("mouseenter", function () {
 
         $("#dangan_mindmine_line_source").on("change", function () {
             const nextSource = String(this.value || "").trim();
-            const normalizedSource = ["main", "openrouter"].includes(nextSource)
+            const normalizedSource = ["main", "openrouter", "profile"].includes(nextSource)
                 ? nextSource
                 : defaultSettings.mindMineLineSource;
             setMonopadSetting("mindMineLineSource", normalizedSource);
@@ -9974,6 +10116,7 @@ debugSTGlobals();
             generateTrialDialogue,
             generateTrialDialogueWithMainApi,
             generateTrialDialogueWithOpenRouter,
+            generateTrialDialogueWithProfile,
             getCharacterSourceText,
             getEmotionFont,
             onTrialStateChange: () => { renderMoveToPanel(); renderMinimap(); overworldSceneController?.render?.(); },
