@@ -22,6 +22,7 @@ export function createTrialManager(deps) {
         generateTrialDialogue,
         generateTrialDialogueWithMainApi,
         generateTrialDialogueWithOpenRouter,
+        generateTrialDialogueWithProfile,
         getCharacterSourceText,
         getEmotionFont,
         onTrialStateChange,
@@ -376,9 +377,23 @@ export function createTrialManager(deps) {
 
     function normalizeGenerationSource(value) {
         const normalized = String(value || '').trim().toLowerCase();
-        return normalized === 'default' || normalized === 'main' || normalized === 'openrouter'
+        return ['default', 'main', 'openrouter', 'profile'].includes(normalized)
             ? normalized
             : '';
+    }
+
+    // Resolves the connection profile id for a trial source setting, falling back
+    // to the global AI Generation profile when a per-feature one isn't chosen.
+    function getProfileIdForSetting(settingKey) {
+        const settings = extensionSettings?.[extensionName] || {};
+        const profileKeyMap = {
+            whiteNoiseLineSource: 'whiteNoiseProfileId',
+            nsdLineSource: 'nsdProfileId',
+            mpdLineSource: 'mpdProfileId',
+        };
+        const direct = String(settings[profileKeyMap[settingKey]] || '').trim();
+        if (direct) return direct;
+        return String(settings.generationProfileId || '').trim();
     }
 
     function getWhiteNoiseLineSource() {
@@ -390,18 +405,14 @@ export function createTrialManager(deps) {
 
     function getNsdLineSource() {
         const configuredSource = normalizeGenerationSource(extensionSettings?.[extensionName]?.nsdLineSource);
-        if (configuredSource === 'openrouter' || configuredSource === 'main') return configuredSource;
-        return normalizeGenerationSource(extensionSettings?.[extensionName]?.generationProvider) === 'openrouter'
-            ? 'openrouter'
-            : 'main';
+        if (['openrouter', 'main', 'profile'].includes(configuredSource)) return configuredSource;
+        return normalizeGenerationSource(extensionSettings?.[extensionName]?.generationProvider) || 'main';
     }
 
     function getMpdLineSource() {
         const configuredSource = normalizeGenerationSource(extensionSettings?.[extensionName]?.mpdLineSource);
-        if (configuredSource === 'openrouter' || configuredSource === 'main') return configuredSource;
-        return normalizeGenerationSource(extensionSettings?.[extensionName]?.generationProvider) === 'openrouter'
-            ? 'openrouter'
-            : 'main';
+        if (['openrouter', 'main', 'profile'].includes(configuredSource)) return configuredSource;
+        return normalizeGenerationSource(extensionSettings?.[extensionName]?.generationProvider) || 'main';
     }
 
     function getPromptTemplate(settingKey, templateKey) {
@@ -445,6 +456,14 @@ export function createTrialManager(deps) {
         const source = getWhiteNoiseLineSource();
         if (source === 'default') return null;
 
+        if (source === 'profile') {
+            const profileId = getProfileIdForSetting('whiteNoiseLineSource');
+            if (profileId && typeof generateTrialDialogueWithProfile === 'function') {
+                return generateTrialDialogueWithProfile(profileId, prompt, options);
+            }
+            // No profile selected — fall through to the main API.
+        }
+
         const generator = source === 'openrouter'
             ? generateTrialDialogueWithOpenRouter
             : (generateTrialDialogueWithMainApi || generateTrialDialogue);
@@ -453,8 +472,17 @@ export function createTrialManager(deps) {
         return generator(prompt, options);
     }
 
-    async function generateDebateWithConfiguredSource(source, prompt, options) {
+    async function generateDebateWithConfiguredSource(source, prompt, options, settingKey) {
         if (source === 'default') return null;
+
+        if (source === 'profile') {
+            const profileId = getProfileIdForSetting(settingKey);
+            if (profileId && typeof generateTrialDialogueWithProfile === 'function') {
+                return generateTrialDialogueWithProfile(profileId, prompt, options);
+            }
+            // No profile selected — fall through to the main API.
+        }
+
         const generator = source === 'openrouter'
             ? generateTrialDialogueWithOpenRouter
             : (generateTrialDialogueWithMainApi || generateTrialDialogue);
@@ -6536,7 +6564,7 @@ JUDGMENT RULES:
                 await generateDebateWithConfiguredSource(nsdLineSource, prompt, {
                     maxTokens: 160,
                     temperature: 0.75 + attempt * 0.1,
-                }) || ''
+                }, 'nsdLineSource') || ''
             ).trim();
 
             const dialogueOnly = extractDialogueOnly(out);
@@ -6726,7 +6754,7 @@ JUDGMENT RULES:
                 await generateDebateWithConfiguredSource(mpdLineSource, prompt, {
                     maxTokens: 220,
                     temperature: 0.78 + attempt * 0.08,
-                }) || ''
+                }, 'mpdLineSource') || ''
             ).trim();
 
             const rawLines = out

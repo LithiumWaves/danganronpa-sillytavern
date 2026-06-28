@@ -19,52 +19,54 @@ export function createOpenRouterSettingsManager({ extensionName, extension_setti
         };
 
         extension_settings[extensionName].giftJudgements ||= {};
-        const generationProvider = extension_settings[extensionName].generationProvider === "openrouter" ? "openrouter" : "main";
+        const generationProvider = ["openrouter", "profile"].includes(extension_settings[extensionName].generationProvider)
+            ? extension_settings[extensionName].generationProvider
+            : "main";
         const legacyWhiteNoiseToggle = existingSettings.whiteNoiseGenerationEnabled;
         let settingsChanged = false;
 
-        if (!hadWhiteNoiseLineSource || !["default", "main", "openrouter"].includes(extension_settings[extensionName].whiteNoiseLineSource)) {
+        if (!hadWhiteNoiseLineSource || !["default", "main", "openrouter", "profile"].includes(extension_settings[extensionName].whiteNoiseLineSource)) {
             extension_settings[extensionName].whiteNoiseLineSource =
                 legacyWhiteNoiseToggle === false ? "default" : generationProvider;
             settingsChanged = true;
         }
 
-        if (!hadNsdLineSource || !["main", "openrouter"].includes(extension_settings[extensionName].nsdLineSource)) {
+        if (!hadNsdLineSource || !["main", "openrouter", "profile"].includes(extension_settings[extensionName].nsdLineSource)) {
             extension_settings[extensionName].nsdLineSource = generationProvider;
             settingsChanged = true;
         }
 
-        if (!hadMpdLineSource || !["main", "openrouter"].includes(extension_settings[extensionName].mpdLineSource)) {
+        if (!hadMpdLineSource || !["main", "openrouter", "profile"].includes(extension_settings[extensionName].mpdLineSource)) {
             extension_settings[extensionName].mpdLineSource = generationProvider;
             settingsChanged = true;
         }
 
-        if (!hadHangmansGambitLineSource || !["main", "openrouter"].includes(extension_settings[extensionName].hangmansGambitLineSource)) {
+        if (!hadHangmansGambitLineSource || !["main", "openrouter", "profile"].includes(extension_settings[extensionName].hangmansGambitLineSource)) {
             extension_settings[extensionName].hangmansGambitLineSource = generationProvider;
             settingsChanged = true;
         }
 
-        if (!hadQuestionTimeLineSource || !["main", "openrouter"].includes(extension_settings[extensionName].questionTimeLineSource)) {
+        if (!hadQuestionTimeLineSource || !["main", "openrouter", "profile"].includes(extension_settings[extensionName].questionTimeLineSource)) {
             extension_settings[extensionName].questionTimeLineSource = generationProvider;
             settingsChanged = true;
         }
 
-        if (!hadQuestionTruthLineSource || !["main", "openrouter"].includes(extension_settings[extensionName].questionTruthLineSource)) {
+        if (!hadQuestionTruthLineSource || !["main", "openrouter", "profile"].includes(extension_settings[extensionName].questionTruthLineSource)) {
             extension_settings[extensionName].questionTruthLineSource = generationProvider;
             settingsChanged = true;
         }
 
-        if (!hadArgumentArmamentLineSource || !["main", "openrouter"].includes(extension_settings[extensionName].argumentArmamentLineSource)) {
+        if (!hadArgumentArmamentLineSource || !["main", "openrouter", "profile"].includes(extension_settings[extensionName].argumentArmamentLineSource)) {
             extension_settings[extensionName].argumentArmamentLineSource = generationProvider;
             settingsChanged = true;
         }
 
-        if (!hadScrumDebateLineSource || !["main", "openrouter"].includes(extension_settings[extensionName].scrumDebateLineSource)) {
+        if (!hadScrumDebateLineSource || !["main", "openrouter", "profile"].includes(extension_settings[extensionName].scrumDebateLineSource)) {
             extension_settings[extensionName].scrumDebateLineSource = generationProvider;
             settingsChanged = true;
         }
 
-        if (!hadMindMineLineSource || !["main", "openrouter"].includes(extension_settings[extensionName].mindMineLineSource)) {
+        if (!hadMindMineLineSource || !["main", "openrouter", "profile"].includes(extension_settings[extensionName].mindMineLineSource)) {
             extension_settings[extensionName].mindMineLineSource = generationProvider;
             settingsChanged = true;
         }
