@@ -1,3 +1,5 @@
+import { DEFAULT_PINS } from "./defaultPins.js";
+
 const MACHINE_ROLL_DURATION_MS = 2000;
 const MACHINE_JINGLE_FRAME = 50;
 const MACHINE_GIF_TOTAL_FRAMES = 100;
@@ -10,6 +12,9 @@ const SIMPLE_EVIDENCE_STORAGE_KEY  = "dangan_map_simple_evidence_v1";
 const SIMPLE_BODY_STORAGE_KEY      = "dangan_map_simple_body_v1";
 const CUSTOM_AREAS_STORAGE_KEY     = "dangan_map_custom_areas_v1";
 const AREA_OVERRIDES_STORAGE_KEY   = "dangan_map_area_overrides_v1";
+// Ids of shipped default pins (see defaultPins.js) the user has deleted. Default
+// pins always merge back in at load, so we tombstone deletions here to keep them gone.
+const DELETED_DEFAULT_PINS_STORAGE_KEY = "dangan_map_deleted_default_pins_v1";
 
 const ROOM_SVG_FILES = [
     "art-room.svg", "bar.svg", "bedroom.svg", "biology-room.svg", "cafe.svg",
@@ -42,6 +47,14 @@ const MAP_AREAS = {
             { key: "floor_3", label: "FLOOR 3", image: "images/maps/floor_three.png", description: "Main academy third floor." },
             { key: "floor_4", label: "FLOOR 4", image: "images/maps/floor_four.png", description: "Main academy fourth floor." },
             { key: "floor_5", label: "FLOOR 5", image: "images/maps/floor_five.png", description: "Main academy fifth floor." },
+            { key: "inn_floor_1", label: "INN FLOOR 1", image: "images/maps/inn_floor_one.webp", description: "The first floor of the boarding inn." },
+        ],
+    },
+    jabberwock_island: {
+        label: "JABBERWOCK ISLAND FIRST ISLAND",
+        floors: [
+            { key: "floor_1", label: "OLD STOREHOUSE", image: "images/maps/jabberwock_old_storehouse.png", description: "First island old storehouse." },
+            { key: "pier_cottages", label: "PIER COTTAGES", image: "images/maps/jabberwock_pier_cottages.png", description: "First island pier cottages." },
         ],
     },
     hotel_despair: {
@@ -143,7 +156,10 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             .replace(/'/g, "&#39;");
     }
 
-    function loadCustomPins() {
+    // Canonical default pins keyed by id, used for adoption + equality checks.
+    const DEFAULT_PIN_BY_ID = new Map(DEFAULT_PINS.map(p => [p.id, p]));
+
+    function loadStoredPins() {
         try {
             const raw = window.localStorage?.getItem(CUSTOM_PINS_STORAGE_KEY);
             if (!raw) return [];
@@ -154,9 +170,60 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         }
     }
 
+    function loadDeletedDefaultPinIds() {
+        try {
+            const raw = window.localStorage?.getItem(DELETED_DEFAULT_PINS_STORAGE_KEY);
+            if (!raw) return new Set();
+            const parsed = JSON.parse(raw);
+            return new Set(Array.isArray(parsed) ? parsed : []);
+        } catch {
+            return new Set();
+        }
+    }
+
+    // Stable, field-order-independent serialization for comparing a pin against its
+    // canonical default. The runtime-only _default flag is excluded.
+    function canonicalizePin(p) {
+        const keys = Object.keys(p).filter(k => k !== "_default").sort();
+        return JSON.stringify(keys.map(k => [k, p[k]]));
+    }
+
+    function isUnchangedDefault(pin) {
+        const def = DEFAULT_PIN_BY_ID.get(pin.id);
+        return def ? canonicalizePin(pin) === canonicalizePin(def) : false;
+    }
+
+    // Build the working pin set: stored user pins, plus every shipped default that
+    // the user hasn't deleted or already adopted (edited). Defaults are tagged
+    // _default so the save layer knows they live in code unless modified.
+    function loadCustomPins() {
+        const stored = loadStoredPins();
+        const storedIds = new Set(stored.map(p => p.id));
+        const deleted = loadDeletedDefaultPinIds();
+        const merged = stored.map(p => ({ ...p }));
+        for (const def of DEFAULT_PINS) {
+            if (deleted.has(def.id)) continue;      // user removed it — keep it gone
+            if (storedIds.has(def.id)) continue;    // user edited it — stored copy wins
+            merged.push({ ...JSON.parse(JSON.stringify(def)), _default: true });
+        }
+        return merged;
+    }
+
     function saveCustomPins() {
         try {
-            window.localStorage?.setItem(CUSTOM_PINS_STORAGE_KEY, JSON.stringify(state.customPins || []));
+            // Persist user-owned pins only: anything that isn't a shipped default, plus
+            // any default the user has edited ("adopted"). Untouched defaults live in
+            // code and are rebuilt on load, so they're never written to storage.
+            const toPersist = (state.customPins || [])
+                .filter(p => !isUnchangedDefault(p))
+                .map(p => { const o = { ...p }; delete o._default; return o; });
+            window.localStorage?.setItem(CUSTOM_PINS_STORAGE_KEY, JSON.stringify(toPersist));
+
+            // Tombstone any default missing from the working set: it was deleted
+            // (via any code path) and must not reappear on the next load.
+            const presentIds = new Set((state.customPins || []).map(p => p.id));
+            const tombstones = DEFAULT_PINS.filter(d => !presentIds.has(d.id)).map(d => d.id);
+            window.localStorage?.setItem(DELETED_DEFAULT_PINS_STORAGE_KEY, JSON.stringify(tombstones));
         } catch {
             // no-op
         }
