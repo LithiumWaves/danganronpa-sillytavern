@@ -1,3 +1,6 @@
+import { extensionFolderPath } from "../core/constants.js";
+import { BUNDLED_ITEM_SPRITES } from "./bundledItemSprites.js";
+
 const itemCatalog = [
     { id: "g_mineral_water", name: "Carbonated Water", category: "gift", rarity: "N", description: "Drawn from the ocean depths and rigorously purified and carbonated. Ideal for a modern on-the-go public unsatisfied with tap water.", effect: "A modest but welcome gesture." },
     { id: "g_cola_cola", name: "Cola Cola", category: "gift", rarity: "N", description: "Contains a highly stimulating almost addictive sweetness. Pair it with some nice junk food for a can't-miss combo.", effect: "Perks up the mood slightly." },
@@ -677,6 +680,17 @@ export function createItemsPanelController({ extensionName, extension_settings, 
     ];
 
 
+    // Resolve the sprite to show for an item: the user's own uploaded image
+    // takes priority, otherwise fall back to the sprite bundled with the
+    // extension (assets/images/items/) so fresh installs aren't blank.
+    function resolveItemImageSrc(itemId) {
+        const userImage = extension_settings[extensionName].inventory?.itemImages?.[itemId];
+        if (userImage) return userImage;
+        const bundled = BUNDLED_ITEM_SPRITES[itemId];
+        if (bundled) return `${extensionFolderPath}/assets/images/items/${bundled}`;
+        return null;
+    }
+
     function loadInventoryState() {
         const ext = extension_settings[extensionName];
         ext.inventory ||= {};
@@ -1180,9 +1194,10 @@ export function createItemsPanelController({ extensionName, extension_settings, 
             ? `CATEGORY: ${formatCategoryLabel(item.category)} · COST: ${skillPointCost} SP · AVAILABLE: ${skillPoints} SP`
             : `CATEGORY: ${formatCategoryLabel(item.category)} · RARITY: ${item.rarity}`;
 
-        const itemImage = showImage
-            ? (extension_settings[extensionName].inventory?.itemImages?.[item.id] || null)
-            : null;
+        const itemImage = showImage ? resolveItemImageSrc(item.id) : null;
+        // Only a user-uploaded image can be removed; bundled sprites are the
+        // shipped fallback and stay even after a "remove".
+        const hasUserImage = showImage && !!extension_settings[extensionName].inventory?.itemImages?.[item.id];
 
         const imageBlockHtml = showImage ? `
             <div class="items-detail-img-wrap">
@@ -1197,7 +1212,7 @@ export function createItemsPanelController({ extensionName, extension_settings, 
                     ${itemImage ? "REPLACE IMAGE" : "ADD IMAGE"}
                     <input type="file" accept="image/*" class="items-detail-img-input" style="display:none">
                 </label>
-                ${itemImage ? `<button type="button" class="items-detail-img-remove-btn">REMOVE IMAGE</button>` : ""}
+                ${hasUserImage ? `<button type="button" class="items-detail-img-remove-btn">REMOVE IMAGE</button>` : ""}
             </div>
         ` : ``;
 
