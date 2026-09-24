@@ -206,7 +206,11 @@ function setupSocialCeremony({ distrust = false, char = null } = {}) {
     setName(nameEl, char);
     overlay.classList.remove("show");
     void overlay.offsetWidth;
-    overlay.classList.add("show");
+    const gen = ceremonyGen;
+    requestAnimationFrame(() => {
+        if (gen !== ceremonyGen) return;
+        overlay.classList.add("show");
+    });
 
     return scene;
 }

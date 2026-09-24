@@ -29,11 +29,12 @@ function shardPath(angle1, angle2) {
 
 function addLinearGradient(defs, id, angle1, angle2, stops) {
     const mid = (angle1 + angle2) / 2;
+    const inner = HUB_RADIUS + 1;
     const gradient = svgEl("linearGradient", {
         id,
         gradientUnits: "userSpaceOnUse",
-        x1: CENTER,
-        y1: CENTER,
+        x1: (CENTER + Math.cos(mid) * inner).toFixed(2),
+        y1: (CENTER + Math.sin(mid) * inner).toFixed(2),
         x2: (CENTER + Math.cos(mid) * RADIUS).toFixed(2),
         y2: (CENTER + Math.sin(mid) * RADIUS).toFixed(2)
     });
@@ -53,26 +54,26 @@ function filledStops(kind) {
     }
     if (kind === "distrust") {
         return [
-            ["0%", "#ff8a8a"],
-            ["32%", "#e32626"],
-            ["74%", "#8a0d0d"],
-            ["100%", "#3a0505"]
+            ["0%", "#ffc4c4"],
+            ["28%", "#ff5e5e"],
+            ["68%", "#c41c1c"],
+            ["100%", "#6a0a0a"]
         ];
     }
     return [
-        ["0%", "#b7efff"],
-        ["32%", "#4aa8e8"],
-        ["76%", "#1a4d7a"],
-        ["100%", "#0c2a48"]
+        ["0%", "#e7fbff"],
+        ["22%", "#7ad4ff"],
+        ["58%", "#3aa0e8"],
+        ["100%", "#1a5f9a"]
     ];
 }
 
 function emptyFill(isDistrust) {
-    return isDistrust ? "rgba(255, 90, 90, 0.08)" : "rgba(166, 237, 255, 0.07)";
+    return isDistrust ? "rgba(255, 90, 90, 0.06)" : "rgba(166, 237, 255, 0.05)";
 }
 
 function emptyStroke(isDistrust) {
-    return isDistrust ? "rgba(255, 120, 120, 0.28)" : "rgba(166, 237, 255, 0.22)";
+    return isDistrust ? "rgba(255, 140, 140, 0.22)" : "rgba(166, 237, 255, 0.2)";
 }
 
 function isShardFilled(index, filled) {
@@ -91,7 +92,7 @@ function buildDefs(svg) {
         width: "190%",
         height: "190%"
     });
-    glow.appendChild(svgEl("feGaussianBlur", { in: "SourceGraphic", stdDeviation: "1.35", result: "blur" }));
+    glow.appendChild(svgEl("feGaussianBlur", { in: "SourceGraphic", stdDeviation: "1.8", result: "blur" }));
     const merge = svgEl("feMerge");
     merge.appendChild(svgEl("feMergeNode", { in: "blur" }));
     merge.appendChild(svgEl("feMergeNode", { in: "SourceGraphic" }));
@@ -241,6 +242,7 @@ function buildDecagram(svg, filled) {
 
     for (let i = 0; i < 10; i++) {
         const shard = createShard(i, filled, isDistrust, false, defs);
+        if (isGold) shard.path.removeAttribute("filter");
         baseGroup.appendChild(shard.path);
 
         if (isGold) {
