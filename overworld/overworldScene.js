@@ -2151,7 +2151,11 @@ export function createOverworldSceneController({
             if (entry?.locationId !== locationId) continue;
             const char = getRosterCharByKey(key);
             if (!char?.name) continue;
-            out.push({ name: char.name, groupId: entry.groupId || null });
+            out.push({
+                name: char.name,
+                groupId: entry.groupId || null,
+                expression: entry.expression || null,
+            });
         }
         return out;
     }

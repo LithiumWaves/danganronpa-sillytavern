@@ -107,7 +107,8 @@ V3C| BODY_DISCOVERY
 | **Truth Bullets** | Toggle | On | Plays the Truth Bullet obtain animation when one is discovered in chat |
 | **MonoMono BGM Volume** | Slider (0–100) | 40 | Volume for the MonoMono machine background track |
 | **Play BGM in Assistant Chat** | Toggle | Off | Keeps phase BGM playing outside of group chats |
-| **BGM Tracks** | File multi-select | — | Assign audio files to each game phase. Available phases: Shop, Daytime, Nighttime, Investigation, Trial General, Trial Preparation, Non-Stop Debates, Mass Panic Debates, Scrum Debates, Hangman's Gambit, Rebuttal Showdown, Interjection, Suspect Choice, AA Phase 1/2/3 |
+| **Dynamic Songs** | Toggle | Off | When on, the extension majority-votes the latest sprite of every living character in the current scene (group-chat portraits, or overworld room if portraits are not up) and plays a matching mood track. Only replaces daytime / nighttime / investigation BGM — shop, map-pin BGM, class trials, and minigames are left alone. Neutral and unknown sprites are ignored. Ties keep the current mood if it is still tied for first, otherwise fall back to phase BGM. |
+| **BGM Tracks** | File multi-select | — | Assign audio files to each game phase or mood. Available phases: Shop, Daytime, Nighttime, Investigation, Trial General, Trial Preparation, Non-Stop Debates, Mass Panic Debates, Scrum Debates, Hangman's Gambit, Rebuttal Showdown, Interjection, Suspect Choice, AA Phase 1/2/3. Moods (used by Dynamic Songs): Happy (joy, excitement), Sad (sadness, grief), Dramatic (realization, surprise), Tense (fear, nervousness), Angry (anger, disgust), Romantic (love, embarrassment). A track can belong to both a phase list and a mood list. |
 ---
 
 ### Display

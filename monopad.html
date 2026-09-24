@@ -443,11 +443,17 @@
                     <button class="settings-toggle" data-setting="bgmOutsideChats"></button>
                 </div>
 
+                <div class="settings-item">
+                    <span class="settings-label">DYNAMIC SONGS</span>
+                    <button class="settings-toggle" data-setting="dynamicSongsEnabled"></button>
+                </div>
+
                 <div class="settings-item settings-item-stack">
                     <span class="settings-label">BGM TRACKS</span>
-                    <div class="settings-note">Select tracks that play after each phase starts. Multiple selections pick randomly. No selections plays no audio.</div>
+                    <div class="settings-note">Select tracks that play after each phase starts. Multiple selections pick randomly. No selections plays no audio. MOODS lists are used only when Dynamic Songs is on, and only during daytime / nighttime / investigation. Sprite majority maps to: Happy (joy, excitement), Sad (sadness, grief), Dramatic (realization, surprise), Tense (fear, nervousness), Angry (anger, disgust), Romantic (love, embarrassment). Neutral and unknown sprites are ignored.</div>
                     <div class="bgm-tracks-tabs">
                         <button class="bgm-tracks-tab active" data-tab="phases">PHASES</button>
+                        <button class="bgm-tracks-tab" data-tab="moods">MOODS</button>
                         <button class="bgm-tracks-tab" data-tab="locations">LOCATIONS</button>
                         <button class="bgm-tracks-tab" data-tab="trial">TRIAL</button>
                         <button class="bgm-tracks-tab" data-tab="aa">ARGUMENT ARMAMENT</button>
@@ -480,6 +486,66 @@
                             <div class="investigation-tracks-wrap">
                                 <div id="investigation-tracks-list" class="investigation-tracks-list"></div>
                                 <div id="investigation-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- MOODS (Dynamic Songs) -->
+                    <div class="bgm-tracks-panel" data-tab="moods">
+                        <div class="bgm-tracks-subtabs">
+                            <button class="bgm-tracks-subtab active" data-subtab="happy">HAPPY</button>
+                            <button class="bgm-tracks-subtab" data-subtab="sad">SAD</button>
+                            <button class="bgm-tracks-subtab" data-subtab="dramatic">DRAMATIC</button>
+                            <button class="bgm-tracks-subtab" data-subtab="tense">TENSE</button>
+                            <button class="bgm-tracks-subtab" data-subtab="angry">ANGRY</button>
+                            <button class="bgm-tracks-subtab" data-subtab="romantic">ROMANTIC</button>
+                        </div>
+                        <div class="bgm-tracks-subpanel active" data-subtab="happy">
+                            <div class="investigation-tracks-wrap">
+                                <div id="happy-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="happy-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bgm-tracks-subpanel" data-subtab="sad">
+                            <div class="investigation-tracks-wrap">
+                                <div id="sad-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="sad-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bgm-tracks-subpanel" data-subtab="dramatic">
+                            <div class="investigation-tracks-wrap">
+                                <div id="dramatic-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="dramatic-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bgm-tracks-subpanel" data-subtab="tense">
+                            <div class="investigation-tracks-wrap">
+                                <div id="tense-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="tense-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bgm-tracks-subpanel" data-subtab="angry">
+                            <div class="investigation-tracks-wrap">
+                                <div id="angry-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="angry-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bgm-tracks-subpanel" data-subtab="romantic">
+                            <div class="investigation-tracks-wrap">
+                                <div id="romantic-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="romantic-selected-list" class="investigation-selected-list">
                                     <div class="investigation-selected-empty">NONE SELECTED</div>
                                 </div>
                             </div>
