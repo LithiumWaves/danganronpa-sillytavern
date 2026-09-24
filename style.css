@@ -5,6 +5,7 @@
 @import url("https://fonts.googleapis.com/css2?family=Limelight&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Bruno+Ace&display=swap");
 @import url("./styles/legacy.css");
+@import url("./styles/systems/trust/ceremony.css");
 @import url("./styles/systems/vfx/vfx.css");
 @import url("./styles/systems/trial/trial.css");
 @import url("./styles/systems/trial/trial-aesthetic.css");

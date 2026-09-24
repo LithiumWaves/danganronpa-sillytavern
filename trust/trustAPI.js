@@ -25,13 +25,13 @@ export function increaseTrust(char) {
     );
 
     if (previous === -1 && char.trustLevel === 1) {
-        playDistrustToTrustRecovery();
+        playDistrustToTrustRecovery(char);
     } else if (previous === 9 && char.trustLevel === 10) {
-        playTrustMaxed();
+        playTrustMaxed(char);
     } else if (previous < 0) {
-        playDistrustRankUp(previous, char.trustLevel);
+        playDistrustRankUp(previous, char.trustLevel, char);
     } else {
-        playTrustRankUp(previous, char.trustLevel);
+        playTrustRankUp(previous, char.trustLevel, char);
     }
 
     // refresh
@@ -51,11 +51,11 @@ export function decreaseTrust(char) {
     );
 
     if (previous > 0 && char.trustLevel > 0) {
-        playTrustRankDown(previous, char.trustLevel);
+        playTrustRankDown(previous, char.trustLevel, char);
     } else if (previous === 1 && char.trustLevel === -1) {
-        playTrustToDistrustTransition();
+        playTrustToDistrustTransition(char);
     } else {
-        playDistrustRankDown(previous, char.trustLevel);
+        playDistrustRankDown(previous, char.trustLevel, char);
     }
 
     // refresh

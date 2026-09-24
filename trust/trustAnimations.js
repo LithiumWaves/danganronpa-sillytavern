@@ -5,10 +5,10 @@ let unlockAudio;
 let playSfx;
 let getSetting;
 
-const SOCIAL_ANIMATION_SPEED = {
-    overlayOut: 300,
-    step: 220
-};
+let ceremonyGen = 0;
+const timers = [];
+const intervals = [];
+const listeners = [];
 
 function initTrustAnimations(deps) {
     sfx = deps.sfx;
@@ -21,88 +21,397 @@ function trustCeremoniesEnabled() {
     return !getSetting || !!getSetting("trustCeremonies");
 }
 
-function ensureCenteredSocialOverlay(overlay) {
-    if (!overlay) return;
+function clearCeremonyWork() {
+    while (timers.length) clearTimeout(timers.pop());
+    while (intervals.length) clearInterval(intervals.pop());
+    while (listeners.length) {
+        const { target, type, fn, options } = listeners.pop();
+        target.removeEventListener(type, fn, options);
+    }
+}
 
+function abortCeremony({ hide = true } = {}) {
+    ceremonyGen += 1;
+    clearCeremonyWork();
+    if (hide) hideOverlay(true);
+}
+
+function after(ms, action) {
+    const gen = ceremonyGen;
+    const id = setTimeout(() => {
+        if (gen !== ceremonyGen) return;
+        action();
+    }, ms);
+    timers.push(id);
+}
+
+function trackListener(target, type, fn, options) {
+    target.addEventListener(type, fn, options);
+    listeners.push({ target, type, fn, options });
+}
+
+function characterName(char) {
+    return String(char?.name || "").trim();
+}
+
+function rankCaption(level, { maxed = false } = {}) {
+    if (maxed) return "MAX";
+    return level < 0 ? "DISTRUST" : "TRUST";
+}
+
+function rankLabel(level) {
+    if (level < 0) return String(level);
+    return String(level);
+}
+
+function mountOverlay(overlay) {
     if (overlay.parentElement !== document.body) {
         document.body.appendChild(overlay);
     }
-
-    const isMobile = window.matchMedia?.("(max-width: 700px)")?.matches;
-    const topInset = "env(safe-area-inset-top, 0px)";
-    const bottomInset = "env(safe-area-inset-bottom, 0px)";
-
-    overlay.style.setProperty("position", "fixed", "important");
-    overlay.style.setProperty("top", "0", "important");
-    overlay.style.setProperty("left", "0", "important");
-    overlay.style.setProperty("width", "100vw", "important");
-    overlay.style.setProperty("height", "100dvh", "important");
-    overlay.style.setProperty("display", "flex", "important");
-    overlay.style.setProperty("align-items", "center", "important");
-    overlay.style.setProperty("justify-content", "center", "important");
-    overlay.style.setProperty("padding-top", isMobile ? `max(10px, calc(${topInset} + 8px))` : "16px", "important");
-    overlay.style.setProperty("padding-bottom", isMobile ? `max(10px, calc(${bottomInset} + 8px))` : "16px", "important");
-    overlay.style.setProperty("padding-left", isMobile ? "10px" : "16px", "important");
-    overlay.style.setProperty("padding-right", isMobile ? "10px" : "16px", "important");
-    overlay.style.setProperty("box-sizing", "border-box", "important");
-    overlay.style.setProperty("z-index", "2147483600", "important");
-
-    const core = overlay.querySelector(".trust-rankup-core");
-    if (!core) return;
-
-    core.style.setProperty("margin", "0 auto", "important");
-    core.style.setProperty("max-width", isMobile ? "94vw" : "min(460px, 96vw)", "important");
 }
 
-function setupSocialCeremony({ distrust = false } = {}) {
-    if (!trustCeremoniesEnabled()) return null;
-    unlockAudio();
-
+function sceneElements() {
     const overlay = document.getElementById("trust-rankup-overlay");
     const svg = document.getElementById("trust-decagram");
     const banner = overlay?.querySelector(".trust-banner");
-
+    const nameEl = overlay?.querySelector(".trust-char-name");
+    const rankValue = overlay?.querySelector(".trust-rank-value");
+    const rankCaptionEl = overlay?.querySelector(".trust-rank-caption");
     if (!overlay || !svg || !banner) return null;
+    return { overlay, svg, banner, nameEl, rankValue, rankCaptionEl };
+}
 
-    ensureCenteredSocialOverlay(overlay);
-
-    overlay.classList.remove("social-add", "social-remove", "social-surge");
-    overlay.classList.toggle("distrust", distrust);
-    overlay.classList.add("show");
-
+function hideOverlay(immediate = false) {
+    const scene = sceneElements();
+    if (!scene) return;
+    const { overlay, svg, banner, nameEl, rankValue } = scene;
+    overlay.classList.remove("show");
     banner.classList.remove("show");
+    nameEl?.classList.remove("show");
+    rankValue?.classList.remove("tick");
+    svg.classList.remove("purify-pulse", "spin-up");
 
-    if (distrust) {
-        svg.dataset.mode = "distrust";
-    } else {
+    const strip = () => {
+        overlay.classList.remove("distrust", "social-add", "social-remove", "social-surge", "max");
         delete svg.dataset.mode;
+        delete svg.dataset.gold;
+        banner.textContent = "";
+        if (nameEl) nameEl.textContent = "";
+        if (rankValue) rankValue.textContent = "";
+        if (scene.rankCaptionEl) scene.rankCaptionEl.textContent = "";
+    };
+
+    if (immediate) {
+        strip();
+        return;
     }
 
-    return { overlay, svg, banner };
+    after(320, strip);
 }
 
-function playShardPulse(svg, index, variant) {
-    const shard = svg.querySelector(`path[data-index="${index}"]`);
-    if (!shard) return;
-
-    shard.classList.remove("social-shard-add", "social-shard-remove");
-    void shard.offsetWidth;
-    shard.classList.add(variant === "add" ? "social-shard-add" : "social-shard-remove");
+function setBanner(banner, text) {
+    banner.textContent = text || "";
+    banner.classList.remove("show");
 }
 
-function runSocialTimeline(steps) {
-    let elapsed = 0;
-    steps.forEach(({ at = 0, action }) => {
-        const delay = Math.max(0, at + elapsed);
-        setTimeout(action, delay);
+function setName(nameEl, char) {
+    if (!nameEl) return;
+    const name = characterName(char);
+    nameEl.textContent = name;
+    nameEl.classList.toggle("show", !!name);
+}
+
+function revealBanner(banner) {
+    if (banner.textContent) banner.classList.add("show");
+}
+
+function setRankReadout(scene, level, { tick = false, maxed = false } = {}) {
+    const { rankValue, rankCaptionEl } = scene;
+    if (!rankValue) return;
+    rankValue.textContent = rankLabel(level);
+    if (rankCaptionEl) rankCaptionEl.textContent = rankCaption(level, { maxed });
+    rankValue.classList.remove("tick");
+    if (tick) {
+        void rankValue.offsetWidth;
+        rankValue.classList.add("tick");
+    }
+}
+
+function playCeremonySfx(sound, volume) {
+    if (!sound) return;
+    if (typeof volume === "number") {
+        sound.volume = volume;
+    }
+    playSfx?.(sound);
+}
+
+function fadeAudio(audio, restoreVolume = 0.5) {
+    if (!audio) return;
+    const step = setInterval(() => {
+        audio.volume = Math.max(0, audio.volume - 0.05);
+        if (audio.volume <= 0) {
+            clearInterval(step);
+            audio.pause();
+            audio.currentTime = 0;
+            audio.volume = restoreVolume;
+        }
+    }, 30);
+    intervals.push(step);
+}
+
+function autoDismiss(delay) {
+    after(delay, () => hideOverlay());
+}
+
+function clickToDismiss(overlay, delay, onDismiss) {
+    const gen = ceremonyGen;
+    const dismiss = () => {
+        if (gen !== ceremonyGen) return;
+        onDismiss?.();
+        hideOverlay();
+    };
+    after(delay, () => {
+        trackListener(overlay, "click", dismiss, { once: true });
     });
 }
 
-function autoDismiss(overlay, banner, delay) {
-    setTimeout(() => {
-        overlay.classList.remove("show", "distrust", "social-add", "social-remove", "social-surge");
-        banner.classList.remove("show");
-    }, delay);
+function playShardPulse(svg, index, variant) {
+    const shard = svg.querySelector(`.trust-base-shards .decagram-shard[data-index="${index}"]`)
+        || svg.querySelector(`.decagram-shard[data-index="${index}"]`);
+    if (!shard) return;
+    shard.classList.remove("social-shard-add", "social-shard-remove");
+    void shard.getBoundingClientRect();
+    shard.classList.add(variant === "add" ? "social-shard-add" : "social-shard-remove");
+}
+
+function setupSocialCeremony({ distrust = false, char = null } = {}) {
+    if (!trustCeremoniesEnabled()) return null;
+    abortCeremony({ hide: true });
+    unlockAudio?.();
+
+    const scene = sceneElements();
+    if (!scene) return null;
+
+    const { overlay, svg, banner, nameEl } = scene;
+    mountOverlay(overlay);
+
+    overlay.classList.remove("social-add", "social-remove", "social-surge", "max", "distrust");
+    overlay.classList.toggle("distrust", distrust);
+    svg.classList.remove("purify-pulse", "spin-up");
+    delete svg.dataset.gold;
+    if (distrust) svg.dataset.mode = "distrust";
+    else delete svg.dataset.mode;
+
+    setBanner(banner, "");
+    setName(nameEl, char);
+    overlay.classList.remove("show");
+    void overlay.offsetWidth;
+    const gen = ceremonyGen;
+    requestAnimationFrame(() => {
+        if (gen !== ceremonyGen) return;
+        overlay.classList.add("show");
+    });
+
+    return scene;
+}
+
+function playTrustRankUp(previous, current, char) {
+    const scene = setupSocialCeremony({ char });
+    if (!scene) return;
+
+    const { overlay, svg, banner } = scene;
+    overlay.classList.add("social-add");
+    setBanner(banner, "TRUST INCREASED!");
+    setRankReadout(scene, previous);
+    buildDecagram(svg, previous);
+    playCeremonySfx(sfx?.trust_up);
+
+    after(220, () => {
+        buildDecagram(svg, current);
+        playShardPulse(svg, current - 1, "add");
+        setRankReadout(scene, current, { tick: true });
+    });
+    after(400, () => revealBanner(banner));
+    autoDismiss(1700);
+}
+
+function playTrustRankDown(previous, current, char) {
+    const scene = setupSocialCeremony({ char });
+    if (!scene) return;
+
+    const { overlay, svg, banner } = scene;
+    overlay.classList.add("social-remove");
+    setBanner(banner, "TRUST DECREASED...");
+    setRankReadout(scene, previous);
+    buildDecagram(svg, previous);
+    playCeremonySfx(sfx?.trust_down || sfx?.monokumasad);
+
+    const target = Math.max(0, previous - 1);
+    after(120, () => {
+        crackShard(svg, target);
+        playShardPulse(svg, target, "remove");
+    });
+    after(300, () => shatterShard(svg, target));
+    after(520, () => {
+        buildDecagram(svg, current);
+        setRankReadout(scene, current, { tick: true });
+        revealBanner(banner);
+    });
+    autoDismiss(1500);
+}
+
+function playDistrustRankDown(previous, current, char) {
+    const scene = setupSocialCeremony({ distrust: true, char });
+    if (!scene) return;
+
+    const { overlay, svg, banner } = scene;
+    overlay.classList.add("social-add");
+    setBanner(banner, "DISTRUST INCREASED…");
+    setRankReadout(scene, previous);
+    buildDecagram(svg, previous);
+    playCeremonySfx(sfx?.trust_down || sfx?.monokumasad);
+
+    const targetIndex = 10 - Math.abs(current);
+    after(180, () => {
+        buildDecagram(svg, current);
+        playShardPulse(svg, targetIndex, "add");
+        setRankReadout(scene, current, { tick: true });
+    });
+    after(360, () => revealBanner(banner));
+    autoDismiss(1500);
+}
+
+function playDistrustRankUp(previous, current, char) {
+    const scene = setupSocialCeremony({ distrust: true, char });
+    if (!scene) return;
+
+    const { overlay, svg, banner } = scene;
+    overlay.classList.add("social-remove");
+    setBanner(banner, "DISTRUST WEAKENING…");
+    setRankReadout(scene, previous);
+    buildDecagram(svg, previous);
+    if (sfx?.distrust_recover) playCeremonySfx(sfx.distrust_recover, 0.35);
+
+    const targetIndex = 10 - Math.abs(previous);
+    after(120, () => {
+        crackShard(svg, targetIndex);
+        playShardPulse(svg, targetIndex, "remove");
+    });
+    after(340, () => shatterShard(svg, targetIndex));
+    after(540, () => {
+        buildDecagram(svg, current);
+        setRankReadout(scene, current, { tick: true });
+        revealBanner(banner);
+    });
+    autoDismiss(1500);
+}
+
+function playDistrustToTrustRecovery(char) {
+    const scene = setupSocialCeremony({ distrust: true, char });
+    if (!scene) return;
+
+    const { overlay, svg, banner } = scene;
+    overlay.classList.add("social-surge");
+    setBanner(banner, "");
+    setRankReadout(scene, -1);
+    buildDecagram(svg, -1);
+    if (sfx?.trust_up) playCeremonySfx(sfx.trust_up, 0.4);
+
+    after(380, () => playShardPulse(svg, 9, "remove"));
+    after(900, () => svg.classList.add("purify-pulse"));
+    after(1450, () => {
+        svg.classList.remove("purify-pulse");
+        delete svg.dataset.mode;
+        overlay.classList.remove("distrust", "social-surge");
+        overlay.classList.add("social-add");
+        buildDecagram(svg, 1);
+        playShardPulse(svg, 0, "add");
+        setRankReadout(scene, 1, { tick: true });
+    });
+    after(1680, () => {
+        setBanner(banner, "TRUST REGAINED!");
+        revealBanner(banner);
+    });
+
+    clickToDismiss(overlay, 400);
+}
+
+function playTrustToDistrustTransition(char) {
+    const scene = setupSocialCeremony({ distrust: true, char });
+    if (!scene) return;
+
+    const { overlay, svg, banner } = scene;
+    overlay.classList.add("social-remove");
+    setBanner(banner, "DISTRUST INCREASED...");
+    setRankReadout(scene, 1);
+    buildDecagram(svg, 1);
+    if (sfx?.trust_shatter) playCeremonySfx(sfx.trust_shatter);
+
+    after(260, () => playShardPulse(svg, 0, "remove"));
+    after(640, () => svg.classList.add("spin-up"));
+    after(1050, () => {
+        for (let i = 0; i < 10; i++) shatterShard(svg, i);
+    });
+    after(1520, () => {
+        svg.classList.remove("spin-up");
+        svg.dataset.mode = "distrust";
+        buildDecagram(svg, -1);
+        playShardPulse(svg, 9, "add");
+        setRankReadout(scene, -1, { tick: true });
+        revealBanner(banner);
+    });
+
+    clickToDismiss(overlay, 400, () => {
+        if (!sfx?.trust_shatter) return;
+        sfx.trust_shatter.pause();
+        sfx.trust_shatter.currentTime = 0;
+    });
+}
+
+function playTrustMaxed(char) {
+    const scene = setupSocialCeremony({ char });
+    if (!scene) return;
+
+    const { overlay, svg, banner } = scene;
+    overlay.classList.add("social-surge", "max");
+    delete svg.dataset.gold;
+    setBanner(banner, "");
+    setRankReadout(scene, 9);
+    buildDecagram(svg, 9);
+    playCeremonySfx(sfx?.trust_max);
+
+    after(900, () => {
+        delete svg.dataset.gold;
+        buildDecagram(svg, 10);
+        playShardPulse(svg, 9, "add");
+        setRankReadout(scene, 10, { tick: true });
+    });
+    after(1700, () => {
+        svg.dataset.gold = "true";
+        buildDecagram(svg, 10);
+        const reveal = svg.querySelector("#goldRevealCircle");
+        if (reveal) {
+            const start = performance.now();
+            const duration = 1200;
+            const gen = ceremonyGen;
+            const tick = (now) => {
+                if (gen !== ceremonyGen) return;
+                const t = Math.min(1, (now - start) / duration);
+                const eased = 1 - Math.pow(1 - t, 3);
+                reveal.setAttribute("r", String(120 * eased));
+                if (t < 1) requestAnimationFrame(tick);
+            };
+            reveal.setAttribute("r", "0");
+            requestAnimationFrame(tick);
+        }
+        setRankReadout(scene, 10, { tick: true, maxed: true });
+    });
+    after(1950, () => {
+        setBanner(banner, "TRUST MAXED!");
+        revealBanner(banner);
+    });
+
+    clickToDismiss(overlay, 300, () => fadeAudio(sfx?.trust_max, 0.5));
 }
 
 export {
@@ -110,309 +419,8 @@ export {
     playTrustRankUp,
     playTrustRankDown,
     playTrustMaxed,
+    playTrustToDistrustTransition,
     playDistrustRankDown,
     playDistrustRankUp,
     playDistrustToTrustRecovery
 };
-
-function playTrustRankUp(previous, current) {
-    const scene = setupSocialCeremony();
-    if (!scene) return;
-
-    const { overlay, svg, banner } = scene;
-    overlay.classList.add("social-add");
-    banner.textContent = "TRUST INCREASED!";
-
-    buildDecagram(svg, previous);
-    playSfx(sfx.trust_up);
-
-    runSocialTimeline([
-        {
-            at: SOCIAL_ANIMATION_SPEED.step,
-            action: () => {
-                buildDecagram(svg, current);
-                playShardPulse(svg, current - 1, "add");
-            }
-        },
-        {
-            at: SOCIAL_ANIMATION_SPEED.step + 180,
-            action: () => banner.classList.add("show")
-        }
-    ]);
-
-    autoDismiss(overlay, banner, 1700);
-}
-
-function playTrustRankDown(previous, current) {
-    const scene = setupSocialCeremony();
-    if (!scene) return;
-
-    const { overlay, svg, banner } = scene;
-    overlay.classList.add("social-remove");
-    banner.textContent = "TRUST DECREASED...";
-
-    buildDecagram(svg, previous);
-    playSfx(sfx.trust_down || sfx.monokumasad);
-
-    runSocialTimeline([
-        {
-            at: 140,
-            action: () => {
-                const target = Math.max(0, previous - 1);
-                playShardPulse(svg, target, "remove");
-                shatterShard(svg, target);
-            }
-        },
-        {
-            at: 360,
-            action: () => {
-                buildDecagram(svg, current);
-                banner.classList.add("show");
-            }
-        }
-    ]);
-
-    autoDismiss(overlay, banner, 1300);
-}
-
-function playDistrustRankDown(previous, current) {
-    const scene = setupSocialCeremony({ distrust: true });
-    if (!scene) return;
-
-    const { overlay, svg, banner } = scene;
-    overlay.classList.add("social-add");
-    banner.textContent = "DISTRUST INCREASED…";
-
-    buildDecagram(svg, previous);
-    playSfx(sfx.trust_down || sfx.monokumasad);
-
-    const newAbs = Math.abs(current);
-    const targetIndex = 10 - newAbs;
-
-    runSocialTimeline([
-        {
-            at: 140,
-            action: () => {
-                buildDecagram(svg, current);
-                playShardPulse(svg, targetIndex, "add");
-            }
-        },
-        {
-            at: 340,
-            action: () => banner.classList.add("show")
-        }
-    ]);
-
-    autoDismiss(overlay, banner, 1300);
-}
-
-function playDistrustRankUp(previous, current) {
-    const scene = setupSocialCeremony({ distrust: true });
-    if (!scene) return;
-
-    const { overlay, svg, banner } = scene;
-    overlay.classList.add("social-remove");
-    banner.textContent = "DISTRUST WEAKENING…";
-
-    buildDecagram(svg, previous);
-
-    if (sfx.distrust_recover) {
-        sfx.distrust_recover.volume = 0.35;
-        playSfx(sfx.distrust_recover);
-    }
-
-    const targetIndex = 10 - Math.abs(previous);
-
-    runSocialTimeline([
-        {
-            at: 120,
-            action: () => {
-                crackShard(svg, targetIndex);
-                playShardPulse(svg, targetIndex, "remove");
-            }
-        },
-        {
-            at: 350,
-            action: () => {
-                buildDecagram(svg, current);
-                banner.classList.add("show");
-            }
-        }
-    ]);
-
-    autoDismiss(overlay, banner, 1400);
-}
-
-function playDistrustToTrustRecovery() {
-    const scene = setupSocialCeremony({ distrust: true });
-    if (!scene) return;
-
-    const { overlay, svg, banner } = scene;
-    overlay.classList.add("social-surge");
-    delete svg.dataset.gold;
-
-    banner.textContent = "";
-    buildDecagram(svg, -1);
-
-    if (sfx.trust_up) {
-        sfx.trust_up.volume = 0.4;
-        playSfx(sfx.trust_up);
-    }
-
-    runSocialTimeline([
-        {
-            at: 380,
-            action: () => playShardPulse(svg, 9, "remove")
-        },
-        {
-            at: 900,
-            action: () => svg.classList.add("purify-pulse")
-        },
-        {
-            at: 1450,
-            action: () => {
-                svg.classList.remove("purify-pulse");
-                delete svg.dataset.mode;
-                buildDecagram(svg, 1);
-                playShardPulse(svg, 0, "add");
-            }
-        },
-        {
-            at: 1680,
-            action: () => {
-                banner.textContent = "TRUST REGAINED!";
-                banner.classList.add("show");
-            }
-        }
-    ]);
-
-    const dismissOverlay = () => {
-        overlay.classList.remove("show", "distrust", "social-surge");
-        banner.classList.remove("show");
-        document.removeEventListener("click", dismissOverlay);
-    };
-
-    setTimeout(() => {
-        document.addEventListener("click", dismissOverlay, { once: true });
-    }, 400);
-}
-
-export async function playTrustToDistrustTransition() {
-    const scene = setupSocialCeremony({ distrust: true });
-    if (!scene) return;
-
-    const { overlay, svg, banner } = scene;
-    overlay.classList.add("social-remove");
-    banner.textContent = "DISTRUST INCREASED...";
-
-    buildDecagram(svg, 1);
-
-    if (sfx.trust_shatter) {
-        playSfx(sfx.trust_shatter);
-    }
-
-    runSocialTimeline([
-        {
-            at: 260,
-            action: () => playShardPulse(svg, 0, "remove")
-        },
-        {
-            at: 640,
-            action: () => svg.classList.add("spin-up")
-        },
-        {
-            at: 1050,
-            action: () => [...svg.querySelectorAll("path")].forEach((_, i) => shatterShard(svg, i))
-        },
-        {
-            at: 1520,
-            action: () => {
-                svg.classList.remove("spin-up");
-                svg.dataset.mode = "distrust";
-                buildDecagram(svg, -1);
-                playShardPulse(svg, 9, "add");
-                banner.classList.add("show");
-            }
-        }
-    ]);
-
-    const dismissOverlay = () => {
-        overlay.classList.remove("show", "distrust", "social-remove");
-        banner.classList.remove("show");
-
-        if (sfx.trust_shatter) {
-            sfx.trust_shatter.pause();
-            sfx.trust_shatter.currentTime = 0;
-        }
-    };
-
-    overlay.addEventListener("click", dismissOverlay, { once: true });
-}
-
-function playTrustMaxed() {
-    const scene = setupSocialCeremony();
-    if (!scene) return;
-
-    const { overlay, svg, banner } = scene;
-    overlay.classList.add("social-surge", "max");
-    svg.dataset.gold = "false";
-
-    banner.textContent = "";
-    buildDecagram(svg, 9);
-
-    playSfx(sfx.trust_max);
-
-    runSocialTimeline([
-        {
-            at: 900,
-            action: () => {
-                buildDecagram(svg, 10);
-                playShardPulse(svg, 9, "add");
-            }
-        },
-        {
-            at: 1700,
-            action: () => {
-                svg.dataset.gold = "true";
-                buildDecagram(svg, 10);
-                const reveal = svg.querySelector("#goldRevealCircle");
-                reveal?.animate([{ r: 0 }, { r: 120 }], {
-                    duration: 1200,
-                    easing: "cubic-bezier(0.2, 0.9, 0.2, 1)",
-                    fill: "forwards"
-                });
-            }
-        },
-        {
-            at: 1950,
-            action: () => {
-                banner.textContent = "TRUST MAXED!";
-                banner.classList.add("show");
-            }
-        }
-    ]);
-
-    const dismissOverlay = () => {
-        overlay.classList.remove("show", "social-surge", "max");
-        banner.classList.remove("show");
-
-        if (sfx.trust_max) {
-            const audio = sfx.trust_max;
-            const fade = setInterval(() => {
-                audio.volume = Math.max(0, audio.volume - 0.05);
-                if (audio.volume <= 0) {
-                    clearInterval(fade);
-                    audio.pause();
-                    audio.currentTime = 0;
-                    audio.volume = 0.5;
-                }
-            }, 30);
-        }
-
-        document.removeEventListener("click", dismissOverlay);
-    };
-
-    setTimeout(() => {
-        document.addEventListener("click", dismissOverlay, { once: true });
-    }, 300);
-}
