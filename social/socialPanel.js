@@ -99,20 +99,6 @@ export function createSocialPanelController({
         $report.addClass("has-character");
         $report.toggleClass("player-view", !!char.isPlayer);
 
-        const svg = document.getElementById("trust-decagram");
-        if (svg) {
-            delete svg.dataset.mode;
-            delete svg.dataset.gold;
-
-            if (char.trustLevel < 0) {
-                svg.dataset.mode = "distrust";
-            }
-
-            if (char.trustLevel === 10) {
-                svg.dataset.gold = "true";
-            }
-        }
-
         $report.find(".report-name").text(char.name || "—");
 
         // Dead / Missing / Mastermind toggle buttons
