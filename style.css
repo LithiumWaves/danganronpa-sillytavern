@@ -1885,6 +1885,79 @@ body.dangan-ow-edit-mode #dangan-bgm-display {
     cursor: not-allowed;
 }
 
+.dangan-gift-pick-card {
+    width: min(460px, 92vw);
+}
+.dangan-gift-pick-list li {
+    padding: 0;
+}
+.dangan-gift-pick-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    padding: 8px 12px;
+    font-family: inherit;
+}
+.dangan-gift-pick-thumb {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+    flex: 0 0 40px;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 3px;
+}
+.dangan-gift-pick-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.dangan-gift-pick-name {
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.dangan-gift-pick-detail {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    opacity: 0.7;
+}
+body.dangan-hide-gift-images .dangan-gift-pick-thumb {
+    display: none;
+}
+.dangan-gift-queue-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 48px;
+    transform: translateX(-50%) translateY(8px);
+    z-index: 2000001;
+    background: rgba(12, 12, 18, 0.94);
+    color: #fff;
+    border: 1.5px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.45));
+    border-radius: 4px;
+    padding: 10px 16px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 220ms ease, transform 220ms ease;
+}
+.dangan-gift-queue-toast.on {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
 /* Full-screen fade overlay used during the bounce-out → chat transition. */
 .dangan-ow-fadeout {
     position: fixed;

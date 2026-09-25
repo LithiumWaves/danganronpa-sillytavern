@@ -108,6 +108,10 @@ export function createOverworldSceneController({
     playSfx, // optional — (sfxObject | id) => void
     getSfx,  // optional — () => the shared sfx registry
     armBgmTransitionGuard, // optional — (durationMs) => void; suppresses BGM pauses for the duration
+    isSpriteClickGiftsEnabled, // optional — () => boolean
+    listOwnedGifts, // optional — () => { id, name, rarity, owned, imageSrc }[]
+    consumeOwnedGift, // optional — (itemId) => gift snapshot | null
+    onGiftQueuedForCharacter, // optional — (gift, characterName) => void
 }) {
     function playOwSfx(key) {
         if (!playSfx) return;
@@ -1371,6 +1375,10 @@ export function createOverworldSceneController({
                     // shouldn't linger over the bouncing sprite.
                     cursorActiveHoverCount = 0;
                     hideCursor();
+                    if (isSpriteClickGiftsEnabled?.()) {
+                        onCharacterGiftClick(m);
+                        return;
+                    }
                     if (isMulti) onGroupClick(group);
                     else onSoloClick(m);
                 });
@@ -1716,12 +1724,132 @@ export function createOverworldSceneController({
         backdrop.addEventListener("click", close);
         document.addEventListener("keydown", onKeydown);
 
-        confirmBtn.addEventListener("click", async () => {
-            const names = checkboxes().filter(cb => cb.checked).map(cb => cb.dataset.name);
-            if (names.length < 1) return;
-            close();
-            await transitionToChat(names);
-        });
+        document.body.appendChild(modal);
+    }
+
+    function showGiftQueuedToast(giftName, characterName) {
+        document.getElementById("dangan-gift-queue-toast")?.remove();
+        const toast = document.createElement("div");
+        toast.id = "dangan-gift-queue-toast";
+        toast.className = "dangan-gift-queue-toast";
+        toast.textContent = `QUEUED ${String(giftName || "").toUpperCase()} FOR ${String(characterName || "CHARACTER").toUpperCase()}.`;
+        document.body.appendChild(toast);
+        requestAnimationFrame(() => requestAnimationFrame(() => toast.classList.add("on")));
+        setTimeout(() => {
+            toast.classList.remove("on");
+            setTimeout(() => toast.remove(), 400);
+        }, 2200);
+    }
+
+    function onCharacterGiftClick(member) {
+        if (document.getElementById("dangan-gift-pick-modal")) return;
+        const characterName = member?.char?.name;
+        if (!characterName) return;
+
+        const displayName = (typeof getCharacterDisplayName === "function"
+            ? getCharacterDisplayName(characterName)
+            : characterName) || characterName;
+        const gifts = (typeof listOwnedGifts === "function" ? listOwnedGifts() : [])
+            .filter(g => g && g.id && Number(g.owned || 0) > 0);
+
+        const modal = document.createElement("div");
+        modal.id = "dangan-gift-pick-modal";
+        modal.className = "dangan-grab-modal";
+        modal.setAttribute("role", "dialog");
+        modal.setAttribute("aria-modal", "true");
+        modal.setAttribute("aria-labelledby", "dangan-gift-pick-title");
+
+        const backdrop = document.createElement("div");
+        backdrop.className = "dangan-grab-backdrop";
+        modal.appendChild(backdrop);
+
+        const card = document.createElement("div");
+        card.className = "dangan-grab-card dangan-gift-pick-card";
+        card.setAttribute("role", "document");
+
+        const header = document.createElement("div");
+        header.className = "dangan-grab-header";
+        const title = document.createElement("span");
+        title.id = "dangan-gift-pick-title";
+        title.textContent = `Give gift — ${displayName}`;
+        const closeBtn = document.createElement("button");
+        closeBtn.type = "button";
+        closeBtn.className = "dangan-grab-close";
+        closeBtn.setAttribute("aria-label", "Close");
+        closeBtn.textContent = "✕";
+        header.appendChild(title);
+        header.appendChild(closeBtn);
+        card.appendChild(header);
+
+        const body = document.createElement("div");
+        body.className = "dangan-grab-body";
+        if (!gifts.length) {
+            const empty = document.createElement("div");
+            empty.className = "dangan-grab-empty";
+            empty.textContent = "No gifts in inventory.";
+            body.appendChild(empty);
+        } else {
+            const list = document.createElement("ul");
+            list.className = "dangan-grab-list dangan-gift-pick-list";
+            for (const gift of gifts) {
+                const li = document.createElement("li");
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.className = "dangan-gift-pick-item";
+                btn.dataset.itemId = gift.id;
+                if (gift.imageSrc) {
+                    const thumb = document.createElement("img");
+                    thumb.className = "dangan-gift-pick-thumb";
+                    thumb.src = gift.imageSrc;
+                    thumb.alt = "";
+                    btn.appendChild(thumb);
+                }
+                const meta = document.createElement("span");
+                meta.className = "dangan-gift-pick-meta";
+                const nameEl = document.createElement("span");
+                nameEl.className = "dangan-gift-pick-name";
+                nameEl.textContent = gift.name || gift.id;
+                const detailEl = document.createElement("span");
+                detailEl.className = "dangan-gift-pick-detail";
+                detailEl.textContent = `${gift.rarity || "N"} · ×${Number(gift.owned || 0)}`;
+                meta.appendChild(nameEl);
+                meta.appendChild(detailEl);
+                btn.appendChild(meta);
+                btn.addEventListener("click", () => {
+                    const consumed = consumeOwnedGift?.(gift.id);
+                    if (!consumed) return;
+                    onGiftQueuedForCharacter?.(consumed, characterName);
+                    close();
+                    showGiftQueuedToast(consumed.name, displayName);
+                });
+                li.appendChild(btn);
+                list.appendChild(li);
+            }
+            body.appendChild(list);
+        }
+        card.appendChild(body);
+
+        const footer = document.createElement("div");
+        footer.className = "dangan-grab-footer";
+        const cancelBtn = document.createElement("button");
+        cancelBtn.type = "button";
+        cancelBtn.className = "dangan-grab-cancel";
+        cancelBtn.textContent = "Cancel";
+        footer.appendChild(cancelBtn);
+        card.appendChild(footer);
+
+        modal.appendChild(card);
+
+        const close = () => {
+            modal.remove();
+            document.removeEventListener("keydown", onKeydown);
+        };
+        const onKeydown = (e) => { if (e.key === "Escape") close(); };
+
+        closeBtn.addEventListener("click", close);
+        cancelBtn.addEventListener("click", close);
+        backdrop.addEventListener("click", close);
+        document.addEventListener("keydown", onKeydown);
 
         document.body.appendChild(modal);
     }
