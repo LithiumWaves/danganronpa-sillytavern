@@ -112,6 +112,9 @@ export function createOverworldSceneController({
     listOwnedGifts, // optional — () => { id, name, rarity, owned, imageSrc }[]
     consumeOwnedGift, // optional — (itemId) => gift snapshot | null
     onGiftQueuedForCharacter, // optional — (gift, characterName) => void
+    isSingleChatOverworldEnabled, // optional — () => boolean
+    getSingleChatGroupId, // optional — () => string
+    setSingleChatGroupId, // optional — (id) => void
 }) {
     function playOwSfx(key) {
         if (!playSfx) return;
@@ -1491,6 +1494,116 @@ export function createOverworldSceneController({
         scheduleRender();
     }
 
+    function showOwToast(message) {
+        document.getElementById("dangan-ow-toast")?.remove();
+        const toast = document.createElement("div");
+        toast.id = "dangan-ow-toast";
+        toast.className = "dangan-gift-queue-toast";
+        toast.textContent = String(message || "").trim();
+        if (!toast.textContent) return;
+        document.body.appendChild(toast);
+        requestAnimationFrame(() => requestAnimationFrame(() => toast.classList.add("on")));
+        setTimeout(() => {
+            toast.classList.remove("on");
+            setTimeout(() => toast.remove(), 400);
+        }, 2200);
+    }
+
+    const MAIN_CHAT_REMEMBER_TOAST = "Open your main group chat once, then Exit Conversation to remember it.";
+
+    function findStGroupById(id) {
+        if (!id) return null;
+        const ctx = window.SillyTavern?.getContext?.();
+        const groups = Array.isArray(ctx?.groups) ? ctx.groups : [];
+        return groups.find(g => String(g.id) === String(id)) || null;
+    }
+
+    function rememberMainGroupIfEnabled() {
+        if (!isSingleChatOverworldEnabled?.()) return;
+        const ctx = window.SillyTavern?.getContext?.();
+        if (ctx?.groupId) setSingleChatGroupId?.(String(ctx.groupId));
+    }
+
+    function resolveMainGroupId() {
+        const saved = String(getSingleChatGroupId?.() || "").trim();
+        if (saved && findStGroupById(saved)) return saved;
+        if (saved) setSingleChatGroupId?.("");
+        const ctx = window.SillyTavern?.getContext?.();
+        const groups = (Array.isArray(ctx?.groups) ? ctx.groups : []).filter(g => g?.id);
+        if (groups.length === 1) {
+            const id = String(groups[0].id);
+            setSingleChatGroupId?.(id);
+            return id;
+        }
+        return null;
+    }
+
+    function formatTalkNameList(names) {
+        const list = [...new Set((Array.isArray(names) ? names : [])
+            .map(n => String(n || "").trim())
+            .filter(Boolean))];
+        if (!list.length) return "";
+        if (list.length === 1) return list[0];
+        if (list.length === 2) return `${list[0]} and ${list[1]}`;
+        return `${list.slice(0, -1).join(", ")}, and ${list[list.length - 1]}`;
+    }
+
+    function getCurrentRoomLabel() {
+        const loc = typeof getCurrentLocationId === "function" ? getCurrentLocationId() : null;
+        const pin = loc ? getMapPanelController?.()?.getPinByLocationId?.(loc) : null;
+        return String(pin?.label || loc || "this location").trim();
+    }
+
+    function buildTalkSendLine(names) {
+        const who = formatTalkNameList(names);
+        const where = getCurrentRoomLabel();
+        const line = who
+            ? `*You talk to ${who} in the ${where}.*`
+            : `*You return to the ${where}.*`;
+        return line.replace(/[\r\n]+/g, " ").replace(/^\/+/, "").trim();
+    }
+
+    function membersFromNames(names) {
+        const state = getState();
+        return (Array.isArray(names) ? names : []).map(name => {
+            const key = normalizeName(name);
+            const entry = state.characters[key] || null;
+            const char = getRosterCharByKey(key) || { name };
+            return { key, char, entry };
+        });
+    }
+
+    async function returnToMainGroupChat({ names = [], members = [] } = {}) {
+        const id = resolveMainGroupId();
+        if (!id || typeof openGroupById !== "function") {
+            showOwToast(MAIN_CHAT_REMEMBER_TOAST);
+            return false;
+        }
+        try {
+            await openGroupById(id);
+        } catch (err) {
+            console.warn("[Dangan][Overworld] openGroupById main chat failed:", err);
+            setSingleChatGroupId?.("");
+            showOwToast(MAIN_CHAT_REMEMBER_TOAST);
+            return false;
+        }
+        if (!findStGroupById(id)) {
+            setSingleChatGroupId?.("");
+            showOwToast(MAIN_CHAT_REMEMBER_TOAST);
+            return false;
+        }
+        const exprMembers = Array.isArray(members) && members.length ? members : membersFromNames(names);
+        try { await applyGroupChatExpressions(exprMembers); }
+        catch (err) { console.warn("[Dangan][Overworld] expression carry-over failed:", err); }
+        await new Promise(r => setTimeout(r, 300));
+        const line = buildTalkSendLine(names);
+        if (line) {
+            try { await executeSlashCommands(`/send ${line}`); }
+            catch (err) { console.warn("[Dangan][Overworld] /send talk line failed:", err); }
+        }
+        return true;
+    }
+
     async function onSoloClick(member) {
         if (isFadingOutForChat) return;
         isFadingOutForChat = true;
@@ -1498,6 +1611,12 @@ export function createOverworldSceneController({
         const targets = root ? [...root.querySelectorAll(`.dangan-ow-sprite[data-key="${CSS.escape(member.key)}"]`)] : [];
         const expression = member.expression || member.entry?.expression || "neutral";
         bounceThenFade(targets, async () => {
+            if (isSingleChatOverworldEnabled?.()) {
+                try { await returnToMainGroupChat({ names: [member.char.name], members: [member] }); }
+                catch (err) { console.warn("[Dangan][Overworld] single-chat solo return failed:", err); }
+                finishChatTransition();
+                return;
+            }
             try {
                 await executeSlashCommands(`/go ${member.char.name}`);
                 // Carry the overworld sprite into the solo chat. /sprite targets
@@ -1521,6 +1640,12 @@ export function createOverworldSceneController({
         const names = group.members.map(m => m.char.name);
         const targets = root ? [...root.querySelectorAll(`.dangan-ow-group[data-gid="${CSS.escape(group.gid)}"] .dangan-ow-sprite`)] : [];
         bounceThenFade(targets, async () => {
+            if (isSingleChatOverworldEnabled?.()) {
+                try { await returnToMainGroupChat({ names, members: group.members }); }
+                catch (err) { console.warn("[Dangan][Overworld] single-chat group return failed:", err); }
+                finishChatTransition();
+                return;
+            }
             try { await enterOrCreateGroupChat(names); }
             catch (err) { console.warn("[Dangan][Overworld] group chat entry failed:", err); }
             applyGroupChatExpressions(group.members);
@@ -1544,6 +1669,7 @@ export function createOverworldSceneController({
         playOwSfx("character_exit_talk");
         await new Promise(r => setTimeout(r, 320));
         try {
+            rememberMainGroupIfEnabled();
             // /closechat triggers ST's "close current chat" path, which drops
             // the user back to the default Assistant / welcome state.
             await executeSlashCommands("/closechat");
@@ -1582,6 +1708,12 @@ export function createOverworldSceneController({
         const allNames = allMembers.map(m => m.char.name);
         const targets = root ? [...root.querySelectorAll(".dangan-ow-sprite")] : [];
         bounceThenFade(targets, async () => {
+            if (isSingleChatOverworldEnabled?.()) {
+                try { await returnToMainGroupChat({ names: allNames, members: allMembers }); }
+                catch (err) { console.warn("[Dangan][Overworld] single-chat room return failed:", err); }
+                finishChatTransition();
+                return;
+            }
             try { await enterOrCreateGroupChat(allNames); }
             catch (err) { console.warn("[Dangan][Overworld] room chat entry failed:", err); }
             applyGroupChatExpressions(allMembers);
@@ -1728,17 +1860,7 @@ export function createOverworldSceneController({
     }
 
     function showGiftQueuedToast(giftName, characterName) {
-        document.getElementById("dangan-gift-queue-toast")?.remove();
-        const toast = document.createElement("div");
-        toast.id = "dangan-gift-queue-toast";
-        toast.className = "dangan-gift-queue-toast";
-        toast.textContent = `QUEUED ${String(giftName || "").toUpperCase()} FOR ${String(characterName || "CHARACTER").toUpperCase()}.`;
-        document.body.appendChild(toast);
-        requestAnimationFrame(() => requestAnimationFrame(() => toast.classList.add("on")));
-        setTimeout(() => {
-            toast.classList.remove("on");
-            setTimeout(() => toast.remove(), 400);
-        }, 2200);
+        showOwToast(`QUEUED ${String(giftName || "").toUpperCase()} FOR ${String(characterName || "CHARACTER").toUpperCase()}.`);
     }
 
     function onCharacterGiftClick(member) {
@@ -2046,7 +2168,9 @@ export function createOverworldSceneController({
         });
 
         try {
-            if (memberObjs.length === 1) {
+            if (isSingleChatOverworldEnabled?.()) {
+                await returnToMainGroupChat({ names: memberNames, members: memberObjs });
+            } else if (memberObjs.length === 1) {
                 const m = memberObjs[0];
                 await executeSlashCommands(`/go ${m.char.name}`);
                 const expression = m.entry?.expression;

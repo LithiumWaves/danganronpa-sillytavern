@@ -84,6 +84,8 @@ export const defaultSettings = {
     hideTruthBulletImages: false,
     hideGiftImages: false,
     spriteClickGiftsEnabled: false,
+    singleChatOverworldEnabled: false,
+    singleChatGroupId: "",
     minigameTutorialsEnabled: true,
     featureCoachesEnabled: true,
     onboardingCoachesSeen: {},

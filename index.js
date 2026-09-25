@@ -9340,6 +9340,9 @@ jQuery(async () => {
                     onGiftQueuedForCharacter: (gift, characterName) => {
                         queueGiftForNextReply(gift, characterName);
                     },
+                    isSingleChatOverworldEnabled: () => !!getMonopadSetting("singleChatOverworldEnabled"),
+                    getSingleChatGroupId: () => String(getMonopadSetting("singleChatGroupId") || ""),
+                    setSingleChatGroupId: (id) => setMonopadSetting("singleChatGroupId", String(id || "")),
                     onSceneChanged: () => {
                         // Invalidate the cached minimap signature so it
                         // rebuilds with the new occupant pins.
