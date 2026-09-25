@@ -83,6 +83,7 @@ export const defaultSettings = {
     dynamicThemes: true,
     hideTruthBulletImages: false,
     hideGiftImages: false,
+    spriteClickGiftsEnabled: false,
     minigameTutorialsEnabled: true,
     featureCoachesEnabled: true,
     onboardingCoachesSeen: {},

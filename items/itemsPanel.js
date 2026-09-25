@@ -957,6 +957,38 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         return true;
     }
 
+    function consumeOwnedGift(itemId) {
+        loadInventoryState();
+        const item = getGiftPool().find(g => g.id === itemId);
+        if (!item || item.category !== "gift") return null;
+
+        const bucketState = extension_settings[extensionName].inventory.gifts ||= {};
+        const qty = Number(bucketState[itemId] || 0);
+        if (qty <= 0) return null;
+        const nextQty = qty - 1;
+        if (nextQty <= 0) delete bucketState[itemId];
+        else bucketState[itemId] = nextQty;
+        if (selectedItemId === itemId && !bucketState[itemId]) selectedItemId = null;
+        saveSettingsDebounced();
+        renderSkillsItemsPanel();
+        return {
+            id: item.id,
+            name: item.name,
+            rarity: item.rarity,
+            description: item.description,
+            effect: item.effect,
+        };
+    }
+
+    function getOwnedGifts() {
+        return getGiftPoolWithCounts()
+            .filter(item => item.owned > 0)
+            .map(item => ({
+                ...item,
+                imageSrc: resolveItemImageSrc(item.id),
+            }));
+    }
+
     function consumeGiftForUse(item) {
         if (!item || item.category !== "gift") return false;
         const consumed = discardInventoryItem(item.id, 1);
@@ -2155,6 +2187,8 @@ export function createItemsPanelController({ extensionName, extension_settings, 
         buyTrialSkill,
         resetSkillOwnership,
         getGiftPoolWithCounts,
+        getOwnedGifts,
+        consumeOwnedGift,
         createCustomGift,
         removeCustomGift,
         createCustomSkill,

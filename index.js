@@ -4834,15 +4834,17 @@ function getActiveSocialCharacter() {
     return null;
 }
 
-function queueGiftForNextReply(gift) {
+function queueGiftForNextReply(gift, targetName) {
     if (!gift?.id) return false;
 
+    const target = String(targetName || "").trim();
     pendingGiftDeliveryQueue.push({
         ...gift,
         queuedAt: Date.now(),
+        ...(target ? { targetName: target } : {}),
     });
 
-    console.log(`[Dangan][Items] Queued gift for next reply: ${gift.name} (queue size: ${pendingGiftDeliveryQueue.length})`);
+    console.log(`[Dangan][Items] Queued gift for next reply: ${gift.name}${target ? ` (target: ${target})` : ""} (queue size: ${pendingGiftDeliveryQueue.length})`);
     return true;
 }
 
@@ -4997,13 +4999,14 @@ async function tryResolvePendingGiftForMessage(msgEl, rawText) {
 
     if (isUser || isSystem || !characterName) return;
 
+    const gift = pendingGiftDeliveryQueue[0];
+    if (gift?.targetName && normalizeName(gift.targetName) !== normalizeName(characterName)) return;
+
     const signature = buildMessageSignature(msgEl, rawText);
     if (processedGiftMessageSignatures.has(signature)) return;
 
     pendingGiftResolutionInFlight = true;
     processedGiftMessageSignatures.add(signature);
-
-    const gift = pendingGiftDeliveryQueue[0];
 
     const characterSource = getCharacterSourceText(characterName);
     const reactionData = await generateGiftReactionExcerpt({
@@ -9331,6 +9334,12 @@ jQuery(async () => {
                     playSfx,
                     getSfx: () => sfx,
                     armBgmTransitionGuard,
+                    isSpriteClickGiftsEnabled: () => !!getMonopadSetting("spriteClickGiftsEnabled"),
+                    listOwnedGifts: () => itemsPanelController?.getOwnedGifts?.() || [],
+                    consumeOwnedGift: (itemId) => itemsPanelController?.consumeOwnedGift?.(itemId) || null,
+                    onGiftQueuedForCharacter: (gift, characterName) => {
+                        queueGiftForNextReply(gift, characterName);
+                    },
                     onSceneChanged: () => {
                         // Invalidate the cached minimap signature so it
                         // rebuilds with the new occupant pins.
