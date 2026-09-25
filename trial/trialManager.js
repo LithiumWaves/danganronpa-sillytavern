@@ -8331,6 +8331,11 @@ JUDGMENT RULES:
         getGcpSpeakerImg:  () => gcpSlots[Math.round(gcpCurrentFloat)]?.img  ?? null,
         getGcpSpeakerName: () => gcpSlots[Math.round(gcpCurrentFloat)]?.name ?? null,
         getGcpPlayerImg:   () => gcpSlots.find(s => s.isPlayer)?.img ?? null,
+        isTrialActive:     () => !!trialActive,
+        isGcpStageActive:  () => !!(gcpStage && gcpSlots.length),
+        getGcpLivingSlots: () => gcpSlots
+            .filter(s => s?.name && !s.isDead && !s.isMissing && !isMonokuma(s.name))
+            .map(s => ({ name: s.name, img: s.img, isDead: !!s.isDead, isMissing: !!s.isMissing })),
         // Re-runs the flat (non-trial) GCP layout so the dynamic CSS var
         // --gcp-half-slot-height gets recomputed. Used when the user toggles
         // half-sprite mode mid-chat — otherwise the slot height var stays

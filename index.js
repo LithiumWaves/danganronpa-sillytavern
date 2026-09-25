@@ -53,6 +53,7 @@ import { createChapterEndRosterController } from "./vfx/chapterEndRoster.js";
 import { createRebuttalShowdownController, createInterjectionCinematicRunner } from "./vfx/rebuttalShowdown.js";
 import { MPD_TEST_SCENARIOS } from "./vfx/massPanicDebate.js";
 import { createAudioVisualizerController } from "./audio/audioVisualizer.js";
+import { createDynamicSongsController } from "./audio/dynamicSongs.js";
 import { createOverworldSceneController } from "./overworld/overworldScene.js";
 import { showCgByBgName, showCgPicker } from "./overworld/cgViewer.js";
 import { user_avatar } from "../../../personas.js";
@@ -3847,6 +3848,12 @@ const BGM_TRACK_TABS = [
     { key: "daytime",                settingKey: "daytimeTracks",             listId: "daytime-tracks-list",                selectedId: "daytime-selected-list" },
     { key: "nighttime",              settingKey: "nighttimeTracks",           listId: "nighttime-tracks-list",              selectedId: "nighttime-selected-list" },
     { key: "investigation",          settingKey: "investigationTracks",       listId: "investigation-tracks-list",          selectedId: "investigation-selected-list" },
+    { key: "happy",                  settingKey: "happyTracks",               listId: "happy-tracks-list",                  selectedId: "happy-selected-list" },
+    { key: "sad",                    settingKey: "sadTracks",                 listId: "sad-tracks-list",                    selectedId: "sad-selected-list" },
+    { key: "dramatic",               settingKey: "dramaticTracks",            listId: "dramatic-tracks-list",               selectedId: "dramatic-selected-list" },
+    { key: "tense",                  settingKey: "tenseTracks",               listId: "tense-tracks-list",                  selectedId: "tense-selected-list" },
+    { key: "angry",                  settingKey: "angryTracks",               listId: "angry-tracks-list",                  selectedId: "angry-selected-list" },
+    { key: "romantic",               settingKey: "romanticTracks",            listId: "romantic-tracks-list",               selectedId: "romantic-selected-list" },
     { key: "shop",                   settingKey: "shopTracks",                listId: "shop-tracks-list",                   selectedId: "shop-selected-list" },
     { key: "trial-general",          settingKey: "trialGeneralTracks",        listId: "trial-general-tracks-list",          selectedId: "trial-general-selected-list" },
     { key: "trial-preparation",      settingKey: "trialPreparationTracks",    listId: "trial-preparation-tracks-list",      selectedId: "trial-preparation-selected-list" },
@@ -3903,6 +3910,12 @@ const BGM_PLAYLIST_LABELS = {
     daytimeTracks:           'DAYTIME',
     nighttimeTracks:         'NIGHTTIME',
     investigationTracks:     'INVESTIGATION',
+    happyTracks:             'HAPPY',
+    sadTracks:               'SAD',
+    dramaticTracks:          'DRAMATIC',
+    tenseTracks:             'TENSE',
+    angryTracks:             'ANGRY',
+    romanticTracks:          'ROMANTIC',
     shopTracks:              'SHOP',
     trialGeneralTracks:      'GENERAL',
     trialPreparationTracks:  'TRIAL PREP',
@@ -3925,6 +3938,12 @@ const BGM_PLAYLIST_PARENTS = {
     daytimeTracks:           'PHASES',
     nighttimeTracks:         'PHASES',
     investigationTracks:     'PHASES',
+    happyTracks:             'MOODS',
+    sadTracks:               'MOODS',
+    dramaticTracks:          'MOODS',
+    tenseTracks:             'MOODS',
+    angryTracks:             'MOODS',
+    romanticTracks:          'MOODS',
     shopTracks:              'LOCATIONS',
     trialPreparationTracks:  'LOCATIONS',
     trialGeneralTracks:      'TRIAL',
@@ -4177,7 +4196,7 @@ function _stopAllBgm() {
     audioVisualizer?.hide();
 }
 
-function playPhaseTrack() {
+function playPhaseTrackCore() {
     if (investigationUnderway) {
         playInvestigationTrack();
     } else if (ensureTimeTrackerState().phase === TIME_PHASE_NIGHT) {
@@ -4185,6 +4204,42 @@ function playPhaseTrack() {
     } else {
         playDaytimeTrack();
     }
+}
+
+function isAmbientDynamicSongContext() {
+    if (trialManager?.isTrialActive?.()) return false;
+    if (_hgPreviousBgmSelectVal) return false;
+    if (shopTrackAudio) return false;
+    const locId = getCurrentLocationId();
+    const pin = locId ? mapPanelController?.getPinByLocationId?.(locId) : null;
+    if (pin?.bgm) return false;
+    return true;
+}
+
+function getDynamicSongGcpScene() {
+    if (!trialManager?.isGcpStageActive?.()) return null;
+    return trialManager.getGcpLivingSlots?.() || [];
+}
+
+function getDynamicSongOverworldScene() {
+    const locId = getCurrentLocationId();
+    return overworldSceneController?.getCharactersInRoom?.(locId) || [];
+}
+
+const dynamicSongsController = createDynamicSongsController({
+    isEnabled: () => !!getMonopadSetting("dynamicSongsEnabled"),
+    isAmbientContext: () => isAmbientDynamicSongContext(),
+    getCurrentBgmSettingKey: () => bgmCurrentSettingKey,
+    getTracks: (key) => getMonopadSetting(key) || [],
+    playTrackFromSetting,
+    playPhaseTrackCore,
+    getGcpScene: getDynamicSongGcpScene,
+    getOverworldScene: getDynamicSongOverworldScene,
+});
+
+function playPhaseTrack() {
+    if (dynamicSongsController?.evaluateAndPlay?.({ restorePhaseOnMiss: false })) return;
+    playPhaseTrackCore();
 }
 
 function stopInvestigationTrack() {
@@ -7279,6 +7334,7 @@ function resumeBgmAfterHG() {
         investigationTrackAudio = savedInvAudio;
         investigationTrackAudio.play().catch(() => {});
     }
+    try { dynamicSongsController?.scheduleEvaluate?.({ restorePhaseOnMiss: true }); } catch (_) {}
 }
 
 async function onMindMineWin(sentence) {
@@ -9280,6 +9336,7 @@ jQuery(async () => {
                         // rebuilds with the new occupant pins.
                         _minimapSig = null;
                         try { renderMinimap(); } catch (e) { console.warn("[Dangan][Overworld] minimap refresh failed:", e); }
+                        try { dynamicSongsController?.scheduleEvaluate?.({ restorePhaseOnMiss: true }); } catch (e) { console.warn("[Dangan][DynamicSongs] evaluate failed:", e); }
                     },
                 });
                 window.dangan_overworld = overworldSceneController;
@@ -9649,6 +9706,9 @@ $(".monopad-icon").on("mouseenter", function () {
             }
             if (key === "dynamicThemes") {
                 applyDynamicTheme();
+            }
+            if (key === "dynamicSongsEnabled") {
+                dynamicSongsController?.onEnabledChanged?.(next);
             }
             if (key === "hideTruthBulletImages" || key === "hideGiftImages" || key === "hideHopesPeakBranding") {
                 applyImageVisibilitySettings();
@@ -11522,6 +11582,9 @@ STATEMENT: <third statement>`;
                     playPhaseTrack();
                 }, 600);
             }
+            setTimeout(() => {
+                dynamicSongsController?.scheduleEvaluate?.({ restorePhaseOnMiss: true });
+            }, 1600);
         });
 
         // Deleting a chat (e.g. an accidentally-created Class Trial) doesn't
@@ -11739,6 +11802,9 @@ STATEMENT: <third statement>`;
                 _spriteFolder = decodeURIComponent(_p[_p.length - 2] || '').toLowerCase();
             } catch { /* ignore bad src */ }
             if (_altName === 'narrator' || _spriteFolder === 'narrator') return;
+
+            try { dynamicSongsController?.noteFromImage?.(imgEl, src); } catch { /* ignore */ }
+            try { dynamicSongsController?.scheduleEvaluate?.({ restorePhaseOnMiss: true }); } catch { /* ignore */ }
 
             if (window.__DREX_OUTFIT_DEBUG) console.log('[DREX-outfit] onExpressionChange', { src, prefix: getActiveOutfitPrefix(), curLoc: getCurrentLocationId(), cls: imgEl.className, id: imgEl.id, parent: imgEl.parentElement?.className });
 
