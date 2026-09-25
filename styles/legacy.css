@@ -5101,7 +5101,8 @@ body.dangan-hide-truth-images .truth-image-col {
 }
 
 body.dangan-hide-gift-images .items-detail-img-wrap,
-body.dangan-hide-gift-images .items-detail-img-actions {
+body.dangan-hide-gift-images .items-detail-img-actions,
+body.dangan-hide-gift-images .dangan-gift-pick-thumb {
     display: none !important;
 }
 
