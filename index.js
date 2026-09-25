@@ -9341,8 +9341,8 @@ jQuery(async () => {
                         queueGiftForNextReply(gift, characterName);
                     },
                     isSingleChatOverworldEnabled: () => !!getMonopadSetting("singleChatOverworldEnabled"),
-                    getSingleChatGroupId: () => String(getMonopadSetting("singleChatGroupId") || ""),
-                    setSingleChatGroupId: (id) => setMonopadSetting("singleChatGroupId", String(id || "")),
+                    editGroup,
+                    isTrialActive: () => !!trialManager?.isTrialActive?.(),
                     onSceneChanged: () => {
                         // Invalidate the cached minimap signature so it
                         // rebuilds with the new occupant pins.
@@ -9354,7 +9354,7 @@ jQuery(async () => {
                 window.dangan_overworld = overworldSceneController;
             } catch (e) {
                 console.error("[Dangan][Overworld] Failed to initialize overworld controller:", e);
-                overworldSceneController = { render: () => {}, randomizeLocations: () => {}, notifyPlayerMovedTo: () => {}, ensureCharacterLocations: () => {}, destroy: () => {} };
+                overworldSceneController = { render: () => {}, randomizeLocations: () => {}, notifyPlayerMovedTo: () => {}, ensureCharacterLocations: () => {}, destroy: () => {}, onSingleChatOverworldChanged: () => {}, schedulePresenceSync: () => {} };
             }
 
             const initialRender = (tag) => {
@@ -9721,6 +9721,9 @@ $(".monopad-icon").on("mouseenter", function () {
             }
             if (key === "dynamicSongsEnabled") {
                 dynamicSongsController?.onEnabledChanged?.(next);
+            }
+            if (key === "singleChatOverworldEnabled") {
+                overworldSceneController?.onSingleChatOverworldChanged?.(next);
             }
             if (key === "hideTruthBulletImages" || key === "hideGiftImages" || key === "hideHopesPeakBranding") {
                 applyImageVisibilitySettings();
