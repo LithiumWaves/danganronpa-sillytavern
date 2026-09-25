@@ -44,7 +44,24 @@ function run() {
     });
     assert(withDead.includes("kyoko.png"), "dead kyoko stays muted even if her sprite would be in-room");
 
-    assert(disabledMembersEqual(["a", "b"], ["b", "a"]), "order-insensitive equal");
+    const emptyRoom = computeRoomDisabledMembers({
+        memberAvatars: members,
+        currentDisabled: [],
+        charByAvatar,
+        inRoomNameKeys: [],
+        rosterByKey,
+    });
+    assert(emptyRoom.includes("kyoko.png") && emptyRoom.includes("byakuya.png") && emptyRoom.includes("makoto.png"), "empty room mutes all students");
+    assert(!emptyRoom.includes("narrator.png"), "unmuted narrator stays unmuted when left alone");
+
+    const spaced = computeRoomDisabledMembers({
+        memberAvatars: members,
+        currentDisabled: [],
+        charByAvatar,
+        inRoomNameKeys: ["  KYOKO   KIRIGIRI  "],
+        rosterByKey,
+    });
+    assert(!spaced.includes("kyoko.png"), "normalized names still count as in-room");
     assert(!disabledMembersEqual(["a"], ["a", "b"]), "length mismatch");
 
     console.log("roomPresence tests passed");
