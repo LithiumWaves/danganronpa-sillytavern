@@ -1,5 +1,10 @@
 import { LOCATION_PINPOINTS } from "../map/locationPresence.js";
 import { normalizeName } from "../social/characterUtils.js";
+import {
+    computeRoomDisabledMembers,
+    disabledMembersEqual,
+    isPresenceExtensionPresent,
+} from "./roomPresence.js";
 
 const STATE_VERSION = 1;
 const ROOM_ID_PREFIXES_TO_REJECT = ["area:", "subarea:"];
@@ -113,14 +118,39 @@ export function createOverworldSceneController({
     consumeOwnedGift, // optional — (itemId) => gift snapshot | null
     onGiftQueuedForCharacter, // optional — (gift, characterName) => void
     isSingleChatOverworldEnabled, // optional — () => boolean
-    getSingleChatGroupId, // optional — () => string
-    setSingleChatGroupId, // optional — (id) => void
+    editGroup, // optional — (groupId, update, silent) persist group mute/presence
+    isTrialActive, // optional — () => boolean
 }) {
     function playOwSfx(key) {
         if (!playSfx) return;
         const reg = getSfx?.();
         const sound = reg?.[key];
         if (sound) try { playSfx(sound); } catch (e) { /* swallow — sfx is non-critical */ }
+    }
+
+    // When Single-Chat Overworld is on, exploration stays inside the open
+    // group chat. `conversationViewOpen` hides the overworld overlay so the
+    // player can read GCP / type without sprites covering the stage.
+    let conversationViewOpen = false;
+    let lastPresenceChatKey = "";
+    let presenceTimer = null;
+    let presenceWarned = false;
+    const PRESENCE_DEBOUNCE_MS = 250;
+
+    function isTrialUiActive() {
+        try { if (isTrialActive?.()) return true; } catch { /* ignore */ }
+        return document.body.classList.contains("dangan-trial-active");
+    }
+
+    function isSingleChatGroupContext() {
+        if (!isSingleChatOverworldEnabled?.()) return false;
+        const ctx = window.SillyTavern?.getContext?.();
+        return !!ctx?.groupId;
+    }
+
+    function currentChatKey() {
+        const ctx = window.SillyTavern?.getContext?.();
+        return `${ctx?.groupId || ""}|${ctx?.characterId ?? ""}`;
     }
 
     // ── Hover cursor (Non-Stop Debate–style reticle) ─────────────────────────
@@ -1039,12 +1069,19 @@ export function createOverworldSceneController({
         saveState();
         scheduleRender();
         notifySceneChanged();
+        schedulePresenceSync();
     }
 
     // If the player moves to a new room while in a 1-on-1 or group chat with
-    // roster characters, those companions follow them.
+    // roster characters, those companions follow them. Single-Chat Overworld
+    // skips the follow: everyone stays in the same group chat, and Presence
+    // mute (not location) decides who hears the next line.
     function notifyPlayerMovedTo(newLocationId) {
         if (!isRoomLocationId(newLocationId)) return;
+        if (isSingleChatGroupContext()) {
+            schedulePresenceSync();
+            return;
+        }
         const ctx = window.SillyTavern?.getContext?.();
         if (!ctx) return;
 
@@ -1082,9 +1119,11 @@ export function createOverworldSceneController({
     // ── Visibility predicate ─────────────────────────────────────────────────
     // Render modes:
     //   "scene"      — full overworld with sprites + Talk-to-room button
+    //                  (also used in Single-Chat Overworld while exploring an
+    //                  open group chat — sprites sit on top of the chat UI)
     //   "chat-exit"  — root visible but contains only an "Exit Conversation"
     //                  button (no sprites, no click-boxes). Used during any
-    //                  real solo or group chat.
+    //                  real solo or group chat, or Single-Chat "View conversation".
     //   "hidden"     — root torn down entirely.
     const SYSTEM_CHAT_NAME_SUBSTRINGS = [
         "narrator",
@@ -1096,7 +1135,12 @@ export function createOverworldSceneController({
         const ctx = window.SillyTavern?.getContext?.();
         if (!ctx) return "hidden";
         if (!isInCharacterChat()) return "scene"; // Assistant / temp = not in chat
-        if (ctx.groupId) return "chat-exit"; // every group chat = real chat
+        if (ctx.groupId) {
+            if (isSingleChatOverworldEnabled?.() && !conversationViewOpen && !isTrialUiActive()) {
+                return "scene";
+            }
+            return "chat-exit";
+        }
         const activeName = ctx.name2 || null;
         if (!activeName) return "hidden";
         const lc = String(activeName).toLowerCase();
@@ -1114,8 +1158,13 @@ export function createOverworldSceneController({
     function setBodyMode(mode) {
         const body = document.body;
         if (!body) return;
+        const inchatExplore = mode === "scene"
+            && isSingleChatGroupContext()
+            && !conversationViewOpen
+            && !isTrialUiActive();
         body.classList.toggle("dangan-ow-scene-active", mode === "scene");
         body.classList.toggle("dangan-ow-chat-exit-active", mode === "chat-exit");
+        body.classList.toggle("dangan-ow-inchat-explore", inchatExplore);
     }
 
     function removeRoot() {
@@ -1157,6 +1206,8 @@ export function createOverworldSceneController({
 
         if (mode === "chat-exit") {
             // In-chat overlay: Exit Conversation + Grab Group Members buttons.
+            // Single-Chat Overworld swaps Grab for Explore so the player can
+            // bring the overworld overlay back without closing the group.
             // No sprites, no click-boxes, no Talk-to-Room.
             setBodyMode("chat-exit");
             // Always build into a fresh detached root and swap at the end so
@@ -1165,20 +1216,35 @@ export function createOverworldSceneController({
             const root = document.createElement("div");
             root.id = ROOT_ID;
 
-            const exitBtn = document.createElement("button");
-            exitBtn.type = "button";
-            exitBtn.className = "dangan-ow-room-btn";
-            const label = document.createElement("span");
-            label.className = "dangan-ow-room-btn-label";
-            label.textContent = "Exit conversation";
-            exitBtn.appendChild(label);
-            exitBtn.addEventListener("click", (e) => {
-                e.stopPropagation();
-                onExitChatClick();
-            });
-            root.appendChild(exitBtn);
-
-            root.appendChild(buildGrabGroupMembersBtn());
+            if (isSingleChatGroupContext()) {
+                root.appendChild(buildExploreBtn());
+                const exitBtn = document.createElement("button");
+                exitBtn.type = "button";
+                exitBtn.className = "dangan-ow-room-btn dangan-ow-grab-btn";
+                const exitLabel = document.createElement("span");
+                exitLabel.className = "dangan-ow-room-btn-label";
+                exitLabel.textContent = "Exit conversation";
+                exitBtn.appendChild(exitLabel);
+                exitBtn.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    onExitChatClick();
+                });
+                root.appendChild(exitBtn);
+            } else {
+                const exitBtn = document.createElement("button");
+                exitBtn.type = "button";
+                exitBtn.className = "dangan-ow-room-btn";
+                const label = document.createElement("span");
+                label.className = "dangan-ow-room-btn-label";
+                label.textContent = "Exit conversation";
+                exitBtn.appendChild(label);
+                exitBtn.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    onExitChatClick();
+                });
+                root.appendChild(exitBtn);
+                root.appendChild(buildGrabGroupMembersBtn());
+            }
 
             const liveRoot = getDomRoot();
             if (liveRoot) liveRoot.replaceWith(root);
@@ -1382,6 +1448,9 @@ export function createOverworldSceneController({
                         onCharacterGiftClick(m);
                         return;
                     }
+                    // Single-Chat Overworld stays in the open group — clicking
+                    // a sprite does not /go or create a new chat.
+                    if (isSingleChatGroupContext()) return;
                     if (isMulti) onGroupClick(group);
                     else onSoloClick(m);
                 });
@@ -1409,31 +1478,41 @@ export function createOverworldSceneController({
         } // end if (charsHere.length > 0)
 
         // Button visibility per population:
-        //   total >= 2 → LEFT column gets Talk-to-Room (186) + Grab-Group (226)
-        //   total >= 1 → RIGHT column gets Edit-Positions (226)
-        //   always    → RIGHT column gets Call-to-Room (186)
+        //   Single-Chat Overworld (in an open group):
+        //     always    → LEFT View conversation; RIGHT Call Student
+        //     total >= 1 → RIGHT Edit-Positions
+        //   Default (multi-chat):
+        //     total >= 2 → LEFT Talk-to-Room (186) + Grab-Group (226)
+        //     total >= 1 → RIGHT Edit-Positions (226)
+        //     always    → RIGHT Call-to-Room (186)
         // Call always renders so the player can summon characters into an
         // empty room. Edit only when there's at least one sprite to reposition.
         const total = renderable.reduce((a, g) => a + g.members.length, 0);
-        if (total >= 2) {
-            const btn = document.createElement("button");
-            btn.type = "button";
-            btn.className = "dangan-ow-room-btn";
-            const label = document.createElement("span");
-            label.className = "dangan-ow-room-btn-label";
-            label.textContent = "Talk to the room";
-            btn.appendChild(label);
-            btn.addEventListener("click", (e) => {
-                e.stopPropagation();
-                onRoomClick(renderable);
-            });
-            root.appendChild(btn);
+        if (isSingleChatGroupContext()) {
+            root.appendChild(buildViewConversationBtn());
+            root.appendChild(buildCallToRoomBtn());
+            if (total >= 1) root.appendChild(buildEditPositionsBtn());
+        } else {
+            if (total >= 2) {
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.className = "dangan-ow-room-btn";
+                const label = document.createElement("span");
+                label.className = "dangan-ow-room-btn-label";
+                label.textContent = "Talk to the room";
+                btn.appendChild(label);
+                btn.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    onRoomClick(renderable);
+                });
+                root.appendChild(btn);
 
-            root.appendChild(buildGrabGroupMembersBtn());
-        }
-        root.appendChild(buildCallToRoomBtn());
-        if (total >= 1) {
-            root.appendChild(buildEditPositionsBtn());
+                root.appendChild(buildGrabGroupMembersBtn());
+            }
+            root.appendChild(buildCallToRoomBtn());
+            if (total >= 1) {
+                root.appendChild(buildEditPositionsBtn());
+            }
         }
 
         const liveRoot = getDomRoot();
@@ -1509,99 +1588,44 @@ export function createOverworldSceneController({
         }, 2200);
     }
 
-    const MAIN_CHAT_REMEMBER_TOAST = "Open your main group chat once, then Exit Conversation to remember it.";
-
-    function findStGroupById(id) {
-        if (!id) return null;
-        const ctx = window.SillyTavern?.getContext?.();
-        const groups = Array.isArray(ctx?.groups) ? ctx.groups : [];
-        return groups.find(g => String(g.id) === String(id)) || null;
+    function openConversationView() {
+        conversationViewOpen = true;
+        scheduleRender();
     }
 
-    function rememberMainGroupIfEnabled() {
-        if (!isSingleChatOverworldEnabled?.()) return;
-        const ctx = window.SillyTavern?.getContext?.();
-        if (ctx?.groupId) setSingleChatGroupId?.(String(ctx.groupId));
+    function closeConversationView() {
+        conversationViewOpen = false;
+        scheduleRender();
     }
 
-    function resolveMainGroupId() {
-        const saved = String(getSingleChatGroupId?.() || "").trim();
-        if (saved && findStGroupById(saved)) return saved;
-        if (saved) setSingleChatGroupId?.("");
-        const ctx = window.SillyTavern?.getContext?.();
-        const groups = (Array.isArray(ctx?.groups) ? ctx.groups : []).filter(g => g?.id);
-        if (groups.length === 1) {
-            const id = String(groups[0].id);
-            setSingleChatGroupId?.(id);
-            return id;
-        }
-        return null;
-    }
-
-    function formatTalkNameList(names) {
-        const list = [...new Set((Array.isArray(names) ? names : [])
-            .map(n => String(n || "").trim())
-            .filter(Boolean))];
-        if (!list.length) return "";
-        if (list.length === 1) return list[0];
-        if (list.length === 2) return `${list[0]} and ${list[1]}`;
-        return `${list.slice(0, -1).join(", ")}, and ${list[list.length - 1]}`;
-    }
-
-    function getCurrentRoomLabel() {
-        const loc = typeof getCurrentLocationId === "function" ? getCurrentLocationId() : null;
-        const pin = loc ? getMapPanelController?.()?.getPinByLocationId?.(loc) : null;
-        return String(pin?.label || loc || "this location").trim();
-    }
-
-    function buildTalkSendLine(names) {
-        const who = formatTalkNameList(names);
-        const where = getCurrentRoomLabel();
-        const line = who
-            ? `*You talk to ${who} in the ${where}.*`
-            : `*You return to the ${where}.*`;
-        return line.replace(/[\r\n]+/g, " ").replace(/^\/+/, "").trim();
-    }
-
-    function membersFromNames(names) {
-        const state = getState();
-        return (Array.isArray(names) ? names : []).map(name => {
-            const key = normalizeName(name);
-            const entry = state.characters[key] || null;
-            const char = getRosterCharByKey(key) || { name };
-            return { key, char, entry };
+    function buildViewConversationBtn() {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "dangan-ow-room-btn";
+        const label = document.createElement("span");
+        label.className = "dangan-ow-room-btn-label";
+        label.textContent = "View conversation";
+        btn.appendChild(label);
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            openConversationView();
         });
+        return btn;
     }
 
-    async function returnToMainGroupChat({ names = [], members = [] } = {}) {
-        const id = resolveMainGroupId();
-        if (!id || typeof openGroupById !== "function") {
-            showOwToast(MAIN_CHAT_REMEMBER_TOAST);
-            return false;
-        }
-        try {
-            await openGroupById(id);
-        } catch (err) {
-            console.warn("[Dangan][Overworld] openGroupById main chat failed:", err);
-            setSingleChatGroupId?.("");
-            showOwToast(MAIN_CHAT_REMEMBER_TOAST);
-            return false;
-        }
-        if (!findStGroupById(id)) {
-            setSingleChatGroupId?.("");
-            showOwToast(MAIN_CHAT_REMEMBER_TOAST);
-            return false;
-        }
-        const exprMembers = Array.isArray(members) && members.length ? members : membersFromNames(names);
-        try { await applyGroupChatExpressions(exprMembers); }
-        catch (err) { console.warn("[Dangan][Overworld] expression carry-over failed:", err); }
-        await new Promise(r => setTimeout(r, 300));
-        const line = buildTalkSendLine(names);
-        if (line) {
-            try { await executeSlashCommands(`/send ${line}`); }
-            catch (err) { console.warn("[Dangan][Overworld] /send talk line failed:", err); }
-        }
-        return true;
+    function buildExploreBtn() {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "dangan-ow-room-btn";
+        const label = document.createElement("span");
+        label.className = "dangan-ow-room-btn-label";
+        label.textContent = "Explore";
+        btn.appendChild(label);
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            closeConversationView();
+        });
+        return btn;
     }
 
     async function onSoloClick(member) {
@@ -1611,12 +1635,6 @@ export function createOverworldSceneController({
         const targets = root ? [...root.querySelectorAll(`.dangan-ow-sprite[data-key="${CSS.escape(member.key)}"]`)] : [];
         const expression = member.expression || member.entry?.expression || "neutral";
         bounceThenFade(targets, async () => {
-            if (isSingleChatOverworldEnabled?.()) {
-                try { await returnToMainGroupChat({ names: [member.char.name], members: [member] }); }
-                catch (err) { console.warn("[Dangan][Overworld] single-chat solo return failed:", err); }
-                finishChatTransition();
-                return;
-            }
             try {
                 await executeSlashCommands(`/go ${member.char.name}`);
                 // Carry the overworld sprite into the solo chat. /sprite targets
@@ -1640,12 +1658,6 @@ export function createOverworldSceneController({
         const names = group.members.map(m => m.char.name);
         const targets = root ? [...root.querySelectorAll(`.dangan-ow-group[data-gid="${CSS.escape(group.gid)}"] .dangan-ow-sprite`)] : [];
         bounceThenFade(targets, async () => {
-            if (isSingleChatOverworldEnabled?.()) {
-                try { await returnToMainGroupChat({ names, members: group.members }); }
-                catch (err) { console.warn("[Dangan][Overworld] single-chat group return failed:", err); }
-                finishChatTransition();
-                return;
-            }
             try { await enterOrCreateGroupChat(names); }
             catch (err) { console.warn("[Dangan][Overworld] group chat entry failed:", err); }
             applyGroupChatExpressions(group.members);
@@ -1669,7 +1681,6 @@ export function createOverworldSceneController({
         playOwSfx("character_exit_talk");
         await new Promise(r => setTimeout(r, 320));
         try {
-            rememberMainGroupIfEnabled();
             // /closechat triggers ST's "close current chat" path, which drops
             // the user back to the default Assistant / welcome state.
             await executeSlashCommands("/closechat");
@@ -1708,12 +1719,6 @@ export function createOverworldSceneController({
         const allNames = allMembers.map(m => m.char.name);
         const targets = root ? [...root.querySelectorAll(".dangan-ow-sprite")] : [];
         bounceThenFade(targets, async () => {
-            if (isSingleChatOverworldEnabled?.()) {
-                try { await returnToMainGroupChat({ names: allNames, members: allMembers }); }
-                catch (err) { console.warn("[Dangan][Overworld] single-chat room return failed:", err); }
-                finishChatTransition();
-                return;
-            }
             try { await enterOrCreateGroupChat(allNames); }
             catch (err) { console.warn("[Dangan][Overworld] room chat entry failed:", err); }
             applyGroupChatExpressions(allMembers);
@@ -1856,6 +1861,13 @@ export function createOverworldSceneController({
         backdrop.addEventListener("click", close);
         document.addEventListener("keydown", onKeydown);
 
+        confirmBtn.addEventListener("click", async () => {
+            const names = checkboxes().filter(cb => cb.checked).map(cb => cb.dataset.name);
+            if (names.length < 1) return;
+            close();
+            await transitionToChat(names);
+        });
+
         document.body.appendChild(modal);
     }
 
@@ -1982,7 +1994,7 @@ export function createOverworldSceneController({
         btn.className = "dangan-ow-room-btn dangan-ow-call-btn";
         const label = document.createElement("span");
         label.className = "dangan-ow-room-btn-label";
-        label.textContent = "Call to Your Location";
+        label.textContent = isSingleChatGroupContext() ? "Call Student" : "Call to Your Location";
         btn.appendChild(label);
         btn.addEventListener("click", (e) => {
             e.stopPropagation();
@@ -1991,23 +2003,44 @@ export function createOverworldSceneController({
         return btn;
     }
 
+    function warpNamesToPlayerRoom(names) {
+        const playerRoom = getCurrentLocationId();
+        if (!isRoomLocationId(playerRoom)) return false;
+        const state = getState();
+        let changed = false;
+        for (const name of names) {
+            const key = normalizeName(name);
+            const entry = state.characters[key];
+            if (!entry) continue;
+            if (entry.locationId !== playerRoom) {
+                entry.locationId = playerRoom;
+                entry.groupId = null;
+                entry.customX = null;
+                entry.customScale = null;
+                changed = true;
+            }
+        }
+        if (changed) { saveState(); notifySceneChanged(); }
+        return changed;
+    }
+
     // Mirror of showGrabGroupModal, but the candidate list spans every active
     // roster character in the player's area + sub-area (not just the current
     // room). Confirmed characters are warped into the player's room (location
-    // updated, customX/customScale/groupId cleared) and then handed to
-    // transitionToChat to open the chat with them.
+    // updated, customX/customScale/groupId cleared). Default mode then opens
+    // a chat with them; Single-Chat Overworld stays in the current group and
+    // syncs Presence instead.
     function showCallToRoomModal() {
         if (document.getElementById("dangan-grab-modal")) return;
 
-        // Characters already in the player's current room are handled by
-        // "Grab Group Members" — exclude them here so Call-to-the-Room is
-        // strictly the cross-room summons list. Track the full area total
-        // separately so we can distinguish "nobody anywhere" from
-        // "everyone's already here" when picking the empty-state message.
-        const allInArea = isRoomLocationId(getCurrentLocationId())
-            ? getCharactersInPlayerArea()
-            : [];
-        const inArea = allInArea.filter(c => !c.isInPlayerRoom);
+        const singleChat = isSingleChatGroupContext();
+        const allCandidates = singleChat
+            ? getCharactersOutsidePlayerRoom()
+            : (isRoomLocationId(getCurrentLocationId()) ? getCharactersInPlayerArea() : []);
+        const inArea = singleChat
+            ? allCandidates
+            : allCandidates.filter(c => !c.isInPlayerRoom);
+        const rosterTotal = getActiveRosterKeys().length;
         const preCheck = new Set(getCurrentChatMemberNames());
 
         const modal = document.createElement("div");
@@ -2027,7 +2060,7 @@ export function createOverworldSceneController({
         const header = document.createElement("div");
         header.className = "dangan-grab-header";
         const title = document.createElement("span");
-        title.textContent = "Call to Your Location";
+        title.textContent = singleChat ? "Call Student" : "Call to Your Location";
         const closeBtn = document.createElement("button");
         closeBtn.type = "button";
         closeBtn.className = "dangan-grab-close";
@@ -2042,12 +2075,9 @@ export function createOverworldSceneController({
         if (!inArea.length) {
             const empty = document.createElement("div");
             empty.className = "dangan-grab-empty";
-            // If the area has chars but they're ALL in the current room, the
-            // user has nobody left to call — surface this as a friendlier
-            // "everyone's here" rather than the misleading "nobody in area".
-            empty.textContent = allInArea.length > 0
-                ? "Everyone's here!"
-                : "Nobody is in this area.";
+            empty.textContent = singleChat
+                ? (rosterTotal > 0 ? "Everyone's here!" : "Nobody to call.")
+                : (allCandidates.length > 0 ? "Everyone's here!" : "Nobody is in this area.");
             body.appendChild(empty);
         } else {
             const list = document.createElement("ul");
@@ -2058,10 +2088,8 @@ export function createOverworldSceneController({
                 const cb = document.createElement("input");
                 cb.type = "checkbox";
                 cb.dataset.name = c.name;
-                if (preCheck.has(c.name)) cb.checked = true;
+                if (!singleChat && preCheck.has(c.name)) cb.checked = true;
                 const span = document.createElement("span");
-                // Annotate with current room so the player can see where each
-                // character is being called FROM. In-room chars get no suffix.
                 span.textContent = c.isInPlayerRoom
                     ? c.name
                     : `${c.name} — ${c.roomLabel}`;
@@ -2083,7 +2111,7 @@ export function createOverworldSceneController({
         const confirmBtn = document.createElement("button");
         confirmBtn.type = "button";
         confirmBtn.className = "dangan-grab-confirm";
-        confirmBtn.textContent = "Call to Location";
+        confirmBtn.textContent = singleChat ? "Call Student" : "Call to Location";
         footer.appendChild(cancelBtn);
         footer.appendChild(confirmBtn);
         card.appendChild(footer);
@@ -2094,7 +2122,11 @@ export function createOverworldSceneController({
         const refreshConfirm = () => {
             const n = checkboxes().filter(cb => cb.checked).length;
             confirmBtn.disabled = n < 1;
-            confirmBtn.textContent = n >= 2 ? "Call to Location" : "Call to Location";
+            if (singleChat) {
+                confirmBtn.textContent = n >= 2 ? "Call Students" : "Call Student";
+            } else {
+                confirmBtn.textContent = "Call to Location";
+            }
         };
         for (const cb of checkboxes()) cb.addEventListener("change", refreshConfirm);
         refreshConfirm();
@@ -2114,26 +2146,11 @@ export function createOverworldSceneController({
             const names = checkboxes().filter(cb => cb.checked).map(cb => cb.dataset.name);
             if (names.length < 1) return;
             close();
-            // Warp the selected characters into the player's room before
-            // entering the chat, so the overworld scene reflects their new
-            // location once the fade clears.
-            const playerRoom = getCurrentLocationId();
-            if (isRoomLocationId(playerRoom)) {
-                const state = getState();
-                let changed = false;
-                for (const name of names) {
-                    const key = normalizeName(name);
-                    const entry = state.characters[key];
-                    if (!entry) continue;
-                    if (entry.locationId !== playerRoom) {
-                        entry.locationId = playerRoom;
-                        entry.groupId = null;
-                        entry.customX = null;
-                        entry.customScale = null;
-                        changed = true;
-                    }
-                }
-                if (changed) { saveState(); notifySceneChanged(); }
+            warpNamesToPlayerRoom(names);
+            if (singleChat) {
+                scheduleRender();
+                schedulePresenceSync();
+                return;
             }
             await transitionToChat(names);
         });
@@ -2168,9 +2185,7 @@ export function createOverworldSceneController({
         });
 
         try {
-            if (isSingleChatOverworldEnabled?.()) {
-                await returnToMainGroupChat({ names: memberNames, members: memberObjs });
-            } else if (memberObjs.length === 1) {
+            if (memberObjs.length === 1) {
                 const m = memberObjs[0];
                 await executeSlashCommands(`/go ${m.char.name}`);
                 const expression = m.entry?.expression;
@@ -2348,7 +2363,15 @@ export function createOverworldSceneController({
     function bind() {
         try {
             if (eventSource && event_types?.CHAT_CHANGED) {
-                eventSource.on(event_types.CHAT_CHANGED, () => scheduleRender());
+                eventSource.on(event_types.CHAT_CHANGED, () => {
+                    const key = currentChatKey();
+                    if (key !== lastPresenceChatKey) {
+                        lastPresenceChatKey = key;
+                        conversationViewOpen = false;
+                    }
+                    scheduleRender();
+                    schedulePresenceSync();
+                });
             }
         } catch (e) { console.warn("[Dangan][Overworld] failed to bind CHAT_CHANGED:", e); }
 
@@ -2447,6 +2470,112 @@ export function createOverworldSceneController({
         return out;
     }
 
+    // Every active roster character not currently in the player's room.
+    // Powers Single-Chat "Call Student" so you can summon someone from any
+    // mapped room, not just the current area.
+    function getCharactersOutsidePlayerRoom() {
+        const playerRoom = getCurrentLocationId();
+        const mp = getMapPanelController?.();
+        const state = getState();
+        const out = [];
+        for (const key of getActiveRosterKeys()) {
+            const entry = state.characters[key];
+            const loc = entry?.locationId;
+            if (loc && loc === playerRoom) continue;
+            const char = getRosterCharByKey(key);
+            if (!char?.name) continue;
+            const pin = loc ? mp?.getPinByLocationId?.(loc) : null;
+            out.push({
+                name: char.name,
+                locationId: loc,
+                roomLabel: pin?.label || loc || "Unknown",
+                isInPlayerRoom: false,
+            });
+        }
+        out.sort((a, b) => {
+            const r = String(a.roomLabel).localeCompare(String(b.roomLabel));
+            return r !== 0 ? r : a.name.localeCompare(b.name);
+        });
+        return out;
+    }
+
+    function schedulePresenceSync() {
+        if (!isSingleChatOverworldEnabled?.()) return;
+        clearTimeout(presenceTimer);
+        presenceTimer = setTimeout(() => {
+            presenceTimer = null;
+            syncRoomPresence().catch((err) => {
+                console.warn("[Dangan][Overworld] presence sync failed:", err);
+            });
+        }, PRESENCE_DEBOUNCE_MS);
+    }
+
+    async function syncRoomPresence() {
+        if (!isSingleChatOverworldEnabled?.()) return;
+        if (isTrialUiActive()) return;
+        if (typeof editGroup !== "function") return;
+        const ctx = window.SillyTavern?.getContext?.();
+        if (!ctx?.groupId) return;
+        const group = (Array.isArray(ctx.groups) ? ctx.groups : [])
+            .find((g) => String(g.id) === String(ctx.groupId));
+        if (!group || !Array.isArray(group.members)) return;
+
+        if (!presenceWarned) {
+            presenceWarned = true;
+            if (!isPresenceExtensionPresent()) {
+                console.warn(
+                    "[Dangan][Overworld] Single-Chat Overworld mutes members who are not in the current room so they will not auto-reply. Install Presence (https://github.com/leandrojofre/SillyTavern-Presence) so they also do not remember those messages.",
+                );
+            }
+        }
+
+        const playerRoom = getCurrentLocationId();
+        const inRoomNames = isRoomLocationId(playerRoom)
+            ? getCharactersInRoom(playerRoom).map((c) => c.name)
+            : [];
+        const allChars = Array.isArray(ctx.characters) ? ctx.characters : [];
+        const charByAvatar = {};
+        for (const c of allChars) {
+            if (c?.avatar) charByAvatar[c.avatar] = { name: c.name || "" };
+        }
+        const currentDisabled = Array.isArray(group.disabled_members) ? group.disabled_members : [];
+        const nextDisabled = computeRoomDisabledMembers({
+            memberAvatars: group.members,
+            currentDisabled,
+            charByAvatar,
+            inRoomNameKeys: inRoomNames,
+            rosterByKey: characters,
+        });
+        const muteSame = disabledMembersEqual(currentDisabled, nextDisabled);
+        const hideMutedAlready = group.hideMutedSprites === true;
+        if (muteSame && hideMutedAlready) return;
+
+        const prevDisabled = [...currentDisabled];
+        const prevHide = group.hideMutedSprites;
+        group.disabled_members = nextDisabled;
+        group.hideMutedSprites = true;
+        try {
+            await editGroup(group.id, true, false);
+        } catch (err) {
+            group.disabled_members = prevDisabled;
+            group.hideMutedSprites = prevHide;
+            console.warn("[Dangan][Overworld] editGroup failed while syncing room presence:", err);
+        }
+    }
+
+    function onSingleChatOverworldChanged(enabled) {
+        conversationViewOpen = false;
+        scheduleRender();
+        if (enabled) schedulePresenceSync();
+    }
+
+    function destroy() {
+        clearTimeout(presenceTimer);
+        presenceTimer = null;
+        conversationViewOpen = false;
+        removeRoot();
+    }
+
     return {
         render: scheduleRender,
         randomizeLocations,
@@ -2456,7 +2585,9 @@ export function createOverworldSceneController({
         isRoomFlat,
         setRoomFlat,
         toggleCurrentRoomFlat,
-        destroy: removeRoot,
+        destroy,
+        onSingleChatOverworldChanged,
+        schedulePresenceSync,
         // Diagnostic — call from DevTools to see why nothing is on screen.
         _diagnose() {
             const mp = getMapPanelController?.();

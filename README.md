@@ -121,8 +121,8 @@ V3C| BODY_DISCOVERY
 | **Daily / Deadly Life Dynamic Themes** | Toggle | On | Automatically switches the UI theme based on daytime, nighttime, or investigation state |
 | **Hide Truth Bullet Images** | Toggle | Off | Hides thumbnail images on Truth Bullet entries in the Monopad |
 | **Hide Gift Images** | Toggle | Off | Hides thumbnail images on gift and inventory entries |
-| **Sprite Click Gifts** | Toggle | Off | Overworld sprite clicks open a gift picker for that character instead of starting a 1-on-1 or cluster chat. The gift waits until that character next speaks in your main chat. Talk to the Room / Grab Group Members still open chats. |
-| **Single-Chat Overworld** | Toggle | Off | Exit Conversation still opens the overworld, but Talk to the Room, sprite clicks, Grab Group, and Call to Your Location reopen the same group chat you last exited instead of creating new chats. Enter that group once and Exit Conversation to remember it. Sprite Click Gifts still wins on sprite click. |
+| **Sprite Click Gifts** | Toggle | Off | Overworld sprite clicks open a gift picker for that character instead of starting a 1-on-1 or cluster chat. The gift waits until that character next speaks in your main chat. Talk to the Room / Grab Group Members still open chats when Single-Chat Overworld is off. |
+| **Single-Chat Overworld** | Toggle | Off | Explore the overworld without leaving your open group chat. Sprites cover the chat UI; the send box stays usable. Who is standing in the current room is unmuted (present); everyone else is muted so they will not hear or auto-reply. Requires the [Presence](https://github.com/leandrojofre/SillyTavern-Presence) extension for per-character memory. View conversation hides the overlay; Explore brings it back. Call Student warps selected students into the room. Sprite clicks do not open new chats (Sprite Click Gifts still queues a gift). Class trials are unchanged. |
 | **Class Trial Podium** | DEFAULT / CUSTOM | Default | Use the built-in lectern sprite or upload a custom replacement image |
 | **Hide Hope's Peak Branding** | Toggle | Off | Unlocks Announcement Customization — replace default announcement images, voice lines, and text for Daytime, Nighttime, and Body Discovery announcements |
 ---
@@ -324,13 +324,13 @@ Displays the Truth Bullet list and asks the player to select the correct one for
 ## Q&A
 - **Q: How do gifts work?**
   
-  **A: First and foremost, gifts are obtained through a gacha minigame on the MonoMono Machine, accessible through the map tab. To use them, access your inventory, select the gift and press use. The next character who sends a message in chat will receive and judge it, granting you either a rank up or down or simply staying neutral. If Sprite Click Gifts is on in Settings, clicking an overworld sprite queues a gift for that specific character instead of opening a new chat — they react the next time they speak in your main group chat. Talk to the Room and Grab Group Members still open chats.**
+  **A: First and foremost, gifts are obtained through a gacha minigame on the MonoMono Machine, accessible through the map tab. To use them, access your inventory, select the gift and press use. The next character who sends a message in chat will receive and judge it, granting you either a rank up or down or simply staying neutral. If Sprite Click Gifts is on in Settings, clicking an overworld sprite queues a gift for that specific character instead of opening a new chat — they react the next time they speak in your main group chat. Talk to the Room and Grab Group Members still open chats when Single-Chat Overworld is off.**
 
 ---
 
 - **Q: I only use one group chat. How do I explore the overworld without creating extra chats?**
   
-  **A: Turn on Single-Chat Overworld in Settings → Display. Open your main group chat, click Exit Conversation, then walk around as usual. Talk to the Room, sprite clicks, Grab Group Members, and Call to Your Location will reopen that same group and send a short "You talk to … in {room}" line so the chat knows who you approached. Sprite Click Gifts still queues a gift instead of talking if that toggle is also on.**
+  **A: Turn on Single-Chat Overworld in Settings → Display, then stay in your main group chat. Walking to a room (Move To) shows whoever is there and mutes every other group member, so only those sprites hear what you type. Install [Presence](https://github.com/leandrojofre/SillyTavern-Presence) so absentees also do not remember those messages. Call Student brings chosen students into the room you are standing in. View conversation hides the overworld overlay so you can read the chat; Explore puts the overlay back. Exit Conversation still closes the group. Sprite Click Gifts still queues a gift instead of talking if that toggle is also on.**
 
 ---
 
