@@ -120,6 +120,7 @@ export function createOverworldSceneController({
     isSingleChatOverworldEnabled, // optional — () => boolean
     editGroup, // optional — (groupId, update, silent) persist group mute/presence
     isTrialActive, // optional — () => boolean
+    onPresenceSynced, // optional — () => void; rebuild GCP after room mute changes
 }) {
     function playOwSfx(key) {
         if (!playSfx) return;
@@ -2556,6 +2557,9 @@ export function createOverworldSceneController({
         group.hideMutedSprites = true;
         try {
             await editGroup(group.id, true, false);
+            try { onPresenceSynced?.(); } catch (err) {
+                console.warn("[Dangan][Overworld] onPresenceSynced failed:", err);
+            }
         } catch (err) {
             group.disabled_members = prevDisabled;
             group.hideMutedSprites = prevHide;

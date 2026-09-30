@@ -9343,6 +9343,10 @@ jQuery(async () => {
                     isSingleChatOverworldEnabled: () => !!getMonopadSetting("singleChatOverworldEnabled"),
                     editGroup,
                     isTrialActive: () => !!trialManager?.isTrialActive?.(),
+                    onPresenceSynced: () => {
+                        try { trialManager?.refreshGroupChatPortraits?.(); }
+                        catch (e) { console.warn("[Dangan][Overworld] GCP refresh after presence sync failed:", e); }
+                    },
                     onSceneChanged: () => {
                         // Invalidate the cached minimap signature so it
                         // rebuilds with the new occupant pins.
@@ -13186,14 +13190,18 @@ function renderMinimapCharacterLayer(mapWrap, data, currentPin) {
     };
 
     let memberNames = [];
-    if (ctx?.groupId) {
+    const singleChatGroup = !!getMonopadSetting("singleChatOverworldEnabled") && !!ctx?.groupId;
+    // Single-Chat Overworld: the group contains the whole cast, so pinning
+    // every member would ring the entire roster around the player. Only show
+    // who the overworld says is in this room.
+    if (!singleChatGroup && ctx?.groupId) {
         const group = (Array.isArray(ctx.groups) ? ctx.groups : []).find(g => String(g.id) === String(ctx.groupId));
         if (group?.members?.length && Array.isArray(ctx.characters)) {
             memberNames = group.members
                 .map(avatar => ctx.characters.find(c => c?.avatar === avatar)?.name)
                 .filter(n => n && n !== playerName && !isExcludedPinName(n));
         }
-    } else if (ctx?.name2 && !isExcludedPinName(ctx.name2) && ctx.name2 !== playerName) {
+    } else if (!singleChatGroup && ctx?.name2 && !isExcludedPinName(ctx.name2) && ctx.name2 !== playerName) {
         memberNames = [ctx.name2];
     }
     // Always merge in overworld characters at the player's current room — so
@@ -13209,7 +13217,12 @@ function renderMinimapCharacterLayer(mapWrap, data, currentPin) {
     }
     // Also drop the speaker if it's a narrator/assistant — the chat's last
     // "speaker" can be the Narrator and we don't want a red pin for them.
-    const filteredSpeaker = (speakerName && !isExcludedPinName(speakerName)) ? speakerName : null;
+    // In single-chat, only pin the speaker when they are actually in this room.
+    let filteredSpeaker = (speakerName && !isExcludedPinName(speakerName)) ? speakerName : null;
+    if (singleChatGroup && filteredSpeaker) {
+        const speakerLc = String(filteredSpeaker).toLowerCase();
+        if (!memberNames.some(n => String(n).toLowerCase() === speakerLc)) filteredSpeaker = null;
+    }
 
     // Build the list of character pins to render around the room.
     const chars = [];
