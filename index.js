@@ -16,7 +16,7 @@ import { createSocialPanelController } from "./social/socialPanel.js";
 import { extractUltimateFromNotes, isIgnoredCharacter, lookupUltimateFromLorebook, normalizeList, normalizeName } from "./social/characterUtils.js";
 import { createMapPanelController } from "./map/mapPanel.js";
 import { getLocationPromptReference, resolveLocationIdFromText } from "./map/locationPresence.js";
-import { DEFAULT_TRIAL_PROMPT_TEMPLATES, INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, TRIAL_CONTEXT_REGEX, defaultSettings, extensionFolderPath, extensionName } from "./core/constants.js";
+import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, TRIAL_CONTEXT_REGEX, defaultSettings, extensionFolderPath, extensionName, getDefaultPromptTemplate } from "./core/constants.js";
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 import { createCardHygieneController } from "./core/cardHygiene.js";
 import { createOnboardingState } from "./core/onboarding/onboardingState.js";
@@ -53,10 +53,11 @@ import { createChapterEndRosterController } from "./vfx/chapterEndRoster.js";
 import { createRebuttalShowdownController, createInterjectionCinematicRunner } from "./vfx/rebuttalShowdown.js";
 import { MPD_TEST_SCENARIOS } from "./vfx/massPanicDebate.js";
 import { createAudioVisualizerController } from "./audio/audioVisualizer.js";
-import { createDynamicSongsController } from "./audio/dynamicSongs.js";
+import { createDynamicSongsController, formatMoodScanToast } from "./audio/dynamicSongs.js";
 import { buildAssignedTrackCatalog, openSongPicker } from "./audio/songPicker.js";
 import { createOverworldSceneController } from "./overworld/overworldScene.js";
 import { showCgByBgName, showCgPicker } from "./overworld/cgViewer.js";
+import { buildRoomContextPrompt, resolveRoomLabel, ROOM_CONTEXT_PROMPT_KEY } from "./overworld/roomContextPrompt.js";
 import { user_avatar } from "../../../personas.js";
 import { ConnectionManagerRequestService } from "../../shared.js";
 
@@ -4120,28 +4121,44 @@ function openAssignedSongPicker() {
     });
 }
 
-function syncMoodScanButton() {
-    let btn = document.getElementById("dangan-mood-scan");
-    const show = !!getMonopadSetting("dynamicSongsEnabled") && !trialManager?.isTrialActive?.();
-    if (!btn) {
-        btn = document.createElement("button");
-        btn.id = "dangan-mood-scan";
-        btn.type = "button";
-        btn.textContent = "SCAN MOOD";
-        btn.setAttribute("aria-label", "Scan sprites and update mood music");
-        btn.addEventListener("click", () => {
-            const changed = !!dynamicSongsController?.rescanAndPlay?.();
-            btn.classList.toggle("is-armed", true);
-            btn.textContent = changed ? "SCANNED" : "NO MOOD";
-            window.setTimeout(() => {
-                if (!btn.isConnected) return;
-                btn.classList.remove("is-armed");
-                btn.textContent = "SCAN MOOD";
-            }, 900);
-        });
-        document.body.appendChild(btn);
+function getPhaseSettingKey() {
+    if (investigationUnderway) return "investigationTracks";
+    if (ensureTimeTrackerState().phase === TIME_PHASE_NIGHT) return "nighttimeTracks";
+    return "daytimeTracks";
+}
+
+function handleScanMood() {
+    const result = dynamicSongsController?.rescanAndPlay?.() || {};
+    if (!getMonopadSetting("moodScanToastEnabled")) return;
+    showMoodScanToast(formatMoodScanToast(result, BGM_PLAYLIST_LABELS));
+}
+
+function showMoodScanToast(text) {
+    const message = String(text || "").trim();
+    if (!message) return;
+    let el = document.getElementById("dangan-mood-scan-toast");
+    if (!el) {
+        el = document.createElement("div");
+        el.id = "dangan-mood-scan-toast";
+        el.setAttribute("role", "status");
+        el.setAttribute("aria-live", "polite");
+        document.body.appendChild(el);
     }
-    btn.hidden = !show;
+    el.textContent = message;
+    el.hidden = false;
+    el.classList.add("is-visible");
+    clearTimeout(showMoodScanToast._timer);
+    showMoodScanToast._timer = window.setTimeout(() => {
+        if (!el.isConnected) return;
+        el.classList.remove("is-visible");
+        el.hidden = true;
+    }, 2500);
+}
+
+function syncMoodScanButton() {
+    document.getElementById("dangan-mood-scan")?.remove();
+    const show = !!getMonopadSetting("dynamicSongsEnabled") && !trialManager?.isTrialActive?.();
+    audioVisualizer?.setScanVisible?.(show);
 }
 
 function bgmPlayPrev() {
@@ -4299,6 +4316,7 @@ const dynamicSongsController = createDynamicSongsController({
     isEnabled: () => !!getMonopadSetting("dynamicSongsEnabled"),
     isAmbientContext: () => isAmbientDynamicSongContext(),
     getCurrentBgmSettingKey: () => bgmCurrentSettingKey,
+    getPhaseSettingKey,
     getTracks: (key) => getMonopadSetting(key) || [],
     playTrackFromSetting,
     playPhaseTrackCore,
@@ -7697,7 +7715,7 @@ function applySettingsTabUI() {
         const settingKey = el.dataset.setting;
         const templateKey = el.dataset.templateKey;
         if (!settingKey || !templateKey) return;
-        const fallbackTemplate = DEFAULT_TRIAL_PROMPT_TEMPLATES[templateKey] || "";
+        const fallbackTemplate = getDefaultPromptTemplate(templateKey);
         const savedTemplate = typeof tab[settingKey] === "string" && tab[settingKey].length
             ? tab[settingKey]
             : fallbackTemplate;
@@ -9422,6 +9440,7 @@ jQuery(async () => {
                         _minimapSig = null;
                         try { renderMinimap(); } catch (e) { console.warn("[Dangan][Overworld] minimap refresh failed:", e); }
                         try { dynamicSongsController?.scheduleEvaluate?.({ restorePhaseOnMiss: true }); } catch (e) { console.warn("[Dangan][DynamicSongs] evaluate failed:", e); }
+                        try { syncRoomContextPrompt(); } catch (e) { console.warn("[Dangan][RoomContext] sync failed:", e); }
                     },
                 });
                 window.dangan_overworld = overworldSceneController;
@@ -9437,6 +9456,8 @@ jQuery(async () => {
                 catch (e) { console.warn(`[Dangan][minimap] render failed (${tag}):`, e); }
                 try { overworldSceneController?.render?.(); }
                 catch (e) { console.warn(`[Dangan][overworld] render failed (${tag}):`, e); }
+                try { syncRoomContextPrompt(); }
+                catch (e) { console.warn(`[Dangan][RoomContext] render failed (${tag}):`, e); }
             };
             initialRender('init');
             // Fallback renders — Assistant / Narrator chats and slow-loading group
@@ -9798,6 +9819,9 @@ $(".monopad-icon").on("mouseenter", function () {
             }
             if (key === "singleChatOverworldEnabled") {
                 overworldSceneController?.onSingleChatOverworldChanged?.(next);
+            }
+            if (key === "roomContextPromptEnabled") {
+                try { syncRoomContextPrompt(); } catch { /* ignore */ }
             }
             if (key === "hideTruthBulletImages" || key === "hideGiftImages" || key === "hideHopesPeakBranding") {
                 applyImageVisibilitySettings();
@@ -10208,8 +10232,11 @@ $(".monopad-icon").on("mouseenter", function () {
             const settingKey = this.dataset.setting;
             const templateKey = this.dataset.templateKey;
             if (!settingKey || !templateKey) return;
-            const fallbackTemplate = DEFAULT_TRIAL_PROMPT_TEMPLATES[templateKey] || "";
+            const fallbackTemplate = getDefaultPromptTemplate(templateKey);
             setMonopadSetting(settingKey, this.value === fallbackTemplate ? "" : this.value);
+            if (settingKey === "roomContextPromptTemplate") {
+                try { syncRoomContextPrompt(); } catch { /* ignore */ }
+            }
         });
 
         $(document).on("click", ".settings-prompt-reset", function () {
@@ -10219,7 +10246,10 @@ $(".monopad-icon").on("mouseenter", function () {
             setMonopadSetting(settingKey, "");
             const textarea = document.querySelector(`.settings-prompt-textarea[data-setting="${settingKey}"]`);
             if (textarea instanceof HTMLTextAreaElement) {
-                textarea.value = DEFAULT_TRIAL_PROMPT_TEMPLATES[templateKey] || "";
+                textarea.value = getDefaultPromptTemplate(templateKey);
+            }
+            if (settingKey === "roomContextPromptTemplate") {
+                try { syncRoomContextPrompt(); } catch { /* ignore */ }
             }
         });
 
@@ -10538,6 +10568,7 @@ audioVisualizer = createAudioVisualizerController({
         return parent ? `${parent} - ${label}` : label;
     },
     onOpenSongList: () => openAssignedSongPicker(),
+    onScanMood: () => handleScanMood(),
 });
 audioVisualizer.init();
 try { syncMoodScanButton(); } catch { /* ignore */ }
@@ -10790,7 +10821,7 @@ debugSTGlobals();
             generateTrialDialogueWithProfile,
             getCharacterSourceText,
             getEmotionFont,
-            onTrialStateChange: () => { renderMoveToPanel(); renderMinimap(); overworldSceneController?.render?.(); try { syncMoodScanButton(); } catch { /* ignore */ } },
+            onTrialStateChange: () => { renderMoveToPanel(); renderMinimap(); overworldSceneController?.render?.(); try { syncMoodScanButton(); } catch { /* ignore */ } try { syncRoomContextPrompt(); } catch { /* ignore */ } },
             // Re-apply the day/night/investigation phase theme. The trial owns
             // the theme while active (applyDynamicTheme bails on dangan-trial-active),
             // so this restores the correct phase styling once a trial tears down.
@@ -11680,6 +11711,7 @@ STATEMENT: <third statement>`;
             setTimeout(() => {
                 dynamicSongsController?.scheduleEvaluate?.({ restorePhaseOnMiss: true });
             }, 1600);
+            try { syncRoomContextPrompt(); } catch (e) { console.warn("[Dangan][RoomContext] chat-changed sync failed:", e); }
         });
 
         // Deleting a chat (e.g. an accidentally-created Class Trial) doesn't
@@ -12751,6 +12783,33 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 function getCurrentLocationId() {
     return extension_settings[extensionName]?.map?.currentLocationId || null;
 }
+function getCurrentRoomLabel() {
+    const id = getCurrentLocationId();
+    const pin = id ? mapPanelController?.getPinByLocationId?.(id) : null;
+    return resolveRoomLabel(id, pin);
+}
+function getCurrentRoomOccupantNames() {
+    const locId = getCurrentLocationId();
+    const chars = overworldSceneController?.getCharactersInRoom?.(locId) || [];
+    return chars.map((c) => String(c?.name || "").trim()).filter(Boolean);
+}
+function syncRoomContextPrompt() {
+    const setPrompt =
+        window.SillyTavern?.getContext?.()?.setExtensionPrompt
+        || window.setExtensionPrompt
+        || null;
+    if (typeof setPrompt !== "function") return false;
+    const text = buildRoomContextPrompt({
+        enabled: !!getMonopadSetting("roomContextPromptEnabled"),
+        trialActive: !!trialManager?.isTrialActive?.(),
+        locationId: getCurrentLocationId(),
+        room: getCurrentRoomLabel(),
+        characters: getCurrentRoomOccupantNames(),
+        template: getMonopadSetting("roomContextPromptTemplate"),
+    });
+    setPrompt(ROOM_CONTEXT_PROMPT_KEY, text, 0, 1, false, "system");
+    return true;
+}
 function setCurrentLocationId(locationId) {
     const root = extension_settings[extensionName] ??= {};
     root.map ??= {};
@@ -12764,6 +12823,7 @@ function setCurrentLocationId(locationId) {
         _minimapSig = null;
     }
     updateCurrentRoomDisplay();
+    try { syncRoomContextPrompt(); } catch (e) { console.warn("[Dangan][RoomContext] location sync failed:", e); }
 }
 
 // Slim transparent slab under the level bar that displays the player's current
