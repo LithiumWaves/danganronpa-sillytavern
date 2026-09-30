@@ -903,7 +903,8 @@ body.dangan-theme-damaged       { --ow-theme-rgb: 235, 60, 60; }
     inset: 0;
     pointer-events: none;
     /* Sit beneath ST's chat shell (#sheld, z-index 30) so the chat form and
-     * messages always render on top of the overworld sprites. */
+     * messages always render on top of the overworld sprites. Single-Chat
+     * Overworld flips this via body.dangan-ow-inchat-explore. */
     z-index: 25;
 }
 #dangan-overworld .dangan-ow-strip {
@@ -1661,8 +1662,30 @@ body.dangan-trial-active #dangan-overworld { display: none !important; }
 body.dangan-trial-active #dangan-current-room { display: none !important; }
 body.dangan-monopad-open #dangan-overworld { display: none !important; }
 
-/* "Grab Group Members" — sits directly under the room-btn (Exit Conversation
- * or Talk to the Room). Reuses .dangan-ow-room-btn styling, just offset down
+/* Single-Chat Overworld: sprites cover the group chat while the send form,
+ * Move To panel, and minimap stay usable. GCP / VN / message list hide until
+ * View conversation. */
+body.dangan-ow-inchat-explore #dangan-overworld {
+    z-index: 32;
+}
+body.dangan-ow-inchat-explore #chat,
+body.dangan-ow-inchat-explore #dangan-group-chat-stage,
+body.dangan-ow-inchat-explore #visual-novel-wrapper,
+body.dangan-ow-inchat-explore #expression-wrapper,
+body.dangan-ow-inchat-explore #dangan-vn-overlay {
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+body.dangan-ow-inchat-explore #form_sheld,
+body.dangan-ow-inchat-explore #send_form {
+    z-index: 40 !important;
+    pointer-events: auto !important;
+    opacity: 1 !important;
+}
+
+/* "Grab Group Members" / Single-Chat "Exit conversation" under Explore —
+ * sits directly under the room-btn (Exit Conversation or Talk to the Room /
+ * View conversation). Reuses .dangan-ow-room-btn styling, just offset down
  * the page. */
 #dangan-overworld .dangan-ow-grab-btn {
     top: 226px;
@@ -1706,8 +1729,8 @@ body.dangan-monopad-open #dangan-overworld { display: none !important; }
 
 /* While an overworld CG is showing (body.dangan-ow-cg-open, toggled by
  * cgViewer.js): lift the whole overworld above the CG so its room buttons
- * (Talk to the Room / Grab Group Members / Call to Your Location, plus Exit
- * Conversation in chat) stay usable. The root is transparent + pointer-events:
+ * (Talk to the Room / Grab Group Members / Call to Your Location / Call Student,
+ * plus Exit Conversation and Explore in chat) stay usable. The root is transparent + pointer-events:
  * none, so the CG shows through and only the buttons read as floating controls.
  * The sprite strip is hidden so the CG stays a clean backdrop. Driven by a body
  * class (not inline styles) so it survives the overworld's re-render, which
