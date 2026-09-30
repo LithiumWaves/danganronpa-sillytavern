@@ -134,3 +134,130 @@
 #dangan_reset_lesson_hints {
     margin-left: auto;
 }
+
+/* First-boot play-mode greeting — same language as minigame tutorial modals */
+#dangan-boot-greeting {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    pointer-events: auto;
+    cursor: auto;
+    background: rgba(2, 4, 10, 0.72);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 220ms ease;
+    padding: 24px;
+}
+#dangan-boot-greeting.is-on {
+    opacity: 1;
+}
+.dgn-boot-greeting-inner {
+    width: min(700px, 94vw);
+    max-height: min(86vh, 760px);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(180deg, rgba(8, 14, 24, 0.98), rgba(4, 8, 14, 0.98));
+    border: 1px solid rgba(140, 200, 255, 0.4);
+    border-radius: 10px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+}
+.dgn-boot-greeting-header {
+    padding: 14px 18px 10px;
+    border-bottom: 1px solid rgba(120, 180, 255, 0.22);
+    font-family: "Orbitron", "Rajdhani", sans-serif;
+    letter-spacing: 0.12em;
+    color: #e8f6ff;
+    font-size: 14px;
+}
+.dgn-boot-greeting-title {
+    font-family: "Orbitron", "Impact", monospace;
+    font-size: clamp(16px, 3vw, 22px);
+    font-weight: 900;
+    letter-spacing: 0.06em;
+}
+.dgn-boot-greeting-body {
+    padding: 16px 20px 8px;
+    overflow-y: auto;
+    color: rgba(214, 226, 244, 0.92);
+    font-family: "Rajdhani", sans-serif;
+    font-size: clamp(13px, 1.7vw, 16px);
+    line-height: 1.45;
+    flex: 1;
+}
+.dgn-boot-greeting-body p {
+    margin: 0;
+}
+.dgn-boot-greeting-body strong {
+    color: #9be7ff;
+}
+.dgn-boot-greeting-modes {
+    display: grid;
+    gap: 12px;
+}
+@media (min-width: 640px) {
+    .dgn-boot-greeting-modes {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+.dgn-boot-greeting-mode {
+    background: rgba(8, 18, 32, 0.55);
+    border: 1px solid rgba(120, 180, 255, 0.22);
+    border-radius: 8px;
+    padding: 12px 14px;
+}
+.dgn-boot-greeting-mode h3 {
+    margin: 0 0 8px;
+    font-family: "Orbitron", "Rajdhani", sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: #9be7ff;
+}
+.dgn-boot-greeting-note {
+    margin-top: 14px !important;
+    opacity: 0.85;
+}
+.dgn-boot-greeting-footer {
+    padding: 12px 18px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    border-top: 1px solid rgba(120, 180, 255, 0.16);
+}
+.dgn-boot-greeting-skip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: "Rajdhani", sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgba(214, 226, 244, 0.92);
+    cursor: pointer;
+    user-select: none;
+}
+.dgn-boot-greeting-skip .settings-toggle {
+    margin-right: 0;
+    flex-shrink: 0;
+}
+.dgn-boot-greeting-continue {
+    padding: 8px 22px;
+    border-radius: 4px;
+    border: 1.5px solid rgba(120, 200, 255, 0.6);
+    background: rgba(8, 22, 40, 0.95);
+    color: #9be7ff;
+    font-family: "Rajdhani", sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+}
+.dgn-boot-greeting-continue:hover {
+    box-shadow: 0 0 12px rgba(80, 180, 255, 0.4);
+}

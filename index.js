@@ -23,6 +23,7 @@ import { createOnboardingState } from "./core/onboarding/onboardingState.js";
 import { createCoachController } from "./core/onboarding/coachMarks.js";
 import { createOrientationController } from "./core/onboarding/orientation.js";
 import { configureMinigameGuides } from "./core/onboarding/minigameGuides.js";
+import { maybeShowBootGreeting } from "./core/onboarding/bootGreeting.js";
 import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers } from "./monokuma/announcementController.js";
 import { createClassTrialMenuController } from "./trial/menu/classTrialMenu.js";
 import { createTrialManager, TrialPhases } from "./trial/trialManager.js";
@@ -9782,6 +9783,7 @@ $(".monopad-icon").on("mouseenter", function () {
         $("#dangan_reset_lesson_hints").on("click", () => {
             playSfx(sfx.click);
             onboardingState?.resetCoaches?.();
+            onboardingState?.clearWelcomeSeen?.();
             const btn = document.getElementById("dangan_reset_lesson_hints");
             if (btn) {
                 const prev = btn.textContent;
@@ -12221,6 +12223,17 @@ STATEMENT: <third statement>`;
             stack: String(error?.stack || ""),
         });
     }
+
+    setTimeout(() => {
+        try {
+            maybeShowBootGreeting({
+                isWelcomeSeen: () => onboardingState?.isWelcomeSeen?.(),
+                markWelcomeSeen: () => onboardingState?.markWelcomeSeen?.(),
+            });
+        } catch (e) {
+            console.warn("[Dangan][BootGreeting] failed:", e);
+        }
+    }, 800);
 });
 
 // ── Slash Commands ──────────────────────────────────────────────────────────
