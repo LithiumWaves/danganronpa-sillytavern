@@ -10706,6 +10706,10 @@ debugSTGlobals();
             getCustomGameMasterName,
             getCharacterDisplayName,
             deductMonocoins,
+            getOverworldRoomOccupants: () => {
+                const loc = getCurrentLocationId();
+                return overworldSceneController?.getCharactersInRoom?.(loc) || [];
+            },
             vnModeController,
             getTruthBullets,
             generateTrialDialogue,

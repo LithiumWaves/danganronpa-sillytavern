@@ -65,6 +65,7 @@ export function createTrialManager(deps) {
         getCharacterDisplayName,
         deductMonocoins,
         showMinigameLoadingState,
+        getOverworldRoomOccupants,
     } = deps;
 
     function getAssetUrl(name) {
@@ -7462,6 +7463,26 @@ JUDGMENT RULES:
         }
     }
 
+    // Non-trial GCP roster. Single-Chat Overworld uses overworld room occupants
+    // (same source as the minimap), not Prome holders / the full group list.
+    function getNonTrialGroupPortraitNames() {
+        if (isSingleChatOverworldOn() && typeof getOverworldRoomOccupants === "function") {
+            const occupants = getOverworldRoomOccupants() || [];
+            const seen = new Set();
+            const names = [];
+            for (const entry of occupants) {
+                const name = String(entry?.name || "").trim();
+                if (!name || isPlayerOrSystemMember(name)) continue;
+                const key = normalizeSeatName(name);
+                if (!key || seen.has(key)) continue;
+                seen.add(key);
+                names.push(name);
+            }
+            return names;
+        }
+        return getGroupChatMemberNames();
+    }
+
     const GCP_GAP        = 60;   // gap between characters
     const GCP_MAX_ROT    = 20;   // maximum rotation of
     const GCP_ANIM_SPEED = 14;   // peak slots per second
@@ -7956,7 +7977,9 @@ JUDGMENT RULES:
                 // Trial: use the cached/built seating plan (all characters, carousel).
                 // Non-trial: read directly from window.groups so we only load the actual
                 // members of this specific group, not the full character roster.
-                const plan = trialActive ? getOrBuildSeatingPlan() : getGroupChatMemberNames();
+                const plan = trialActive
+                    ? getOrBuildSeatingPlan()
+                    : getNonTrialGroupPortraitNames();
                 if (!plan.length) { gcpStage.remove(); gcpStage = null; document.body.classList.remove('dangan-gcp-active'); return; }
 
                 // Resolve sprite URLs upfront; exclude muted-without-dead from the plan.
@@ -7969,9 +7992,10 @@ JUDGMENT RULES:
                         console.log(`[Dangan][GCP] "${name}" missing → no sprite`);
                         return { name, url: null, isDead: false, isMissing: true };
                     }
-                    // Non-trial: muted living characters are absentees (Single-Chat
-                    // Overworld Presence mute). Do not keep them as dead.png portraits.
-                    if (muted && !trialActive && !dead) {
+                    // Non-trial: muted living characters are absentees. Skip this
+                    // drop in Single-Chat Overworld — the plan is already the
+                    // current room's occupants, and Presence mute can lag a tick.
+                    if (muted && !trialActive && !dead && !isSingleChatOverworldOn()) {
                         console.log(`[Dangan][GCP] "${name}" muted living → excluded`);
                         return null;
                     }

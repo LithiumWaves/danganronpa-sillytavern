@@ -330,7 +330,7 @@ Displays the Truth Bullet list and asks the player to select the correct one for
 
 - **Q: I only use one group chat. How do I explore the overworld without creating extra chats?**
   
-  **A: Turn on Single-Chat Overworld in Settings → Display, then stay in your main group chat. Walking to a room (Move To) shows whoever is there and mutes every other group member, so only those sprites hear what you type. The VN talk box stays up while you explore. Install [Presence](https://github.com/leandrojofre/SillyTavern-Presence) so absentees also do not remember those messages. Call Student brings chosen students into the room you are standing in. View conversation hides the overworld overlay so you can read the chat — only people in that room appear as portraits or minimap pins. Explore puts the overlay back. Exit Conversation still closes the group. Sprite Click Gifts still queues a gift instead of talking if that toggle is also on.**
+  **A: Turn on Single-Chat Overworld in Settings → Display, then stay in your main group chat. Walking to a room (Move To) shows whoever is there and mutes every other group member, so only those sprites hear what you type. The VN talk box stays up while you explore. Install [Presence](https://github.com/leandrojofre/SillyTavern-Presence) so absentees also do not remember those messages. Call Student brings chosen students into the room you are standing in. View conversation hides the overworld overlay so you can read the chat — only people in that room appear as portraits or minimap pins. Explore puts the overlay back. Sprite Click Gifts still queues a gift instead of talking if that toggle is also on.**
 
 ---
 
