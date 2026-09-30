@@ -107,7 +107,8 @@ V3C| BODY_DISCOVERY
 | **Truth Bullets** | Toggle | On | Plays the Truth Bullet obtain animation when one is discovered in chat |
 | **MonoMono BGM Volume** | Slider (0–100) | 40 | Volume for the MonoMono machine background track |
 | **Play BGM in Assistant Chat** | Toggle | Off | Keeps phase BGM playing outside of group chats |
-| **Dynamic Songs** | Toggle | Off | When on, the extension majority-votes the latest sprite of every living character in the current scene (group-chat portraits, or overworld room if portraits are not up) and plays a matching mood track. Only replaces daytime / nighttime / investigation BGM — shop, map-pin BGM, class trials, and minigames are left alone. Neutral and unknown sprites are ignored. Ties keep the current mood if it is still tied for first, otherwise fall back to phase BGM. The media player list button opens assigned songs filtered by mood or phase. SCAN MOOD (under the player) re-reads current sprites and forces a mood change. |
+| **Dynamic Songs** | Toggle | Off | When on, the extension majority-votes the latest sprite of every living character in the current scene (group-chat portraits, or overworld room if portraits are not up) and plays a matching mood track. Only replaces daytime / nighttime / investigation BGM — shop, map-pin BGM, class trials, and minigames are left alone. Neutral and unknown sprites are ignored. Ties keep the current mood if it is still tied for first, otherwise fall back to phase BGM. The media player list button opens assigned songs filtered by mood or phase. SCAN on the player re-reads current sprites and forces a mood change. |
+| **Mood Scan Toast** | Toggle | Off | After SCAN, shows a themed HUD toast with sprite vote counts and the track that started playing. |
 | **BGM Tracks** | File multi-select | — | Assign audio files to each game phase or mood. Available phases: Shop, Daytime, Nighttime, Investigation, Trial General, Trial Preparation, Non-Stop Debates, Mass Panic Debates, Scrum Debates, Hangman's Gambit, Rebuttal Showdown, Interjection, Suspect Choice, AA Phase 1/2/3. Moods (used by Dynamic Songs): Happy (joy, excitement), Sad (sadness, grief), Dramatic (realization, surprise), Tense (fear, nervousness), Angry (anger, disgust), Romantic (love, embarrassment). A track can belong to both a phase list and a mood list. |
 ---
 
@@ -121,10 +122,16 @@ V3C| BODY_DISCOVERY
 | **Daily / Deadly Life Dynamic Themes** | Toggle | On | Automatically switches the UI theme based on daytime, nighttime, or investigation state |
 | **Hide Truth Bullet Images** | Toggle | Off | Hides thumbnail images on Truth Bullet entries in the Monopad |
 | **Hide Gift Images** | Toggle | Off | Hides thumbnail images on gift and inventory entries |
-| **Sprite Click Gifts** | Toggle | Off | Overworld sprite clicks open a gift picker for that character instead of starting a 1-on-1 or cluster chat. The gift waits until that character next speaks in your main chat. Talk to the Room / Grab Group Members still open chats when Single-Chat Overworld is off. |
-| **Single-Chat Overworld** | Toggle | Off | Explore the overworld without leaving your open group chat. Sprites cover the chat UI; the VN talk box and send box stay usable. Who is standing in the current room is unmuted (present) via SillyTavern group mute; everyone else is muted so they will not hear or auto-reply. Requires the [Presence](https://github.com/leandrojofre/SillyTavern-Presence) extension for per-character memory. View conversation and the minimap only show who is in the current room. Explore brings the overlay back. Call Student warps selected students into the room. Sprite clicks do not open new chats (Sprite Click Gifts still queues a gift). Class trials are unchanged. |
 | **Class Trial Podium** | DEFAULT / CUSTOM | Default | Use the built-in lectern sprite or upload a custom replacement image |
 | **Hide Hope's Peak Branding** | Toggle | Off | Unlocks Announcement Customization — replace default announcement images, voice lines, and text for Daytime, Nighttime, and Body Discovery announcements |
+---
+
+### Gameplay
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| **Sprite Click Gifts** | Toggle | Off | Overworld sprite clicks open a gift picker for that character instead of starting a 1-on-1 or cluster chat. The gift waits until that character next speaks in your main chat. Talk to the Room / Grab Group Members still open chats when Single-Chat Overworld is off. |
+| **Single-Chat Overworld** | Toggle | Off | Explore the overworld without leaving your open group chat. Sprites cover the chat UI; the VN talk box and send box stay usable. Who is standing in the current room is unmuted (present) via SillyTavern group mute; everyone else is muted so they will not hear or auto-reply. Requires the [Presence](https://github.com/leandrojofre/SillyTavern-Presence) extension for per-character memory. View conversation and the minimap only show who is in the current room. Explore brings the overlay back. Call Student warps selected students into the room. Sprite clicks do not open new chats (Sprite Click Gifts still queues a gift). Class trials are unchanged. |
+| **Room Context Prompt** | Toggle + editor | Off | When on, chat completions receive a short system prompt with the current room (`{{room}}`) and living occupants (`{{characters}}`, or `none`). Cleared during class trials and when no location is set. Edit or reset the template from the same row. |
 ---
 
 ### FX
@@ -330,7 +337,7 @@ Displays the Truth Bullet list and asks the player to select the correct one for
 
 - **Q: I only use one group chat. How do I explore the overworld without creating extra chats?**
   
-  **A: Turn on Single-Chat Overworld in Settings → Display, then stay in your main group chat. Walking to a room (Move To) shows whoever is there and toggles SillyTavern group mute (the speech-bubble icons) so only those sprites hear what you type. The VN talk box stays up while you explore. Install [Presence](https://github.com/leandrojofre/SillyTavern-Presence) so absentees also do not remember those messages. Call Student brings chosen students into the room you are standing in. View conversation hides the overworld overlay so you can read the chat — only people in that room appear as portraits or minimap pins. Explore puts the overlay back. Sprite Click Gifts still queues a gift instead of talking if that toggle is also on.**
+  **A: Turn on Single-Chat Overworld in Settings → Gameplay, then stay in your main group chat. Walking to a room (Move To) shows whoever is there and toggles SillyTavern group mute (the speech-bubble icons) so only those sprites hear what you type. The VN talk box stays up while you explore. Install [Presence](https://github.com/leandrojofre/SillyTavern-Presence) so absentees also do not remember those messages. Call Student brings chosen students into the room you are standing in. View conversation hides the overworld overlay so you can read the chat — only people in that room appear as portraits or minimap pins. Explore puts the overlay back. Sprite Click Gifts still queues a gift instead of talking if that toggle is also on.**
 
 ---
 

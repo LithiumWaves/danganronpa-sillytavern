@@ -48,6 +48,19 @@ const SKIP_NAMES = new Set(["narrator", "monokuma", "assistant", "system"]);
 
 const EVALUATE_DEBOUNCE_MS = 200;
 
+export function formatMoodScanToast(result = {}, labels = {}) {
+    const counts = result.counts && typeof result.counts === "object" ? result.counts : {};
+    const voteParts = Object.entries(counts)
+        .filter(([, n]) => Number(n) > 0)
+        .sort((a, b) => (Number(b[1]) - Number(a[1])) || String(a[0]).localeCompare(String(b[0])))
+        .map(([mood, n]) => `${String(mood).toUpperCase()} ×${n}`);
+    const playing = result.winner
+        ? String(result.winner).toUpperCase()
+        : (labels[result.settingKey] || "PHASE");
+    if (!voteParts.length) return `No mood · Playing ${playing}`;
+    return `${voteParts.join(" · ")}\nPlaying ${playing}`;
+}
+
 function folderFromSrc(src) {
     if (!src) return "";
     try {
@@ -111,7 +124,7 @@ function pickWinningMood(moods, currentSettingKey) {
 export function createDynamicSongsController(deps) {
     const lastExpressionByName = new Map();
     let evaluateTimer = null;
-    // Manual song-list picks hold until SCAN MOOD (or the toggle is flipped).
+    // Manual song-list picks hold until SCAN (or the toggle is flipped).
     let manualHold = false;
 
     function resolveCharacterName(imgEl, src) {
@@ -223,46 +236,54 @@ export function createDynamicSongsController(deps) {
     }
 
     function evaluateAndPlay({ restorePhaseOnMiss = false, forceReplay = false } = {}) {
-        if (!deps.isEnabled?.()) return false;
-        if (!deps.isAmbientContext?.()) return false;
-        if (manualHold && !forceReplay) return false;
+        return runEvaluate({ restorePhaseOnMiss, forceReplay }).ok;
+    }
+
+    function runEvaluate({ restorePhaseOnMiss = false, forceReplay = false } = {}) {
+        const empty = { ok: false, winner: null, counts: {}, settingKey: null, fallback: false };
+        if (!deps.isEnabled?.()) return empty;
+        if (!deps.isAmbientContext?.()) return empty;
+        if (manualHold && !forceReplay) return empty;
 
         const expressions = collectSceneExpressions();
         const moods = expressions.map((label) => moodFromExpression(label)).filter(Boolean);
+        const counts = {};
+        for (const mood of moods) counts[mood] = (counts[mood] || 0) + 1;
         const currentKey = deps.getCurrentBgmSettingKey?.() || null;
         const winner = pickWinningMood(moods, currentKey);
+
+        const phaseFallback = () => {
+            manualHold = false;
+            deps.playPhaseTrackCore?.();
+            return {
+                ok: true,
+                winner: null,
+                counts,
+                settingKey: deps.getPhaseSettingKey?.() || null,
+                fallback: true,
+            };
+        };
+
         if (!winner) {
-            if (forceReplay) {
-                manualHold = false;
-                deps.playPhaseTrackCore?.();
-                return true;
-            }
-            if (restorePhaseOnMiss && isPlayingMoodPlaylist()) {
-                manualHold = false;
-                deps.playPhaseTrackCore?.();
-            }
-            return false;
+            if (forceReplay) return phaseFallback();
+            if (restorePhaseOnMiss && isPlayingMoodPlaylist()) return phaseFallback();
+            return { ...empty, counts };
         }
 
         const settingKey = MOOD_SETTING_KEYS[winner];
         const tracks = deps.getTracks?.(settingKey) || [];
         if (!tracks.length) {
-            if (forceReplay) {
-                manualHold = false;
-                deps.playPhaseTrackCore?.();
-                return true;
-            }
-            if (restorePhaseOnMiss && isPlayingMoodPlaylist()) {
-                manualHold = false;
-                deps.playPhaseTrackCore?.();
-            }
-            return false;
+            if (forceReplay) return phaseFallback();
+            if (restorePhaseOnMiss && isPlayingMoodPlaylist()) return phaseFallback();
+            return { ...empty, counts, winner };
         }
 
-        if (currentKey === settingKey && !forceReplay) return true;
+        if (currentKey === settingKey && !forceReplay) {
+            return { ok: true, winner, counts, settingKey, fallback: false };
+        }
         manualHold = false;
         deps.playTrackFromSetting?.(settingKey, { forceDifferent: forceReplay });
-        return true;
+        return { ok: true, winner, counts, settingKey, fallback: false };
     }
 
     function holdManual() {
@@ -274,7 +295,7 @@ export function createDynamicSongsController(deps) {
     function rescanAndPlay() {
         scanLiveSprites();
         manualHold = false;
-        return evaluateAndPlay({ restorePhaseOnMiss: true, forceReplay: true });
+        return runEvaluate({ restorePhaseOnMiss: true, forceReplay: true });
     }
 
     function scheduleEvaluate({ restorePhaseOnMiss = true } = {}) {

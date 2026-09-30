@@ -86,6 +86,8 @@ export const defaultSettings = {
     spriteClickGiftsEnabled: false,
     singleChatOverworldEnabled: false,
     singleChatGroupId: "",
+    roomContextPromptEnabled: false,
+    roomContextPromptTemplate: "",
     minigameTutorialsEnabled: true,
     featureCoachesEnabled: true,
     onboardingCoachesSeen: {},
@@ -133,6 +135,7 @@ export const defaultSettings = {
     investigationTracks: [],
     // Optional mood playlists for Dynamic Songs (expression majority vote).
     dynamicSongsEnabled: false,
+    moodScanToastEnabled: false,
     happyTracks: [],
     sadTracks: [],
     dramaticTracks: [],
@@ -242,6 +245,17 @@ DEBATE SO FAR (most recent lines):
 RECENT CHAT CONTEXT:
 {{contextLines}}`,
 };
+
+export const DEFAULT_GAMEPLAY_PROMPT_TEMPLATES = {
+    roomContext: `Location: {{room}}
+Present: {{characters}}`,
+};
+
+export function getDefaultPromptTemplate(templateKey) {
+    return DEFAULT_TRIAL_PROMPT_TEMPLATES[templateKey]
+        || DEFAULT_GAMEPLAY_PROMPT_TEMPLATES[templateKey]
+        || "";
+}
 
 export const REWARD_DIFFICULTY_LABELS = {
     easy: "EASY",

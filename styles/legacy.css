@@ -11500,6 +11500,20 @@ body.dangan-theme-night .dbgm-wisps img {
     margin-right: 2px;
 }
 
+.dbgm-scan-btn {
+    font-size: 8px;
+    letter-spacing: 0.06em;
+    font-style: italic;
+    font-family: inherit;
+    text-transform: uppercase;
+    padding: 2px 4px;
+    margin-right: 2px;
+}
+
+.dbgm-scan-btn[hidden] {
+    display: none !important;
+}
+
 .dbgm-mode-btn {
     margin-right: 4px;
 }

@@ -9,7 +9,7 @@ import { createSocialPanelController } from "../social/socialPanel.js";
 import { extractUltimateFromNotes, isIgnoredCharacter, lookupUltimateFromLorebook, normalizeList, normalizeName } from "../social/characterUtils.js";
 import { createMapPanelController } from "../map/mapPanel.js";
 import { getLocationPromptReference, resolveLocationIdFromText } from "../map/locationPresence.js";
-import { DEFAULT_TRIAL_PROMPT_TEMPLATES, INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, TRIAL_START_REGEX, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName } from "../core/constants.js";
+import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, TRIAL_START_REGEX, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, defaultSettings, extensionFolderPath, extensionName, getDefaultPromptTemplate } from "../core/constants.js";
 import { createOpenRouterSettingsManager } from "../core/openrouterSettings.js";
 import { MONOKUMA_LESSON_STEPS, MONOKUMA_LESSON_TITLE } from "../core/monokumaLessonScript.js";
 import { createRecentLocationTracker } from "../core/locationPresenceHistory.js";
@@ -2586,7 +2586,7 @@ function applySettingsTabUI() {
         const settingKey = el.dataset.setting;
         const templateKey = el.dataset.templateKey;
         if (!settingKey || !templateKey) return;
-        const fallbackTemplate = DEFAULT_TRIAL_PROMPT_TEMPLATES[templateKey] || "";
+        const fallbackTemplate = getDefaultPromptTemplate(templateKey);
         const savedTemplate = typeof tab[settingKey] === "string" && tab[settingKey].length
             ? tab[settingKey]
             : fallbackTemplate;
@@ -4447,7 +4447,7 @@ $(".monopad-icon").on("mouseenter", function () {
             const settingKey = this.dataset.setting;
             const templateKey = this.dataset.templateKey;
             if (!settingKey || !templateKey) return;
-            const fallbackTemplate = DEFAULT_TRIAL_PROMPT_TEMPLATES[templateKey] || "";
+            const fallbackTemplate = getDefaultPromptTemplate(templateKey);
             setMonopadSetting(settingKey, this.value === fallbackTemplate ? "" : this.value);
         });
 
@@ -4458,7 +4458,7 @@ $(".monopad-icon").on("mouseenter", function () {
             setMonopadSetting(settingKey, "");
             const textarea = document.querySelector(`.settings-prompt-textarea[data-setting="${settingKey}"]`);
             if (textarea instanceof HTMLTextAreaElement) {
-                textarea.value = DEFAULT_TRIAL_PROMPT_TEMPLATES[templateKey] || "";
+                textarea.value = getDefaultPromptTemplate(templateKey);
             }
         });
 
