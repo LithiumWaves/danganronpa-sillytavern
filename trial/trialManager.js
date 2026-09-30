@@ -7444,12 +7444,22 @@ JUDGMENT RULES:
         const groupId = ctx.groupId ?? ctx.group_id;
         if (!groupId) return false;
         const allGroups = ctx.groups ?? window.groups ?? [];
-        const group = Array.isArray(allGroups) ? allGroups.find(g => g.id === groupId) : null;
+        const group = Array.isArray(allGroups)
+            ? allGroups.find(g => String(g.id) === String(groupId))
+            : null;
         if (!group?.disabled_members?.length) return false;
         const chars = Array.isArray(ctx.characters) ? ctx.characters
                     : Array.isArray(window.characters) ? window.characters : [];
         const stChar = chars.find(c => normalizeSeatName(String(c?.name || '')) === normalizeSeatName(charName));
         return stChar ? group.disabled_members.includes(stChar.avatar) : false;
+    }
+
+    function isSingleChatOverworldOn() {
+        try {
+            return !!extensionSettings?.[extensionName]?.singleChatOverworldEnabled;
+        } catch {
+            return false;
+        }
     }
 
     const GCP_GAP        = 60;   // gap between characters
@@ -7959,6 +7969,12 @@ JUDGMENT RULES:
                         console.log(`[Dangan][GCP] "${name}" missing → no sprite`);
                         return { name, url: null, isDead: false, isMissing: true };
                     }
+                    // Non-trial: muted living characters are absentees (Single-Chat
+                    // Overworld Presence mute). Do not keep them as dead.png portraits.
+                    if (muted && !trialActive && !dead) {
+                        console.log(`[Dangan][GCP] "${name}" muted living → excluded`);
+                        return null;
+                    }
                     if (muted || dead) {
                         const deadUrl = await getSpriteUrl(name, 'dead').catch(() => null);
                         if (muted && !deadUrl) { console.log(`[Dangan][GCP] "${name}" muted+no dead sprite → excluded`); return null; }
@@ -8074,8 +8090,11 @@ JUDGMENT RULES:
                     // Safety net: Prome may still be populating holders when we first build.
                     // Watch #visual-novel-wrapper for new [data-avatar] insertions and rebuild
                     // if the count grows beyond what we loaded.
+                    // Single-Chat Overworld keeps muted members in the group (and Prome
+                    // still mounts holders for them) — do not treat that as a missing
+                    // GCP slot or the full cast comes back.
                     const vnWrapper = document.getElementById('visual-novel-wrapper');
-                    if (vnWrapper) {
+                    if (vnWrapper && !isSingleChatOverworldOn()) {
                         const builtCount = gcpSlots.length;
                         const observer = new MutationObserver(() => {
                             const promeCount = vnWrapper.querySelectorAll(
@@ -8258,6 +8277,14 @@ JUDGMENT RULES:
         document.body.classList.remove('dangan-gcp-active', 'dangan-gcp-visible');
     }
 
+    function refreshGroupChatPortraits() {
+        if (trialActive) return Promise.resolve();
+        const savedFloat = gcpCurrentFloat;
+        try { destroyGroupChatPortraits(); } catch { /* ignore */ }
+        gcpCurrentFloat = savedFloat;
+        return initGroupChatPortraits();
+    }
+
     // Apply a CSS class to the Effects overlay and targeted character slots.
     // scope: 'speaker' → active speaker slot only | 'all' → every visible slot
     return {
@@ -8311,6 +8338,7 @@ JUDGMENT RULES:
         clearTrialContext,
         endTrial,
         initGroupChatPortraits,
+        refreshGroupChatPortraits,
         updateGroupChatSpeaker,
         setGroupChatPortraitsVisible,
         destroyGroupChatPortraits,

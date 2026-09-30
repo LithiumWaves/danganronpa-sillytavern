@@ -1663,16 +1663,17 @@ body.dangan-trial-active #dangan-current-room { display: none !important; }
 body.dangan-monopad-open #dangan-overworld { display: none !important; }
 
 /* Single-Chat Overworld: sprites cover the group chat while the send form,
- * Move To panel, and minimap stay usable. GCP / VN / message list hide until
- * View conversation. */
+ * Move To panel, minimap, and VN talk box stay usable. GCP / Prome holders /
+ * the raw message list hide until View conversation. The VN overlay keeps its
+ * own z-index (2500) so it sits above the overworld the same way it does in
+ * multi-chat. */
 body.dangan-ow-inchat-explore #dangan-overworld {
     z-index: 32;
 }
 body.dangan-ow-inchat-explore #chat,
 body.dangan-ow-inchat-explore #dangan-group-chat-stage,
 body.dangan-ow-inchat-explore #visual-novel-wrapper,
-body.dangan-ow-inchat-explore #expression-wrapper,
-body.dangan-ow-inchat-explore #dangan-vn-overlay {
+body.dangan-ow-inchat-explore #expression-wrapper {
     opacity: 0 !important;
     pointer-events: none !important;
 }
