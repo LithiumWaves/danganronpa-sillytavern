@@ -1163,9 +1163,11 @@ export function createOverworldSceneController({
             && isSingleChatGroupContext()
             && !conversationViewOpen
             && !isTrialUiActive();
+        const singleChatHud = isSingleChatGroupContext() && !isTrialUiActive();
         body.classList.toggle("dangan-ow-scene-active", mode === "scene");
         body.classList.toggle("dangan-ow-chat-exit-active", mode === "chat-exit");
         body.classList.toggle("dangan-ow-inchat-explore", inchatExplore);
+        body.classList.toggle("dangan-ow-single-chat", singleChatHud);
     }
 
     function removeRoot() {
@@ -1206,10 +1208,8 @@ export function createOverworldSceneController({
         ensureCharacterLocations();
 
         if (mode === "chat-exit") {
-            // In-chat overlay: Exit Conversation + Grab Group Members buttons.
-            // Single-Chat Overworld swaps Grab for Explore so the player can
-            // bring the overworld overlay back without closing the group.
-            // No sprites, no click-boxes, no Talk-to-Room.
+            // Single-Chat Overworld: Explore brings the overlay back. Stay in
+            // the group — no Exit Conversation / Grab Group Members.
             setBodyMode("chat-exit");
             // Always build into a fresh detached root and swap at the end so
             // the live overworld stays on screen until the new content is
@@ -1219,18 +1219,6 @@ export function createOverworldSceneController({
 
             if (isSingleChatGroupContext()) {
                 root.appendChild(buildExploreBtn());
-                const exitBtn = document.createElement("button");
-                exitBtn.type = "button";
-                exitBtn.className = "dangan-ow-room-btn dangan-ow-grab-btn";
-                const exitLabel = document.createElement("span");
-                exitLabel.className = "dangan-ow-room-btn-label";
-                exitLabel.textContent = "Exit conversation";
-                exitBtn.appendChild(exitLabel);
-                exitBtn.addEventListener("click", (e) => {
-                    e.stopPropagation();
-                    onExitChatClick();
-                });
-                root.appendChild(exitBtn);
             } else {
                 const exitBtn = document.createElement("button");
                 exitBtn.type = "button";
@@ -1592,6 +1580,9 @@ export function createOverworldSceneController({
     function openConversationView() {
         conversationViewOpen = true;
         scheduleRender();
+        try { onPresenceSynced?.(); } catch (err) {
+            console.warn("[Dangan][Overworld] GCP refresh on View conversation failed:", err);
+        }
     }
 
     function closeConversationView() {

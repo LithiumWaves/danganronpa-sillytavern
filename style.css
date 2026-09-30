@@ -1684,6 +1684,16 @@ body.dangan-ow-inchat-explore #send_form {
     opacity: 1 !important;
 }
 
+/* Keep Prome / ST group sprites hidden for the whole single-chat session.
+ * View conversation uses GCP built from overworld occupants; Prome still
+ * mounts a holder for every group member and would otherwise stack the cast. */
+body.dangan-ow-single-chat #visual-novel-wrapper,
+body.dangan-ow-single-chat #expression-wrapper {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
 /* "Grab Group Members" / Single-Chat "Exit conversation" under Explore —
  * sits directly under the room-btn (Exit Conversation or Talk to the Room /
  * View conversation). Reuses .dangan-ow-room-btn styling, just offset down
