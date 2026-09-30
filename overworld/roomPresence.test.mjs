@@ -1,4 +1,11 @@
-import { computeRoomDisabledMembers, disabledMembersEqual, shouldLeavePresenceMuteAlone } from "./roomPresence.js";
+import {
+    avatarStemKey,
+    computeRoomDisabledMembers,
+    disabledMembersEqual,
+    indexCharsByAvatar,
+    lookupCharByAvatar,
+    shouldLeavePresenceMuteAlone,
+} from "./roomPresence.js";
 
 function assert(cond, msg) {
     if (!cond) throw new Error(msg);
@@ -7,6 +14,7 @@ function assert(cond, msg) {
 function run() {
     assert(shouldLeavePresenceMuteAlone("Narrator") === true, "narrator left alone");
     assert(shouldLeavePresenceMuteAlone("Kyoko Kirigiri") === false, "student not left alone");
+    assert(shouldLeavePresenceMuteAlone("") === false, "empty name is not left unmuted");
 
     const members = ["kyoko.png", "byakuya.png", "makoto.png", "narrator.png"];
     const charByAvatar = {
@@ -63,6 +71,54 @@ function run() {
     });
     assert(!spaced.includes("kyoko.png"), "normalized names still count as in-room");
     assert(!disabledMembersEqual(["a"], ["a", "b"]), "length mismatch");
+
+    const unresolved = computeRoomDisabledMembers({
+        memberAvatars: ["ghost.png", "kyoko.png"],
+        currentDisabled: [],
+        charByAvatar: { "kyoko.png": { name: "Kyoko Kirigiri" } },
+        inRoomNameKeys: ["Kyoko Kirigiri"],
+        rosterByKey,
+    });
+    assert(unresolved.includes("ghost.png"), "unresolved avatar is muted instead of left present");
+    assert(!unresolved.includes("kyoko.png"), "resolved occupant still unmuted");
+
+    const suffixed = computeRoomDisabledMembers({
+        memberAvatars: ["kyoko.png", "makoto.png"],
+        currentDisabled: ["kyoko.png"],
+        charByAvatar: {
+            "kyoko.png": { name: "Kyoko Kirigiri (DR1)" },
+            "makoto.png": { name: "Makoto Naegi" },
+        },
+        inRoomNameKeys: ["Kyoko Kirigiri"],
+        rosterByKey,
+    });
+    assert(!suffixed.includes("kyoko.png"), "card title suffix still counts as in-room so she unmutes");
+    assert(suffixed.includes("makoto.png"), "other students stay muted");
+
+    const firstName = computeRoomDisabledMembers({
+        memberAvatars: ["kyoko.png", "makoto.png"],
+        currentDisabled: ["kyoko.png"],
+        charByAvatar,
+        inRoomNameKeys: ["Kyoko"],
+        rosterByKey,
+    });
+    assert(!firstName.includes("kyoko.png"), "unique first name unmutes the matching student");
+    assert(firstName.includes("makoto.png"), "other students stay muted on first-name match");
+
+    const encodedAvatar = "Kyoko%20Kirigiri.png";
+    const indexed = indexCharsByAvatar([{ name: "Kyoko Kirigiri", avatar: "Kyoko Kirigiri.png" }]);
+    assert(lookupCharByAvatar(indexed, encodedAvatar)?.name === "Kyoko Kirigiri", "encoded avatar still resolves");
+    assert(avatarStemKey("folder/Kyoko_Kirigiri.png") === "kyoko kirigiri", "avatar stem matches roster names");
+
+    const byStem = computeRoomDisabledMembers({
+        memberAvatars: ["Kyoko Kirigiri.png", "makoto.png"],
+        currentDisabled: ["Kyoko Kirigiri.png"],
+        charByAvatar: {},
+        inRoomNameKeys: ["Kyoko Kirigiri"],
+        rosterByKey,
+    });
+    assert(!byStem.includes("Kyoko Kirigiri.png"), "avatar filename unmutes even when the ST card name is missing");
+    assert(byStem.includes("makoto.png"), "unrelated missing-name member stays muted");
 
     console.log("roomPresence tests passed");
 }
