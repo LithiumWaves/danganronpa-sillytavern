@@ -343,7 +343,7 @@ Displays the Truth Bullet list and asks the player to select the correct one for
 
 - **Q: There's something you didn't explain here. I'm confused. What do I do?**
   
-  **A: Check the Settings tab. The question mark button in the top right starts Mr. Monokuma's Lesson, which walks you through the Monopad. After that, he explains each tab and minigame the first time you use it.**
+  **A: On first load, a play-mode overlay explains several chats vs one main chat. Leave Don't show again on and press CONTINUE to hide it for later sessions; Reset Lesson Hints in Settings brings it back. The question mark in the top right of Settings starts Mr. Monokuma's Lesson, which walks you through the Monopad. After that, he explains each tab and minigame the first time you use it.**
 
 ---
 

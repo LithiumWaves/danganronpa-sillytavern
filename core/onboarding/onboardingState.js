@@ -27,6 +27,10 @@ export function createOnboardingState({ getMonopadSetting, setMonopadSetting }) 
         if (!isWelcomeSeen()) setMonopadSetting("welcomeSeen", true);
     }
 
+    function clearWelcomeSeen() {
+        if (isWelcomeSeen()) setMonopadSetting("welcomeSeen", false);
+    }
+
     function areFeatureCoachesEnabled() {
         return getMonopadSetting("featureCoachesEnabled") !== false;
     }
@@ -70,6 +74,7 @@ export function createOnboardingState({ getMonopadSetting, setMonopadSetting }) 
         COACH_IDS,
         isWelcomeSeen,
         markWelcomeSeen,
+        clearWelcomeSeen,
         areFeatureCoachesEnabled,
         areMinigameTutorialsEnabled,
         disableMinigameTutorials,
