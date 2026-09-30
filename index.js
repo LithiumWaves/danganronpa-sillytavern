@@ -54,6 +54,7 @@ import { createRebuttalShowdownController, createInterjectionCinematicRunner } f
 import { MPD_TEST_SCENARIOS } from "./vfx/massPanicDebate.js";
 import { createAudioVisualizerController } from "./audio/audioVisualizer.js";
 import { createDynamicSongsController } from "./audio/dynamicSongs.js";
+import { buildAssignedTrackCatalog, openSongPicker } from "./audio/songPicker.js";
 import { createOverworldSceneController } from "./overworld/overworldScene.js";
 import { showCgByBgName, showCgPicker } from "./overworld/cgViewer.js";
 import { user_avatar } from "../../../personas.js";
@@ -4063,16 +4064,84 @@ function playBgmPath(path, settingKey = null) {
     console.log(`[Dangan][BGM] Playing track (${settingKey ?? "?"}): ${path}`);
 }
 
-function playTrackFromSetting(settingKey) {
+function playTrackFromSetting(settingKey, { forceDifferent = false } = {}) {
     const tracks = getMonopadSetting(settingKey) || [];
     if (!tracks.length) return;
 
-    const idx = Math.floor(Math.random() * tracks.length);
+    let idx = Math.floor(Math.random() * tracks.length);
+    if (forceDifferent && tracks.length > 1 && settingKey === bgmCurrentSettingKey && idx === bgmCurrentIndex) {
+        idx = (idx + 1) % tracks.length;
+    }
     bgmCurrentSettingKey = settingKey;
     bgmCurrentList       = [...tracks];
     bgmCurrentIndex      = idx;
 
     playBgmPath(tracks[idx], settingKey);
+}
+
+function playSpecificTrack(path, settingKey) {
+    if (!path) return;
+    const tracks = settingKey ? (getMonopadSetting(settingKey) || []) : [];
+    bgmCurrentSettingKey = settingKey || bgmCurrentSettingKey;
+    bgmCurrentList = tracks.length ? [...tracks] : [path];
+    const idx = bgmCurrentList.indexOf(path);
+    if (idx >= 0) bgmCurrentIndex = idx;
+    else {
+        bgmCurrentList = [path];
+        bgmCurrentIndex = 0;
+    }
+    playBgmPath(path, bgmCurrentSettingKey);
+}
+
+function getPlayingBgmPath() {
+    const src = investigationTrackAudio?.src || "";
+    if (src) return src;
+    const daEl = document.getElementById("audio_bgm");
+    if (daEl instanceof HTMLAudioElement && daEl.src) return daEl.src;
+    if (bgmCurrentList.length && bgmCurrentIndex >= 0) return bgmCurrentList[bgmCurrentIndex] || "";
+    return "";
+}
+
+function openAssignedSongPicker() {
+    const catalog = buildAssignedTrackCatalog({
+        tabs: BGM_TRACK_TABS,
+        getTracks: (key) => getMonopadSetting(key) || [],
+        labels: BGM_PLAYLIST_LABELS,
+        parents: BGM_PLAYLIST_PARENTS,
+    });
+    openSongPicker({
+        catalog,
+        currentPath: getPlayingBgmPath(),
+        currentSettingKey: bgmCurrentSettingKey || "",
+        onPick: ({ path, settingKey }) => {
+            try { dynamicSongsController?.holdManual?.(); } catch { /* ignore */ }
+            playSpecificTrack(path, settingKey);
+        },
+    });
+}
+
+function syncMoodScanButton() {
+    let btn = document.getElementById("dangan-mood-scan");
+    const show = !!getMonopadSetting("dynamicSongsEnabled") && !trialManager?.isTrialActive?.();
+    if (!btn) {
+        btn = document.createElement("button");
+        btn.id = "dangan-mood-scan";
+        btn.type = "button";
+        btn.textContent = "SCAN MOOD";
+        btn.setAttribute("aria-label", "Scan sprites and update mood music");
+        btn.addEventListener("click", () => {
+            const changed = !!dynamicSongsController?.rescanAndPlay?.();
+            btn.classList.toggle("is-armed", true);
+            btn.textContent = changed ? "SCANNED" : "NO MOOD";
+            window.setTimeout(() => {
+                if (!btn.isConnected) return;
+                btn.classList.remove("is-armed");
+                btn.textContent = "SCAN MOOD";
+            }, 900);
+        });
+        document.body.appendChild(btn);
+    }
+    btn.hidden = !show;
 }
 
 function bgmPlayPrev() {
@@ -9725,6 +9794,7 @@ $(".monopad-icon").on("mouseenter", function () {
             }
             if (key === "dynamicSongsEnabled") {
                 dynamicSongsController?.onEnabledChanged?.(next);
+                try { syncMoodScanButton(); } catch { /* ignore */ }
             }
             if (key === "singleChatOverworldEnabled") {
                 overworldSceneController?.onSingleChatOverworldChanged?.(next);
@@ -10467,8 +10537,10 @@ audioVisualizer = createAudioVisualizerController({
         const parent = BGM_PLAYLIST_PARENTS[key] ?? '';
         return parent ? `${parent} - ${label}` : label;
     },
+    onOpenSongList: () => openAssignedSongPicker(),
 });
 audioVisualizer.init();
+try { syncMoodScanButton(); } catch { /* ignore */ }
 
 // Immediately suppress the visualizer if we're in the Assistant chat with the setting off.
 if (!getMonopadSetting('bgmOutsideChats') && !isInCharacterChat()) {
@@ -10718,7 +10790,7 @@ debugSTGlobals();
             generateTrialDialogueWithProfile,
             getCharacterSourceText,
             getEmotionFont,
-            onTrialStateChange: () => { renderMoveToPanel(); renderMinimap(); overworldSceneController?.render?.(); },
+            onTrialStateChange: () => { renderMoveToPanel(); renderMinimap(); overworldSceneController?.render?.(); try { syncMoodScanButton(); } catch { /* ignore */ } },
             // Re-apply the day/night/investigation phase theme. The trial owns
             // the theme while active (applyDynamicTheme bails on dangan-trial-active),
             // so this restores the correct phase styling once a trial tears down.

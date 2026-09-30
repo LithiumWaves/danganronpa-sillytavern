@@ -32,6 +32,7 @@ const ABOVE_CG = [
     "#dangan-vn-overlay", // VN dialogue box — current speaker + line
     "#dangan-hud-topright", // Chapter/Level area + LVL bar + area indicator
     "#dangan-bgm-display",  // BGM visualiser
+    "#dangan-mood-scan",
     "#dangan-bgm-panel",
 ];
 

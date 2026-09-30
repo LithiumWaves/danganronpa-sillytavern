@@ -11496,6 +11496,10 @@ body.dangan-theme-night .dbgm-wisps img {
     background: rgba(255, 255, 255, 0.22);
 }
 
+.dbgm-list-btn {
+    margin-right: 2px;
+}
+
 .dbgm-mode-btn {
     margin-right: 4px;
 }
