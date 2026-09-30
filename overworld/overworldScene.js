@@ -3,6 +3,7 @@ import { normalizeName } from "../social/characterUtils.js";
 import {
     computeRoomDisabledMembers,
     disabledMembersEqual,
+    indexCharsByAvatar,
     isPresenceExtensionPresent,
 } from "./roomPresence.js";
 
@@ -2502,14 +2503,64 @@ export function createOverworldSceneController({
         }, PRESENCE_DEBOUNCE_MS);
     }
 
+    function findLiveGroup(ctx) {
+        const gid = ctx?.groupId;
+        if (gid == null || gid === "") return null;
+        const bags = [];
+        if (Array.isArray(ctx?.groups)) bags.push(ctx.groups);
+        if (typeof window !== "undefined" && Array.isArray(window.groups) && window.groups !== ctx?.groups) {
+            bags.push(window.groups);
+        }
+        for (const groups of bags) {
+            const group = groups.find((g) => g && (g.id === gid || String(g.id) === String(gid)));
+            if (group && Array.isArray(group.members)) return group;
+        }
+        return null;
+    }
+
+    // ST stores mute on group.disabled_members (avatar filenames). Presence
+    // reads that list on send. The member-row .disabled class is what the
+    // speech-bubble icons and some UI readers look at — editGroup(save)
+    // does not refresh it unless we toggle it ourselves.
+    function syncGroupMemberDisabledDom(disabledAvatars, allChars) {
+        const disabled = new Set((disabledAvatars || []).map(String));
+        const list = Array.isArray(allChars) ? allChars : [];
+        let $ = null;
+        try { $ = typeof window !== "undefined" ? window.$ : null; } catch { $ = null; }
+        for (const el of document.querySelectorAll(".group_member")) {
+            let avatar = "";
+            const chid = el.getAttribute("data-chid");
+            if (chid !== null && chid !== "") {
+                const idx = Number(chid);
+                if (Number.isInteger(idx) && list[idx]?.avatar) avatar = list[idx].avatar;
+            }
+            if (!avatar && $) {
+                try { avatar = $(el).data("id") || ""; } catch { /* ignore */ }
+            }
+            if (!avatar) avatar = el.getAttribute("data-id") || el.dataset?.id || "";
+            if (!avatar) continue;
+            const isDisabled = disabled.has(avatar) || disabled.has(String(avatar));
+            el.classList.toggle("disabled", isDisabled);
+        }
+    }
+
+    async function emitGroupUpdated() {
+        try {
+            if (eventSource && event_types?.GROUP_UPDATED) {
+                await eventSource.emit(event_types.GROUP_UPDATED);
+            }
+        } catch (err) {
+            console.warn("[Dangan][Overworld] GROUP_UPDATED emit failed:", err);
+        }
+    }
+
     async function syncRoomPresence() {
         if (!isSingleChatOverworldEnabled?.()) return;
         if (isTrialUiActive()) return;
         if (typeof editGroup !== "function") return;
         const ctx = window.SillyTavern?.getContext?.();
         if (!ctx?.groupId) return;
-        const group = (Array.isArray(ctx.groups) ? ctx.groups : [])
-            .find((g) => String(g.id) === String(ctx.groupId));
+        const group = findLiveGroup(ctx);
         if (!group || !Array.isArray(group.members)) return;
 
         if (!presenceWarned) {
@@ -2525,11 +2576,9 @@ export function createOverworldSceneController({
         const inRoomNames = isRoomLocationId(playerRoom)
             ? getCharactersInRoom(playerRoom).map((c) => c.name)
             : [];
-        const allChars = Array.isArray(ctx.characters) ? ctx.characters : [];
-        const charByAvatar = {};
-        for (const c of allChars) {
-            if (c?.avatar) charByAvatar[c.avatar] = { name: c.name || "" };
-        }
+        const allChars = Array.isArray(ctx.characters) ? ctx.characters
+            : (Array.isArray(window.characters) ? window.characters : []);
+        const charByAvatar = indexCharsByAvatar(allChars);
         const currentDisabled = Array.isArray(group.disabled_members) ? group.disabled_members : [];
         const nextDisabled = computeRoomDisabledMembers({
             memberAvatars: group.members,
@@ -2540,7 +2589,20 @@ export function createOverworldSceneController({
         });
         const muteSame = disabledMembersEqual(currentDisabled, nextDisabled);
         const hideMutedAlready = group.hideMutedSprites === true;
-        if (muteSame && hideMutedAlready) return;
+        debug("presence sync", {
+            room: playerRoom,
+            inRoom: inRoomNames,
+            disabled: nextDisabled,
+            muteSame,
+        });
+
+        // Always refresh the member-row classes. Saving disabled_members without
+        // a group reload leaves the speech-bubble UI (and any DOM readers) stale.
+        if (muteSame && hideMutedAlready) {
+            syncGroupMemberDisabledDom(nextDisabled, allChars);
+            await emitGroupUpdated();
+            return;
+        }
 
         const prevDisabled = [...currentDisabled];
         const prevHide = group.hideMutedSprites;
@@ -2548,6 +2610,8 @@ export function createOverworldSceneController({
         group.hideMutedSprites = true;
         try {
             await editGroup(group.id, true, false);
+            syncGroupMemberDisabledDom(nextDisabled, allChars);
+            await emitGroupUpdated();
             try { onPresenceSynced?.(); } catch (err) {
                 console.warn("[Dangan][Overworld] onPresenceSynced failed:", err);
             }
