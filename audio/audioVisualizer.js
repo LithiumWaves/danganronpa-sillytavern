@@ -10,7 +10,7 @@ const PLAY_MODES = ['sequential', 'shuffle', 'loop'];
 const MODE_ICONS  = { sequential: '&#x2192;', shuffle: '&#x21C4;', loop: '&#x21BB;' };
 const MODE_LABELS = { sequential: 'Play sequentially', shuffle: 'Shuffle', loop: 'Loop track' };
 
-export function createAudioVisualizerController({ getAudioElement, assetsBasePath, getGameState, onPrev, onTogglePause, onNext, onShuffle, getPlayMode, onSetPlayMode, getIsPaused, getPlaylistLabel }) {
+export function createAudioVisualizerController({ getAudioElement, assetsBasePath, getGameState, onPrev, onTogglePause, onNext, onShuffle, getPlayMode, onSetPlayMode, getIsPaused, getPlaylistLabel, onOpenSongList }) {
     let audioCtx        = null;
     let analyser        = null;
     let fftData         = null;
@@ -72,6 +72,7 @@ export function createAudioVisualizerController({ getAudioElement, assetsBasePat
             <div class="dbgm-controls" aria-label="BGM controls">
                 <span class="dbgm-playlist-label" aria-live="polite"></span>
                 <div class="dbgm-ctrl-btns">
+                    <button class="dbgm-ctrl-btn dbgm-list-btn" data-action="list" aria-label="Browse songs">&#x2630;</button>
                     <button class="dbgm-ctrl-btn dbgm-mode-btn" data-action="mode" aria-label="Play mode: sequential">&#x2192;</button>
                     <button class="dbgm-ctrl-btn" data-action="prev" aria-label="Previous track">&#x23EE;</button>
                     <button class="dbgm-ctrl-btn dbgm-ctrl-pause" data-action="pause" aria-label="Pause">&#x23F8;</button>
@@ -96,6 +97,7 @@ export function createAudioVisualizerController({ getAudioElement, assetsBasePat
 
         root.querySelector('[data-action="prev"]').addEventListener('click', () => onPrev?.());
         root.querySelector('[data-action="pause"]').addEventListener('click', () => onTogglePause?.());
+        root.querySelector('[data-action="list"]').addEventListener('click', () => onOpenSongList?.());
         root.querySelector('[data-action="next"]').addEventListener('click', () => {
             const mode = getPlayMode?.() ?? 'sequential';
             if (mode === 'shuffle') onShuffle?.();

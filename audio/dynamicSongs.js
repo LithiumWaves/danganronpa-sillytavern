@@ -111,6 +111,8 @@ function pickWinningMood(moods, currentSettingKey) {
 export function createDynamicSongsController(deps) {
     const lastExpressionByName = new Map();
     let evaluateTimer = null;
+    // Manual song-list picks hold until SCAN MOOD (or the toggle is flipped).
+    let manualHold = false;
 
     function resolveCharacterName(imgEl, src) {
         const alt = (imgEl?.getAttribute?.("alt") || "").trim();
@@ -178,29 +180,101 @@ export function createDynamicSongsController(deps) {
         return MOOD_SETTING_KEY_SET.has(deps.getCurrentBgmSettingKey?.());
     }
 
-    function evaluateAndPlay({ restorePhaseOnMiss = false } = {}) {
+    function ingestSprite(name, src, fallbackLabel) {
+        if (shouldSkipName(name)) return;
+        if (src) {
+            const stem = stemFromSrc(src);
+            if (stem) {
+                noteExpression(name, stem);
+                return;
+            }
+        }
+        if (fallbackLabel) noteExpression(name, fallbackLabel);
+    }
+
+    function scanLiveSprites() {
+        const gcp = deps.getGcpScene?.();
+        if (Array.isArray(gcp)) {
+            for (const slot of gcp) {
+                ingestSprite(slot?.name, slot?.img?.src || "", "");
+            }
+            return;
+        }
+
+        const seen = new Set();
+        if (typeof document !== "undefined") {
+            for (const sprite of document.querySelectorAll(".dangan-ow-sprite")) {
+                const name = sprite.dataset?.name || "";
+                const img = sprite.querySelector(".dangan-ow-sprite-img");
+                ingestSprite(name, img?.src || "", "");
+                if (name) seen.add(normalizeName(name));
+            }
+            for (const img of document.querySelectorAll("img.expression, .expression-holder img, #visual-novel-wrapper img")) {
+                const alt = img.getAttribute?.("alt") || "";
+                ingestSprite(alt, img.src || "", "");
+            }
+        }
+        const overworld = deps.getOverworldScene?.() || [];
+        for (const entry of overworld) {
+            const key = normalizeName(entry?.name || "");
+            if (!key || seen.has(key)) continue;
+            ingestSprite(entry.name, "", entry.expression || "");
+        }
+    }
+
+    function evaluateAndPlay({ restorePhaseOnMiss = false, forceReplay = false } = {}) {
         if (!deps.isEnabled?.()) return false;
         if (!deps.isAmbientContext?.()) return false;
+        if (manualHold && !forceReplay) return false;
 
         const expressions = collectSceneExpressions();
         const moods = expressions.map((label) => moodFromExpression(label)).filter(Boolean);
         const currentKey = deps.getCurrentBgmSettingKey?.() || null;
         const winner = pickWinningMood(moods, currentKey);
         if (!winner) {
-            if (restorePhaseOnMiss && isPlayingMoodPlaylist()) deps.playPhaseTrackCore?.();
+            if (forceReplay) {
+                manualHold = false;
+                deps.playPhaseTrackCore?.();
+                return true;
+            }
+            if (restorePhaseOnMiss && isPlayingMoodPlaylist()) {
+                manualHold = false;
+                deps.playPhaseTrackCore?.();
+            }
             return false;
         }
 
         const settingKey = MOOD_SETTING_KEYS[winner];
         const tracks = deps.getTracks?.(settingKey) || [];
         if (!tracks.length) {
-            if (restorePhaseOnMiss && isPlayingMoodPlaylist()) deps.playPhaseTrackCore?.();
+            if (forceReplay) {
+                manualHold = false;
+                deps.playPhaseTrackCore?.();
+                return true;
+            }
+            if (restorePhaseOnMiss && isPlayingMoodPlaylist()) {
+                manualHold = false;
+                deps.playPhaseTrackCore?.();
+            }
             return false;
         }
 
-        if (currentKey === settingKey) return true;
-        deps.playTrackFromSetting?.(settingKey);
+        if (currentKey === settingKey && !forceReplay) return true;
+        manualHold = false;
+        deps.playTrackFromSetting?.(settingKey, { forceDifferent: forceReplay });
         return true;
+    }
+
+    function holdManual() {
+        manualHold = true;
+        clearTimeout(evaluateTimer);
+        evaluateTimer = null;
+    }
+
+    function rescanAndPlay() {
+        scanLiveSprites();
+        manualHold = false;
+        return evaluateAndPlay({ restorePhaseOnMiss: true, forceReplay: true });
     }
 
     function scheduleEvaluate({ restorePhaseOnMiss = true } = {}) {
@@ -215,6 +289,7 @@ export function createDynamicSongsController(deps) {
     function onEnabledChanged(enabled) {
         clearTimeout(evaluateTimer);
         evaluateTimer = null;
+        manualHold = false;
         if (enabled) {
             evaluateAndPlay({ restorePhaseOnMiss: false });
             return;
@@ -230,6 +305,8 @@ export function createDynamicSongsController(deps) {
         evaluateAndPlay,
         scheduleEvaluate,
         onEnabledChanged,
+        holdManual,
+        rescanAndPlay,
         isMoodSettingKey: (key) => MOOD_SETTING_KEY_SET.has(key),
     };
 }

@@ -1581,6 +1581,7 @@ body.dangan-theme-damaged       #dangan-ow-cursor { filter: hue-rotate(310deg) s
 #dangan-moveto-panel,
 #dangan-bgm-panel,
 #dangan-bgm-display,
+#dangan-mood-scan,
 #dangan-chapter-label,
 #dangan-vn-overlay,
 #dangan-hud-topright,
@@ -1603,6 +1604,7 @@ body:not(.dangan-trial-active) #sheld {
 body.dangan-ui-hidden #dangan-minimap,
 body.dangan-ui-hidden #dangan-moveto-panel,
 body.dangan-ui-hidden #dangan-bgm-panel,
+body.dangan-ui-hidden #dangan-mood-scan,
 body.dangan-ui-hidden #dangan-chapter-label,
 body.dangan-ui-hidden #dangan-vn-overlay,
 body.dangan-ui-hidden #dangan-hud-topright,
@@ -1660,6 +1662,7 @@ img.expression[alt="Narrator" i],
  * tasks every ~250ms in SillyTavern). */
 body.dangan-trial-active #dangan-overworld { display: none !important; }
 body.dangan-trial-active #dangan-current-room { display: none !important; }
+body.dangan-trial-active #dangan-mood-scan { display: none !important; }
 body.dangan-monopad-open #dangan-overworld { display: none !important; }
 
 /* Single-Chat Overworld: sprites cover the group chat while the send form,
@@ -1769,6 +1772,7 @@ body.dangan-ow-edit-mode #dangan-overworld .dangan-ow-edit-btn {
 body.dangan-ow-edit-mode #dangan-minimap,
 body.dangan-ow-edit-mode #dangan-moveto-panel,
 body.dangan-ow-edit-mode #dangan-bgm-panel,
+body.dangan-ow-edit-mode #dangan-mood-scan,
 body.dangan-ow-edit-mode #dangan-vn-overlay,
 body.dangan-ow-edit-mode #dangan-chapter-label,
 body.dangan-ow-edit-mode #dangan-hud-topright,
@@ -1917,6 +1921,135 @@ body.dangan-ow-edit-mode #dangan-bgm-display {
 .dangan-grab-confirm:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+}
+
+#dangan-mood-scan {
+    position: fixed;
+    top: 152px;
+    left: 8px;
+    z-index: 50;
+    pointer-events: auto;
+    background: rgba(0, 0, 0, 0.55);
+    color: #9be8ff;
+    border: none;
+    transform: skewX(20deg);
+    padding: 5px 14px 5px 16px;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    font-style: italic;
+    font-family: inherit;
+    text-transform: uppercase;
+    cursor: pointer;
+    user-select: none;
+    transition: color 0.15s, background 0.15s;
+}
+#dangan-mood-scan:hover {
+    color: #fff;
+    background: rgba(0, 0, 0, 0.72);
+}
+#dangan-mood-scan.is-armed {
+    color: #fff;
+}
+#dangan-mood-scan[hidden] {
+    display: none !important;
+}
+body.dangan-theme-night #dangan-mood-scan {
+    color: #93ff2c;
+}
+body.dangan-theme-investigation #dangan-mood-scan {
+    color: rgba(255, 20, 180, 0.90);
+}
+
+.dangan-song-picker-card {
+    width: min(520px, 92vw);
+}
+.dangan-song-picker-toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 16px 0;
+}
+.dangan-song-picker-search {
+    width: 100%;
+    box-sizing: border-box;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+    border-radius: 3px;
+    padding: 7px 10px;
+    font-family: inherit;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+}
+.dangan-song-picker-search:focus {
+    outline: none;
+    border-color: var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.45));
+}
+.dangan-song-picker-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.dangan-song-picker-chip {
+    background: rgba(255, 255, 255, 0.05);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 3px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.dangan-song-picker-chip.is-active,
+.dangan-song-picker-chip:hover {
+    background: var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.2));
+    border-color: var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.45));
+}
+.dangan-song-picker-list {
+    margin: 10px 16px 16px;
+    max-height: 48vh;
+    overflow-y: auto;
+}
+.dangan-song-picker-list li {
+    padding: 0;
+}
+.dangan-song-picker-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    padding: 8px 12px;
+    font-family: inherit;
+}
+.dangan-song-picker-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+.dangan-song-picker-list li.is-playing .dangan-song-picker-item {
+    background: rgba(155, 232, 255, 0.12);
+}
+.dangan-song-picker-name {
+    font-size: 13px;
+    letter-spacing: 0.04em;
+}
+.dangan-song-picker-tags {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.65;
+}
+.dangan-song-picker-empty {
+    padding: 16px 12px;
+    opacity: 0.7;
+    font-size: 12px;
+    letter-spacing: 0.06em;
 }
 
 .dangan-gift-pick-card {
