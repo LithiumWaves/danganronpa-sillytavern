@@ -1,3 +1,8 @@
+import { mountContinuePanel } from "./titleContinue.js";
+import { mountNewGamePanel } from "./titleNewGame.js";
+import { mountOptionsPanel } from "./titleOptions.js";
+import { escapeHtml } from "./titleUtils.js";
+
 export const TITLE_SCREEN_ID = "dangan-title-screen";
 
 const MENU_ITEMS = Object.freeze([
@@ -5,6 +10,12 @@ const MENU_ITEMS = Object.freeze([
     { action: "continue", label: "CONTINUE" },
     { action: "options", label: "OPTIONS" },
 ]);
+
+const PANELS = Object.freeze({
+    newGame: { title: "NEW GAME", mount: mountNewGamePanel },
+    continue: { title: "CONTINUE", mount: mountContinuePanel },
+    options: { title: "OPTIONS", mount: mountOptionsPanel },
+});
 
 const EXIT_DURATION_MS = 620;
 
@@ -25,21 +36,19 @@ export function maybeShowTitleScreen({
     return showTitleScreen(options);
 }
 
-// Resolves with the chosen action ("newGame" | "continue" | "options") once the
-// screen is gone and that action's handler has been called.
+// Resolves once the screen is gone: with the panel that closed it
+// ("newGame" | "continue" | "options"), or "dismiss".
 export function showTitleScreen({
     logoUrl = "",
     onStart,
-    onNewGame,
-    onContinue,
-    onOptions,
     onClose,
     playSfx,
+    services = {},
+    skipSplash = false,
 } = {}) {
     if (typeof document === "undefined") return Promise.resolve(false);
     document.getElementById(TITLE_SCREEN_ID)?.remove();
 
-    const handlers = { newGame: onNewGame, continue: onContinue, options: onOptions };
     const sfx = (name) => { try { playSfx?.(name); } catch { /* ignore */ } };
 
     return new Promise((resolve) => {
@@ -60,7 +69,7 @@ export function showTitleScreen({
             <div class="dgn-title-stage">
                 <div class="dgn-title-logo-wrap">
                     ${logoUrl
-                        ? `<img class="dgn-title-logo" src="${logoUrl}" alt="Danganronpa ST" draggable="false">`
+                        ? `<img class="dgn-title-logo" src="${escapeHtml(logoUrl)}" alt="Danganronpa ST" draggable="false">`
                         : `<div class="dgn-title-logo dgn-title-logo-text">DANGANRONPA</div>`}
                 </div>
                 <div class="dgn-title-press">PRESS START</div>
@@ -73,20 +82,30 @@ export function showTitleScreen({
                     `).join("")}
                 </nav>
             </div>
+            <section class="dgn-title-panel" aria-live="polite" hidden>
+                <header class="dgn-title-panel-head">
+                    <button type="button" class="dgn-title-back" aria-label="Back">
+                        <span aria-hidden="true">&#9664;</span> BACK
+                    </button>
+                    <h2 class="dgn-title-panel-title"></h2>
+                </header>
+                <div class="dgn-title-panel-body"></div>
+            </section>
             <div class="dgn-title-flash" aria-hidden="true"></div>
         `;
         document.body.appendChild(root);
         root.style.setProperty("z-index", "2147483646", "important");
         root.style.setProperty("pointer-events", "auto", "important");
-        requestAnimationFrame(() => requestAnimationFrame(() => {
-            root.classList.add("is-on");
-            root.focus({ preventScroll: true });
-        }));
 
         const items = Array.from(root.querySelectorAll(".dgn-title-item"));
+        const panelEl = root.querySelector(".dgn-title-panel");
+        const panelTitleEl = root.querySelector(".dgn-title-panel-title");
+        const panelBodyEl = root.querySelector(".dgn-title-panel-body");
         let stage = "splash";
         let active = 0;
         let leaving = false;
+        let panel = null;
+        let confirmState = null;
 
         const setActive = (index, { silent = false } = {}) => {
             const next = (index + items.length) % items.length;
@@ -96,39 +115,178 @@ export function showTitleScreen({
                 el.classList.toggle("is-active", i === active);
                 el.tabIndex = i === active ? 0 : -1;
             });
-            items[active]?.focus({ preventScroll: true });
+            if (stage === "menu") items[active]?.focus({ preventScroll: true });
+        };
+
+        const showMenu = () => {
+            stage = "menu";
+            root.classList.add("is-menu");
+            root.classList.remove("is-panel");
+            setActive(active, { silent: true });
         };
 
         const start = () => {
             if (stage !== "splash") return;
-            stage = "menu";
             sfx("open");
             try { onStart?.(); } catch (e) { console.warn("[Dangan][Title] onStart failed:", e); }
-            root.classList.add("is-menu");
-            setActive(0, { silent: true });
+            showMenu();
         };
 
-        const choose = async (action) => {
-            if (leaving || stage !== "menu") return;
+        const unmountPanel = () => {
+            if (!panel) return;
+            try { panel.handle?.unmount?.(); } catch (e) { console.warn("[Dangan][Title] unmount failed:", e); }
+            panel = null;
+            panelBodyEl.innerHTML = "";
+            panelEl.hidden = true;
+            panelEl.className = "dgn-title-panel";
+        };
+
+        const backToMenu = () => {
+            if (leaving) return;
+            const previous = panel?.name;
+            unmountPanel();
+            sfx("close");
+            showMenu();
+            const idx = items.findIndex((el) => el.dataset.action === previous);
+            if (idx >= 0) setActive(idx, { silent: true });
+        };
+
+        const close = async (after, result = panel?.name || "dismiss") => {
+            if (leaving) return;
             leaving = true;
-            sfx("click");
-            items.forEach((el) => el.classList.toggle("is-chosen", el.dataset.action === action));
             root.classList.add("is-leaving");
             document.removeEventListener("keydown", onKey, true);
             await new Promise((r) => setTimeout(r, EXIT_DURATION_MS));
+            unmountPanel();
             root.remove();
-            try { await handlers[action]?.(); } catch (e) { console.warn(`[Dangan][Title] ${action} failed:`, e); }
-            try { await onClose?.(action); } catch (e) { console.warn("[Dangan][Title] onClose failed:", e); }
-            resolve(action);
+            try { await after?.(); } catch (e) { console.warn(`[Dangan][Title] ${result} failed:`, e); }
+            try { await onClose?.(result); } catch (e) { console.warn("[Dangan][Title] onClose failed:", e); }
+            resolve(result);
         };
+
+        const confirm = ({ title = "CONFIRM", message = "", confirmLabel = "OK", cancelLabel = "CANCEL" } = {}) => {
+            confirmState?.finish(false);
+            return new Promise((done) => {
+                const overlay = document.createElement("div");
+                overlay.className = "dgn-title-confirm";
+                overlay.innerHTML = `
+                    <div class="dgn-title-confirm-box" role="alertdialog" aria-modal="true">
+                        <div class="dgn-title-confirm-title"></div>
+                        <p class="dgn-title-confirm-message"></p>
+                        <div class="dgn-title-confirm-actions">
+                            <button type="button" class="dgn-title-btn" data-choice="cancel"></button>
+                            <button type="button" class="dgn-title-btn is-primary" data-choice="ok"></button>
+                        </div>
+                    </div>
+                `;
+                overlay.querySelector(".dgn-title-confirm-title").textContent = title;
+                overlay.querySelector(".dgn-title-confirm-message").textContent = message;
+                const okBtn = overlay.querySelector('[data-choice="ok"]');
+                const cancelBtn = overlay.querySelector('[data-choice="cancel"]');
+                okBtn.textContent = confirmLabel;
+                cancelBtn.textContent = cancelLabel;
+                const previousFocus = document.activeElement;
+                const finish = (value) => {
+                    if (confirmState?.overlay !== overlay) return;
+                    confirmState = null;
+                    overlay.remove();
+                    try { previousFocus?.focus?.({ preventScroll: true }); } catch { /* ignore */ }
+                    done(value);
+                };
+                confirmState = { overlay, finish, buttons: [cancelBtn, okBtn] };
+                overlay.addEventListener("click", (ev) => {
+                    const btn = ev.target.closest?.("[data-choice]");
+                    if (btn) {
+                        sfx("click");
+                        finish(btn.dataset.choice === "ok");
+                    }
+                });
+                root.appendChild(overlay);
+                okBtn.focus({ preventScroll: true });
+                sfx("open");
+            });
+        };
+
+        const openPanel = (name) => {
+            const def = PANELS[name];
+            if (!def || leaving) return;
+            unmountPanel();
+            stage = "panel";
+            root.classList.add("is-panel");
+            panelEl.hidden = false;
+            panelEl.classList.add(`dgn-title-panel-${name}`);
+            panelTitleEl.textContent = def.title;
+            panel = { name, handle: null };
+            const api = {
+                services,
+                sfx,
+                confirm,
+                back: backToMenu,
+                close: (after) => close(after, name),
+                openPanel,
+                setTitle: (text) => { panelTitleEl.textContent = text; },
+            };
+            try {
+                panel.handle = def.mount(panelBodyEl, api) || null;
+            } catch (e) {
+                console.warn(`[Dangan][Title] ${name} panel failed:`, e);
+                panelBodyEl.innerHTML = `<div class="dgn-title-empty">Something went wrong opening this screen.</div>`;
+            }
+            requestAnimationFrame(() => {
+                if (panelEl.contains(document.activeElement)) return;
+                const first = panelBodyEl.querySelector("[autofocus], input, button, [tabindex='0']");
+                (first || root.querySelector(".dgn-title-back"))?.focus({ preventScroll: true });
+            });
+        };
+
+        const choose = (action) => {
+            if (leaving || stage !== "menu") return;
+            sfx("click");
+            openPanel(action);
+        };
+
+        function onConfirmKey(ev) {
+            const { buttons, finish } = confirmState;
+            const idx = buttons.indexOf(document.activeElement);
+            if (ev.key === "Escape") {
+                finish(false);
+            } else if (ev.key === "ArrowLeft" || ev.key === "ArrowRight" || ev.key === "Tab") {
+                buttons[idx === 0 ? 1 : 0].focus({ preventScroll: true });
+                sfx("hover");
+            } else if (ev.key === "Enter" || ev.key === " ") {
+                sfx("click");
+                finish(idx === 1 || idx === -1);
+            } else {
+                return;
+            }
+            ev.preventDefault();
+        }
 
         function onKey(ev) {
             if (!root.isConnected || leaving) return;
+            // Keep SillyTavern's global hotkeys (and its type-to-focus) out of
+            // the title screen; default actions such as typing still happen.
+            ev.stopPropagation();
+
+            if (confirmState) {
+                onConfirmKey(ev);
+                return;
+            }
             if (stage === "splash") {
-                if (ev.key === "Tab" || ev.key === "Shift" || ev.key === "Control" || ev.key === "Alt" || ev.key === "Meta") return;
+                if (["Tab", "Shift", "Control", "Alt", "Meta"].includes(ev.key)) return;
                 ev.preventDefault();
-                ev.stopPropagation();
                 start();
+                return;
+            }
+            if (stage === "panel") {
+                if (ev.key === "Escape") {
+                    ev.preventDefault();
+                    if (!panel?.handle?.onBack?.()) backToMenu();
+                    return;
+                }
+                let handled = false;
+                try { handled = !!panel?.handle?.onKey?.(ev); } catch (e) { console.warn("[Dangan][Title] panel key failed:", e); }
+                if (handled) ev.preventDefault();
                 return;
             }
             const key = ev.key;
@@ -138,13 +296,10 @@ export function showTitleScreen({
                 setActive(active - 1);
             } else if (key === "Enter" || key === " ") {
                 choose(items[active]?.dataset.action);
-            } else if (key === "Escape") {
-                choose("continue");
             } else {
                 return;
             }
             ev.preventDefault();
-            ev.stopPropagation();
         }
 
         document.addEventListener("keydown", onKey, true);
@@ -154,8 +309,13 @@ export function showTitleScreen({
                 start();
                 return;
             }
+            if (ev.target.closest?.(".dgn-title-back")) {
+                if (panel?.handle?.onBack?.()) return;
+                backToMenu();
+                return;
+            }
             const item = ev.target.closest?.(".dgn-title-item");
-            if (item) choose(item.dataset.action);
+            if (item && stage === "menu") choose(item.dataset.action);
         });
 
         items.forEach((el, i) => {
@@ -163,5 +323,11 @@ export function showTitleScreen({
                 if (stage === "menu" && !leaving) setActive(i);
             });
         });
+
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            root.classList.add("is-on");
+            root.focus({ preventScroll: true });
+            if (skipSplash) start();
+        }));
     });
 }

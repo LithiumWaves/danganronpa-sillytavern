@@ -9806,13 +9806,7 @@ $(".monopad-icon").on("mouseenter", function () {
             await sleepToNextDay({ source: "monopad_button" });
         });
 
-        $(".settings-toggle").on("click", function () {
-            const key = this.dataset.setting;
-            if (!key) return;
-
-            const next = !getMonopadSetting(key);
-            setMonopadSetting(key, next);
-            applySettingsTabUI();
+        applyToggleSettingSideEffects = (key, next) => {
             if (key === "vnModeEnabled" && next) {
                 trySetSillyTavernVisualNovelMode(true);
             }
@@ -9851,6 +9845,22 @@ $(".monopad-icon").on("mouseenter", function () {
                 applyHalfSpriteMode();
             }
             mapPanelController?.handleSettingsChanged?.();
+        };
+
+        $(".settings-toggle").on("click", function () {
+            const key = this.dataset.setting;
+            if (!key) return;
+
+            const next = !getMonopadSetting(key);
+            setMonopadSetting(key, next);
+            applySettingsTabUI();
+            applyToggleSettingSideEffects(key, next);
+        });
+
+        $("#dangan_return_to_title").on("click", () => {
+            playSfx(sfx.click);
+            if ($panel.hasClass("open")) closeMonopadPanel();
+            setTimeout(() => openTitleScreen({ skipSplash: titleScreenStartedThisSession }), 250);
         });
 
         // Announcement customisation mode buttons (DEFAULT / CUSTOM toggles)
@@ -12252,48 +12262,324 @@ STATEMENT: <third statement>`;
 
 // ── Title Screen ────────────────────────────────────────────────────────────
 
-function openSillyTavernCharacterList() {
-    const panel = document.getElementById("right-nav-panel");
-    if (panel && !panel.classList.contains("openDrawer")) {
-        document.getElementById("unimportantYes")?.click();
-    }
-    document.getElementById("rm_button_characters")?.click();
-}
+// Assigned inside the boot block, next to the .settings-toggle handler, so
+// the title screen's Options run the same per-key side effects.
+let applyToggleSettingSideEffects = () => {};
+let titleScreenStartedThisSession = false;
 
-function continueLastSillyTavernChat() {
-    const ctx = window.SillyTavern?.getContext?.();
-    const hasChat = !!ctx?.groupId || (ctx?.characterId !== undefined && ctx?.characterId !== null);
-    if (hasChat) return;
-    // No chat loaded (auto-load is off): use ST's welcome-screen recent chat
-    // if it rendered one, else fall back to the character list.
-    const recent = document.querySelector(".recentChat");
-    if (recent) {
-        recent.click();
-        return;
-    }
-    openSillyTavernCharacterList();
-}
-
-function openMonopadSettingsTab() {
+function openMonopadTab(tab) {
     if (!$("#dangan_monopad_panel").hasClass("open")) {
         $("#dangan_monopad_button").trigger("click");
     }
-    $('.monopad-icon[data-tab="settings"]').trigger("click");
+    $(`.monopad-icon[data-tab="${tab}"]`).trigger("click");
 }
 
-function buildTitleScreenOptions() {
+function avatarThumbUrl(avatar) {
+    return avatar ? `/thumbnail?type=avatar&file=${encodeURIComponent(avatar)}` : "";
+}
+
+function stripChatExtension(fileName) {
+    return String(fileName || "").replace(/\.jsonl$/i, "");
+}
+
+function buildTitleChatRow(info, ctx) {
+    const chatFile = stripChatExtension(info?.file_name || info?.file_id);
+    if (!chatFile) return null;
+    const chars = Array.isArray(ctx?.characters) ? ctx.characters : [];
+    const currentChatId = String(ctx?.getCurrentChatId?.() ?? ctx?.chatId ?? "");
+    const base = {
+        chatFile,
+        lastMessage: String(info?.mes ?? ""),
+        lastDate: info?.last_mes ?? 0,
+        messageCount: Number.isFinite(Number(info?.chat_items)) ? Number(info.chat_items) : undefined,
+        current: !!currentChatId && currentChatId === chatFile,
+    };
+    if (info?.group) {
+        const group = (Array.isArray(ctx?.groups) ? ctx.groups : []).find((g) => g?.id === info.group);
+        if (!group) return null;
+        const members = (Array.isArray(group.members) ? group.members : [])
+            .map((avatar) => chars.find((c) => c?.avatar === avatar))
+            .filter(Boolean);
+        return {
+            ...base,
+            kind: "group",
+            id: group.id,
+            title: group.name || "Group chat",
+            avatars: members.map((c) => avatarThumbUrl(c.avatar)),
+            memberNames: members.map((c) => c.name),
+            current: base.current && String(ctx?.groupId ?? "") === String(group.id),
+        };
+    }
+    const char = chars.find((c) => c?.avatar === info?.avatar);
+    if (!char) return null;
+    return {
+        ...base,
+        kind: "char",
+        id: char.avatar,
+        title: char.name,
+        avatars: [avatarThumbUrl(char.avatar)],
+        memberNames: [char.name],
+        current: base.current && !ctx?.groupId,
+    };
+}
+
+async function listTitleScreenChats() {
+    const ctx = window.SillyTavern?.getContext?.();
+    try {
+        const response = await fetch("/api/chats/recent", {
+            method: "POST",
+            headers: getRequestHeaders(),
+            body: JSON.stringify({ max: 200 }),
+            cache: "no-cache",
+        });
+        if (response.ok) {
+            const data = await response.json();
+            if (Array.isArray(data)) return data.map((info) => buildTitleChatRow(info, ctx)).filter(Boolean);
+        }
+    } catch (e) {
+        console.warn("[Dangan][Title] /api/chats/recent failed, listing per character:", e);
+    }
+
+    // Older SillyTavern: no recent-chats endpoint. Ask each character for
+    // its chats, and list group chats from the loaded groups.
+    const chars = Array.isArray(ctx?.characters) ? ctx.characters : [];
+    const perChar = await Promise.all(chars.map(async (char) => {
+        if (!char?.avatar) return [];
+        try {
+            const response = await fetch("/api/characters/chats", {
+                method: "POST",
+                headers: getRequestHeaders(),
+                body: JSON.stringify({ avatar_url: char.avatar }),
+            });
+            if (!response.ok) return [];
+            const data = await response.json();
+            const list = Array.isArray(data) ? data : (data && !data.error ? Object.values(data) : []);
+            return list.map((info) => buildTitleChatRow({ ...info, avatar: char.avatar }, ctx));
+        } catch {
+            return [];
+        }
+    }));
+    const groupRows = (await getGroupsListForPicker()).flatMap((group) => {
+        const chats = Array.isArray(group?.chats) ? group.chats : (group?.chat_id ? [group.chat_id] : []);
+        return chats.map((chatId) => buildTitleChatRow({
+            file_name: chatId,
+            group: group.id,
+            last_mes: chatId === group.chat_id ? (group.date_last_chat || 0) : 0,
+            mes: "",
+        }, { ...ctx, groups: [group] }));
+    });
+    return [...perChar.flat(), ...groupRows].filter(Boolean);
+}
+
+async function openTitleScreenChat(row) {
+    const ctx = window.SillyTavern?.getContext?.();
+    if (!ctx || !row) return;
+    if (row.kind === "group") {
+        // openGroupById is the call that sets selected_group (ctx.groupId).
+        await openGroupById(row.id);
+        if (String(ctx.getCurrentChatId?.() ?? "") !== row.chatFile) {
+            await ctx.openGroupChat?.(row.id, row.chatFile);
+        }
+        return;
+    }
+    const index = (ctx.characters || []).findIndex((c) => c?.avatar === row.id);
+    if (index < 0) {
+        await executeSlashCommandsWithOptions(`/go ${row.title}`);
+        return;
+    }
+    await ctx.selectCharacterById?.(index);
+    if (String(ctx.getCurrentChatId?.() ?? "") !== row.chatFile) {
+        await ctx.openCharacterChat?.(row.chatFile);
+    }
+}
+
+function getTitleScreenCandidates() {
+    return getImportedCharacterCards().map(({ name, avatar }) => {
+        const existing = characters.get(normalizeName(name));
+        return {
+            name,
+            avatarUrl: avatarThumbUrl(avatar),
+            ultimate: String(existing?.ultimate || lookupUltimateFromLorebook(name) || ""),
+            inRoster: !!existing,
+        };
+    });
+}
+
+function getTitleScreenPersonas() {
+    const ctx = window.SillyTavern?.getContext?.();
+    const map = power_user?.personas && typeof power_user.personas === "object" ? power_user.personas : {};
+    const list = Object.entries(map).map(([key, name]) => ({
+        key,
+        name: String(name || key),
+        avatarUrl: ctx?.getThumbnailUrl ? ctx.getThumbnailUrl("persona", key) : `/thumbnail?type=persona&file=${encodeURIComponent(key)}`,
+    }));
+    return { list, current: user_avatar || "" };
+}
+
+async function setTitleScreenPersona(key) {
+    if (!key || key === user_avatar) return;
+    const personas = await import("../../../personas.js");
+    await personas.setUserAvatar?.(key);
+}
+
+function hasTitleScreenProgress() {
+    const root = extension_settings[extensionName] || {};
+    const tracker = root.timeTracker || {};
+    const progression = root.progression || {};
+    return characters.size > 0
+        || getTruthBullets().length > 0
+        || Number(root.chapterIndex || 0) > 0
+        || Number(tracker.day || 1) > 1
+        || Number(progression.level || 1) > 1
+        || Number(progression.xp || 0) > 0
+        || Number(root.inventory?.monocoins || 0) > 0
+        || Object.keys(root.introducedCharacters || {}).length > 0;
+}
+
+function setTitleToggleSetting(key, value) {
+    if (!!getMonopadSetting(key) === !!value) return;
+    setMonopadSetting(key, !!value);
+    applySettingsTabUI();
+    applyToggleSettingSideEffects(key, !!value);
+}
+
+function setTitleOptionSetting(key, value) {
+    if (key === "rewardDifficulty") {
+        setMonopadSetting(key, applyRewardDifficultyProfile(value || defaultSettings.rewardDifficulty));
+        applySettingsTabUI();
+        return;
+    }
+    if (typeof value === "boolean") {
+        setTitleToggleSetting(key, value);
+        return;
+    }
+    setMonopadSetting(key, value);
+    applySettingsTabUI();
+    if (key === "monomonoBgmVolume" && shopTrackAudio) shopTrackAudio.volume = Number(value) / 100;
+}
+
+// Fresh save for NEW GAME: the same resets the Monopad's Progression buttons
+// run, plus the roster, Truth Bullets, Monocoins and room placement.
+function startFreshSave() {
+    const root = extension_settings[extensionName] ??= {};
+    rewards?.resetProgression?.({ clearEquippedSkills: true });
+    resetDayCounter({ source: "new_game" });
+    setCurrentChapterIndex(0);
+    clearAllTruthBullets();
+    root.introducedCharacters = {};
+    root.trialRoster = [];
+    root.inventory ??= {};
+    root.inventory.monocoins = 0;
+    if (root.overworld?.characters) root.overworld.characters = {};
+    characters.clear();
+    saveCharacters();
+    saveSettingsDebounced();
+    try { socialPanelController?.renderSocialPanel?.(); } catch (_) {}
+    try { itemsPanelController?.renderSkillsItemsPanel?.(); } catch (_) {}
+    try { overworldSceneController?.render?.(); } catch (_) {}
+    try { _minimapSig = null; renderMinimap(); } catch (_) {}
+}
+
+function applyTitleScreenRoster(roster, { pruneOthers }) {
+    const wanted = new Map(roster.map((r) => [normalizeName(r.name), r]));
+    if (pruneOthers) {
+        for (const key of [...characters.keys()]) {
+            if (!wanted.has(key)) characters.delete(key);
+        }
+    }
+    addCharactersToRoster(roster.map((r) => r.name));
+    for (const [key, r] of wanted) {
+        const entry = characters.get(key);
+        if (entry) entry.ultimate = r.ultimate || null;
+    }
+    saveCharacters();
+    try { socialPanelController?.renderSocialPanel?.(); } catch (_) {}
+}
+
+async function createStoryGroupChat(name, memberNames) {
+    const ctx = window.SillyTavern?.getContext?.();
+    const stChars = Array.isArray(ctx?.characters) ? ctx.characters : [];
+    const members = memberNames
+        .map((n) => stChars.find((c) => c?.name === n)?.avatar)
+        .filter(Boolean);
+    if (members.length < 2) throw new Error("the story chat needs at least two characters");
+    const chatId = ctx?.humanizedDateTime?.() || String(Date.now());
+    const response = await fetch("/api/groups/create", {
+        method: "POST",
+        headers: getRequestHeaders(),
+        body: JSON.stringify({
+            name,
+            members,
+            avatar_url: "img/ai4.png",
+            allow_self_responses: false,
+            hideMutedSprites: true,
+            activation_strategy: 0,
+            generation_mode: 0,
+            disabled_members: [],
+            fav: false,
+            chat_id: chatId,
+            chats: [chatId],
+            auto_mode_delay: 5,
+        }),
+    });
+    if (!response.ok) throw new Error(`group create failed (${response.status})`);
+    const data = await response.json();
+    await ctx?.getCharacters?.();
+    await new Promise((r) => setTimeout(r, 150));
+    await openGroupById(data.id);
+    return data.id;
+}
+
+async function finishTitleScreenNewGame({ fresh, mode, groupName, groupMembers, roster, persona }) {
+    if (fresh) startFreshSave();
+    applyTitleScreenRoster(roster, { pruneOthers: !fresh });
+    try {
+        await setTitleScreenPersona(persona);
+    } catch (e) {
+        console.warn("[Dangan][Title] persona switch failed:", e);
+    }
+    if (mode === "single") {
+        const groupId = await createStoryGroupChat(groupName, groupMembers);
+        setMonopadSetting("singleChatGroupId", groupId);
+        setTitleToggleSetting("singleChatOverworldEnabled", true);
+    } else {
+        setTitleToggleSetting("singleChatOverworldEnabled", false);
+    }
+    onboardingState?.markWelcomeSeen?.();
+    return {
+        afterClose: mode === "single" ? null : () => openMonopadTab("map"),
+    };
+}
+
+function buildTitleServices() {
+    return {
+        listChats: listTitleScreenChats,
+        openChat: openTitleScreenChat,
+        getCandidates: getTitleScreenCandidates,
+        getPersonas: getTitleScreenPersonas,
+        hasProgress: hasTitleScreenProgress,
+        finishNewGame: finishTitleScreenNewGame,
+        settings: { get: getMonopadSetting, set: setTitleOptionSetting },
+        getChoices: (id) => id === "rewardDifficulty"
+            ? Object.entries(REWARD_DIFFICULTY_LABELS).map(([value, label]) => ({ value, label }))
+            : [],
+        openMonopadSettings: () => openMonopadTab("settings"),
+    };
+}
+
+function buildTitleScreenOptions({ skipSplash = false } = {}) {
     let titleBgmPlaying = false;
     return {
         logoUrl: `${extensionFolderPath}/assets/images/title/drst.png`,
         playSfx: (name) => playSfx(sfx[name]),
+        services: buildTitleServices(),
+        skipSplash,
         onStart: () => {
+            titleScreenStartedThisSession = true;
             unlockAudio();
             const path = pickBgmTrackFromSetting("titleTracks");
             if (path) titleBgmPlaying = !!playMinigameBgmPath(path);
         },
-        onNewGame: openSillyTavernCharacterList,
-        onContinue: continueLastSillyTavernChat,
-        onOptions: openMonopadSettingsTab,
         onClose: async () => {
             if (!titleBgmPlaying) return;
             titleBgmPlaying = false;
@@ -12303,8 +12589,8 @@ function buildTitleScreenOptions() {
     };
 }
 
-function openTitleScreen() {
-    return showTitleScreen(buildTitleScreenOptions());
+function openTitleScreen(options) {
+    return showTitleScreen(buildTitleScreenOptions(options));
 }
 
 // ── Slash Commands ──────────────────────────────────────────────────────────

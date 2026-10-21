@@ -30,7 +30,16 @@ Alternatively, install directly from SillyTavern by accessing the extensions tab
 - **Settings (⚙️):** Shows Audio/display toggles, progression reset, expression configurer, CG creators, generation provider selection, and Mr. Monokuma's Lesson (replayable).
 
 ### Title Screen
-SillyTavern opens on a Trigger Happy Havoc-style title screen. Press any key or click to start, then pick **NEW GAME** (opens the character / group list to choose a cast), **CONTINUE** (returns to your last chat), or **OPTIONS** (opens Monopad Settings). Assign music under BGM Tracks → Phases → Title. Turn it off with the **Title Screen** setting, and reopen it any time with `/title`.
+SillyTavern opens on a Trigger Happy Havoc-style title screen. Press any key or click to start, then pick from the menu (arrow keys, Enter, Escape/BACK all work):
+- **NEW GAME:** a guided setup. If you have saved progress it first asks whether to **START FRESH** (erases roster, trust, Truth Bullets, chapter, day, level/skill points, Monocoins and introductions) or **KEEP PROGRESS**. Then:
+  1. Choose a play style: **Several Chats** or **One Main Chat**.
+  2. One Main Chat only: name the story chat and pick its members. The group chat is created for you and Single-Chat Overworld is turned on.
+  3. Class roster: tick your classmates, set each one's Ultimate, and choose your persona.
+  4. Review and **BEGIN**.
+- **CONTINUE:** pick any saved chat to resume, newest first, with avatars, a last-message preview, message count and time. Search by name or message, or filter by one-on-one / group.
+- **OPTIONS:** the main audio, display and gameplay settings in the title screen's own style. Changes save immediately; **ALL SETTINGS (MONOPAD)** opens the full list.
+
+Assign music under BGM Tracks → Phases → Title. Turn the screen off with the **Title Screen** setting, reopen it with `/title`, or use **Return to Title** in Monopad Settings → Display.
 
 ### Character Introductions
 Character Introductions takes a character's `neutral` sprite and renders them on an animated background, grabbing their `name` and `ultimate` values. Commenced through the `/introduce` command.
@@ -122,6 +131,7 @@ V3C| BODY_DISCOVERY
 | **CRT Intensity** | Slider (0–100) | 35 | Controls the strength of the CRT scanline filter |
 | **Boot Animations** | Toggle | On | Shows the startup animation sequence when SillyTavern loads |
 | **Title Screen** | Toggle | On | Shows the title screen when SillyTavern loads. `/title` opens it any time |
+| **Return to Title** | Button | — | Closes the Monopad and opens the title screen |
 | **Visual Novel Mode** | Toggle | Off | Enables VN-style character sprite and text presentation in chat |
 | **Daily / Deadly Life Dynamic Themes** | Toggle | On | Automatically switches the UI theme based on daytime, nighttime, or investigation state |
 | **Hide Truth Bullet Images** | Toggle | Off | Hides thumbnail images on Truth Bullet entries in the Monopad |
