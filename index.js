@@ -16,7 +16,7 @@ import { createSocialPanelController } from "./social/socialPanel.js";
 import { extractUltimateFromNotes, isIgnoredCharacter, lookupUltimateFromLorebook, normalizeList, normalizeName } from "./social/characterUtils.js";
 import { createMapPanelController } from "./map/mapPanel.js";
 import { getLocationPromptReference, resolveLocationIdFromText } from "./map/locationPresence.js";
-import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, TRIAL_CONTEXT_REGEX, defaultSettings, extensionFolderPath, extensionName, getDefaultPromptTemplate } from "./core/constants.js";
+import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, TRIAL_START_REGEX, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, TRIAL_CONTEXT_REGEX, defaultSettings, extensionFolderPath, extensionName, getDefaultPromptTemplate } from "./core/constants.js";
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 import { createCardHygieneController } from "./core/cardHygiene.js";
 import { createOnboardingState } from "./core/onboarding/onboardingState.js";
@@ -25,6 +25,8 @@ import { createOrientationController } from "./core/onboarding/orientation.js";
 import { configureMinigameGuides } from "./core/onboarding/minigameGuides.js";
 import { maybeShowBootGreeting } from "./core/onboarding/bootGreeting.js";
 import { maybeShowTitleScreen, showTitleScreen } from "./core/title/titleScreen.js";
+import { createPhaseHistory, derivePhase, getNextStepHint, getPhaseActions, getStatusLine } from "./core/phase/phaseState.js";
+import { notify } from "./core/ui/notify.js";
 import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers } from "./monokuma/announcementController.js";
 import { createClassTrialMenuController } from "./trial/menu/classTrialMenu.js";
 import { createTrialManager, TrialPhases } from "./trial/trialManager.js";
@@ -456,13 +458,17 @@ function buildGenerationTimeContext(state) {
         ? "Night period: curfew rules and low-visibility assumptions are active."
         : "Day period: normal campus activity assumptions are active.";
 
-    return [
+    const lines = [
         "[DANGANRONPA TIME CONTEXT]",
         `In-game day: ${safeState.day}`,
         `In-game phase: ${phaseLabel}`,
         periodHint,
-        "Use this context when generating your next reply.",
-    ].join("\n");
+    ];
+    if (investigationUnderway) {
+        lines.push("An investigation is underway: a body has been found and everyone is gathering evidence before the Class Trial.");
+    }
+    lines.push("Use this context when generating your next reply.");
+    return lines.join("\n");
 }
 
 function applyTimeContextToGeneration() {
@@ -514,7 +520,9 @@ function renderTimeTrackerUi() {
     const investigationBtn = document.getElementById("monopad-investigation-underway");
 
     if (readoutEl) {
-        readoutEl.textContent = getTimeReadoutLabel(state);
+        readoutEl.textContent = investigationUnderway
+            ? `DAY ${state.day} · INVESTIGATION`
+            : getTimeReadoutLabel(state);
     }
 
     if (investigationUnderway) {
@@ -538,12 +546,15 @@ function renderTimeTrackerUi() {
             sleepBtn.setAttribute("aria-disabled", String(isDisabled));
         }
     }
+
+    refreshPhaseHud();
 }
 
 async function passTimeToNight({ source = "manual" } = {}) {
     const state = ensureTimeTrackerState();
     if (state.phase !== TIME_PHASE_DAY || state.dayActionUsed) return false;
 
+    rememberPhaseForUndo("Pass time");
     state.phase = TIME_PHASE_NIGHT;
     state.dayActionUsed = true;
     setInvestigationUnderway(false); // advancing time ends the investigation
@@ -564,6 +575,7 @@ async function sleepToNextDay({ source = "manual" } = {}) {
     const state = ensureTimeTrackerState();
     if (state.phase !== TIME_PHASE_NIGHT) return false;
 
+    rememberPhaseForUndo("Sleep");
     state.day = Math.max(1, Number(state.day || 1) + 1);
     state.phase = TIME_PHASE_DAY;
     state.dayActionUsed = false;
@@ -593,6 +605,7 @@ function resetDayCounter({ source = "manual" } = {}) {
     state.phase = TIME_PHASE_DAY;
     state.dayActionUsed = false;
     setInvestigationUnderway(false);
+    phaseHistory.clear();
 
     saveSettingsDebounced();
     renderTimeTrackerUi();
@@ -615,6 +628,7 @@ function updateChapterDisplay() {
     if (el) el.textContent = getChapterLabel();
     trialManager?.refreshTrialBadge?.();
     refreshSettingsChapterSelect();
+    refreshPhaseHud();
 }
 
 // ── Chapter Journal ───────────────────────────────────────────────────────────
@@ -1642,6 +1656,7 @@ const processedSocialSignatures = new Set();
 const processedInvestigationSignatures = new Set();
 const INVESTIGATION_START_PARSE_REGEX = /V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/gi;
 const processedMonokumaAnnouncementSignatures = new Set();
+const processedTrialStartSignatures = new Set();
 const PERSISTENT_MARKER_MAX_ENTRIES = 2400;
 
 function normalizeTextToken(value) {
@@ -3511,7 +3526,7 @@ function createVnModeController() {
     };
 }
 
-function tryEnableInvestigationToggleInObject(root, { maxDepth = 8 } = {}) {
+function tryEnableInvestigationToggleInObject(root, { maxDepth = 8, on = true } = {}) {
     if (!root || typeof root !== "object") return false;
 
     const target = normalizeTextToken("Investigation Time");
@@ -3529,35 +3544,35 @@ function tryEnableInvestigationToggleInObject(root, { maxDepth = 8 } = {}) {
         const hasInvestigationKey = /investigation/.test(label) && /time|mode|toggle|enabled|active/.test(label);
         if (label === target || label.includes(target) || hasInvestigationKey) {
             if (typeof node.enabled === "boolean") {
-                node.enabled = true;
+                node.enabled = on;
                 touched = true;
             }
             if (typeof node.value === "boolean") {
-                node.value = true;
+                node.value = on;
                 touched = true;
             }
             if (typeof node.active === "boolean") {
-                node.active = true;
+                node.active = on;
                 touched = true;
             }
             if (typeof node.toggled === "boolean") {
-                node.toggled = true;
+                node.toggled = on;
                 touched = true;
             }
             if (typeof node.isEnabled === "boolean") {
-                node.isEnabled = true;
+                node.isEnabled = on;
                 touched = true;
             }
             if (typeof node.isActive === "boolean") {
-                node.isActive = true;
+                node.isActive = on;
                 touched = true;
             }
             if (typeof node.setValue === "function") {
-                node.setValue(true);
+                node.setValue(on);
                 touched = true;
             }
             if (typeof node.set === "function") {
-                node.set(true);
+                node.set(on);
                 touched = true;
             }
         }
@@ -3577,7 +3592,7 @@ function tryEnableInvestigationToggleInObject(root, { maxDepth = 8 } = {}) {
     return touched;
 }
 
-function tryEnableInvestigationToggleViaContext() {
+function tryEnableInvestigationToggleViaContext(on = true) {
     if (!window.SillyTavern?.getContext) return false;
 
     const ctx = window.SillyTavern.getContext();
@@ -3595,7 +3610,7 @@ function tryEnableInvestigationToggleViaContext() {
     let touched = false;
     for (const candidate of candidates) {
         try {
-            touched = tryEnableInvestigationToggleInObject(candidate) || touched;
+            touched = tryEnableInvestigationToggleInObject(candidate, { on }) || touched;
         } catch {
             // Skip malformed or protected objects without breaking Investigation start flow.
         }
@@ -3612,7 +3627,7 @@ function tryEnableInvestigationToggleViaContext() {
     return true;
 }
 
-function tryEnableInvestigationToggleViaDom() {
+function tryEnableInvestigationToggleViaDom(on = true) {
     const target = normalizeTextToken("Investigation Time");
     const scope = Array.from(document.querySelectorAll("label, .menu_button, .inline-drawer-toggle, button, .toggle-item"));
 
@@ -3624,7 +3639,7 @@ function tryEnableInvestigationToggleViaDom() {
         const checkbox = host.querySelector('input[type="checkbox"]') || el.querySelector?.('input[type="checkbox"]');
 
         if (checkbox) {
-            if (checkbox.checked) return true;
+            if (checkbox.checked === on) return true;
             checkbox.click();
             checkbox.dispatchEvent(new Event("input", { bubbles: true }));
             checkbox.dispatchEvent(new Event("change", { bubbles: true }));
@@ -3632,7 +3647,7 @@ function tryEnableInvestigationToggleViaDom() {
         }
 
         const pressed = host.getAttribute("aria-pressed");
-        if (pressed === "true") return true;
+        if (pressed === String(on)) return true;
 
         if (typeof host.click === "function") {
             host.click();
@@ -3643,11 +3658,11 @@ function tryEnableInvestigationToggleViaDom() {
     return false;
 }
 
-function triggerInvestigationTimeToggle() {
-    const byContext = tryEnableInvestigationToggleViaContext();
+function triggerInvestigationTimeToggle(on = true) {
+    const byContext = tryEnableInvestigationToggleViaContext(on);
     if (byContext) return true;
 
-    return tryEnableInvestigationToggleViaDom();
+    return tryEnableInvestigationToggleViaDom(on);
 }
 
 function ensureInvestigationOverlay() {
@@ -3824,6 +3839,198 @@ function setInvestigationUnderway(on) {
     extension_settings[extensionName] ||= {};
     extension_settings[extensionName].investigationUnderway = investigationUnderway;
     saveSettingsDebounced();
+}
+
+// ── Phase changes, undo and the Phase HUD ─────────────────────────────────────
+
+const phaseHistory = createPhaseHistory();
+
+function isClassTrialActive() {
+    return document.body.classList.contains("dangan-trial-active");
+}
+
+function getCurrentPhase() {
+    return derivePhase({
+        timeTracker: ensureTimeTrackerState(),
+        investigationUnderway,
+        trialActive: isClassTrialActive(),
+    });
+}
+
+function getCurrentStatusLine() {
+    return getStatusLine({
+        phase: getCurrentPhase(),
+        day: ensureTimeTrackerState().day,
+        chapterLabel: getChapterLabel(),
+    });
+}
+
+function rememberPhaseForUndo(label) {
+    phaseHistory.push({ timeTracker: ensureTimeTrackerState(), investigationUnderway }, label);
+}
+
+function playCurrentPhaseTrack() {
+    if (investigationUnderway) playInvestigationTrack();
+    else if (ensureTimeTrackerState().phase === TIME_PHASE_NIGHT) playNighttimeTrack();
+    else playDaytimeTrack();
+}
+
+function syncAfterPhaseChange() {
+    saveSettingsDebounced();
+    renderTimeTrackerUi();
+    applyTimeContextToGeneration();
+    applyDynamicTheme();
+    playCurrentPhaseTrack();
+}
+
+function undoLastPhaseChange() {
+    const entry = phaseHistory.pop();
+    if (!entry) return false;
+
+    const wasInvestigating = investigationUnderway;
+    Object.assign(ensureTimeTrackerState(), entry.snapshot.timeTracker);
+    setInvestigationUnderway(entry.snapshot.investigationUnderway);
+    if (wasInvestigating !== investigationUnderway) {
+        investigationStartController.setPresetToggle(investigationUnderway);
+    }
+    syncAfterPhaseChange();
+    notify({ title: "UNDONE", message: `${entry.label || "Last change"} undone. Now: ${getCurrentStatusLine()}` });
+    return true;
+}
+
+function endInvestigation({ source = "manual" } = {}) {
+    if (!investigationUnderway) return false;
+
+    rememberPhaseForUndo("End investigation");
+    setInvestigationUnderway(false);
+    investigationStartController.setPresetToggle(false);
+    syncAfterPhaseChange();
+    notify({
+        title: "INVESTIGATION ENDED",
+        message: `Back to ${ensureTimeTrackerState().phase === TIME_PHASE_NIGHT ? "nighttime" : "daytime"}. Your Truth Bullets are kept.`,
+        actionLabel: "UNDO",
+        onAction: undoLastPhaseChange,
+    });
+    console.log(`[${extensionName}] Investigation ended (source: ${source}).`);
+    return true;
+}
+
+// The confirm dialog is part of the Monopad markup, which is hidden while the
+// Monopad is closed. Lift it to <body> so the HUD can use it at any time.
+function confirmOutsideMonopad(options) {
+    const overlay = document.getElementById("monopad-confirm-overlay");
+    if (overlay && overlay.parentElement !== document.body) document.body.appendChild(overlay);
+    return openMonopadConfirmDialog(options);
+}
+
+async function runPhaseAction(action) {
+    if (!action || action.disabled) return;
+    if (action.confirm) {
+        const accepted = await confirmOutsideMonopad({ cancelLabel: "CANCEL", ...action.confirm });
+        if (!accepted) return;
+    }
+
+    setPhaseMenuOpen(false);
+    switch (action.id) {
+        case "end-investigation":
+            endInvestigation({ source: "phase_hud" });
+            break;
+        case "start-trial":
+            await triggerTrialStartFromMapPin();
+            break;
+        case "pass-time":
+            await passTimeToNight({ source: "phase_hud" });
+            break;
+        case "sleep":
+            await sleepToNextDay({ source: "phase_hud" });
+            break;
+        case "start-investigation":
+            investigationStartController.trigger();
+            break;
+        case "undo":
+            undoLastPhaseChange();
+            break;
+    }
+}
+
+function ensurePhaseHud() {
+    let hud = document.getElementById("dangan-phase-hud");
+    if (hud) return hud;
+    if (!document.body) return null;
+
+    hud = document.createElement("div");
+    hud.id = "dangan-phase-hud";
+    hud.innerHTML = `
+        <button type="button" class="dangan-phase-chip" aria-expanded="false" aria-controls="dangan-phase-menu" title="Where the story is, and what you can do next">
+            <span class="dangan-phase-chip-dot" aria-hidden="true"></span>
+            <span class="dangan-phase-chip-label"></span>
+        </button>
+        <div class="dangan-phase-menu" id="dangan-phase-menu" hidden>
+            <div class="dangan-phase-hint"></div>
+            <div class="dangan-phase-actions"></div>
+        </div>
+    `;
+    document.body.appendChild(hud);
+
+    hud.querySelector(".dangan-phase-chip").addEventListener("click", (event) => {
+        event.stopPropagation();
+        setPhaseMenuOpen(hud.querySelector(".dangan-phase-menu").hidden);
+    });
+    document.addEventListener("click", (event) => {
+        if (!hud.contains(event.target)) setPhaseMenuOpen(false);
+    });
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") setPhaseMenuOpen(false);
+    });
+    return hud;
+}
+
+function setPhaseMenuOpen(open) {
+    const hud = document.getElementById("dangan-phase-hud");
+    const menu = hud?.querySelector(".dangan-phase-menu");
+    if (!menu) return;
+    menu.hidden = !open;
+    hud.querySelector(".dangan-phase-chip")?.setAttribute("aria-expanded", String(Boolean(open)));
+    if (open) renderPhaseMenu();
+}
+
+function renderPhaseMenu() {
+    const hud = document.getElementById("dangan-phase-hud");
+    if (!hud) return;
+
+    const phase = getCurrentPhase();
+    const timeTracker = ensureTimeTrackerState();
+    hud.querySelector(".dangan-phase-hint").textContent = getNextStepHint({
+        phase,
+        timeTracker,
+        truthBulletCount: truthBullets.length,
+        rosterCount: characters.size,
+    });
+
+    const last = phaseHistory.peek();
+    const actions = getPhaseActions({ phase, timeTracker, canUndo: Boolean(last), undoLabel: last?.label });
+    const list = hud.querySelector(".dangan-phase-actions");
+    list.replaceChildren(...actions.map((action) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = `dangan-phase-action${action.id === "undo" ? " dangan-phase-action-undo" : ""}`;
+        btn.textContent = action.label;
+        btn.disabled = Boolean(action.disabled);
+        if (action.reason) btn.title = action.reason;
+        btn.addEventListener("click", (event) => {
+            event.stopPropagation();
+            void runPhaseAction(action);
+        });
+        return btn;
+    }));
+}
+
+function refreshPhaseHud() {
+    const hud = ensurePhaseHud();
+    if (!hud) return;
+    hud.hidden = getMonopadSetting("phaseHudEnabled") === false;
+    hud.querySelector(".dangan-phase-chip-label").textContent = getCurrentStatusLine();
+    if (!hud.querySelector(".dangan-phase-menu").hidden) renderPhaseMenu();
 }
 
 function playShopTrack() {
@@ -4468,14 +4675,15 @@ const investigationStartController = {
         return { played: true, durationMs };
     },
 
-    enableToggle() {
+    setPresetToggle(on = true) {
+        const verb = on ? "enable" : "disable";
         try {
-            const enabled = triggerInvestigationTimeToggle();
-            if (enabled) {
-                console.log("[Dangan][Investigation] Investigation Time toggle enabled in current preset.");
+            const changed = triggerInvestigationTimeToggle(on);
+            if (changed) {
+                console.log(`[Dangan][Investigation] Investigation Time toggle ${verb}d in current preset.`);
                 return true;
             }
-            console.warn("[Dangan][Investigation] Could not auto-enable the Investigation Time toggle.");
+            console.warn(`[Dangan][Investigation] Could not auto-${verb} the Investigation Time toggle.`);
             return false;
         } catch (error) {
             console.warn("[Dangan][Investigation] Toggle automation failed:", error);
@@ -4484,10 +4692,11 @@ const investigationStartController = {
     },
 
     trigger() {
+        if (!investigationUnderway) rememberPhaseForUndo("Start investigation");
         const sfxResult = this.playSfx();
         const displayDuration = Math.max(1400, (sfxResult?.durationMs || 2200) + 120);
         const bannerShown = this.showBanner(displayDuration);
-        const toggled = this.enableToggle();
+        const toggled = this.setPresetToggle(true);
 
         const trackDelay = sfxResult?.played ? (sfxResult.durationMs + 120) : 0;
         setTimeout(() => playInvestigationTrack(), trackDelay);
@@ -5825,6 +6034,7 @@ function stripV3CMarkersFromText(value) {
         if (canonical.includes("V3C|BODYDISCOVERY")) return false;
         if (canonical.includes("V3C|PASSTIME")) return false;
         if (canonical.includes("V3C|SLEEP")) return false;
+        if (canonical.includes("V3C|TRIALSTART")) return false;
         return true;
     });
 
@@ -5840,6 +6050,7 @@ function stripV3CMarkersFromText(value) {
         .replace(/V3C\s*[|｜]\s*BODY(?:\s*[_\-]?\s*)DISCOVERY\b/gi, "")
         .replace(/V3C\s*[|｜]\s*PASS(?:\s*[_\-]?\s*)TIME\b/gi, "")
         .replace(/V3C\s*[|｜]\s*SLEEP\b/gi, "")
+        .replace(/V3C\s*[|｜]\s*TRIAL(?:\s*[_\-]?\s*)START\b/gi, "")
         .replace(/^[ \t]+/gm, "")
         .trimStart();
 }
@@ -5970,11 +6181,37 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
             const persistentSignature = buildPersistentInvestigationSignature(msgEl, marker, idx, rawText);
             if (hasProcessedInvestigationSignature(signature, persistentSignature)) return;
 
+            const wasInvestigating = investigationUnderway;
             const triggered = investigationStartController.trigger();
             if (triggered) {
                 markInvestigationSignatureProcessed(signature, persistentSignature);
             }
+            if (!wasInvestigating && investigationUnderway) {
+                notify({
+                    title: "INVESTIGATION STARTED",
+                    message: "The story started an investigation. Wrong time? Undo it.",
+                    actionLabel: "UNDO",
+                    onAction: undoLastPhaseChange,
+                    durationMs: 10000,
+                });
+            }
         });
+
+        // ---- Trial Start ----
+        // Opens the Class Trial menu, which asks before anything starts.
+        if (!isClassTrialActive()) {
+            TRIAL_START_REGEX.lastIndex = 0;
+            const trialMatch = TRIAL_START_REGEX.exec(rawText);
+            if (trialMatch) {
+                const signature = `TRIAL_START||${messageSignature}||${trialMatch.index}`;
+                const persistentSignature = buildGenericPersistentMarkerSignature(msgEl, "TRIAL_START", trialMatch.index, 0, rawText);
+                if (!processedTrialStartSignatures.has(signature) && !hasProcessedPersistentMarker("trialStartMarkers", persistentSignature)) {
+                    processedTrialStartSignatures.add(signature);
+                    markProcessedPersistentMarker("trialStartMarkers", persistentSignature);
+                    void triggerTrialStartFromMapPin();
+                }
+            }
+        }
 
         // ---- Monokuma Announcements ----
         const monokumaAnnouncementMarkers = parseMonokumaAnnouncementMarkers(rawText)
@@ -9796,15 +10033,16 @@ $(".monopad-icon").on("mouseenter", function () {
             }
         });
 
-        $("#monopad-pass-time").on("click", async () => {
+        // The header buttons go through the same confirmations as the Phase HUD.
+        const runHeaderPhaseAction = async (actionId) => {
             playSfx(sfx.click);
-            await passTimeToNight({ source: "monopad_button" });
-        });
-
-        $("#monopad-sleep").on("click", async () => {
-            playSfx(sfx.click);
-            await sleepToNextDay({ source: "monopad_button" });
-        });
+            const action = getPhaseActions({ phase: getCurrentPhase(), timeTracker: ensureTimeTrackerState() })
+                .find((a) => a.id === actionId);
+            await runPhaseAction(action);
+        };
+        $("#monopad-pass-time").on("click", () => runHeaderPhaseAction("pass-time"));
+        $("#monopad-sleep").on("click", () => runHeaderPhaseAction("sleep"));
+        $("#monopad-investigation-underway").on("click", () => runHeaderPhaseAction("end-investigation"));
 
         applyToggleSettingSideEffects = (key, next) => {
             if (key === "vnModeEnabled" && next) {
@@ -9812,6 +10050,9 @@ $(".monopad-icon").on("mouseenter", function () {
             }
             if (key === "dynamicThemes") {
                 applyDynamicTheme();
+            }
+            if (key === "phaseHudEnabled") {
+                refreshPhaseHud();
             }
             if (key === "dynamicSongsEnabled") {
                 dynamicSongsController?.onEnabledChanged?.(next);
@@ -13011,6 +13252,18 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'gotosleep',
     callback: async () => { await sleepToNextDay({ source: 'slash_command' }); return ''; },
     helpString: 'Advances to the next day, plays the daytime announcement, shows a Free Time Start banner, then switches to the Day theme.',
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'endinvestigation',
+    callback: async () => { endInvestigation({ source: 'slash_command' }); return ''; },
+    helpString: 'Ends the current investigation and returns to daytime or nighttime. Truth Bullets are kept.',
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'undophase',
+    callback: async () => { undoLastPhaseChange(); return ''; },
+    helpString: 'Undoes the last phase change (investigation start or end, passing time, sleeping).',
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({

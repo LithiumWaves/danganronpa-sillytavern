@@ -32,7 +32,7 @@
                 <div class="monopad-time-actions">
                     <button id="monopad-pass-time" class="monopad-time-button" type="button" title="Pass time to nighttime">PASS TIME</button>
                     <button id="monopad-sleep" class="monopad-time-button" type="button" title="Sleep until morning">SLEEP</button>
-                    <button id="monopad-investigation-underway" class="monopad-time-button monopad-investigation-underway-btn" type="button" disabled hidden>INVESTIGATION UNDERWAY</button>
+                    <button id="monopad-investigation-underway" class="monopad-time-button monopad-investigation-underway-btn" type="button" title="Stop investigating and go back to daily life" hidden>END INVESTIGATION</button>
                 </div>
             </div>
 
@@ -754,6 +754,12 @@
                     <span class="settings-label">TITLE SCREEN</span>
                     <button class="settings-toggle on" data-setting="titleScreenEnabled"></button>
                     <div class="settings-note">Show the title screen when SillyTavern loads. <code>/title</code> opens it any time. Pick its music under BGM → PHASES → TITLE.</div>
+                </div>
+
+                <div class="settings-item settings-item-stack">
+                    <span class="settings-label">PHASE HUD</span>
+                    <button class="settings-toggle on" data-setting="phaseHudEnabled"></button>
+                    <div class="settings-note">Show the chip at the top of the screen with the chapter, day and phase. Click it for what to do next, to end an investigation, or to undo a phase change.</div>
                 </div>
 
                 <div class="settings-item settings-item-stack">

@@ -41,6 +41,14 @@ SillyTavern opens on a Trigger Happy Havoc-style title screen. Press any key or 
 
 Assign music under BGM Tracks → Phases → Title. Turn the screen off with the **Title Screen** setting, reopen it with `/title`, or use **Return to Title** in Monopad Settings → Display.
 
+### Phase HUD
+A small chip at the top of the screen shows where the story is, for example `CHAPTER 2 · DAY 4 · INVESTIGATION`. Click it to see what usually comes next and the actions for the current phase:
+- **End Investigation:** go back to daily life without starting a trial. Your Truth Bullets are kept.
+- **Start Class Trial**, **Pass Time**, **Sleep** and **Start Investigation**, each with a confirmation.
+- **Undo:** reverses the last phase change, whether you made it or the story did.
+
+When the story starts an investigation on its own, a toast offers **UNDO** for a few seconds. Turn the chip off under Settings → Display → **Phase HUD**.
+
 ### Character Introductions
 Character Introductions takes a character's `neutral` sprite and renders them on an animated background, grabbing their `name` and `ultimate` values. Commenced through the `/introduce` command.
 
@@ -83,8 +91,8 @@ The extension scans assistant messages for these patterns:
 - `V3C| SOCIAL: <name>`
 - `V3C| SOCIAL_UP: <name>`
 - `V3C| SOCIAL_DOWN: <name>`
-- `V3C| INVESTIGATION_START` (plays Investigation Start banner/sfx and attempts to enable the `Investigation Time` toggle in your current preset)
-- `V3C| TRIAL_START` (opens a confirmation prompt to begin Class Trial phase flow)
+- `V3C| INVESTIGATION_START` (plays Investigation Start banner/sfx, attempts to enable the `Investigation Time` toggle in your current preset, and shows a toast with UNDO)
+- `V3C| TRIAL_START` (opens the Class Trial menu, which asks before the trial begins)
 - `V3C| BODY_DISCOVERY` (plays a separate static/shake body discovery cutscene using `assets/sfx/etc/despairnoise.mp3`)
 - `V3C| DAY_ANNOUN`, `V3C| NIGHT_ANNOUN`, `V3C| BDA` (play Monokuma's daytime, nighttime or body discovery announcement; they don't change the day or phase)
 
@@ -220,6 +228,12 @@ Triggers the nighttime announcement, shows a Night Time Start banner, and switch
 
 #### `/gotosleep`
 Advances to the next day, plays the daytime announcement, shows a Free Time Start banner, and switches to the Day theme.
+
+#### `/endinvestigation`
+Ends the current investigation and returns to daytime or nighttime. Truth Bullets are kept, and the `Investigation Time` preset toggle is switched back off.
+
+#### `/undophase`
+Undoes the last phase change: an investigation starting or ending, passing time, or sleeping.
 
 #### `/endtrial`
 Immediately ends the current Class Trial and clears all persistent trial states.

@@ -81,6 +81,7 @@ export const defaultSettings = {
     trialPodiumOffsetY: 0,
     bootAnimations: true,
     titleScreenEnabled: true,
+    phaseHudEnabled: true,
     dynamicThemes: true,
     hideTruthBulletImages: false,
     hideGiftImages: false,
