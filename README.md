@@ -86,6 +86,7 @@ The extension scans assistant messages for these patterns:
 - `V3C| INVESTIGATION_START` (plays Investigation Start banner/sfx and attempts to enable the `Investigation Time` toggle in your current preset)
 - `V3C| TRIAL_START` (opens a confirmation prompt to begin Class Trial phase flow)
 - `V3C| BODY_DISCOVERY` (plays a separate static/shake body discovery cutscene using `assets/sfx/etc/despairnoise.mp3`)
+- `V3C| DAY_ANNOUN`, `V3C| NIGHT_ANNOUN`, `V3C| BDA` (play Monokuma's daytime, nighttime or body discovery announcement; they don't change the day or phase)
 
 ### Examples
 ```text
