@@ -245,9 +245,38 @@ function loadTruthBullets() {
    TRUTH BULLET FUNCTIONS
    ========================= */
 
-function addTruthBullet(title, description = "", { grantMonocoins = true, grantXp = true, image } = {}) {
+// Titles and descriptions come from the AI's output, so escape them.
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+// Titles the player deleted for good. Their markers in old messages don't
+// bring them back; adding one by hand (`manual`) does.
+function getDismissedTitles() {
+    const root = deps.extension_settings[deps.extensionName];
+    if (!Array.isArray(root.dismissedTruthBullets)) root.dismissedTruthBullets = [];
+    return root.dismissedTruthBullets;
+}
+
+// A bullet answers to its title and to any title it was renamed from.
+function isKnownTitle(title) {
+    const matches = (tb) => tb.title === title || (tb.aliases || []).includes(title);
+    return truthBullets.some(matches) || archivedTruthBullets.some(matches);
+}
+
+function addTruthBullet(title, description = "", { grantMonocoins = true, grantXp = true, image, manual = false } = {}) {
     if (!title) return false;
-    if (truthBullets.some(tb => tb.title === title)) return false;
+    if (isKnownTitle(title)) return false;
+    const dismissed = getDismissedTitles();
+    if (dismissed.includes(title)) {
+        if (!manual) return false;
+        dismissed.splice(dismissed.indexOf(title), 1);
+    }
 
     const bullet = {
         id: `tb_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -288,7 +317,7 @@ function insertTruthBulletUI(bullet) {
     const $item = $(`
         <div class="truth-item" data-id="${bullet.id}">
             <img src="scripts/extensions/third-party/danganronpa-extension/assets/icons/artillery-shell.svg" alt="" class="truth-bullet-icon">
-            ${bullet.title.toUpperCase()}
+            ${escapeHtml(bullet.title.toUpperCase())}
         </div>
     `);
 
@@ -321,7 +350,7 @@ function insertArchivedTruthBulletUI(bullet) {
     const $item = $(`
         <div class="truth-archived-item" data-id="${bullet.id}">
             <img src="scripts/extensions/third-party/danganronpa-extension/assets/icons/artillery-shell.svg" alt="" class="truth-bullet-icon truth-bullet-icon--archived">
-            ${bullet.title.toUpperCase()}
+            ${escapeHtml(bullet.title.toUpperCase())}
         </div>
     `);
 
@@ -348,19 +377,21 @@ function showTruthBulletDetails(bullet, isArchived) {
     const actionButton = isArchived
         ? `<div class="truth-archived-actions">
                <button class="truth-reload-button">RELOAD TRUTH BULLET</button>
+               <button class="truth-edit-button">EDIT</button>
                <button class="truth-remove-button truth-delete-button">DELETE TRUTH BULLET</button>
                ${mapBtn}
            </div>`
         : `<div class="truth-active-actions">
                <button class="truth-remove-button">ARCHIVE TRUTH BULLET</button>
+               <button class="truth-edit-button">EDIT</button>
                ${mapBtn}
            </div>`;
 
     $details.html(`
         <div class="truth-detail-main">
-            <div class="truth-title">${bullet.title}</div>
+            <div class="truth-title">${escapeHtml(bullet.title)}</div>
             <div class="truth-description">
-                ${bullet.description || "No further details recorded."}
+                ${escapeHtml(bullet.description || "No further details recorded.")}
             </div>
             <div class="truth-meta">
                 OBTAINED: ${bullet.timestamp}
@@ -415,6 +446,10 @@ function showTruthBulletDetails(bullet, isArchived) {
         });
     }
 
+    $details.find(".truth-edit-button").on("click", () => {
+        startTruthBulletEdit(bullet, isArchived);
+    });
+
     $details.find(".truth-show-on-map-button").on("mouseenter", () => {
         playSfx(sfx.hover);
     }).on("click", () => {
@@ -425,6 +460,52 @@ function showTruthBulletDetails(bullet, isArchived) {
     $details.find(".truth-place-on-map-button").on("click", () => {
         deps.placeOnMap?.(bullet.title, bullet.locationId);
     });
+}
+
+// Inline editing of a bullet's title and description, for when the AI got it
+// wrong. A renamed bullet keeps its old title as an alias, so the message that
+// found it doesn't add it again.
+function startTruthBulletEdit(bullet, isArchived) {
+    const $main = $(".truth-details .truth-detail-main");
+    if (!$main.length) return;
+    $main.html(`
+        <input type="text" class="truth-edit-title" maxlength="120" aria-label="Truth Bullet title">
+        <textarea class="truth-edit-description" rows="5" aria-label="Truth Bullet description"></textarea>
+        <div class="truth-edit-error" role="alert"></div>
+        <div class="truth-active-actions">
+            <button class="truth-edit-save">SAVE</button>
+            <button class="truth-edit-cancel">CANCEL</button>
+        </div>
+    `);
+    const $title = $main.find(".truth-edit-title").val(bullet.title);
+    const $desc = $main.find(".truth-edit-description").val(bullet.description || "");
+    $title.trigger("focus");
+
+    $main.find(".truth-edit-cancel").on("click", () => showTruthBulletDetails(bullet, isArchived));
+    $main.find(".truth-edit-save").on("click", () => {
+        const title = String($title.val() || "").trim();
+        const description = String($desc.val() || "").trim();
+        const $error = $main.find(".truth-edit-error");
+        if (!title) {
+            $error.text("Give it a title.");
+            return;
+        }
+        if (title !== bullet.title && isKnownTitle(title)) {
+            $error.text("Another Truth Bullet already has that title.");
+            return;
+        }
+        processedTruthSignatures.delete(`${bullet.title}||${bullet.description || ""}`);
+        if (title !== bullet.title) {
+            bullet.aliases = [...new Set([...(bullet.aliases || []), bullet.title])];
+            bullet.title = title;
+        }
+        bullet.description = description;
+        processedTruthSignatures.add(`${bullet.title}||${bullet.description}`);
+        saveTruthBullets();
+        renderTruthBullets();
+        showTruthBulletDetails(bullet, isArchived);
+    });
+    $main.on("keydown", (event) => event.stopPropagation());
 }
 
 function showArchiveConfirm(id) {
@@ -526,6 +607,11 @@ function permanentlyDeleteArchivedBullet(id) {
     if (index === -1) return;
 
     const [bullet] = archivedTruthBullets.splice(index, 1);
+    const dismissed = getDismissedTitles();
+    for (const title of [bullet.title, ...(bullet.aliases || [])]) {
+        if (!dismissed.includes(title)) dismissed.push(title);
+    }
+    if (dismissed.length > 500) dismissed.splice(0, dismissed.length - 500);
     saveTruthBullets();
     deps.removePin?.(bullet.locationId);
 

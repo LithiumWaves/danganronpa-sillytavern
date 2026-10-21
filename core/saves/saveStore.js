@@ -17,6 +17,7 @@ export const STORY_KEYS = Object.freeze([
     "characters",
     "truthBullets",
     "archivedTruthBullets",
+    "dismissedTruthBullets",
     "progression",
     "timeTracker",
     "investigationUnderway",

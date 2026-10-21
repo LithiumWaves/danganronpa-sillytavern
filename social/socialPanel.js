@@ -1,3 +1,5 @@
+import { clampTrust, nextTrustDown, nextTrustUp } from "../trust/trustState.js";
+
 function parseReportHeightCm(raw) {
     if (!raw) return null;
     const s = String(raw).trim();
@@ -218,6 +220,20 @@ export function createSocialPanelController({
         }
 
         $report.find(".trust-value").text(`${trust} / 10`);
+
+        // Manual correction for when the story got trust wrong: one rank at a
+        // time, with no ceremony or rewards.
+        const adjustTrust = (step) => {
+            const previous = char.trustLevel ?? 1;
+            const next = clampTrust(step > 0 ? nextTrustUp(previous) : nextTrustDown(previous));
+            if (next === previous) return;
+            char.trustLevel = next;
+            saveCharacters();
+            openCharacterReport(char);
+            renderSocialPanel();
+        };
+        $report.find("#report-trust-up").off("click.adjust").on("click.adjust", () => adjustTrust(1)).prop("disabled", trust >= 10);
+        $report.find("#report-trust-down").off("click.adjust").on("click.adjust", () => adjustTrust(-1)).prop("disabled", trust <= -10);
 
         $report.find(".notes-content").text("ANALYZING...");
 

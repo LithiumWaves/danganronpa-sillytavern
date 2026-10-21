@@ -22,10 +22,10 @@ Alternatively, install directly from SillyTavern by accessing the extensions tab
 ## What the Extension Includes:
 
 ### Monopad Tabs
-- **Truth (🧠):** Stores discovered Truth Bullets, supports detail view, archival and removal.
+- **Truth (🧠):** Stores discovered Truth Bullets, supports detail view, editing the title and description, archival and removal. Archived and deleted bullets stay that way; the message that found them won't add them again.
 - **Map (🌐):** Shows the current Map & Floor, supports custom maps, pin locations, and evidence placement.
 - **Gifts & Skills (🎁):** Shows the Inventory, item browsing, gifting flow, and skill shop display.
-- **Social (👥):** Shows the Roster, trust/distrust progress, and generated profile notes.
+- **Social (👥):** Shows the Roster, trust/distrust progress, and generated profile notes. The − and + buttons next to the trust value correct it one rank at a time, without a ceremony or rewards.
 - **Chapters (📖):** Shows a log of your chats in an easy-to-read, easy-to-revisit format to help you build narratives.
 - **Settings (⚙️):** Shows Audio/display toggles, progression reset, expression configurer, CG creators, generation provider selection, and Mr. Monokuma's Lesson (replayable).
 

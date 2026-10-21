@@ -9250,7 +9250,7 @@ function bindDebugControlEvents() {
         const selectedSfx = String($("input[name='truth-debug-sfx']:checked").val() || "thh").trim().toLowerCase();
         setNextTruthBulletSfxVariant(selectedSfx === "udg" ? "udg" : "thh");
 
-        handleTruthBullet(title, description, { image: pendingTruthBulletImage || undefined });
+        handleTruthBullet(title, description, { image: pendingTruthBulletImage || undefined, manual: true });
         $("#truth-debug-name").val("");
         $("#truth-debug-description").val("");
         closeTruthDebugModal();
@@ -13683,7 +13683,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         const name = String(args.name || '').trim();
         const desc = String(description || '').trim();
         if (!name) return 'Error: name is required.';
-        const added = handleTruthBullet(name, desc);
+        const added = handleTruthBullet(name, desc, { manual: true });
         if (!added) return `Truth Bullet "${name}" already exists.`;
         return '';
     },

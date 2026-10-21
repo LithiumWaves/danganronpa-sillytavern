@@ -2572,6 +2572,41 @@ select.map-pin-edit-input {
     opacity: 0.8;
 }
 
+.trust-value-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.trust-adjust {
+    display: flex;
+    gap: 4px;
+}
+
+.trust-adjust-btn {
+    width: 24px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.85);
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.trust-adjust-btn:hover:not(:disabled) {
+    border-color: #ff4bd8;
+    background: rgba(255, 75, 216, 0.15);
+}
+
+.trust-adjust-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
 /* =========================
    DISTRUST BAR STYLING
    ========================= */
