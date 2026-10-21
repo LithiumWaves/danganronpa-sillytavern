@@ -29,6 +29,7 @@ import { maybeShowTitleScreen, showTitleScreen } from "./core/title/titleScreen.
 import { createPhaseHistory, derivePhase, getNextStepHint, getPhaseActions, getStatusLine } from "./core/phase/phaseState.js";
 import { notify } from "./core/ui/notify.js";
 import { SAVE_MODES, createSaveStore } from "./core/saves/saveStore.js";
+import { MARKER_BLOCKS, MARKER_PROMPT_KEY, buildMarkerPrompt, textHasMarkerInstructions } from "./core/prompts/markerPrompts.js";
 import { createEffectLedger, emptyEffects, hasEffects, messageIdentity } from "./core/ledger/effectLedger.js";
 import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers } from "./monokuma/announcementController.js";
 import { createClassTrialMenuController } from "./trial/menu/classTrialMenu.js";
@@ -520,6 +521,7 @@ function renderTimeTrackerUi() {
     }
 
     refreshPhaseHud();
+    syncMarkerPrompts();
 }
 
 async function passTimeToNight({ source = "manual" } = {}) {
@@ -4654,6 +4656,9 @@ const investigationStartController = {
     },
 
     setPresetToggle(on = true) {
+        // With the extension giving the AI its marker instructions, the
+        // preset's own Investigation Time toggle isn't needed.
+        if (getMonopadSetting("markerPromptsEnabled")) return false;
         const verb = on ? "enable" : "disable";
         try {
             const changed = triggerInvestigationTimeToggle(on);
@@ -6094,6 +6099,78 @@ function waitForSfx(key, callback, tries = 20) {
     }
 
     setTimeout(() => waitForSfx(key, callback, tries - 1), 50);
+}
+
+// ── AI marker instructions ────────────────────────────────────────────────────
+// The extension gives the AI the V3C marker rules that fit the current phase
+// (core/prompts), instead of players pasting them into their preset.
+
+let markerPresetWarningShown = false;
+let markerPromptsNoticePending = false;
+
+function getMarkerTemplate(blockId) {
+    const block = MARKER_BLOCKS[blockId];
+    if (!block) return "";
+    const edited = getMonopadSetting(block.settingKey);
+    return typeof edited === "string" && edited.length ? edited : getDefaultPromptTemplate(block.templateKey);
+}
+
+function presetHasMarkerInstructions() {
+    const ctx = window.SillyTavern?.getContext?.();
+    try {
+        return textHasMarkerInstructions(JSON.stringify(ctx?.chatCompletionSettings?.prompts ?? ""));
+    } catch {
+        return false;
+    }
+}
+
+function syncMarkerPrompts() {
+    const setPrompt = window.SillyTavern?.getContext?.()?.setExtensionPrompt || window.setExtensionPrompt;
+    if (typeof setPrompt !== "function") return;
+    const enabled = !!getMonopadSetting("markerPromptsEnabled");
+    const text = buildMarkerPrompt({ enabled, phase: getCurrentPhase(), getTemplate: getMarkerTemplate });
+    setPrompt(MARKER_PROMPT_KEY, text, 0, 0, false, "system");
+
+    if (enabled && !markerPresetWarningShown && presetHasMarkerInstructions()) {
+        markerPresetWarningShown = true;
+        notify({
+            tone: "warn",
+            title: "MARKER RULES TWICE",
+            message: "Your preset also has V3C marker instructions, and the extension now sends them too. Remove them from the preset, or turn off AI INSTRUCTIONS in Settings → Gameplay.",
+            durationMs: 15000,
+        });
+    }
+}
+
+// First run after updating: new players get the instructions on. Existing
+// players have probably pasted them into their preset, so they stay off
+// until the player turns them on, and a toast explains the option.
+function initMarkerPromptsSetting() {
+    const root = extension_settings[extensionName] ??= {};
+    if (typeof root.markerPromptsEnabled === "boolean") return;
+    const existingPlayer = root.welcomeSeen === true
+        || (Array.isArray(root.characters) && root.characters.length > 0)
+        || (Array.isArray(root.truthBullets) && root.truthBullets.length > 0);
+    root.markerPromptsEnabled = !existingPlayer;
+    saveSettingsDebounced();
+    markerPromptsNoticePending = existingPlayer;
+}
+
+// Shown once the title screen is out of the way, so it isn't missed.
+function showMarkerPromptsNoticeIfPending() {
+    if (!markerPromptsNoticePending) return;
+    markerPromptsNoticePending = false;
+    notify({
+        title: "NEW: AI INSTRUCTIONS",
+        message: "The extension can give the AI its V3C marker instructions itself, matched to the current phase, so they don't need to be in your preset. Turn it on, then remove the pasted ones from your preset.",
+        actionLabel: "TURN ON",
+        onAction: () => {
+            setMonopadSetting("markerPromptsEnabled", true);
+            try { applySettingsTabUI(); } catch (_) {}
+            syncMarkerPrompts();
+        },
+        durationMs: 20000,
+    });
 }
 
 // ── Message effects ledger ────────────────────────────────────────────────────
@@ -10216,6 +10293,11 @@ $(".monopad-icon").on("mouseenter", function () {
             if (key === "phaseHudEnabled") {
                 refreshPhaseHud();
             }
+            if (key === "markerPromptsEnabled") {
+                // Warn again the next time it's turned on.
+                if (!next) markerPresetWarningShown = false;
+                syncMarkerPrompts();
+            }
             if (key === "dynamicSongsEnabled") {
                 dynamicSongsController?.onEnabledChanged?.(next);
                 try { syncMoodScanButton(); } catch { /* ignore */ }
@@ -10656,6 +10738,7 @@ $(".monopad-icon").on("mouseenter", function () {
             if (settingKey === "roomContextPromptTemplate") {
                 try { syncRoomContextPrompt(); } catch { /* ignore */ }
             }
+            if (settingKey.startsWith("marker")) syncMarkerPrompts();
         });
 
         $(document).on("click", ".settings-prompt-reset", function () {
@@ -10670,6 +10753,7 @@ $(".monopad-icon").on("mouseenter", function () {
             if (settingKey === "roomContextPromptTemplate") {
                 try { syncRoomContextPrompt(); } catch { /* ignore */ }
             }
+            if (settingKey.startsWith("marker")) syncMarkerPrompts();
         });
 
         $("#dangan_card_hygiene_default").on("change", function () {
@@ -10870,6 +10954,7 @@ $(".monopad-icon").on("mouseenter", function () {
 
 loadSettings();
 migrateSavesIfNeeded();
+initMarkerPromptsSetting();
 ensureTimeTrackerState();
 // Restore Investigation Mode from the persisted flag so it survives refreshes;
 // renderTimeTrackerUi + applyDynamicTheme below pick it up.
@@ -11982,6 +12067,9 @@ STATEMENT: <third statement>`;
         // deleted or edited message did.
         eventSource.on(event_types.GENERATION_STARTED, (type, _options, dryRun) => {
             if (!dryRun && type !== "quiet") generationInProgress = true;
+            // Right before the prompt is built, so trials starting or ending
+            // are always reflected.
+            try { syncMarkerPrompts(); } catch (e) { console.warn("[Dangan][Markers] sync failed:", e); }
         });
         for (const done of [event_types.GENERATION_ENDED, event_types.GENERATION_STOPPED, event_types.CHARACTER_MESSAGE_RENDERED]) {
             if (done) eventSource.on(done, () => onGenerationFinished());
@@ -12598,6 +12686,8 @@ STATEMENT: <third statement>`;
     } catch (e) {
         console.warn("[Dangan][Title] failed:", e);
     }
+
+    setTimeout(() => showMarkerPromptsNoticeIfPending(), 2500);
 
     setTimeout(() => {
         try {

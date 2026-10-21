@@ -252,6 +252,28 @@ RECENT CHAT CONTEXT:
 export const DEFAULT_GAMEPLAY_PROMPT_TEMPLATES = {
     roomContext: `Location: {{room}}
 Present: {{characters}}`,
+    markerTruth: `[EVIDENCE MARKERS]
+An investigation is underway. When a concrete, verifiable discovery is made, record it as a Truth Bullet on its own line:
+V3C| TB: Short Title || One-sentence description
+- Only record facts that are new and could matter at the Class Trial.
+- Keep titles short, neutral and factual.
+- If nothing new is found, write no marker.`,
+    markerSocial: `[TRUST MARKERS]
+When the player's interaction with a character meaningfully deepens trust, understanding or connection, add this on its own line at the very end of the reply:
+V3C| SOCIAL: Character Full Name
+When it seriously damages trust (betrayal, hostility, real harm; not playful teasing), add this instead:
+V3C| SOCIAL_DOWN: Character Full Name
+- Use the character's full name as it's displayed.
+- At most one of each per reply. Use them sparingly; not every friendly moment counts.`,
+    markerInvestigation: `[INVESTIGATION MARKER]
+If a body is discovered and the story moves into the investigation, put this on its own line at the start of that reply:
+V3C| INVESTIGATION_START
+Don't use it at any other time.`,
+    markerAnnouncements: `[ANNOUNCEMENT MARKERS]
+When Monokuma makes an announcement in the story, add the matching marker on its own line:
+V3C| DAY_ANNOUN for the morning announcement
+V3C| NIGHT_ANNOUN for the nighttime announcement
+V3C| BDA for a body discovery announcement`,
 };
 
 export function getDefaultPromptTemplate(templateKey) {

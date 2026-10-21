@@ -1,4 +1,4 @@
-Simply include these in your Chat Completion presets if you so wish. These are for automation purposes, they are not obligatory.
+You usually don't need these: turn on AI INSTRUCTIONS in Monopad Settings → Gameplay and the extension sends phase-appropriate versions itself. Only paste these into your Chat Completion preset if you keep that setting off. Don't use both, or the AI gets the rules twice.
 
 - For Truth Bullets:
 

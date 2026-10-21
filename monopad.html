@@ -1058,6 +1058,37 @@
                         </div>
                     </details>
                 </div>
+
+                <div class="settings-item settings-item-stack">
+                    <span class="settings-label">AI INSTRUCTIONS</span>
+                    <button class="settings-toggle" data-setting="markerPromptsEnabled"></button>
+                    <div class="settings-note">The extension tells the AI how to write the hidden V3C markers for Truth Bullets, trust, investigations and announcements, sending only the ones that fit the current phase. With this on you don't need the marker prompts in your preset; if they're there too, remove them. Off during Class Trials.</div>
+                    <details class="settings-prompt-editor">
+                        <summary class="settings-prompt-summary">EDIT AI INSTRUCTIONS</summary>
+                        <div class="settings-prompt-body">
+                            <div class="settings-prompt-help">TRUTH BULLETS (sent during investigations)</div>
+                            <textarea class="settings-prompt-textarea" data-setting="markerTruthPromptTemplate" data-template-key="markerTruth" rows="6" spellcheck="false"></textarea>
+                            <div class="settings-prompt-actions">
+                                <button type="button" class="settings-small-button settings-prompt-reset" data-setting="markerTruthPromptTemplate" data-template-key="markerTruth">RESET TO DEFAULT</button>
+                            </div>
+                            <div class="settings-prompt-help">TRUST (sent outside Class Trials)</div>
+                            <textarea class="settings-prompt-textarea" data-setting="markerSocialPromptTemplate" data-template-key="markerSocial" rows="6" spellcheck="false"></textarea>
+                            <div class="settings-prompt-actions">
+                                <button type="button" class="settings-small-button settings-prompt-reset" data-setting="markerSocialPromptTemplate" data-template-key="markerSocial">RESET TO DEFAULT</button>
+                            </div>
+                            <div class="settings-prompt-help">INVESTIGATION START (sent during daily life)</div>
+                            <textarea class="settings-prompt-textarea" data-setting="markerInvestigationPromptTemplate" data-template-key="markerInvestigation" rows="6" spellcheck="false"></textarea>
+                            <div class="settings-prompt-actions">
+                                <button type="button" class="settings-small-button settings-prompt-reset" data-setting="markerInvestigationPromptTemplate" data-template-key="markerInvestigation">RESET TO DEFAULT</button>
+                            </div>
+                            <div class="settings-prompt-help">ANNOUNCEMENTS (sent during daily life)</div>
+                            <textarea class="settings-prompt-textarea" data-setting="markerAnnouncementsPromptTemplate" data-template-key="markerAnnouncements" rows="6" spellcheck="false"></textarea>
+                            <div class="settings-prompt-actions">
+                                <button type="button" class="settings-small-button settings-prompt-reset" data-setting="markerAnnouncementsPromptTemplate" data-template-key="markerAnnouncements">RESET TO DEFAULT</button>
+                            </div>
+                        </div>
+                    </details>
+                </div>
             </section>
 
             <!-- FX -->

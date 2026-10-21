@@ -92,13 +92,15 @@ Supplied in this extension are a wide array of minigames, including:
 - OpenRouter key is session-only by default unless “Remember key” is enabled.
 
 ## V3C trigger format (chat parsing)
-The extension scans assistant messages for these patterns:
+The extension scans assistant messages for these patterns.
+
+**You don't have to teach the AI these yourself.** With **AI INSTRUCTIONS** on (Settings → Gameplay), the extension adds the rules to the prompt itself and sends only the ones that fit the current phase: evidence markers during investigations, trust markers outside Class Trials, and the investigation-start and announcement markers during daily life. Edit each block from the same setting. It's on for new players. If you're updating and already pasted the rules from `v3c-marker-prompts/prompts.txt` into your preset, a toast offers to turn it on; remove the pasted rules when you do. The extension warns you if both are active.
 
 - `V3C| TB: <title> || <description>`
 - `V3C| SOCIAL: <name>`
 - `V3C| SOCIAL_UP: <name>`
 - `V3C| SOCIAL_DOWN: <name>`
-- `V3C| INVESTIGATION_START` (plays Investigation Start banner/sfx, attempts to enable the `Investigation Time` toggle in your current preset, and shows a toast with UNDO)
+- `V3C| INVESTIGATION_START` (plays the Investigation Start banner/sfx and shows a toast with UNDO; with AI INSTRUCTIONS off, it also tries to enable an `Investigation Time` toggle in your current preset)
 - `V3C| TRIAL_START` (opens the Class Trial menu, which asks before the trial begins)
 - `V3C| BODY_DISCOVERY` (plays a separate static/shake body discovery cutscene using `assets/sfx/etc/despairnoise.mp3`)
 - `V3C| DAY_ANNOUN`, `V3C| NIGHT_ANNOUN`, `V3C| BDA` (play Monokuma's daytime, nighttime or body discovery announcement; they don't change the day or phase)
@@ -119,7 +121,7 @@ V3C| BODY_DISCOVERY
 
 ## Typical usage flow
 1. Roleplay/investigate in chat.
-2. Emit V3C lines from your prompt template/character logic.
+2. Let the extension give the AI the V3C rules (AI INSTRUCTIONS), or put them in your own prompt template.
 3. Open Monopad to review Truth Bullets and Social updates.
 4. Spend rewards in Gifts & Skills and use gifts in conversations.
 5. Partake in Class Trials and advance the story
