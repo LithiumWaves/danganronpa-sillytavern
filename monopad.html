@@ -471,6 +471,7 @@
                             <button class="bgm-tracks-subtab active" data-subtab="daytime">DAYTIME</button>
                             <button class="bgm-tracks-subtab" data-subtab="nighttime">NIGHTTIME</button>
                             <button class="bgm-tracks-subtab" data-subtab="investigation">INVESTIGATION</button>
+                            <button class="bgm-tracks-subtab" data-subtab="title">TITLE</button>
                         </div>
                         <div class="bgm-tracks-subpanel active" data-subtab="daytime">
                             <div class="investigation-tracks-wrap">
@@ -492,6 +493,14 @@
                             <div class="investigation-tracks-wrap">
                                 <div id="investigation-tracks-list" class="investigation-tracks-list"></div>
                                 <div id="investigation-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bgm-tracks-subpanel" data-subtab="title">
+                            <div class="investigation-tracks-wrap">
+                                <div id="title-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="title-selected-list" class="investigation-selected-list">
                                     <div class="investigation-selected-empty">NONE SELECTED</div>
                                 </div>
                             </div>
@@ -742,6 +751,12 @@
                 <div class="settings-item">
                     <span class="settings-label">BOOT ANIMATIONS</span>
                     <button class="settings-toggle on" data-setting="bootAnimations"></button>
+                </div>
+
+                <div class="settings-item settings-item-stack">
+                    <span class="settings-label">TITLE SCREEN</span>
+                    <button class="settings-toggle on" data-setting="titleScreenEnabled"></button>
+                    <div class="settings-note">Show the title screen when SillyTavern loads. <code>/title</code> opens it any time. Pick its music under BGM → PHASES → TITLE.</div>
                 </div>
 
 

@@ -80,6 +80,7 @@ export const defaultSettings = {
     // negative = lowered. Applied to #dangan-group-chat-stage via --dgn-podium-offset-y.
     trialPodiumOffsetY: 0,
     bootAnimations: true,
+    titleScreenEnabled: true,
     dynamicThemes: true,
     hideTruthBulletImages: false,
     hideGiftImages: false,
@@ -130,6 +131,7 @@ export const defaultSettings = {
     hangmansGambitUseRecentContext: false,
     hangmansGambitUseDebateHistory: false,
     shopTracks: [],
+    titleTracks: [],
     daytimeTracks: [],
     nighttimeTracks: [],
     investigationTracks: [],

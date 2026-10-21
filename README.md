@@ -29,6 +29,9 @@ Alternatively, install directly from SillyTavern by accessing the extensions tab
 - **Chapters (📖):** Shows a log of your chats in an easy-to-read, easy-to-revisit format to help you build narratives.
 - **Settings (⚙️):** Shows Audio/display toggles, progression reset, expression configurer, CG creators, generation provider selection, and Mr. Monokuma's Lesson (replayable).
 
+### Title Screen
+SillyTavern opens on a Trigger Happy Havoc-style title screen. Press any key or click to start, then pick **NEW GAME** (opens the character / group list to choose a cast), **CONTINUE** (returns to your last chat), or **OPTIONS** (opens Monopad Settings). Assign music under BGM Tracks → Phases → Title. Turn it off with the **Title Screen** setting, and reopen it any time with `/title`.
+
 ### Character Introductions
 Character Introductions takes a character's `neutral` sprite and renders them on an animated background, grabbing their `name` and `ultimate` values. Commenced through the `/introduce` command.
 
@@ -109,7 +112,7 @@ V3C| BODY_DISCOVERY
 | **Play BGM in Assistant Chat** | Toggle | Off | Keeps phase BGM playing outside of group chats |
 | **Dynamic Songs** | Toggle | Off | When on, the extension majority-votes the latest sprite of every living character in the current scene (group-chat portraits, or overworld room if portraits are not up) and plays a matching mood track. Only replaces daytime / nighttime / investigation BGM — shop, map-pin BGM, class trials, and minigames are left alone. Neutral and unknown sprites are ignored. Ties keep the current mood if it is still tied for first, otherwise fall back to phase BGM. The media player list button opens assigned songs filtered by mood or phase. SCAN on the player re-reads current sprites and forces a mood change. |
 | **Mood Scan Toast** | Toggle | Off | After SCAN, shows a themed HUD toast with sprite vote counts and the track that started playing. |
-| **BGM Tracks** | File multi-select | — | Assign audio files to each game phase or mood. Available phases: Shop, Daytime, Nighttime, Investigation, Trial General, Trial Preparation, Non-Stop Debates, Mass Panic Debates, Scrum Debates, Hangman's Gambit, Rebuttal Showdown, Interjection, Suspect Choice, AA Phase 1/2/3. Moods (used by Dynamic Songs): Happy (joy, excitement), Sad (sadness, grief), Dramatic (realization, surprise), Tense (fear, nervousness), Angry (anger, disgust), Romantic (love, embarrassment). A track can belong to both a phase list and a mood list. |
+| **BGM Tracks** | File multi-select | — | Assign audio files to each game phase or mood. Available phases: Title, Shop, Daytime, Nighttime, Investigation, Trial General, Trial Preparation, Non-Stop Debates, Mass Panic Debates, Scrum Debates, Hangman's Gambit, Rebuttal Showdown, Interjection, Suspect Choice, AA Phase 1/2/3. Moods (used by Dynamic Songs): Happy (joy, excitement), Sad (sadness, grief), Dramatic (realization, surprise), Tense (fear, nervousness), Angry (anger, disgust), Romantic (love, embarrassment). A track can belong to both a phase list and a mood list. |
 ---
 
 ### Display
@@ -118,6 +121,7 @@ V3C| BODY_DISCOVERY
 | **CRT Effects** | Toggle | On | Applies a CRT scanline filter over the Monopad UI |
 | **CRT Intensity** | Slider (0–100) | 35 | Controls the strength of the CRT scanline filter |
 | **Boot Animations** | Toggle | On | Shows the startup animation sequence when SillyTavern loads |
+| **Title Screen** | Toggle | On | Shows the title screen when SillyTavern loads. `/title` opens it any time |
 | **Visual Novel Mode** | Toggle | Off | Enables VN-style character sprite and text presentation in chat |
 | **Daily / Deadly Life Dynamic Themes** | Toggle | On | Automatically switches the UI theme based on daytime, nighttime, or investigation state |
 | **Hide Truth Bullet Images** | Toggle | Off | Hides thumbnail images on Truth Bullet entries in the Monopad |
@@ -182,6 +186,9 @@ Plays the execution cinematic for the named character, then marks them as dead i
 |---|---|---|---|
 | `name` | **Yes** | — | Character name — must match both a configured execution cinematic and a registered character |
 ---
+
+#### `/title`
+Opens the title screen, even when the **Title Screen** setting is off.
 
 #### `/introduce`
 Shows a 4-second character introduction screen for the current SillyTavern speaker.

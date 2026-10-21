@@ -1,11 +1,13 @@
 export const BOOT_GREETING_ID = "dangan-boot-greeting";
 export const MINIGAME_GUIDE_MODAL_ID = "dangan-minigame-guide-modal";
+const TITLE_SCREEN_ID = "dangan-title-screen";
 
 export function isBootGreetingBlocked() {
     if (typeof document === "undefined") return true;
     if (document.body?.classList?.contains("dangan-trial-active")) return true;
     if (document.getElementById(MINIGAME_GUIDE_MODAL_ID)) return true;
     if (document.getElementById(BOOT_GREETING_ID)) return true;
+    if (document.getElementById(TITLE_SCREEN_ID)) return true;
     return false;
 }
 

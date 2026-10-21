@@ -24,6 +24,7 @@ import { createCoachController } from "./core/onboarding/coachMarks.js";
 import { createOrientationController } from "./core/onboarding/orientation.js";
 import { configureMinigameGuides } from "./core/onboarding/minigameGuides.js";
 import { maybeShowBootGreeting } from "./core/onboarding/bootGreeting.js";
+import { maybeShowTitleScreen, showTitleScreen } from "./core/title/titleScreen.js";
 import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers } from "./monokuma/announcementController.js";
 import { createClassTrialMenuController } from "./trial/menu/classTrialMenu.js";
 import { createTrialManager, TrialPhases } from "./trial/trialManager.js";
@@ -3851,6 +3852,7 @@ const BGM_TRACK_TABS = [
     { key: "daytime",                settingKey: "daytimeTracks",             listId: "daytime-tracks-list",                selectedId: "daytime-selected-list" },
     { key: "nighttime",              settingKey: "nighttimeTracks",           listId: "nighttime-tracks-list",              selectedId: "nighttime-selected-list" },
     { key: "investigation",          settingKey: "investigationTracks",       listId: "investigation-tracks-list",          selectedId: "investigation-selected-list" },
+    { key: "title",                  settingKey: "titleTracks",               listId: "title-tracks-list",                  selectedId: "title-selected-list" },
     { key: "happy",                  settingKey: "happyTracks",               listId: "happy-tracks-list",                  selectedId: "happy-selected-list" },
     { key: "sad",                    settingKey: "sadTracks",                 listId: "sad-tracks-list",                    selectedId: "sad-selected-list" },
     { key: "dramatic",               settingKey: "dramaticTracks",            listId: "dramatic-tracks-list",               selectedId: "dramatic-selected-list" },
@@ -3913,6 +3915,7 @@ const BGM_PLAYLIST_LABELS = {
     daytimeTracks:           'DAYTIME',
     nighttimeTracks:         'NIGHTTIME',
     investigationTracks:     'INVESTIGATION',
+    titleTracks:             'TITLE',
     happyTracks:             'HAPPY',
     sadTracks:               'SAD',
     dramaticTracks:          'DRAMATIC',
@@ -3941,6 +3944,7 @@ const BGM_PLAYLIST_PARENTS = {
     daytimeTracks:           'PHASES',
     nighttimeTracks:         'PHASES',
     investigationTracks:     'PHASES',
+    titleTracks:             'PHASES',
     happyTracks:             'MOODS',
     sadTracks:               'MOODS',
     dramaticTracks:          'MOODS',
@@ -12224,6 +12228,16 @@ STATEMENT: <third statement>`;
         });
     }
 
+    // Title screen first; the play-mode greeting waits until it is dismissed.
+    try {
+        await maybeShowTitleScreen({
+            isEnabled: () => getMonopadSetting("titleScreenEnabled") !== false,
+            ...buildTitleScreenOptions(),
+        });
+    } catch (e) {
+        console.warn("[Dangan][Title] failed:", e);
+    }
+
     setTimeout(() => {
         try {
             maybeShowBootGreeting({
@@ -12236,7 +12250,73 @@ STATEMENT: <third statement>`;
     }, 800);
 });
 
+// ── Title Screen ────────────────────────────────────────────────────────────
+
+function openSillyTavernCharacterList() {
+    const panel = document.getElementById("right-nav-panel");
+    if (panel && !panel.classList.contains("openDrawer")) {
+        document.getElementById("unimportantYes")?.click();
+    }
+    document.getElementById("rm_button_characters")?.click();
+}
+
+function continueLastSillyTavernChat() {
+    const ctx = window.SillyTavern?.getContext?.();
+    const hasChat = !!ctx?.groupId || (ctx?.characterId !== undefined && ctx?.characterId !== null);
+    if (hasChat) return;
+    // No chat loaded (auto-load is off): use ST's welcome-screen recent chat
+    // if it rendered one, else fall back to the character list.
+    const recent = document.querySelector(".recentChat");
+    if (recent) {
+        recent.click();
+        return;
+    }
+    openSillyTavernCharacterList();
+}
+
+function openMonopadSettingsTab() {
+    if (!$("#dangan_monopad_panel").hasClass("open")) {
+        $("#dangan_monopad_button").trigger("click");
+    }
+    $('.monopad-icon[data-tab="settings"]').trigger("click");
+}
+
+function buildTitleScreenOptions() {
+    let titleBgmPlaying = false;
+    return {
+        logoUrl: `${extensionFolderPath}/assets/images/title/drst.png`,
+        playSfx: (name) => playSfx(sfx[name]),
+        onStart: () => {
+            unlockAudio();
+            const path = pickBgmTrackFromSetting("titleTracks");
+            if (path) titleBgmPlaying = !!playMinigameBgmPath(path);
+        },
+        onNewGame: openSillyTavernCharacterList,
+        onContinue: continueLastSillyTavernChat,
+        onOptions: openMonopadSettingsTab,
+        onClose: async () => {
+            if (!titleBgmPlaying) return;
+            titleBgmPlaying = false;
+            await fadeOutAndPauseBgm(800);
+            resumeBgmAfterHG();
+        },
+    };
+}
+
+function openTitleScreen() {
+    return showTitleScreen(buildTitleScreenOptions());
+}
+
 // ── Slash Commands ──────────────────────────────────────────────────────────
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'title',
+    callback: async () => {
+        openTitleScreen();
+        return '';
+    },
+    helpString: 'Opens the Danganronpa title screen.',
+}));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'introduce',
