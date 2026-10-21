@@ -180,7 +180,7 @@ export function mountNewGamePanel(container, api) {
                         <span class="dgn-title-mode-text">One group chat is the whole story. Exploring stays in it: whoever is in the room is unmuted, everyone else is muted. Call Student brings people to you. You'll create that chat next.</span>
                     </button>
                 </div>
-                <p class="dgn-title-note">You can switch later in Options. Class trials work in both styles.${state.fresh ? " Your previous progress will be erased when you press BEGIN." : ""}</p>
+                <p class="dgn-title-note">You can switch later in Options. Class trials work in both styles.${state.fresh ? " This game gets a new save. Your previous save is kept." : ""}</p>
             `;
         } else if (state.step === "group") {
             bodyEl.innerHTML = `
@@ -216,7 +216,7 @@ export function mountNewGamePanel(container, api) {
             const personaName = personas.list.find((p) => p.key === state.persona)?.name || "";
             bodyEl.innerHTML = `
                 <dl class="dgn-title-summary">
-                    <dt>SAVE</dt><dd>${state.fresh ? "Fresh start (previous progress erased)" : "Keep current progress"}</dd>
+                    <dt>SAVE</dt><dd>${state.fresh ? "New save (your previous save is kept)" : "Current save"}</dd>
                     <dt>PLAY STYLE</dt><dd>${state.mode === "single" ? "One main chat" : "Several chats"}</dd>
                     ${state.mode === "single" ? `<dt>STORY CHAT</dt><dd>${escapeHtml(payload.groupName)} <small>(${payload.groupMembers.length} members)</small></dd>` : ""}
                     ${personaName ? `<dt>YOU</dt><dd>${escapeHtml(personaName)}</dd>` : ""}
@@ -391,10 +391,10 @@ export function mountNewGamePanel(container, api) {
         try {
             if (services.hasProgress?.()) {
                 fresh = await confirm({
-                    title: "START OVER?",
-                    message: "You have saved progress. START FRESH erases the class roster, trust, Truth Bullets, chapter, day, level and skill points, Monocoins and introductions when you press BEGIN. KEEP PROGRESS only sets up chats and the roster.",
-                    confirmLabel: "START FRESH",
-                    cancelLabel: "KEEP PROGRESS",
+                    title: "NEW SAVE?",
+                    message: "NEW SAVE starts this game in a save of its own when you press BEGIN. Your current progress stays in its save, and CONTINUE can load it again. KEEP CURRENT SAVE sets up chats and the roster in the save you have loaded now.",
+                    confirmLabel: "NEW SAVE",
+                    cancelLabel: "KEEP CURRENT SAVE",
                 });
             }
         } catch { /* keep progress */ }

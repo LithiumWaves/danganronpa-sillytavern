@@ -26,6 +26,48 @@ body.dangan-trial-active #dangan-phase-hud {
     display: none;
 }
 
+/* Once it moves under the chapter / level / room readout at the top right,
+   it hangs just below that block as a slab like the room readout. */
+#dangan-hud-topright > #dangan-phase-hud {
+    top: 100%;
+    left: auto;
+    right: 0;
+    transform: none;
+    align-items: flex-end;
+    max-width: min(340px, calc(100vw - 16px));
+    position: absolute;
+}
+
+#dangan-hud-topright > #dangan-phase-hud .dangan-phase-chip {
+    width: 240px;
+    height: 27px;
+    justify-content: flex-start;
+    padding: 0 0 0 18px;
+    border: none;
+    border-left: 2px solid var(--dangan-phase-accent);
+    border-radius: 0;
+    background: rgba(0, 0, 0, 0.55);
+    box-shadow: none;
+    transform: skewX(-20deg);
+    position: relative;
+    right: -9px;
+    font-size: 9px;
+    font-style: italic;
+}
+
+#dangan-hud-topright > #dangan-phase-hud .dangan-phase-chip > * {
+    transform: skewX(20deg);
+}
+
+#dangan-hud-topright > #dangan-phase-hud .dangan-phase-chip:hover,
+#dangan-hud-topright > #dangan-phase-hud .dangan-phase-chip[aria-expanded="true"] {
+    background: rgba(0, 0, 0, 0.75);
+}
+
+#dangan-hud-topright > #dangan-phase-hud .dangan-phase-menu {
+    margin-right: 8px;
+}
+
 .dangan-phase-chip {
     pointer-events: auto;
     display: inline-flex;

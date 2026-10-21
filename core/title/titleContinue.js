@@ -1,7 +1,8 @@
 import { escapeHtml, isTypingTarget } from "./titleUtils.js";
 
 const FILTERS = Object.freeze([
-    { id: "all", label: "ALL" },
+    { id: "saves", label: "SAVES" },
+    { id: "all", label: "ALL CHATS" },
     { id: "char", label: "ONE-ON-ONE" },
     { id: "group", label: "GROUP" },
 ]);
@@ -30,7 +31,8 @@ export function sortChats(rows) {
 export function filterChats(rows, { query = "", kind = "all" } = {}) {
     const needle = String(query || "").trim().toLowerCase();
     return (Array.isArray(rows) ? rows : []).filter((row) => {
-        if (kind !== "all" && row?.kind !== kind) return false;
+        if (kind === "saves" ? row?.kind !== "save" : row?.kind === "save") return false;
+        if (kind !== "all" && kind !== "saves" && row?.kind !== kind) return false;
         if (!needle) return true;
         const hay = [row?.title, row?.chatFile, row?.lastMessage, ...(row?.memberNames || [])]
             .join(" ")
@@ -74,7 +76,7 @@ export function mountContinuePanel(container, api) {
     container.innerHTML = `
         <div class="dgn-title-continue">
             <div class="dgn-title-toolbar">
-                <input type="search" class="dgn-title-input dgn-title-search" placeholder="Search chats, characters, messages…" aria-label="Search chats">
+                <input type="search" class="dgn-title-input dgn-title-search" placeholder="Search saves, chats, characters, messages…" aria-label="Search saves and chats">
                 <div class="dgn-title-tabs" role="tablist">
                     ${FILTERS.map((f, i) => `<button type="button" class="dgn-title-tab${i === 0 ? " is-active" : ""}" role="tab" data-filter="${f.id}">${f.label}</button>`).join("")}
                 </div>
@@ -91,9 +93,10 @@ export function mountContinuePanel(container, api) {
     let allRows = [];
     let visible = [];
     let active = 0;
-    let kind = "all";
+    let kind = "saves";
     let disposed = false;
     let opening = false;
+    let chatsFailed = false;
 
     const setActive = (index, { focus = true, silent = false } = {}) => {
         if (!visible.length) return;
@@ -111,7 +114,19 @@ export function mountContinuePanel(container, api) {
 
     const render = () => {
         visible = filterChats(allRows, { query: searchEl.value, kind });
-        if (!allRows.length) {
+        if (kind === "saves" && !allRows.some((row) => row.kind === "save")) {
+            listEl.innerHTML = `
+                <div class="dgn-title-empty">
+                    <p>NO SAVES YET.</p>
+                    <button type="button" class="dgn-title-btn is-primary" data-go="newGame">START A NEW GAME</button>
+                </div>`;
+            return;
+        }
+        if (chatsFailed && kind !== "saves") {
+            listEl.innerHTML = `<div class="dgn-title-empty">COULDN'T LOAD CHATS. Check the console for details.</div>`;
+            return;
+        }
+        if (!allRows.some((row) => row.kind !== "save") && kind !== "saves") {
             listEl.innerHTML = `
                 <div class="dgn-title-empty">
                     <p>NO SAVED CHATS YET.</p>
@@ -129,8 +144,8 @@ export function mountContinuePanel(container, api) {
                 <span class="dgn-title-chat-main">
                     <span class="dgn-title-chat-name">
                         ${escapeHtml(row.title)}
-                        ${row.current ? `<span class="dgn-title-badge">CURRENT</span>` : ""}
-                        <span class="dgn-title-chip">${row.kind === "group" ? "GROUP" : "1:1"}</span>
+                        ${row.current ? `<span class="dgn-title-badge">${row.kind === "save" ? "LOADED" : "CURRENT"}</span>` : ""}
+                        <span class="dgn-title-chip">${row.kind === "save" ? escapeHtml(row.chip || "SAVE") : row.kind === "group" ? "GROUP" : "1:1"}</span>
                     </span>
                     <span class="dgn-title-chat-file">${escapeHtml(row.chatFile)}</span>
                     <span class="dgn-title-chat-preview">${escapeHtml(previewText(row.lastMessage))}</span>
@@ -149,7 +164,7 @@ export function mountContinuePanel(container, api) {
         if (!row || opening) return;
         opening = true;
         sfx("click");
-        close(() => services.openChat?.(row));
+        close(() => (row.kind === "save" ? services.openSave?.(row) : services.openChat?.(row)));
     };
 
     const setKind = (next) => {
@@ -177,11 +192,24 @@ export function mountContinuePanel(container, api) {
         if (el) setActive(Number(el.dataset.index), { focus: false });
     });
 
-    Promise.resolve()
-        .then(() => services.listChats?.() ?? [])
-        .then((rows) => {
+    Promise.all([
+        Promise.resolve().then(() => services.listSaves?.() ?? []).catch((e) => {
+            console.warn("[Dangan][Title] listSaves failed:", e);
+            return [];
+        }),
+        Promise.resolve().then(() => services.listChats?.() ?? []).catch((e) => {
+            console.warn("[Dangan][Title] listChats failed:", e);
+            chatsFailed = true;
+            return [];
+        }),
+    ])
+        .then(([saves, rows]) => {
             if (disposed) return;
-            allRows = sortChats(rows);
+            allRows = [...sortChats(saves), ...sortChats(rows)];
+            if (!saves.length) {
+                kind = "all";
+                tabs.forEach((t) => t.classList.toggle("is-active", t.dataset.filter === kind));
+            }
             render();
             if (visible.length) setActive(0, { silent: true });
         })

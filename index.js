@@ -7,7 +7,7 @@ import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.j
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../../slash-commands/SlashCommandArgument.js';
 import { SlashCommandEnumValue } from '../../../slash-commands/SlashCommandEnumValue.js';
-import { initTruthBullets, handleTruthBullet, setNextTruthBulletSfxVariant, getTruthBulletByLocationId, showTruthBulletByLocationId, showTruthBulletById, getTruthBullets, clearAllTruthBullets } from "./truth/truthBullets.js";
+import { initTruthBullets, handleTruthBullet, setNextTruthBulletSfxVariant, getTruthBulletByLocationId, showTruthBulletByLocationId, showTruthBulletById, getTruthBullets, clearAllTruthBullets, reloadTruthBullets } from "./truth/truthBullets.js";
 import { initTrustAnimations } from "./trust/trustAnimations.js";
 import { increaseTrust, decreaseTrust } from "./trust/trustAPI.js";
 import { createItemsPanelController, SKILL_PARAM_MAP, applySkillModifier } from "./items/itemsPanel.js";
@@ -27,6 +27,7 @@ import { maybeShowBootGreeting } from "./core/onboarding/bootGreeting.js";
 import { maybeShowTitleScreen, showTitleScreen } from "./core/title/titleScreen.js";
 import { createPhaseHistory, derivePhase, getNextStepHint, getPhaseActions, getStatusLine } from "./core/phase/phaseState.js";
 import { notify } from "./core/ui/notify.js";
+import { SAVE_MODES, createSaveStore } from "./core/saves/saveStore.js";
 import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers } from "./monokuma/announcementController.js";
 import { createClassTrialMenuController } from "./trial/menu/classTrialMenu.js";
 import { createTrialManager, TrialPhases } from "./trial/trialManager.js";
@@ -466,8 +467,13 @@ function ensureTimeTrackerState() {
         normalized.dayActionUsed = true;
     }
 
+    // Normalize in place: callers keep a reference and mutate it.
+    if (raw && typeof raw === "object" && raw !== fallback) {
+        Object.assign(raw, normalized);
+        return raw;
+    }
     extension_settings[extensionName].timeTracker = normalized;
-    return extension_settings[extensionName].timeTracker;
+    return normalized;
 }
 
 function getTimeReadoutLabel(state) {
@@ -1605,8 +1611,6 @@ function openMonopadConfirmDialog({ title = "CONFIRM ACTION", message = "", conf
         cancelBtn.addEventListener("click", onCancel);
     });
 }
-
-const truthBullets = [];
 
 const truthBulletQueue = [];
 let truthBulletAnimating = false;
@@ -3829,8 +3833,10 @@ function getCurrentStatusLine() {
     });
 }
 
+// Reads the tracker without ensureTimeTrackerState(), which swaps in a new
+// object: callers like passTimeToNight hold the current one and mutate it.
 function rememberPhaseForUndo(label) {
-    phaseHistory.push({ timeTracker: ensureTimeTrackerState(), investigationUnderway }, label);
+    phaseHistory.push({ timeTracker: extension_settings[extensionName]?.timeTracker, investigationUnderway }, label);
 }
 
 function playCurrentPhaseTrack() {
@@ -3967,7 +3973,7 @@ function renderPhaseMenu() {
     hud.querySelector(".dangan-phase-hint").textContent = getNextStepHint({
         phase,
         timeTracker,
-        truthBulletCount: truthBullets.length,
+        truthBulletCount: getTruthBullets().length,
         rosterCount: characters.size,
     });
 
@@ -3992,8 +3998,14 @@ function renderPhaseMenu() {
 function refreshPhaseHud() {
     const hud = ensurePhaseHud();
     if (!hud) return;
+    // Sit under the chapter / level / room readout at the top right once it
+    // exists. Its big chapter title is already showing, so leave it out here.
+    const corner = document.getElementById("dangan-hud-topright");
+    if (corner && hud.parentElement !== corner) corner.appendChild(hud);
     hud.hidden = getMonopadSetting("phaseHudEnabled") === false;
-    hud.querySelector(".dangan-phase-chip-label").textContent = getCurrentStatusLine();
+    hud.querySelector(".dangan-phase-chip-label").textContent = hud.parentElement === corner
+        ? getStatusLine({ phase: getCurrentPhase(), day: ensureTimeTrackerState().day })
+        : getCurrentStatusLine();
     if (!hud.querySelector(".dangan-phase-menu").hidden) renderPhaseMenu();
 }
 
@@ -4767,6 +4779,8 @@ async function createClassTrialGroupChat(roster) {
 
         const data = await resp.json();
         console.log(`[Dangan][Trial] Created Class Trial group "${groupName}" (${data.id}) with ${members.length} member(s).`);
+        // The trial chat belongs to the save it was started from.
+        bindGroupToActiveSave(data.id);
 
         // Refresh ST's character/group lists so openGroupById can resolve the new
         // group (the in-memory `groups` array won't include it until we reload).
@@ -7117,6 +7131,7 @@ function setActiveMonopadTab(tab) {
 
     $(".monopad-panel-content").removeClass("active");
     $(`.monopad-panel-content[data-panel="${tab}"]`).addClass("active");
+    if (tab === "settings") refreshSavesPanel();
 }
 
 // ── Trial-prep info modal ───────────────────────────────────────────────────
@@ -10569,6 +10584,8 @@ $(".monopad-icon").on("mouseenter", function () {
             if (statusEl) statusEl.textContent = "All skills un-owned.";
         });
 
+        bindSavesPanel();
+
         $("#dangan_reset_day_counter").on("click", async function () {
             const statusEl = document.getElementById("dangan_reset_day_counter_status");
             const confirmed = await openMonopadConfirmDialog({
@@ -10668,6 +10685,7 @@ $(".monopad-icon").on("mouseenter", function () {
         });
 
 loadSettings();
+migrateSavesIfNeeded();
 ensureTimeTrackerState();
 // Restore Investigation Mode from the persisted flag so it survives refreshes;
 // renderTimeTrackerUi + applyDynamicTheme below pick it up.
@@ -11805,6 +11823,9 @@ STATEMENT: <third statement>`;
         // Suppress VFX/SFX for the duration of the init + a grace period so the expressions
         // that fire as ST re-renders the chat don't play sounds — then lift automatically.
         eventSource.on(event_types.CHAT_CHANGED, () => {
+            // Load the chat's save first; the trial and overworld code below
+            // read story state.
+            try { syncSaveWithCurrentChat(); } catch (e) { console.warn('[Dangan][Saves] sync failed:', e); }
             setVfxGcpLoadSuppressed(true);
             setVfxGcpGroupActive(false); // reset until new chat's GCP init completes
             try { renderMoveToPanel(); renderMinimap(); } catch (e) { console.warn('[Dangan][moveto-panel] render failed:', e); }
@@ -12590,26 +12611,305 @@ function setTitleOptionSetting(key, value) {
     if (key === "monomonoBgmVolume" && shopTrackAudio) shopTrackAudio.volume = Number(value) / 100;
 }
 
-// Fresh save for NEW GAME: the same resets the Monopad's Progression buttons
-// run, plus the roster, Truth Bullets, Monocoins and room placement.
-function startFreshSave() {
+// ── Save files ────────────────────────────────────────────────────────────────
+// Story state is swapped in and out of the settings object by core/saves.
+// After a swap, everything that cached the old state in memory reloads here.
+
+const saveStore = createSaveStore({
+    getRoot: () => (extension_settings[extensionName] ??= {}),
+    defaults: defaultSettings,
+});
+
+function migrateSavesIfNeeded() {
+    const groupId = getMonopadSetting("singleChatGroupId");
+    const single = !!getMonopadSetting("singleChatOverworldEnabled") && !!groupId;
+    const created = saveStore.migrateIfNeeded({
+        mode: single ? SAVE_MODES.SINGLE : SAVE_MODES.MULTI,
+        groupIds: single ? [groupId] : [],
+    });
+    if (created) saveSettingsDebounced();
+}
+
+function reloadStoryStateFromSettings() {
     const root = extension_settings[extensionName] ??= {};
-    rewards?.resetProgression?.({ clearEquippedSkills: true });
-    resetDayCounter({ source: "new_game" });
-    setCurrentChapterIndex(0);
-    clearAllTruthBullets();
-    root.introducedCharacters = {};
-    root.trialRoster = [];
-    root.inventory ??= {};
-    root.inventory.monocoins = 0;
-    if (root.overworld?.characters) root.overworld.characters = {};
+
     characters.clear();
-    saveCharacters();
-    saveSettingsDebounced();
-    try { socialPanelController?.renderSocialPanel?.(); } catch (_) {}
+    loadCharacters();
+    try { reloadTruthBullets(); } catch (e) { console.warn("[Dangan][Saves] truth reload failed:", e); }
+
+    // Markers already handled belong to the save they were handled in.
+    processedTruthSignatures.clear();
+    processedInvestigationSignatures.clear();
+    processedMonokumaAnnouncementSignatures.clear();
+    processedTrialStartSignatures.clear();
+    processedGiftMessageSignatures.clear();
+    pendingGiftDeliveryQueue = [];
+    recentLocationMentions = [];
+
+    const wasInvestigating = investigationUnderway;
+    ensureTimeTrackerState();
+    investigationUnderway = !!root.investigationUnderway;
+    phaseHistory.clear();
+    if (wasInvestigating !== investigationUnderway) {
+        investigationStartController.setPresetToggle(investigationUnderway);
+    }
+    renderTimeTrackerUi();
+    applyTimeContextToGeneration();
+    applyDynamicTheme();
+
+    chaptersActiveIdx = Number(root.chapterIndex || 0);
+    updateChapterDisplay();
+    try { if (document.getElementById("chapters-body")) renderChaptersPanel(); } catch (_) {}
+
+    try { itemsPanelController?.loadInventoryState?.(); } catch (_) {}
     try { itemsPanelController?.renderSkillsItemsPanel?.(); } catch (_) {}
+    try { rewards?.renderProgressionUi?.(); } catch (_) {}
+    try { socialPanelController?.renderSocialPanel?.(); } catch (_) {}
     try { overworldSceneController?.render?.(); } catch (_) {}
-    try { _minimapSig = null; renderMinimap(); } catch (_) {}
+    _minimapCharPositions.clear();
+    _minimapCharRotations.clear();
+    try { _minimapSig = null; renderMinimap(); renderMoveToPanel(); updateCurrentRoomDisplay(); syncRoomContextPrompt(); } catch (_) {}
+    try { trialManager?.onChatChanged?.(); } catch (_) {}
+    refreshSavesPanel();
+}
+
+// Loads a save. The play style follows the save, so a One Main Chat save
+// turns Single-Chat Overworld on and a Several Chats save turns it off.
+function switchToSave(id, { announce = true } = {}) {
+    if (!saveStore.activate(id)) return false;
+    const save = saveStore.getActive();
+    saveSettingsDebounced();
+    reloadStoryStateFromSettings();
+    setTitleToggleSetting("singleChatOverworldEnabled", save.mode === SAVE_MODES.SINGLE);
+    playCurrentPhaseTrack();
+    if (announce) notify({ title: "SAVE LOADED", message: `${save.name} · ${getCurrentStatusLine()}` });
+    return true;
+}
+
+// Opening a chat that belongs to another save loads that save. Other chats
+// keep whatever save is loaded, so side chats and trial chats share it.
+function syncSaveWithCurrentChat() {
+    const ctx = window.SillyTavern?.getContext?.();
+    const groupId = ctx?.groupId ?? ctx?.group_id;
+    const owner = saveStore.findByGroupId(groupId);
+    if (owner && owner.id !== saveStore.getActiveId()) switchToSave(owner.id);
+}
+
+// After loading a save by hand, don't leave the player typing into a story
+// chat that belongs to a different save.
+async function leaveChatOwnedByOtherSave() {
+    const ctx = window.SillyTavern?.getContext?.();
+    const owner = saveStore.findByGroupId(ctx?.groupId ?? ctx?.group_id);
+    if (!owner || owner.id === saveStore.getActiveId()) return;
+    try {
+        await executeSlashCommandsWithOptions("/closechat");
+    } catch (e) {
+        console.warn("[Dangan][Saves] couldn't close the other save's chat:", e);
+    }
+}
+
+function bindGroupToActiveSave(groupId) {
+    const active = saveStore.getActiveId();
+    if (active && saveStore.bindGroup(active, groupId)) saveSettingsDebounced();
+}
+
+function describeSave(save) {
+    const s = save.summary || {};
+    const phase = s.investigation ? "INVESTIGATION" : (s.night ? "NIGHTTIME" : "DAYTIME");
+    const bullets = s.truthBulletCount === 1 ? "1 TRUTH BULLET" : `${s.truthBulletCount || 0} TRUTH BULLETS`;
+    return [
+        save.mode === SAVE_MODES.SINGLE ? "ONE MAIN CHAT" : "SEVERAL CHATS",
+        getChapterJournalLabel(s.chapterIndex || 0),
+        `DAY ${s.day || 1}`,
+        phase,
+        bullets,
+    ].join(" · ");
+}
+
+function setSavesStatus(text) {
+    const el = document.getElementById("dangan_saves_status");
+    if (el) el.textContent = text || "";
+}
+
+function refreshSavesPanel() {
+    const listEl = document.getElementById("dangan_saves_list");
+    if (!listEl) return;
+    const saves = saveStore.list();
+    listEl.replaceChildren(...saves.map((save) => {
+        const row = document.createElement("div");
+        row.className = `dangan-save-row${save.active ? " is-active" : ""}`;
+        row.dataset.saveId = save.id;
+
+        const main = document.createElement("div");
+        main.className = "dangan-save-main";
+        const name = document.createElement("div");
+        name.className = "dangan-save-name";
+        name.textContent = save.name;
+        if (save.active) {
+            const badge = document.createElement("span");
+            badge.className = "dangan-save-badge";
+            badge.textContent = "LOADED";
+            name.appendChild(badge);
+        }
+        const meta = document.createElement("div");
+        meta.className = "dangan-save-meta";
+        meta.textContent = describeSave(save);
+        main.append(name, meta);
+        if (save.summary?.rosterNames?.length) {
+            const roster = document.createElement("div");
+            roster.className = "dangan-save-roster";
+            roster.textContent = save.summary.rosterNames.join(", ");
+            main.appendChild(roster);
+        }
+
+        const actions = document.createElement("div");
+        actions.className = "dangan-save-actions";
+        const buttons = save.active
+            ? [["rename", "RENAME"], ["duplicate", "COPY"], ["export", "EXPORT"]]
+            : [["load", "LOAD"], ["rename", "RENAME"], ["duplicate", "COPY"], ["export", "EXPORT"], ["delete", "DELETE"]];
+        for (const [action, label] of buttons) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "settings-small-button";
+            btn.dataset.saveAction = action;
+            btn.textContent = label;
+            actions.appendChild(btn);
+        }
+        row.append(main, actions);
+        return row;
+    }));
+}
+
+function startSaveRename(row, save) {
+    const nameEl = row.querySelector(".dangan-save-name");
+    if (!nameEl || row.querySelector(".dangan-save-rename")) return;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "settings-input dangan-save-rename";
+    input.value = save.name;
+    input.maxLength = 80;
+    nameEl.replaceWith(input);
+    input.focus();
+    input.select();
+    let done = false;
+    const finish = (commit) => {
+        if (done) return;
+        done = true;
+        if (commit && saveStore.rename(save.id, input.value)) saveSettingsDebounced();
+        refreshSavesPanel();
+    };
+    input.addEventListener("keydown", (event) => {
+        event.stopPropagation();
+        if (event.key === "Enter") finish(true);
+        if (event.key === "Escape") finish(false);
+    });
+    input.addEventListener("blur", () => finish(true));
+}
+
+function downloadSaveFile(save) {
+    const data = saveStore.exportSave(save.id);
+    if (!data) return;
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${save.name.replace(/[^\w\- ]+/g, "").trim() || "save"}.dangan-save.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function runSaveAction(action, id, row) {
+    const save = saveStore.get(id);
+    if (!save) return;
+    switch (action) {
+        case "load": {
+            const accepted = await openMonopadConfirmDialog({
+                title: "LOAD SAVE",
+                message: `Load "${save.name}"? Your current save is kept and can be loaded again from here.`,
+                confirmLabel: "LOAD",
+                cancelLabel: "CANCEL",
+            });
+            if (!accepted) return;
+            switchToSave(id);
+            if (save.mode === SAVE_MODES.SINGLE && save.groupIds?.[0]) {
+                try { await openGroupById(save.groupIds[0]); } catch (e) { console.warn("[Dangan][Saves] couldn't open the save's chat:", e); }
+            }
+            await leaveChatOwnedByOtherSave();
+            setSavesStatus(`Loaded ${save.name}.`);
+            break;
+        }
+        case "rename":
+            startSaveRename(row, save);
+            break;
+        case "duplicate": {
+            const copy = saveStore.duplicate(id);
+            saveSettingsDebounced();
+            refreshSavesPanel();
+            setSavesStatus(`Made ${copy.name}. Copies are Several Chats saves.`);
+            break;
+        }
+        case "export":
+            downloadSaveFile(save);
+            setSavesStatus(`Exported ${save.name}.`);
+            break;
+        case "delete": {
+            const accepted = await openMonopadConfirmDialog({
+                title: "DELETE SAVE",
+                message: `Delete "${save.name}" for good? Its classmates, trust, Truth Bullets and progress are erased. Your chats are not deleted. Export it first if you might want it back.`,
+                confirmLabel: "DELETE",
+                cancelLabel: "CANCEL",
+            });
+            if (!accepted) return;
+            saveStore.remove(id);
+            saveSettingsDebounced();
+            refreshSavesPanel();
+            setSavesStatus(`Deleted ${save.name}.`);
+            break;
+        }
+    }
+}
+
+function bindSavesPanel() {
+    $(document).on("click", "#dangan_saves_list [data-save-action]", function () {
+        const row = this.closest(".dangan-save-row");
+        void runSaveAction(this.dataset.saveAction, row?.dataset.saveId, row);
+    });
+    $(document).on("click", "#dangan_save_new", async () => {
+        const accepted = await openMonopadConfirmDialog({
+            title: "NEW EMPTY SAVE",
+            message: "Start an empty Several Chats save and load it? Your current save is kept. For a guided start, use NEW GAME on the title screen instead.",
+            confirmLabel: "CREATE",
+            cancelLabel: "CANCEL",
+        });
+        if (!accepted) return;
+        const save = startFreshSave({ name: "Killing Game", mode: SAVE_MODES.MULTI });
+        await leaveChatOwnedByOtherSave();
+        setSavesStatus(`Created and loaded ${save.name}.`);
+    });
+    $(document).on("click", "#dangan_save_import", () => document.getElementById("dangan_save_import_file")?.click());
+    $(document).on("change", "#dangan_save_import_file", async function () {
+        const file = this.files?.[0];
+        this.value = "";
+        if (!file) return;
+        try {
+            const save = saveStore.importSave(JSON.parse(await file.text()));
+            saveSettingsDebounced();
+            refreshSavesPanel();
+            setSavesStatus(`Imported ${save.name}. Press LOAD to play it.`);
+        } catch (e) {
+            setSavesStatus(e?.message || "Couldn't read that file.");
+        }
+    });
+    refreshSavesPanel();
+}
+
+// NEW GAME's "new save": a blank save, loaded straight away.
+function startFreshSave({ name, mode }) {
+    const save = saveStore.create({ name, mode });
+    switchToSave(save.id, { announce: false });
+    return save;
 }
 
 function applyTitleScreenRoster(roster, { pruneOthers }) {
@@ -12663,7 +12963,13 @@ async function createStoryGroupChat(name, memberNames) {
 }
 
 async function finishTitleScreenNewGame({ fresh, mode, groupName, groupMembers, roster, persona }) {
-    if (fresh) startFreshSave();
+    const saveMode = mode === "single" ? SAVE_MODES.SINGLE : SAVE_MODES.MULTI;
+    if (fresh) {
+        startFreshSave({ name: mode === "single" ? groupName : "Killing Game", mode: saveMode });
+    } else {
+        const active = saveStore.getActive();
+        if (active) active.mode = saveMode;
+    }
     applyTitleScreenRoster(roster, { pruneOthers: !fresh });
     try {
         await setTitleScreenPersona(persona);
@@ -12673,18 +12979,63 @@ async function finishTitleScreenNewGame({ fresh, mode, groupName, groupMembers, 
     if (mode === "single") {
         const groupId = await createStoryGroupChat(groupName, groupMembers);
         setMonopadSetting("singleChatGroupId", groupId);
+        bindGroupToActiveSave(groupId);
         setTitleToggleSetting("singleChatOverworldEnabled", true);
     } else {
         setTitleToggleSetting("singleChatOverworldEnabled", false);
+        await leaveChatOwnedByOtherSave();
     }
+    saveStore.touchActive();
+    refreshSavesPanel();
     onboardingState?.markWelcomeSeen?.();
     return {
         afterClose: mode === "single" ? null : () => openMonopadTab("map"),
     };
 }
 
+function listTitleScreenSaves() {
+    const avatars = new Map(getImportedCharacterCards().map((c) => [normalizeName(c.name), c.avatar]));
+    return saveStore.list().map((save) => {
+        const names = save.summary?.rosterNames || [];
+        return {
+            kind: "save",
+            id: save.id,
+            title: save.name,
+            chip: save.mode === SAVE_MODES.SINGLE ? "ONE MAIN CHAT" : "SEVERAL CHATS",
+            chatFile: describeSave(save).split(" · ").slice(1).join(" · "),
+            lastMessage: names.join(", "),
+            // The loaded save is being played right now.
+            lastDate: save.active ? Date.now() : save.updatedAt,
+            memberNames: names,
+            avatars: names.map((n) => avatars.get(normalizeName(n))).filter(Boolean).map(avatarThumbUrl),
+            current: save.active,
+        };
+    });
+}
+
+// One Main Chat saves open their story chat; Several Chats saves open the
+// Monopad map, the same place NEW GAME leaves you.
+async function openTitleScreenSave(row) {
+    const save = saveStore.get(row?.id);
+    if (!save) return;
+    switchToSave(save.id);
+    const groupId = save.mode === SAVE_MODES.SINGLE ? save.groupIds?.[0] : "";
+    if (groupId) {
+        try {
+            await openGroupById(groupId);
+            return;
+        } catch (e) {
+            console.warn("[Dangan][Saves] couldn't open the save's chat:", e);
+        }
+    }
+    await leaveChatOwnedByOtherSave();
+    openMonopadTab("map");
+}
+
 function buildTitleServices() {
     return {
+        listSaves: listTitleScreenSaves,
+        openSave: openTitleScreenSave,
         listChats: listTitleScreenChats,
         openChat: openTitleScreenChat,
         getCandidates: getTitleScreenCandidates,
@@ -14288,6 +14639,8 @@ function renderMoveToPanel() {
         // system creates lazily. Re-tick keeps the label correct once the
         // wrapper materialises and once mapPanelController has its pins.
         try { updateCurrentRoomDisplay(); } catch (e) { console.warn('[Dangan][current-room] bootstrap render failed:', e); }
+        // The Phase HUD moves under the same wrapper once it exists.
+        try { if (!document.querySelector('#dangan-hud-topright > #dangan-phase-hud')) refreshPhaseHud(); } catch (e) { console.warn('[Dangan][phase-hud] bootstrap render failed:', e); }
         elapsed += STEP;
         if (elapsed < DURATION) setTimeout(tick, STEP);
     };

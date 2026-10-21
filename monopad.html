@@ -759,7 +759,7 @@
                 <div class="settings-item settings-item-stack">
                     <span class="settings-label">PHASE HUD</span>
                     <button class="settings-toggle on" data-setting="phaseHudEnabled"></button>
-                    <div class="settings-note">Show the chip at the top of the screen with the chapter, day and phase. Click it for what to do next, to end an investigation, or to undo a phase change.</div>
+                    <div class="settings-note">Show the day and phase under the level bar. Click it for what to do next, to end an investigation, or to undo a phase change.</div>
                 </div>
 
                 <div class="settings-item settings-item-stack">
@@ -1113,6 +1113,21 @@
                         <button id="dangan_configure_executions" class="settings-small-button" type="button">CONFIGURE EXECUTIONS</button>
                     </div>
                     <div class="settings-note">Create execution cinematics for <code>/execute name=&lt;name&gt;</code>. Upload an MP4 or build a cinematic with custom images and audio. Marks the character dead on completion.</div>
+                </div>
+            </section>
+
+            <!-- SAVES -->
+            <section class="settings-section">
+                <div class="settings-section-title">SAVES</div>
+                <div class="settings-item settings-item-stack">
+                    <div class="settings-note">Each save keeps its own classmates, trust, Truth Bullets, chapter, day, Monocoins, items and level. One Main Chat saves load by themselves when you open their chat. Settings and music are shared by every save.</div>
+                    <div id="dangan_saves_list" class="dangan-saves-list"></div>
+                    <div class="settings-ai-actions">
+                        <button id="dangan_save_new" class="settings-small-button" type="button">NEW EMPTY SAVE</button>
+                        <button id="dangan_save_import" class="settings-small-button" type="button">IMPORT FILE</button>
+                        <input id="dangan_save_import_file" type="file" accept=".json,application/json" hidden />
+                        <span id="dangan_saves_status" class="settings-note"></span>
+                    </div>
                 </div>
             </section>
 

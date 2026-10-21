@@ -31,23 +31,30 @@ Alternatively, install directly from SillyTavern by accessing the extensions tab
 
 ### Title Screen
 SillyTavern opens on a Trigger Happy Havoc-style title screen. Press any key or click to start, then pick from the menu (arrow keys, Enter, Escape/BACK all work):
-- **NEW GAME:** a guided setup. If you have saved progress it first asks whether to **START FRESH** (erases roster, trust, Truth Bullets, chapter, day, level/skill points, Monocoins and introductions) or **KEEP PROGRESS**. Then:
+- **NEW GAME:** a guided setup. If you have progress it first asks whether to start a **NEW SAVE** (your current save is kept and can be loaded again) or **KEEP CURRENT SAVE**. Then:
   1. Choose a play style: **Several Chats** or **One Main Chat**.
   2. One Main Chat only: name the story chat and pick its members. The group chat is created for you and Single-Chat Overworld is turned on.
   3. Class roster: tick your classmates, set each one's Ultimate, and choose your persona.
   4. Review and **BEGIN**.
-- **CONTINUE:** pick any saved chat to resume, newest first, with avatars, a last-message preview, message count and time. Search by name or message, or filter by one-on-one / group.
+- **CONTINUE:** the **SAVES** tab lists your saves with their chapter, day, Truth Bullets and classmates. Picking a One Main Chat save opens its story chat; picking a Several Chats save opens the Monopad map. **ALL CHATS** lists every chat, newest first, with avatars, a last-message preview, message count and time. Search by name or message, or filter by one-on-one / group.
 - **OPTIONS:** the main audio, display and gameplay settings in the title screen's own style. Changes save immediately; **ALL SETTINGS (MONOPAD)** opens the full list.
 
 Assign music under BGM Tracks → Phases → Title. Turn the screen off with the **Title Screen** setting, reopen it with `/title`, or use **Return to Title** in Monopad Settings → Display.
 
+### Save Files
+Each save keeps its own story: classmates and trust, Truth Bullets, chapter, day and phase, Monocoins, items, skills and level, introductions, journal and trial state. Settings, music, cinematics and custom item definitions are shared by every save.
+- **One Main Chat** saves belong to their story chat (and any Class Trial chats started from it). Opening that chat loads the save by itself.
+- **Several Chats** saves are named slots. Chats that don't belong to a save keep whichever save is loaded.
+- Manage saves in Monopad Settings → **SAVES**: load, rename, copy, delete, export to a file and import from one. Loading a save switches Single-Chat Overworld to match its play style.
+- Updating from an older version wraps your existing progress into a save called **Imported Save**, so nothing is lost.
+
 ### Phase HUD
-A small chip at the top of the screen shows where the story is, for example `CHAPTER 2 · DAY 4 · INVESTIGATION`. Click it to see what usually comes next and the actions for the current phase:
+A small readout under the chapter title and level bar at the top right shows where the story is, for example `DAY 4 · INVESTIGATION`. Click it to see what usually comes next and the actions for the current phase:
 - **End Investigation:** go back to daily life without starting a trial. Your Truth Bullets are kept.
 - **Start Class Trial**, **Pass Time**, **Sleep** and **Start Investigation**, each with a confirmation.
 - **Undo:** reverses the last phase change, whether you made it or the story did.
 
-When the story starts an investigation on its own, a toast offers **UNDO** for a few seconds. Turn the chip off under Settings → Display → **Phase HUD**.
+When the story starts an investigation on its own, a toast offers **UNDO** for a few seconds. Turn the readout off under Settings → Display → **Phase HUD**.
 
 ### Character Introductions
 Character Introductions takes a character's `neutral` sprite and renders them on an animated background, grabbing their `name` and `ultimate` values. Commenced through the `/introduce` command.

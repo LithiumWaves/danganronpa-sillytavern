@@ -25,6 +25,12 @@ function run() {
     assert(filterChats(rows, { query: "TRIAL" })[0].chatFile === "b", "searches previews case-insensitively");
     assert(filterChats(rows, { query: "kyoko", kind: "char" }).length === 1, "combines query and kind");
 
+    const withSaves = [...rows, { kind: "save", title: "Hope's Peak", chatFile: "CHAPTER 1", lastMessage: "Kyoko", lastDate: 50, memberNames: ["Kyoko"] }];
+    assert(filterChats(withSaves, { kind: "saves" }).length === 1, "saves tab lists only saves");
+    assert(filterChats(withSaves, { kind: "all" }).length === 3, "all chats leaves saves out");
+    assert(filterChats(withSaves, { kind: "saves", query: "kyoko" }).length === 1, "searches save rosters");
+    assert(filterChats(withSaves, { kind: "group" }).length === 1, "kind filters still work");
+
     const now = 10 * 24 * 3600 * 1000;
     assert(formatRelativeTime(now - 30 * 1000, now) === "just now", "just now");
     assert(formatRelativeTime(now - 5 * 60 * 1000, now) === "5m ago", "minutes");

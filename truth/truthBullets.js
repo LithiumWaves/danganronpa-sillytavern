@@ -636,6 +636,15 @@ export function clearAllTruthBullets() {
     renderTruthBullets();
 }
 
+// Re-reads the lists from settings after a different save was loaded.
+export function reloadTruthBullets() {
+    truthBullets.length = 0;
+    archivedTruthBullets.length = 0;
+    processedTruthSignatures.clear();
+    loadTruthBullets();
+    renderTruthBullets();
+}
+
 export function setNextTruthBulletSfxVariant(variant = "") {
     const key = String(variant || "").trim().toLowerCase();
     forcedTruthBulletSfxVariant = key === "udg" ? "udg" : "thh";
