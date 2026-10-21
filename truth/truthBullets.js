@@ -250,7 +250,7 @@ function addTruthBullet(title, description = "", { grantMonocoins = true, grantX
     if (truthBullets.some(tb => tb.title === title)) return false;
 
     const bullet = {
-        id: `tb_${Date.now()}`,
+        id: `tb_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         title,
         locationId: toLocationId(title),
         description,
@@ -634,6 +634,23 @@ export function clearAllTruthBullets() {
     processedTruthSignatures.clear();
     saveTruthBullets();
     renderTruthBullets();
+}
+
+// Removes a bullet from either list, e.g. when the message that found it was
+// swiped away. Returns the removed bullet, or null.
+export function removeTruthBulletById(id) {
+    for (const list of [truthBullets, archivedTruthBullets]) {
+        const index = list.findIndex(tb => tb.id === id);
+        if (index === -1) continue;
+        const [bullet] = list.splice(index, 1);
+        processedTruthSignatures.delete(`${bullet.title}||${bullet.description || ""}`);
+        saveTruthBullets();
+        deps.removePin?.(bullet.locationId);
+        $(".truth-details").removeAttr("style").empty();
+        renderTruthBullets();
+        return bullet;
+    }
+    return null;
 }
 
 // Re-reads the lists from settings after a different save was loaded.

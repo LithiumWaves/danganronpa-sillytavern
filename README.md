@@ -103,6 +103,9 @@ The extension scans assistant messages for these patterns:
 - `V3C| BODY_DISCOVERY` (plays a separate static/shake body discovery cutscene using `assets/sfx/etc/despairnoise.mp3`)
 - `V3C| DAY_ANNOUN`, `V3C| NIGHT_ANNOUN`, `V3C| BDA` (play Monokuma's daytime, nighttime or body discovery announcement; they don't change the day or phase)
 
+### Swipes, deletes and edits
+What a message did is remembered per save: Truth Bullets, trust changes, the Monocoins, Trust Fragments and XP that came with them, and an investigation it started. Swiping that message away, deleting it, or editing its markers out takes all of that back, and a toast lists what was undone. Swiping back to it applies it again. Edits that keep the markers change nothing. Gift reactions aren't rolled back yet.
+
 ### Examples
 ```text
 V3C| TB: Bloody Handprint || Found on the west hall window.

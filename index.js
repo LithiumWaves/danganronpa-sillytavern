@@ -7,9 +7,10 @@ import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.j
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../../slash-commands/SlashCommandArgument.js';
 import { SlashCommandEnumValue } from '../../../slash-commands/SlashCommandEnumValue.js';
-import { initTruthBullets, handleTruthBullet, setNextTruthBulletSfxVariant, getTruthBulletByLocationId, showTruthBulletByLocationId, showTruthBulletById, getTruthBullets, clearAllTruthBullets, reloadTruthBullets } from "./truth/truthBullets.js";
+import { initTruthBullets, handleTruthBullet, setNextTruthBulletSfxVariant, getTruthBulletByLocationId, showTruthBulletByLocationId, showTruthBulletById, getTruthBullets, clearAllTruthBullets, reloadTruthBullets, removeTruthBulletById } from "./truth/truthBullets.js";
 import { initTrustAnimations } from "./trust/trustAnimations.js";
 import { increaseTrust, decreaseTrust } from "./trust/trustAPI.js";
+import { clampTrust, nextTrustDown, nextTrustUp } from "./trust/trustState.js";
 import { createItemsPanelController, SKILL_PARAM_MAP, applySkillModifier } from "./items/itemsPanel.js";
 import { createRewardSystem } from "./items/rewardSystem.js";
 import { createSocialPanelController } from "./social/socialPanel.js";
@@ -28,6 +29,7 @@ import { maybeShowTitleScreen, showTitleScreen } from "./core/title/titleScreen.
 import { createPhaseHistory, derivePhase, getNextStepHint, getPhaseActions, getStatusLine } from "./core/phase/phaseState.js";
 import { notify } from "./core/ui/notify.js";
 import { SAVE_MODES, createSaveStore } from "./core/saves/saveStore.js";
+import { createEffectLedger, emptyEffects, hasEffects, messageIdentity } from "./core/ledger/effectLedger.js";
 import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers } from "./monokuma/announcementController.js";
 import { createClassTrialMenuController } from "./trial/menu/classTrialMenu.js";
 import { createTrialManager, TrialPhases } from "./trial/trialManager.js";
@@ -6074,6 +6076,138 @@ function waitForSfx(key, callback, tries = 20) {
     setTimeout(() => waitForSfx(key, callback, tries - 1), 50);
 }
 
+// ── Message effects ledger ────────────────────────────────────────────────────
+// Each message's Truth Bullets, trust changes, rewards and investigation start
+// are recorded (core/ledger) so swiping, deleting or editing the message takes
+// them back. Trust signatures name the message (speaker, swipe, text hash)
+// rather than its rendered text, so they survive re-renders and deletions
+// above it. A message still being generated is named by its position until
+// it finishes.
+
+const effectLedger = createEffectLedger({
+    getStore: () => ((extension_settings[extensionName] ??= {}).effectLedger ??= {}),
+});
+let generationInProgress = false;
+
+function getLedgerRefForElement(msgEl) {
+    const ctx = window.SillyTavern?.getContext?.();
+    const mesId = Number(msgEl?.getAttribute?.("mesid"));
+    const chat = ctx?.chat;
+    if (!Array.isArray(chat) || !Number.isInteger(mesId) || mesId < 0 || !chat[mesId]) return null;
+    const chatId = String(ctx.getCurrentChatId?.() ?? ctx.chatId ?? "");
+    if (!chatId) return null;
+    return {
+        chatId,
+        mesId,
+        message: chat[mesId],
+        pending: generationInProgress && mesId === chat.length - 1,
+    };
+}
+
+function trustSignature(direction, key, ref) {
+    if (ref.pending) return `${direction}||${key}||pos:${ref.chatId}|${ref.mesId}|${Number(ref.message.swipe_id ?? 0)}`;
+    return `${direction}||${key}||id:${messageIdentity(ref.message)}`;
+}
+
+function recordMessageEffects(ref, fx, totalsBefore) {
+    if (!ref) return;
+    const after = rewards?.getRewardTotals?.();
+    if (totalsBefore && after) {
+        fx.coins = Math.max(0, after.monocoins - totalsBefore.monocoins);
+        fx.fragments = Math.max(0, after.trustFragments - totalsBefore.trustFragments);
+        fx.xp = Math.max(0, after.totalXp - totalsBefore.totalXp);
+    }
+    if (!hasEffects(fx)) return;
+    effectLedger.record({ chatId: ref.chatId, mesId: ref.mesId, message: ref.message, effects: fx, pending: ref.pending });
+    saveCharacters();
+    saveSettingsDebounced();
+}
+
+// Trust signatures follow the entry's identity after it finishes generating
+// or is edited without touching its markers.
+function rekeyTrustSignatures(entry) {
+    for (const item of entry.trust) {
+        const char = characters.get(item.key);
+        const next = `${item.dir > 0 ? "UP" : "DOWN"}||${item.key}||id:${entry.identity}`;
+        if (char?.trustHistory?.has(item.sig)) {
+            char.trustHistory.delete(item.sig);
+            char.trustHistory.add(next);
+        }
+        item.sig = next;
+    }
+}
+
+function revertMessageEffects(entry) {
+    const undone = [];
+    for (const item of entry.truth) {
+        processedTruthSignatures.delete(item.sig);
+        const bullet = removeTruthBulletById(item.id);
+        if (bullet) undone.push(`Truth Bullet "${bullet.title}"`);
+    }
+    for (const item of [...entry.trust].reverse()) {
+        const char = characters.get(item.key);
+        if (!char) continue;
+        char.trustHistory?.delete(item.sig);
+        if (item.legacySig) char.trustHistory?.delete(item.legacySig);
+        if (item.before === item.after) continue;
+        const current = char.trustLevel ?? item.after;
+        char.trustLevel = current === item.after
+            ? item.before
+            : clampTrust(item.dir > 0 ? nextTrustDown(current) : nextTrustUp(current));
+        undone.push(`${char.name} trust ${item.dir > 0 ? "up" : "down"}`);
+    }
+    if (entry.coins) {
+        deductMonocoins(entry.coins, "message removed");
+        undone.push(`${entry.coins} Monocoins`);
+    }
+    if (entry.fragments) rewards?.revokeTrustFragments?.(entry.fragments, "message removed");
+    if (entry.xp) {
+        rewards?.revokeXp?.(entry.xp, "message removed");
+        undone.push(`${entry.xp} XP`);
+    }
+    if (entry.investigation && investigationUnderway && phaseHistory.peek()?.label === "Start investigation") {
+        undoLastPhaseChange();
+        undone.push("the investigation start");
+    }
+    saveCharacters();
+    try { socialPanelController?.renderSocialPanel?.(); } catch (_) {}
+    try { window.refreshActiveCharacterUI?.(); } catch (_) {}
+    return undone;
+}
+
+// Runs after a swipe, delete or edit: anything recorded for a message that's
+// gone or changed is taken back.
+function reconcileMessageEffects() {
+    if (generationInProgress) return;
+    const ctx = window.SillyTavern?.getContext?.();
+    const chatId = String(ctx?.getCurrentChatId?.() ?? ctx?.chatId ?? "");
+    if (!chatId || !Array.isArray(ctx?.chat)) return;
+
+    const { revert, rekeyed } = effectLedger.reconcile(chatId, ctx.chat);
+    rekeyed.forEach(({ entry }) => rekeyTrustSignatures(entry));
+    const undone = revert.flatMap(revertMessageEffects);
+    if (revert.length || rekeyed.length) {
+        saveCharacters();
+        saveSettingsDebounced();
+    }
+    if (undone.length) {
+        notify({ title: "MESSAGE CHANGED", message: `Took back: ${undone.join(", ")}.` });
+    }
+}
+
+function onGenerationFinished() {
+    generationInProgress = false;
+    const ctx = window.SillyTavern?.getContext?.();
+    const chatId = String(ctx?.getCurrentChatId?.() ?? ctx?.chatId ?? "");
+    if (!chatId || !Array.isArray(ctx?.chat)) return;
+    const finished = effectLedger.finalize(chatId, ctx.chat);
+    finished.forEach(rekeyTrustSignatures);
+    if (finished.length) {
+        saveCharacters();
+        saveSettingsDebounced();
+    }
+}
+
 function startV3CObserver() {
     const chat = document.getElementById("chat");
     if (!chat) return;
@@ -6100,6 +6234,12 @@ function processAllMessages() {
         injectPersistedGiftReactionForMessage(msgEl, messageSignature);
         void tryResolvePendingGiftForMessage(msgEl, rawText);
 
+        // What this message does gets recorded, so a swipe, delete or edit
+        // can take it back.
+        const ledgerRef = getLedgerRefForElement(msgEl);
+        const fx = emptyEffects();
+        const totalsBefore = rewards?.getRewardTotals?.();
+
         // ---- Truth Bullets ----
         for (const match of rawText.matchAll(TB_REGEX)) {
             const title = match[1]?.trim();
@@ -6110,7 +6250,10 @@ function processAllMessages() {
             if (processedTruthSignatures.has(signature)) continue;
 
             processedTruthSignatures.add(signature);
-            handleTruthBullet(title, description);
+            if (handleTruthBullet(title, description)) {
+                const bullet = getTruthBullets().find((tb) => tb.title === title);
+                if (bullet) fx.truth.push({ id: bullet.id, title, sig: signature });
+            }
         }
 
 // ---- Social Trust UP ----
@@ -6123,13 +6266,18 @@ for (const match of rawText.matchAll(regex)) {
     const char = characters.get(key);
     if (!char) continue;
 
-    const signature = `UP||${key}||${rawText}`;
+    const legacySignature = `UP||${key}||${rawText}`;
+    const signature = ledgerRef ? trustSignature("UP", key, ledgerRef) : legacySignature;
 
     // 🛑 Already used this message
-    if (char.trustHistory.has(signature)) continue;
+    if (char.trustHistory.has(legacySignature) || char.trustHistory.has(signature)) continue;
 
+    // The text-based signature stays as a backstop for older checks.
     char.trustHistory.add(signature);
+    char.trustHistory.add(legacySignature);
+    const trustBefore = char.trustLevel ?? 1;
     increaseTrustWithRewards(char);
+    fx.trust.push({ key, dir: 1, before: trustBefore, after: char.trustLevel ?? trustBefore, sig: signature, legacySig: legacySignature });
 }
 }
 
@@ -6142,13 +6290,17 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
     const char = characters.get(key);
     if (!char) continue;
 
-    const signature = `DOWN||${key}||${rawText}`;
+    const legacySignature = `DOWN||${key}||${rawText}`;
+    const signature = ledgerRef ? trustSignature("DOWN", key, ledgerRef) : legacySignature;
 
     // 🛑 Already used this message
-    if (char.trustHistory.has(signature)) continue;
+    if (char.trustHistory.has(legacySignature) || char.trustHistory.has(signature)) continue;
 
     char.trustHistory.add(signature);
+    char.trustHistory.add(legacySignature);
+    const trustBefore = char.trustLevel ?? 1;
     decreaseTrust(char);
+    fx.trust.push({ key, dir: -1, before: trustBefore, after: char.trustLevel ?? trustBefore, sig: signature, legacySig: legacySignature });
 }
 
         // ---- Investigation Start ----
@@ -6165,6 +6317,7 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
                 markInvestigationSignatureProcessed(signature, persistentSignature);
             }
             if (!wasInvestigating && investigationUnderway) {
+                fx.investigation = true;
                 notify({
                     title: "INVESTIGATION STARTED",
                     message: "The story started an investigation. Wrong time? Undo it.",
@@ -6174,6 +6327,8 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
                 });
             }
         });
+
+        recordMessageEffects(ledgerRef, fx, totalsBefore);
 
         // ---- Trial Start ----
         // Opens the Class Trial menu, which asks before anything starts.
@@ -11793,6 +11948,20 @@ STATEMENT: <third statement>`;
 
         eventSource.on(event_types.MESSAGE_SENT, handleMessage);
         eventSource.on(event_types.USER_MESSAGE_RENDERED, handleMessage);
+
+        // Message effects: track generations, and take back what a swiped,
+        // deleted or edited message did.
+        eventSource.on(event_types.GENERATION_STARTED, (type, _options, dryRun) => {
+            if (!dryRun && type !== "quiet") generationInProgress = true;
+        });
+        for (const done of [event_types.GENERATION_ENDED, event_types.GENERATION_STOPPED, event_types.CHARACTER_MESSAGE_RENDERED]) {
+            if (done) eventSource.on(done, () => onGenerationFinished());
+        }
+        for (const changed of [event_types.MESSAGE_SWIPED, event_types.MESSAGE_DELETED, event_types.MESSAGE_EDITED]) {
+            if (changed) eventSource.on(changed, () => {
+                try { reconcileMessageEffects(); } catch (e) { console.warn("[Dangan][Ledger] reconcile failed:", e); }
+            });
+        }
 
         // Update group chat portrait stage when a character speaks
         const handleCharacterMessage = (mesId) => {
