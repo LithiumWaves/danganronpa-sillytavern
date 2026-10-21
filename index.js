@@ -5119,9 +5119,14 @@ function queueGiftForNextReply(gift, targetName) {
     if (!gift?.id) return false;
 
     const target = String(targetName || "").trim();
+    // Only a reply that comes after this point reacts; the observer scans
+    // every message, including old ones.
+    const ctx = window.SillyTavern?.getContext?.();
     pendingGiftDeliveryQueue.push({
         ...gift,
         queuedAt: Date.now(),
+        chatId: String(ctx?.getCurrentChatId?.() ?? ""),
+        queuedAtIndex: Array.isArray(ctx?.chat) ? ctx.chat.length : 0,
         ...(target ? { targetName: target } : {}),
     });
 
@@ -5200,22 +5205,26 @@ ${getLocationPromptReference()}
     }
 }
 
+// Returns the trust change it made, for the message effects ledger.
 function applyGiftOutcome(characterName, verdict, signatureSeed) {
     const key = normalizeName(characterName);
     const char = characters.get(key);
-    if (!char) return;
+    if (!char) return null;
 
     const signature = `GIFT||${verdict}||${signatureSeed}`;
-    if (char.trustHistory?.has(signature)) return;
+    if (char.trustHistory?.has(signature)) return null;
 
     char.trustHistory ||= new Set();
     char.trustHistory.add(signature);
 
+    const before = char.trustLevel ?? 1;
     if (verdict === "SOCIAL_UP") {
         increaseTrustWithRewards(char);
     } else if (verdict === "SOCIAL_DOWN") {
         decreaseTrust(char);
     }
+    const dir = verdict === "SOCIAL_UP" ? 1 : verdict === "SOCIAL_DOWN" ? -1 : 0;
+    return { key, dir, before, after: char.trustLevel ?? before, sig: signature };
 }
 
 function injectGiftReactionBanner(msgEl, { signature, verdict, reaction, giftName, characterName, collapsed = false }) {
@@ -5282,6 +5291,9 @@ async function tryResolvePendingGiftForMessage(msgEl, rawText) {
 
     const gift = pendingGiftDeliveryQueue[0];
     if (gift?.targetName && normalizeName(gift.targetName) !== normalizeName(characterName)) return;
+    const ctx = window.SillyTavern?.getContext?.();
+    const mesId = Number(msgEl.getAttribute("mesid"));
+    if (gift?.chatId && gift.chatId === String(ctx?.getCurrentChatId?.() ?? "") && mesId < Number(gift.queuedAtIndex ?? 0)) return;
 
     const signature = buildMessageSignature(msgEl, rawText);
     if (processedGiftMessageSignatures.has(signature)) return;
@@ -5311,10 +5323,18 @@ async function tryResolvePendingGiftForMessage(msgEl, rawText) {
         ...judgement,
     });
 
-    applyGiftOutcome(characterName, reactionData.verdict, signature);
+    // Recorded against the reacting message, so swiping or deleting it
+    // takes the reaction back and hands the gift to the next reply.
+    const totalsBefore = rewards?.getRewardTotals?.();
+    const trustChange = applyGiftOutcome(characterName, reactionData.verdict, signature);
     awardXp(XP_REWARDS.giftGiven, "gift delivered");
     pendingGiftDeliveryQueue.shift();
     pendingGiftResolutionInFlight = false;
+
+    const fx = emptyEffects();
+    if (trustChange) fx.trust.push(trustChange);
+    fx.gifts.push({ gift, signature, giftName: gift.name, characterName });
+    recordMessageEffects(getLedgerRefForElement(msgEl), fx, totalsBefore);
 }
 
 // Sends a prompt through SillyTavern's Connection Manager using the given
@@ -6155,6 +6175,15 @@ function revertMessageEffects(entry) {
             ? item.before
             : clampTrust(item.dir > 0 ? nextTrustDown(current) : nextTrustUp(current));
         undone.push(`${char.name} trust ${item.dir > 0 ? "up" : "down"}`);
+    }
+    for (const item of entry.gifts || []) {
+        delete getGiftJudgementStore()[item.signature];
+        processedGiftMessageSignatures.delete(item.signature);
+        if (item.gift) pendingGiftDeliveryQueue.unshift({ ...item.gift, chatId: entry.chatId, queuedAtIndex: entry.mesId });
+        undone.push(`${item.characterName}'s reaction to ${item.giftName} (the next reply will react instead)`);
+    }
+    if (entry.gifts?.length) {
+        document.querySelectorAll(`#chat .mes[mesid="${entry.mesId}"] .dangan-gift-reaction`).forEach((el) => el.remove());
     }
     if (entry.coins) {
         deductMonocoins(entry.coins, "message removed");

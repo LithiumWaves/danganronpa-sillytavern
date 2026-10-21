@@ -15,6 +15,7 @@ function run() {
     assert(messageIdentity(msg("Kyoko", "a")) !== messageIdentity(msg("Kyoko", "a", 1)), "swipes differ");
     assert(messageIdentity(msg("Kyoko", "a")) !== messageIdentity(msg("Kyoko", "b")), "text differs");
     assert(!hasEffects(emptyEffects()) && hasEffects(effects({ coins: 5 })), "hasEffects");
+    assert(hasEffects(effects({ gifts: [{ signature: "g" }] })), "a gift reaction counts as an effect");
 
     let store = {};
     let t = 0;
@@ -30,6 +31,8 @@ function run() {
     ledger.record({ chatId: "c1", mesId: 2, message: chat[2], effects: effects({ xp: 3 }) });
     assert(Object.keys(store).length === 2, "one entry per message");
     assert(Object.values(store).find((e) => e.mesId === 2).xp === 3, "effects merge");
+    ledger.record({ chatId: "c1", mesId: 2, message: chat[2], effects: effects({ gifts: [{ signature: "g1" }] }) });
+    assert(Object.values(store).find((e) => e.mesId === 2).gifts.length === 1, "gift reactions merge into the message's entry");
 
     // Nothing changed.
     let r = ledger.reconcile("c1", chat);

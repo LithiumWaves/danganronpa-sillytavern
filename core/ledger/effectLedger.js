@@ -1,5 +1,5 @@
 // What each chat message did to the story (Truth Bullets, trust, Monocoins,
-// XP, investigation), so swiping, deleting or editing the message can take it
+// XP, gift reactions, investigation), so swiping, deleting or editing the message can take it
 // back. Entries are keyed by chat and by the message's identity: who said it,
 // which swipe, and a hash of its text. A message being generated doesn't have
 // its final text yet, so its entry is keyed by position until it finishes.
@@ -37,16 +37,17 @@ export function markerSummary(text) {
 }
 
 export function emptyEffects() {
-    return { truth: [], trust: [], coins: 0, fragments: 0, xp: 0, investigation: false };
+    return { truth: [], trust: [], gifts: [], coins: 0, fragments: 0, xp: 0, investigation: false };
 }
 
 export function hasEffects(e) {
-    return Boolean(e && (e.truth.length || e.trust.length || e.coins || e.fragments || e.xp || e.investigation));
+    return Boolean(e && (e.truth.length || e.trust.length || e.gifts?.length || e.coins || e.fragments || e.xp || e.investigation));
 }
 
 function mergeEffects(into, add) {
     into.truth.push(...add.truth);
     into.trust.push(...add.trust);
+    (into.gifts ||= []).push(...(add.gifts || []));
     into.coins += add.coins;
     into.fragments += add.fragments;
     into.xp += add.xp;

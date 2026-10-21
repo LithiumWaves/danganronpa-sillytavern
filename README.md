@@ -104,7 +104,7 @@ The extension scans assistant messages for these patterns:
 - `V3C| DAY_ANNOUN`, `V3C| NIGHT_ANNOUN`, `V3C| BDA` (play Monokuma's daytime, nighttime or body discovery announcement; they don't change the day or phase)
 
 ### Swipes, deletes and edits
-What a message did is remembered per save: Truth Bullets, trust changes, the Monocoins, Trust Fragments and XP that came with them, and an investigation it started. Swiping that message away, deleting it, or editing its markers out takes all of that back, and a toast lists what was undone. Swiping back to it applies it again. Edits that keep the markers change nothing. Gift reactions aren't rolled back yet.
+What a message did is remembered per save: Truth Bullets, trust changes, gift reactions, the Monocoins, Trust Fragments and XP that came with them, and an investigation it started. Swiping that message away, deleting it, or editing its markers out takes all of that back, and a toast lists what was undone. Swiping back to it applies it again. Edits that keep the markers change nothing. If the message held a gift reaction, the gift goes back to waiting and the next reply reacts to it instead.
 
 ### Examples
 ```text
@@ -373,7 +373,7 @@ Displays the Truth Bullet list and asks the player to select the correct one for
 ## Q&A
 - **Q: How do gifts work?**
   
-  **A: First and foremost, gifts are obtained through a gacha minigame on the MonoMono Machine, accessible through the map tab. To use them, access your inventory, select the gift and press use. The next character who sends a message in chat will receive and judge it, granting you either a rank up or down or simply staying neutral. If Sprite Click Gifts is on in Settings, clicking an overworld sprite queues a gift for that specific character instead of opening a new chat — they react the next time they speak in your main group chat. Talk to the Room and Grab Group Members still open chats when Single-Chat Overworld is off.**
+  **A: First and foremost, gifts are obtained through a gacha minigame on the MonoMono Machine, accessible through the map tab. To use them, access your inventory, select the gift and press use. The next character who replies after you use it will receive and judge it (older messages in the chat don't count), granting you either a rank up or down or simply staying neutral. If Sprite Click Gifts is on in Settings, clicking an overworld sprite queues a gift for that specific character instead of opening a new chat — they react the next time they speak in your main group chat. Talk to the Room and Grab Group Members still open chats when Single-Chat Overworld is off.**
 
 ---
 
