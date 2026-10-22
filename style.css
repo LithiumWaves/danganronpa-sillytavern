@@ -1714,8 +1714,9 @@ body.dangan-ow-single-chat #expression-wrapper {
 
 /* Right-side button column — mirror of the left column. The skewX sign flips
  * so the parallelogram leans toward the same screen edge it's pinned to, and
- * the label gets a matching counter-skew. Top values match the left column so
- * Call sits opposite Talk and Edit sits opposite Grab. */
+ * the label gets a matching counter-skew. The column starts lower than the
+ * left one: the Phase HUD chip (DAY n · DAYTIME) hangs under the top-right
+ * HUD at roughly 196–223px and would otherwise cover Call / Edit. */
 #dangan-overworld .dangan-ow-call-btn,
 #dangan-overworld .dangan-ow-edit-btn {
     left: auto;
@@ -1730,21 +1731,20 @@ body.dangan-ow-single-chat #expression-wrapper {
 #dangan-overworld .dangan-ow-edit-btn > .dangan-ow-room-btn-label {
     transform: skewX(22deg);
 }
-/* "Call to the Room" — mirrors "Talk to the Room" on the right at top:186. */
+/* "Call to the Room" — right column, first slot (clear of the Phase HUD). */
 #dangan-overworld .dangan-ow-call-btn {
-    top: 186px;
+    top: 240px;
     width: 256px;
 }
-/* "Edit Character Positions" — mirrors "Grab Group Members" on the right at
- * top:226. */
+/* "Edit Character Positions" — right column, second slot. */
 #dangan-overworld .dangan-ow-edit-btn {
-    top: 226px;
+    top: 280px;
     width: 274px;
 }
 /* Single-character room: no Talk / Grab / Call buttons exist. Edit takes
  * the top slot, still on the right side. */
 #dangan-overworld .dangan-ow-edit-btn.dangan-ow-edit-btn-solo {
-    top: 186px;
+    top: 240px;
 }
 
 /* While an overworld CG is showing (body.dangan-ow-cg-open, toggled by
@@ -1766,7 +1766,7 @@ body.dangan-ow-edit-mode #dangan-overworld .dangan-ow-room-btn:not(.dangan-ow-ed
     display: none;
 }
 body.dangan-ow-edit-mode #dangan-overworld .dangan-ow-edit-btn {
-    top: 186px;
+    top: 240px;
 }
 /* Fuller Photo Mode: fade out the surrounding HUD + chat chrome too, so the
  * room is a clean canvas with nothing but the character sprites, their edit
@@ -1794,6 +1794,13 @@ body.dangan-ow-edit-mode #top-settings-holder {
 /* #dangan-bgm-display pins its own opacity to 1 via a forwards-fill animation,
  * which beats non-!important author rules — kill the animation and force it
  * (same workaround the body.dangan-ui-hidden rule uses). */
+/* Children that opt back into pointer events (the Phase HUD chip, the room
+ * readout) would otherwise keep catching clicks while invisible — the faded
+ * Phase chip used to swallow clicks on the Save button. */
+body.dangan-ow-edit-mode #dangan-hud-topright *,
+body.dangan-ui-hidden #dangan-hud-topright * {
+    pointer-events: none !important;
+}
 body.dangan-ow-edit-mode #dangan-bgm-display {
     opacity: 0 !important;
     pointer-events: none !important;

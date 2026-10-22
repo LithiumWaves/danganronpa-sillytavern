@@ -762,9 +762,9 @@ export function createOverworldSceneController({
     function buildEditPositionsBtn(solo = false) {
         const btn = document.createElement("button");
         btn.type = "button";
-        // `solo` adds a modifier class that promotes the button to the
-        // Talk-to-Room slot (top:186px) when it's the only button on screen —
-        // otherwise it'd sit at top:266px with empty space above it.
+        // `solo` adds a modifier class that promotes the button to the first
+        // right-column slot (top:240px) when it's the only button on screen —
+        // otherwise it'd sit at top:280px with empty space above it.
         btn.className = "dangan-ow-room-btn dangan-ow-edit-btn"
             + (solo ? " dangan-ow-edit-btn-solo" : "");
         const label = document.createElement("span");
@@ -1473,8 +1473,8 @@ export function createOverworldSceneController({
         //     total >= 1 → RIGHT Edit-Positions
         //   Default (multi-chat):
         //     total >= 2 → LEFT Talk-to-Room (186) + Grab-Group (226)
-        //     total >= 1 → RIGHT Edit-Positions (226)
-        //     always    → RIGHT Call-to-Room (186)
+        //     total >= 1 → RIGHT Edit-Positions (280)
+        //     always    → RIGHT Call-to-Room (240)
         // Call always renders so the player can summon characters into an
         // empty room. Edit only when there's at least one sprite to reposition.
         const total = renderable.reduce((a, g) => a + g.members.length, 0);
