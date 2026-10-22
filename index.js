@@ -66,6 +66,8 @@ import { buildAssignedTrackCatalog, openSongPicker } from "./audio/songPicker.js
 import { createOverworldSceneController } from "./overworld/overworldScene.js";
 import { showCgByBgName, showCgPicker } from "./overworld/cgViewer.js";
 import { buildRoomContextPrompt, resolveRoomLabel, ROOM_CONTEXT_PROMPT_KEY } from "./overworld/roomContextPrompt.js";
+import { isPresenceExtensionPresent } from "./overworld/roomPresence.js";
+import { countSetupProblems, evaluateSetup } from "./core/setup/setupChecks.js";
 import { user_avatar } from "../../../personas.js";
 import { ConnectionManagerRequestService } from "../../shared.js";
 
@@ -10362,6 +10364,12 @@ $(".monopad-icon").on("mouseenter", function () {
             applyToggleSettingSideEffects(key, next);
         });
 
+        $("#dangan_open_setup_checklist").on("click", () => {
+            playSfx(sfx.click);
+            if ($panel.hasClass("open")) closeMonopadPanel();
+            setTimeout(() => openTitleScreen({ initialPanel: "setup" }), 250);
+        });
+
         $("#dangan_return_to_title").on("click", () => {
             playSfx(sfx.click);
             if ($panel.hasClass("open")) closeMonopadPanel();
@@ -13347,8 +13355,123 @@ async function openTitleScreenSave(row) {
     openMonopadTab("map");
 }
 
+// ── Setup checklist ─────────────────────────────────────────────────────────
+
+// The title screen opens while SillyTavern is still loading characters and
+// groups, so the menu's badge waits for APP_READY (or gives up after 20 s).
+const sillyTavernReady = new Promise((resolve) => {
+    try { eventSource.on(event_types.APP_READY, () => resolve(true)); } catch (_) {}
+    setTimeout(() => resolve(false), 20000);
+});
+
+const SETUP_BGM_LISTS = Object.freeze([
+    ["daytimeTracks", "Daytime"],
+    ["nighttimeTracks", "Nighttime"],
+    ["investigationTracks", "Investigation"],
+    ["trialGeneralTracks", "Class Trial"],
+]);
+
+async function gatherSetupFacts() {
+    const ctx = window.SillyTavern?.getContext?.();
+    const cards = getImportedCharacterCards();
+    // Check the class if there is one, otherwise every imported card.
+    const classNames = characters.size
+        ? [...characters.values()].map((c) => c?.name).filter(Boolean)
+        : cards.map((c) => c.name);
+    const checked = classNames.slice(0, 60);
+    const spriteResults = await Promise.all(checked.map(async (name) => [name, (await getAvailableExpressionLabels(name)).length > 0]));
+
+    const ultimateNames = characters.size ? classNames : [];
+    const ultimatesKnown = ultimateNames.filter((name) => {
+        const entry = characters.get(normalizeName(name));
+        return !!(String(entry?.ultimate || "").trim() || lookupUltimateFromLorebook(name));
+    }).length;
+
+    const bgmFiles = (await fetchBgmPaths()).length;
+    const emptyLists = SETUP_BGM_LISTS
+        .filter(([key]) => !(getMonopadSetting(key) || []).length)
+        .map(([, label]) => label);
+
+    const save = saveStore.getActive();
+    const groups = Array.isArray(ctx?.groups) ? ctx.groups : [];
+    return {
+        cards: cards.length,
+        sprites: {
+            with: spriteResults.filter(([, ok]) => ok).map(([name]) => name),
+            without: spriteResults.filter(([, ok]) => !ok).map(([name]) => name),
+        },
+        ultimates: { known: ultimatesKnown, total: ultimateNames.length },
+        singleChat: !!getMonopadSetting("singleChatOverworldEnabled"),
+        presence: isPresenceExtensionPresent(),
+        bgm: { files: bgmFiles, emptyLists },
+        markerPrompts: !!getMonopadSetting("markerPromptsEnabled"),
+        presetHasMarkers: presetHasMarkerInstructions(),
+        persona: user_avatar ? String(power_user?.personas?.[user_avatar] || ctx?.name1 || "") : "",
+        save: {
+            exists: !!save,
+            name: save?.name || "",
+            mode: save?.mode || "",
+            groupOk: (save?.groupIds || []).some((id) => groups.some((g) => String(g?.id) === String(id))),
+        },
+    };
+}
+
+async function getSetupRows() {
+    return evaluateSetup(await gatherSetupFacts());
+}
+
+// Opens one of SillyTavern's top-bar drawers (if it isn't open already).
+function openSillyTavernDrawer(drawerId) {
+    const drawer = document.getElementById(drawerId);
+    const toggle = drawer?.querySelector(".drawer-toggle");
+    if (!toggle) {
+        notify({ tone: "warn", title: "COULDN'T OPEN IT", message: "Open it from SillyTavern's top bar." });
+        return;
+    }
+    if (drawer.querySelector(".drawer-icon")?.classList.contains("closedIcon")) toggle.click();
+}
+
+function runSetupFix(fix) {
+    switch (fix) {
+        case "characters":
+            openSillyTavernDrawer("rightNavHolder");
+            document.getElementById("rm_button_characters")?.click();
+            break;
+        case "sprites":
+            openMonopadTab("settings", { section: "fx" });
+            break;
+        case "worldInfo":
+            openSillyTavernDrawer("WI-SP-button");
+            break;
+        case "extensions":
+            openSillyTavernDrawer("extensions-settings-button");
+            break;
+        case "bgm":
+            openMonopadTab("settings", { section: "audio" });
+            document.querySelector(".bgm-tracks-tab")?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+            break;
+        case "aiInstructions":
+            openMonopadTab("settings", { section: "gameplay" });
+            break;
+        case "persona":
+            openSillyTavernDrawer("persona-management-button");
+            break;
+        case "saves":
+            openMonopadTab("settings", { section: "saves" });
+            break;
+        default:
+            break;
+    }
+}
+
 function buildTitleServices() {
     return {
+        getSetupRows,
+        countSetupProblems: async () => {
+            await sillyTavernReady;
+            return countSetupProblems(await getSetupRows());
+        },
+        runSetupFix,
         listSaves: listTitleScreenSaves,
         openSave: openTitleScreenSave,
         listChats: listTitleScreenChats,
@@ -13365,9 +13488,10 @@ function buildTitleServices() {
     };
 }
 
-function buildTitleScreenOptions({ skipSplash = false } = {}) {
+function buildTitleScreenOptions({ skipSplash = false, initialPanel = "" } = {}) {
     let titleBgmPlaying = false;
     return {
+        initialPanel,
         logoUrl: `${extensionFolderPath}/assets/images/title/drst.png`,
         playSfx: (name) => playSfx(sfx[name]),
         services: buildTitleServices(),

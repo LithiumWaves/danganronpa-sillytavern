@@ -1,6 +1,7 @@
 import { mountContinuePanel } from "./titleContinue.js";
 import { mountNewGamePanel } from "./titleNewGame.js";
 import { mountOptionsPanel } from "./titleOptions.js";
+import { mountSetupPanel } from "./titleSetup.js";
 import { escapeHtml } from "./titleUtils.js";
 
 export const TITLE_SCREEN_ID = "dangan-title-screen";
@@ -9,12 +10,14 @@ const MENU_ITEMS = Object.freeze([
     { action: "newGame", label: "NEW GAME" },
     { action: "continue", label: "CONTINUE" },
     { action: "options", label: "OPTIONS" },
+    { action: "setup", label: "SETUP" },
 ]);
 
 const PANELS = Object.freeze({
     newGame: { title: "NEW GAME", mount: mountNewGamePanel },
     continue: { title: "CONTINUE", mount: mountContinuePanel },
     options: { title: "OPTIONS", mount: mountOptionsPanel },
+    setup: { title: "SETUP CHECKLIST", mount: mountSetupPanel },
 });
 
 const EXIT_DURATION_MS = 620;
@@ -37,7 +40,7 @@ export function maybeShowTitleScreen({
 }
 
 // Resolves once the screen is gone: with the panel that closed it
-// ("newGame" | "continue" | "options"), or "dismiss".
+// ("newGame" | "continue" | "options" | "setup"), or "dismiss".
 export function showTitleScreen({
     logoUrl = "",
     onStart,
@@ -45,6 +48,7 @@ export function showTitleScreen({
     playSfx,
     services = {},
     skipSplash = false,
+    initialPanel = "",
 } = {}) {
     if (typeof document === "undefined") return Promise.resolve(false);
     document.getElementById(TITLE_SCREEN_ID)?.remove();
@@ -78,6 +82,7 @@ export function showTitleScreen({
                         <button type="button" class="dgn-title-item" data-action="${item.action}" style="--i:${i}" tabindex="-1">
                             <span class="dgn-title-item-mark" aria-hidden="true"></span>
                             <span class="dgn-title-item-label">${item.label}</span>
+                            <span class="dgn-title-item-badge" hidden></span>
                         </button>
                     `).join("")}
                 </nav>
@@ -327,7 +332,20 @@ export function showTitleScreen({
         requestAnimationFrame(() => requestAnimationFrame(() => {
             root.classList.add("is-on");
             root.focus({ preventScroll: true });
-            if (skipSplash) start();
+            if (skipSplash || initialPanel) start();
+            if (PANELS[initialPanel]) openPanel(initialPanel);
         }));
+
+        // Count of setup requirements that are missing, on the SETUP item.
+        Promise.resolve()
+            .then(() => services.countSetupProblems?.())
+            .then((count) => {
+                const badge = root.querySelector('.dgn-title-item[data-action="setup"] .dgn-title-item-badge');
+                if (!badge || !(count > 0)) return;
+                badge.textContent = String(count);
+                badge.hidden = false;
+                badge.setAttribute("aria-label", `${count} setup ${count === 1 ? "problem" : "problems"}`);
+            })
+            .catch(() => { /* the badge is optional */ });
     });
 }
