@@ -1,0 +1,69 @@
+/* =========================
+   Settings sub-tabs
+   One section of Monopad Settings at a time.
+   ========================= */
+
+.settings-subtabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 10px 14px 0;
+}
+
+.settings-subtab {
+    flex: 1 1 auto;
+    padding: 6px 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.5);
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+
+.settings-subtab:hover,
+.settings-subtab:focus-visible {
+    background: rgba(126, 173, 255, 0.08);
+    color: rgba(255, 255, 255, 0.8);
+    outline: none;
+}
+
+.settings-subtab.active {
+    background: rgba(126, 173, 255, 0.14);
+    border-color: rgba(126, 173, 255, 0.35);
+    color: #7eadff;
+}
+
+.settings-grid {
+    grid-template-columns: 1fr;
+}
+
+.settings-grid > .settings-section[data-settings-tab]:not(.is-active-tab) {
+    display: none;
+}
+
+/* Sections used to share a two-column grid and scrolled internally; shown
+   alone, they take the page's own scroll. */
+.settings-section-ai,
+.settings-section-trials {
+    max-height: none;
+    overflow-y: visible;
+}
+
+@media (max-width: 520px) {
+    .settings-subtabs {
+        padding: 8px 10px 0;
+    }
+
+    .settings-subtab {
+        flex-basis: calc(25% - 4px);
+        padding: 6px 4px;
+        font-size: 9px;
+    }
+
+    .settings-section-ai {
+        max-height: none;
+    }
+}

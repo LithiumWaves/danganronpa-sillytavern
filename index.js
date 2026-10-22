@@ -6137,6 +6137,8 @@ function syncMarkerPrompts() {
             tone: "warn",
             title: "MARKER RULES TWICE",
             message: "Your preset also has V3C marker instructions, and the extension now sends them too. Remove them from the preset, or turn off AI INSTRUCTIONS in Settings → Gameplay.",
+            actionLabel: "OPEN GAMEPLAY",
+            onAction: () => openMonopadTab("settings", { section: "gameplay" }),
             durationMs: 15000,
         });
     }
@@ -7393,6 +7395,24 @@ function setActiveMonopadTab(tab) {
     $(".monopad-panel-content").removeClass("active");
     $(`.monopad-panel-content[data-panel="${tab}"]`).addClass("active");
     if (tab === "settings") refreshSavesPanel();
+}
+
+const SETTINGS_SUBTABS = ["audio", "display", "gameplay", "fx", "saves", "progression", "ai", "trials"];
+
+// Monopad Settings shows one section at a time; the last one picked is
+// remembered.
+function setActiveSettingsTab(id) {
+    const tab = SETTINGS_SUBTABS.includes(id) ? id : "audio";
+    $(".settings-subtab").each(function () {
+        const on = this.dataset.settingsTab === tab;
+        this.classList.toggle("active", on);
+        this.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    $(".settings-grid > .settings-section[data-settings-tab]").each(function () {
+        this.classList.toggle("is-active-tab", this.dataset.settingsTab === tab);
+    });
+    if (getMonopadSetting("settingsSubtab") !== tab) setMonopadSetting("settingsSubtab", tab);
+    if (tab === "saves") refreshSavesPanel();
 }
 
 // ── Trial-prep info modal ───────────────────────────────────────────────────
@@ -10567,6 +10587,12 @@ $(".monopad-icon").on("mouseenter", function () {
             renderSelectedTracksForTab(settingKey, selectedId);
         });
 
+        $(document).on("click", ".settings-subtab", function () {
+            playSfx(sfx.click);
+            setActiveSettingsTab(String(this.dataset.settingsTab || ""));
+        });
+        setActiveSettingsTab(getMonopadSetting("settingsSubtab"));
+
         $(document).on("click", ".bgm-tracks-tab", function () {
             const tabKey = String(this.dataset.tab || "");
             $(".bgm-tracks-tab").removeClass("active");
@@ -12708,11 +12734,12 @@ STATEMENT: <third statement>`;
 let applyToggleSettingSideEffects = () => {};
 let titleScreenStartedThisSession = false;
 
-function openMonopadTab(tab) {
+function openMonopadTab(tab, { section } = {}) {
     if (!$("#dangan_monopad_panel").hasClass("open")) {
         $("#dangan_monopad_button").trigger("click");
     }
     $(`.monopad-icon[data-tab="${tab}"]`).trigger("click");
+    if (tab === "settings" && section) setActiveSettingsTab(section);
 }
 
 function avatarThumbUrl(avatar) {

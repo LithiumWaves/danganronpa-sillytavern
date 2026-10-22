@@ -388,10 +388,20 @@
             </div>
         </div>
 
+        <div class="settings-subtabs" role="tablist" aria-label="Settings sections">
+            <button type="button" class="settings-subtab active" role="tab" data-settings-tab="audio">AUDIO</button>
+            <button type="button" class="settings-subtab" role="tab" data-settings-tab="display">DISPLAY</button>
+            <button type="button" class="settings-subtab" role="tab" data-settings-tab="gameplay">GAMEPLAY</button>
+            <button type="button" class="settings-subtab" role="tab" data-settings-tab="fx">FX</button>
+            <button type="button" class="settings-subtab" role="tab" data-settings-tab="saves">SAVES</button>
+            <button type="button" class="settings-subtab" role="tab" data-settings-tab="progression">PROGRESSION</button>
+            <button type="button" class="settings-subtab" role="tab" data-settings-tab="ai">AI</button>
+            <button type="button" class="settings-subtab" role="tab" data-settings-tab="trials">CLASS TRIALS</button>
+        </div>
         <div class="settings-grid">
 
             <!-- AUDIO -->
-            <section class="settings-section">
+            <section data-settings-tab="audio" class="settings-section is-active-tab">
                 <div class="settings-section-title">AUDIO</div>
 
                 <div class="settings-item settings-item-slider">
@@ -735,7 +745,7 @@
             </section>
 
             <!-- DISPLAY -->
-            <section class="settings-section">
+            <section data-settings-tab="display" class="settings-section">
                 <div class="settings-section-title">DISPLAY</div>
 
                 <div class="settings-item">
@@ -1029,7 +1039,7 @@
             </section>
 
             <!-- GAMEPLAY -->
-            <section class="settings-section">
+            <section data-settings-tab="gameplay" class="settings-section">
                 <div class="settings-section-title">GAMEPLAY</div>
 
                 <div class="settings-item">
@@ -1092,7 +1102,7 @@
             </section>
 
             <!-- FX -->
-            <section class="settings-section">
+            <section data-settings-tab="fx" class="settings-section">
                 <div class="settings-section-title">FX</div>
 
                 <div class="settings-item settings-item-stack">
@@ -1154,7 +1164,7 @@
             </section>
 
             <!-- SAVES -->
-            <section class="settings-section">
+            <section data-settings-tab="saves" class="settings-section">
                 <div class="settings-section-title">SAVES</div>
                 <div class="settings-item settings-item-stack">
                     <div class="settings-note">Each save keeps its own classmates, trust, Truth Bullets, chapter, day, Monocoins, items and level. One Main Chat saves load by themselves when you open their chat. Settings and music are shared by every save.</div>
@@ -1169,7 +1179,7 @@
             </section>
 
             <!-- PROGRESSION -->
-            <section class="settings-section">
+            <section data-settings-tab="progression" class="settings-section">
                 <div class="settings-section-title">PROGRESSION</div>
 
                 <div class="settings-item settings-item-stack">
@@ -1227,7 +1237,7 @@
             </section>
 
             <!-- AI GENERATION -->
-            <section class="settings-section settings-section-ai">
+            <section data-settings-tab="ai" class="settings-section settings-section-ai">
                 <div class="settings-section-title">AI GENERATION</div>
 
                 <div class="settings-item settings-item-stack">
@@ -1283,7 +1293,7 @@
                 </div>
             </section>
 
-            <section class="settings-section settings-section-trials">
+            <section data-settings-tab="trials" class="settings-section settings-section-trials">
                 <div class="settings-section-title">CLASS TRIALS</div>
 
                 <div class="settings-item settings-item-stack">
