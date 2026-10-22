@@ -11,7 +11,7 @@ import {
 
 // Emotion Sprite Manager
 // ----------------------
-// A modal (opened from Settings → FX → "EMOTION SPRITES") that lets the user
+// A modal (opened from Settings → Tools → "Emotion sprites") that lets the user
 // view and manage a character's expression sprites. For every managed emotion
 // the user sees the current sprite (or an empty upload slot) and can:
 //   • click an empty slot to upload that emotion's sprite — saved verbatim as

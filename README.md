@@ -50,7 +50,7 @@ SillyTavern opens on a Trigger Happy Havoc-style title screen. Press any key or 
     - **ROOM BACKGROUNDS** gives each room on your save's map a SillyTavern background, shown when you walk in.
     - **LOREBOOKS** is a World Info editor: create, import, rename, delete and turn books on, and add, copy, delete or edit entries (title, keywords, optional filter, content, enabled, always on, position, depth, order and trigger chance).
 
-Assign music under BGM Tracks → Phases → Title. Turn the screen off with the **Title Screen** setting, reopen it with `/title`, or use **Return to Title** in Monopad Settings → Display.
+Assign music under BGM Tracks → Phases → Title. Turn the screen off with the **Title Screen** setting, reopen it with `/title`, or use **Return to Title** in Monopad Settings → Gameplay.
 
 ### Save Files
 Each save keeps its own story: classmates and trust, Truth Bullets, chapter, day and phase, Monocoins, items, skills and level, introductions, journal and trial state. Settings, music, cinematics and custom item definitions are shared by every save.

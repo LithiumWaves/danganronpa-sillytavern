@@ -1,0 +1,532 @@
+/* =========================
+   Monopad Settings layout
+   Settings sit in titled cards. Each row is its text (label + short note)
+   on the left and its control on the right; anything else in a row (an
+   editor, a file picker, a track list) takes a full line underneath.
+   Scoped to .settings-panel so it wins over the older rules in legacy.css.
+   ========================= */
+
+.settings-panel {
+    --set-accent: #46d6ff;
+    --set-accent-2: #2b88ff;
+    --set-text: #e6eefb;
+    --set-muted: rgba(196, 214, 240, 0.62);
+    --set-line: rgba(150, 185, 235, 0.12);
+    --set-card: rgba(12, 20, 34, 0.72);
+}
+
+.settings-panel .settings-header-row {
+    align-items: center;
+    padding: 12px 16px;
+}
+
+.settings-panel .settings-header {
+    font-size: 15px;
+    letter-spacing: 0.22em;
+}
+
+.settings-panel .settings-grid {
+    padding: 14px;
+}
+
+.settings-panel .settings-section {
+    padding: 0;
+    border: 0;
+    background: none;
+}
+
+/* ---------- Cards ---------- */
+
+.settings-panel .settings-group {
+    margin-bottom: 14px;
+    border: 1px solid rgba(125, 157, 205, 0.2);
+    border-radius: 12px;
+    background: var(--set-card);
+    overflow: hidden;
+}
+
+.settings-panel .settings-group:last-child {
+    margin-bottom: 0;
+}
+
+.settings-panel .settings-group-title {
+    padding: 10px 16px 6px;
+    color: #8fdcff;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+
+.settings-panel .settings-group-footnote {
+    padding: 8px 16px 12px;
+    color: var(--set-muted);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+/* ---------- Rows ---------- */
+
+.settings-panel .settings-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    column-gap: 16px;
+    row-gap: 10px;
+    margin: 0;
+    padding: 12px 16px;
+    border: 0;
+    border-top: 1px solid var(--set-line);
+    background: none;
+    transition: background 0.12s ease;
+}
+
+.settings-panel .settings-group-title + .settings-item {
+    border-top: 0;
+}
+
+.settings-panel .settings-item:hover {
+    background: rgba(112, 173, 255, 0.05);
+}
+
+.settings-panel .settings-item:has(> .settings-toggle) {
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.settings-panel .settings-item:has(> .settings-toggle):active {
+    background: rgba(112, 173, 255, 0.09);
+}
+
+/* Anything in a row that isn't its text or its control gets its own line. */
+.settings-panel .settings-item > * {
+    flex: 1 1 100%;
+    min-width: 0;
+    margin-left: 0;
+    margin-right: 0;
+}
+
+.settings-panel .settings-text {
+    flex: 1 1 220px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.settings-panel .settings-label {
+    padding: 0;
+    color: var(--set-text);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    line-height: 1.25;
+    text-transform: none;
+}
+
+.settings-panel .settings-note,
+.settings-panel .settings-more-body,
+.settings-panel .settings-group-footnote,
+.settings-panel .settings-checkbox-row,
+.settings-panel .settings-check-name,
+.settings-panel .settings-select,
+.settings-panel .settings-input {
+    text-transform: none;
+}
+
+.settings-panel .settings-note {
+    margin: 0;
+    color: var(--set-muted);
+    font-size: 12.5px;
+    letter-spacing: 0.01em;
+    line-height: 1.4;
+}
+
+.settings-panel .settings-status-note:empty,
+.settings-panel .settings-note:empty {
+    display: none;
+}
+
+.settings-panel .settings-note code,
+.settings-panel .settings-more-body code {
+    padding: 0 4px;
+    border-radius: 4px;
+    background: rgba(126, 173, 255, 0.12);
+    color: #bfefff;
+    font-size: 0.95em;
+}
+
+/* ---------- Controls ---------- */
+
+.settings-panel .settings-item > .settings-toggle,
+.settings-panel .settings-item > .settings-small-button,
+.settings-panel .settings-item > .settings-lang-toggle,
+.settings-panel .settings-item > .settings-slider-wrap,
+.settings-panel .settings-item > .settings-select {
+    flex: 0 0 auto;
+}
+
+/* The switch: big enough to hit with a thumb, and the knob springs across. */
+.settings-panel .settings-toggle {
+    position: relative;
+    width: 52px;
+    height: 30px;
+    margin: 0;
+    padding: 0;
+    border: 1px solid rgba(150, 180, 230, 0.32);
+    border-radius: 999px;
+    background: rgba(24, 32, 48, 0.95);
+    box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.55);
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.settings-panel .settings-toggle::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    background: #9aa6ba;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+    transition:
+        transform 0.22s cubic-bezier(0.34, 1.4, 0.55, 1),
+        width 0.15s ease,
+        background 0.2s ease;
+}
+
+.settings-panel .settings-toggle.on {
+    border-color: rgba(140, 232, 255, 0.85);
+    background: linear-gradient(90deg, var(--set-accent-2), var(--set-accent));
+    box-shadow: 0 0 12px rgba(70, 214, 255, 0.35);
+}
+
+.settings-panel .settings-toggle.on::after {
+    background: #fff;
+    transform: translateX(22px);
+}
+
+/* Press: the knob stretches toward where it's going. */
+.settings-panel .settings-toggle:active::after,
+.settings-panel .settings-item:active > .settings-toggle::after {
+    width: 27px;
+}
+
+.settings-panel .settings-toggle.on:active::after,
+.settings-panel .settings-item:active > .settings-toggle.on::after {
+    transform: translateX(17px);
+}
+
+.settings-panel .settings-toggle:focus-visible {
+    outline: 2px solid rgba(140, 232, 255, 0.9);
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .settings-panel .settings-toggle,
+    .settings-panel .settings-toggle::after {
+        transition: none;
+    }
+}
+
+.settings-panel .settings-small-button {
+    min-height: 32px;
+    padding: 6px 14px;
+    border: 1px solid rgba(126, 173, 255, 0.45);
+    border-radius: 8px;
+    background: rgba(14, 28, 46, 0.95);
+    color: #dcebff;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.settings-panel .settings-small-button:hover,
+.settings-panel .settings-small-button:focus-visible {
+    border-color: rgba(140, 232, 255, 0.85);
+    background: rgba(30, 60, 92, 0.95);
+    color: #fff;
+    outline: none;
+}
+
+/* Segmented EN/JP, DEFAULT/CUSTOM pickers. */
+.settings-panel .settings-lang-toggle {
+    display: inline-flex;
+    gap: 0;
+    margin: 0;
+    padding: 3px;
+    border: 1px solid rgba(126, 173, 255, 0.3);
+    border-radius: 9px;
+    background: rgba(5, 12, 22, 0.8);
+}
+
+.settings-panel .settings-lang-btn {
+    min-height: 28px;
+    padding: 4px 12px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--set-muted);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+}
+
+.settings-panel .settings-lang-btn.active {
+    background: linear-gradient(90deg, rgba(43, 136, 255, 0.55), rgba(70, 214, 255, 0.45));
+    color: #fff;
+}
+
+.settings-panel .settings-slider-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    margin: 0 0 0 auto;
+}
+
+.settings-panel .settings-slider-wrap input[type="range"] {
+    width: 150px;
+    accent-color: var(--set-accent);
+    cursor: pointer;
+}
+
+/* ID-strength selector: legacy.css sizes these values by their ids. */
+#dangan_monopad_panel .settings-slider-wrap span {
+    min-width: 40px;
+    opacity: 1;
+    color: #9deeff;
+    font-size: 13px;
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
+.settings-panel .settings-select,
+.settings-panel .settings-input {
+    min-height: 34px;
+    margin: 0;
+    border-radius: 8px;
+    font-size: 13px;
+    letter-spacing: 0.02em;
+}
+
+.settings-panel .settings-item > .settings-select {
+    width: auto;
+    min-width: 170px;
+    max-width: 100%;
+}
+
+/* A profile picker that appears under a source picker lines up with it. */
+.settings-panel .settings-item > .settings-select.settings-profile-only {
+    flex: 0 1 auto;
+    margin-left: auto;
+}
+
+.settings-panel .settings-item > .settings-input {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.settings-panel .settings-ai-actions {
+    margin: 0;
+}
+
+.settings-panel .settings-ai-actions .settings-select {
+    flex: 0 1 220px;
+    width: auto;
+}
+
+.settings-panel .settings-checkbox-row {
+    margin: 0;
+    font-size: 13px;
+    letter-spacing: 0.01em;
+    color: var(--set-text);
+    cursor: pointer;
+}
+
+.settings-panel .settings-checkbox-row input {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--set-accent);
+}
+
+.settings-panel .settings-item > .settings-prompt-editor {
+    margin-top: 0;
+}
+
+.settings-panel .settings-prompt-summary {
+    padding: 10px 12px;
+    font-size: 12px;
+}
+
+.settings-panel .settings-prompt-help,
+.settings-panel .settings-prompt-textarea,
+.settings-panel .settings-announ-text-input {
+    font-size: 12px;
+}
+
+.settings-panel .settings-announ-custom-row {
+    margin: 0;
+}
+
+.settings-panel .settings-announ-row {
+    padding-top: 12px;
+    padding-bottom: 12px;
+}
+
+/* Trials → Prompts: bare editors directly in a card. */
+.settings-panel .settings-group > .settings-prompt-editor {
+    margin: 0 16px 10px;
+}
+
+.settings-panel .settings-group > .settings-prompt-editor:last-child {
+    margin-bottom: 14px;
+}
+
+/* ---------- "How it works" fold-outs ---------- */
+
+.settings-panel .settings-more > summary {
+    display: inline-block;
+    text-transform: none;
+    list-style: none;
+    color: #9deeff;
+    font-size: 12.5px;
+    cursor: pointer;
+}
+
+.settings-panel .settings-more > summary::-webkit-details-marker {
+    display: none;
+}
+
+.settings-panel .settings-more > summary::before {
+    content: "▸";
+    display: inline-block;
+    margin-right: 6px;
+    transition: transform 0.15s ease;
+}
+
+.settings-panel .settings-more[open] > summary::before {
+    transform: rotate(90deg);
+}
+
+.settings-panel .settings-more-body {
+    margin-top: 6px;
+    color: var(--set-muted);
+    font-size: 12.5px;
+    line-height: 1.45;
+}
+
+/* ---------- BGM tracks ---------- */
+
+.settings-panel .settings-item-tracks .bgm-tracks-tabs,
+.settings-panel .settings-item-tracks .bgm-tracks-subtabs {
+    margin-left: 0;
+}
+
+.settings-panel .bgm-tracks-tab {
+    padding: 7px 4px;
+    font-size: 11px;
+}
+
+.settings-panel .bgm-tracks-subtab {
+    padding: 5px 8px;
+    font-size: 10px;
+}
+
+/* ---------- Minigame context grid ---------- */
+
+.settings-panel .settings-check-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 8px 18px;
+}
+
+.settings-panel .settings-check-head {
+    color: var(--set-muted);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-align: center;
+}
+
+.settings-panel .settings-check-name {
+    color: var(--set-text);
+    font-size: 14px;
+}
+
+.settings-panel .settings-check-grid .settings-checkbox-row {
+    justify-content: center;
+}
+
+/* The column heads already say what each box is. */
+.settings-panel .settings-check-grid .settings-checkbox-row span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+/* ---------- Phones ---------- */
+
+@media (max-width: 520px) {
+    .settings-panel .settings-grid {
+        padding: 10px;
+    }
+
+    .settings-panel .settings-item {
+        padding: 12px;
+        column-gap: 12px;
+    }
+
+    .settings-panel .settings-group-title {
+        padding: 10px 12px 4px;
+    }
+
+    .settings-panel .settings-text {
+        flex-basis: 150px;
+    }
+
+    .settings-panel .settings-label {
+        font-size: 14.5px;
+    }
+
+    .settings-panel .settings-note,
+    .settings-panel .settings-more-body,
+    .settings-panel .settings-more > summary {
+        font-size: 12px;
+    }
+
+    .settings-panel .settings-small-button {
+        font-size: 11.5px;
+    }
+
+    .settings-panel .settings-slider-wrap input[type="range"] {
+        width: 120px;
+    }
+
+    .settings-panel .settings-group > .settings-prompt-editor {
+        margin: 0 12px 10px;
+    }
+}
+
+/* ---------- Branding extras ---------- */
+
+.settings-panel #dangan-branding-extras > .bgm-tracks-panel {
+    padding-top: 6px;
+    border-top: 1px solid var(--set-line);
+}
+
+.settings-panel #dangan-branding-extras > .bgm-tracks-panel > .bgm-tracks-subtabs {
+    margin: 4px 16px 0;
+}

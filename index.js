@@ -7542,11 +7542,12 @@ function setActiveMonopadTab(tab) {
     if (tab === "settings") refreshSavesPanel();
 }
 
-const SETTINGS_SUBTABS = ["audio", "display", "gameplay", "fx", "saves", "progression", "ai", "trials"];
+const SETTINGS_SUBTABS = ["audio", "display", "gameplay", "fx", "saves", "ai", "trials"];
 
 // Monopad Settings shows one section at a time; the last one picked is
-// remembered.
+// remembered. PROGRESSION was folded into SAVES.
 function setActiveSettingsTab(id) {
+    if (id === "progression") id = "saves";
     const tab = SETTINGS_SUBTABS.includes(id) ? id : "audio";
     $(".settings-subtab").each(function () {
         const on = this.dataset.settingsTab === tab;
@@ -8240,7 +8241,15 @@ function applySettingsTabUI() {
 
         const isOn = !!tab[key];
         el.classList.toggle("on", isOn);
-        el.setAttribute("aria-pressed", String(isOn));
+        el.setAttribute("role", "switch");
+        el.setAttribute("aria-checked", String(isOn));
+        // aria-labelledby, not aria-label: trySetSillyTavernVisualNovelMode
+        // scans aria-labels for "visual novel" and would click this row.
+        const label = el.closest(".settings-item")?.querySelector(".settings-label");
+        if (label && !el.hasAttribute("aria-labelledby")) {
+            label.id ||= `dangan-setting-label-${key}`;
+            el.setAttribute("aria-labelledby", label.id);
+        }
     });
 
     const slider = document.getElementById("dangan_crt_slider");
@@ -10536,6 +10545,12 @@ $(".monopad-icon").on("mouseenter", function () {
             setMonopadSetting(key, next);
             applySettingsTabUI();
             applyToggleSettingSideEffects(key, next);
+        });
+
+        // The whole row of a toggle setting is its hit area, not just the switch.
+        $(document).on("click", ".settings-panel .settings-item", function (e) {
+            if (e.target.closest("button, a, input, select, textarea, label, summary, details")) return;
+            $(this).children(".settings-toggle").first().trigger("click");
         });
 
         $("#dangan_open_setup_checklist").on("click", () => {
