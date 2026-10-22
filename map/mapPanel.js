@@ -1,5 +1,6 @@
 import { DEFAULT_PINS } from "./defaultPins.js";
-import { getFloorUnlockChapter, isFloorLocked, isStoryPin, listCustomFloors, mergePins, migrateLegacyMapStorage, resolveFloorImageSrc, setFloorUnlockChapter, splitPins } from "./mapStorage.js";
+import { getFloorUnlockChapter, isFloorLocked, isStoryPin, listCustomFloors, mergePins, migrateLegacyMapStorage, pinInScope, resolveFloorImageSrc, scopeAreaKeys, scopeAreas, setFloorUnlockChapter, splitPins } from "./mapStorage.js";
+import { buildCustomArea } from "../core/title/titleMapSetup.js";
 
 const MACHINE_ROLL_DURATION_MS = 2000;
 const MACHINE_JINGLE_FRAME = 50;
@@ -286,7 +287,32 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         return areaKey in MAP_AREAS;
     }
 
+    // The active save's map scope (set by the New Game map step). Out-of-scope
+    // areas and their rooms are hidden for this save; no scope shows them all.
+    function currentScope() {
+        return getSettingsRoot?.()?.map?.scope || null;
+    }
+
+    function setScope(scope) {
+        const root = getSettingsRoot?.();
+        if (!root) return;
+        root.map ??= {};
+        if (scope) root.map.scope = clone(scope);
+        else delete root.map.scope;
+        saveSettings?.();
+    }
+
+    function addAreaToScope(areaKey) {
+        const scope = currentScope();
+        if (!scopeAreaKeys(scope) || scope.areas.includes(areaKey)) return;
+        setScope({ ...scope, areas: [...scope.areas, areaKey] });
+    }
+
     function getAllAreas() {
+        return scopeAreas(getEveryArea(), currentScope());
+    }
+
+    function getEveryArea() {
         const combined = {};
         for (const [key, area] of Object.entries(MAP_AREAS)) {
             const ov = state.areaOverrides[key] || {};
@@ -1333,6 +1359,13 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             $entry.find(".map-area-entry-delete").on("click", (e) => { e.stopPropagation(); confirmDeleteArea(key); });
             $areaList.find(selectors.addAreaBtn).before($entry);
         }
+
+        $areaList.find(".map-area-scope-button").remove();
+        if (scopeAreaKeys(currentScope())) {
+            const $scopeBtn = $(`<button class="map-area-scope-button" type="button" title="This save only uses its own map. Click to show every map.">SHOW ALL MAPS</button>`);
+            $scopeBtn.on("click", confirmShowAllMaps);
+            $areaList.find(selectors.addAreaBtn).after($scopeBtn);
+        }
     }
 
     function openCreateAreaModal() {
@@ -1439,6 +1472,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
 
             state.customAreas.push(newArea);
             saveCustomAreas();
+            addAreaToScope(key);
             state.area  = key;
             state.floor = "floor_1";
             $modal.remove();
@@ -2403,7 +2437,8 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
     }
 
     function getAllPins() {
-        return state.customPins.slice();
+        const scope = currentScope();
+        return state.customPins.filter(p => pinInScope(p, scope));
     }
 
     // Read the data needed to render a small floor preview (minimap) outside the
@@ -2516,7 +2551,62 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
 
     function getPinByLocationId(locationId) {
         if (!locationId) return null;
-        return state.customPins.find(p => p.locationId === locationId) || null;
+        // Several maps reuse a room id ("kitchen"), so prefer this save's map.
+        const scope = currentScope();
+        const matches = state.customPins.filter(p => p.locationId === locationId);
+        return matches.find(p => pinInScope(p, scope)) || matches[0] || null;
+    }
+
+    // New Game map step: limit this save to the chosen map. An uploaded map is
+    // stored like one made with CREATE AREA, with its rooms as room pins.
+    // Returns where the player should start.
+    function applyNewGameMap(map) {
+        if (!map) return null;
+        let areas = Array.isArray(map.areas) ? [...map.areas] : [];
+        let startLocationId = map.startLocationId || null;
+        let startFloorKey = null;
+        if (map.choice === "custom" && map.custom) {
+            const built = buildCustomArea(map.custom, { key: "custom_" + Date.now() });
+            state.customAreas.push(built.area);
+            saveCustomAreas();
+            state.customPins.push(...built.pins);
+            saveCustomPins();
+            areas = [built.area.key];
+            startLocationId = built.startLocationId;
+            startFloorKey = built.startFloorKey;
+        }
+        if (!areas.length) return null;
+        setScope({ areas });
+        const startPin = startLocationId ? getPinByLocationId(startLocationId) : null;
+        state.area = startPin?.areaKey || areas[0];
+        state.floor = startPin?.floorKey || startFloorKey || getAllAreas()[state.area]?.floors?.[0]?.key || "floor_1";
+        ensureValidFloorSelection();
+        renderMapPanel();
+        return { areas, startLocationId: startPin ? startLocationId : null };
+    }
+
+    function confirmShowAllMaps() {
+        $(".map-create-area-modal").remove();
+        const $modal = $(`
+            <div class="map-create-area-modal">
+                <div class="map-create-area-box">
+                    <div class="map-create-area-title">SHOW ALL MAPS?</div>
+                    <div class="map-create-area-confirm-text">This save only uses the map picked when it was created. Showing all maps adds every other area back to the Monopad map, and characters can be placed in their rooms too. Only this save changes.</div>
+                    <div class="map-create-area-actions">
+                        <button class="map-create-area-save" type="button">SHOW ALL</button>
+                        <button class="map-create-area-cancel" type="button">CANCEL</button>
+                    </div>
+                </div>
+            </div>
+        `);
+        $("body").append($modal);
+        $modal.find(".map-create-area-save").on("click", () => {
+            setScope(null);
+            $modal.remove();
+            renderMapPanel();
+        });
+        $modal.find(".map-create-area-cancel").on("click", () => $modal.remove());
+        $modal.on("click", function (e) { if (e.target === this) $modal.remove(); });
     }
 
     // Resolve a labelled human description for a connectedTo ref (pin/area/subarea).
@@ -2612,6 +2702,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         getConnectionsForLocationId,
         isPinLocked,
         isFloorLocked: isFloorLockedNow,
+        applyNewGameMap,
         switchChatBackground,
         playPinBgm,
         navigateToArea,

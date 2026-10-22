@@ -1,4 +1,4 @@
-import { getFloorUnlockChapter, isFloorLocked, isStoryPin, listCustomFloors, mergePins, migrateLegacyMapStorage, resolveFloorImageSrc, setFloorUnlockChapter, splitPins } from "./mapStorage.js";
+import { getFloorUnlockChapter, isFloorLocked, isStoryPin, listCustomFloors, mergePins, migrateLegacyMapStorage, pinInScope, resolveFloorImageSrc, scopeAreas, setFloorUnlockChapter, splitPins } from "./mapStorage.js";
 
 function assert(cond, msg) {
     if (!cond) throw new Error(msg);
@@ -74,6 +74,15 @@ function run() {
     assert(!isFloorLocked(layout, "hopes_peak", "floor_3", 0), "other floors unaffected");
     setFloorUnlockChapter(layout, "hopes_peak", "floor_2", 0);
     assert(!("hopes_peak/floor_2" in layout.floorLocks), "0 clears the lock");
+
+    const areas = { hopes_peak: {}, hotel_despair: {}, jabberwock_island: {} };
+    assert(Object.keys(scopeAreas(areas, null)).length === 3, "no scope shows every area");
+    assert(Object.keys(scopeAreas(areas, { areas: [] })).length === 3, "an empty scope shows every area");
+    assert(Object.keys(scopeAreas(areas, { areas: ["hopes_peak", "hotel_despair"] })).join() === "hopes_peak,hotel_despair", "scope limits areas");
+    assert(Object.keys(scopeAreas(areas, { areas: ["gone"] })).length === 3, "a scope with no surviving areas falls back to all");
+    assert(pinInScope({ areaKey: "hopes_peak" }, { areas: ["hopes_peak"] }), "in-scope pin");
+    assert(!pinInScope({ areaKey: "jabberwock_island" }, { areas: ["hopes_peak"] }), "out-of-scope pin");
+    assert(pinInScope({ areaKey: "jabberwock_island" }, undefined), "no scope keeps every pin");
 
     console.log("mapStorage tests passed");
 }

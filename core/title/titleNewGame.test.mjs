@@ -5,8 +5,20 @@ function assert(cond, msg) {
 }
 
 function run() {
-    assert(stepsFor("multi").join() === "style,roster,summary", "several chats skips the story chat step");
-    assert(stepsFor("single").join() === "style,group,roster,summary", "one main chat includes the story chat step");
+    assert(stepsFor("multi").join() === "style,roster,map,summary", "several chats skips the story chat step");
+    assert(stepsFor("single").join() === "style,group,roster,map,summary", "one main chat includes the story chat step");
+    assert(stepsFor({ mode: "single", mapChoice: "hopes_peak" }).join() === "style,group,roster,map,summary", "built-in maps skip room placing");
+    assert(stepsFor({ mode: "multi", mapChoice: "custom" }).join() === "style,roster,map,rooms,summary", "an uploaded map adds room placing");
+
+    assert(nextStep({ step: "roster", mode: "multi" }) === "map", "roster -> map");
+    assert(nextStep({ step: "map", mode: "multi", mapChoice: "hopes_peak" }) === "summary", "built-in map -> summary");
+    assert(nextStep({ step: "map", mode: "multi", mapChoice: "custom" }) === "rooms", "custom map -> rooms");
+    assert(prevStep({ step: "summary", mode: "multi", mapChoice: "custom" }) === "rooms", "summary <- rooms");
+
+    assert(validateStep({ step: "map", mapChoice: "hopes_peak" }) === "", "built-in map ok");
+    assert(validateStep({ step: "map", mapChoice: "bogus" }) !== "", "unknown map rejected");
+    assert(validateStep({ step: "map", mapChoice: "custom", customMap: { name: "X", floors: [{ label: "F1", image: "" }] } }) !== "", "custom map needs a picture");
+    assert(validateStep({ step: "rooms", customMap: { rooms: [] } }) !== "", "custom map needs a room");
 
     assert(nextStep({ step: "style", mode: "multi" }) === "roster", "multi: style -> roster");
     assert(nextStep({ step: "style", mode: "single" }) === "group", "single: style -> group");
@@ -30,6 +42,7 @@ function run() {
     assert(multi.groupName === "" && multi.groupMembers.length === 0, "multi drops story chat fields");
     assert(multi.roster[0].ultimate === "Lucky Student", "trims Ultimates");
     assert(multi.fresh === true && multi.persona === "me.png", "carries fresh flag and persona");
+    assert(multi.map.choice === "hopes_peak" && multi.map.areas.includes("hopes_peak"), "defaults to Hope's Peak");
 
     const single = buildFinishPayload({
         fresh: false, mode: "single", groupName: " Hope's Peak ", groupMembers: new Set(["A", "B"]),

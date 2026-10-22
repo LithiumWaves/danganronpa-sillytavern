@@ -44,6 +44,7 @@ export const STORY_KEYS = Object.freeze([
     "overworld.characters",
     "map.currentLocationId",
     "map.storyPins",
+    "map.scope",
 ]);
 
 const EXPORT_FORMAT = "dangan-save";

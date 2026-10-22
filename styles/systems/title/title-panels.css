@@ -1040,6 +1040,259 @@
     }
 }
 
+/* ── New Game: "What does this mean?" ──────────────────────────────────── */
+
+.dgn-title-explain {
+    margin: -6px 0 16px;
+    border-left: 2px solid rgba(240, 71, 154, 0.6);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.dgn-title-summary + .dgn-title-explain {
+    margin-top: 18px;
+}
+
+.dgn-title-explain > summary {
+    padding: 6px 12px;
+    color: #ff8fc4;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    cursor: pointer;
+    list-style: none;
+}
+
+.dgn-title-explain > summary::-webkit-details-marker {
+    display: none;
+}
+
+.dgn-title-explain > summary::before {
+    content: "+ ";
+}
+
+.dgn-title-explain[open] > summary::before {
+    content: "− ";
+}
+
+.dgn-title-explain ul {
+    margin: 0;
+    padding: 2px 16px 12px 30px;
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.dgn-title-explain li + li {
+    margin-top: 6px;
+}
+
+.dgn-title-explain strong {
+    color: #fff;
+}
+
+/* ── New Game: map step ────────────────────────────────────────────────── */
+
+.dgn-title-mapcard-preview {
+    display: block;
+    aspect-ratio: 480 / 272;
+    margin: -8px -8px 4px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.dgn-title-mapcard-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.dgn-title-mapsetup {
+    margin-bottom: 14px;
+    padding: 14px 16px;
+    border: 1px solid rgba(240, 71, 154, 0.4);
+    background: rgba(240, 71, 154, 0.06);
+}
+
+.dgn-title-floors {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0 0 8px;
+    padding: 0;
+    list-style: none;
+}
+
+.dgn-title-floor {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.dgn-title-floor-num,
+.dgn-title-room-num {
+    flex: none;
+    width: 24px;
+    height: 24px;
+    display: grid;
+    place-items: center;
+    background: var(--dgn-title-pink);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.dgn-title-floor-name {
+    flex: 1 1 180px;
+}
+
+.dgn-title-floor-upload {
+    cursor: pointer;
+}
+
+.dgn-title-floor-thumb {
+    width: 64px;
+    height: 36px;
+    object-fit: cover;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.dgn-title-floor-missing {
+    color: #ff8fc4;
+    font-size: 13px;
+}
+
+.dgn-title-floor-add {
+    align-self: flex-start;
+}
+
+/* ── New Game: place rooms step ────────────────────────────────────────── */
+
+.dgn-title-floor-tabs {
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+
+.dgn-title-place {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(240px, 2fr);
+    gap: 14px;
+    align-items: start;
+    margin-bottom: 14px;
+}
+
+.dgn-title-place-box {
+    position: relative;
+    justify-self: start;
+    max-width: 100%;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.dgn-title-place-img {
+    display: block;
+    max-width: 100%;
+    max-height: 52vh;
+    cursor: crosshair;
+    user-select: none;
+}
+
+.dgn-title-place-markers {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.dgn-title-marker {
+    position: absolute;
+    width: 24px;
+    height: 24px;
+    margin: -12px 0 0 -12px;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    padding: 0;
+    background: var(--dgn-title-pink);
+    color: #fff;
+    font: 700 12px "Rajdhani", sans-serif;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+    cursor: grab;
+    pointer-events: auto;
+    touch-action: none;
+}
+
+.dgn-title-marker:active {
+    cursor: grabbing;
+}
+
+.dgn-title-marker.is-start {
+    background: #ffd23f;
+    color: var(--dgn-title-ink);
+}
+
+.dgn-title-place-side {
+    min-width: 0;
+}
+
+.dgn-title-rooms {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 52vh;
+    margin: 8px 0 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+}
+
+.dgn-title-room {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 6px;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.dgn-title-room.is-other-floor {
+    opacity: 0.55;
+}
+
+.dgn-title-room-icon {
+    width: 22px;
+    height: 22px;
+}
+
+.dgn-title-room-name {
+    flex: 1 1 120px;
+}
+
+.dgn-title-room-icon-select {
+    flex: 0 1 140px;
+    padding: 6px 8px;
+}
+
+.dgn-title-room-start {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    cursor: pointer;
+}
+
+.dgn-title-room-floor {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.dgn-title-rooms-empty {
+    padding: 24px 12px;
+}
+
+@media (max-width: 760px) {
+    .dgn-title-place {
+        grid-template-columns: 1fr;
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .dgn-title-panel,
     .dgn-title-confirm,

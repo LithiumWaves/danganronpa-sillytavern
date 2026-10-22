@@ -2484,3 +2484,21 @@ body.dangan-trial-discussion-vn-active .dangan-vn-nameplate {
         letter-spacing: 0.08em;
     }
 }
+
+/* ── Map scope: SHOW ALL MAPS (save limited to its New Game map) ── */
+.map-area-scope-button {
+    border: 1px dashed rgba(255, 170, 214, 0.45);
+    border-radius: 999px;
+    background: transparent;
+    color: rgba(255, 170, 214, 0.7);
+    padding: 7px 12px;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.map-area-scope-button:hover {
+    border-color: rgba(255, 170, 214, 0.95);
+    color: #ffe3f1;
+    transform: translateY(-1px);
+}

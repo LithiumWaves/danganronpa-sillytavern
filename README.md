@@ -25,7 +25,7 @@ Alternatively, install directly from SillyTavern by accessing the extensions tab
 
 ### Monopad Tabs
 - **Truth (🧠):** Stores discovered Truth Bullets, supports detail view, editing the title and description, archival and removal. Archived and deleted bullets stay that way; the message that found them won't add them again.
-- **Map (🌐):** Shows the current Map & Floor, supports custom maps, pin locations, and evidence placement. Evidence and body pins belong to the current save; rooms, custom areas and floors are shared by every save and stored with your SillyTavern settings, so they follow you to other browsers. Lock a floor (or island, or any floor of a custom area) until a chapter with the pencil button → **OPENS IN**: like the original games, it opens when the story reaches that chapter. Until then nobody spawns there and Move To won't lead there; the floor button shows a 🔒. **RESHUFFLE CHARACTERS** moves everyone to new rooms (the same shuffle Pass Time and Sleep do) without changing the time.
+- **Map (🌐):** Shows the current Map & Floor, supports custom maps, pin locations, and evidence placement. Evidence and body pins belong to the current save; rooms, custom areas and floors are shared by every save and stored with your SillyTavern settings, so they follow you to other browsers. Which areas a save uses is picked in NEW GAME and kept with the save. Lock a floor (or island, or any floor of a custom area) until a chapter with the pencil button → **OPENS IN**: like the original games, it opens when the story reaches that chapter. Until then nobody spawns there and Move To won't lead there; the floor button shows a 🔒. **RESHUFFLE CHARACTERS** moves everyone to new rooms (the same shuffle Pass Time and Sleep do) without changing the time.
 - **Gifts & Skills (🎁):** Shows the Inventory, item browsing, gifting flow, and skill shop display.
 - **Social (👥):** Shows the Roster, trust/distrust progress, and generated profile notes. The − and + buttons next to the trust value correct it one rank at a time, without a ceremony or rewards.
 - **Chapters (📖):** Shows a log of your chats in an easy-to-read, easy-to-revisit format to help you build narratives.
@@ -37,7 +37,10 @@ SillyTavern opens on a Trigger Happy Havoc-style title screen. Press any key or 
   1. Choose a play style: **One Main Chat** (recommended, and selected by default) or **Several Chats**.
   2. One Main Chat only: name the story chat and pick its members. The group chat is created for you and Single-Chat Overworld is turned on.
   3. Class roster: tick your classmates, set each one's Ultimate, and choose your persona.
-  4. Review and **BEGIN**.
+  4. Choose the map: **Hope's Peak Academy** (recommended, built in with every room placed), **Jabberwock Island**, or **Upload Your Own**. For your own map, name it and upload one picture per floor, then click on each picture to place its rooms, name them, and pick the room you start in. The save only uses the map you chose: other areas are hidden and characters only spawn in its rooms. **SHOW ALL MAPS** in the Monopad MAP tab brings the other areas back for that save.
+  5. Review and **BEGIN**.
+
+  Every step has a **WHAT DOES THIS MEAN?** panel that explains it in more detail.
 - **Music:** a few seconds after you leave the title screen, the current phase's music (Daytime, Nighttime or Investigation) starts by itself, unless something is already playing.
 - **CONTINUE:** the **SAVES** tab lists your saves with their chapter, day, Truth Bullets and classmates. Picking a One Main Chat save opens its story chat; picking a Several Chats save opens the Monopad map. **ALL CHATS** lists every chat, newest first, with avatars, a last-message preview, message count and time. Search by name or message, or filter by one-on-one / group.
 - **OPTIONS:** the main audio, display and gameplay settings in the title screen's own style. Changes save immediately; **ALL SETTINGS (MONOPAD)** opens the full list.

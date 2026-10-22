@@ -135,3 +135,24 @@ export function isFloorLocked(layout, areaKey, floorKey, chapterIndex) {
     const need = getFloorUnlockChapter(layout, areaKey, floorKey);
     return need > 0 && Number(chapterIndex || 0) < need;
 }
+
+// Map scope: a save can be limited to some areas (map.scope.areas, set by the
+// New Game map step). An empty or missing list means every area, which is how
+// older saves behave.
+export function scopeAreaKeys(scope) {
+    const areas = Array.isArray(scope?.areas) ? scope.areas.filter((k) => typeof k === "string" && k) : [];
+    return areas.length ? new Set(areas) : null;
+}
+
+export function scopeAreas(allAreas = {}, scope) {
+    const keys = scopeAreaKeys(scope);
+    if (!keys) return allAreas;
+    const scoped = Object.fromEntries(Object.entries(allAreas).filter(([key]) => keys.has(key)));
+    // A scope naming only areas that no longer exist would leave an empty map.
+    return Object.keys(scoped).length ? scoped : allAreas;
+}
+
+export function pinInScope(pin, scope) {
+    const keys = scopeAreaKeys(scope);
+    return !keys || !pin?.areaKey || keys.has(pin.areaKey);
+}

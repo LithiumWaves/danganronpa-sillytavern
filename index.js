@@ -13448,7 +13448,7 @@ async function createStoryGroupChat(name, memberNames) {
     return data.id;
 }
 
-async function finishTitleScreenNewGame({ fresh, mode, groupName, groupMembers, roster, persona }) {
+async function finishTitleScreenNewGame({ fresh, mode, groupName, groupMembers, roster, persona, map }) {
     const saveMode = mode === "single" ? SAVE_MODES.SINGLE : SAVE_MODES.MULTI;
     if (fresh) {
         startFreshSave({ name: mode === "single" ? groupName : "Killing Game", mode: saveMode });
@@ -13457,6 +13457,7 @@ async function finishTitleScreenNewGame({ fresh, mode, groupName, groupMembers, 
         if (active) active.mode = saveMode;
     }
     applyTitleScreenRoster(roster, { pruneOthers: !fresh });
+    applyTitleScreenMap(map);
     try {
         await setTitleScreenPersona(persona);
     } catch (e) {
@@ -13477,6 +13478,32 @@ async function finishTitleScreenNewGame({ fresh, mode, groupName, groupMembers, 
     return {
         afterClose: mode === "single" ? null : () => openMonopadTab("map"),
     };
+}
+
+// The New Game map step: limit the save to the chosen map, start the player in
+// its starting room and spread the class over its rooms.
+function applyTitleScreenMap(map) {
+    if (!map) return;
+    let applied = mapPanelController?.applyNewGameMap?.(map);
+    if (!applied && !mapPanelController && map.areas?.length) {
+        // Map panel not built yet: a built-in map only needs the scope stored.
+        const root = extension_settings[extensionName] ??= {};
+        root.map ??= {};
+        root.map.scope = { areas: [...map.areas] };
+        saveSettingsDebounced();
+        applied = { areas: [...map.areas], startLocationId: map.startLocationId || null };
+    }
+    if (!applied) return;
+    const current = getCurrentLocationId();
+    const currentPin = current ? mapPanelController?.getPinByLocationId?.(current) : null;
+    const inMap = !!currentPin && applied.areas.includes(currentPin.areaKey);
+    if (applied.startLocationId) {
+        setCurrentLocationId(applied.startLocationId);
+    } else if (!inMap) {
+        setCurrentLocationId(null);
+    }
+    try { overworldSceneController?.randomizeLocations?.(); } catch (e) { console.warn("[Dangan][Title] couldn't place the class:", e); }
+    try { renderMinimap(); } catch (_) {}
 }
 
 function listTitleScreenSaves() {
@@ -13643,6 +13670,7 @@ function buildTitleServices() {
         getPersonas: getTitleScreenPersonas,
         hasProgress: hasTitleScreenProgress,
         finishNewGame: finishTitleScreenNewGame,
+        assetUrl: (rel) => `${extensionFolderPath}/assets/${rel}`,
         settings: { get: getMonopadSetting, set: setTitleOptionSetting },
         getChoices: (id) => id === "rewardDifficulty"
             ? Object.entries(REWARD_DIFFICULTY_LABELS).map(([value, label]) => ({ value, label }))
