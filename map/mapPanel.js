@@ -1949,6 +1949,8 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                     $modal.find(".map-pin-edit-id").css("border-color", "rgba(255,80,80,0.8)").trigger("focus");
                     return;
                 }
+                const oldSelfRef = `pin:${pin.locationId || pin.id}`;
+                const oldConnected = Array.isArray(pin.connectedTo) ? pin.connectedTo.slice() : [];
                 pin.label = newLabel || pin.label;
                 pin.locationId = newId;
                 if (isRoom) {
@@ -1959,6 +1961,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                 pin.bgm = String($modal.find(".map-pin-edit-bgm-btn").attr('data-bgm') || '');
                 pin.outfitPrefix = String($modal.find(".map-pin-edit-outfit").val() || '').trim();
                 pin.connectedTo = $modal.find(".map-pin-edit-conn:checked").map(function () { return this.value; }).get();
+                syncPinConnections(pin, oldSelfRef, oldConnected);
                 saveCustomPins();
                 $modal.remove();
                 renderMapPanel();
@@ -1976,7 +1979,15 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
 
         $panel.off("click.pinListDelete").on("click.pinListDelete", ".map-pins-list-delete", function () {
             const pinId = $(this).closest(".map-pins-list-item").data("pin-id");
+            const removed = state.customPins.find(p => p.id === pinId);
             state.customPins = state.customPins.filter(p => p.id !== pinId);
+            if (removed) {
+                // Drop dangling links other pins held to the deleted pin.
+                const deadRef = `pin:${removed.locationId || removed.id}`;
+                for (const p of state.customPins) {
+                    if (Array.isArray(p.connectedTo)) p.connectedTo = p.connectedTo.filter(r => r !== deadRef);
+                }
+            }
             if (state.highlightedPinId === pinId) state.highlightedPinId = null;
             saveCustomPins();
             renderMapPanel();
@@ -2423,6 +2434,36 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             });
         }
         return out;
+    }
+
+    // Keep pin↔pin links bidirectional: linking A→B also links B→A, unlinking
+    // removes both sides, and renaming A's locationId rewrites refs held by others.
+    function syncPinConnections(pin, oldSelfRef, oldConnected) {
+        const selfRef = `pin:${pin.locationId || pin.id}`;
+        const findByRef = (ref) => {
+            const id = ref.slice(4);
+            return state.customPins.find(p => p !== pin && (p.locationId || p.id) === id) || null;
+        };
+        if (oldSelfRef !== selfRef) {
+            for (const p of state.customPins) {
+                if (p === pin || !Array.isArray(p.connectedTo)) continue;
+                p.connectedTo = p.connectedTo.map(r => (r === oldSelfRef ? selfRef : r));
+            }
+        }
+        const newConnected = pin.connectedTo.filter(r => r.startsWith('pin:'));
+        for (const ref of oldConnected) {
+            if (!ref.startsWith('pin:') || newConnected.includes(ref)) continue;
+            const other = findByRef(ref);
+            if (other && Array.isArray(other.connectedTo)) {
+                other.connectedTo = other.connectedTo.filter(r => r !== selfRef);
+            }
+        }
+        for (const ref of newConnected) {
+            const other = findByRef(ref);
+            if (!other) continue;
+            if (!Array.isArray(other.connectedTo)) other.connectedTo = [];
+            if (!other.connectedTo.includes(selfRef)) other.connectedTo.push(selfRef);
+        }
     }
 
     function getPinByLocationId(locationId) {
