@@ -1,4 +1,7 @@
+import { mountBackgroundsPanel } from "./titleBackgrounds.js";
 import { mountContinuePanel } from "./titleContinue.js";
+import { mountLorebookPanel } from "./titleLorebook.js";
+import { mountMusicPanel } from "./titleMusic.js";
 import { mountNewGamePanel } from "./titleNewGame.js";
 import { mountOptionsPanel } from "./titleOptions.js";
 import { mountSetupPanel } from "./titleSetup.js";
@@ -18,6 +21,10 @@ const PANELS = Object.freeze({
     continue: { title: "CONTINUE", mount: mountContinuePanel },
     options: { title: "OPTIONS", mount: mountOptionsPanel },
     setup: { title: "SETUP CHECKLIST", mount: mountSetupPanel },
+    // Reached from SETUP; BACK returns there.
+    music: { title: "MUSIC", mount: mountMusicPanel },
+    backgrounds: { title: "ROOM BACKGROUNDS", mount: mountBackgroundsPanel },
+    lorebook: { title: "LOREBOOKS", mount: mountLorebookPanel },
 });
 
 const EXIT_DURATION_MS = 620;
@@ -109,7 +116,7 @@ export function showTitleScreen({
         const items = Array.from(root.querySelectorAll(".dgn-title-item"));
         const panelEl = root.querySelector(".dgn-title-panel");
         const panelTitleEl = root.querySelector(".dgn-title-panel-title");
-        const panelBodyEl = root.querySelector(".dgn-title-panel-body");
+        let panelBodyEl = root.querySelector(".dgn-title-panel-body");
         let stage = "splash";
         let active = 0;
         let leaving = false;
@@ -171,7 +178,10 @@ export function showTitleScreen({
             if (!panel) return;
             try { panel.handle?.unmount?.(); } catch (e) { console.warn("[Dangan][Title] unmount failed:", e); }
             panel = null;
-            panelBodyEl.innerHTML = "";
+            // A fresh element, so the panel's event listeners go with it.
+            const freshBody = panelBodyEl.cloneNode(false);
+            panelBodyEl.replaceWith(freshBody);
+            panelBodyEl = freshBody;
             panelEl.hidden = true;
             panelEl.className = "dgn-title-panel";
         };

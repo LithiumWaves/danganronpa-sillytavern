@@ -1,5 +1,6 @@
 // Setup checklist. index.js gathers plain facts about the install (cards,
-// sprites, lorebook, extensions, music, AI instructions, persona, save) and
+// sprites, lorebook, extensions, music, room backgrounds, AI instructions,
+// persona, save) and
 // evaluateSetup turns them into rows for the title screen's SETUP panel.
 //
 // Status: "ok" — ready; "warn" — works, but something is missing or degraded;
@@ -62,7 +63,7 @@ export function evaluateSetup(facts = {}) {
             : ultimatesKnown === ultimatesTotal ? `Every classmate has an Ultimate (${ultimatesTotal}).`
             : `${ultimatesKnown} of ${ultimatesTotal} classmates have an Ultimate. Attach a lorebook that lists them (see /sample-lorebooks), or set them in the Social tab.`,
         fix: "worldInfo",
-        fixLabel: "OPEN WORLD INFO",
+        fixLabel: "EDIT LOREBOOKS",
     });
 
     rows.push({
@@ -86,7 +87,20 @@ export function evaluateSetup(facts = {}) {
             : emptyLists.length ? `No tracks picked for ${listNames(emptyLists)}.`
             : "Tracks picked for every phase.",
         fix: "bgm",
-        fixLabel: "OPEN BGM",
+        fixLabel: "PICK MUSIC",
+    });
+
+    const roomTotal = Number(facts.rooms?.total || 0);
+    const roomsWithBg = Number(facts.rooms?.withBg || 0);
+    rows.push({
+        id: "backgrounds",
+        label: "Room backgrounds",
+        status: roomTotal === 0 ? SKIP : roomsWithBg === roomTotal ? OK : WARN,
+        detail: roomTotal === 0 ? "Start a NEW GAME to get a map with rooms."
+            : roomsWithBg === roomTotal ? `Every room has a background (${roomTotal}).`
+            : `${roomsWithBg} of ${roomTotal} rooms have a background. Rooms without one keep the current chat background.`,
+        fix: "backgrounds",
+        fixLabel: "SET BACKGROUNDS",
     });
 
     rows.push({
@@ -128,9 +142,9 @@ export function countSetupProblems(rows) {
     return (Array.isArray(rows) ? rows : []).filter((r) => r.status === SETUP_STATUS.MISSING).length;
 }
 
-// Rows that make the title screen's SETUP item glow. Sprites and Ultimates
-// fill in as you play, and the save row is fixed by NEW GAME itself.
-const REMINDER_EXEMPT = new Set(["sprites", "lorebook", "save"]);
+// Rows that make the title screen's SETUP item glow. Sprites, Ultimates and
+// room backgrounds fill in as you play, and the save row is fixed by NEW GAME itself.
+const REMINDER_EXEMPT = new Set(["sprites", "lorebook", "backgrounds", "save"]);
 
 export function countSetupReminders(rows) {
     return (Array.isArray(rows) ? rows : []).filter((r) =>

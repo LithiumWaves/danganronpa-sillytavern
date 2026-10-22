@@ -44,7 +44,11 @@ SillyTavern opens on a Trigger Happy Havoc-style title screen. Press any key or 
 - **Music:** a few seconds after you leave the title screen, the current phase's music (Daytime, Nighttime or Investigation) starts by itself, unless something is already playing.
 - **CONTINUE:** the **SAVES** tab lists your saves with their chapter, day, Truth Bullets and classmates. Picking a One Main Chat save opens its story chat; picking a Several Chats save opens the Monopad map. **ALL CHATS** lists every chat, newest first, with avatars, a last-message preview, message count and time. Search by name or message, or filter by one-on-one / group.
 - **OPTIONS:** the main audio, display and gameplay settings in the title screen's own style. Changes save immediately; **ALL SETTINGS (MONOPAD)** opens the full list.
-- **SETUP:** a checklist of what the game needs from SillyTavern: character cards, sprites, a lorebook with Ultimates, the Presence extension (One Main Chat), music, AI instructions, a persona and a save. Each row says what's missing and has a button that opens the place to fix it. A badge on SETUP counts anything the game can't run without. Also in Monopad Settings → Gameplay.
+- **SETUP:** a checklist of what the game needs from SillyTavern: character cards, sprites, a lorebook with Ultimates, the Presence extension (One Main Chat), music, room backgrounds, AI instructions, a persona and a save. Each row says what's missing and has a button that opens the place to fix it. A badge on SETUP counts anything the game can't run without. Also in Monopad Settings → Gameplay.
+  - Music, room backgrounds and lorebooks are set up without leaving the title screen:
+    - **MUSIC** picks the tracks for each playlist (phases, moods, locations, trial), with a preview button.
+    - **ROOM BACKGROUNDS** gives each room on your save's map a SillyTavern background, shown when you walk in.
+    - **LOREBOOKS** is a World Info editor: create, import, rename, delete and turn books on, and add, copy, delete or edit entries (title, keywords, optional filter, content, enabled, always on, position, depth, order and trigger chance).
 
 Assign music under BGM Tracks → Phases → Title. Turn the screen off with the **Title Screen** setting, reopen it with `/title`, or use **Return to Title** in Monopad Settings → Display.
 
@@ -163,7 +167,7 @@ V3C| BODY_DISCOVERY
 | **CRT Intensity** | Slider (0–100) | 35 | Controls the strength of the CRT scanline filter |
 | **Boot Animations** | Toggle | On | Shows the startup animation sequence when SillyTavern loads |
 | **Title Screen** | Toggle | On | Shows the title screen when SillyTavern loads. `/title` opens it any time |
-| **Setup Reminder** | Toggle | On | The title screen's SETUP glows while something the game needs isn't set up (sprites and Ultimates don't count), and NEW GAME / CONTINUE suggest checking it first |
+| **Setup Reminder** | Toggle | On | The title screen's SETUP glows while something the game needs isn't set up (sprites, Ultimates and room backgrounds don't count), and NEW GAME / CONTINUE suggest checking it first |
 | **Return to Title** | Button | — | Closes the Monopad and opens the title screen |
 | **Visual Novel Mode** | Toggle | Off | Enables VN-style character sprite and text presentation in chat |
 | **Daily / Deadly Life Dynamic Themes** | Toggle | On | Automatically switches the UI theme based on daytime, nighttime, or investigation state |

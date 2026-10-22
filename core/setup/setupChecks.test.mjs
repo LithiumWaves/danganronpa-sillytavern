@@ -15,6 +15,7 @@ function run() {
     assert(empty.lorebook.status === SKIP, "lorebook skips without a class");
     assert(empty.presence.status === SKIP, "presence skips in Several Chats");
     assert(empty.bgm.status === WARN, "no BGM files is a warning");
+    assert(empty.backgrounds.status === SKIP && empty.backgrounds.fix === "backgrounds", "backgrounds skip without rooms");
     assert(empty.ai.status === WARN, "no marker rules is a warning");
     assert(empty.persona.status === WARN, "no persona is a warning");
     assert(empty.save.status === MISSING && empty.save.fix === "newGame", "no save points to NEW GAME");
@@ -27,6 +28,7 @@ function run() {
         singleChat: true,
         presence: true,
         bgm: { files: 12, emptyLists: [] },
+        rooms: { total: 4, withBg: 4 },
         markerPrompts: true,
         persona: "Hajime",
         save: { exists: true, name: "Save 1", mode: "single", groupOk: true },
@@ -40,6 +42,7 @@ function run() {
         singleChat: true,
         presence: false,
         bgm: { files: 5, emptyLists: ["Nighttime"] },
+        rooms: { total: 6, withBg: 2 },
         presetHasMarkers: true,
         save: { exists: true, name: "Story", mode: "single", groupOk: false },
     }));
@@ -47,6 +50,7 @@ function run() {
     assert(partial.lorebook.status === WARN, "missing Ultimates warn");
     assert(partial.presence.status === WARN, "single chat without Presence warns");
     assert(partial.bgm.status === WARN && partial.bgm.detail.includes("Nighttime"), "empty BGM lists warn and are named");
+    assert(partial.backgrounds.status === WARN && partial.backgrounds.detail.includes("2 of 6"), "rooms without a background warn");
     assert(partial.ai.status === OK, "preset marker rules count");
     assert(partial.save.status === WARN, "single save without its chat warns");
 
@@ -56,18 +60,19 @@ function run() {
     const many = byId(evaluateSetup({ cards: 9, sprites: { with: [], without: ["A", "B", "C", "D", "E", "F"] } }));
     assert(many.sprites.detail.includes("and 2 more"), "long name lists are shortened");
 
-    // The SETUP glow ignores sprites, Ultimates and the save.
+    // The SETUP glow ignores sprites, Ultimates, room backgrounds and the save.
     const glowFacts = {
         cards: 3,
         sprites: { with: [], without: ["A", "B"] },
         ultimates: { known: 0, total: 2 },
         singleChat: false,
         bgm: { files: 4, emptyLists: [] },
+        rooms: { total: 5, withBg: 0 },
         markerPrompts: true,
         persona: "Makoto",
         save: { exists: false },
     };
-    assert(countSetupReminders(evaluateSetup(glowFacts)) === 0, "sprites, ultimates and save don't glow");
+    assert(countSetupReminders(evaluateSetup(glowFacts)) === 0, "sprites, ultimates, backgrounds and save don't glow");
     assert(countSetupReminders(evaluateSetup({ ...glowFacts, persona: "" })) === 1, "a warning glows");
     assert(countSetupReminders(evaluateSetup({ ...glowFacts, cards: 0 })) === 1, "a missing requirement glows");
 

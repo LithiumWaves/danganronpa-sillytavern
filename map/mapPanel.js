@@ -1820,31 +1820,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                     </div>
                 </div>` : "";
 
-            // Background data — sourced from SillyTavern's <.bg_example> elements.
-            // We build a list of { bgfile, label, thumb } so the picker can show
-            // a real preview thumbnail for each background, matching the CG picker.
-            const bgItems = Array.from(document.querySelectorAll('.bg_example')).map(el => {
-                const bgfile = el.getAttribute('bgfile') || '';
-                if (!bgfile) return null;
-                const label = bgfile.split('/').pop().replace(/\.[^.]+$/, '') || bgfile;
-                const imgEl = el.querySelector('.bg_example_img, img');
-                let thumb = 'none';
-                if (imgEl) {
-                    if (imgEl.tagName === 'IMG' && imgEl.src) {
-                        thumb = `url("${imgEl.src}")`;
-                    } else {
-                        const cs = window.getComputedStyle(imgEl);
-                        if (cs.backgroundImage && cs.backgroundImage !== 'none') thumb = cs.backgroundImage;
-                        else if (imgEl.style.backgroundImage) thumb = imgEl.style.backgroundImage;
-                    }
-                }
-                const isCustom = el.getAttribute('custom') === 'true';
-                const cssUrl = el.dataset?.url || el.getAttribute('data-url')
-                    || (thumb !== 'none' ? thumb : null)
-                    || (isCustom ? `url("${bgfile}")` : `url("backgrounds/${encodeURIComponent(bgfile)}")`);
-                if (thumb === 'none' && cssUrl) thumb = cssUrl;
-                return { bgfile, label, thumb };
-            }).filter(Boolean);
+            const bgItems = listBackgrounds();
 
             // Currently chosen BG → its preview, label, and thumbnail.
             // The thumb is applied via JS after the modal renders rather than as an
@@ -2370,6 +2346,34 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         });
     }
 
+    // Background data — sourced from SillyTavern's <.bg_example> elements.
+    // A list of { bgfile, label, thumb } so pickers can show a real preview
+    // thumbnail for each background, matching the CG picker.
+    function listBackgrounds() {
+        return Array.from(document.querySelectorAll('.bg_example')).map(el => {
+            const bgfile = el.getAttribute('bgfile') || '';
+            if (!bgfile) return null;
+            const label = bgfile.split('/').pop().replace(/\.[^.]+$/, '') || bgfile;
+            const imgEl = el.querySelector('.bg_example_img, img');
+            let thumb = 'none';
+            if (imgEl) {
+                if (imgEl.tagName === 'IMG' && imgEl.src) {
+                    thumb = `url("${imgEl.src}")`;
+                } else {
+                    const cs = window.getComputedStyle(imgEl);
+                    if (cs.backgroundImage && cs.backgroundImage !== 'none') thumb = cs.backgroundImage;
+                    else if (imgEl.style.backgroundImage) thumb = imgEl.style.backgroundImage;
+                }
+            }
+            const isCustom = el.getAttribute('custom') === 'true';
+            const cssUrl = el.dataset?.url || el.getAttribute('data-url')
+                || (thumb !== 'none' ? thumb : null)
+                || (isCustom ? `url("${bgfile}")` : `url("backgrounds/${encodeURIComponent(bgfile)}")`);
+            if (thumb === 'none' && cssUrl) thumb = cssUrl;
+            return { bgfile, label, thumb };
+        }).filter(Boolean);
+    }
+
     // CG-style modal background picker. Shows every <.bg_example> as a labelled
     // thumbnail in a 5-column grid with a search field. Click a thumb → onPick(bgfile).
     function openBgPicker(items, currentBg, onPick) {
@@ -2662,6 +2666,15 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         return false;
     }
 
+    function setPinBackground(pinId, bgfile) {
+        const pin = state.customPins.find(p => p.id === pinId);
+        if (!pin) return false;
+        pin.bg = String(bgfile || '');
+        saveCustomPins();
+        renderMapPanel();
+        return true;
+    }
+
     // Switch SillyTavern's chat background by clicking the matching <.bg_example>.
     // Accepts a partial filename match (case-insensitive), mirroring /bda bg=…
     function switchChatBackground(bg) {
@@ -2704,6 +2717,9 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         isFloorLocked: isFloorLockedNow,
         applyNewGameMap,
         switchChatBackground,
+        listBackgrounds,
+        setPinBackground,
+        resolveBgUrl,
         playPinBgm,
         navigateToArea,
     };

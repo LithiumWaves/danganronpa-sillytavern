@@ -1,6 +1,8 @@
 import { extension_settings } from "../../../extensions.js";
 import { saveSettingsDebounced, getRequestHeaders, eventSource, event_types } from "../../../../script.js";
 import { power_user } from "../../../power-user.js";
+// A namespace import so a SillyTavern version missing one of these doesn't stop the extension loading.
+import * as worldInfoApi from "../../../world-info.js";
 import { openGroupById, editGroup } from "../../../group-chats.js";
 import { executeSlashCommandsWithOptions } from '../../../slash-commands.js';
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
@@ -13635,6 +13637,7 @@ async function gatherSetupFacts() {
         .filter(([key]) => !(getMonopadSetting(key) || []).length)
         .map(([, label]) => label);
 
+    const rooms = listTitleRoomPins();
     const save = saveStore.getActive();
     const groups = Array.isArray(ctx?.groups) ? ctx.groups : [];
     return {
@@ -13647,6 +13650,7 @@ async function gatherSetupFacts() {
         singleChat: !!getMonopadSetting("singleChatOverworldEnabled"),
         presence: isPresenceExtensionPresent(),
         bgm: { files: bgmFiles, emptyLists },
+        rooms: { total: rooms.length, withBg: rooms.filter((r) => r.bg).length },
         markerPrompts: !!getMonopadSetting("markerPromptsEnabled"),
         presetHasMarkers: presetHasMarkerInstructions(),
         persona: user_avatar ? String(power_user?.personas?.[user_avatar] || ctx?.name1 || "") : "",
@@ -13707,6 +13711,202 @@ function runSetupFix(fix) {
     }
 }
 
+// ── Title screen SETUP: music, room backgrounds, lorebooks ──────────────────
+
+const LEGACY_BGM_KEYS = new Set(["trialAaTracks", "trialReenactmentTracks", "trialClosingTracks", "trialVotingTracks"]);
+const BGM_GROUP_ORDER = ["PHASES", "MOODS", "LOCATIONS", "TRIAL", "ARGUMENT ARMAMENT"];
+
+function getTitleBgmPlaylists() {
+    return BGM_TRACK_TABS
+        .filter((tab) => !LEGACY_BGM_KEYS.has(tab.settingKey))
+        .map((tab) => ({
+            settingKey: tab.settingKey,
+            label: BGM_PLAYLIST_LABELS[tab.settingKey] || tab.key.toUpperCase(),
+            group: BGM_PLAYLIST_PARENTS[tab.settingKey] || "OTHER",
+            tracks: [...(getMonopadSetting(tab.settingKey) || [])],
+        }))
+        .sort((a, b) => BGM_GROUP_ORDER.indexOf(a.group) - BGM_GROUP_ORDER.indexOf(b.group));
+}
+
+function setTitleBgmPlaylist(settingKey, tracks) {
+    const tab = BGM_TRACK_TABS.find((t) => t.settingKey === settingKey);
+    if (!tab) return false;
+    setMonopadSetting(settingKey, Array.isArray(tracks) ? tracks.filter(Boolean) : []);
+    try { renderTracksForTab(tab.settingKey, tab.listId, tab.selectedId); } catch (_) {}
+    return true;
+}
+
+// The preview pauses whatever is playing (the title music) and resumes it after.
+let titleBgmPreview = null;
+let titleBgmPreviewPaused = null;
+function previewTitleBgm(path) {
+    stopTitleBgmPreview();
+    if (!path) return false;
+    if (investigationTrackAudio && !investigationTrackAudio.paused) {
+        titleBgmPreviewPaused = investigationTrackAudio;
+        investigationTrackAudio.pause();
+    }
+    titleBgmPreview = new Audio(path);
+    titleBgmPreview.loop = true;
+    titleBgmPreview.volume = Number(getMonopadSetting("monopadVolume") ?? 50) / 100;
+    titleBgmPreview.play().catch((e) => console.warn("[Dangan][Title] preview failed:", e));
+    return true;
+}
+
+function stopTitleBgmPreview() {
+    titleBgmPreview?.pause();
+    titleBgmPreview = null;
+    if (titleBgmPreviewPaused && titleBgmPreviewPaused === investigationTrackAudio) {
+        titleBgmPreviewPaused.play().catch(() => {});
+    }
+    titleBgmPreviewPaused = null;
+}
+
+function listTitleRoomPins() {
+    if (!mapPanelController) return [];
+    const areas = mapPanelController.getAllAreas?.() || [];
+    return (mapPanelController.getAllPins?.() || [])
+        .filter((pin) => pin?.type === "room")
+        .map((pin) => {
+            const area = areas.find((a) => a.key === pin.areaKey);
+            const floor = area?.floors?.find((f) => f.key === pin.floorKey);
+            return {
+                id: pin.id,
+                label: pin.label || pin.locationId || "Room",
+                area: area?.label || pin.areaKey || "",
+                floor: floor && area?.floors?.length > 1 ? floor.label : "",
+                bg: pin.bg || "",
+            };
+        });
+}
+
+function listTitleLorebookNames() {
+    return Array.isArray(worldInfoApi.world_names) ? [...worldInfoApi.world_names] : [];
+}
+
+function isTitleLorebookActive(name) {
+    return Array.isArray(worldInfoApi.selected_world_info) && worldInfoApi.selected_world_info.includes(name);
+}
+
+async function listTitleLorebooks() {
+    await worldInfoApi.updateWorldInfoList?.();
+    const ctx = window.SillyTavern?.getContext?.();
+    const chars = Array.isArray(ctx?.characters) ? ctx.characters : [];
+    const chatLore = ctx?.chatMetadata?.world_info || "";
+    return listTitleLorebookNames()
+        .sort((a, b) => a.localeCompare(b))
+        .map((name) => ({
+            name,
+            active: isTitleLorebookActive(name),
+            linked: [
+                ...(chatLore === name ? ["this chat"] : []),
+                ...chars.filter((c) => c?.data?.extensions?.world === name).map((c) => c.name),
+            ],
+        }));
+}
+
+// Ticks the book in SillyTavern's global World Info list, which saves the
+// selection and keeps its own UI in step.
+async function setTitleLorebookActive(name, on) {
+    if (isTitleLorebookActive(name) === !!on) return true;
+    const index = listTitleLorebookNames().indexOf(name);
+    const $select = $("#world_info");
+    const $option = $select.find("option").filter((_, o) => o.value === String(index));
+    if (index >= 0 && $option.length) {
+        $option.prop("selected", !!on);
+        $select.trigger("change");
+        return true;
+    }
+    const selected = worldInfoApi.selected_world_info;
+    if (!Array.isArray(selected)) return false;
+    if (on) selected.push(name);
+    else if (selected.includes(name)) selected.splice(selected.indexOf(name), 1);
+    saveSettingsDebounced();
+    return true;
+}
+
+async function loadTitleLorebook(name) {
+    const data = await worldInfoApi.loadWorldInfo?.(name);
+    return data ? structuredClone(data) : null;
+}
+
+async function saveTitleLorebook(name, data) {
+    if (!name || !data) return;
+    await worldInfoApi.saveWorldInfo?.(name, structuredClone(data), true);
+    try { worldInfoApi.reloadEditor?.(name); } catch (_) {}
+}
+
+function createTitleLorebookEntry(data) {
+    if (typeof worldInfoApi.createWorldInfoEntry === "function") return worldInfoApi.createWorldInfoEntry(null, data);
+    data.entries ??= {};
+    let uid = 0;
+    while (uid in data.entries) uid++;
+    const template = worldInfoApi.newWorldInfoEntryTemplate || {};
+    const entry = { uid, ...structuredClone(template), key: [], keysecondary: [], comment: "", content: "" };
+    data.entries[uid] = entry;
+    return entry;
+}
+
+async function createTitleLorebook(name) {
+    if (typeof worldInfoApi.createNewWorldInfo === "function") {
+        return (await worldInfoApi.createNewWorldInfo(name)) !== false;
+    }
+    await worldInfoApi.saveWorldInfo?.(name, { entries: {} }, true);
+    await worldInfoApi.updateWorldInfoList?.();
+    return true;
+}
+
+// Saves the book under the new name, deletes the old one and moves the
+// links (global list, this chat, characters' primary lorebook) across.
+async function renameTitleLorebook(oldName, newName) {
+    const data = await worldInfoApi.loadWorldInfo?.(oldName);
+    if (!data || !newName) return false;
+    const wasActive = isTitleLorebookActive(oldName);
+    await worldInfoApi.saveWorldInfo?.(newName, structuredClone(data), true);
+    await worldInfoApi.deleteWorldInfo?.(oldName);
+    await worldInfoApi.updateWorldInfoList?.();
+    if (wasActive) await setTitleLorebookActive(newName, true);
+
+    for (const charLore of worldInfoApi.world_info?.charLore || []) {
+        if (!Array.isArray(charLore?.extraBooks) || !charLore.extraBooks.includes(oldName)) continue;
+        charLore.extraBooks = [...charLore.extraBooks.filter((b) => b !== oldName), newName];
+        saveSettingsDebounced();
+    }
+    const ctx = window.SillyTavern?.getContext?.();
+    if (ctx?.chatMetadata?.world_info === oldName) {
+        ctx.chatMetadata.world_info = newName;
+        try { await ctx.saveMetadata?.(); } catch (_) {}
+    }
+    for (const character of Array.isArray(ctx?.characters) ? ctx.characters : []) {
+        if (character?.data?.extensions?.world !== oldName) continue;
+        try {
+            const response = await fetch("/api/characters/merge-attributes", {
+                method: "POST",
+                headers: getRequestHeaders(),
+                body: JSON.stringify({ avatar: character.avatar, data: { extensions: { world: newName } } }),
+            });
+            if (response.ok) character.data.extensions.world = newName;
+        } catch (e) {
+            console.warn(`[Dangan][Title] relinking ${character.name}'s lorebook failed:`, e);
+        }
+    }
+    return true;
+}
+
+async function deleteTitleLorebook(name) {
+    return (await worldInfoApi.deleteWorldInfo?.(name)) !== false;
+}
+
+// The panel has already asked about replacing a book with the same name, so
+// it's deleted first and SillyTavern doesn't ask again behind the title screen.
+async function importTitleLorebook(file) {
+    if (!file || typeof worldInfoApi.importWorldInfo !== "function") return false;
+    const name = file.name.replace(/\.[^.]+$/, "");
+    if (listTitleLorebookNames().includes(name)) await worldInfoApi.deleteWorldInfo?.(name);
+    await worldInfoApi.importWorldInfo(file);
+    return true;
+}
+
 function buildTitleServices() {
     return {
         getSetupRows,
@@ -13726,6 +13926,26 @@ function buildTitleServices() {
             try { applySettingsTabUI(); } catch (_) {}
         },
         runSetupFix,
+        getBgmPlaylists: getTitleBgmPlaylists,
+        listBgmFiles: async () => {
+            cachedBgmPaths = null;
+            return fetchBgmPaths();
+        },
+        setBgmPlaylist: setTitleBgmPlaylist,
+        previewBgm: previewTitleBgm,
+        stopBgmPreview: stopTitleBgmPreview,
+        listRoomPins: listTitleRoomPins,
+        listBackgrounds: () => mapPanelController?.listBackgrounds?.() || [],
+        setRoomBackground: (pinId, bgfile) => !!mapPanelController?.setPinBackground?.(pinId, bgfile),
+        listLorebooks: listTitleLorebooks,
+        loadLorebook: loadTitleLorebook,
+        saveLorebook: saveTitleLorebook,
+        createLorebook: createTitleLorebook,
+        renameLorebook: renameTitleLorebook,
+        deleteLorebook: deleteTitleLorebook,
+        importLorebook: importTitleLorebook,
+        setLorebookActive: setTitleLorebookActive,
+        createLorebookEntry: createTitleLorebookEntry,
         listSaves: listTitleScreenSaves,
         openSave: openTitleScreenSave,
         listChats: listTitleScreenChats,

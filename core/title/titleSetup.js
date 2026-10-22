@@ -4,13 +4,24 @@ const STATUS_ICON = Object.freeze({ ok: "✓", warn: "!", missing: "✕", skip: 
 const STATUS_TEXT = Object.freeze({ ok: "READY", warn: "CHECK", missing: "NEEDED", skip: "N/A" });
 
 // Fixes that stay inside the title screen instead of closing it.
-const IN_TITLE_FIXES = Object.freeze({ newGame: "newGame", continue: "continue" });
+const IN_TITLE_FIXES = Object.freeze({
+    newGame: "newGame",
+    continue: "continue",
+    bgm: "music",
+    backgrounds: "backgrounds",
+    worldInfo: "lorebook",
+});
 
 export function mountSetupPanel(container, api) {
     const { services, sfx, close } = api;
     container.innerHTML = `
         <div class="dgn-title-setup">
             <p class="dgn-title-note">What the game needs from SillyTavern. FIX takes you to the place to change it.</p>
+            <div class="dgn-title-toolbar dgn-title-setup-shortcuts">
+                <button type="button" class="dgn-title-btn" data-open-panel="music">MUSIC</button>
+                <button type="button" class="dgn-title-btn" data-open-panel="backgrounds">ROOM BACKGROUNDS</button>
+                <button type="button" class="dgn-title-btn" data-open-panel="lorebook">LOREBOOKS</button>
+            </div>
             <div class="dgn-title-setup-list" role="list">
                 <div class="dgn-title-empty">CHECKING…</div>
             </div>
@@ -65,6 +76,12 @@ export function mountSetupPanel(container, api) {
     };
 
     container.addEventListener("click", (ev) => {
+        const shortcut = ev.target.closest?.("[data-open-panel]");
+        if (shortcut) {
+            sfx("click");
+            api.openPanel(shortcut.dataset.openPanel);
+            return;
+        }
         if (ev.target.closest?.("[data-recheck]")) {
             sfx("click");
             check();
