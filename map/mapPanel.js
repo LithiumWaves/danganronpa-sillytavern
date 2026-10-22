@@ -2395,7 +2395,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                 const iconUrl = icon ? `${extensionFolderPath}/assets/rooms/${icon}` : '';
                 return {
                     id: p.id, type: p.type, label: p.label,
-                    x: p.x, y: p.y, iconUrl,
+                    locationId: p.locationId, x: p.x, y: p.y, iconUrl,
                 };
             });
         return {

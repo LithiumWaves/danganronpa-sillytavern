@@ -1686,11 +1686,22 @@ body.dangan-ow-inchat-explore #expression-wrapper {
     opacity: 0 !important;
     pointer-events: none !important;
 }
-body.dangan-ow-inchat-explore #form_sheld,
-body.dangan-ow-inchat-explore #send_form {
+/* Old layout (Monopad → HIDE TEXT BOX WHILE EXPLORING off): the composer
+ * stays usable on top of the scene. */
+body.dangan-legacy-explore-composer.dangan-ow-inchat-explore #form_sheld,
+body.dangan-legacy-explore-composer.dangan-ow-inchat-explore #send_form {
     z-index: 40 !important;
     pointer-events: auto !important;
     opacity: 1 !important;
+}
+/* Default: nobody talks while exploring. The dialogue box and the composer
+ * (docked inside it) only come back with View conversation. */
+body.dangan-ow-inchat-explore:not(.dangan-legacy-explore-composer) #dangan-vn-overlay,
+body.dangan-ow-inchat-explore:not(.dangan-legacy-explore-composer) #form_sheld,
+body.dangan-ow-inchat-explore:not(.dangan-legacy-explore-composer) #send_form {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
 }
 
 /* Keep Prome / ST group sprites hidden for the whole single-chat session.
@@ -1745,6 +1756,210 @@ body.dangan-ow-single-chat #expression-wrapper {
  * the top slot, still on the right side. */
 #dangan-overworld .dangan-ow-edit-btn.dangan-ow-edit-btn-solo {
     top: 240px;
+}
+
+/* ── Exploration MENU (Single-Chat explore) ──────────────────────────────
+ * The MENU button reuses the Call Student slot. Its list hangs under it as a
+ * stack of right-leaning slabs that slide in one after another. */
+#dangan-ow-action-menu {
+    position: fixed;
+    top: 282px;
+    right: -10px;
+    z-index: 1500001;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    pointer-events: auto;
+}
+#dangan-ow-action-menu .dangan-ow-action-item {
+    min-width: 284px;
+    padding: 7px 26px 7px 18px;
+    background: rgba(12, 12, 18, 0.9);
+    color: #fff;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-align: left;
+    text-transform: uppercase;
+    border: 1.5px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.35));
+    border-radius: 4px;
+    cursor: pointer;
+    box-shadow: 0 0 10px -2px var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.25));
+    transform: skewX(-22deg);
+    opacity: 0;
+    animation: dangan-ow-action-in 180ms ease-out forwards;
+    animation-delay: calc(var(--i, 0) * 30ms);
+    transition: background 140ms ease, box-shadow 160ms ease, margin 120ms ease;
+}
+#dangan-ow-action-menu .dangan-ow-action-item-label {
+    display: inline-block;
+    transform: skewX(22deg);
+}
+#dangan-ow-action-menu .dangan-ow-action-item:hover,
+#dangan-ow-action-menu .dangan-ow-action-item:focus-visible {
+    background: var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.18));
+    margin-right: 10px;
+    outline: none;
+    box-shadow: 0 6px 18px -4px var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.4));
+}
+#dangan-ow-action-menu .dangan-ow-action-item.is-active {
+    border-left: 4px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.8));
+}
+@keyframes dangan-ow-action-in {
+    from { opacity: 0; transform: skewX(-22deg) translateX(40px); }
+    to   { opacity: 1; transform: skewX(-22deg) translateX(0); }
+}
+body.dangan-ow-action-menu-open #dangan-overworld .dangan-ow-menu-btn {
+    background: var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.18));
+}
+body.dangan-ui-hidden #dangan-ow-action-menu,
+body.dangan-ow-edit-mode #dangan-ow-action-menu {
+    display: none;
+}
+
+/* With the MENU on, its items leave the minimap: only zoom and Move stay.
+ * Debug only shows once picked from the MENU. Scoped to Single-Chat explore —
+ * the multi-chat overworld has no MENU. */
+body.dangan-explore-menu-on.dangan-ow-inchat-explore .dangan-minimap-flat-toggle-col,
+body.dangan-explore-menu-on.dangan-ow-inchat-explore .dangan-minimap-ui-toggle-col,
+body.dangan-explore-menu-on.dangan-ow-inchat-explore .dangan-minimap-action-row,
+body.dangan-explore-menu-on.dangan-ow-inchat-explore .dangan-minimap-hs-adjust-col,
+body.dangan-explore-menu-on.dangan-ow-inchat-explore:not(.dangan-explore-debug-shown) #trust-debug-controls {
+    display: none !important;
+}
+
+/* ── Move from the minimap ───────────────────────────────────────────────
+ * Rooms connected to the current one glow in full colour and are clickable. */
+.dangan-minimap-pin.dangan-minimap-pin-reachable {
+    filter: none;
+    cursor: pointer;
+    pointer-events: auto;
+    z-index: 3;
+    box-shadow:
+        0 0 0 2px rgba(255, 140, 216, 0.95),
+        0 0 10px 2px rgba(255, 100, 200, 0.8);
+    animation: dangan-minimap-reach-glow 1.8s ease-in-out infinite;
+}
+.dangan-minimap-pin.dangan-minimap-pin-reachable:hover {
+    transform: translate(-50%, -50%) scale(1.25);
+    animation: none;
+}
+.dangan-minimap-pin.dangan-minimap-pin-reachable::after {
+    content: attr(data-name);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 6px);
+    transform-origin: center bottom;
+    transform: translateX(-50%) scale(calc(1 / var(--minimap-zoom, 1)));
+    padding: 3px 7px;
+    background: rgba(8, 6, 18, 0.92);
+    border: 1px solid rgba(255, 130, 220, 0.6);
+    border-radius: 3px;
+    color: rgba(255, 240, 250, 0.96);
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 120ms;
+}
+.dangan-minimap-pin.dangan-minimap-pin-reachable:hover::after { opacity: 1; }
+@keyframes dangan-minimap-reach-glow {
+    0%, 100% { box-shadow: 0 0 0 2px rgba(255, 140, 216, 0.95), 0 0 6px 1px rgba(255, 100, 200, 0.6); }
+    50%      { box-shadow: 0 0 0 2px rgba(255, 140, 216, 0.95), 0 0 14px 4px rgba(255, 100, 200, 0.9); }
+}
+
+/* Move diamond — one lattice step left of the bottom apex, beside Photo
+ * Mode; it takes the apex itself when the MENU has emptied that row. */
+.dangan-minimap-move-col {
+    position: absolute;
+    bottom: -43px;
+    left: calc(50% - 54px);
+    transform: translateX(-50%);
+    display: flex;
+    pointer-events: auto;
+    z-index: 2;
+}
+body.dangan-explore-menu-on.dangan-ow-inchat-explore .dangan-minimap-move-col {
+    left: 50%;
+}
+#dangan-minimap-move-pop {
+    position: fixed;
+    right: 58px;
+    bottom: 290px;
+    width: 250px;
+    max-height: 50vh;
+    z-index: 2147483600;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 14px;
+    background: rgba(10, 8, 18, 0.96);
+    border: 2px solid rgba(255, 130, 220, 0.7);
+    border-radius: 8px;
+    box-shadow: 0 0 18px rgba(255, 100, 200, 0.35), inset 0 0 10px rgba(0, 0, 0, 0.5);
+    pointer-events: auto;
+}
+.dangan-minimap-move-pop-title {
+    font-family: "Orbitron", "Rajdhani", sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    color: #ff8cd8;
+    text-shadow: 0 0 6px rgba(255, 80, 200, 0.5);
+}
+.dangan-minimap-move-pop-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    overflow-y: auto;
+    min-height: 0;
+}
+.dangan-minimap-move-pop-set {
+    padding: 6px;
+    background: rgba(40, 10, 30, 0.85);
+    border: 1px solid rgba(255, 100, 200, 0.5);
+    border-radius: 5px;
+    color: rgba(255, 210, 235, 0.95);
+    font-family: "Orbitron", "Rajdhani", sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    cursor: pointer;
+}
+.dangan-minimap-move-pop-set:hover { background: rgba(80, 20, 55, 0.9); }
+body.dangan-ui-hidden #dangan-minimap-move-pop,
+body.dangan-ow-edit-mode #dangan-minimap-move-pop,
+body.dangan-trial-active #dangan-minimap-move-pop {
+    display: none;
+}
+
+/* ── Auto-hide SillyTavern's top bar ─────────────────────────────────────
+ * The bar slides up out of view; hovering the strip along the top edge
+ * (#dangan-stbar-hotzone) brings it back. `transform: none` while shown keeps
+ * the bar from becoming the containing block for its fixed drawers. Trials
+ * restyle the bar themselves and are left alone. */
+#dangan-stbar-hotzone {
+    display: none;
+}
+body.dangan-stbar-autohide:not(.dangan-trial-active) #dangan-stbar-hotzone {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 8px;
+    z-index: 2999;
+}
+body.dangan-stbar-autohide:not(.dangan-trial-active) #top-bar,
+body.dangan-stbar-autohide:not(.dangan-trial-active) #top-settings-holder {
+    transform: translateY(calc(-100% + 4px));
+    transition: transform 220ms ease, opacity 320ms ease;
+}
+body.dangan-stbar-autohide.dangan-stbar-peek:not(.dangan-trial-active) #top-bar,
+body.dangan-stbar-autohide.dangan-stbar-peek:not(.dangan-trial-active) #top-settings-holder {
+    transform: none;
 }
 
 /* While an overworld CG is showing (body.dangan-ow-cg-open, toggled by

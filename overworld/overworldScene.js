@@ -122,6 +122,8 @@ export function createOverworldSceneController({
     editGroup, // optional — (groupId, update, silent) persist group mute/presence
     isTrialActive, // optional — () => boolean
     onPresenceSynced, // optional — () => void; rebuild GCP after room mute changes
+    isActionMenuEnabled, // optional — () => boolean; Single-Chat explore uses one MENU button
+    getHostMenuActions, // optional — () => { id, label, active?, onSelect }[] appended to the MENU list
 }) {
     function playOwSfx(key) {
         if (!playSfx) return;
@@ -752,6 +754,8 @@ export function createOverworldSceneController({
         document.body.classList.remove("dangan-ow-edit-mode");
         updateEditButtonLabel();
         commitEditPositionsToState();
+        // The MENU layout swaps the Save button back for MENU.
+        if (isActionMenuEnabled?.() && isSingleChatGroupContext()) scheduleRender();
     }
 
     function toggleEditMode() {
@@ -1169,6 +1173,13 @@ export function createOverworldSceneController({
         body.classList.toggle("dangan-ow-chat-exit-active", mode === "chat-exit");
         body.classList.toggle("dangan-ow-inchat-explore", inchatExplore);
         body.classList.toggle("dangan-ow-single-chat", singleChatHud);
+        if (!inchatExplore) closeActionMenu();
+        // With the text box hidden while exploring, a focused textarea could
+        // still send on Enter — drop focus so nothing can be typed.
+        if (inchatExplore && !body.classList.contains("dangan-legacy-explore-composer")) {
+            const ta = document.getElementById("send_textarea");
+            if (ta && document.activeElement === ta) ta.blur();
+        }
     }
 
     function removeRoot() {
@@ -1480,8 +1491,15 @@ export function createOverworldSceneController({
         const total = renderable.reduce((a, g) => a + g.members.length, 0);
         if (isSingleChatGroupContext()) {
             root.appendChild(buildViewConversationBtn());
-            root.appendChild(buildCallToRoomBtn());
-            if (total >= 1) root.appendChild(buildEditPositionsBtn());
+            if (isActionMenuEnabled?.()) {
+                // Edit mode needs its Save button on screen; otherwise every
+                // right-column action lives behind the one MENU button.
+                if (editMode) root.appendChild(buildEditPositionsBtn(true));
+                else root.appendChild(buildActionMenuBtn(total));
+            } else {
+                root.appendChild(buildCallToRoomBtn());
+                if (total >= 1) root.appendChild(buildEditPositionsBtn());
+            }
         } else {
             if (total >= 2) {
                 const btn = document.createElement("button");
@@ -1602,6 +1620,99 @@ export function createOverworldSceneController({
         btn.addEventListener("click", (e) => {
             e.stopPropagation();
             openConversationView();
+        });
+        return btn;
+    }
+
+    // ── Exploration MENU (Single-Chat explore) ───────────────────────────────
+    // One right-column button that opens a V3-style list of the room actions.
+    // The list is appended to <body> so it survives the overworld re-render,
+    // which replaces #dangan-overworld wholesale.
+    const ACTION_MENU_ID = "dangan-ow-action-menu";
+    let actionMenuOutsideHandler = null;
+    let actionMenuKeyHandler = null;
+
+    function closeActionMenu() {
+        const menu = document.getElementById(ACTION_MENU_ID);
+        if (!menu) return;
+        menu.remove();
+        document.body.classList.remove("dangan-ow-action-menu-open");
+        if (actionMenuOutsideHandler) document.removeEventListener("pointerdown", actionMenuOutsideHandler, true);
+        if (actionMenuKeyHandler) document.removeEventListener("keydown", actionMenuKeyHandler, true);
+        actionMenuOutsideHandler = null;
+        actionMenuKeyHandler = null;
+    }
+
+    function getActionMenuItems(total) {
+        const items = [
+            { id: "call", label: "Call Student", onSelect: () => showCallToRoomModal() },
+        ];
+        if (total >= 1) {
+            items.push({ id: "edit", label: "Edit Character Positions", onSelect: () => { enterEditMode(); scheduleRender(); } });
+        }
+        let hostItems = [];
+        try { hostItems = getHostMenuActions?.() || []; } catch (err) {
+            console.warn("[Dangan][Overworld] Menu actions failed:", err);
+        }
+        return items.concat(hostItems);
+    }
+
+    function openActionMenu(total) {
+        closeActionMenu();
+        const menu = document.createElement("div");
+        menu.id = ACTION_MENU_ID;
+        menu.setAttribute("role", "menu");
+        getActionMenuItems(total).forEach((item, i) => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "dangan-ow-action-item" + (item.active ? " is-active" : "");
+            btn.setAttribute("role", "menuitem");
+            btn.style.setProperty("--i", String(i));
+            const label = document.createElement("span");
+            label.className = "dangan-ow-action-item-label";
+            label.textContent = item.label;
+            btn.appendChild(label);
+            btn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                playOwSfx("click");
+                closeActionMenu();
+                try { item.onSelect?.(); } catch (err) {
+                    console.warn(`[Dangan][Overworld] Menu action "${item.id}" failed:`, err);
+                }
+            });
+            menu.appendChild(btn);
+        });
+        document.body.appendChild(menu);
+        document.body.classList.add("dangan-ow-action-menu-open");
+
+        actionMenuOutsideHandler = (e) => {
+            if (menu.contains(e.target) || e.target.closest?.(".dangan-ow-menu-btn")) return;
+            closeActionMenu();
+        };
+        actionMenuKeyHandler = (e) => {
+            if (e.key !== "Escape") return;
+            e.stopPropagation();
+            closeActionMenu();
+        };
+        document.addEventListener("pointerdown", actionMenuOutsideHandler, true);
+        document.addEventListener("keydown", actionMenuKeyHandler, true);
+        menu.querySelector("button")?.focus({ preventScroll: true });
+    }
+
+    function buildActionMenuBtn(total) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "dangan-ow-room-btn dangan-ow-call-btn dangan-ow-menu-btn";
+        btn.setAttribute("aria-haspopup", "menu");
+        const label = document.createElement("span");
+        label.className = "dangan-ow-room-btn-label";
+        label.textContent = "Menu";
+        btn.appendChild(label);
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            playOwSfx("click");
+            if (document.getElementById(ACTION_MENU_ID)) closeActionMenu();
+            else openActionMenu(total);
         });
         return btn;
     }

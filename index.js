@@ -10030,6 +10030,8 @@ jQuery(async () => {
                     isSingleChatOverworldEnabled: () => !!getMonopadSetting("singleChatOverworldEnabled"),
                     editGroup,
                     isTrialActive: () => !!trialManager?.isTrialActive?.(),
+                    isActionMenuEnabled: () => !!getMonopadSetting("exploreActionMenu"),
+                    getHostMenuActions: () => getExploreMenuActions(),
                     onPresenceSynced: () => {
                         try { trialManager?.refreshGroupChatPortraits?.(); }
                         catch (e) { console.warn("[Dangan][Overworld] GCP refresh after presence sync failed:", e); }
@@ -10411,6 +10413,9 @@ $(".monopad-icon").on("mouseenter", function () {
             }
             if (key === "phaseHudEnabled") {
                 refreshPhaseHud();
+            }
+            if (key === "exploreHideComposer" || key === "exploreActionMenu" || key === "moveToOnMinimap" || key === "autoHideStTopBar") {
+                applyExploreLayoutSettings();
             }
             if (key === "markerPromptsEnabled") {
                 // Warn again the next time it's turned on.
@@ -11236,6 +11241,8 @@ setTimeout(() => {
 // DOM node when present).
 setInterval(() => {
     try { renderMoveToPanel(); renderMinimap(); } catch {}
+    // #top-settings-holder may not exist yet when the layout settings apply.
+    try { ensureStTopBarAutoHide(); } catch {}
 }, 2000);
 
 rewards?.renderProgressionUi?.();
@@ -11243,6 +11250,7 @@ updateChapterDisplay();
 itemsPanelController.loadInventoryState();
 applySettingsTabUI();
 applyImageVisibilitySettings();
+applyExploreLayoutSettings();
 applyHalfSpriteMode();
 // The initial chat's sprites mount asynchronously after boot (and CHAT_CHANGED
 // can be unreliable on first load), so re-apply once they've settled — otherwise
@@ -14396,6 +14404,181 @@ const MINIMAP_ZOOM_STEP = 0.25;
 // Mirrors the moveTo panel's visibility gates: hides during any trial phase and
 // while the Monopad is open. Shows only the current sub-area's floor + location
 // pins (rooms / monomachines / trials) — no evidence, no bodies, no hover.
+// Shared by the minimap diamonds and the exploration MENU.
+function toggleRoomFlatFromUi() {
+    overworldSceneController?.toggleCurrentRoomFlat?.();
+    _minimapSig = null;
+    renderMinimap();
+}
+
+function toggleHalfSpriteFromUi() {
+    // Mirror the settings-toggle handler so the Monopad → Display toggle stays
+    // in sync and the body-class / sprite refresh runs.
+    const next = !getMonopadSetting('halfspriteMode');
+    setMonopadSetting('halfspriteMode', next);
+    applySettingsTabUI();
+    applyHalfSpriteMode();
+    // The size/offset control only exists in half-sprite mode — close its
+    // popover when the mode is switched off.
+    if (!next) document.getElementById('dangan-hs-adjust')?.remove();
+    _minimapSig = null;
+    renderMinimap();
+}
+
+function enterPhotoMode() {
+    document.body.classList.add('dangan-ui-hidden');
+}
+
+// Items the host adds to the overworld's exploration MENU, after Call Student
+// and Edit Character Positions.
+function getExploreMenuActions() {
+    const playerRoomId = getCurrentLocationId();
+    const halfOn = !!getMonopadSetting('halfspriteMode');
+    const items = [
+        { id: 'set-location', label: 'Set Location', onSelect: () => openSetLocationPicker() },
+        { id: 'cg', label: 'Show CG', onSelect: () => showCgPicker() },
+        { id: 'photo', label: 'Photo Mode', onSelect: () => enterPhotoMode() },
+        { id: 'half-sprite', label: halfOn ? 'Half-Sprite Mode: On' : 'Half-Sprite Mode: Off', active: halfOn, onSelect: () => toggleHalfSpriteFromUi() },
+    ];
+    if (halfOn) {
+        items.push({ id: 'half-sprite-adjust', label: 'Adjust Half-Sprites', onSelect: () => openHalfSpriteAdjustPanel() });
+    }
+    if (playerRoomId) {
+        const isFlat = !!overworldSceneController?.isRoomFlat?.(playerRoomId);
+        items.push({ id: 'flat', label: isFlat ? 'Perspective: Locked' : 'Perspective: Unlocked', active: isFlat, onSelect: () => toggleRoomFlatFromUi() });
+    }
+    if (isDebugAccessGranted() && !isDebugControlsHidden()) {
+        const shown = document.body.classList.contains('dangan-explore-debug-shown');
+        items.push({
+            id: 'debug',
+            label: shown ? 'Hide Debug' : 'Show Debug',
+            active: shown,
+            onSelect: () => document.body.classList.toggle('dangan-explore-debug-shown'),
+        });
+    }
+    return items;
+}
+
+// Connected pins from the current location, as locationId → label. Only pins
+// can light up on the minimap; areas / sub-areas live in the Move popover.
+function getReachablePinLabels() {
+    const out = new Map();
+    const currentId = getCurrentLocationId();
+    if (!currentId) return out;
+    for (const c of (mapPanelController?.getConnectionsForLocationId?.(currentId) ?? [])) {
+        if (c.kind === 'pin' && c.value && !out.has(c.value)) out.set(c.value, c.label);
+    }
+    return out;
+}
+
+function closeMinimapMovePopover() {
+    document.getElementById('dangan-minimap-move-pop')?.remove();
+}
+
+function toggleMinimapMovePopover() {
+    if (document.getElementById('dangan-minimap-move-pop')) { closeMinimapMovePopover(); return; }
+    playSfx(sfx.click);
+    const pop = document.createElement('div');
+    pop.id = 'dangan-minimap-move-pop';
+    const title = document.createElement('div');
+    title.className = 'dangan-minimap-move-pop-title';
+    title.textContent = 'MOVE TO';
+    pop.appendChild(title);
+
+    const list = document.createElement('div');
+    list.className = 'dangan-minimap-move-pop-list';
+    const conns = getCurrentConnections();
+    if (!getCurrentLocationId()) {
+        list.innerHTML = '<div class="dangan-moveto-empty">No location set — choose where you are below.</div>';
+    } else if (!conns.length) {
+        list.innerHTML = '<div class="dangan-moveto-empty">No connected rooms from here. Edit the current pin to add some.</div>';
+    }
+    for (const c of conns) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `dangan-moveto-btn dangan-moveto-kind-${c.kind}`;
+        btn.textContent = c.label;
+        btn.addEventListener('click', () => { closeMinimapMovePopover(); moveToDestination(c.label); });
+        list.appendChild(btn);
+    }
+    pop.appendChild(list);
+
+    const setBtn = document.createElement('button');
+    setBtn.type = 'button';
+    setBtn.className = 'dangan-minimap-move-pop-set';
+    setBtn.textContent = 'SET LOCATION';
+    setBtn.addEventListener('click', () => { closeMinimapMovePopover(); openSetLocationPicker(); });
+    pop.appendChild(setBtn);
+
+    pop.addEventListener('pointerdown', (e) => e.stopPropagation());
+    document.body.appendChild(pop);
+    const onOutside = (e) => {
+        if (!pop.isConnected) { document.removeEventListener('pointerdown', onOutside); return; }
+        if (e.target.closest?.('.dangan-minimap-move-btn')) return;
+        closeMinimapMovePopover();
+        document.removeEventListener('pointerdown', onOutside);
+    };
+    document.addEventListener('pointerdown', onOutside);
+}
+
+// Body classes for the exploration-screen layout settings.
+function applyExploreLayoutSettings() {
+    const body = document.body;
+    body.classList.toggle('dangan-legacy-explore-composer', !getMonopadSetting('exploreHideComposer'));
+    body.classList.toggle('dangan-explore-menu-on', !!getMonopadSetting('exploreActionMenu'));
+    body.classList.toggle('dangan-moveto-on-minimap', !!getMonopadSetting('moveToOnMinimap'));
+    body.classList.toggle('dangan-stbar-autohide', !!getMonopadSetting('autoHideStTopBar'));
+    if (!getMonopadSetting('autoHideStTopBar')) body.classList.remove('dangan-stbar-peek');
+    if (!getMonopadSetting('moveToOnMinimap')) closeMinimapMovePopover();
+    // Also runs at boot, before the module-level state these touch is
+    // initialised — the 2s poll picks them up then.
+    try {
+        ensureStTopBarAutoHide();
+        _minimapSig = null;
+        _moveToPanelSig = null;
+        renderMoveToPanel();
+        renderMinimap();
+    } catch { /* ignore */ }
+    overworldSceneController?.render?.();
+}
+
+// SillyTavern's top bar slides away; a thin strip along the top edge (and the
+// bar itself) brings it back on hover. It stays out while a drawer is open.
+let _stTopBarAutoHideBound = false;
+function ensureStTopBarAutoHide() {
+    if (_stTopBarAutoHideBound) return;
+    const holder = document.getElementById('top-settings-holder');
+    if (!holder) return;
+    _stTopBarAutoHideBound = true;
+
+    const zone = document.createElement('div');
+    zone.id = 'dangan-stbar-hotzone';
+    document.body.appendChild(zone);
+
+    let hideTimer = null;
+    const peek = () => {
+        clearTimeout(hideTimer);
+        document.body.classList.add('dangan-stbar-peek');
+    };
+    const maybeHide = (delay = 350) => {
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(() => {
+            if (holder.matches(':hover') || zone.matches(':hover')) return;
+            if (holder.querySelector('.openDrawer')) return;
+            document.body.classList.remove('dangan-stbar-peek');
+        }, delay);
+    };
+    zone.addEventListener('mouseenter', peek);
+    holder.addEventListener('mouseenter', peek);
+    holder.addEventListener('mouseleave', () => maybeHide());
+    zone.addEventListener('mouseleave', () => maybeHide());
+    // Closing a drawer (from inside or by clicking away) re-checks once its
+    // close animation has had a moment to clear .openDrawer.
+    document.addEventListener('click', () => {
+        if (document.body.classList.contains('dangan-stbar-peek')) maybeHide(450);
+    });
+}
+
 function renderMinimap() {
     const existing = document.getElementById('dangan-minimap');
     const removeIt = () => { if (existing) { existing.remove(); _minimapSig = null; } };
@@ -14427,7 +14610,9 @@ function renderMinimap() {
         const list = overworldSceneController?.getCharactersInRoom?.(currentId) || [];
         return list.map(c => `${c.name}/${c.groupId || ''}`).join(',');
     })();
-    const sig = `${data.areaKey}/${data.floorKey}|${data.imageSrc}|${pinSig}|cur:${getCurrentLocationId() || ''}|spk:${lastSpeaker || ''}|grp:${groupSig}|ow:${owSig}`;
+    const moveToOnMinimap = !!getMonopadSetting('moveToOnMinimap');
+    const reachSig = moveToOnMinimap ? [...getReachablePinLabels().keys()].join(',') : 'off';
+    const sig = `${data.areaKey}/${data.floorKey}|${data.imageSrc}|${pinSig}|cur:${getCurrentLocationId() || ''}|spk:${lastSpeaker || ''}|grp:${groupSig}|ow:${owSig}|mv:${reachSig}`;
     if (existing && sig === _minimapSig) return;
     _minimapSig = sig;
 
@@ -14458,10 +14643,23 @@ function renderMinimap() {
     const currentPin = (currentId && !currentId.startsWith('area:') && !currentId.startsWith('subarea:'))
         ? mapPanelController?.getPinByLocationId?.(currentId)
         : null;
+    // Rooms connected to the current one glow and move the player on click.
+    const reachable = moveToOnMinimap ? getReachablePinLabels() : new Map();
     for (const p of data.pins) {
         const isCurrent = currentPin && p.id === currentPin.id;
+        const reachLabel = !isCurrent && p.locationId ? reachable.get(p.locationId) : null;
         const pin = document.createElement('div');
-        pin.className = `dangan-minimap-pin dangan-minimap-pin-${p.type}${isCurrent ? ' dangan-minimap-pin-current' : ''}`;
+        pin.className = `dangan-minimap-pin dangan-minimap-pin-${p.type}${isCurrent ? ' dangan-minimap-pin-current' : ''}${reachLabel ? ' dangan-minimap-pin-reachable' : ''}`;
+        if (reachLabel) {
+            pin.dataset.name = reachLabel;
+            pin.title = `Move to ${reachLabel}`;
+            // Stop the press reaching the root so it doesn't start a pan.
+            pin.addEventListener('pointerdown', (e) => e.stopPropagation());
+            pin.addEventListener('click', (e) => {
+                e.stopPropagation();
+                moveToDestination(reachLabel);
+            });
+        }
         pin.style.left = `${(p.x / data.mapWidth) * 100}%`;
         pin.style.top  = `${(p.y / data.mapHeight) * 100}%`;
         if (p.iconUrl) {
@@ -14515,9 +14713,7 @@ function renderMinimap() {
     flatBtn.innerHTML = `<span><i class="fa-solid ${isFlat ? 'fa-lock' : 'fa-lock-open'}"></i></span>`;
     flatBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        overworldSceneController?.toggleCurrentRoomFlat?.();
-        _minimapSig = null;
-        renderMinimap();
+        toggleRoomFlatFromUi();
     });
     flatBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
     flatCol.appendChild(flatBtn);
@@ -14538,11 +14734,27 @@ function renderMinimap() {
     hideBtn.innerHTML = '<span><i class="fa-solid fa-camera"></i></span>';
     hideBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        document.body.classList.add('dangan-ui-hidden');
+        enterPhotoMode();
     });
     hideBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
     hideCol.appendChild(hideBtn);
     root.appendChild(hideCol);
+
+    // Move — replaces the MOVE TO list: a popover of every exit from here,
+    // including areas / sub-areas that have no pin on this floor.
+    if (moveToOnMinimap) {
+        const moveCol = document.createElement('div');
+        moveCol.className = 'dangan-minimap-move-col';
+        const moveBtn = document.createElement('button');
+        moveBtn.type = 'button';
+        moveBtn.className = 'dangan-minimap-zoom-btn dangan-minimap-move-btn';
+        moveBtn.title = 'Move to…';
+        moveBtn.innerHTML = '<span><i class="fa-solid fa-person-walking"></i></span>';
+        moveBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMinimapMovePopover(); });
+        moveBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+        moveCol.appendChild(moveBtn);
+        root.appendChild(moveCol);
+    }
 
     // Bottom action row — mirrors the zoom +/- row at the top, sitting just above
     // the Photo Mode button. Two diamond controls: Show CG, and the Half-Sprite
@@ -14569,17 +14781,7 @@ function renderMinimap() {
     halfBtn.innerHTML = '<span><i class="fa-solid fa-crop"></i></span>';
     halfBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        // Mirror the settings-toggle handler so the Monopad → Display toggle stays
-        // in sync and the body-class / sprite refresh runs.
-        const next = !getMonopadSetting('halfspriteMode');
-        setMonopadSetting('halfspriteMode', next);
-        applySettingsTabUI();
-        applyHalfSpriteMode();
-        // The size/offset control only exists in half-sprite mode — close its
-        // popover when the mode is switched off.
-        if (!next) document.getElementById('dangan-hs-adjust')?.remove();
-        _minimapSig = null;
-        renderMinimap();
+        toggleHalfSpriteFromUi();
     });
     halfBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
 
@@ -15100,6 +15302,25 @@ function isTrialUiActive() {
     return document.body.classList.contains('dangan-trial-active');
 }
 
+// Every exit from the current location, deduped by kind:value — the upstream
+// list occasionally repeats the same destination (e.g. a pin connection listed
+// twice in the pin's data), which would surface as duplicate buttons.
+function getCurrentConnections() {
+    const currentId = getCurrentLocationId();
+    const rawConns = currentId
+        ? (mapPanelController?.getConnectionsForLocationId?.(currentId) ?? [])
+        : [];
+    const conns = [];
+    const seenConnKeys = new Set();
+    for (const c of rawConns) {
+        const key = `${c.kind}:${c.value}`;
+        if (seenConnKeys.has(key)) continue;
+        seenConnKeys.add(key);
+        conns.push(c);
+    }
+    return conns;
+}
+
 function renderMoveToPanel() {
     const existing = document.getElementById('dangan-moveto-panel');
 
@@ -15118,20 +15339,15 @@ function renderMoveToPanel() {
     }
 
     const currentId = getCurrentLocationId();
-    const rawConns = currentId
-        ? (mapPanelController?.getConnectionsForLocationId?.(currentId) ?? [])
-        : [];
-    // Dedupe by kind:value — the upstream list occasionally repeats the same
-    // destination (e.g. a pin connection listed twice in the pin's data),
-    // which surfaces as duplicate "Move to <X>" buttons in the panel.
-    const conns = [];
-    const seenConnKeys = new Set();
-    for (const c of rawConns) {
-        const key = `${c.kind}:${c.value}`;
-        if (seenConnKeys.has(key)) continue;
-        seenConnKeys.add(key);
-        conns.push(c);
+    // The minimap handles moving once a location is set; the panel only stays
+    // to offer SET when there's nowhere to move from yet, or when this floor
+    // has no minimap to move from.
+    if (currentId && getMonopadSetting('moveToOnMinimap')
+        && mapPanelController?.getMinimapState?.(currentId)?.imageSrc) {
+        if (existing) { existing.remove(); _moveToPanelSig = null; }
+        return;
     }
+    const conns = getCurrentConnections();
 
     // Dirty-check signature — short-circuit when nothing observable has changed.
     // The poll calls this every 2s; without this guard each call would rebuild
