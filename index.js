@@ -27,6 +27,7 @@ import { createOrientationController } from "./core/onboarding/orientation.js";
 import { configureMinigameGuides } from "./core/onboarding/minigameGuides.js";
 import { maybeShowBootGreeting } from "./core/onboarding/bootGreeting.js";
 import { maybeShowTitleScreen, showTitleScreen } from "./core/title/titleScreen.js";
+import { dressSplashScreen } from "./core/title/titleLoader.js";
 import { createPhaseHistory, derivePhase, getNextStepHint, getPhaseActions, getStatusLine } from "./core/phase/phaseState.js";
 import { notify } from "./core/ui/notify.js";
 import { SAVE_MODES, createSaveStore } from "./core/saves/saveStore.js";
@@ -9767,6 +9768,14 @@ async function loadExtensionHtmlFile(fileName) {
     throw new Error(`Unable to load ${fileName}. Tried: ${attempted.join(", ")}`);
 }
 
+
+
+// Put a chibi on SillyTavern's start-up splash while it is still loading.
+try {
+    dressSplashScreen({ extensionFolderPath });
+} catch (e) {
+    console.warn("[Dangan][Title] loading screen failed:", e);
+}
 
 jQuery(async () => {
     console.log(`[${extensionName}] Loading...`);
