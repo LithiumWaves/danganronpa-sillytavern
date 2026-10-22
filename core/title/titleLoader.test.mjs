@@ -1,11 +1,11 @@
 import { existsSync, readdirSync } from "node:fs";
-import { CHIBI_SPRITES, dressSplashScreen, pickChibiSprite } from "./titleLoader.js";
+import { CHIBI_SPRITES, pickChibiSprite, releaseLoadingCurtain, showLoadingCurtain } from "./titleLoader.js";
 
 function assert(cond, msg) {
     if (!cond) throw new Error(msg);
 }
 
-function run() {
+async function run() {
     assert(pickChibiSprite(() => 0) === CHIBI_SPRITES[0], "picks the first sprite");
     assert(pickChibiSprite(() => 0.9999) === CHIBI_SPRITES.at(-1), "picks the last sprite");
     assert(pickChibiSprite(() => 1) === CHIBI_SPRITES.at(-1), "clamps out-of-range randoms");
@@ -19,7 +19,8 @@ function run() {
         assert(CHIBI_SPRITES.includes(name), `sprite not listed in CHIBI_SPRITES: ${name}`);
     }
 
-    assert(dressSplashScreen() === false, "skips without a document");
+    assert(showLoadingCurtain() === false, "skips without a document");
+    assert(await releaseLoadingCurtain() === false, "nothing to release without a document");
 
     console.log("titleLoader tests passed");
 }

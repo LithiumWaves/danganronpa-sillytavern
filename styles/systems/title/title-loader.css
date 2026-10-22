@@ -1,8 +1,10 @@
 /* =========================
-   Loading Screen (restyles SillyTavern's start-up splash)
+   Loading Screen (replaces SillyTavern's start-up splash)
    ========================= */
 
-/* SillyTavern shows the splash in a top-layer <dialog class="popup">. */
+/* SillyTavern shows the splash in a top-layer <dialog class="popup">. Until
+   our script runs it's plain ink; after that it's see-through so the
+   loading curtain underneath shows, and closing it changes nothing. */
 .popup:has(#loader.splash-screen) {
     background: transparent;
     border: 0;
@@ -11,22 +13,13 @@
 }
 
 .popup:has(#loader.splash-screen)::backdrop {
-    background-color: #0a0610;
+    background-color: #08050c;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
 }
 
-#loader.splash-screen {
-    --dgn-title-pink: #f0479a;
-    --dgn-title-pink-soft: rgba(240, 71, 154, 0.35);
-    --dgn-title-ink: #0a0610;
-    position: fixed;
-    inset: 0;
-    z-index: 0;
-    gap: 0;
-    overflow: hidden;
-    background: var(--dgn-title-ink);
-    color: #fff;
+body.dgn-loading .popup:has(#loader.splash-screen)::backdrop {
+    background-color: transparent;
 }
 
 #loader.splash-screen .splash-logo,
@@ -35,37 +28,80 @@
     display: none;
 }
 
-.dgn-loader {
-    position: absolute;
+/* ── Curtain ───────────────────────────────────────────────────────────── */
+
+#dangan-loading-curtain {
+    --dgn-title-pink: #f0479a;
+    --dgn-title-pink-soft: rgba(240, 71, 154, 0.35);
+    --dgn-title-ink: #0a0610;
+    --dgn-loader-seam-a: 62%;
+    --dgn-loader-seam-b: 38%;
+    position: fixed;
     inset: 0;
-    pointer-events: none;
+    overflow: hidden;
+    color: #fff;
+    pointer-events: auto;
     user-select: none;
 }
 
-.dgn-loader-bg {
+#dangan-loading-curtain.is-leaving {
+    pointer-events: none;
+}
+
+.dgn-loader-half {
     position: absolute;
     inset: 0;
+    overflow: hidden;
+    background: #08050c;
+    transition: transform 0.6s cubic-bezier(0.7, 0, 0.3, 1) 0.2s;
 }
 
-/* Same slabs as the title screen, parked where the title's settle. */
-.dgn-loader-slab {
+.dgn-loader-half-top {
+    clip-path: polygon(0 0, 100% 0, 100% var(--dgn-loader-seam-b), 0 var(--dgn-loader-seam-a));
+}
+
+.dgn-loader-half-bottom {
+    clip-path: polygon(0 var(--dgn-loader-seam-a), 100% var(--dgn-loader-seam-b), 100% 100%, 0 100%);
+}
+
+#dangan-loading-curtain.is-leaving .dgn-loader-half-top {
+    transform: translate(-12%, -105%);
+}
+
+#dangan-loading-curtain.is-leaving .dgn-loader-half-bottom {
+    transform: translate(12%, 105%);
+}
+
+/* Pink halftone dots, drifting slowly. */
+.dgn-loader-dots-bg {
     position: absolute;
-    left: -20%;
-    width: 140%;
-    height: 62%;
-    transform: rotate(-9deg);
+    inset: -40px;
+    background-image: radial-gradient(rgba(240, 71, 154, 0.16) 1.6px, transparent 2px);
+    background-size: 18px 18px;
+    animation: dgn-loader-drift 6s linear infinite;
 }
 
-.dgn-loader-slab-pink {
-    bottom: -38%;
-    background: linear-gradient(90deg, #c2186e, var(--dgn-title-pink) 55%, #ff7fbe);
-    box-shadow: 0 -6px 0 rgba(255, 255, 255, 0.85), 0 -40px 80px var(--dgn-title-pink-soft);
+/* A thin pink band along the seam, which the halves split open. */
+.dgn-loader-band {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, rgba(194, 24, 110, 0.28), rgba(240, 71, 154, 0.18) 55%, rgba(255, 127, 190, 0.28));
+    clip-path: polygon(0 calc(var(--dgn-loader-seam-a) - 9%), 100% calc(var(--dgn-loader-seam-b) - 9%), 100% calc(var(--dgn-loader-seam-b) + 9%), 0 calc(var(--dgn-loader-seam-a) + 9%));
 }
 
-.dgn-loader-slab-dark {
-    bottom: -52%;
-    background: #120a18;
-    box-shadow: 0 -3px 0 rgba(0, 0, 0, 0.6);
+/* Bright seam line that flashes as the curtain opens. */
+.dgn-loader-seam {
+    position: absolute;
+    inset: 0;
+    background: #fff;
+    clip-path: polygon(0 calc(var(--dgn-loader-seam-a) - 2px), 100% calc(var(--dgn-loader-seam-b) - 2px), 100% calc(var(--dgn-loader-seam-b) + 2px), 0 calc(var(--dgn-loader-seam-a) + 2px));
+    box-shadow: 0 0 24px var(--dgn-title-pink);
+    opacity: 0;
+    pointer-events: none;
+}
+
+#dangan-loading-curtain.is-leaving .dgn-loader-seam {
+    animation: dgn-loader-seam 0.35s ease-out forwards;
 }
 
 /* ── Chibi + label ─────────────────────────────────────────────────────── */
@@ -81,6 +117,12 @@
     gap: clamp(18px, 4vh, 40px);
     padding: 16px;
     box-sizing: border-box;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+#dangan-loading-curtain.is-leaving .dgn-loader-stage {
+    opacity: 0;
+    transform: scale(0.94);
 }
 
 .dgn-loader-chibi-wrap {
@@ -94,12 +136,12 @@
     transition: opacity 0.25s ease, transform 0.35s steps(4, end);
 }
 
-.dgn-loader.is-ready .dgn-loader-chibi-wrap {
+#dangan-loading-curtain.is-ready .dgn-loader-chibi-wrap {
     opacity: 1;
     transform: scale(1);
 }
 
-.dgn-loader.is-missing .dgn-loader-chibi-wrap {
+#dangan-loading-curtain.is-missing .dgn-loader-chibi-wrap {
     display: none;
 }
 
@@ -146,6 +188,17 @@
 
 /* ── Keyframes ─────────────────────────────────────────────────────────── */
 
+@keyframes dgn-loader-drift {
+    from { transform: translate3d(0, 0, 0); }
+    to   { transform: translate3d(18px, 18px, 0); }
+}
+
+@keyframes dgn-loader-seam {
+    0%   { opacity: 0; }
+    30%  { opacity: 1; }
+    100% { opacity: 0; }
+}
+
 @keyframes dgn-loader-hop {
     0%   { transform: translateY(0); }
     25%  { transform: translateY(-3px); }
@@ -181,7 +234,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .dgn-loader .dgn-title-stripes,
+    .dgn-loader-dots-bg,
     .dgn-loader-chibi,
     .dgn-loader-shadow,
     .dgn-loader-dots::after {
@@ -190,5 +243,20 @@
 
     .dgn-loader-dots::after {
         content: "...";
+    }
+
+    /* Fade instead of splitting. */
+    .dgn-loader-half {
+        transition: opacity 0.5s ease 0.2s;
+    }
+
+    #dangan-loading-curtain.is-leaving .dgn-loader-half-top,
+    #dangan-loading-curtain.is-leaving .dgn-loader-half-bottom {
+        transform: none;
+        opacity: 0;
+    }
+
+    #dangan-loading-curtain.is-leaving .dgn-loader-seam {
+        animation: none;
     }
 }

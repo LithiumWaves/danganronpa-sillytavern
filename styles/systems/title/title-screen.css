@@ -22,6 +22,12 @@
     opacity: 1;
 }
 
+/* Revealed by the loading curtain: be opaque at once, keep the rest. */
+#dangan-title-screen.is-instant {
+    opacity: 1;
+    transition: none;
+}
+
 #dangan-title-screen.is-menu {
     cursor: default;
 }

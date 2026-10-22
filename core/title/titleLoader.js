@@ -1,8 +1,15 @@
 import { escapeHtml } from "./titleUtils.js";
 
+export const LOADING_CURTAIN_ID = "dangan-loading-curtain";
+
 // SillyTavern's start-up splash (logo + "Initializing…"). Our stylesheet
-// restyles it as soon as it loads; this adds a random chibi on top.
+// blanks it as soon as it loads; the curtain then shows through it.
 const SPLASH_SELECTOR = "#loader.splash-screen";
+const LOADING_CLASS = "dgn-loading";
+const EXIT_DURATION_MS = 900;
+const SPLASH_POLL_MS = 100;
+// Never keep SillyTavern covered if the title screen never reports in.
+const FAILSAFE_MS = 60000;
 
 // The browser can't list a folder, so these mirror
 // assets/images/title/chibisprites/*.png.
@@ -21,24 +28,33 @@ export function pickChibiSprite(random = Math.random) {
     return CHIBI_SPRITES[Math.min(Math.max(index, 0), CHIBI_SPRITES.length - 1)];
 }
 
-// Returns false when there is no splash to dress (it may already be gone).
-export function dressSplashScreen({ extensionFolderPath = "", random = Math.random } = {}) {
-    if (typeof document === "undefined") return false;
-    const splash = document.querySelector(SPLASH_SELECTOR);
-    if (!splash || splash.querySelector(".dgn-loader")) return false;
+let releasing = null;
+
+// Covers the page with the loading screen until releaseLoadingCurtain().
+// It sits under SillyTavern's splash dialog (made see-through) and over the
+// title screen, so neither the splash closing nor the title screen fading
+// in ever shows SillyTavern's own UI. Returns false when there's no splash.
+export function showLoadingCurtain({ extensionFolderPath = "", random = Math.random } = {}) {
+    if (typeof document === "undefined" || !document.body) return false;
+    if (!document.querySelector(SPLASH_SELECTOR) || document.getElementById(LOADING_CURTAIN_ID)) return false;
 
     const src = `${extensionFolderPath}/assets/images/title/chibisprites/${pickChibiSprite(random)}.png`;
-    const art = document.createElement("div");
-    art.className = "dgn-loader";
-    art.setAttribute("aria-hidden", "true");
-    art.innerHTML = `
-        <div class="dgn-loader-bg">
-            <div class="dgn-title-stripes"></div>
-            <div class="dgn-loader-slab dgn-loader-slab-pink"></div>
-            <div class="dgn-loader-slab dgn-loader-slab-dark"></div>
+    // Both halves carry the same backdrop; they part along the diagonal on exit.
+    const half = (side) => `
+        <div class="dgn-loader-half dgn-loader-half-${side}">
+            <div class="dgn-loader-dots-bg"></div>
+            <div class="dgn-loader-band"></div>
             <div class="dgn-title-vignette"></div>
             <div class="dgn-title-scanlines"></div>
         </div>
+    `;
+    const curtain = document.createElement("div");
+    curtain.id = LOADING_CURTAIN_ID;
+    curtain.setAttribute("aria-hidden", "true");
+    curtain.innerHTML = `
+        ${half("top")}
+        ${half("bottom")}
+        <div class="dgn-loader-seam"></div>
         <div class="dgn-loader-stage">
             <div class="dgn-loader-chibi-wrap">
                 <img class="dgn-loader-chibi" src="${escapeHtml(src)}" alt="" draggable="false">
@@ -48,9 +64,39 @@ export function dressSplashScreen({ extensionFolderPath = "", random = Math.rand
         </div>
     `;
     // Wait for the sprite so it doesn't pop in half-decoded.
-    const img = art.querySelector(".dgn-loader-chibi");
-    img.addEventListener("load", () => art.classList.add("is-ready"), { once: true });
-    img.addEventListener("error", () => art.classList.add("is-ready", "is-missing"), { once: true });
-    splash.appendChild(art);
+    const img = curtain.querySelector(".dgn-loader-chibi");
+    img.addEventListener("load", () => curtain.classList.add("is-ready"), { once: true });
+    img.addEventListener("error", () => curtain.classList.add("is-ready", "is-missing"), { once: true });
+    document.body.appendChild(curtain);
+    curtain.style.setProperty("z-index", "2147483647", "important");
+    document.body.classList.add(LOADING_CLASS);
+    setTimeout(() => releaseLoadingCurtain(), FAILSAFE_MS);
     return true;
+}
+
+// Resolves once SillyTavern's splash has closed (or right away without one).
+export async function waitForSplashToClose() {
+    if (typeof document === "undefined") return;
+    const started = Date.now();
+    while (document.querySelector(SPLASH_SELECTOR) && Date.now() - started < FAILSAFE_MS) {
+        await new Promise((r) => setTimeout(r, SPLASH_POLL_MS));
+    }
+}
+
+// Opens the curtain once SillyTavern's splash has closed.
+export function releaseLoadingCurtain() {
+    if (typeof document === "undefined") return Promise.resolve(false);
+    if (releasing) return releasing;
+    const curtain = document.getElementById(LOADING_CURTAIN_ID);
+    if (!curtain) return Promise.resolve(false);
+
+    releasing = (async () => {
+        await waitForSplashToClose();
+        curtain.classList.add("is-leaving");
+        await new Promise((r) => setTimeout(r, EXIT_DURATION_MS));
+        curtain.remove();
+        document.body.classList.remove(LOADING_CLASS);
+        return true;
+    })();
+    return releasing;
 }

@@ -27,7 +27,7 @@ import { createOrientationController } from "./core/onboarding/orientation.js";
 import { configureMinigameGuides } from "./core/onboarding/minigameGuides.js";
 import { maybeShowBootGreeting } from "./core/onboarding/bootGreeting.js";
 import { maybeShowTitleScreen, showTitleScreen } from "./core/title/titleScreen.js";
-import { dressSplashScreen } from "./core/title/titleLoader.js";
+import { releaseLoadingCurtain, showLoadingCurtain, waitForSplashToClose } from "./core/title/titleLoader.js";
 import { createPhaseHistory, derivePhase, getNextStepHint, getPhaseActions, getStatusLine } from "./core/phase/phaseState.js";
 import { notify } from "./core/ui/notify.js";
 import { SAVE_MODES, createSaveStore } from "./core/saves/saveStore.js";
@@ -9770,9 +9770,10 @@ async function loadExtensionHtmlFile(fileName) {
 
 
 
-// Put a chibi on SillyTavern's start-up splash while it is still loading.
+// Cover SillyTavern's start-up splash with our loading screen; it stays up
+// until the title screen is showing (or has been skipped).
 try {
-    dressSplashScreen({ extensionFolderPath });
+    showLoadingCurtain({ extensionFolderPath });
 } catch (e) {
     console.warn("[Dangan][Title] loading screen failed:", e);
 }
@@ -12814,10 +12815,15 @@ STATEMENT: <third statement>`;
         await maybeShowTitleScreen({
             isEnabled: () => getMonopadSetting("titleScreenEnabled") !== false,
             ...buildTitleScreenOptions(),
+            // The title screen comes in as the loading curtain opens.
+            revealAfter: waitForSplashToClose(),
+            onShown: () => releaseLoadingCurtain(),
         });
     } catch (e) {
         console.warn("[Dangan][Title] failed:", e);
     }
+    // No-op once released; otherwise the title screen was skipped.
+    releaseLoadingCurtain();
 
     setTimeout(() => showMarkerPromptsNoticeIfPending(), 2500);
 

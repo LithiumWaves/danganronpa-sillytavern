@@ -45,10 +45,14 @@ export function showTitleScreen({
     logoUrl = "",
     onStart,
     onClose,
+    onShown,
     playSfx,
     services = {},
     skipSplash = false,
     initialPanel = "",
+    // Hold the entrance until this settles, then skip the fade-in (the
+    // loading curtain is covering the screen and opens over it).
+    revealAfter = null,
 } = {}) {
     if (typeof document === "undefined") return Promise.resolve(false);
     document.getElementById(TITLE_SCREEN_ID)?.remove();
@@ -329,12 +333,20 @@ export function showTitleScreen({
             });
         });
 
-        requestAnimationFrame(() => requestAnimationFrame(() => {
+        const reveal = () => requestAnimationFrame(() => requestAnimationFrame(() => {
+            if (!root.isConnected) return;
             root.classList.add("is-on");
             root.focus({ preventScroll: true });
+            try { onShown?.(); } catch (e) { console.warn("[Dangan][Title] onShown failed:", e); }
             if (skipSplash || initialPanel) start();
             if (PANELS[initialPanel]) openPanel(initialPanel);
         }));
+        if (revealAfter) {
+            root.classList.add("is-instant");
+            Promise.resolve(revealAfter).catch(() => {}).then(reveal);
+        } else {
+            reveal();
+        }
 
         // Count of setup requirements that are missing, on the SETUP item.
         Promise.resolve()
