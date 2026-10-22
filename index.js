@@ -7,7 +7,8 @@ import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.j
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../../slash-commands/SlashCommandArgument.js';
 import { SlashCommandEnumValue } from '../../../slash-commands/SlashCommandEnumValue.js';
-import { initTruthBullets, handleTruthBullet, setNextTruthBulletSfxVariant, getTruthBulletByLocationId, showTruthBulletByLocationId, showTruthBulletById, getTruthBullets, clearAllTruthBullets, reloadTruthBullets, removeTruthBulletById } from "./truth/truthBullets.js";
+import { initTruthBullets, handleTruthBullet, setNextTruthBulletSfxVariant, getTruthBulletByLocationId, showTruthBulletByLocationId, showTruthBulletById, getTruthBullets, clearAllTruthBullets, reloadTruthBullets, removeTruthBulletById, migrateTruthBulletImages } from "./truth/truthBullets.js";
+import { configureImageUploads, fetchAsDataUrl, isDataUrl, uploadDataUrlImage, uploadImagesIn } from "./core/media/uploadImage.js";
 import { initTrustAnimations } from "./trust/trustAnimations.js";
 import { increaseTrust, decreaseTrust } from "./trust/trustAPI.js";
 import { clampTrust, nextTrustDown, nextTrustUp } from "./trust/trustState.js";
@@ -9434,7 +9435,7 @@ function bindDebugControlEvents() {
         }
     });
 
-    $(document).on("click.debugControls", "#truth-debug-acquire", () => {
+    $(document).on("click.debugControls", "#truth-debug-acquire", async () => {
         playDebugClickSfx();
 
         const title = String($("#truth-debug-name").val() || "").trim();
@@ -9448,7 +9449,10 @@ function bindDebugControlEvents() {
         const selectedSfx = String($("input[name='truth-debug-sfx']:checked").val() || "thh").trim().toLowerCase();
         setNextTruthBulletSfxVariant(selectedSfx === "udg" ? "udg" : "thh");
 
-        handleTruthBullet(title, description, { image: pendingTruthBulletImage || undefined, manual: true });
+        const image = pendingTruthBulletImage
+            ? (await uploadDataUrlImage(pendingTruthBulletImage, { prefix: "truth" })) || pendingTruthBulletImage
+            : undefined;
+        handleTruthBullet(title, description, { image, manual: true });
         $("#truth-debug-name").val("");
         $("#truth-debug-description").val("");
         closeTruthDebugModal();
@@ -9767,6 +9771,7 @@ async function loadExtensionHtmlFile(fileName) {
 jQuery(async () => {
     console.log(`[${extensionName}] Loading...`);
     installSkipKeyHandler({ isEscapeOwned: isEscapeOwnedByDialog });
+    configureImageUploads({ getRequestHeaders });
     configureMinigameSessions({
         snapshot: snapshotMinigameState,
         restore: restoreMinigameState,
@@ -11338,6 +11343,8 @@ debugSTGlobals();
         removePin: (locationId) => mapPanelController?.removePinByLocationId?.(locationId),
         setPinHidden: (locationId, hidden) => mapPanelController?.setPinHidden?.(locationId, hidden),
     });
+    // Old base64 Truth Bullet pictures become files once SillyTavern is up.
+    sillyTavernReady.then(() => migrateStoredImages()).catch((e) => console.warn("[Dangan][Truth] image migration failed:", e));
 
     vfxCleanup = initVfxSystem();
     initEmotionFontsSystem();
@@ -13205,9 +13212,35 @@ function startSaveRename(row, save) {
     input.addEventListener("blur", () => finish(true));
 }
 
-function downloadSaveFile(save) {
+// Pictures live as files on this install, so an exported save carries them
+// inline; importing uploads them again.
+async function inlineSaveImages(state) {
+    for (const list of [state?.truthBullets, state?.archivedTruthBullets]) {
+        for (const bullet of Array.isArray(list) ? list : []) {
+            if (bullet?.image && !isDataUrl(bullet.image)) bullet.image = await fetchAsDataUrl(bullet.image);
+        }
+    }
+}
+
+// Base64 pictures from before images were files: the live ones and those in
+// other saves are uploaded once SillyTavern is ready.
+async function migrateStoredImages() {
+    await migrateTruthBulletImages();
+    const cache = new Map();
+    let replaced = 0;
+    for (const save of Object.values(extension_settings[extensionName]?.saves || {})) {
+        const state = save?.state;
+        if (!state) continue;
+        replaced += await uploadImagesIn(state.truthBullets, { cache, prefix: "truth" });
+        replaced += await uploadImagesIn(state.archivedTruthBullets, { cache, prefix: "truth" });
+    }
+    if (replaced) saveSettingsDebounced();
+}
+
+async function downloadSaveFile(save) {
     const data = saveStore.exportSave(save.id);
     if (!data) return;
+    await inlineSaveImages(data.state);
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -13297,6 +13330,7 @@ function bindSavesPanel() {
             saveSettingsDebounced();
             refreshSavesPanel();
             setSavesStatus(`Imported ${save.name}. Press LOAD to play it.`);
+            migrateStoredImages().catch((e) => console.warn("[Dangan][Saves] image upload failed:", e));
         } catch (e) {
             setSavesStatus(e?.message || "Couldn't read that file.");
         }

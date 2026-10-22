@@ -1,4 +1,5 @@
 import { pushSkippable } from "../core/skip/skipRegistry.js";
+import { uploadDataUrlImage, uploadImagesIn } from "../core/media/uploadImage.js";
 
 // truth/truthBullets.js
 let extension_settings;
@@ -404,7 +405,7 @@ function showTruthBulletDetails(bullet, isArchived) {
             <div style="width:100%;background:radial-gradient(ellipse at 50% 60%,rgba(36,10,46,0.97),rgba(8,3,14,1));border:1px solid rgba(200,80,220,0.38);box-shadow:inset 0 0 60px rgba(0,0,0,0.55),0 0 12px rgba(180,60,200,0.12);padding:16px;box-sizing:border-box;position:relative;">
                 <div style="position:absolute;top:6px;left:6px;width:14px;height:14px;border-top:1px solid rgba(220,100,255,0.55);border-left:1px solid rgba(220,100,255,0.55);"></div>
                 <div style="position:absolute;bottom:6px;right:6px;width:14px;height:14px;border-bottom:1px solid rgba(220,100,255,0.55);border-right:1px solid rgba(220,100,255,0.55);"></div>
-                ${bullet.image ? `<img src="${bullet.image}" alt="" style="max-width:95%;height:auto;object-fit:contain;display:block;margin:16px auto;">` : ""}
+                ${bullet.image ? `<img src="${escapeHtml(bullet.image)}" alt="" style="max-width:95%;height:auto;object-fit:contain;display:block;margin:16px auto;">` : ""}
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:12px;">
                 ${!isArchived ? `<label class="truth-image-upload-label" style="background:transparent;border:1px solid rgba(255,210,60,0.6);color:#ffd43c;font-family:inherit;font-size:0.85rem;letter-spacing:0.08em;padding:6px 16px;cursor:pointer;transition:color 0.15s,border-color 0.15s,background 0.15s;">
@@ -433,8 +434,11 @@ function showTruthBulletDetails(bullet, isArchived) {
             const file = this.files?.[0];
             if (!file) return;
             const reader = new FileReader();
-            reader.onload = e => {
-                bullet.image = e.target.result;
+            reader.onload = async e => {
+                const dataUrl = e.target.result;
+                // Stored as a file in SillyTavern; the data URL is kept only
+                // if the upload fails.
+                bullet.image = (await uploadDataUrlImage(dataUrl, { prefix: "truth" })) || dataUrl;
                 saveTruthBullets();
                 showTruthBulletDetails(bullet, false);
             };
@@ -756,6 +760,25 @@ export function reloadTruthBullets() {
     processedTruthSignatures.clear();
     loadTruthBullets();
     renderTruthBullets();
+    migrateTruthBulletImages();
+}
+
+// Older saves kept pictures as base64 in the settings. Upload them as files
+// once; anything that fails to upload stays as it was.
+let imageMigration = null;
+export function migrateTruthBulletImages() {
+    imageMigration = (imageMigration || Promise.resolve()).then(async () => {
+        const replaced = await uploadImagesIn([...truthBullets, ...archivedTruthBullets], { prefix: "truth" });
+        if (replaced) {
+            saveTruthBullets();
+            renderTruthBullets();
+        }
+        return replaced;
+    }).catch((e) => {
+        console.warn("[Dangan][Truth] image migration failed:", e);
+        return 0;
+    });
+    return imageMigration;
 }
 
 export function setNextTruthBulletSfxVariant(variant = "") {
