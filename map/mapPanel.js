@@ -67,7 +67,7 @@ function getFloorByKey(areaKey, floorKey) {
     return area.floors.find(floor => floor.key === floorKey) || null;
 }
 
-export function createMapPanelController({ extensionFolderPath, getItemsPanelController, playSfx, getSfx, getSetting, onWalkStep, onTrialStartRequest, getTruthBulletByLocationId, navigateToTruth, onMachineOpen, onMachineClose, playShopTrack, stopShopTrack, fetchBgmPaths, playBgmPath, getSettingsRoot, saveSettings, uploadImage }) {
+export function createMapPanelController({ extensionFolderPath, getItemsPanelController, playSfx, getSfx, getSetting, onWalkStep, onTrialStartRequest, getTruthBulletByLocationId, navigateToTruth, onMachineOpen, onMachineClose, onReshuffleCharacters, playShopTrack, stopShopTrack, fetchBgmPaths, playBgmPath, getSettingsRoot, saveSettings, uploadImage }) {
     const state = {
         area: "hopes_peak",
         floor: "floor_1",
@@ -122,6 +122,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         pinLayer: ".map-pin-layer",
         pinsAdd: ".map-pins-add",
         pinsClearFloor: ".map-pins-clear-floor",
+        reshuffleCharacters: ".map-reshuffle-characters",
         pinsToggleRoomView:       ".map-pins-toggle-room-view",
         pinsToggleSimpleEvidence: ".map-pins-toggle-simple-evidence",
         pinsToggleSimpleBody:     ".map-pins-toggle-simple-body",
@@ -2031,6 +2032,12 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             }
             if (state.highlightedPinId === pinId) state.highlightedPinId = null;
             saveCustomPins();
+            renderMapPanel();
+        });
+
+        $panel.find(selectors.reshuffleCharacters).off("click.reshuffle").on("click.reshuffle", function () {
+            playSfx?.(getSfx?.().click);
+            onReshuffleCharacters?.();
             renderMapPanel();
         });
 

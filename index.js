@@ -594,6 +594,18 @@ function resetDayCounter({ source = "manual" } = {}) {
     return true;
 }
 
+// Same shuffle Pass Time / Sleep do, without touching the clock.
+function reshuffleCharacterLocations() {
+    if (trialManager?.isTrialActive?.()) {
+        notify({ tone: "warn", title: "NOT NOW", message: "Characters can't be reshuffled during a Class Trial." });
+        return false;
+    }
+    overworldSceneController?.randomizeLocations?.();
+    try { renderMinimap(); } catch (_) {}
+    notify({ title: "RESHUFFLED", message: "Everyone has moved to new rooms." });
+    return true;
+}
+
 // ── Chapter tracking ──────────────────────────────────────────────────────────
 
 function getChapterLabel() {
@@ -9995,6 +10007,7 @@ jQuery(async () => {
                 },
                 onMachineOpen: () => fadeOutAndPauseBgm(),
                 onMachineClose: () => fadeInAndResumeBgm(),
+                onReshuffleCharacters: () => reshuffleCharacterLocations(),
                 playShopTrack,
                 stopShopTrack,
                 fetchBgmPaths,
