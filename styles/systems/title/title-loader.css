@@ -18,8 +18,18 @@
     -webkit-backdrop-filter: none;
 }
 
-body.dgn-loading .popup:has(#loader.splash-screen)::backdrop {
+/* Once the curtain is up the dialog is hidden outright, including while it
+   closes (SillyTavern empties it first, which would un-match the :has()). */
+body.dgn-loading dialog.dgn-splash-dialog {
+    visibility: hidden;
+    animation: none;
+}
+
+body.dgn-loading dialog.dgn-splash-dialog::backdrop {
     background-color: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    animation: none;
 }
 
 #loader.splash-screen .splash-logo,

@@ -5,6 +5,9 @@ export const LOADING_CURTAIN_ID = "dangan-loading-curtain";
 // SillyTavern's start-up splash (logo + "Initializing…"). Our stylesheet
 // blanks it as soon as it loads; the curtain then shows through it.
 const SPLASH_SELECTOR = "#loader.splash-screen";
+// SillyTavern removes #loader before it closes the dialog around it, so the
+// dialog gets its own mark to stay hidden until it's gone too.
+const SPLASH_DIALOG_CLASS = "dgn-splash-dialog";
 const LOADING_CLASS = "dgn-loading";
 const EXIT_DURATION_MS = 900;
 const SPLASH_POLL_MS = 100;
@@ -36,7 +39,8 @@ let releasing = null;
 // in ever shows SillyTavern's own UI. Returns false when there's no splash.
 export function showLoadingCurtain({ extensionFolderPath = "", random = Math.random } = {}) {
     if (typeof document === "undefined" || !document.body) return false;
-    if (!document.querySelector(SPLASH_SELECTOR) || document.getElementById(LOADING_CURTAIN_ID)) return false;
+    const splash = document.querySelector(SPLASH_SELECTOR);
+    if (!splash || document.getElementById(LOADING_CURTAIN_ID)) return false;
 
     const src = `${extensionFolderPath}/assets/images/title/chibisprites/${pickChibiSprite(random)}.png`;
     // Both halves carry the same backdrop; they part along the diagonal on exit.
@@ -69,16 +73,20 @@ export function showLoadingCurtain({ extensionFolderPath = "", random = Math.ran
     img.addEventListener("error", () => curtain.classList.add("is-ready", "is-missing"), { once: true });
     document.body.appendChild(curtain);
     curtain.style.setProperty("z-index", "2147483647", "important");
+    splash.closest("dialog")?.classList.add(SPLASH_DIALOG_CLASS);
     document.body.classList.add(LOADING_CLASS);
     setTimeout(() => releaseLoadingCurtain(), FAILSAFE_MS);
     return true;
 }
 
-// Resolves once SillyTavern's splash has closed (or right away without one).
+const isSplashOpen = () => !!document.querySelector(`${SPLASH_SELECTOR}, dialog.${SPLASH_DIALOG_CLASS}`);
+
+// Resolves once SillyTavern's splash and its dialog are gone (or right away
+// without one); until then the dialog keeps the page underneath inert.
 export async function waitForSplashToClose() {
     if (typeof document === "undefined") return;
     const started = Date.now();
-    while (document.querySelector(SPLASH_SELECTOR) && Date.now() - started < FAILSAFE_MS) {
+    while (isSplashOpen() && Date.now() - started < FAILSAFE_MS) {
         await new Promise((r) => setTimeout(r, SPLASH_POLL_MS));
     }
 }
