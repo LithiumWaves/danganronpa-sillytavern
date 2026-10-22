@@ -47,7 +47,14 @@ body.dgn-loading dialog.dgn-splash-dialog::backdrop {
     --dgn-loader-seam-a: 62%;
     --dgn-loader-seam-b: 38%;
     position: fixed;
-    inset: 0;
+    /* SillyTavern puts a transform on <html>, which makes it the containing
+       block for fixed elements; size from the viewport so <html> briefly
+       collapsing (fixViewport) can't take this with it. */
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
     overflow: hidden;
     color: #fff;
     pointer-events: auto;

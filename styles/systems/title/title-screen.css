@@ -7,7 +7,14 @@
     --dgn-title-pink-soft: rgba(240, 71, 154, 0.35);
     --dgn-title-ink: #0a0610;
     position: fixed;
-    inset: 0;
+    /* SillyTavern puts a transform on <html>, which makes it the containing
+       block for fixed elements; size from the viewport so <html> briefly
+       collapsing (fixViewport) can't take this with it. */
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
     overflow: hidden;
     background: var(--dgn-title-ink);
     color: #fff;
