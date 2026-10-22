@@ -1,0 +1,80 @@
+/* =========================
+   Leave-minigame confirm (Escape during a minigame)
+   ========================= */
+
+#dangan-leave-confirm {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    display: grid;
+    place-items: center;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.6);
+    font-family: "Rajdhani", "Orbitron", sans-serif;
+    animation: dgn-leave-in 0.15s ease both;
+}
+
+.dgn-leave-box {
+    width: min(460px, 100%);
+    padding: 20px 22px;
+    background: #120a18;
+    border: 1px solid #f0479a;
+    border-top: 6px solid #f0479a;
+    color: #fff;
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%);
+}
+
+.dgn-leave-title {
+    margin-bottom: 8px;
+    font-family: "Bruno Ace", "Orbitron", sans-serif;
+    font-size: 19px;
+    letter-spacing: 0.12em;
+}
+
+.dgn-leave-text {
+    margin: 0 0 18px;
+    font-size: 15px;
+    line-height: 1.45;
+    color: rgba(255, 255, 255, 0.78);
+}
+
+.dgn-leave-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.dgn-leave-btn {
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    padding: 8px 18px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+    font: 600 14px "Rajdhani", sans-serif;
+    letter-spacing: 0.16em;
+    cursor: pointer;
+    clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+}
+
+.dgn-leave-btn.is-primary {
+    background: #f0479a;
+    border-color: #f0479a;
+}
+
+.dgn-leave-btn:hover,
+.dgn-leave-btn:focus-visible {
+    background: #fff;
+    color: #0a0610;
+    outline: none;
+}
+
+@keyframes dgn-leave-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #dangan-leave-confirm {
+        animation: none;
+    }
+}

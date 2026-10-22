@@ -3,6 +3,7 @@
 import { DEFAULT_TRIAL_PROMPT_TEMPLATES } from "../core/constants.js";
 import { attachCursorSway } from "../vfx/cursorSway.js";
 import { promptMinigameTutorial } from "../core/onboarding/minigameGuides.js";
+import { beginMinigame } from "../core/skip/skipRegistry.js";
 
 export const TrialPhases = {
     IDLE: 'idle',
@@ -109,6 +110,11 @@ export function createTrialManager(deps) {
     let lastHitWeakPoint = null;
     let rebuttalPromptActive = false;
     let persistentDebateHistory = [];
+    // Escape backs out of a Non-Stop / Mass Panic Debate. The debate history
+    // and phase from before it started are put back (index.js restores
+    // Monocoins); holding Escape still fast-forwards.
+    let debateHistoryBeforeDebate = null;
+    let endDebateSession = null;
     let trialContext = { topic: '', goal: '', suspects: [] };
     // suspects: [{ name: string, chance: number }]  (chance is 0–100)
     let speedModifier = 1.0;
@@ -535,8 +541,22 @@ export function createTrialManager(deps) {
         document.body.classList.toggle('dangan-nsd-running', isNsd);
         if (wasDebate && !isDebate) {
             cleanupNSDListeners();
+            endDebateSession?.();
+            endDebateSession = null;
+            debateHistoryBeforeDebate = null;
         } else if (isDebate && !wasDebate) {
             setupNSDListeners();
+            const historyBefore = debateHistoryBeforeDebate ?? [...persistentDebateHistory];
+            const stateBefore = oldState;
+            endDebateSession = beginMinigame({
+                holdEscape: true,
+                isActive: () => !document.getElementById('dangan-nsd-pre-intro'),
+                label: newState === TrialPhases.MASS_PANIC_DEBATE ? "Mass Panic Debate" : "Non-Stop Debate",
+                abort: () => {
+                    persistentDebateHistory = historyBefore;
+                    setState(stateBefore === TrialPhases.IDLE ? TrialPhases.IDLE : TrialPhases.PRE_DEBATE);
+                },
+            });
         }
 
         // Hide GCP only during actual debate overlays (NSD/MPD); keep visible during
@@ -2805,6 +2825,7 @@ ${historyText}
         const speakers = getChatCardMembers().map(s => s.name).filter(Boolean).filter(n => !isCharacterDead(n) && !isCharacterMissing(n) && !isSilenced(n) && !isMonokuma(n));
         const speakerPool = speakers.length ? speakers : ['???'];
 
+        debateHistoryBeforeDebate = [...persistentDebateHistory];
         persistentDebateHistory = [];
         debateSeatingPlan = null;
         currentDebateSections = Math.min(24, Math.max(1, list.length));

@@ -1,3 +1,5 @@
+import { pushSkippable } from "../core/skip/skipRegistry.js";
+
 // truth/truthBullets.js
 let extension_settings;
 let saveSettingsDebounced;
@@ -678,11 +680,19 @@ function runTruthBulletQueue() {
 
     playTruthBulletSfx();
 
-    setTimeout(() => {
+    // Escape hides this one now; the next queued bullet still plays.
+    let finished = false;
+    const finish = () => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        releaseSkip();
         $overlay.removeClass("show");
         truthBulletAnimating = false;
         runTruthBulletQueue(); // 🔁 play next bullet
-    }, 1800); // MUST match CSS
+    };
+    const releaseSkip = pushSkippable({ kind: "sequence", skip: finish });
+    const timer = setTimeout(finish, 1800); // MUST match CSS
 }
 
 function playTruthBulletSfx() {

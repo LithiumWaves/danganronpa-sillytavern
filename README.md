@@ -57,6 +57,10 @@ A small readout under the chapter title and level bar at the top right shows whe
 
 When the story starts an investigation on its own, a toast offers **UNDO** for a few seconds. Turn the readout off under Settings → Display → **Phase HUD**.
 
+### Escape
+- **Cutscenes:** Escape ends the one playing now: Monokuma announcements, body discoveries, phase banners, character introductions, the chapter-end roster, vote results, execution cinematics, trust ceremonies, Truth Bullet pop-ups and interjections. Whatever they change still happens (the investigation still starts, the chapter still advances). Queued ones play next.
+- **Minigames:** Escape asks to leave. Leaving puts back everything the game changed: Monocoins, Trust Fragments, XP, and the trial phase and debate history. In Non-Stop Debate, Mass Panic Debate and Scrum Debate, holding Escape still fast-forwards; a quick tap asks to leave.
+
 ### Character Introductions
 Character Introductions takes a character's `neutral` sprite and renders them on an animated background, grabbing their `name` and `ultimate` values. Commenced through the `/introduce` command.
 

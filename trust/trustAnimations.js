@@ -1,3 +1,4 @@
+import { pushSkippable } from "../core/skip/skipRegistry.js";
 import { buildDecagram, crackShard, shatterShard } from "./trustDecagram.js";
 
 let sfx;
@@ -81,7 +82,26 @@ function sceneElements() {
     return { overlay, svg, banner, nameEl, rankValue, rankCaptionEl };
 }
 
+// Escape ends the ceremony on screen. Trust has already changed by the time
+// a ceremony plays, so skipping only hides it and stops its sound.
+let releaseCeremonySkip = null;
+
+function registerCeremonySkip() {
+    releaseCeremonySkip?.();
+    const gen = ceremonyGen;
+    releaseCeremonySkip = pushSkippable({
+        kind: "sequence",
+        skip: () => {
+            if (gen !== ceremonyGen) return;
+            abortCeremony({ hide: true });
+            try { sfx?.trust_max?.pause(); } catch (_) {}
+        },
+    });
+}
+
 function hideOverlay(immediate = false) {
+    releaseCeremonySkip?.();
+    releaseCeremonySkip = null;
     const scene = sceneElements();
     if (!scene) return;
     const { overlay, svg, banner, nameEl, rankValue } = scene;
@@ -211,6 +231,7 @@ function setupSocialCeremony({ distrust = false, char = null } = {}) {
         if (gen !== ceremonyGen) return;
         overlay.classList.add("show");
     });
+    registerCeremonySkip();
 
     return scene;
 }

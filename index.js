@@ -68,6 +68,8 @@ import { showCgByBgName, showCgPicker } from "./overworld/cgViewer.js";
 import { buildRoomContextPrompt, resolveRoomLabel, ROOM_CONTEXT_PROMPT_KEY } from "./overworld/roomContextPrompt.js";
 import { isPresenceExtensionPresent } from "./overworld/roomPresence.js";
 import { countSetupProblems, evaluateSetup } from "./core/setup/setupChecks.js";
+import { configureMinigameSessions, createSkipToken, installSkipKeyHandler, pushSkippable, runSkippableSequence } from "./core/skip/skipRegistry.js";
+import { confirmLeaveMinigame } from "./core/skip/leaveConfirm.js";
 import { user_avatar } from "../../../personas.js";
 import { ConnectionManagerRequestService } from "../../shared.js";
 
@@ -3688,6 +3690,56 @@ function ensureFreeTimeOverlay() {
     return overlay;
 }
 
+// Dialogs that handle Escape themselves; the skip handler leaves it to them.
+function isEscapeOwnedByDialog() {
+    return !!document.querySelector(
+        "#dangan-title-screen, #monopad-confirm-overlay.open, #dangan-boot-greeting, #dangan-minigame-guide-modal, #dangan-leave-confirm",
+    );
+}
+
+// What a minigame can change while it runs: Monocoins (wrong answers cost
+// some), Trust Fragments, skill points and XP. Backing out with Escape puts
+// them back.
+function snapshotMinigameState() {
+    const root = extension_settings[extensionName] || {};
+    const inv = root.inventory || {};
+    return JSON.parse(JSON.stringify({
+        monocoins: inv.monocoins ?? 0,
+        trustFragments: inv.trustFragments ?? 0,
+        skillPoints: inv.skillPoints,
+        progression: root.progression ?? null,
+    }));
+}
+
+function restoreMinigameState(snapshot) {
+    if (!snapshot) return;
+    const root = extension_settings[extensionName] ??= {};
+    root.inventory ??= {};
+    root.inventory.monocoins = snapshot.monocoins;
+    root.inventory.trustFragments = snapshot.trustFragments;
+    if (snapshot.skillPoints !== undefined) root.inventory.skillPoints = snapshot.skillPoints;
+    if (snapshot.progression) root.progression = snapshot.progression;
+    saveSettingsDebounced();
+    try { rewards?.renderProgressionUi?.(); } catch (_) {}
+    try { itemsPanelController?.renderSkillsItemsPanel?.(); } catch (_) {}
+}
+
+// A phase banner can be skipped with Escape: it hides at once, its sound
+// stops, and whatever was waiting on it carries on. Returns the skip token.
+function registerSkippableBanner(controller, displayMs, sound, onSkip) {
+    const token = createSkipToken();
+    const release = pushSkippable({ kind: "sequence", skip: () => token.skip() });
+    const timer = setTimeout(release, displayMs);
+    token.onSkip(() => {
+        clearTimeout(timer);
+        release();
+        controller.clearBanner();
+        try { sound?.pause?.(); } catch (_) {}
+        onSkip?.();
+    });
+    return token;
+}
+
 const freeTimeStartController = {
     hideTimerId: null,
 
@@ -3721,7 +3773,7 @@ const freeTimeStartController = {
     triggerAsync() {
         if (!sfx?.investigation_start) {
             this.showBanner(2200);
-            return new Promise(resolve => setTimeout(resolve, 2200));
+            return registerSkippableBanner(this, 2200, null).delay(2200);
         }
         playSfx(sfx.investigation_start);
         const durationSec = Number(sfx.investigation_start.duration);
@@ -3730,7 +3782,7 @@ const freeTimeStartController = {
             : 2200;
         const displayDuration = Math.max(1400, durationMs + 120);
         this.showBanner(displayDuration);
-        return new Promise(resolve => setTimeout(resolve, displayDuration));
+        return registerSkippableBanner(this, displayDuration, sfx.investigation_start).delay(displayDuration);
     },
 };
 
@@ -3788,7 +3840,7 @@ const nightTimeStartController = {
     triggerAsync() {
         if (!sfx?.investigation_start) {
             this.showBanner(2200);
-            return new Promise(resolve => setTimeout(resolve, 2200));
+            return registerSkippableBanner(this, 2200, null).delay(2200);
         }
         playSfx(sfx.investigation_start);
         const durationSec = Number(sfx.investigation_start.duration);
@@ -3797,7 +3849,7 @@ const nightTimeStartController = {
             : 2200;
         const displayDuration = Math.max(1400, durationMs + 120);
         this.showBanner(displayDuration);
-        return new Promise(resolve => setTimeout(resolve, displayDuration));
+        return registerSkippableBanner(this, displayDuration, sfx.investigation_start).delay(displayDuration);
     },
 };
 
@@ -4684,7 +4736,18 @@ const investigationStartController = {
         const toggled = this.setPresetToggle(true);
 
         const trackDelay = sfxResult?.played ? (sfxResult.durationMs + 120) : 0;
-        setTimeout(() => playInvestigationTrack(), trackDelay);
+        let trackTimer = setTimeout(() => {
+            trackTimer = null;
+            playInvestigationTrack();
+        }, trackDelay);
+        if (bannerShown) {
+            registerSkippableBanner(this, displayDuration, sfxResult?.played ? sfx.investigation_start : null, () => {
+                if (!trackTimer) return;
+                clearTimeout(trackTimer);
+                trackTimer = null;
+                playInvestigationTrack();
+            });
+        }
 
         setInvestigationUnderway(true);
         renderTimeTrackerUi();
@@ -5803,14 +5866,17 @@ async function runExecutionCinematic(cinematic, charName) {
     overlay.style.opacity = "1";
     await new Promise(r => setTimeout(r, 380));
 
-    if (!cinematic) {
-        // No cinematic configured — just hold black for 1s then fade out
-        await new Promise(r => setTimeout(r, 1000));
-    } else if (cinematic.type === "video" && cinematic.videoSrc) {
-        await runExecutionVideo(overlay, cinematic);
-    } else if (cinematic.type === "cinematic") {
-        await runExecutionImageCinematic(overlay, cinematic);
-    }
+    // Escape stops the playback and goes straight to the fade-out.
+    await runSkippableSequence(async (token) => {
+        if (!cinematic) {
+            // No cinematic configured — just hold black for 1s then fade out
+            await token.delay(1000);
+        } else if (cinematic.type === "video" && cinematic.videoSrc) {
+            await runExecutionVideo(overlay, cinematic, token);
+        } else if (cinematic.type === "cinematic") {
+            await runExecutionImageCinematic(overlay, cinematic, token);
+        }
+    });
 
     // Fade out overlay
     overlay.style.opacity = "0";
@@ -5819,7 +5885,7 @@ async function runExecutionCinematic(cinematic, charName) {
     overlay.style.pointerEvents = "none";
 }
 
-async function runExecutionVideo(overlay, cinematic) {
+async function runExecutionVideo(overlay, cinematic, token) {
     overlay.innerHTML = "";
     const video = document.createElement("video");
     video.src = cinematic.videoSrc;
@@ -5827,15 +5893,16 @@ async function runExecutionVideo(overlay, cinematic) {
     video.autoplay = true;
     overlay.appendChild(video);
 
-    await new Promise(resolve => {
+    token.onSkip(() => { try { video.pause(); } catch (_) {} });
+    await token.race(new Promise(resolve => {
         video.addEventListener("ended", resolve, { once: true });
         video.addEventListener("error", resolve, { once: true });
         // Fallback: timeout at 5 minutes
         setTimeout(resolve, 5 * 60 * 1000);
-    });
+    }));
 }
 
-async function runExecutionImageCinematic(overlay, cinematic) {
+async function runExecutionImageCinematic(overlay, cinematic, token) {
     overlay.innerHTML = "";
 
     const bg = document.createElement("div");
@@ -5848,7 +5915,7 @@ async function runExecutionImageCinematic(overlay, cinematic) {
     overlay.appendChild(bg); overlay.appendChild(colorize); overlay.appendChild(staticEl);
 
     if (!cinematic.audioSrc) {
-        await new Promise(r => setTimeout(r, 10000));
+        await token.delay(10000);
         return;
     }
 
@@ -5962,12 +6029,15 @@ async function runExecutionImageCinematic(overlay, cinematic) {
 
     audio.addEventListener("play", () => { rafId = requestAnimationFrame(tick); }, { once: true });
 
-    await new Promise(resolve => {
-        audio.addEventListener("ended", resolve, { once: true });
-        audio.addEventListener("error", resolve, { once: true });
-        setTimeout(resolve, trackDurationMs + 1000);
-        audio.play().catch(resolve);
-    });
+    token.onSkip(() => { try { audio.pause(); } catch (_) {} });
+    if (!token.skipped) {
+        await token.race(new Promise(resolve => {
+            audio.addEventListener("ended", resolve, { once: true });
+            audio.addEventListener("error", resolve, { once: true });
+            setTimeout(resolve, trackDurationMs + 1000);
+            audio.play().catch(resolve);
+        }));
+    }
 
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
     timers.forEach(clearTimeout);
@@ -9696,6 +9766,12 @@ async function loadExtensionHtmlFile(fileName) {
 
 jQuery(async () => {
     console.log(`[${extensionName}] Loading...`);
+    installSkipKeyHandler({ isEscapeOwned: isEscapeOwnedByDialog });
+    configureMinigameSessions({
+        snapshot: snapshotMinigameState,
+        restore: restoreMinigameState,
+        confirm: confirmLeaveMinigame,
+    });
 
     bootstrapDebugUi();
     bindDebugControlEvents();
