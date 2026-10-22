@@ -15,6 +15,8 @@ Adds a menu based on the Monopad from **Danganronpa V3** with progression, trust
 Alternatively, install directly from SillyTavern by accessing the extensions tab and pasting the main link.
 3. In chat, click the Monopad crest button to open the UI.
 
+**Recommended way to play: One Main Chat.** Pick NEW GAME on the title screen and keep the selected **One Main Chat** style: one group chat holds the whole story, and exploring the overworld stays inside it (Single-Chat Overworld). Install the [Presence](https://github.com/leandrojofre/SillyTavern-Presence) extension so characters who aren't in the room don't remember what was said there. Several Chats is still available if you prefer separate chats.
+
 ## Requirements:
 - The Lorebook: You can select one of the supplied Lorebooks in `/sample-lorebooks`, or create your own.
 - Character Cards: You can import one (Or multiple) characters from `/sample-character-cards`, or create your own.
@@ -23,7 +25,7 @@ Alternatively, install directly from SillyTavern by accessing the extensions tab
 
 ### Monopad Tabs
 - **Truth (🧠):** Stores discovered Truth Bullets, supports detail view, editing the title and description, archival and removal. Archived and deleted bullets stay that way; the message that found them won't add them again.
-- **Map (🌐):** Shows the current Map & Floor, supports custom maps, pin locations, and evidence placement. Evidence and body pins belong to the current save; rooms, custom areas and floors are shared by every save and stored with your SillyTavern settings, so they follow you to other browsers.
+- **Map (🌐):** Shows the current Map & Floor, supports custom maps, pin locations, and evidence placement. Evidence and body pins belong to the current save; rooms, custom areas and floors are shared by every save and stored with your SillyTavern settings, so they follow you to other browsers. Lock a floor (or island, or any floor of a custom area) until a chapter with the pencil button → **OPENS IN**: like the original games, it opens when the story reaches that chapter. Until then nobody spawns there and Move To won't lead there; the floor button shows a 🔒.
 - **Gifts & Skills (🎁):** Shows the Inventory, item browsing, gifting flow, and skill shop display.
 - **Social (👥):** Shows the Roster, trust/distrust progress, and generated profile notes. The − and + buttons next to the trust value correct it one rank at a time, without a ceremony or rewards.
 - **Chapters (📖):** Shows a log of your chats in an easy-to-read, easy-to-revisit format to help you build narratives.
@@ -32,10 +34,11 @@ Alternatively, install directly from SillyTavern by accessing the extensions tab
 ### Title Screen
 SillyTavern opens on a Trigger Happy Havoc-style title screen. Press any key or click to start, then pick from the menu (arrow keys, Enter, Escape/BACK all work):
 - **NEW GAME:** a guided setup. If you have progress it first asks whether to start a **NEW SAVE** (your current save is kept and can be loaded again) or **KEEP CURRENT SAVE**. Then:
-  1. Choose a play style: **Several Chats** or **One Main Chat**.
+  1. Choose a play style: **One Main Chat** (recommended, and selected by default) or **Several Chats**.
   2. One Main Chat only: name the story chat and pick its members. The group chat is created for you and Single-Chat Overworld is turned on.
   3. Class roster: tick your classmates, set each one's Ultimate, and choose your persona.
   4. Review and **BEGIN**.
+- **Music:** a few seconds after you leave the title screen, the current phase's music (Daytime, Nighttime or Investigation) starts by itself, unless something is already playing.
 - **CONTINUE:** the **SAVES** tab lists your saves with their chapter, day, Truth Bullets and classmates. Picking a One Main Chat save opens its story chat; picking a Several Chats save opens the Monopad map. **ALL CHATS** lists every chat, newest first, with avatars, a last-message preview, message count and time. Search by name or message, or filter by one-on-one / group.
 - **OPTIONS:** the main audio, display and gameplay settings in the title screen's own style. Changes save immediately; **ALL SETTINGS (MONOPAD)** opens the full list.
 - **SETUP:** a checklist of what the game needs from SillyTavern: character cards, sprites, a lorebook with Ultimates, the Presence extension (One Main Chat), music, AI instructions, a persona and a save. Each row says what's missing and has a button that opens the place to fix it. A badge on SETUP counts anything the game can't run without. Also in Monopad Settings → Gameplay.

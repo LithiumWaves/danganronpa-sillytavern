@@ -6001,6 +6001,20 @@ body.dangan-hide-hopes-peak-branding .monopad-welcome-cylinder {
     color: rgba(255, 100, 100, 0.8);
 }
 
+.map-create-area-hint {
+    font-size: 10px;
+    color: rgba(170, 210, 255, 0.5);
+}
+
+select.map-create-area-input option {
+    background: #0e2850;
+}
+
+.map-floor-button.locked {
+    opacity: 0.55;
+    border-style: dashed;
+}
+
 .map-create-area-optional {
     color: rgba(170, 210, 255, 0.45);
     font-size: 9px;

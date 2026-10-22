@@ -1,5 +1,5 @@
 import { DEFAULT_PINS } from "./defaultPins.js";
-import { isStoryPin, listCustomFloors, mergePins, migrateLegacyMapStorage, resolveFloorImageSrc, splitPins } from "./mapStorage.js";
+import { getFloorUnlockChapter, isFloorLocked, isStoryPin, listCustomFloors, mergePins, migrateLegacyMapStorage, resolveFloorImageSrc, setFloorUnlockChapter, splitPins } from "./mapStorage.js";
 
 const MACHINE_ROLL_DURATION_MS = 2000;
 const MACHINE_JINGLE_FRAME = 50;
@@ -316,6 +316,32 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         const area = getAllAreas()[areaKey];
         if (!area) return null;
         return area.floors.find(f => f.key === floorKey) || null;
+    }
+
+    // Chapter-gated floors, like the original games opening new floors or
+    // islands after each trial. Locked floors spawn nobody and drop out of
+    // Move To until the story reaches their chapter.
+    function currentChapterIndex() {
+        const n = Number(getSetting?.("chapterIndex") ?? 0);
+        return Number.isFinite(n) ? n : 0;
+    }
+
+    function chapterName(idx) {
+        if (idx >= 10) return "EPILOGUE";
+        return idx <= 0 ? "PROLOGUE" : `CHAPTER ${idx}`;
+    }
+
+    function isFloorLockedNow(areaKey, floorKey) {
+        return isFloorLocked(layoutStore(), areaKey, floorKey, currentChapterIndex());
+    }
+
+    function isPinLocked(pin) {
+        return !!pin?.areaKey && !!pin?.floorKey && isFloorLockedNow(pin.areaKey, pin.floorKey);
+    }
+
+    function isAreaLocked(areaKey) {
+        const area = getAllAreas()[areaKey];
+        return !!area?.floors?.length && area.floors.every(f => isFloorLockedNow(areaKey, f.key));
     }
 
     state.customAreas = loadCustomAreas();
@@ -891,9 +917,12 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
 
         for (const floor of area.floors) {
             const isActive = floor.key === state.floor;
+            const unlockAt = getFloorUnlockChapter(layoutStore(), state.area, floor.key);
+            const locked = isFloorLockedNow(state.area, floor.key);
+            const lockTitle = unlockAt ? `${locked ? "Locked" : "Opened"}: opens in ${chapterName(unlockAt)}` : "";
             const $entry = $(`
                 <div class="map-floor-entry">
-                    <button class="map-floor-button${isActive ? " active" : ""}" type="button" data-floor="${escapeHtml(floor.key)}" aria-pressed="${String(isActive)}">${escapeHtml(floor.label)}</button>
+                    <button class="map-floor-button${isActive ? " active" : ""}${locked ? " locked" : ""}" type="button" data-floor="${escapeHtml(floor.key)}" aria-pressed="${String(isActive)}"${lockTitle ? ` title="${escapeHtml(lockTitle)}"` : ""}>${locked ? "&#x1F512; " : ""}${escapeHtml(floor.label)}</button>
                     <div class="map-floor-entry-controls">
                         <button class="map-floor-entry-rename" type="button" title="Rename">&#x270F;</button>
                         <button class="map-floor-entry-delete" type="button" title="Delete">&#x2715;</button>
@@ -1054,6 +1083,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         $(".map-create-area-modal").remove();
         const floor = getAreaFloor(areaKey, floorKey);
         if (!floor) return;
+        const unlockAt = getFloorUnlockChapter(layoutStore(), areaKey, floorKey);
 
         const $modal = $(`
             <div class="map-create-area-modal">
@@ -1070,6 +1100,11 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                     <div class="map-create-area-field">
                         <div class="map-create-area-label">DESCRIPTION</div>
                         <input type="text" class="map-create-area-input" id="mrf-desc" maxlength="120" value="${escapeHtml(floor.description || '')}" />
+                    </div>
+                    <div class="map-create-area-field">
+                        <div class="map-create-area-label">OPENS IN</div>
+                        <select class="map-create-area-input" id="mrf-unlock">${[0,1,2,3,4,5,6,7,8,9,10].map(i => `<option value="${i}"${i === unlockAt ? " selected" : ""}>${i === 0 ? "Always open" : chapterName(i)}</option>`).join("")}</select>
+                        <div class="map-create-area-hint">Until then nobody spawns here and Move To won't lead here.</div>
                     </div>
                     <div class="map-create-area-actions">
                         <button class="map-create-area-save" type="button">SAVE</button>
@@ -1094,6 +1129,11 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             const newDesc  = $modal.find("#mrf-desc").val().trim();
             if (!newLabel) { $modal.find("#mrf-name").css("border-color", "rgba(255,80,80,0.8)").trigger("focus"); return; }
             if (!newId)    { $modal.find("#mrf-id").css("border-color", "rgba(255,80,80,0.8)").trigger("focus"); return; }
+            const layout = layoutStore();
+            if (layout) {
+                setFloorUnlockChapter(layout, areaKey, floorKey, Number($modal.find("#mrf-unlock").val()));
+                saveSettings?.();
+            }
 
             if (isBuiltInArea(areaKey)) {
                 const ov = state.areaOverrides[areaKey] || {};
@@ -1160,6 +1200,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                 if (ca) { ca.floors = ca.floors.filter(f => f.key !== floorKey); saveCustomAreas(); }
             }
             state.customPins = state.customPins.filter(p => !(p.areaKey === areaKey && p.floorKey === floorKey));
+            setFloorUnlockChapter(layoutStore(), areaKey, floorKey, 0);
             saveCustomPins();
             if (state.floor === floorKey) {
                 ensureValidFloorSelection();
@@ -2504,7 +2545,14 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
     function getConnectionsForLocationId(locationId) {
         const pin = getPinByLocationId(locationId);
         if (!pin || !Array.isArray(pin.connectedTo)) return [];
-        return pin.connectedTo.map(describeConnectionRef).filter(Boolean);
+        return pin.connectedTo.map(describeConnectionRef).filter(c => c && !isConnectionLocked(c));
+    }
+
+    function isConnectionLocked(conn) {
+        if (conn.kind === 'pin') return isPinLocked(getPinByLocationId(conn.value));
+        if (conn.kind === 'subarea') return isFloorLockedNow(conn.areaKey, conn.floorKey);
+        if (conn.kind === 'area') return isAreaLocked(conn.value);
+        return false;
     }
 
     // Play a pin's BGM override via the host extension's playBgmPath helper.
@@ -2555,6 +2603,8 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         getPinByLocationId,
         describeConnectionRef,
         getConnectionsForLocationId,
+        isPinLocked,
+        isFloorLocked: isFloorLockedNow,
         switchChatBackground,
         playPinBgm,
         navigateToArea,

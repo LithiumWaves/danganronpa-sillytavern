@@ -658,7 +658,17 @@ function setCurrentChapterIndex(idx) {
     updateChapterDisplay();
     refreshSettingsChapterSelect();
     if (document.getElementById('chapters-body')) renderChaptersPanel();
+    refreshChapterLockedFloors();
     return true;
+}
+
+// Chapter-gated map floors open (or close) with the chapter: redraw the map,
+// Move To and the overworld so spawns and exits follow the new lock state.
+function refreshChapterLockedFloors() {
+    try { mapPanelController?.renderMapPanel?.(); } catch (_) {}
+    try { renderMoveToPanel(); } catch (_) {}
+    try { renderMinimap(); } catch (_) {}
+    try { overworldSceneController?.render?.(); } catch (_) {}
 }
 
 function migrateScopedChapterJournalIfNeeded(settings) {
@@ -13643,12 +13653,30 @@ function buildTitleScreenOptions({ skipSplash = false, initialPanel = "" } = {})
             if (path) titleBgmPlaying = !!playMinigameBgmPath(path);
         },
         onClose: async () => {
-            if (!titleBgmPlaying) return;
-            titleBgmPlaying = false;
-            await fadeOutAndPauseBgm(800);
-            resumeBgmAfterHG();
+            if (titleBgmPlaying) {
+                titleBgmPlaying = false;
+                await fadeOutAndPauseBgm(800);
+                resumeBgmAfterHG();
+            }
+            schedulePostTitleBgm();
         },
     };
+}
+
+// After the title screen, start the phase's music (daytime, nighttime or
+// investigation) following a short beat of silence, unless something else
+// (a resumed track, Dynamic Songs, a trial) has already started playing.
+const POST_TITLE_BGM_DELAY_MS = 3000;
+let postTitleBgmTimer = null;
+function schedulePostTitleBgm() {
+    clearTimeout(postTitleBgmTimer);
+    postTitleBgmTimer = setTimeout(() => {
+        postTitleBgmTimer = null;
+        if (document.getElementById("dangan-title-screen")) return;
+        if (_getActiveBgmElement()) return;
+        if (trialManager?.isTrialActive?.()) return;
+        playTrackFromSetting(getPhaseSettingKey());
+    }, POST_TITLE_BGM_DELAY_MS);
 }
 
 function openTitleScreen(options) {

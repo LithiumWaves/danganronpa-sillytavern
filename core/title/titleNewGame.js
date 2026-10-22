@@ -85,7 +85,8 @@ export function mountNewGamePanel(container, api) {
     const state = {
         step: "style",
         fresh: false,
-        mode: null,
+        // One Main Chat is the recommended way to play, so it starts selected.
+        mode: "single",
         groupName: DEFAULT_STORY_CHAT_NAME,
         groupMembers: new Set(),
         roster: new Map(),
@@ -169,15 +170,15 @@ export function mountNewGamePanel(container, api) {
         if (state.step === "style") {
             bodyEl.innerHTML = `
                 <div class="dgn-title-modes">
-                    <button type="button" class="dgn-title-mode${state.mode === "multi" ? " is-on" : ""}" data-mode="multi" aria-pressed="${state.mode === "multi"}">
-                        <span class="dgn-title-mode-name">SEVERAL CHATS</span>
-                        <span class="dgn-title-mode-tag">DEFAULT</span>
-                        <span class="dgn-title-mode-text">Talk to the Room, Grab Group, and sprite clicks each open or switch to their own chat. Good for separate 1-on-1s, room threads and trial chats.</span>
-                    </button>
                     <button type="button" class="dgn-title-mode${state.mode === "single" ? " is-on" : ""}" data-mode="single" aria-pressed="${state.mode === "single"}">
                         <span class="dgn-title-mode-name">ONE MAIN CHAT</span>
-                        <span class="dgn-title-mode-tag">SINGLE-CHAT OVERWORLD</span>
-                        <span class="dgn-title-mode-text">One group chat is the whole story. Exploring stays in it: whoever is in the room is unmuted, everyone else is muted. Call Student brings people to you. You'll create that chat next.</span>
+                        <span class="dgn-title-mode-tag">RECOMMENDED · SINGLE-CHAT OVERWORLD</span>
+                        <span class="dgn-title-mode-text">The main way to play. One group chat is the whole story. Exploring stays in it: whoever is in the room is unmuted, everyone else is muted. Call Student brings people to you. You'll create that chat next.</span>
+                    </button>
+                    <button type="button" class="dgn-title-mode${state.mode === "multi" ? " is-on" : ""}" data-mode="multi" aria-pressed="${state.mode === "multi"}">
+                        <span class="dgn-title-mode-name">SEVERAL CHATS</span>
+                        <span class="dgn-title-mode-tag">ALTERNATIVE</span>
+                        <span class="dgn-title-mode-text">Talk to the Room, Grab Group, and sprite clicks each open or switch to their own chat. Good for separate 1-on-1s, room threads and trial chats.</span>
                     </button>
                 </div>
                 <p class="dgn-title-note">You can switch later in Options. Class trials work in both styles.${state.fresh ? " This game gets a new save. Your previous save is kept." : ""}</p>

@@ -110,3 +110,28 @@ export function listCustomFloors(layout) {
     for (const ov of Object.values(layout?.areaOverrides || {})) floors.push(...(ov?.extraFloors || []));
     return floors;
 }
+
+// Floor locks: layout.floorLocks maps "areaKey/floorKey" to the chapter that
+// opens it (1–9, 10 = Epilogue). Missing or 0 means always open.
+export function floorLockKey(areaKey, floorKey) {
+    return `${areaKey}/${floorKey}`;
+}
+
+export function getFloorUnlockChapter(layout, areaKey, floorKey) {
+    const n = Number(layout?.floorLocks?.[floorLockKey(areaKey, floorKey)] ?? 0);
+    return Number.isFinite(n) && n > 0 ? Math.min(10, Math.floor(n)) : 0;
+}
+
+export function setFloorUnlockChapter(layout, areaKey, floorKey, chapter) {
+    if (!layout) return;
+    const n = Number(chapter);
+    const key = floorLockKey(areaKey, floorKey);
+    layout.floorLocks ??= {};
+    if (Number.isFinite(n) && n > 0) layout.floorLocks[key] = Math.min(10, Math.floor(n));
+    else delete layout.floorLocks[key];
+}
+
+export function isFloorLocked(layout, areaKey, floorKey, chapterIndex) {
+    const need = getFloorUnlockChapter(layout, areaKey, floorKey);
+    return need > 0 && Number(chapterIndex || 0) < need;
+}

@@ -1,4 +1,4 @@
-import { isStoryPin, listCustomFloors, mergePins, migrateLegacyMapStorage, resolveFloorImageSrc, splitPins } from "./mapStorage.js";
+import { getFloorUnlockChapter, isFloorLocked, isStoryPin, listCustomFloors, mergePins, migrateLegacyMapStorage, resolveFloorImageSrc, setFloorUnlockChapter, splitPins } from "./mapStorage.js";
 
 function assert(cond, msg) {
     if (!cond) throw new Error(msg);
@@ -64,6 +64,16 @@ function run() {
     assert(resolveFloorImageSrc("/user/images/danganronpa/f.png", "ext") === "/user/images/danganronpa/f.png", "uploaded paths");
     assert(resolveFloorImageSrc("data:image/png;base64,AA", "ext").startsWith("data:"), "data URLs");
     assert(resolveFloorImageSrc("", "ext") === "", "no image");
+
+    const layout = {};
+    assert(!isFloorLocked(layout, "hopes_peak", "floor_2", 0), "floors start open");
+    setFloorUnlockChapter(layout, "hopes_peak", "floor_2", 1);
+    assert(getFloorUnlockChapter(layout, "hopes_peak", "floor_2") === 1, "stores the unlock chapter");
+    assert(isFloorLocked(layout, "hopes_peak", "floor_2", 0), "locked during the prologue");
+    assert(!isFloorLocked(layout, "hopes_peak", "floor_2", 1), "opens once the chapter is reached");
+    assert(!isFloorLocked(layout, "hopes_peak", "floor_3", 0), "other floors unaffected");
+    setFloorUnlockChapter(layout, "hopes_peak", "floor_2", 0);
+    assert(!("hopes_peak/floor_2" in layout.floorLocks), "0 clears the lock");
 
     console.log("mapStorage tests passed");
 }

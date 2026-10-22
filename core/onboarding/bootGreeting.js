@@ -39,12 +39,12 @@ export function showBootGreeting({ markWelcomeSeen } = {}) {
                 <div class="dgn-boot-greeting-body">
                     <div class="dgn-boot-greeting-modes">
                         <section class="dgn-boot-greeting-mode">
-                            <h3>SEVERAL CHATS (DEFAULT)</h3>
-                            <p>Talk to the Room, Grab Group, and sprite clicks each open or switch to their own chat. Use this for separate 1-on-1s, room threads, and trial chats.</p>
+                            <h3>ONE MAIN CHAT (RECOMMENDED)</h3>
+                            <p>The main way to play. Keep a single group chat as the story and start each chapter in that same thread. NEW GAME on the title screen sets it up for you, or turn on <strong>Single-Chat Overworld</strong> in Settings → Gameplay: exploring stays in that chat, whoever is in the room is unmuted, everyone else is muted (install Presence so absentees forget those lines). Call Student brings people to you.</p>
                         </section>
                         <section class="dgn-boot-greeting-mode">
-                            <h3>ONE MAIN CHAT</h3>
-                            <p>Keep a single group chat as the story and start each chapter in that same thread. Turn on <strong>Single-Chat Overworld</strong> in Settings → Gameplay: exploring stays in that chat, whoever is in the room is unmuted, everyone else is muted (install Presence so absentees forget those lines). Call Student brings people to you.</p>
+                            <h3>SEVERAL CHATS</h3>
+                            <p>Talk to the Room, Grab Group, and sprite clicks each open or switch to their own chat. Use this for separate 1-on-1s, room threads, and trial chats.</p>
                         </section>
                     </div>
                     <p class="dgn-boot-greeting-note">You can switch later. Class trials work in both styles.</p>

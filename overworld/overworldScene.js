@@ -797,7 +797,7 @@ export function createOverworldSceneController({
         if (ROOM_ID_PREFIXES_TO_REJECT.some(p => locationId.startsWith(p))) return false;
         const mp = getMapPanelController?.();
         const pin = mp?.getPinByLocationId?.(locationId);
-        if (pin) return SPAWNABLE_PIN_TYPES.has(pin.type);
+        if (pin) return SPAWNABLE_PIN_TYPES.has(pin.type) && !mp?.isPinLocked?.(pin);
         return Object.prototype.hasOwnProperty.call(LOCATION_PINPOINTS, locationId);
     }
 
@@ -826,7 +826,10 @@ export function createOverworldSceneController({
     function listSpawnableRoomIds() {
         const mp = getMapPanelController?.();
         const pins = mp?.getAllPins?.() || [];
-        let filtered = pins.filter(p => SPAWNABLE_PIN_TYPES.has(p.type) && !p.hidden);
+        const roomPins = pins.filter(p => SPAWNABLE_PIN_TYPES.has(p.type) && !p.hidden);
+        // Floors locked until a later chapter never take characters.
+        let filtered = roomPins.filter(p => !mp?.isPinLocked?.(p));
+        if (roomPins.length > 0 && filtered.length === 0) return [];
 
         if (filtered.length > 0) {
             const af = getPlayerAreaFloor();
