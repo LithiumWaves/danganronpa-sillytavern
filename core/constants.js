@@ -82,6 +82,8 @@ export const defaultSettings = {
     bootAnimations: true,
     settingsSubtab: "audio",
     titleScreenEnabled: true,
+    setupPulseEnabled: true,
+    returningNoticeDismissed: false,
     phaseHudEnabled: true,
     exploreHideComposer: true,
     exploreActionMenu: true,

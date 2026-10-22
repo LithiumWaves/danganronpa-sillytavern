@@ -21,6 +21,14 @@
 @import url("./styles/systems/saves/saves.css");
 @import url("./styles/systems/skip/leave-confirm.css");
 
+/* SillyTavern puts transform: translateZ(0) on <html>, which makes it the box
+   that position: fixed elements size against. On phones <body> is fixed too,
+   so <html> collapses to 0px and every full-screen overlay (VN box, group
+   stage, dialogs) gets squashed against the top of the screen. */
+html {
+    min-height: 100%;
+}
+
 
 
 /* (Trial skill-manager styles removed — the inline manager was replaced by the

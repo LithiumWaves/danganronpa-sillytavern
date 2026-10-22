@@ -163,6 +163,7 @@ V3C| BODY_DISCOVERY
 | **CRT Intensity** | Slider (0–100) | 35 | Controls the strength of the CRT scanline filter |
 | **Boot Animations** | Toggle | On | Shows the startup animation sequence when SillyTavern loads |
 | **Title Screen** | Toggle | On | Shows the title screen when SillyTavern loads. `/title` opens it any time |
+| **Setup Reminder** | Toggle | On | The title screen's SETUP glows while something the game needs isn't set up (sprites and Ultimates don't count), and NEW GAME / CONTINUE suggest checking it first |
 | **Return to Title** | Button | — | Closes the Monopad and opens the title screen |
 | **Visual Novel Mode** | Toggle | Off | Enables VN-style character sprite and text presentation in chat |
 | **Daily / Deadly Life Dynamic Themes** | Toggle | On | Automatically switches the UI theme based on daytime, nighttime, or investigation state |

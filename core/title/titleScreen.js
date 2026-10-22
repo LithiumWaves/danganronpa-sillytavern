@@ -115,6 +115,10 @@ export function showTitleScreen({
         let leaving = false;
         let panel = null;
         let confirmState = null;
+        // Set once the SETUP check finds something to fix; NEW GAME and
+        // CONTINUE point there once per visit.
+        let setupNeedsAttention = false;
+        let setupReminderShown = false;
 
         const setActive = (index, { silent = false } = {}) => {
             const next = (index + items.length) % items.length;
@@ -139,6 +143,28 @@ export function showTitleScreen({
             sfx("open");
             try { onStart?.(); } catch (e) { console.warn("[Dangan][Title] onStart failed:", e); }
             showMenu();
+            if (!initialPanel) maybeWelcomeBack();
+        };
+
+        // Players with data from an earlier version get offered the tutorials again.
+        const maybeWelcomeBack = async () => {
+            let show = false;
+            try { show = !!services.shouldShowReturningNotice?.(); } catch { show = false; }
+            if (!show) return;
+            const { ok, checked } = await confirm({
+                title: "Returning? Welcome back!",
+                message: "A lot has changed since the last update and changes were made to make things less confusing. Would you like to reset the tutorials in order to see them again?",
+                confirmLabel: "RESET TUTORIALS",
+                cancelLabel: "NO THANKS",
+                checkbox: "Don't show me again",
+                className: "is-welcome-back",
+            });
+            try {
+                if (ok) services.resetTutorials?.();
+                if (ok || checked) services.dismissReturningNotice?.();
+            } catch (e) {
+                console.warn("[Dangan][Title] welcome back failed:", e);
+            }
         };
 
         const unmountPanel = () => {
@@ -173,15 +199,17 @@ export function showTitleScreen({
             resolve(result);
         };
 
-        const confirm = ({ title = "CONFIRM", message = "", confirmLabel = "OK", cancelLabel = "CANCEL" } = {}) => {
+        // With `checkbox` (a label) it resolves { ok, checked } instead of a boolean.
+        const confirm = ({ title = "CONFIRM", message = "", confirmLabel = "OK", cancelLabel = "CANCEL", checkbox = "", className = "" } = {}) => {
             confirmState?.finish(false);
             return new Promise((done) => {
                 const overlay = document.createElement("div");
-                overlay.className = "dgn-title-confirm";
+                overlay.className = `dgn-title-confirm${className ? ` ${className}` : ""}`;
                 overlay.innerHTML = `
                     <div class="dgn-title-confirm-box" role="alertdialog" aria-modal="true">
                         <div class="dgn-title-confirm-title"></div>
                         <p class="dgn-title-confirm-message"></p>
+                        ${checkbox ? `<label class="dgn-title-confirm-check"><input type="checkbox"><span></span></label>` : ""}
                         <div class="dgn-title-confirm-actions">
                             <button type="button" class="dgn-title-btn" data-choice="cancel"></button>
                             <button type="button" class="dgn-title-btn is-primary" data-choice="ok"></button>
@@ -190,6 +218,8 @@ export function showTitleScreen({
                 `;
                 overlay.querySelector(".dgn-title-confirm-title").textContent = title;
                 overlay.querySelector(".dgn-title-confirm-message").textContent = message;
+                const checkEl = overlay.querySelector(".dgn-title-confirm-check input");
+                if (checkEl) checkEl.nextElementSibling.textContent = checkbox;
                 const okBtn = overlay.querySelector('[data-choice="ok"]');
                 const cancelBtn = overlay.querySelector('[data-choice="cancel"]');
                 okBtn.textContent = confirmLabel;
@@ -200,9 +230,9 @@ export function showTitleScreen({
                     confirmState = null;
                     overlay.remove();
                     try { previousFocus?.focus?.({ preventScroll: true }); } catch { /* ignore */ }
-                    done(value);
+                    done(checkEl ? { ok: value, checked: checkEl.checked } : value);
                 };
-                confirmState = { overlay, finish, buttons: [cancelBtn, okBtn] };
+                confirmState = { overlay, finish, buttons: checkEl ? [cancelBtn, okBtn, checkEl] : [cancelBtn, okBtn] };
                 overlay.addEventListener("click", (ev) => {
                     const btn = ev.target.closest?.("[data-choice]");
                     if (btn) {
@@ -248,20 +278,37 @@ export function showTitleScreen({
             });
         };
 
-        const choose = (action) => {
-            if (leaving || stage !== "menu") return;
+        const choose = async (action) => {
+            if (leaving || stage !== "menu" || confirmState) return;
             sfx("click");
+            if ((action === "newGame" || action === "continue") && setupNeedsAttention && !setupReminderShown) {
+                setupReminderShown = true;
+                const goToSetup = await confirm({
+                    title: "CHECK SETUP?",
+                    message: "Some things the game needs aren't set up yet. SETUP shows what's missing and takes you to each fix.",
+                    confirmLabel: "OPEN SETUP",
+                    cancelLabel: "CONTINUE ANYWAY",
+                });
+                if (leaving || stage !== "menu") return;
+                openPanel(goToSetup ? "setup" : action);
+                return;
+            }
             openPanel(action);
         };
 
         function onConfirmKey(ev) {
             const { buttons, finish } = confirmState;
             const idx = buttons.indexOf(document.activeElement);
+            const onCheckbox = idx === 2;
             if (ev.key === "Escape") {
                 finish(false);
             } else if (ev.key === "ArrowLeft" || ev.key === "ArrowRight" || ev.key === "Tab") {
-                buttons[idx === 0 ? 1 : 0].focus({ preventScroll: true });
+                const step = ev.key === "ArrowLeft" || (ev.key === "Tab" && ev.shiftKey) ? -1 : 1;
+                buttons[(Math.max(0, idx) + step + buttons.length) % buttons.length].focus({ preventScroll: true });
                 sfx("hover");
+            } else if (onCheckbox && (ev.key === "Enter" || ev.key === " ")) {
+                buttons[2].checked = !buttons[2].checked;
+                sfx("click");
             } else if (ev.key === "Enter" || ev.key === " ") {
                 sfx("click");
                 finish(idx === 1 || idx === -1);
@@ -348,7 +395,8 @@ export function showTitleScreen({
             reveal();
         }
 
-        // Count of setup requirements that are missing, on the SETUP item.
+        // Count of setup requirements that are missing, on the SETUP item, and
+        // a glow while anything besides sprites or Ultimates needs attention.
         Promise.resolve()
             .then(() => services.countSetupProblems?.())
             .then((count) => {
@@ -359,5 +407,13 @@ export function showTitleScreen({
                 badge.setAttribute("aria-label", `${count} setup ${count === 1 ? "problem" : "problems"}`);
             })
             .catch(() => { /* the badge is optional */ });
+        Promise.resolve()
+            .then(() => (services.isSetupPulseEnabled?.() === false ? 0 : services.countSetupReminders?.()))
+            .then((count) => {
+                if (!(count > 0) || !root.isConnected) return;
+                setupNeedsAttention = true;
+                root.querySelector('.dgn-title-item[data-action="setup"]')?.classList.add("is-pulsing");
+            })
+            .catch(() => { /* the glow is optional */ });
     });
 }

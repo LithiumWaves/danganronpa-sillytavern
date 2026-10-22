@@ -1,4 +1,4 @@
-import { countSetupProblems, evaluateSetup, SETUP_STATUS } from "./setupChecks.js";
+import { countSetupProblems, countSetupReminders, evaluateSetup, SETUP_STATUS } from "./setupChecks.js";
 
 function assert(cond, msg) {
     if (!cond) throw new Error(msg);
@@ -55,6 +55,21 @@ function run() {
 
     const many = byId(evaluateSetup({ cards: 9, sprites: { with: [], without: ["A", "B", "C", "D", "E", "F"] } }));
     assert(many.sprites.detail.includes("and 2 more"), "long name lists are shortened");
+
+    // The SETUP glow ignores sprites, Ultimates and the save.
+    const glowFacts = {
+        cards: 3,
+        sprites: { with: [], without: ["A", "B"] },
+        ultimates: { known: 0, total: 2 },
+        singleChat: false,
+        bgm: { files: 4, emptyLists: [] },
+        markerPrompts: true,
+        persona: "Makoto",
+        save: { exists: false },
+    };
+    assert(countSetupReminders(evaluateSetup(glowFacts)) === 0, "sprites, ultimates and save don't glow");
+    assert(countSetupReminders(evaluateSetup({ ...glowFacts, persona: "" })) === 1, "a warning glows");
+    assert(countSetupReminders(evaluateSetup({ ...glowFacts, cards: 0 })) === 1, "a missing requirement glows");
 
     console.log("setupChecks tests passed");
 }

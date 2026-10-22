@@ -843,6 +843,34 @@
     color: rgba(255, 255, 255, 0.8);
 }
 
+.dgn-title-confirm-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: -8px 0 18px;
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.7);
+    cursor: pointer;
+}
+
+.dgn-title-confirm-check input {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--dgn-title-pink);
+    cursor: pointer;
+}
+
+.dgn-title-confirm.is-welcome-back .dgn-title-confirm-title {
+    font-size: 24px;
+    letter-spacing: 0.08em;
+    text-transform: none;
+}
+
+.dgn-title-confirm.is-welcome-back .dgn-title-confirm-message {
+    font-size: 14px;
+}
+
 .dgn-title-confirm-actions {
     display: flex;
     flex-wrap: wrap;
@@ -865,6 +893,31 @@
 
 .dgn-title-item-badge[hidden] {
     display: none;
+}
+
+/* SETUP glows while something besides sprites or Ultimates needs attention. */
+.dgn-title-item.is-pulsing::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, var(--dgn-title-pink), rgba(255, 60, 160, 0.15));
+    mix-blend-mode: screen;
+    pointer-events: none;
+    animation: dgn-title-setup-pulse 1.6s ease-in-out infinite;
+}
+
+.dgn-title-item.is-pulsing .dgn-title-item-mark {
+    animation: dgn-title-setup-mark 1.6s ease-in-out infinite;
+}
+
+@keyframes dgn-title-setup-pulse {
+    0%, 100% { opacity: 0; }
+    50% { opacity: 0.55; }
+}
+
+@keyframes dgn-title-setup-mark {
+    0%, 100% { transform: skewX(-18deg) scaleY(0.35); }
+    50% { transform: skewX(-18deg) scaleY(1); }
 }
 
 .dgn-title-setup {
@@ -1296,7 +1349,13 @@
 @media (prefers-reduced-motion: reduce) {
     .dgn-title-panel,
     .dgn-title-confirm,
-    #dangan-title-screen.is-panel .dgn-title-logo-wrap {
+    #dangan-title-screen.is-panel .dgn-title-logo-wrap,
+    .dgn-title-item.is-pulsing .dgn-title-item-mark {
         animation: none;
+    }
+
+    .dgn-title-item.is-pulsing::after {
+        animation: none;
+        opacity: 0.35;
     }
 }

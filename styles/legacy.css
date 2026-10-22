@@ -10429,7 +10429,7 @@ body.dangan-vn-compose-docked-active .autoComplete-detailsWrap {
 
     .dangan-vn-frame {
         width: calc(100vw - 10px);
-        margin: 0 5px calc(6px + env(safe-area-inset-bottom));
+        margin: 0 5px calc(var(--dangan-vn-bottom-offset) + 4px + env(safe-area-inset-bottom));
         min-height: 150px;
         border-radius: 10px 10px 0 0;
         padding: 10px 10px 8px;
@@ -10452,6 +10452,125 @@ body.dangan-vn-compose-docked-active .autoComplete-detailsWrap {
         padding-top: 6px;
         font-size: 9px;
         letter-spacing: 0.08em;
+    }
+}
+
+/* Phones: the top controls join the flow above the nameplate instead of
+   floating over it, the nav becomes a tidy grid of finger-sized buttons, and
+   the keyboard/mouse hint goes (it doesn't apply to touch). */
+@media (max-width: 700px) {
+    .dangan-vn-frame {
+        max-height: calc(100dvh - var(--dangan-vn-bottom-offset) - 56px);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+
+    .dangan-vn-controls {
+        position: static;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 4px;
+        margin: 0 0 6px;
+    }
+
+    .dangan-vn-control {
+        flex: 0 0 auto;
+        height: 30px;
+        min-width: 30px;
+        padding: 0 6px;
+        font-size: 9px;
+        letter-spacing: 0.04em;
+    }
+
+    .dangan-vn-header {
+        margin-bottom: 6px;
+    }
+
+    .dangan-vn-footer {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+            "progress"
+            "nav";
+        gap: 8px;
+        margin-top: 8px;
+        padding-top: 8px;
+    }
+
+    .dangan-vn-input {
+        display: none;
+    }
+
+    .dangan-vn-nav {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+        width: 100%;
+        overflow: visible;
+        padding: 0;
+    }
+
+    .dangan-vn-nav-button,
+    .dangan-vn-latest,
+    .dangan-vn-regenerate,
+    .dangan-vn-swipe-left,
+    .dangan-vn-swipe-right {
+        min-width: 0;
+        width: 100%;
+        height: 36px;
+        padding: 0 4px;
+        font-size: 11px;
+        white-space: nowrap;
+    }
+
+    /* The minimap and MOVE TO panel shrink and sit above the box and typing
+       bar instead of underneath them. */
+    body.dangan-vn-compose-docked-active #dangan-minimap {
+        right: 30px;
+        bottom: calc(var(--dangan-vn-stack-height, 300px) + 30px);
+        transform: scale(0.45);
+        transform-origin: bottom right;
+    }
+
+    body.dangan-vn-compose-docked-active #dangan-moveto-panel {
+        top: auto;
+        bottom: calc(var(--dangan-vn-stack-height, 300px) + 6px);
+        left: -64px;
+        transform: scale(0.5);
+        transform-origin: bottom left;
+    }
+}
+
+/* Phones on their side: there's no room above the box for the minimap or the
+   MOVE TO panel, so they step aside until VN mode is closed. */
+@media (max-height: 500px) {
+    body.dangan-vn-compose-docked-active #dangan-minimap,
+    body.dangan-vn-compose-docked-active #dangan-moveto-panel {
+        display: none;
+    }
+
+    .dangan-vn-input {
+        display: none;
+    }
+
+    .dangan-vn-footer {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+            "progress"
+            "nav";
+    }
+}
+
+/* Touch screens can't hover, so SillyTavern's top bar stays put there
+   instead of auto-hiding. */
+@media (hover: none) {
+    body.dangan-stbar-autohide:not(.dangan-trial-active) #top-bar,
+    body.dangan-stbar-autohide:not(.dangan-trial-active) #top-settings-holder {
+        transform: none !important;
+    }
+
+    body.dangan-stbar-autohide #dangan-stbar-hotzone {
+        display: none !important;
     }
 }
 

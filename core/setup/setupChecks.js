@@ -127,3 +127,12 @@ export function evaluateSetup(facts = {}) {
 export function countSetupProblems(rows) {
     return (Array.isArray(rows) ? rows : []).filter((r) => r.status === SETUP_STATUS.MISSING).length;
 }
+
+// Rows that make the title screen's SETUP item glow. Sprites and Ultimates
+// fill in as you play, and the save row is fixed by NEW GAME itself.
+const REMINDER_EXEMPT = new Set(["sprites", "lorebook", "save"]);
+
+export function countSetupReminders(rows) {
+    return (Array.isArray(rows) ? rows : []).filter((r) =>
+        !REMINDER_EXEMPT.has(r.id) && (r.status === SETUP_STATUS.MISSING || r.status === SETUP_STATUS.WARN)).length;
+}

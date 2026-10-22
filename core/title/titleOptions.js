@@ -16,6 +16,7 @@ export const OPTION_SECTIONS = Object.freeze([
         title: "DISPLAY",
         rows: [
             { key: "titleScreenEnabled", label: "TITLE SCREEN ON LOAD", type: "toggle", fallback: true, note: "/title opens it any time." },
+            { key: "setupPulseEnabled", label: "SETUP REMINDER", type: "toggle", fallback: true, note: "SETUP glows when something needs attention." },
             { key: "bootAnimations", label: "BOOT ANIMATIONS", type: "toggle", fallback: true },
             { key: "crtEffects", label: "CRT EFFECTS", type: "toggle", fallback: true },
             { key: "crtIntensity", label: "CRT INTENSITY", type: "slider", fallback: 35 },

@@ -268,19 +268,16 @@ export function createSaveStore({ getRoot, defaults = {}, storyKeys = STORY_KEYS
     }
 
     // First run after updating: wrap whatever is loaded into a save so no
-    // progress is lost. Returns the new save, or null when saves exist.
+    // progress is lost. Returns the new save, or null when saves exist or
+    // there's nothing to keep (NEW GAME makes the first save then).
     function migrateIfNeeded({ mode = SAVE_MODES.MULTI, groupIds = [] } = {}) {
         const r = root();
         if (Object.keys(r.saves).length) {
             if (!getActiveId()) r.activeSaveId = Object.keys(r.saves)[0];
             return null;
         }
-        const live = captureLive();
-        const save = create({
-            name: hasStoryProgress(live) ? "Imported Save" : "Save 1",
-            mode,
-            groupIds,
-        });
+        if (!hasStoryProgress(captureLive())) return null;
+        const save = create({ name: "Imported Save", mode, groupIds });
         save.state = null;
         r.activeSaveId = save.id;
         return save;

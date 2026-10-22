@@ -92,10 +92,11 @@ function run() {
     // Fresh install: nothing to import.
     const empty = {};
     const emptyStore = makeStore(empty);
-    assert(emptyStore.migrateIfNeeded().name === "Save 1", "no progress means a plain first save");
+    assert(emptyStore.migrateIfNeeded() === null, "no progress means no save until NEW GAME");
+    assert(emptyStore.getActiveId() === "" && emptyStore.list().length === 0, "fresh install has no saves");
 
     // Evidence and body map pins belong to a save; the map layout doesn't.
-    const mapRoot = { map: { currentLocationId: "gym", storyPins: [{ id: "p1", type: "body" }] }, mapLayout: { pins: [{ id: "r1", type: "room" }] } };
+    const mapRoot = { chapterIndex: 1, map: { currentLocationId: "gym", storyPins: [{ id: "p1", type: "body" }] }, mapLayout: { pins: [{ id: "r1", type: "room" }] } };
     const mapStore = makeStore(mapRoot);
     mapStore.migrateIfNeeded();
     const second = mapStore.create({ name: "Other" });

@@ -69,7 +69,7 @@ import { createOverworldSceneController } from "./overworld/overworldScene.js";
 import { showCgByBgName, showCgPicker } from "./overworld/cgViewer.js";
 import { buildRoomContextPrompt, resolveRoomLabel, ROOM_CONTEXT_PROMPT_KEY } from "./overworld/roomContextPrompt.js";
 import { isPresenceExtensionPresent } from "./overworld/roomPresence.js";
-import { countSetupProblems, evaluateSetup } from "./core/setup/setupChecks.js";
+import { countSetupProblems, countSetupReminders, evaluateSetup } from "./core/setup/setupChecks.js";
 import { configureMinigameSessions, createSkipToken, installSkipKeyHandler, pushSkippable, runSkippableSequence } from "./core/skip/skipRegistry.js";
 import { confirmLeaveMinigame } from "./core/skip/leaveConfirm.js";
 import { user_avatar } from "../../../personas.js";
@@ -2431,16 +2431,14 @@ function createVnModeController() {
         });
 
         if (frameEl) {
+            // Size and spacing come from the stylesheet so its phone layouts
+            // and the bottom offset (room for the typing bar) apply.
             Object.assign(frameEl.style, {
-                width: 'min(980px, calc(100vw - 18px))',
-                minHeight: '170px',
-                margin: '0 9px 10px',
                 borderRadius: '12px',
                 border: '1px solid rgba(191, 229, 255, 0.45)',
                 background: 'linear-gradient(180deg, rgba(8, 12, 20, 0.96), rgba(6, 9, 14, 0.97))',
                 boxShadow: '0 -3px 20px rgba(0, 0, 0, 0.45)',
                 color: '#f4f8ff',
-                padding: '14px 14px 10px',
                 cursor: 'pointer',
                 pointerEvents: 'auto',
             });
@@ -2568,11 +2566,26 @@ function createVnModeController() {
         return true;
     }
 
+    // Height of the on-screen keyboard where the browser lays it over the page
+    // (iOS) instead of shrinking the window.
+    function getKeyboardInset() {
+        const vv = window.visualViewport;
+        if (!vv) return 0;
+        return Math.max(0, Math.round((window.innerHeight || 0) - vv.height - vv.offsetTop));
+    }
+
     function updateBottomOffset() {
         if (!frameEl) return;
 
         if (vnEnabled) {
-            host.style.setProperty('--dangan-vn-bottom-offset', '0px');
+            // The typing bar docks under the box, so leave room for it (Class
+            // Trials pin both themselves).
+            const composeEl = document.body.classList.contains('dangan-trial-active') ? null : getComposeElement();
+            const composeHeight = composeEl?.classList.contains('dangan-vn-compose-docked')
+                ? composeEl.getBoundingClientRect().height
+                : 0;
+            const offset = composeHeight > 0 ? Math.round(composeHeight + 4) + getKeyboardInset() : 0;
+            host.style.setProperty('--dangan-vn-bottom-offset', `${offset}px`);
             return;
         }
 
@@ -2601,6 +2614,7 @@ function createVnModeController() {
         composeCollapsed = false;
         composeEl.classList.remove('dangan-vn-compose-docked');
         composeEl.classList.remove('dangan-vn-compose-collapsed');
+        document.body.style.removeProperty('--dangan-vn-stack-height');
         composeEl.style.position = '';
         composeEl.style.left = '';
         composeEl.style.top = '';
@@ -2661,7 +2675,7 @@ function createVnModeController() {
         const width = Math.max(220, Math.round(frameRect.width));
         const maxLeft = Math.max(0, viewportWidth - width);
         const left = Math.max(0, Math.min(maxLeft, Math.round(frameRect.left)));
-        const maxTop = Math.max(0, viewportHeight - composeHeight - 4);
+        const maxTop = Math.max(0, viewportHeight - composeHeight - 4 - getKeyboardInset());
         // In a Class Trial the VN frame is pinned to the bottom via
         // `bottom: var(--dgn-input-height)`, and --dgn-input-height is derived
         // from this composer's top edge. Docking the composer *below the frame*
@@ -2698,6 +2712,9 @@ function createVnModeController() {
         composeEl.style.transform = 'none';
         composeEl.style.zIndex = '2147483644';
         document.body.classList.add('dangan-vn-compose-docked-active');
+        // How much of the screen bottom the box and typing bar take, so the
+        // minimap and MOVE TO panel can sit above them on small screens.
+        document.body.style.setProperty('--dangan-vn-stack-height', `${Math.max(0, Math.round(viewportHeight - frameRect.top))}px`);
     }
 
     applyInlineFallbackStyles();
@@ -3397,13 +3414,17 @@ function createVnModeController() {
         }
     }, { passive: true });
 
-    window.addEventListener('resize', () => {
+    const onViewportResize = () => {
         updateBottomOffset();
         if (Number.isFinite(framePosX) && Number.isFinite(framePosY)) {
             setFramePosition(framePosX, framePosY);
         }
         dockTypingSection();
-    });
+    };
+    window.addEventListener('resize', onViewportResize);
+    // Phone keyboards resize the visual viewport only.
+    window.visualViewport?.addEventListener('resize', onViewportResize);
+    window.visualViewport?.addEventListener('scroll', onViewportResize);
 
     let _vnObsRaf = null;
     const observer = new MutationObserver(() => {
@@ -6990,6 +7011,31 @@ ultimate: lookupUltimateFromLorebook(charName),
     );
 }
 
+// Whether the open chat is part of the loaded save's story, so speakers in it
+// join the class. Other chats (anything opened outside the game) are left out.
+function isGameChat() {
+    let save = null;
+    try { save = saveStore.getActive(); } catch (_) { return false; }
+    if (!save) return false;
+    const ctx = window.SillyTavern?.getContext?.();
+    const groupId = ctx?.groupId ?? ctx?.group_id;
+    if (save.mode === SAVE_MODES.SINGLE) {
+        return groupId !== undefined && groupId !== null && groupId !== ""
+            && (save.groupIds || []).includes(String(groupId));
+    }
+    // Several Chats: a chat with someone already in the class.
+    if (!characters.size) return false;
+    let names = [];
+    if (groupId !== undefined && groupId !== null && groupId !== "") {
+        const group = (ctx?.groups || []).find((g) => String(g?.id) === String(groupId));
+        const cards = Array.isArray(ctx?.characters) ? ctx.characters : [];
+        names = (group?.members || []).map((avatar) => cards.find((c) => c?.avatar === avatar)?.name);
+    } else {
+        names = [ctx?.name2 || ctx?.characters?.[ctx?.characterId]?.name];
+    }
+    return names.some((name) => name && characters.has(normalizeName(name)));
+}
+
 function registerCharacterFromMessage(msgEl) {
     const chName = msgEl.getAttribute("ch_name");
     const isUser = msgEl.getAttribute("is_user") === "true";
@@ -7001,6 +7047,7 @@ function registerCharacterFromMessage(msgEl) {
 
     const key = normalizeName(chName);
     if (characters.has(key)) return;
+    if (!isGameChat()) return;
 
     const character = {
         id: `char_${Date.now()}_${Math.random()}`,
@@ -10406,8 +10453,8 @@ $(".monopad-icon").on("mouseenter", function () {
 
         $("#dangan_reset_lesson_hints").on("click", () => {
             playSfx(sfx.click);
-            onboardingState?.resetCoaches?.();
-            onboardingState?.clearWelcomeSeen?.();
+            onboardingState?.resetAllTutorials?.();
+            applySettingsTabUI();
             const btn = document.getElementById("dangan_reset_lesson_hints");
             if (btn) {
                 const prev = btn.textContent;
@@ -11111,7 +11158,9 @@ $(".monopad-icon").on("mouseenter", function () {
                 : "Trial context cleared.";
         });
 
+hadSavedExtensionData = Object.keys(extension_settings[extensionName] || {}).length > 0;
 loadSettings();
+if (!hadSavedExtensionData) setMonopadSetting("returningNoticeDismissed", true);
 migrateSavesIfNeeded();
 initMarkerPromptsSetting();
 ensureTimeTrackerState();
@@ -12876,6 +12925,9 @@ STATEMENT: <third statement>`;
 // the title screen's Options run the same per-key side effects.
 let applyToggleSettingSideEffects = () => {};
 let titleScreenStartedThisSession = false;
+// Whether anything was stored before this load, meaning the player used the
+// extension before (settings live on the server, so this survives reinstalling).
+let hadSavedExtensionData = false;
 
 function openMonopadTab(tab, { section } = {}) {
     if (!$("#dangan_monopad_panel").hasClass("open")) {
@@ -13450,7 +13502,8 @@ async function createStoryGroupChat(name, memberNames) {
 
 async function finishTitleScreenNewGame({ fresh, mode, groupName, groupMembers, roster, persona, map }) {
     const saveMode = mode === "single" ? SAVE_MODES.SINGLE : SAVE_MODES.MULTI;
-    if (fresh) {
+    // The first NEW GAME on an install makes the first save.
+    if (fresh || !saveStore.getActive()) {
         startFreshSave({ name: mode === "single" ? groupName : "Killing Game", mode: saveMode });
     } else {
         const active = saveStore.getActive();
@@ -13660,6 +13713,17 @@ function buildTitleServices() {
         countSetupProblems: async () => {
             await sillyTavernReady;
             return countSetupProblems(await getSetupRows());
+        },
+        countSetupReminders: async () => {
+            await sillyTavernReady;
+            return countSetupReminders(await getSetupRows());
+        },
+        isSetupPulseEnabled: () => getMonopadSetting("setupPulseEnabled") !== false,
+        shouldShowReturningNotice: () => hadSavedExtensionData && !getMonopadSetting("returningNoticeDismissed"),
+        dismissReturningNotice: () => setMonopadSetting("returningNoticeDismissed", true),
+        resetTutorials: () => {
+            onboardingState?.resetAllTutorials?.();
+            try { applySettingsTabUI(); } catch (_) {}
         },
         runSetupFix,
         listSaves: listTitleScreenSaves,
