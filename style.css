@@ -1694,11 +1694,12 @@ body.dangan-legacy-explore-composer.dangan-ow-inchat-explore #send_form {
     pointer-events: auto !important;
     opacity: 1 !important;
 }
-/* Default: nobody talks while exploring. The dialogue box and the composer
- * (docked inside it) only come back with View conversation. */
-body.dangan-ow-inchat-explore:not(.dangan-legacy-explore-composer) #dangan-vn-overlay,
-body.dangan-ow-inchat-explore:not(.dangan-legacy-explore-composer) #form_sheld,
-body.dangan-ow-inchat-explore:not(.dangan-legacy-explore-composer) #send_form {
+/* Default: nobody talks while exploring the overworld (Single-Chat or
+ * multi-chat). The dialogue box and the composer (docked inside it) come back
+ * once a conversation opens. */
+body.dangan-ow-scene-active:not(.dangan-legacy-explore-composer) #dangan-vn-overlay,
+body.dangan-ow-scene-active:not(.dangan-legacy-explore-composer) #form_sheld,
+body.dangan-ow-scene-active:not(.dangan-legacy-explore-composer) #send_form {
     opacity: 0 !important;
     visibility: hidden !important;
     pointer-events: none !important;
@@ -1758,7 +1759,7 @@ body.dangan-ow-single-chat #expression-wrapper {
     top: 240px;
 }
 
-/* ── Exploration MENU (Single-Chat explore) ──────────────────────────────
+/* ── Exploration MENU (overworld scene) ──────────────────────────────────
  * The MENU button reuses the Call Student slot. Its list hangs under it as a
  * stack of right-leaning slabs that slide in one after another. */
 #dangan-ow-action-menu {
@@ -1819,13 +1820,13 @@ body.dangan-ow-edit-mode #dangan-ow-action-menu {
 }
 
 /* With the MENU on, its items leave the minimap: only zoom and Move stay.
- * Debug only shows once picked from the MENU. Scoped to Single-Chat explore —
- * the multi-chat overworld has no MENU. */
-body.dangan-explore-menu-on.dangan-ow-inchat-explore .dangan-minimap-flat-toggle-col,
-body.dangan-explore-menu-on.dangan-ow-inchat-explore .dangan-minimap-ui-toggle-col,
-body.dangan-explore-menu-on.dangan-ow-inchat-explore .dangan-minimap-action-row,
-body.dangan-explore-menu-on.dangan-ow-inchat-explore .dangan-minimap-hs-adjust-col,
-body.dangan-explore-menu-on.dangan-ow-inchat-explore:not(.dangan-explore-debug-shown) #trust-debug-controls {
+ * Debug only shows once picked from the MENU. Scoped to the overworld scene —
+ * conversations have no MENU, so the diamonds come back there. */
+body.dangan-explore-menu-on.dangan-ow-scene-active .dangan-minimap-flat-toggle-col,
+body.dangan-explore-menu-on.dangan-ow-scene-active .dangan-minimap-ui-toggle-col,
+body.dangan-explore-menu-on.dangan-ow-scene-active .dangan-minimap-action-row,
+body.dangan-explore-menu-on.dangan-ow-scene-active .dangan-minimap-hs-adjust-col,
+body.dangan-explore-menu-on.dangan-ow-scene-active:not(.dangan-explore-debug-shown) #trust-debug-controls {
     display: none !important;
 }
 
@@ -1882,7 +1883,7 @@ body.dangan-explore-menu-on.dangan-ow-inchat-explore:not(.dangan-explore-debug-s
     pointer-events: auto;
     z-index: 2;
 }
-body.dangan-explore-menu-on.dangan-ow-inchat-explore .dangan-minimap-move-col {
+body.dangan-explore-menu-on.dangan-ow-scene-active .dangan-minimap-move-col {
     left: 50%;
 }
 #dangan-minimap-move-pop {

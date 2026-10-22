@@ -755,7 +755,7 @@ export function createOverworldSceneController({
         updateEditButtonLabel();
         commitEditPositionsToState();
         // The MENU layout swaps the Save button back for MENU.
-        if (isActionMenuEnabled?.() && isSingleChatGroupContext()) scheduleRender();
+        if (isActionMenuEnabled?.()) scheduleRender();
     }
 
     function toggleEditMode() {
@@ -1173,10 +1173,10 @@ export function createOverworldSceneController({
         body.classList.toggle("dangan-ow-chat-exit-active", mode === "chat-exit");
         body.classList.toggle("dangan-ow-inchat-explore", inchatExplore);
         body.classList.toggle("dangan-ow-single-chat", singleChatHud);
-        if (!inchatExplore) closeActionMenu();
+        if (mode !== "scene") closeActionMenu();
         // With the text box hidden while exploring, a focused textarea could
         // still send on Enter — drop focus so nothing can be typed.
-        if (inchatExplore && !body.classList.contains("dangan-legacy-explore-composer")) {
+        if (mode === "scene" && !body.classList.contains("dangan-legacy-explore-composer")) {
             const ta = document.getElementById("send_textarea");
             if (ta && document.activeElement === ta) ta.blur();
         }
@@ -1515,11 +1515,16 @@ export function createOverworldSceneController({
                 });
                 root.appendChild(btn);
 
-                root.appendChild(buildGrabGroupMembersBtn());
+                if (!isActionMenuEnabled?.()) root.appendChild(buildGrabGroupMembersBtn());
             }
-            root.appendChild(buildCallToRoomBtn());
-            if (total >= 1) {
-                root.appendChild(buildEditPositionsBtn());
+            if (isActionMenuEnabled?.()) {
+                if (editMode) root.appendChild(buildEditPositionsBtn(true));
+                else root.appendChild(buildActionMenuBtn(total));
+            } else {
+                root.appendChild(buildCallToRoomBtn());
+                if (total >= 1) {
+                    root.appendChild(buildEditPositionsBtn());
+                }
             }
         }
 
@@ -1624,7 +1629,7 @@ export function createOverworldSceneController({
         return btn;
     }
 
-    // ── Exploration MENU (Single-Chat explore) ───────────────────────────────
+    // ── Exploration MENU (overworld scene) ───────────────────────────────────
     // One right-column button that opens a V3-style list of the room actions.
     // The list is appended to <body> so it survives the overworld re-render,
     // which replaces #dangan-overworld wholesale.
@@ -1644,9 +1649,13 @@ export function createOverworldSceneController({
     }
 
     function getActionMenuItems(total) {
+        const singleChat = isSingleChatGroupContext();
         const items = [
-            { id: "call", label: "Call Student", onSelect: () => showCallToRoomModal() },
+            { id: "call", label: singleChat ? "Call Student" : "Call to Your Location", onSelect: () => showCallToRoomModal() },
         ];
+        if (!singleChat && total >= 2) {
+            items.push({ id: "grab", label: "Grab Group Members", onSelect: () => showGrabGroupModal() });
+        }
         if (total >= 1) {
             items.push({ id: "edit", label: "Edit Character Positions", onSelect: () => { enterEditMode(); scheduleRender(); } });
         }
