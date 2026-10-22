@@ -94,6 +94,20 @@ function run() {
     const emptyStore = makeStore(empty);
     assert(emptyStore.migrateIfNeeded().name === "Save 1", "no progress means a plain first save");
 
+    // Evidence and body map pins belong to a save; the map layout doesn't.
+    const mapRoot = { map: { currentLocationId: "gym", storyPins: [{ id: "p1", type: "body" }] }, mapLayout: { pins: [{ id: "r1", type: "room" }] } };
+    const mapStore = makeStore(mapRoot);
+    mapStore.migrateIfNeeded();
+    const second = mapStore.create({ name: "Other" });
+    mapStore.activate(second.id);
+    assert(mapRoot.map.storyPins === undefined, "a new save starts with no story pins");
+    assert(mapRoot.mapLayout.pins[0].id === "r1", "layout stays when switching saves");
+    mapRoot.map.storyPins = [{ id: "p2", type: "truth-bullet" }];
+    mapStore.activate("s1");
+    assert(mapRoot.map.storyPins.map((p) => p.id).join() === "p1", "switching back restores that save's pins");
+    mapStore.activate(second.id);
+    assert(mapRoot.map.storyPins.map((p) => p.id).join() === "p2", "each save keeps its own pins");
+
     assert(!hasStoryProgress({}), "empty state has no progress");
     assert(hasStoryProgress({ chapterIndex: 1 }), "chapter counts as progress");
     assert(summarizeState({ characters: [["a", { name: "A" }], ["me", { name: "Me", isPlayer: true }]] }).rosterNames.join() === "A", "summary skips the player");

@@ -43,6 +43,7 @@ export const STORY_KEYS = Object.freeze([
     "inventory.equippedSkills",
     "overworld.characters",
     "map.currentLocationId",
+    "map.storyPins",
 ]);
 
 const EXPORT_FORMAT = "dangan-save";

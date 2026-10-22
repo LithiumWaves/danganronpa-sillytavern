@@ -1,20 +1,15 @@
 import { DEFAULT_PINS } from "./defaultPins.js";
+import { isStoryPin, listCustomFloors, mergePins, migrateLegacyMapStorage, resolveFloorImageSrc, splitPins } from "./mapStorage.js";
 
 const MACHINE_ROLL_DURATION_MS = 2000;
 const MACHINE_JINGLE_FRAME = 50;
 const MACHINE_GIF_TOTAL_FRAMES = 100;
 const MACHINE_JINGLE_DELAY_MS = Math.round((MACHINE_JINGLE_FRAME / MACHINE_GIF_TOTAL_FRAMES) * MACHINE_ROLL_DURATION_MS);
 const MACHINE_BANNER_DELAY_MS = 500;
-const CUSTOM_PINS_STORAGE_KEY = "dangan_map_custom_pins_v1";
 const ROOM_VIEW_STORAGE_KEY        = "dangan_map_room_view_mode_v1";
 const ROOM_VIEW_CYCLE              = ["on", "simple", "off"];
 const SIMPLE_EVIDENCE_STORAGE_KEY  = "dangan_map_simple_evidence_v1";
 const SIMPLE_BODY_STORAGE_KEY      = "dangan_map_simple_body_v1";
-const CUSTOM_AREAS_STORAGE_KEY     = "dangan_map_custom_areas_v1";
-const AREA_OVERRIDES_STORAGE_KEY   = "dangan_map_area_overrides_v1";
-// Ids of shipped default pins (see defaultPins.js) the user has deleted. Default
-// pins always merge back in at load, so we tombstone deletions here to keep them gone.
-const DELETED_DEFAULT_PINS_STORAGE_KEY = "dangan_map_deleted_default_pins_v1";
 
 const ROOM_SVG_FILES = [
     "art-room.svg", "bar.svg", "bedroom.svg", "biology-room.svg", "cafe.svg",
@@ -72,7 +67,7 @@ function getFloorByKey(areaKey, floorKey) {
     return area.floors.find(floor => floor.key === floorKey) || null;
 }
 
-export function createMapPanelController({ extensionFolderPath, getItemsPanelController, playSfx, getSfx, getSetting, onWalkStep, onTrialStartRequest, getTruthBulletByLocationId, navigateToTruth, onMachineOpen, onMachineClose, playShopTrack, stopShopTrack, fetchBgmPaths, playBgmPath }) {
+export function createMapPanelController({ extensionFolderPath, getItemsPanelController, playSfx, getSfx, getSetting, onWalkStep, onTrialStartRequest, getTruthBulletByLocationId, navigateToTruth, onMachineOpen, onMachineClose, playShopTrack, stopShopTrack, fetchBgmPaths, playBgmPath, getSettingsRoot, saveSettings, uploadImage }) {
     const state = {
         area: "hopes_peak",
         floor: "floor_1",
@@ -159,28 +154,6 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
     // Canonical default pins keyed by id, used for adoption + equality checks.
     const DEFAULT_PIN_BY_ID = new Map(DEFAULT_PINS.map(p => [p.id, p]));
 
-    function loadStoredPins() {
-        try {
-            const raw = window.localStorage?.getItem(CUSTOM_PINS_STORAGE_KEY);
-            if (!raw) return [];
-            const parsed = JSON.parse(raw);
-            return Array.isArray(parsed) ? parsed : [];
-        } catch {
-            return [];
-        }
-    }
-
-    function loadDeletedDefaultPinIds() {
-        try {
-            const raw = window.localStorage?.getItem(DELETED_DEFAULT_PINS_STORAGE_KEY);
-            if (!raw) return new Set();
-            const parsed = JSON.parse(raw);
-            return new Set(Array.isArray(parsed) ? parsed : []);
-        } catch {
-            return new Set();
-        }
-    }
-
     // Stable, field-order-independent serialization for comparing a pin against its
     // canonical default. The runtime-only _default flag is excluded.
     function canonicalizePin(p) {
@@ -193,74 +166,119 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         return def ? canonicalizePin(pin) === canonicalizePin(def) : false;
     }
 
-    // Build the working pin set: stored user pins, plus every shipped default that
-    // the user hasn't deleted or already adopted (edited). Defaults are tagged
-    // _default so the save layer knows they live in code unless modified.
+    // Layout lives in the settings (see mapStorage.js); story pins live in the
+    // active save. Older localStorage data is moved over on first use.
+    function layoutStore() {
+        const root = getSettingsRoot?.();
+        if (!root) return null;
+        if (migrateLegacyMapStorage(root, window.localStorage)) saveSettings?.();
+        root.mapLayout ??= { pins: [], deletedDefaultPins: [], customAreas: [], areaOverrides: {} };
+        return root.mapLayout;
+    }
+
+    function clone(value) {
+        return JSON.parse(JSON.stringify(value));
+    }
+
+    // Working pin set: stored layout pins, every shipped default the user hasn't
+    // deleted or adopted (edited), and the active save's evidence/body pins.
+    // Defaults are tagged _default so saving knows they live in code.
     function loadCustomPins() {
-        const stored = loadStoredPins();
-        const storedIds = new Set(stored.map(p => p.id));
-        const deleted = loadDeletedDefaultPinIds();
-        const merged = stored.map(p => ({ ...p }));
-        for (const def of DEFAULT_PINS) {
-            if (deleted.has(def.id)) continue;      // user removed it — keep it gone
-            if (storedIds.has(def.id)) continue;    // user edited it — stored copy wins
-            merged.push({ ...JSON.parse(JSON.stringify(def)), _default: true });
-        }
-        return merged;
+        const layout = layoutStore() || {};
+        const storyPins = getSettingsRoot?.()?.map?.storyPins;
+        return mergePins({
+            layoutPins: clone(layout.pins || []),
+            storyPins: clone(Array.isArray(storyPins) ? storyPins : []),
+            deletedDefaultPins: layout.deletedDefaultPins || [],
+            defaults: DEFAULT_PINS,
+        });
     }
 
     function saveCustomPins() {
-        try {
-            // Persist user-owned pins only: anything that isn't a shipped default, plus
-            // any default the user has edited ("adopted"). Untouched defaults live in
-            // code and are rebuilt on load, so they're never written to storage.
-            const toPersist = (state.customPins || [])
-                .filter(p => !isUnchangedDefault(p))
-                .map(p => { const o = { ...p }; delete o._default; return o; });
-            window.localStorage?.setItem(CUSTOM_PINS_STORAGE_KEY, JSON.stringify(toPersist));
-
-            // Tombstone any default missing from the working set: it was deleted
-            // (via any code path) and must not reappear on the next load.
-            const presentIds = new Set((state.customPins || []).map(p => p.id));
-            const tombstones = DEFAULT_PINS.filter(d => !presentIds.has(d.id)).map(d => d.id);
-            window.localStorage?.setItem(DELETED_DEFAULT_PINS_STORAGE_KEY, JSON.stringify(tombstones));
-        } catch {
-            // no-op
-        }
+        const root = getSettingsRoot?.();
+        const layout = layoutStore();
+        if (!root || !layout) return;
+        const { layoutPins, storyPins, deletedDefaultPins } = splitPins(state.customPins || [], {
+            defaults: DEFAULT_PINS,
+            isUnchangedDefault,
+        });
+        layout.pins = layoutPins;
+        layout.deletedDefaultPins = deletedDefaultPins;
+        root.map ??= {};
+        root.map.storyPins = storyPins;
+        saveSettings?.();
     }
 
     function loadCustomAreas() {
-        try {
-            const raw = window.localStorage?.getItem(CUSTOM_AREAS_STORAGE_KEY);
-            if (!raw) return [];
-            const parsed = JSON.parse(raw);
-            return Array.isArray(parsed) ? parsed : [];
-        } catch {
-            return [];
-        }
+        const areas = layoutStore()?.customAreas;
+        return Array.isArray(areas) ? clone(areas) : [];
     }
 
     function saveCustomAreas() {
-        try {
-            window.localStorage?.setItem(CUSTOM_AREAS_STORAGE_KEY, JSON.stringify(state.customAreas || []));
-        } catch {
-            // no-op
-        }
+        const layout = layoutStore();
+        if (!layout) return;
+        layout.customAreas = clone(state.customAreas || []);
+        saveSettings?.();
+        uploadNewFloorImages();
     }
 
     function loadAreaOverrides() {
-        try {
-            const raw = window.localStorage?.getItem(AREA_OVERRIDES_STORAGE_KEY);
-            if (!raw) return {};
-            const parsed = JSON.parse(raw);
-            return (parsed && typeof parsed === "object" && !Array.isArray(parsed)) ? parsed : {};
-        } catch { return {}; }
+        const overrides = layoutStore()?.areaOverrides;
+        return overrides && typeof overrides === "object" && !Array.isArray(overrides) ? clone(overrides) : {};
     }
 
     function saveAreaOverrides() {
-        try {
-            window.localStorage?.setItem(AREA_OVERRIDES_STORAGE_KEY, JSON.stringify(state.areaOverrides || {}));
-        } catch {}
+        const layout = layoutStore();
+        if (!layout) return;
+        layout.areaOverrides = clone(state.areaOverrides || {});
+        saveSettings?.();
+        uploadNewFloorImages();
+    }
+
+    // Custom floor pictures used to be data URLs; upload them as files once.
+    async function migrateFloorImages() {
+        const layout = layoutStore();
+        if (!layout || typeof uploadImage !== "function") return;
+        const floors = listCustomFloors(layout).filter((f) => f?.image?.startsWith?.("data:"));
+        let changed = false;
+        for (const floor of floors) {
+            const path = await uploadImage(floor.image, { prefix: "floor" });
+            if (path) { floor.image = path; changed = true; }
+        }
+        if (!changed) return;
+        saveSettings?.();
+        state.customAreas = loadCustomAreas();
+        state.areaOverrides = loadAreaOverrides();
+        renderMapPanel();
+    }
+
+    // One upload pass at a time; a change made during a pass gets another.
+    let floorUpload = null;
+    let floorUploadAgain = false;
+    function uploadNewFloorImages() {
+        const layout = getSettingsRoot?.()?.mapLayout;
+        if (!listCustomFloors(layout).some((f) => f?.image?.startsWith?.("data:"))) return;
+        if (floorUpload) {
+            floorUploadAgain = true;
+            return;
+        }
+        floorUpload = migrateFloorImages()
+            .catch((e) => console.warn("[Dangan][Map] floor image upload failed:", e))
+            .finally(() => {
+                floorUpload = null;
+                if (floorUploadAgain) {
+                    floorUploadAgain = false;
+                    uploadNewFloorImages();
+                }
+            });
+    }
+
+    // After a save switch: the active save's story pins (and any layout change).
+    function reloadFromSettings() {
+        state.customAreas = loadCustomAreas();
+        state.areaOverrides = loadAreaOverrides();
+        state.customPins = loadCustomPins();
+        renderMapPanel();
     }
 
     function isBuiltInArea(areaKey) {
@@ -303,6 +321,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
     state.customAreas = loadCustomAreas();
     state.areaOverrides = loadAreaOverrides();
     state.customPins = loadCustomPins();
+    uploadNewFloorImages();
 
     // Tracks scroll areas already observed so we don't add duplicate ResizeObservers
     const _observedScrollAreas = new WeakSet();
@@ -913,9 +932,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         const $pinLayer = $panel.find(selectors.pinLayer);
 
         if ($image.length) {
-            const imageSrc = floor.image?.startsWith("data:")
-                ? floor.image
-                : floor.image ? `${extensionFolderPath}/assets/${floor.image}` : "";
+            const imageSrc = resolveFloorImageSrc(floor.image, extensionFolderPath);
             $image.attr("src", imageSrc);
             $image.attr("alt", `${area.label} ${floor.label} map`);
             $image.toggle(!!imageSrc);
@@ -2138,10 +2155,12 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         $panel.find(`[data-custom-pin-id="${pin.id}"]`).trigger("focus");
     }
 
+    // Truth Bullet deletes and swipe rollbacks remove the bullet's evidence/body
+    // pin only, never a room pin that shares its location id.
     function removePinByLocationId(locationId) {
         if (!locationId) return;
         const before = state.customPins.length;
-        state.customPins = state.customPins.filter(p => p.locationId !== locationId);
+        state.customPins = state.customPins.filter(p => !(p.locationId === locationId && isStoryPin(p)));
         if (state.customPins.length !== before) {
             saveCustomPins();
             renderMapPanel();
@@ -2317,7 +2336,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
 
     function setPinHidden(locationId, hidden) {
         if (!locationId) return;
-        const pin = state.customPins.find(p => p.locationId === locationId);
+        const pin = state.customPins.find(p => p.locationId === locationId && isStoryPin(p));
         if (!pin) return;
         pin.hidden = hidden;
         saveCustomPins();
@@ -2362,9 +2381,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         const area = allAreas[areaKey];
         const floor = getAreaFloor(areaKey, floorKey);
         if (!area || !floor) return null;
-        const imageSrc = floor.image?.startsWith('data:')
-            ? floor.image
-            : floor.image ? `${extensionFolderPath}/assets/${floor.image}` : '';
+        const imageSrc = resolveFloorImageSrc(floor.image, extensionFolderPath);
         const LOCATION_PIN_TYPES = new Set(['room', 'monomachine', 'trial']);
         const pins = state.customPins
             .filter(p => p.areaKey === areaKey && p.floorKey === floorKey && !p.hidden)
@@ -2485,6 +2502,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
     return {
         renderMapPanel,
         handleSettingsChanged,
+        reloadFromSettings,
         highlightPinByLocationId,
         hasPinForLocationId,
         openPinCreatorWithPrefill,

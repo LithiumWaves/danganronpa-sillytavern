@@ -9979,6 +9979,12 @@ jQuery(async () => {
                 stopShopTrack,
                 fetchBgmPaths,
                 playBgmPath,
+                getSettingsRoot: () => (extension_settings[extensionName] ??= {}),
+                saveSettings: saveSettingsDebounced,
+                uploadImage: async (dataUrl, options) => {
+                    await sillyTavernReady;
+                    return uploadDataUrlImage(dataUrl, options);
+                },
             });
             mapPanelController?.renderMapPanel?.();
 
@@ -13072,6 +13078,7 @@ function reloadStoryStateFromSettings() {
     try { rewards?.renderProgressionUi?.(); } catch (_) {}
     try { socialPanelController?.renderSocialPanel?.(); } catch (_) {}
     try { overworldSceneController?.render?.(); } catch (_) {}
+    try { mapPanelController?.reloadFromSettings?.(); } catch (_) {}
     _minimapCharPositions.clear();
     _minimapCharRotations.clear();
     try { _minimapSig = null; renderMinimap(); renderMoveToPanel(); updateCurrentRoomDisplay(); syncRoomContextPrompt(); } catch (_) {}
