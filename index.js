@@ -1953,6 +1953,45 @@ function trySetVisualNovelToggleInObject(root, enabled, { maxDepth = 8 } = {}) {
     return touched;
 }
 
+// SillyTavern's own streaming (one checkbox per API) rewrites the reply
+// while the VN box is reading it, so it is switched off during VN mode and
+// switched back on afterwards. Which ones were on is saved across reloads.
+const ST_STREAMING_TOGGLE_IDS = ['stream_toggle', 'streaming_textgenerationwebui', 'streaming_kobold', 'streaming_novel'];
+
+function setStStreamingToggle(el, checked) {
+    if (window.$) $(el).prop('checked', checked).trigger('input').trigger('change');
+    else {
+        el.checked = checked;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+}
+
+function syncStStreamingForVn(vnOn) {
+    const saved = getMonopadSetting('vnPausedStStreaming');
+    const paused = new Set(Array.isArray(saved) ? saved : []);
+    if (vnOn) {
+        let turnedOff = false;
+        for (const id of ST_STREAMING_TOGGLE_IDS) {
+            const el = document.getElementById(id);
+            if (!(el instanceof HTMLInputElement) || !el.checked) continue;
+            paused.add(id);
+            setStStreamingToggle(el, false);
+            turnedOff = true;
+        }
+        if (!turnedOff) return;
+        setMonopadSetting('vnPausedStStreaming', [...paused]);
+        toastr.info("SillyTavern's streaming is off while VN mode is on.");
+        return;
+    }
+    if (!paused.size) return;
+    for (const id of paused) {
+        const el = document.getElementById(id);
+        if (el instanceof HTMLInputElement && !el.checked) setStStreamingToggle(el, true);
+    }
+    setMonopadSetting('vnPausedStStreaming', []);
+}
+
 function trySetSillyTavernVisualNovelMode(enabled) {
     const ctx = window.SillyTavern?.getContext?.();
     let touched = false;
@@ -2356,6 +2395,23 @@ function createVnModeController() {
         textEl.classList.toggle('has-action', hasAction);
     }
 
+    // Typing speed as a multiplier: 1 is the original 14 ms per step.
+    function getTypingSpeed() {
+        const pct = Number(getMonopadSetting('vnTypingSpeed')) || 100;
+        return Math.min(300, Math.max(25, pct)) / 100;
+    }
+
+    // Show the rest of a line that is still typing.
+    function finishTyping() {
+        if (streamTimerId === null || !shownText) return false;
+        const text = shownText;
+        stopTextStreaming();
+        applyVnMarkup(text);
+        shownText = text;
+        shownRevealed = Infinity;
+        return true;
+    }
+
     // Returns false when the box already shows (or is typing) this line, so
     // re-renders from unrelated chat changes don't restart it.
     function renderDialogueText(text) {
@@ -2404,7 +2460,7 @@ function createVnModeController() {
             shownRevealed = revealed;
             textEl.innerHTML = renderVnSegments(segments, revealed);
             textEl.classList.add('dangan-vn-text-streaming');
-            streamTimerId = setTimeout(step, 14);
+            streamTimerId = setTimeout(step, 14 / getTypingSpeed());
         };
 
         if (!revealed) textEl.innerHTML = '';
@@ -3115,18 +3171,19 @@ function createVnModeController() {
         if (changed) pulseText();
     }
 
+    // Returns true when it moved to another bit.
     function advance() {
         const messages = getMessageEntries();
         if (!messages.length) {
             renderCurrent();
-            return;
+            return false;
         }
 
         if (messageIndex >= messages.length - 1) {
             const currentEntry = messages[messages.length - 1];
             const currentChunks = splitIntoChunks(stripV3CMarkersFromText(currentEntry?.text || ''));
             if (chunkIndex >= Math.max(0, currentChunks.length - 1)) {
-                return;
+                return false;
             }
         }
 
@@ -3141,15 +3198,18 @@ function createVnModeController() {
         }
 
         renderCurrent();
+        return true;
     }
 
+    // Returns true when it moved to another bit.
     function retreat() {
         const messages = getMessageEntries();
         if (!messages.length) {
             renderCurrent();
-            return;
+            return false;
         }
 
+        const before = `${messageIndex}:${chunkIndex}`;
         const entry = messages[Math.min(messageIndex, messages.length - 1)];
         const chunks = splitIntoChunks(stripV3CMarkersFromText(entry.text));
 
@@ -3165,6 +3225,18 @@ function createVnModeController() {
         }
 
         renderCurrent();
+        return `${messageIndex}:${chunkIndex}` !== before;
+    }
+
+    // Clicking the box, keys and swipes: finish a typing line first, then
+    // move on, with the same sound as the arrow buttons.
+    function stepForward() {
+        if (finishTyping()) return;
+        if (advance()) playSfx(sfx.message_move);
+    }
+
+    function stepBack() {
+        if (retreat()) playSfx(sfx.message_move);
     }
 
     function jumpToLatest() {
@@ -3607,7 +3679,7 @@ function createVnModeController() {
         if (target instanceof Element && target.closest('.dangan-vn-chrome-toggle')) return;
         if (target instanceof Element && target.closest('.dangan-vn-resize')) return;
         if (target instanceof Element && target.closest('.dangan-vn-chrome-hide')) return;
-        advance();
+        stepForward();
     });
 
     window.addEventListener('keydown', (event) => {
@@ -3621,9 +3693,9 @@ function createVnModeController() {
         if (isEditable) return;
 
         if (event.key === 'ArrowRight' || event.key === ' ' || event.key === 'Enter') {
-            advance();
+            stepForward();
         } else if (event.key === 'ArrowLeft' || event.key === 'Backspace') {
-            retreat();
+            stepBack();
         } else if ((event.key === 'r' || event.key === 'R') && !event.ctrlKey && !event.metaKey && !event.altKey) {
             triggerRegenerate();
             updateNavigationState();
@@ -3646,9 +3718,9 @@ function createVnModeController() {
         swipeStartX = null;
         if (Math.abs(deltaX) < 36) return;
         if (deltaX < 0) {
-            advance();
+            stepForward();
         } else {
-            retreat();
+            stepBack();
         }
     }, { passive: true });
 
@@ -3797,6 +3869,7 @@ function createVnModeController() {
             }
 
             trySetSillyTavernVisualNovelMode(isEnabled);
+            syncStStreamingForVn(isEnabled);
         },
         refresh() {
             ensureHostAttached();
@@ -9038,6 +9111,12 @@ function applySettingsTabUI() {
         slider.value = String(Number(tab.crtIntensity) || 35);
     }
 
+    const vnSpeed = Math.min(300, Math.max(25, Number(tab.vnTypingSpeed) || 100));
+    const vnSpeedSlider = document.getElementById("dangan_vn_speed_slider");
+    if (vnSpeedSlider) vnSpeedSlider.value = String(vnSpeed);
+    const vnSpeedValue = document.getElementById("dangan_vn_speed_value");
+    if (vnSpeedValue) vnSpeedValue.textContent = `${vnSpeed}%`;
+
     const soundsSlider = document.getElementById("dangan_sounds_slider");
     if (soundsSlider) {
         const vol = Number(tab.monopadVolume ?? 50);
@@ -11559,6 +11638,12 @@ $(".monopad-icon").on("mouseenter", function () {
             saveSettingsDebounced();
         });
 
+        $("#dangan_vn_speed_slider").on("input", e => {
+            const value = Math.min(300, Math.max(25, Number(e.target.value) || 100));
+            setMonopadSetting("vnTypingSpeed", value);
+            $("#dangan_vn_speed_value").text(`${value}%`);
+        });
+
         $("#dangan_crt_slider").on("input", e => {
             const value = Number(e.target.value);
             setMonopadSetting("crtIntensity", Number.isFinite(value) ? value : 35);
@@ -13160,6 +13245,8 @@ STATEMENT: <third statement>`;
         // deleted or edited message did.
         eventSource.on(event_types.GENERATION_STARTED, (type, _options, dryRun) => {
             if (!dryRun && type !== "quiet") generationInProgress = true;
+            // Catch streaming turned back on, or settings that loaded late.
+            if (!dryRun && getMonopadSetting("vnModeEnabled")) syncStStreamingForVn(true);
             // Right before the prompt is built, so trials starting or ending
             // are always reflected.
             try { syncMarkerPrompts(); } catch (e) { console.warn("[Dangan][Markers] sync failed:", e); }
