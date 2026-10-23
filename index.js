@@ -2126,12 +2126,30 @@ function createVnModeController() {
                 </div>
             </div>
         </div>
-        <div class="dangan-vn-transcript" id="dangan-vn-transcript" aria-hidden="true">
+        <div class="dangan-vn-transcript" id="dangan-vn-transcript" role="dialog" aria-label="Transcript" aria-hidden="true">
             <div class="dangan-vn-transcript-header">
-                <div class="dangan-vn-transcript-title">Class Transcript</div>
-                <button type="button" class="dangan-vn-transcript-close" id="dangan-vn-transcript-close" aria-label="Close transcript">✕</button>
+                <svg class="dangan-vn-transcript-icon" viewBox="0 0 48 40" aria-hidden="true">
+                    <path d="M4 8h24v28H4z M8 4h24v4" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
+                    <path d="M9 15h14M9 21h14M9 27h9" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                    <path d="M26 30l2-7 15-15 5 5-15 15z" fill="currentColor"/>
+                </svg>
+                <div class="dangan-vn-transcript-title">Transcript</div>
+                <div class="dangan-vn-transcript-actions">
+                    <button type="button" class="dangan-vn-transcript-btn" id="dangan-vn-transcript-latest" title="Show the most recent message in the text box">LATEST</button>
+                    <button type="button" class="dangan-vn-transcript-btn" id="dangan-vn-transcript-select" title="Pick messages to delete">SELECT</button>
+                    <button type="button" class="dangan-vn-transcript-btn" id="dangan-vn-transcript-clear" title="Hide the lines so far without deleting them">CLEAR</button>
+                    <button type="button" class="dangan-vn-transcript-close" id="dangan-vn-transcript-close" aria-label="Close transcript" title="Close (Esc)">✕</button>
+                </div>
             </div>
-            <div class="dangan-vn-transcript-body" id="dangan-vn-transcript-body"></div>
+            <div class="dangan-vn-transcript-panel">
+                <div class="dangan-vn-transcript-track" aria-hidden="true"><div class="dangan-vn-transcript-thumb" id="dangan-vn-transcript-thumb"></div></div>
+                <div class="dangan-vn-transcript-body" id="dangan-vn-transcript-body"></div>
+            </div>
+            <div class="dangan-vn-transcript-selectbar" id="dangan-vn-transcript-selectbar">
+                <span class="dangan-vn-transcript-selectcount" id="dangan-vn-transcript-selectcount">0 selected</span>
+                <button type="button" class="dangan-vn-transcript-btn dangan-vn-transcript-btn-danger" id="dangan-vn-transcript-delete-selected" disabled>DELETE</button>
+                <button type="button" class="dangan-vn-transcript-btn" id="dangan-vn-transcript-cancel-select">CANCEL</button>
+            </div>
         </div>
     `;
     document.body.appendChild(host);
@@ -2147,6 +2165,13 @@ function createVnModeController() {
     const transcriptEl = host.querySelector('#dangan-vn-transcript');
     const transcriptCloseEl = host.querySelector('#dangan-vn-transcript-close');
     const transcriptBodyEl = host.querySelector('#dangan-vn-transcript-body');
+    const transcriptThumbEl = host.querySelector('#dangan-vn-transcript-thumb');
+    const transcriptLatestEl = host.querySelector('#dangan-vn-transcript-latest');
+    const transcriptSelectEl = host.querySelector('#dangan-vn-transcript-select');
+    const transcriptClearEl = host.querySelector('#dangan-vn-transcript-clear');
+    const transcriptSelectCountEl = host.querySelector('#dangan-vn-transcript-selectcount');
+    const transcriptDeleteSelectedEl = host.querySelector('#dangan-vn-transcript-delete-selected');
+    const transcriptCancelSelectEl = host.querySelector('#dangan-vn-transcript-cancel-select');
     const nameEl = host.querySelector('#dangan-vn-name');
     const positionEl = host.querySelector('#dangan-vn-position');
     const textEl = host.querySelector('#dangan-vn-text');
@@ -2730,7 +2755,10 @@ function createVnModeController() {
         transcriptEl?.setAttribute('aria-hidden', transcriptOpen ? 'false' : 'true');
         transcriptToggleEl?.setAttribute('aria-expanded', transcriptOpen ? 'true' : 'false');
         if (transcriptOpen) {
-            renderTranscript();
+            transcriptSignature = null;
+            renderTranscript({ toBottom: true });
+        } else {
+            setTranscriptSelecting(false);
         }
     }
 
@@ -3005,54 +3033,201 @@ function createVnModeController() {
         return `${entry.key || ''}::${entry.name || ''}::${entry.text || ''}`;
     }
 
-    function renderTranscript() {
+    // ── Transcript ──────────────────────────────────────────────────────
+    // Lines up to a "cleared" marker (saved in the chat's metadata) are
+    // hidden without deleting them. Entries from the chat context know their
+    // real chat index, so they can be deleted; DOM fallback entries can't.
+    const TRANSCRIPT_CLEARED_KEY = 'dangan_transcript_cleared';
+    let transcriptSignature = null;
+    let transcriptSelecting = false;
+    const transcriptSelected = new Set();
+    let transcriptArmedEl = null;
+    let transcriptArmTimer = null;
+    let transcriptDeleteArmed = false;
+
+    function getEntryChatIndex(entry) {
+        const m = /^ctx-(\d+)$/.exec(entry?.key || '');
+        return m ? Number(m[1]) : null;
+    }
+
+    // Chat index of the last hidden line, or -1 when nothing is hidden.
+    function getTranscriptClearedIndex() {
+        const ctx = window.SillyTavern?.getContext?.();
+        const marker = ctx?.chatMetadata?.[TRANSCRIPT_CLEARED_KEY];
+        if (!marker || typeof marker !== 'object') return -1;
+        const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+        if (marker.sendDate) {
+            for (let i = chat.length - 1; i >= 0; i--) {
+                if (chat[i]?.send_date === marker.sendDate) return i;
+            }
+        }
+        return Number.isInteger(marker.index) ? Math.min(marker.index, chat.length - 1) : -1;
+    }
+
+    async function setTranscriptCleared(cleared) {
+        const ctx = window.SillyTavern?.getContext?.();
+        if (!ctx?.chatMetadata || typeof ctx.chatMetadata !== 'object') return;
+        const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+        if (cleared && chat.length) {
+            const index = chat.length - 1;
+            ctx.chatMetadata[TRANSCRIPT_CLEARED_KEY] = { index, sendDate: chat[index]?.send_date || null };
+        } else {
+            delete ctx.chatMetadata[TRANSCRIPT_CLEARED_KEY];
+        }
+        try { await ctx.saveMetadata?.(); } catch { /* ignore */ }
+        transcriptSignature = null;
+        renderTranscript({ toBottom: true });
+    }
+
+    function updateTranscriptThumb() {
+        if (!transcriptBodyEl || !transcriptThumbEl) return;
+        const { scrollTop, scrollHeight, clientHeight } = transcriptBodyEl;
+        if (scrollHeight <= clientHeight + 1) {
+            transcriptThumbEl.style.display = 'none';
+            return;
+        }
+        const ratio = clientHeight / scrollHeight;
+        const height = Math.max(24, clientHeight * ratio);
+        const top = (clientHeight - height) * (scrollTop / (scrollHeight - clientHeight));
+        transcriptThumbEl.style.display = '';
+        transcriptThumbEl.style.height = `${height}px`;
+        transcriptThumbEl.style.transform = `translateY(${top}px)`;
+    }
+
+    function disarmTranscriptDelete() {
+        if (transcriptArmTimer) clearTimeout(transcriptArmTimer);
+        transcriptArmTimer = null;
+        if (transcriptArmedEl) {
+            transcriptArmedEl.classList.remove('armed');
+            transcriptArmedEl.textContent = '🗑';
+            transcriptArmedEl.setAttribute('aria-label', 'Delete this message');
+        }
+        transcriptArmedEl = null;
+    }
+
+    function refreshTranscriptSelectBar() {
+        const count = transcriptSelected.size;
+        if (transcriptSelectCountEl) transcriptSelectCountEl.textContent = `${count} selected`;
+        if (transcriptDeleteSelectedEl) {
+            transcriptDeleteSelectedEl.disabled = !count;
+            transcriptDeleteSelectedEl.textContent = transcriptDeleteArmed && count ? `DELETE ${count}?` : 'DELETE';
+            transcriptDeleteSelectedEl.classList.toggle('armed', transcriptDeleteArmed && !!count);
+        }
+    }
+
+    function setTranscriptSelecting(on) {
+        transcriptSelecting = !!on;
+        transcriptSelected.clear();
+        transcriptDeleteArmed = false;
+        disarmTranscriptDelete();
+        transcriptEl?.classList.toggle('selecting', transcriptSelecting);
+        transcriptSelectEl?.classList.toggle('active', transcriptSelecting);
+        transcriptBodyEl?.querySelectorAll('.dangan-vn-transcript-entry.selected').forEach((el) => {
+            el.classList.remove('selected');
+            const box = el.querySelector('.dangan-vn-transcript-check');
+            if (box) box.checked = false;
+        });
+        refreshTranscriptSelectBar();
+    }
+
+    async function deleteChatMessages(indexes) {
+        // Highest first so earlier indexes stay valid.
+        const sorted = [...new Set(indexes)].filter(Number.isInteger).sort((a, b) => b - a);
+        for (const index of sorted) {
+            await runSlash(`/cut ${index}`);
+        }
+        transcriptSignature = null;
+        if (transcriptOpen) renderTranscript();
+        renderCurrent();
+    }
+
+    function renderTranscript({ toBottom = false } = {}) {
         if (!transcriptBodyEl) return;
 
         // Use the same raw-text source as the VN box so *markers* are preserved
         // for parseVnMarkup to colour action/bold/dialogue segments correctly.
         // (getDomMessages strips * markers — ST already rendered them to <em> in the DOM.)
-        const entries = getMessageEntries();
+        const allEntries = getMessageEntries();
+        const clearedIndex = getTranscriptClearedIndex();
+        const entries = allEntries
+            .map((entry, position) => ({ entry, position, chatIndex: getEntryChatIndex(entry) }))
+            .filter(({ chatIndex }) => clearedIndex < 0 || chatIndex === null || chatIndex > clearedIndex);
+
+        if (transcriptClearEl) {
+            const hidden = clearedIndex >= 0;
+            transcriptClearEl.textContent = hidden ? 'SHOW ALL' : 'CLEAR';
+            transcriptClearEl.title = hidden ? 'Show the hidden lines again' : 'Hide the lines so far without deleting them';
+        }
+
+        // The chat observer calls this on every chat change: skip identical renders.
+        const signature = `${clearedIndex}|${entries.map(({ entry }) => getMessageSignature(entry)).join('\n')}`;
+        if (signature === transcriptSignature && !toBottom) return;
+        transcriptSignature = signature;
+
+        const wasAtBottom = transcriptBodyEl.scrollTop + transcriptBodyEl.clientHeight >= transcriptBodyEl.scrollHeight - 8;
+        const previousScroll = transcriptBodyEl.scrollTop;
+        disarmTranscriptDelete();
         transcriptBodyEl.innerHTML = '';
 
         if (!entries.length) {
             const emptyEl = document.createElement('div');
             emptyEl.className = 'dangan-vn-transcript-empty';
-            emptyEl.textContent = 'No transcript entries yet.';
+            emptyEl.textContent = clearedIndex >= 0
+                ? 'Transcript cleared. New lines will appear here.'
+                : 'No transcript entries yet.';
             transcriptBodyEl.appendChild(emptyEl);
+            updateTranscriptThumb();
             return;
         }
 
-        // Copy only the font-family from the chat; size/line-height stay as the transcript
-        // defines them — the chat's configured font size is often very small and would make
-        // the transcript unreadable if copied verbatim.
-        const sampleMesText = document.querySelector('.mes .mes_text');
-        const chatFontFamily = sampleMesText
-            ? getComputedStyle(sampleMesText).fontFamily
-            : null;
-
-        for (const entry of entries) {
+        for (const { entry, position, chatIndex } of entries) {
             const row = document.createElement('div');
             row.className = 'dangan-vn-transcript-entry';
+            row.dataset.entryIndex = String(position);
+            row.tabIndex = 0;
+            if (chatIndex !== null) {
+                row.dataset.chatIndex = String(chatIndex);
+                if (transcriptSelected.has(chatIndex)) row.classList.add('selected');
+
+                const check = document.createElement('input');
+                check.type = 'checkbox';
+                check.className = 'dangan-vn-transcript-check';
+                check.tabIndex = -1;
+                check.checked = transcriptSelected.has(chatIndex);
+                check.setAttribute('aria-label', 'Select this message');
+                row.appendChild(check);
+            }
 
             const speaker = document.createElement('div');
             speaker.className = 'dangan-vn-transcript-speaker';
-            speaker.textContent = entry.name || 'UNKNOWN';
+            speaker.textContent = entry.name ? getCharacterDisplayName(entry.name) : 'UNKNOWN';
 
             const message = document.createElement('div');
             message.className = 'dangan-vn-transcript-message';
-            if (chatFontFamily) {
-                message.style.fontFamily = chatFontFamily;
-            }
-
-            // Use the same VN markup parser so colours match what the VN text box shows
-            // (*action* → green, **bold** → orange, "dialogue" → white, narrator → body colour).
             const cleanText = stripV3CMarkersFromText(entry.text || '').replace(/\s+/g, ' ').trim();
             message.innerHTML = cleanText ? parseVnMarkup(cleanText).html : '...';
 
             row.appendChild(speaker);
             row.appendChild(message);
+
+            if (chatIndex !== null) {
+                const del = document.createElement('button');
+                del.type = 'button';
+                del.className = 'dangan-vn-transcript-delete';
+                del.textContent = '🗑';
+                del.setAttribute('aria-label', 'Delete this message');
+                del.title = 'Delete this message';
+                row.appendChild(del);
+            }
             transcriptBodyEl.appendChild(row);
         }
+
+        if (toBottom || wasAtBottom) {
+            transcriptBodyEl.scrollTop = transcriptBodyEl.scrollHeight;
+        } else {
+            transcriptBodyEl.scrollTop = previousScroll;
+        }
+        updateTranscriptThumb();
     }
 
     function splitIntoChunks(text = '') {
@@ -3391,6 +3566,115 @@ function createVnModeController() {
         setTranscriptOpen(false);
     });
 
+    transcriptBodyEl?.addEventListener('scroll', updateTranscriptThumb, { passive: true });
+    window.addEventListener('resize', () => { if (transcriptOpen) updateTranscriptThumb(); });
+
+    transcriptLatestEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setTranscriptOpen(false);
+        jumpToLatest();
+        playSfx(sfx.message_move);
+    });
+
+    transcriptSelectEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setTranscriptSelecting(!transcriptSelecting);
+    });
+
+    transcriptCancelSelectEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setTranscriptSelecting(false);
+    });
+
+    transcriptClearEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setTranscriptCleared(getTranscriptClearedIndex() < 0);
+    });
+
+    transcriptDeleteSelectedEl?.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!transcriptSelected.size) return;
+        if (!transcriptDeleteArmed) {
+            transcriptDeleteArmed = true;
+            refreshTranscriptSelectBar();
+            return;
+        }
+        const indexes = [...transcriptSelected];
+        setTranscriptSelecting(false);
+        await deleteChatMessages(indexes);
+    });
+
+    transcriptBodyEl?.addEventListener('click', async (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        const row = target.closest('.dangan-vn-transcript-entry');
+        if (!row) return;
+        event.stopPropagation();
+        const chatIndex = row.dataset.chatIndex !== undefined ? Number(row.dataset.chatIndex) : null;
+
+        const delBtn = target.closest('.dangan-vn-transcript-delete');
+        if (delBtn) {
+            event.preventDefault();
+            if (chatIndex === null) return;
+            if (transcriptArmedEl !== delBtn) {
+                disarmTranscriptDelete();
+                transcriptArmedEl = delBtn;
+                delBtn.classList.add('armed');
+                delBtn.textContent = 'Delete?';
+                delBtn.setAttribute('aria-label', 'Press again to delete this message');
+                transcriptArmTimer = setTimeout(disarmTranscriptDelete, 3000);
+                return;
+            }
+            disarmTranscriptDelete();
+            await deleteChatMessages([chatIndex]);
+            return;
+        }
+        disarmTranscriptDelete();
+
+        if (transcriptSelecting) {
+            if (chatIndex === null) return;
+            if (transcriptSelected.has(chatIndex)) transcriptSelected.delete(chatIndex);
+            else transcriptSelected.add(chatIndex);
+            const on = transcriptSelected.has(chatIndex);
+            row.classList.toggle('selected', on);
+            const box = row.querySelector('.dangan-vn-transcript-check');
+            if (box) box.checked = on;
+            transcriptDeleteArmed = false;
+            refreshTranscriptSelectBar();
+            return;
+        }
+
+        // Touch has no hover: the first tap shows the line's delete button.
+        if (event.pointerType === 'touch' || window.matchMedia?.('(hover: none)').matches) {
+            if (!row.classList.contains('touched')) {
+                transcriptBodyEl.querySelectorAll('.dangan-vn-transcript-entry.touched').forEach((el) => el.classList.remove('touched'));
+                row.classList.add('touched');
+                return;
+            }
+        }
+
+        const position = Number(row.dataset.entryIndex);
+        if (!Number.isInteger(position)) return;
+        messageIndex = position;
+        chunkIndex = 0;
+        setTranscriptOpen(false);
+        renderCurrent();
+        playSfx(sfx.message_move);
+    });
+
+    transcriptBodyEl?.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        const row = event.target instanceof Element ? event.target.closest('.dangan-vn-transcript-entry') : null;
+        if (!row || event.target !== row) return;
+        event.preventDefault();
+        row.click();
+    });
+
     manageChatFilesBtnEl?.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -3682,15 +3966,29 @@ function createVnModeController() {
         stepForward();
     });
 
+    // Capture phase on window, so it runs before SillyTavern's own hotkeys
+    // (its arrow keys swipe) and can stop them.
     window.addEventListener('keydown', (event) => {
         if (!vnEnabled || !host.classList.contains('active')) return;
+        if (transcriptOpen) {
+            if (event.key !== 'Escape') return;
+            if (transcriptSelecting) setTranscriptSelecting(false);
+            else setTranscriptOpen(false);
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            return;
+        }
         const target = event.target;
         const isEditable = target instanceof HTMLElement && (
             target.matches('input, textarea, select') ||
             target.isContentEditable ||
             !!target.closest('[contenteditable="true"]')
         );
-        if (isEditable) return;
+        // SillyTavern swipes from an empty typing bar too.
+        const isEmptySendBar = target instanceof HTMLTextAreaElement
+            && target.id === 'send_textarea' && !target.value
+            && (event.key === 'ArrowRight' || event.key === 'ArrowLeft');
+        if (isEditable && !isEmptySendBar) return;
 
         if (event.key === 'ArrowRight' || event.key === ' ' || event.key === 'Enter') {
             stepForward();
@@ -3703,7 +4001,8 @@ function createVnModeController() {
             return;
         }
         event.preventDefault();
-    });
+        event.stopImmediatePropagation();
+    }, true);
 
     let swipeStartX = null;
 
