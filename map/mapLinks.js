@@ -99,6 +99,31 @@ export function getAutoLinkedPins(pin, pins = []) {
     return out;
 }
 
+// ── Floor exits ──────────────────────────────────────────────────────────────
+
+function floorNumber(floorKey) {
+    const m = /^floor_(\d+)$/.exec(String(floorKey || ""));
+    return m ? Number(m[1]) : null;
+}
+
+// How a link from `fromPin` to `toPin` reads as a way off this floor, or null
+// when both are on the same floor. Numbered floors of one area go up or down;
+// anything else (the Inn, islands, a hidden floor, another area) is a door.
+// `areas` is the { [areaKey]: { label, floors: [{ key, label }] } } map.
+export function describeFloorExit(fromPin, toPin, areas = {}) {
+    if (!fromPin || !toPin) return null;
+    if (fromPin.areaKey === toPin.areaKey && fromPin.floorKey === toPin.floorKey) return null;
+    const area = areas[toPin.areaKey];
+    const areaLabel = area?.label || toPin.areaKey || "";
+    const floorLabel = area?.floors?.find((f) => f.key === toPin.floorKey)?.label || toPin.floorKey || "";
+    const from = floorNumber(fromPin.floorKey);
+    const to = floorNumber(toPin.floorKey);
+    if (fromPin.areaKey === toPin.areaKey && from !== null && to !== null) {
+        return { direction: to > from ? "up" : "down", text: floorLabel };
+    }
+    return { direction: "door", text: [areaLabel, floorLabel].filter(Boolean).join(" · ") };
+}
+
 // Default corridor pins step aside when the player already has their own hub
 // on that floor (or a pin using the same id), so floors don't get two
 // corridors. Returns the ids of the defaults to leave out.

@@ -1,5 +1,5 @@
 import { DEFAULT_HUB_PIN_IDS, DEFAULT_PINS } from "./defaultPins.js";
-import { DORM_AREA_KEY, DORM_FLOOR_KEY, assignDormSlots, buildDormPins, diffDormEdits, findRedundantDefaultHubs, getAutoLinkedPins } from "./mapLinks.js";
+import { DORM_AREA_KEY, DORM_FLOOR_KEY, assignDormSlots, buildDormPins, describeFloorExit, diffDormEdits, findRedundantDefaultHubs, getAutoLinkedPins } from "./mapLinks.js";
 import { getFloorUnlockChapter, isFloorLocked, isStoryPin, listCustomFloors, mergePins, migrateLegacyMapStorage, pinInScope, resolveFloorImageSrc, scopeAreaKeys, scopeAreas, setFloorUnlockChapter, splitPins } from "./mapStorage.js";
 import { buildCustomArea } from "../core/title/titleMapSetup.js";
 
@@ -2747,6 +2747,24 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         });
     }
 
+    // The ways off this floor from a room (stairs, doors to other areas), named
+    // by where they lead. `moveLabel` is what moveToDestination matches.
+    function getFloorExitsForLocationId(locationId) {
+        const pin = getPinByLocationId(locationId);
+        if (!pin) return [];
+        const areas = getAllAreas();
+        const exits = [];
+        for (const c of getConnectionsForLocationId(locationId)) {
+            if (c.kind === 'pin') {
+                const exit = describeFloorExit(pin, getPinByLocationId(c.value), areas);
+                if (exit) exits.push({ moveLabel: c.label, ...exit });
+            } else if (c.kind === 'area' || c.kind === 'subarea') {
+                exits.push({ moveLabel: c.label, direction: 'door', text: c.label });
+            }
+        }
+        return exits;
+    }
+
     // Pins this pin links to on its own (corridor hub, stairs), for the editor.
     function getAutoLinkedLabels(pin) {
         return getAutoLinkedPins(pin, getAllPins()).map(p => p.label || p.locationId);
@@ -2816,6 +2834,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         getPinByLocationId,
         describeConnectionRef,
         getConnectionsForLocationId,
+        getFloorExitsForLocationId,
         refreshDormRooms,
         isPinLocked,
         isFloorLocked: isFloorLockedNow,

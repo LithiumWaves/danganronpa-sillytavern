@@ -1,5 +1,5 @@
 import { DEFAULT_HUB_PIN_IDS, DEFAULT_PINS } from "./defaultPins.js";
-import { INN_DORM_SLOTS, assignDormSlots, buildDormPins, diffDormEdits, findFloorHub, findRedundantDefaultHubs, getAutoLinkedPins } from "./mapLinks.js";
+import { INN_DORM_SLOTS, assignDormSlots, buildDormPins, describeFloorExit, diffDormEdits, findFloorHub, findRedundantDefaultHubs, getAutoLinkedPins } from "./mapLinks.js";
 import { mergePins, splitPins } from "./mapStorage.js";
 
 function assert(cond, msg) {
@@ -73,6 +73,25 @@ function run() {
 
     const split = splitPins([...pins, ...dormPins].filter((p) => !p._generated), { defaults: DEFAULT_PINS, isUnchangedDefault: (p) => !!p._default });
     assert(!split.layoutPins.some((p) => p._generated), "generated pins never reach the layout");
+
+    // Floor exits read as where they lead.
+    const areas = {
+        hopes_peak: { label: "HOPE'S PEAK ACADEMY", floors: [{ key: "floor_1", label: "FLOOR 1" }, { key: "floor_2", label: "FLOOR 2" }, { key: "inn_floor_1", label: "INN FLOOR 1" }] },
+        jabberwock_island: { label: "JABBERWOCK ISLAND", floors: [{ key: "floor_1", label: "OLD STOREHOUSE" }, { key: "pier_cottages", label: "PIER COTTAGES" }] },
+    };
+    const stairs2 = byId("hopes_peak", "floor_2", "2f_to_1f");
+    const up = describeFloorExit(stairs1, stairs2, areas);
+    assert(up?.direction === "up" && up.text === "FLOOR 2", "1F to 2F goes up to FLOOR 2");
+    assert(describeFloorExit(stairs2, stairs1, areas)?.direction === "down", "2F to 1F goes down");
+    const toInn = byId("hopes_peak", "floor_1", "1f_to_inn");
+    const innDoor = describeFloorExit(toInn, door, areas);
+    assert(innDoor?.direction === "door" && innDoor.text === "HOPE'S PEAK ACADEMY · INN FLOOR 1", "the academy's Inn exit is a door to the Inn");
+    assert(describeFloorExit(door, toInn, areas)?.text === "HOPE'S PEAK ACADEMY · FLOOR 1", "the Inn's Door leads to the academy's Floor 1");
+    assert(describeFloorExit(stairs1, corridor1, areas) === null, "same floor isn't a floor exit");
+    const islandExit = describeFloorExit(
+        { areaKey: "jabberwock_island", floorKey: "floor_1" },
+        { areaKey: "jabberwock_island", floorKey: "pier_cottages" }, areas);
+    assert(islandExit?.direction === "door" && islandExit.text === "JABBERWOCK ISLAND · PIER COTTAGES", "unnumbered floors are doors");
 
     console.log("mapLinks tests passed");
 }

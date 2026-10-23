@@ -10795,6 +10795,8 @@ jQuery(async () => {
                     onHostCalled: (name) => bringHostOnStage(name),
                     getOnStageHosts: () => getOnStageHosts(),
                     getHostEntranceElapsed: (name) => getHostEntranceElapsed(name, 'overworld'),
+                    getFloorExits: () => getCurrentFloorExits(),
+                    onFloorExit: (moveLabel) => moveToDestination(moveLabel),
                     onPresenceSynced: () => {
                         try { trialManager?.refreshGroupChatPortraits?.(); }
                         catch (e) { console.warn("[Dangan][Overworld] GCP refresh after presence sync failed:", e); }
@@ -15598,6 +15600,20 @@ function getReachablePinLabels() {
     return out;
 }
 
+// Stairs and doors off the current floor, named by where they lead.
+function getCurrentFloorExits() {
+    const currentId = getCurrentLocationId();
+    if (!currentId) return [];
+    return mapPanelController?.getFloorExitsForLocationId?.(currentId) ?? [];
+}
+
+const FLOOR_EXIT_ICONS = { up: '▲', down: '▼', door: '⇥' };
+
+function goThroughFloorExits(exits) {
+    if (exits.length === 1) moveToDestination(exits[0].moveLabel);
+    else toggleMinimapMovePopover();
+}
+
 function closeMinimapMovePopover() {
     document.getElementById('dangan-minimap-move-pop')?.remove();
 }
@@ -15739,7 +15755,9 @@ function renderMinimap() {
     })();
     const moveToOnMinimap = !!getMonopadSetting('moveToOnMinimap');
     const reachSig = moveToOnMinimap ? [...getReachablePinLabels().keys()].join(',') : 'off';
-    const sig = `${data.areaKey}/${data.floorKey}|${data.imageSrc}|${pinSig}|cur:${getCurrentLocationId() || ''}|spk:${lastSpeaker || ''}|grp:${groupSig}|ow:${owSig}|mv:${reachSig}`;
+    const floorExits = getCurrentFloorExits();
+    const exitSig = floorExits.map(x => `${x.direction}:${x.moveLabel}:${x.text}`).join(',');
+    const sig = `${data.areaKey}/${data.floorKey}|${data.imageSrc}|${pinSig}|cur:${getCurrentLocationId() || ''}|spk:${lastSpeaker || ''}|grp:${groupSig}|ow:${owSig}|mv:${reachSig}|ex:${exitSig}`;
     if (existing && sig === _minimapSig) return;
     _minimapSig = sig;
 
@@ -15775,8 +15793,18 @@ function renderMinimap() {
     for (const p of data.pins) {
         const isCurrent = currentPin && p.id === currentPin.id;
         const reachLabel = !isCurrent && p.locationId ? reachable.get(p.locationId) : null;
+        const isExit = isCurrent && floorExits.length > 0;
         const pin = document.createElement('div');
-        pin.className = `dangan-minimap-pin dangan-minimap-pin-${p.type}${isCurrent ? ' dangan-minimap-pin-current' : ''}${reachLabel ? ' dangan-minimap-pin-reachable' : ''}`;
+        pin.className = `dangan-minimap-pin dangan-minimap-pin-${p.type}${isCurrent ? ' dangan-minimap-pin-current' : ''}${reachLabel ? ' dangan-minimap-pin-reachable' : ''}${isExit ? ' dangan-minimap-pin-exit' : ''}`;
+        if (isExit) {
+            // Standing on stairs or a door: clicking it goes through.
+            pin.title = floorExits.length === 1 ? `Go to ${floorExits[0].text}` : 'Choose where to go';
+            pin.addEventListener('pointerdown', (e) => e.stopPropagation());
+            pin.addEventListener('click', (e) => {
+                e.stopPropagation();
+                goThroughFloorExits(floorExits);
+            });
+        }
         if (reachLabel) {
             pin.dataset.name = reachLabel;
             pin.title = `Move to ${reachLabel}`;
@@ -15866,6 +15894,26 @@ function renderMinimap() {
     hideBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
     hideCol.appendChild(hideBtn);
     root.appendChild(hideCol);
+
+    // Ways off this floor, beside the map, so the next floor is one click away.
+    if (floorExits.length) {
+        const exitCol = document.createElement('div');
+        exitCol.className = 'dangan-minimap-floor-exits';
+        for (const exit of floorExits) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = `dangan-minimap-floor-exit dangan-minimap-floor-exit-${exit.direction}`;
+            btn.textContent = `${FLOOR_EXIT_ICONS[exit.direction] || FLOOR_EXIT_ICONS.door} ${exit.text}`;
+            btn.title = `Go to ${exit.text}`;
+            btn.addEventListener('pointerdown', (e) => e.stopPropagation());
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                moveToDestination(exit.moveLabel);
+            });
+            exitCol.appendChild(btn);
+        }
+        root.appendChild(exitCol);
+    }
 
     // Move — replaces the MOVE TO list: a popover of every exit from here,
     // including areas / sub-areas that have no pin on this floor.
