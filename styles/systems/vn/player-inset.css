@@ -108,15 +108,55 @@ body.dangan-player-inset-on:is(.dangan-ow-chat-exit-active, .dangan-ow-conversat
     transition: transform 320ms cubic-bezier(0.2, 0.8, 0.25, 1), opacity 320ms ease;
 }
 
-/* Collapsed: only the stripes stay, at the right edge. */
+/* Collapsed: the window and its stripes slide away; a small « tab at the
+   edge (like the EXPRESSIONS one above it) brings them back. */
 #dangan-player-inset.collapsed .dangan-player-inset-frame {
     transform: translateX(110%);
     opacity: 0;
 }
 
 #dangan-player-inset.collapsed .dangan-player-inset-toggle {
-    left: auto;
-    right: -4%;
+    display: none;
+}
+
+#dangan-player-inset .dangan-player-inset-reopen {
+    position: absolute;
+    top: 0;
+    right: 0;
+    display: none;
+    align-items: center;
+    height: 30px;
+    padding: 0 12px 0 10px;
+    border: 2px solid var(--dpi-accent);
+    border-right: 0;
+    border-radius: 999px 0 0 999px;
+    background: rgba(16, 12, 10, 0.92);
+    color: var(--dpi-accent);
+    font: 900 16px/1 "M PLUS Rounded 1c", "Noto Sans JP", sans-serif;
+    cursor: pointer;
+    opacity: 0.55;
+    pointer-events: auto;
+    transition: opacity 160ms ease;
+}
+
+#dangan-player-inset.collapsed .dangan-player-inset-reopen {
+    display: flex;
+}
+
+#dangan-player-inset .dangan-player-inset-reopen:hover,
+#dangan-player-inset .dangan-player-inset-reopen:focus-visible {
+    opacity: 1;
+    outline: none;
+}
+
+/* The minimap sits under the window: see-through while the window is out. */
+body.dangan-player-inset-on.dangan-player-inset-shown:is(.dangan-ow-chat-exit-active, .dangan-ow-conversation-view):not(.dangan-trial-active):not(.dangan-monopad-open):not(.dangan-ow-fading) #dangan-minimap {
+    opacity: 0.35;
+    transition: opacity 200ms ease;
+}
+
+body.dangan-player-inset-on.dangan-player-inset-shown:is(.dangan-ow-chat-exit-active, .dangan-ow-conversation-view):not(.dangan-trial-active):not(.dangan-monopad-open):not(.dangan-ow-fading) #dangan-minimap:hover {
+    opacity: 1;
 }
 
 @media (max-width: 700px) {

@@ -13,7 +13,7 @@ const ROOT_ID = "dangan-expr-picker";
 // Files that aren't expressions to pick from.
 const SKIP_STEM = /(-half$|^death-portrait$|^mugshot$)/i;
 
-export function createExpressionPicker({ getTargets, listSprites, applySprite, isAvailable, isAuto, setAuto, playSfx }) {
+export function createExpressionPicker({ getTargets, listSprites, applySprite, isAvailable, isAuto, setAuto }) {
     let open = false;
     let selectedKey = null;
     let targets = [];
@@ -47,7 +47,6 @@ export function createExpressionPicker({ getTargets, listSprites, applySprite, i
         root.querySelector(".dangan-expr-auto").addEventListener("click", (e) => {
             e.stopPropagation();
             setAuto?.(!isAuto?.());
-            playSfx?.("click");
             renderAuto();
         });
         root.querySelector(".dangan-expr-close").addEventListener("click", (e) => {
@@ -59,7 +58,6 @@ export function createExpressionPicker({ getTargets, listSprites, applySprite, i
             const chip = e.target.closest?.("[data-key]");
             if (!chip) return;
             selectedKey = chip.dataset.key;
-            playSfx?.("click");
             renderPeople();
             renderGrid();
         });
@@ -72,7 +70,6 @@ export function createExpressionPicker({ getTargets, listSprites, applySprite, i
             chosen.set(target.key, cell.dataset.path);
             root.querySelectorAll(".dangan-expr-cell.is-on").forEach((el) => el.classList.remove("is-on"));
             cell.classList.add("is-on");
-            playSfx?.("select");
             try { await applySprite(target, cell.dataset.path, cell.dataset.stem); } catch (err) {
                 console.warn("[Dangan][Expressions] couldn't apply sprite:", err);
             }
@@ -110,7 +107,6 @@ export function createExpressionPicker({ getTargets, listSprites, applySprite, i
         const root = ensureRoot();
         root.classList.toggle("open", open);
         root.querySelector(".dangan-expr-tab").setAttribute("aria-expanded", String(open));
-        playSfx?.(open ? "open" : "close");
         if (open) refreshTargets();
     }
 

@@ -371,10 +371,73 @@ async function _playVfxSfx(url, volume) {
 
 // ── Settings storage (per-character, keyed by this_chid) ─────────────────────
 
-function getVfxSettings() {
+// Settings are per character, saved under "avatar:<file>" so they follow the
+// character rather than its place in the list. Older saves used the chat's
+// character index (this_chid), still read as a fallback; "__global__" holds
+// the settings for anyone without their own (and for group chats before).
+//
+// Whose settings apply: the character picked in the CONFIGURE window while
+// it is open, else the character whose sprite is playing an effect, else the
+// open chat's character.
+let editKey = null;
+let playKey = null;
+
+function getStChars() {
+    const ctx = window.SillyTavern?.getContext?.();
+    return Array.isArray(ctx?.characters) ? ctx.characters : (Array.isArray(window.characters) ? window.characters : []);
+}
+
+function keyForCharacter(char) {
+    return char?.avatar ? `avatar:${char.avatar}` : null;
+}
+
+function chatKey() {
+    if (this_chid == null) return "__global__";
+    return keyForCharacter(getStChars()[this_chid]) ?? String(this_chid);
+}
+
+// The character a sprite belongs to, from its sprite folder.
+function keyForImage(imgEl) {
+    const src = imgEl?.getAttribute?.("src") || imgEl?.src || "";
+    if (!src) return null;
+    let folder = "";
+    try {
+        const parts = new URL(src, location.href).pathname.split("/").filter(Boolean);
+        folder = decodeURIComponent(parts[parts.length - 2] || "").toLowerCase();
+    } catch { return null; }
+    if (!folder) return null;
+    const chars = getStChars();
+    const char = chars.find((c) => String(c?.avatar || "").replace(/\.[^.]+$/, "").toLowerCase() === folder)
+        || chars.find((c) => String(c?.name || "").toLowerCase() === folder);
+    return keyForCharacter(char);
+}
+
+function currentKey() {
+    return editKey ?? playKey ?? chatKey();
+}
+
+// Run fn with an image's character as the one whose settings apply.
+function withImageKey(imgEl, fn) {
+    const previous = playKey;
+    playKey = keyForImage(imgEl);
+    try { return fn(); } finally { playKey = previous; }
+}
+
+function readStoredSettings(key) {
     const store = extension_settings[extensionName]?.vfxSettings || {};
-    const key = this_chid ?? "__global__";
-    const s = store[key];
+    if (key in store) return store[key];
+    // Older saves: keyed by the character's index in the list.
+    if (key?.startsWith("avatar:")) {
+        const avatar = key.slice(7);
+        const index = getStChars().findIndex((c) => c?.avatar === avatar);
+        if (index >= 0 && String(index) in store) return store[String(index)];
+    }
+    if (key !== "__global__" && "__global__" in store) return store.__global__;
+    return undefined;
+}
+
+function getVfxSettings() {
+    const s = readStoredSettings(currentKey());
     if (s === null || s === undefined || typeof s !== "object") {
         return { enabled: s !== false, emotions: {} };
     }
@@ -383,14 +446,16 @@ function getVfxSettings() {
     for (const [k, v] of Object.entries(s.emotions || {})) {
         emotions[k] = typeof v === "boolean" ? { enabled: v, volume: 0.7 } : v;
     }
-    return { enabled: s.enabled !== false, emotions };
+    const out = { enabled: s.enabled !== false, emotions };
+    if (s.height) out.height = s.height;
+    return out;
 }
 
 function setVfxSettings(settings) {
     if (!extension_settings[extensionName].vfxSettings) {
         extension_settings[extensionName].vfxSettings = {};
     }
-    extension_settings[extensionName].vfxSettings[this_chid ?? "__global__"] = settings;
+    extension_settings[extensionName].vfxSettings[currentKey()] = settings;
     saveSettingsDebounced();
 }
 
@@ -585,15 +650,18 @@ function playOnElement(expression, $img, { ignoreMute = false, htmlTarget = null
 function triggerVfx(expression) {
     if (vfxGcpLoadSuppressed) return;
     expression = biasExpression(expression);
-    if (!isEnabledForEmotion(expression)) return;
+    const target = expressionTargetFn?.() ?? document.getElementById("expression-image");
+    if (!withImageKey(target, () => isEnabledForEmotion(expression))) return;
     if (!VFX_MAP[expression]) return;
     // Small delay to let the expression swap animation settle
     setTimeout(() => {
         const imgEl = expressionTargetFn?.() ?? document.getElementById("expression-image");
         const $img = $(imgEl);
         if (!$img.length) return;
-        applyEmotionCss(expression);
-        playOnElement(expression, $img);
+        withImageKey(imgEl, () => {
+            applyEmotionCss(expression);
+            playOnElement(expression, $img);
+        });
     }, 250);
 }
 
@@ -604,14 +672,16 @@ function triggerVfx(expression) {
 export function triggerVfxOnElement(expression, imgEl) {
     if (vfxGcpLoadSuppressed) return;
     expression = biasExpression(expression);
-    if (!isEnabledForEmotion(expression)) return;
+    if (!withImageKey(imgEl, () => isEnabledForEmotion(expression))) return;
     if (!VFX_MAP[expression]) return;
     vfxLastExpression = expression;
     setTimeout(() => {
         const $img = $(imgEl);
         if (!$img.length) return;
-        applyEmotionCss(expression);
-        playOnElement(expression, $img);
+        withImageKey(imgEl, () => {
+            applyEmotionCss(expression);
+            playOnElement(expression, $img);
+        });
     }, 250);
 }
 
@@ -737,6 +807,19 @@ function openPreview(emotion) {
     // Load the character's sprite for this emotion
     const $previewImg = $("#monopad-vfx-preview-img");
     $previewImg.removeClass(VFX_ALL_CLASSES);
+    // The picked character's own sprite for this emotion, when they have one.
+    if (editKey?.startsWith("avatar:")) {
+        const folder = editKey.slice(7).replace(/\.[^.]+$/, "");
+        fetch(`/api/sprites/get?name=${encodeURIComponent(folder)}`)
+            .then((r) => (r.ok ? r.json() : []))
+            .then((sprites) => {
+                const list = Array.isArray(sprites) ? sprites : [];
+                const hit = list.find((x) => String(x.label).toLowerCase() === emotion)
+                    || list.find((x) => String(x.label).toLowerCase() === "neutral");
+                if (hit?.path && currentPreviewEmotion === emotion) $previewImg[0].src = hit.path;
+            })
+            .catch(() => {});
+    }
     const currentSrc = $("#expression-image").attr("src") || "";
     const previewSrc = currentSrc
         ? currentSrc.replace(/\/[^/]+(\.[^/.]+)$/, `/${emotion}$1`)
@@ -775,12 +858,42 @@ function closePreview() {
 
 // ── Main modal rendering ──────────────────────────────────────────────────────
 
+// Who to configure: the open chat's characters first, then everyone else,
+// then the defaults for anyone without their own settings.
+function renderCharacterPicker() {
+    const select = document.getElementById("monopad-vfx-char-select");
+    if (!select) return;
+    const ctx = getContext();
+    const chars = getStChars();
+    const inChat = [];
+    if (ctx.groupId) {
+        const group = (Array.isArray(ctx.groups) ? ctx.groups : []).find((g) => String(g.id) === String(ctx.groupId));
+        for (const avatar of group?.members || []) {
+            const c = chars.find((x) => x?.avatar === avatar);
+            if (c) inChat.push(c);
+        }
+    } else if (this_chid != null && chars[this_chid]) {
+        inChat.push(chars[this_chid]);
+    }
+    const inChatAvatars = new Set(inChat.map((c) => c.avatar));
+    const others = chars
+        .filter((c) => c?.avatar && c?.name && !inChatAvatars.has(c.avatar))
+        .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    const esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    const option = (c) => `<option value="${esc(keyForCharacter(c))}">${esc(c.name)}</option>`;
+    select.innerHTML = [
+        inChat.length ? `<optgroup label="In this chat">${inChat.map(option).join("")}</optgroup>` : "",
+        others.length ? `<optgroup label="Everyone">${others.map(option).join("")}</optgroup>` : "",
+        `<option value="__global__">Default (anyone without their own)</option>`,
+    ].join("");
+    select.value = editKey;
+    if (select.value !== editKey) {
+        editKey = select.value || "__global__";
+    }
+}
+
 function renderModal() {
     const s = getVfxSettings();
-    const { groupId, name2 } = getContext();
-    const charLabel = groupId ? "GROUP CHAT" : (name2 || "—");
-
-    document.getElementById("monopad-vfx-char-name").textContent = `FOR "${charLabel}"`;
 
     const currentHeight = getCharacterHeight();
     document.querySelectorAll(".monopad-vfx-height-btn").forEach(btn => {
@@ -831,15 +944,18 @@ function renderModal() {
     }
 }
 
+// Any character can be configured from anywhere, so CONFIGURE is always on.
 function updateConfigureButtonState() {
     const btn = document.getElementById("dangan_configure_vfx");
     if (!btn) return;
-    const hasChar = this_chid != null;
-    btn.disabled = !hasChar;
-    btn.title = hasChar ? "" : "No character selected";
+    btn.disabled = false;
+    btn.title = "";
 }
 
 function openModal() {
+    // Start on the open chat's character (or the first one in a group).
+    editKey = chatKey();
+    renderCharacterPicker();
     renderModal();
     const overlay = document.getElementById("monopad-vfx-overlay");
     if (overlay) {
@@ -854,6 +970,7 @@ function closeModal() {
         overlay.classList.remove("open");
         overlay.setAttribute("aria-hidden", "true");
     }
+    editKey = null;
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -866,6 +983,10 @@ export function initVfxSystem() {
     // ── Main modal ──
     $(document).on("click.dr-vfx", "#dangan_configure_vfx", openModal);
     $(document).on("click.dr-vfx", "#monopad-vfx-close", closeModal);
+    $(document).on("change.dr-vfx", "#monopad-vfx-char-select", function () {
+        editKey = this.value || "__global__";
+        renderModal();
+    });
     $(document).on("click.dr-vfx", "#monopad-vfx-overlay", function (e) {
         if (e.target === this) closeModal();
     });

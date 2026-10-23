@@ -1403,7 +1403,7 @@
                     <div class="settings-item">
                         <div class="settings-text">
                             <span class="settings-label">Expression effects</span>
-                            <div class="settings-note">Visuals and sounds tied to a character's expressions. Open that character's chat first.</div>
+                            <div class="settings-note">Visuals and sounds tied to each character's expressions. Pick the character in the window.</div>
                         </div>
                         <button type="button" class="settings-small-button" id="dangan_configure_vfx">CONFIGURE</button>
                     </div>
@@ -1858,7 +1858,9 @@
                 <div class="monopad-vfx-header">
                     <div>
                         <div class="monopad-vfx-title" id="monopad-vfx-title">EXPRESSION VFX</div>
-                        <div class="monopad-vfx-subtitle" id="monopad-vfx-char-name">FOR "—"</div>
+                        <label class="monopad-vfx-subtitle monopad-vfx-char-pick">FOR
+                            <select id="monopad-vfx-char-select" aria-label="Character to configure"></select>
+                        </label>
                     </div>
                     <div class="monopad-vfx-header-controls">
                         <div class="monopad-vfx-master-row">

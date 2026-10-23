@@ -62,7 +62,7 @@ function frameSprite(img, win) {
     img.style.left = `${win.clientWidth * 0.58 - centerX}px`;
 }
 
-export function createPlayerInset({ getSpriteUrl, classify, getLastUserMessage, isCollapsed, setCollapsed, playSfx }) {
+export function createPlayerInset({ getSpriteUrl, classify, getLastUserMessage, isCollapsed, setCollapsed }) {
     let enabled = false;
     let label = "neutral";
     let token = 0;
@@ -79,34 +79,36 @@ export function createPlayerInset({ getSpriteUrl, classify, getLastUserMessage, 
                     <img class="dangan-player-inset-sprite" alt="" draggable="false">
                 </div>
             </div>
-            <button type="button" class="dangan-player-inset-toggle" aria-label="Hide your sprite" title="Hide your sprite">
+            <button type="button" class="dangan-player-inset-toggle" aria-label="Hide your sprite" title="Hide your sprite" aria-expanded="true">
                 <span class="dangan-player-inset-stripes"></span>
             </button>
+            <button type="button" class="dangan-player-inset-reopen" aria-label="Show your sprite" title="Show your sprite">
+                <span aria-hidden="true">«</span>
+            </button>
         `;
-        // The stripes tuck the window away behind them, and bring it back.
-        const toggle = el.querySelector(".dangan-player-inset-toggle");
+        // The stripes tuck the window away; a small tab at the edge brings it back.
         const applyCollapsed = (collapsed) => {
             el.classList.toggle("collapsed", collapsed);
-            const label = collapsed ? "Show your sprite" : "Hide your sprite";
-            toggle.setAttribute("aria-label", label);
-            toggle.title = label;
-            toggle.setAttribute("aria-expanded", String(!collapsed));
+            el.querySelector(".dangan-player-inset-toggle").setAttribute("aria-expanded", String(!collapsed));
+            syncBodyState();
         };
         applyCollapsed(!!isCollapsed?.());
-        toggle.addEventListener("pointerdown", (e) => e.stopPropagation());
-        toggle.addEventListener("click", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const next = !el.classList.contains("collapsed");
-            applyCollapsed(next);
-            setCollapsed?.(next);
-            playSfx?.(next ? "close" : "open");
-        });
+        for (const btn of el.querySelectorAll(".dangan-player-inset-toggle, .dangan-player-inset-reopen")) {
+            btn.addEventListener("pointerdown", (e) => e.stopPropagation());
+            btn.addEventListener("click", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const next = !el.classList.contains("collapsed");
+                applyCollapsed(next);
+                setCollapsed?.(next);
+            });
+        }
         const img = el.querySelector("img");
         const win = el.querySelector(".dangan-player-inset-window");
-        img.addEventListener("error", () => el.classList.remove("has-sprite"));
+        img.addEventListener("error", () => { el.classList.remove("has-sprite"); syncBodyState(); });
         img.addEventListener("load", () => {
             el.classList.add("has-sprite");
+            syncBodyState();
             // Measure once it's laid out (it's display:none until shown).
             requestAnimationFrame(() => frameSprite(img, win));
         });
@@ -115,6 +117,13 @@ export function createPlayerInset({ getSpriteUrl, classify, getLastUserMessage, 
         }
         document.body.appendChild(el);
         return el;
+    }
+
+    // Lets other HUD pieces (the minimap) make room while the window is out.
+    function syncBodyState() {
+        const el = document.getElementById(INSET_ID);
+        const shown = enabled && !!el?.classList.contains("has-sprite") && !el.classList.contains("collapsed");
+        document.body.classList.toggle("dangan-player-inset-shown", shown);
     }
 
     async function showLabel(next) {
@@ -129,10 +138,12 @@ export function createPlayerInset({ getSpriteUrl, classify, getLastUserMessage, 
         if (!url) {
             el.classList.remove("has-sprite");
             img.removeAttribute("src");
+            syncBodyState();
             return;
         }
         if (img.getAttribute("src") !== url) img.src = url;
         else el.classList.add("has-sprite");
+        syncBodyState();
     }
 
     // The expression of your message, or neutral when it can't be told.
@@ -148,6 +159,7 @@ export function createPlayerInset({ getSpriteUrl, classify, getLastUserMessage, 
             document.body.classList.toggle("dangan-player-inset-on", next);
             if (next === enabled) return;
             enabled = next;
+            syncBodyState();
             if (enabled) {
                 ensureEl();
                 showLabel(label);

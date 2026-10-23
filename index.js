@@ -11149,7 +11149,6 @@ jQuery(async () => {
             classify: (text) => isAutoExpressionsEnabled() ? classifyPlayerText(text) : Promise.resolve(null),
             isCollapsed: () => !!getMonopadSetting("playerInsetCollapsed"),
             setCollapsed: (v) => setMonopadSetting("playerInsetCollapsed", !!v),
-            playSfx: (name) => { if (sfx?.[name]) playSfx(sfx[name]); },
             getLastUserMessage: () => {
                 const chat = window.SillyTavern?.getContext?.()?.chat;
                 if (!Array.isArray(chat)) return "";
@@ -11187,7 +11186,6 @@ jQuery(async () => {
                     || body.contains("dangan-ow-chat-exit-active")
                     || body.contains("dangan-ow-conversation-view");
             },
-            playSfx: (name) => { if (sfx?.[name]) playSfx(sfx[name]); },
         });
         {
             // Show the tab only while a conversation or a trial is on screen.
