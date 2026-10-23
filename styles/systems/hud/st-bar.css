@@ -1,0 +1,146 @@
+/* SillyTavern's bar, Steins;Gate-style (Settings → Exploration layout →
+   SillyTavern's bar style): a rounded capsule with a thick white rim,
+   smoky glass inside and light grey icons with a dark outline. Along the
+   top by default, or down the left edge (dangan-stbar-left). Auto-hide
+   (dangan-stbar-autohide / -peek in style.css) slides it off its edge.
+
+   The capsule look lives on ::before. The holder itself takes no
+   transform, filter or backdrop-filter while it is out: any of them would
+   make SillyTavern's position:fixed drawer panels lay out inside it. Class
+   Trials keep their own bar theme. */
+
+body.dangan-stbar-sg:not(.dangan-trial-active) #top-bar {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+}
+
+body.dangan-stbar-sg:not(.dangan-trial-active) #top-settings-holder {
+    position: fixed;
+    top: 8px;
+    left: 0;
+    right: 0;
+    margin: 0 auto;
+    width: fit-content;
+    max-width: calc(100vw - 16px);
+    height: auto;
+    padding: 5px 16px;
+    gap: 4px;
+    display: flex;
+    align-items: center;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+}
+
+body.dangan-stbar-sg:not(.dangan-trial-active) #top-settings-holder::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border: 3px solid rgba(255, 255, 255, 0.94);
+    border-radius: 999px;
+    background: linear-gradient(180deg, rgba(120, 120, 126, 0.5), rgba(58, 58, 64, 0.58));
+    box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.55),
+        inset 0 0 0 1px rgba(0, 0, 0, 0.35),
+        0 6px 18px rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    pointer-events: none;
+}
+
+body.dangan-stbar-sg:not(.dangan-trial-active) #top-settings-holder > .drawer {
+    flex: none;
+}
+
+body.dangan-stbar-sg:not(.dangan-trial-active) #top-settings-holder .drawer-icon {
+    width: 1.35em;
+    height: 1.35em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    border-radius: 50%;
+    font-size: 24px;
+    color: #dcdce0;
+    opacity: 1;
+    text-shadow:
+        1px 0 0 #1a1a1e, -1px 0 0 #1a1a1e, 0 1px 0 #1a1a1e, 0 -1px 0 #1a1a1e,
+        0 2px 2px rgba(0, 0, 0, 0.5);
+    transition: color 120ms ease, transform 120ms ease, background 120ms ease;
+}
+
+body.dangan-stbar-sg:not(.dangan-trial-active) #top-settings-holder .drawer-icon:hover {
+    color: #fff;
+    transform: translateY(-1px) scale(1.06);
+}
+
+body.dangan-stbar-sg:not(.dangan-trial-active) #top-settings-holder .drawer-icon.openIcon {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.18);
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.55);
+}
+
+/* Down the left edge. */
+body.dangan-stbar-sg.dangan-stbar-left:not(.dangan-trial-active) #top-settings-holder {
+    left: 8px;
+    right: auto;
+    top: 0;
+    bottom: 0;
+    margin: auto 0;
+    height: fit-content;
+    max-height: calc(100vh - 16px);
+    flex-direction: column;
+    padding: 14px 5px;
+}
+
+/* Auto-hide: off its edge until hovered (or its keybind). */
+body.dangan-stbar-sg.dangan-stbar-autohide:not(.dangan-trial-active) #top-settings-holder {
+    transform: translateY(calc(-100% - 12px));
+}
+
+body.dangan-stbar-sg.dangan-stbar-left.dangan-stbar-autohide:not(.dangan-trial-active) #top-settings-holder {
+    transform: translateX(calc(-100% - 12px));
+}
+
+body.dangan-stbar-sg.dangan-stbar-autohide.dangan-stbar-peek:not(.dangan-trial-active) #top-settings-holder {
+    transform: none;
+}
+
+body.dangan-stbar-sg.dangan-stbar-left.dangan-stbar-autohide:not(.dangan-trial-active) #dangan-stbar-hotzone {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: auto;
+    width: 8px;
+    height: auto;
+}
+
+/* Hidden by its keybind with auto-hide off. */
+body.dangan-stbar-hidden:not(.dangan-trial-active) #top-bar,
+body.dangan-stbar-hidden:not(.dangan-trial-active) #top-settings-holder {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+/* ── Keybinds (Settings → Customize → Keybinds) ─────────────────────── */
+
+.dangan-keybind-intro {
+    margin: 0 0 6px;
+}
+
+.settings-small-button.dangan-keybind-btn {
+    min-width: 120px;
+    font-family: "Orbitron", "Rajdhani", monospace;
+    letter-spacing: 0.08em;
+}
+
+.settings-small-button.dangan-keybind-btn.is-capturing {
+    animation: dangan-keybind-wait 0.9s ease-in-out infinite;
+}
+
+@keyframes dangan-keybind-wait {
+    50% { opacity: 0.45; }
+}

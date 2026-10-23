@@ -28,6 +28,7 @@
 @import url("./styles/systems/vn/player-inset.css");
 @import url("./styles/systems/vn/expression-picker.css");
 @import url("./styles/systems/hud/hud-colors.css");
+@import url("./styles/systems/hud/st-bar.css");
 
 /* SillyTavern puts transform: translateZ(0) on <html>, which makes it the box
    that position: fixed elements size against. On phones <body> is fixed too,

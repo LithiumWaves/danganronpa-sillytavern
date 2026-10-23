@@ -105,6 +105,12 @@ export const defaultSettings = {
     exploreActionMenu: true,
     moveToOnMinimap: true,
     autoHideStTopBar: true,
+    // SillyTavern's bar: "sg" (Steins;Gate-style capsule) or "classic".
+    stTopBarStyle: "sg",
+    // Where the capsule sits: "top" or "left".
+    stTopBarPosition: "top",
+    // Keybinds by action (core/input/keybinds.js); missing ones use defaults.
+    keybinds: {},
     dynamicThemes: true,
     hideTruthBulletImages: false,
     hideGiftImages: false,

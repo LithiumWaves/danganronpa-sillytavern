@@ -84,6 +84,8 @@ import { configureMinigameSessions, createSkipToken, installSkipKeyHandler, push
 import { confirmLeaveMinigame } from "./core/skip/leaveConfirm.js";
 import { createPlayerInset } from "./core/ui/playerInset.js";
 import { createExpressionPicker } from "./core/ui/expressionPicker.js";
+import { KEYBIND_ACTIONS, actionForBinding, bindingFromKeyEvent, bindingFromMouseEvent, isTypingTarget, keybindLabel, resolveKeybinds } from "./core/input/keybinds.js";
+import { TITLE_SCREEN_ID } from "./core/title/titleScreen.js";
 import { user_avatar } from "../../../personas.js";
 import { ConnectionManagerRequestService } from "../../shared.js";
 
@@ -110,6 +112,8 @@ let onboardingState = null;
 let vnModeController = null;
 let playerInsetController = null;
 let expressionPickerController = null;
+// Assigned where the Monopad button is wired up.
+let toggleMonopadFromKeybind = () => {};
 let monokumaAnnouncementController = null;
 let classTrialMenuController = null;
 let trialManager = null;
@@ -4262,6 +4266,12 @@ function createVnModeController() {
                 return;
             }
             renderCurrent();
+        },
+        // The Transcript keybind.
+        toggleTranscript() {
+            if (!vnEnabled || !host.classList.contains('active')) return false;
+            setTranscriptOpen(!transcriptOpen);
+            return true;
         },
         setMonopadOpen(isOpen) {
             monopadOpen = !!isOpen;
@@ -9761,6 +9771,13 @@ function applySettingsTabUI() {
     vnModeController?.setSkin?.(vnSkin);
     applyPlayerInset();
     expressionPickerController?.sync();
+    // Buttons that pick one value of a setting (data-choice-setting/-value).
+    document.querySelectorAll('[data-choice-setting][data-choice-value]').forEach((btn) => {
+        const current = String(getMonopadSetting(btn.dataset.choiceSetting) ?? '');
+        btn.classList.toggle('active', current === btn.dataset.choiceValue);
+        btn.setAttribute('aria-pressed', String(current === btn.dataset.choiceValue));
+    });
+    renderKeybindSettings();
     applyHudColors();
     applyHudColorsUI();
     applyAnnouncementCustomisationUI();
@@ -10573,6 +10590,13 @@ function ensureGlobalDebugUi() {
             <div class="trust-debug-buttons" role="group" aria-label="Debug controls">
                 <button id="trust-debug-up" type="button">TRUST +</button>
                 <button id="trust-debug-down" type="button">TRUST -</button>
+                <div class="trust-debug-amount-row" title="Ranks for DROP; distrust depth for SHATTER">
+                    <input id="trust-debug-amount" type="number" min="1" max="10" value="3" aria-label="Ranks">
+                    <button id="trust-debug-drop" type="button">DROP</button>
+                    <button id="trust-debug-break" type="button">SHATTER</button>
+                </div>
+                <button id="trust-debug-max" type="button">TRUST MAX</button>
+                <button id="trust-debug-reset" type="button">RESET TO TRUST 1</button>
                 <button id="truth-debug-open" type="button">NEW TRUTH BULLET</button>
                 <button id="investigation-debug-trigger" type="button">INVESTIGATION START</button>
                 <button id="announcement-debug-open" type="button">MONOKUMA ANNOUNCEMENT</button>
@@ -10870,6 +10894,42 @@ function bindDebugControlEvents() {
         }
 
         increaseTrustWithRewards(char);
+    });
+
+    // DROP: lose that many ranks (can run into distrust). SHATTER: trust
+    // breaks straight into that level of distrust, as SOCIAL_BREAK does.
+    const debugTrustChar = () => {
+        playDebugClickSfx();
+        const char = getActiveSocialCharacter();
+        if (!char) console.warn("[Dangan][Debug] No social character selected. Click a character name first.");
+        return char;
+    };
+    const debugTrustAmount = () => Math.min(10, Math.max(1, Math.trunc(Number($("#trust-debug-amount").val()) || 1)));
+
+    $(document).on("click.debugControls", "#trust-debug-drop", () => {
+        const char = debugTrustChar();
+        if (char) { decreaseTrust(char, { steps: debugTrustAmount() }); saveCharacters(); }
+    });
+
+    $(document).on("click.debugControls", "#trust-debug-break", () => {
+        const char = debugTrustChar();
+        if (char) { breakTrust(char, debugTrustAmount()); saveCharacters(); }
+    });
+
+    $(document).on("click.debugControls", "#trust-debug-max", () => {
+        const char = debugTrustChar();
+        if (!char || (char.trustLevel ?? 1) >= 10) return;
+        char.trustLevel = 9;
+        increaseTrust(char);
+        saveCharacters();
+    });
+
+    $(document).on("click.debugControls", "#trust-debug-reset", () => {
+        const char = debugTrustChar();
+        if (!char) return;
+        char.trustLevel = 1;
+        saveCharacters();
+        window.refreshActiveCharacterUI?.();
     });
 
     $(document).on("click.debugControls", "#trust-debug-down", () => {
@@ -11713,6 +11773,10 @@ $(".monopad-icon").on("mouseenter", function () {
 
         }
 
+        toggleMonopadFromKeybind = () => {
+            unlockAudio();
+            togglePanel();
+        };
         const handleMonopadToggle = () => {
             const suppressUntil = Number(monopadButtonEl?.dataset?.suppressMonopadClickUntil || "0");
             if (Date.now() < suppressUntil) return;
@@ -12414,6 +12478,12 @@ $(".monopad-icon").on("mouseenter", function () {
         $("#dangan_card_hygiene_default").on("change", function () {
             const next = String(this.value || "ask").trim().toLowerCase();
             setMonopadSetting("cardHygieneDefault", ["ask", "keep", "clean"].includes(next) ? next : "ask");
+        });
+
+        $(document).on("click", "[data-choice-setting][data-choice-value]", function () {
+            setMonopadSetting(this.dataset.choiceSetting, this.dataset.choiceValue);
+            applySettingsTabUI();
+            applyExploreLayoutSettings();
         });
 
         $(document).on("click", "#dangan_vn_skin_picker [data-vn-skin]", function () {
@@ -16690,6 +16760,10 @@ function applyExploreLayoutSettings() {
     body.classList.toggle('dangan-moveto-on-minimap', !!getMonopadSetting('moveToOnMinimap'));
     body.classList.toggle('dangan-stbar-autohide', !!getMonopadSetting('autoHideStTopBar'));
     if (!getMonopadSetting('autoHideStTopBar')) body.classList.remove('dangan-stbar-peek');
+    // Steins;Gate-style capsule, along the top or down the left edge.
+    const sgBar = getMonopadSetting('stTopBarStyle') !== 'classic';
+    body.classList.toggle('dangan-stbar-sg', sgBar);
+    body.classList.toggle('dangan-stbar-left', sgBar && getMonopadSetting('stTopBarPosition') === 'left');
     if (!getMonopadSetting('moveToOnMinimap')) closeMinimapMovePopover();
     // Also runs at boot, before the module-level state these touch is
     // initialised — the 2s poll picks them up then.
@@ -16702,6 +16776,144 @@ function applyExploreLayoutSettings() {
     } catch { /* ignore */ }
     overworldSceneController?.render?.();
 }
+
+// The "Show SillyTavern's bar" keybind: brings the auto-hidden bar in (or
+// tucks it away again). With auto-hide off it hides and shows the bar.
+function toggleStTopBarFromKeybind() {
+    const body = document.body;
+    if (body.classList.contains('dangan-stbar-autohide')) body.classList.toggle('dangan-stbar-peek');
+    else body.classList.toggle('dangan-stbar-hidden');
+}
+
+// ── Keybinds (core/input/keybinds.js) ───────────────────────────────────
+const KEYBIND_RUNNERS = {
+    topBar: () => { toggleStTopBarFromKeybind(); return true; },
+    monopad: () => { toggleMonopadFromKeybind(); return true; },
+    transcript: () => vnModeController?.toggleTranscript?.() ?? false,
+    expressions: () => expressionPickerController?.toggle?.() ?? false,
+    hideUi: () => {
+        if (document.body.classList.contains('dangan-ui-hidden')) document.body.classList.remove('dangan-ui-hidden');
+        else enterPhotoMode();
+        return true;
+    },
+};
+let keybindCaptureId = null;
+
+function getKeybinds() {
+    return resolveKeybinds(getMonopadSetting('keybinds'));
+}
+
+// Runs the action bound to `binding`. Returns true when one ran.
+function runKeybind(binding, target) {
+    if (keybindCaptureId || !binding) return false;
+    if (isTypingTarget(target)) return false;
+    if (document.getElementById(TITLE_SCREEN_ID)) return false;
+    const action = actionForBinding(getKeybinds(), binding);
+    if (!action) return false;
+    try { return KEYBIND_RUNNERS[action]?.() !== false; } catch (e) {
+        console.warn(`[Dangan][Keybinds] "${action}" failed:`, e);
+        return false;
+    }
+}
+
+function renderKeybindSettings() {
+    const list = document.getElementById('dangan_keybind_list');
+    if (!list) return;
+    const binds = getKeybinds();
+    if (!list.childElementCount) {
+        list.innerHTML = KEYBIND_ACTIONS.map((a) => `
+            <div class="settings-item">
+                <div class="settings-text">
+                    <span class="settings-label">${a.label}</span>
+                    ${a.note ? `<div class="settings-note">${a.note}</div>` : ''}
+                </div>
+                <button type="button" class="settings-small-button dangan-keybind-btn" data-keybind="${a.id}"></button>
+            </div>`).join('');
+    }
+    list.querySelectorAll('[data-keybind]').forEach((btn) => {
+        const id = btn.dataset.keybind;
+        const capturing = keybindCaptureId === id;
+        btn.textContent = capturing ? 'PRESS A KEY…' : keybindLabel(binds[id]);
+        btn.classList.toggle('is-capturing', capturing);
+        btn.title = capturing ? 'A key, or a right / middle click. Esc cancels, Backspace clears.' : 'Click to change';
+    });
+}
+
+function setKeybind(id, binding) {
+    const binds = getKeybinds();
+    // A binding belongs to one action: take it off any other.
+    if (binding) for (const key of Object.keys(binds)) if (binds[key] === binding) binds[key] = '';
+    binds[id] = binding;
+    setMonopadSetting('keybinds', binds);
+}
+
+(function installKeybinds() {
+    // Capture phase, so a bound key doesn't also reach SillyTavern's hotkeys.
+    window.addEventListener('keydown', (e) => {
+        if (keybindCaptureId) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            const id = keybindCaptureId;
+            if (e.code === 'Escape') keybindCaptureId = null;
+            else if (e.code === 'Backspace' || e.code === 'Delete') { setKeybind(id, ''); keybindCaptureId = null; }
+            else {
+                const binding = bindingFromKeyEvent(e);
+                if (!binding) return; // a lone modifier: keep waiting
+                setKeybind(id, binding);
+                keybindCaptureId = null;
+            }
+            renderKeybindSettings();
+            return;
+        }
+        if (e.repeat) return;
+        if (runKeybind(bindingFromKeyEvent(e), e.target)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        }
+    }, true);
+
+    const onMouse = (e) => {
+        const binding = bindingFromMouseEvent(e);
+        if (!binding) return;
+        if (keybindCaptureId) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            setKeybind(keybindCaptureId, binding);
+            keybindCaptureId = null;
+            renderKeybindSettings();
+            return;
+        }
+        if (runKeybind(binding, e.target)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        }
+    };
+    // Right click (the context menu) and middle click.
+    window.addEventListener('contextmenu', onMouse, true);
+    window.addEventListener('auxclick', (e) => { if (e.button === 1) onMouse(e); }, true);
+
+    document.addEventListener('click', (e) => {
+        const btn = e.target?.closest?.('[data-keybind]');
+        if (btn) {
+            e.preventDefault();
+            keybindCaptureId = keybindCaptureId === btn.dataset.keybind ? null : btn.dataset.keybind;
+            renderKeybindSettings();
+            return;
+        }
+        if (e.target?.closest?.('#dangan_keybind_reset')) {
+            e.preventDefault();
+            keybindCaptureId = null;
+            setMonopadSetting('keybinds', {});
+            renderKeybindSettings();
+            return;
+        }
+        // Clicking elsewhere stops waiting for a key.
+        if (keybindCaptureId) {
+            keybindCaptureId = null;
+            renderKeybindSettings();
+        }
+    });
+})();
 
 // SillyTavern's top bar slides away; a thin strip along the top edge (and the
 // bar itself) brings it back on hover. It stays out while a drawer is open.

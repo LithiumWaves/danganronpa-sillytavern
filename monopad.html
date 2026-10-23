@@ -879,9 +879,31 @@
                     <div class="settings-item">
                         <div class="settings-text">
                             <span class="settings-label">Auto-hide SillyTavern's bar</span>
-                            <div class="settings-note">Point at the top edge to bring it back.</div>
+                            <div class="settings-note">Point at its edge (or use its keybind) to bring it back.</div>
                         </div>
                         <button type="button" class="settings-toggle on" data-setting="autoHideStTopBar"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">SillyTavern's bar style</span>
+                            <div class="settings-note">STEINS;GATE: a rounded capsule of icons, like that game's side menu.</div>
+                        </div>
+                        <div class="settings-lang-toggle" role="group" aria-label="SillyTavern's bar style">
+                            <button class="settings-lang-btn" data-choice-setting="stTopBarStyle" data-choice-value="sg" type="button">STEINS;GATE</button>
+                            <button class="settings-lang-btn" data-choice-setting="stTopBarStyle" data-choice-value="classic" type="button">CLASSIC</button>
+                        </div>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">SillyTavern's bar position</span>
+                            <div class="settings-note">For the STEINS;GATE style: along the top, or down the left edge.</div>
+                        </div>
+                        <div class="settings-lang-toggle" role="group" aria-label="SillyTavern's bar position">
+                            <button class="settings-lang-btn" data-choice-setting="stTopBarPosition" data-choice-value="top" type="button">TOP</button>
+                            <button class="settings-lang-btn" data-choice-setting="stTopBarPosition" data-choice-value="left" type="button">LEFT</button>
+                        </div>
                     </div>
                 </div>
                 <div class="settings-group">
@@ -1253,6 +1275,17 @@
 
                 </div><!-- end dangan-branding-extras -->
             </div><!-- end Branding group -->
+                <div class="settings-group">
+                    <div class="settings-group-title">Keybinds</div>
+                    <div class="settings-note dangan-keybind-intro">Click a binding, then press a key or right / middle click. Esc cancels, Backspace clears. Keybinds don't fire while you type.</div>
+                    <div id="dangan_keybind_list"></div>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Back to the defaults</span>
+                        </div>
+                        <button type="button" class="settings-small-button" id="dangan_keybind_reset">RESET KEYBINDS</button>
+                    </div>
+                </div>
             </section>
 
             <!-- GAMEPLAY -->

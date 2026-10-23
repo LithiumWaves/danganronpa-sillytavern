@@ -2880,6 +2880,24 @@ select.map-pin-edit-input {
     transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
+#trust-debug-controls .trust-debug-amount-row {
+    display: flex;
+    gap: 4px;
+}
+
+#trust-debug-controls #trust-debug-amount {
+    width: 46px;
+    background: #111;
+    color: #fff;
+    border: 1px solid #444;
+    padding: 4px 6px;
+    font-size: 12px;
+}
+
+#trust-debug-controls .trust-debug-amount-row button {
+    flex: 1;
+}
+
 #trust-debug-controls button:hover {
     background: rgba(173, 205, 255, 0.12) !important;
     border-color: rgba(173, 205, 255, 0.5) !important;

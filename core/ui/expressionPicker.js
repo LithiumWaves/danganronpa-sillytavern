@@ -211,6 +211,13 @@ export function createExpressionPicker({ getTargets, listSprites, applySprite, i
         },
         place,
         // Someone new on screen, or a new chat.
+        // The keybind: open or close the drawer when the tab is showing.
+        toggle() {
+            const root = ensureRoot();
+            if (!root.classList.contains("available")) return false;
+            setOpen(!open);
+            return true;
+        },
         refresh() {
             chosen.clear();
             if (open) refreshTargets();
