@@ -1,4 +1,5 @@
 import { escapeHtml, isTypingTarget } from "./titleUtils.js";
+import { VN_SKIN_CHOICES } from "../vnSkins.js";
 
 export const OPTION_SECTIONS = Object.freeze([
     {
@@ -20,8 +21,13 @@ export const OPTION_SECTIONS = Object.freeze([
             { key: "bootAnimations", label: "BOOT ANIMATIONS", type: "toggle", fallback: true },
             { key: "crtEffects", label: "CRT EFFECTS", type: "toggle", fallback: true },
             { key: "crtIntensity", label: "CRT INTENSITY", type: "slider", fallback: 35 },
+        ],
+    },
+    {
+        title: "CUSTOMIZE",
+        rows: [
             { key: "vnModeEnabled", label: "VISUAL NOVEL MODE", type: "toggle", fallback: false },
-            { key: "vnSkin", label: "TEXT BOX STYLE", type: "choice", fallback: "current", choices: [{ value: "current", label: "CURRENT" }, { value: "thh", label: "DR1" }, { value: "sdr2", label: "DR2" }, { value: "v3", label: "V3" }] },
+            { key: "vnSkin", label: "TEXT BOX STYLE", type: "choice", fallback: "current", choices: VN_SKIN_CHOICES.map((c) => ({ value: c.value, label: c.label.toUpperCase() })) },
             { key: "dynamicThemes", label: "DAILY / DEADLY LIFE THEMES", type: "toggle", fallback: true },
         ],
     },

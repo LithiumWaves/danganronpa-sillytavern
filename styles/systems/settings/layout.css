@@ -530,3 +530,65 @@
 .settings-panel #dangan-branding-extras > .bgm-tracks-panel > .bgm-tracks-subtabs {
     margin: 4px 16px 0;
 }
+
+/* Customize → Text box style: a picture card per VN text box style. */
+.settings-panel .settings-vn-skins {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+}
+
+@media (max-width: 480px) {
+    .settings-panel .settings-vn-skins {
+        grid-template-columns: 1fr;
+    }
+}
+
+.settings-panel .settings-vn-skin {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 6px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
+}
+
+.settings-panel .settings-vn-skin img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 768 / 152;
+    object-fit: cover;
+    margin-bottom: 4px;
+    border-radius: 4px;
+    background: #141823;
+}
+
+.settings-panel .settings-vn-skin:hover,
+.settings-panel .settings-vn-skin:focus-visible {
+    border-color: rgba(140, 232, 255, 0.5);
+    outline: none;
+}
+
+.settings-panel .settings-vn-skin.is-on {
+    border-color: rgba(140, 232, 255, 0.85);
+    background: rgba(70, 214, 255, 0.1);
+    box-shadow: 0 0 12px rgba(70, 214, 255, 0.25);
+}
+
+.settings-panel .settings-vn-skin-name {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+}
+
+.settings-panel .settings-vn-skin-game {
+    font-size: 10px;
+    opacity: 0.6;
+}

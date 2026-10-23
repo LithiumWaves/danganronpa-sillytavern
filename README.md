@@ -169,10 +169,16 @@ V3C| BODY_DISCOVERY
 | **Title Screen** | Toggle | On | Shows the title screen when SillyTavern loads. `/title` opens it any time |
 | **Setup Reminder** | Toggle | On | The title screen's SETUP glows while something the game needs isn't set up (sprites, Ultimates and room backgrounds don't count), and NEW GAME / CONTINUE suggest checking it first |
 | **Return to Title** | Button | — | Closes the Monopad and opens the title screen |
-| **Visual Novel Mode** | Toggle | Off | Enables VN-style character sprite and text presentation in chat |
-| **Daily / Deadly Life Dynamic Themes** | Toggle | On | Automatically switches the UI theme based on daytime, nighttime, or investigation state |
 | **Hide Truth Bullet Images** | Toggle | Off | Hides thumbnail images on Truth Bullet entries in the Monopad |
 | **Hide Gift Images** | Toggle | Off | Hides thumbnail images on gift and inventory entries |
+---
+
+### Customize
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| **Visual Novel Mode** | Toggle | Off | Enables VN-style character sprite and text presentation in chat |
+| **Text Box Style** | Picture picker | Classic | How the VN text box looks: Classic (the original box), Trigger Happy Havoc, Goodbye Despair or Killing Harmony. The game styles change colour at night and during investigations. Also picked during NEW GAME |
+| **Daily / Deadly Life Dynamic Themes** | Toggle | On | Automatically switches the UI theme based on daytime, nighttime, or investigation state |
 | **Class Trial Podium** | DEFAULT / CUSTOM | Default | Use the built-in lectern sprite or upload a custom replacement image |
 | **Hide Hope's Peak Branding** | Toggle | Off | Unlocks Announcement Customization — replace default announcement images, voice lines, and text for Daytime, Nighttime, and Body Discovery announcements |
 ---

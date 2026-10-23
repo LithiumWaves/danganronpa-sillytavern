@@ -458,6 +458,89 @@
     line-height: 1.45;
 }
 
+/* New Game → PICK A TEXT BOX: a picture of each VN text box style. */
+.dgn-title-vn-mode {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+    font-size: 13px;
+    letter-spacing: 0.16em;
+}
+
+.dgn-title-textboxes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 14px;
+    transition: opacity 0.15s ease;
+}
+
+@media (max-width: 640px) {
+    .dgn-title-textboxes {
+        grid-template-columns: 1fr;
+    }
+}
+
+.dgn-title-textboxes.is-off {
+    opacity: 0.55;
+}
+
+.dgn-title-textbox {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    padding: 10px 10px 12px;
+    background: rgba(255, 255, 255, 0.04);
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    outline: none;
+    clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%);
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.dgn-title-textbox:hover,
+.dgn-title-textbox:focus-visible {
+    border-color: var(--dgn-title-pink);
+    background: rgba(240, 71, 154, 0.12);
+}
+
+.dgn-title-textbox.is-on {
+    border-color: var(--dgn-title-pink);
+    background: rgba(240, 71, 154, 0.22);
+}
+
+.dgn-title-textbox-img {
+    display: block;
+    aspect-ratio: 768 / 152;
+    margin-bottom: 6px;
+    overflow: hidden;
+    background: #141823;
+}
+
+.dgn-title-textbox-img img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.dgn-title-textbox-name {
+    font-family: "Bruno Ace", "Orbitron", sans-serif;
+    font-size: 15px;
+    letter-spacing: 0.08em;
+}
+
+.dgn-title-textbox-game {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+}
+
 .dgn-title-field {
     display: flex;
     flex-direction: column;

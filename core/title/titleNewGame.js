@@ -11,16 +11,18 @@ import {
     validateCustomMapDetails,
     validateCustomMapRooms,
 } from "./titleMapSetup.js";
+import { VN_SKIN_CHOICES, normalizeVnSkin } from "../vnSkins.js";
 
 export const DEFAULT_STORY_CHAT_NAME = "Hope's Peak - Killing Game";
 export const DEFAULT_MAP_CHOICE = "hopes_peak";
-const STEP_ORDER = Object.freeze(["style", "group", "roster", "map", "rooms", "summary"]);
+const STEP_ORDER = Object.freeze(["style", "group", "roster", "map", "rooms", "textbox", "summary"]);
 const STEP_TITLES = Object.freeze({
     style: "HOW DO YOU WANT TO PLAY?",
     group: "CREATE THE STORY CHAT",
     roster: "CLASS ROSTER",
     map: "CHOOSE THE MAP",
     rooms: "PLACE YOUR ROOMS",
+    textbox: "PICK A TEXT BOX",
     summary: "READY?",
 });
 
@@ -58,6 +60,11 @@ const STEP_HELP = Object.freeze({
         "The <strong>icon</strong> is only how the pin looks on the map. Drag a marker to move it. Use ✕ to remove a room.",
         "<strong>Starting room:</strong> where you are when the game begins. Classmates will be spread across your rooms.",
         "This step covers what you need to start. Later, open the Monopad MAP tab and use <em>Edit Pins</em> to link rooms with doors, set a background or music for each room, or add more.",
+    ],
+    textbox: [
+        "<strong>Visual Novel mode</strong> shows replies one line at a time in a text box over the scene, like the games, instead of as a chat log.",
+        "<strong>The text box style</strong> is only how that box looks. <em>Classic</em> is the extension's original box; the others recreate each game's box and change colour at night and during investigations.",
+        "You can change both later in the Monopad under <em>Settings → Customize</em>, or in <em>Options</em>.",
     ],
     summary: [
         "Pressing <strong>BEGIN</strong> sets everything up: it creates or picks the save, sets up the class roster, switches your persona, saves the map, and creates the story chat (One Main Chat only).",
@@ -137,6 +144,8 @@ export function buildFinishPayload(state) {
         // Empty means Auto (the card named Monokuma).
         hosts,
         persona: state.persona || "",
+        vnSkin: normalizeVnSkin(state.vnSkin),
+        vnMode: state.vnMode !== false,
         map: buildMapPayload(state.mapChoice ?? DEFAULT_MAP_CHOICE, state.customMap),
     };
 }
@@ -171,6 +180,10 @@ export function mountNewGamePanel(container, api) {
         try { return services.getPersonas?.() || { list: [], current: "" }; } catch { return { list: [], current: "" }; }
     })();
 
+    const setting = (key) => {
+        try { return services.settings?.get?.(key); } catch { return undefined; }
+    };
+
     const state = {
         step: "style",
         fresh: false,
@@ -186,6 +199,9 @@ export function mountNewGamePanel(container, api) {
         persona: personas.current || "",
         mapChoice: DEFAULT_MAP_CHOICE,
         customMap: emptyCustomMap(),
+        vnSkin: normalizeVnSkin(setting("vnSkin")),
+        // Visual Novel mode is how the text boxes are seen, so it starts on.
+        vnMode: true,
         placeFloor: 0,
         query: "",
         busy: false,
@@ -446,6 +462,23 @@ export function mountNewGamePanel(container, api) {
             renderMapStep();
         } else if (state.step === "rooms") {
             renderRoomsStep();
+        } else if (state.step === "textbox") {
+            bodyEl.innerHTML = `
+                <div class="dgn-title-vn-mode">
+                    <span>PLAY IN VISUAL NOVEL MODE</span>
+                    <button type="button" class="dgn-title-switch${state.vnMode ? " is-on" : ""}" data-vn-mode role="switch" aria-checked="${state.vnMode}" aria-label="Play in Visual Novel mode"><span></span></button>
+                </div>
+                <div class="dgn-title-textboxes${state.vnMode ? "" : " is-off"}" role="radiogroup" aria-label="Text box style">
+                    ${VN_SKIN_CHOICES.map((c) => `
+                        <button type="button" class="dgn-title-textbox${state.vnSkin === c.value ? " is-on" : ""}" data-vnskin="${c.value}" role="radio" aria-checked="${state.vnSkin === c.value}">
+                            <span class="dgn-title-textbox-img"><img src="${escapeHtml(assetUrl(c.image))}" alt="" loading="lazy" draggable="false"></span>
+                            <span class="dgn-title-textbox-name">${escapeHtml(c.label.toUpperCase())}</span>
+                            <span class="dgn-title-textbox-game">${escapeHtml(c.game)}</span>
+                        </button>`).join("")}
+                </div>
+                <p class="dgn-title-note">${state.vnMode ? "Replies appear line by line in the box you pick." : "Replies stay in SillyTavern's normal chat log. The box you pick is used if you turn Visual Novel mode on later."}</p>
+                ${helpBlock("textbox")}
+            `;
         } else if (state.step === "summary") {
             const payload = buildFinishPayload(state);
             const removed = state.fresh
@@ -462,6 +495,7 @@ export function mountNewGamePanel(container, api) {
                     ${state.mode === "single" ? `<dt>STORY CHAT</dt><dd>${escapeHtml(payload.groupName)} <small>(${payload.groupMembers.length} members)</small></dd>` : ""}
                     ${personaName ? `<dt>YOU</dt><dd>${escapeHtml(personaName)}</dd>` : ""}
                     <dt>MAP</dt><dd>${mapText}</dd>
+                    <dt>TEXT BOX</dt><dd>${escapeHtml(VN_SKIN_CHOICES.find((c) => c.value === payload.vnSkin)?.label || "")}${payload.vnMode ? "" : " <small>(Visual Novel mode off)</small>"}</dd>
                     <dt>HOSTS</dt><dd>${payload.hosts.length ? payload.hosts.map(escapeHtml).join(", ") : `Auto <small>(${escapeHtml(hostNames()[0] || "no card named Monokuma")})</small>`}</dd>
                     <dt>CLASS (${payload.roster.length})</dt>
                     <dd><ul class="dgn-title-summary-roster">${payload.roster.map((r) => `<li><strong>${escapeHtml(r.name)}</strong><span>${escapeHtml(r.ultimate ? `Ultimate ${r.ultimate}` : "Ultimate ???")}</span></li>`).join("")}</ul></dd>
@@ -479,7 +513,7 @@ export function mountNewGamePanel(container, api) {
         if (step === "roster") seedRoster();
         renderStep();
         requestAnimationFrame(() => {
-            const first = bodyEl.querySelector(".dgn-title-map-name, .dgn-title-mode.is-on, .dgn-title-mode, .dgn-title-group-name, .dgn-title-card-pick") || nextBtn;
+            const first = bodyEl.querySelector(".dgn-title-map-name, .dgn-title-mode.is-on, .dgn-title-textbox.is-on, .dgn-title-mode, .dgn-title-group-name, .dgn-title-card-pick") || nextBtn;
             first?.focus({ preventScroll: true });
         });
     };
@@ -686,6 +720,21 @@ export function mountNewGamePanel(container, api) {
             sfx("click");
             renderStep();
             focusRoomName(m.rooms.length - 1);
+            return;
+        }
+        if (t.closest?.("[data-vn-mode]")) {
+            state.vnMode = !state.vnMode;
+            sfx("click");
+            renderStep();
+            bodyEl.querySelector("[data-vn-mode]")?.focus({ preventScroll: true });
+            return;
+        }
+        const skin = t.closest?.("[data-vnskin]");
+        if (skin) {
+            state.vnSkin = normalizeVnSkin(skin.dataset.vnskin);
+            sfx("click");
+            renderStep();
+            bodyEl.querySelector(".dgn-title-textbox.is-on")?.focus({ preventScroll: true });
             return;
         }
         const mode = t.closest?.("[data-mode]");

@@ -24,6 +24,7 @@ import { isHostName, readHostSetting, resolveHostNames } from "./host/hostCards.
 import { createHostStage } from "./host/hostStage.js";
 import { getLocationPromptReference, resolveLocationIdFromText } from "./map/locationPresence.js";
 import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, TRIAL_START_REGEX, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, TRIAL_CONTEXT_REGEX, defaultSettings, extensionFolderPath, extensionName, getDefaultPromptTemplate } from "./core/constants.js";
+import { VN_SKIN_CHOICES, normalizeVnSkin } from "./core/vnSkins.js";
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 import { createCardHygieneController } from "./core/cardHygiene.js";
 import { createOnboardingState } from "./core/onboarding/onboardingState.js";
@@ -101,7 +102,6 @@ let orientationController = null;
 let coachController = null;
 let onboardingState = null;
 let vnModeController = null;
-const VN_SKINS = ['current', 'thh', 'sdr2', 'v3'];
 let monokumaAnnouncementController = null;
 let classTrialMenuController = null;
 let trialManager = null;
@@ -3512,7 +3512,7 @@ function createVnModeController() {
 
     return {
         setSkin(skin) {
-            const next = VN_SKINS.includes(skin) ? skin : 'current';
+            const next = normalizeVnSkin(skin);
             // On <body> so the docked typing bar (outside the overlay) can match.
             document.body.dataset.danganVnSkin = next;
             dockTypingSection();
@@ -7774,7 +7774,7 @@ function setActiveMonopadTab(tab) {
     if (tab === "settings") refreshSavesPanel();
 }
 
-const SETTINGS_SUBTABS = ["audio", "display", "gameplay", "fx", "saves", "ai", "trials"];
+const SETTINGS_SUBTABS = ["audio", "display", "customize", "gameplay", "fx", "saves", "ai", "trials"];
 
 // Monopad Settings shows one section at a time; the last one picked is
 // remembered. PROGRESSION was folded into SAVES.
@@ -8461,6 +8461,19 @@ function applyTrialPodiumOffset() {
     if (sliderEl && document.activeElement !== sliderEl) sliderEl.value = String(value);
 }
 
+// Settings → Customize: a picture card per VN text box style. Built once; the
+// picked one is marked by applySettingsTabUI.
+function renderVnSkinPicker() {
+    const picker = document.getElementById("dangan_vn_skin_picker");
+    if (!picker || picker.childElementCount) return;
+    picker.innerHTML = VN_SKIN_CHOICES.map((c) => `
+        <button type="button" class="settings-vn-skin" data-vn-skin="${c.value}" role="radio" aria-checked="false">
+            <img src="${extensionFolderPath}/assets/${c.image}" alt="" loading="lazy" draggable="false">
+            <span class="settings-vn-skin-name">${c.label}</span>
+            <span class="settings-vn-skin-game">${c.game}</span>
+        </button>`).join("");
+}
+
 function applySettingsTabUI() {
     const tab = extension_settings[extensionName];
     const activeDifficulty = applyRewardDifficultyProfile(tab.rewardDifficulty || defaultSettings.rewardDifficulty);
@@ -8687,9 +8700,13 @@ function applySettingsTabUI() {
     applyDynamicTheme();
     renderTimeTrackerUi();
     vnModeController?.setEnabled?.(!!tab.vnModeEnabled);
-    const vnSkinSelect = document.getElementById("dangan_vn_skin");
-    const vnSkin = VN_SKINS.includes(tab.vnSkin) ? tab.vnSkin : defaultSettings.vnSkin;
-    if (vnSkinSelect) vnSkinSelect.value = vnSkin;
+    const vnSkin = normalizeVnSkin(tab.vnSkin);
+    renderVnSkinPicker();
+    document.querySelectorAll("#dangan_vn_skin_picker [data-vn-skin]").forEach((el) => {
+        const on = el.dataset.vnSkin === vnSkin;
+        el.classList.toggle("is-on", on);
+        el.setAttribute("aria-checked", on ? "true" : "false");
+    });
     vnModeController?.setSkin?.(vnSkin);
     applyAnnouncementCustomisationUI();
     applyLecternUI();
@@ -11258,10 +11275,9 @@ $(".monopad-icon").on("mouseenter", function () {
             setMonopadSetting("cardHygieneDefault", ["ask", "keep", "clean"].includes(next) ? next : "ask");
         });
 
-        $("#dangan_vn_skin").on("change", function () {
-            const next = VN_SKINS.includes(this.value) ? this.value : defaultSettings.vnSkin;
-            setMonopadSetting("vnSkin", next);
-            vnModeController?.setSkin?.(next);
+        $(document).on("click", "#dangan_vn_skin_picker [data-vn-skin]", function () {
+            setMonopadSetting("vnSkin", normalizeVnSkin(this.dataset.vnSkin));
+            applySettingsTabUI();
         });
 
         $("#dangan_reward_difficulty").on("change", function () {
@@ -13823,7 +13839,7 @@ async function createStoryGroupChat(name, memberNames) {
     return data.id;
 }
 
-async function finishTitleScreenNewGame({ fresh, mode, groupName, groupMembers, roster, hosts, persona, map }) {
+async function finishTitleScreenNewGame({ fresh, mode, groupName, groupMembers, roster, hosts, persona, map, vnSkin, vnMode }) {
     const saveMode = mode === "single" ? SAVE_MODES.SINGLE : SAVE_MODES.MULTI;
     // The first NEW GAME on an install makes the first save.
     if (fresh || !saveStore.getActive()) {
@@ -13836,6 +13852,9 @@ async function finishTitleScreenNewGame({ fresh, mode, groupName, groupMembers, 
     setMonopadSetting("hostCards", readHostSetting(hosts));
     applyTitleScreenRoster(roster, { pruneOthers: !fresh });
     applyTitleScreenMap(map);
+    setMonopadSetting("vnSkin", normalizeVnSkin(vnSkin));
+    setTitleToggleSetting("vnModeEnabled", vnMode !== false);
+    applySettingsTabUI();
     try {
         await setTitleScreenPersona(persona);
     } catch (e) {
