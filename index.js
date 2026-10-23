@@ -4887,10 +4887,10 @@ async function triggerTrialStartFromMapPin() {
         const mainGroupId = getMainChatGroupId();
         if (mainGroupId) {
             // One Main Chat: the trial is held in the story chat itself.
-            const ok = await openMainChatForTrial(mainGroupId);
-            const prevDisabled = ok ? await muteMainChatForTrial(roster) : null;
-            if (!prevDisabled) return false;
-            setTrialSession({ mode: SAVE_MODES.SINGLE, groupId: mainGroupId, returnTo: null, prevDisabled, suspended: false });
+            const ok = await openMainChatForTrial(mainGroupId)
+                && await overworldSceneController?.setTrialPresence?.(roster);
+            if (!ok) return false;
+            setTrialSession({ mode: SAVE_MODES.SINGLE, groupId: mainGroupId, returnTo: null, suspended: false });
         } else {
             const returnTo = captureCurrentChatRef();
             const groupId = await createClassTrialGroupChat(roster);
@@ -4908,7 +4908,7 @@ async function triggerTrialStartFromMapPin() {
 
 // ── Class Trial session ──────────────────────────────────────────────────────
 // Where the current trial lives and how to get back out of it. Stored per save
-// ("trialSession" story key): { mode, groupId, returnTo, prevDisabled, suspended }.
+// ("trialSession" story key): { mode, groupId, returnTo, suspended }.
 
 function getTrialSession() {
     const session = extension_settings[extensionName]?.trialSession;
@@ -4956,45 +4956,6 @@ function captureCurrentChatRef() {
     return null;
 }
 
-function findLiveGroup(groupId) {
-    const ctx = window.SillyTavern?.getContext?.();
-    const groups = Array.isArray(ctx?.groups) ? ctx.groups : [];
-    return groups.find(g => g && String(g.id) === String(groupId) && Array.isArray(g.members)) || null;
-}
-
-async function saveGroupDisabledMembers(group, disabled) {
-    const prev = group.disabled_members;
-    group.disabled_members = disabled;
-    try {
-        await editGroup(group.id, true, false);
-        try { await eventSource.emit(event_types.GROUP_UPDATED); } catch {}
-        return true;
-    } catch (err) {
-        group.disabled_members = prev;
-        console.warn("[Dangan][Trial] Couldn't update the main chat's muted members:", err);
-        return false;
-    }
-}
-
-// Mute everyone in the main chat who isn't taking part (and dead participants,
-// as createClassTrialGroupChat does). Resolves to the previous mute list so it
-// can be restored on the way out, or null on failure.
-async function muteMainChatForTrial(roster) {
-    const ctx = window.SillyTavern?.getContext?.();
-    const group = findLiveGroup(ctx?.groupId);
-    if (!group) return null;
-    const stChars = Array.isArray(ctx?.characters) ? ctx.characters : [];
-    const playing = new Set();
-    (Array.isArray(roster) ? roster : []).forEach(name => {
-        if (characters.get(normalizeName(name))?.dead === true) return;
-        const avatar = stChars.find(c => c?.name === name)?.avatar;
-        if (avatar) playing.add(avatar);
-    });
-    const prevDisabled = Array.isArray(group.disabled_members) ? [...group.disabled_members] : [];
-    const disabled = group.members.filter(av => !playing.has(av));
-    return await saveGroupDisabledMembers(group, disabled) ? prevDisabled : null;
-}
-
 // The trial manager only narrows seating to the roster when the trial shares
 // the main chat with everyone else; a trial group already holds just them.
 function getMainChatTrialRoster() {
@@ -5008,11 +4969,7 @@ function getMainChatTrialRoster() {
 // mutes back, otherwise go back to the chat the trial was started from.
 async function exitTrialContext(session) {
     if (session?.mode === SAVE_MODES.SINGLE) {
-        const group = isCurrentGroup(session.groupId) ? findLiveGroup(session.groupId) : null;
-        if (group && Array.isArray(session.prevDisabled)) {
-            await saveGroupDisabledMembers(group, session.prevDisabled);
-        }
-        overworldSceneController?.schedulePresenceSync?.();
+        await overworldSceneController?.setTrialPresence?.(null);
         overworldSceneController?.render?.();
     } else if (session && isCurrentGroup(session.groupId)) {
         if (session.returnTo) {
@@ -5064,9 +5021,8 @@ async function resumeClassTrial() {
         const next = { ...session, suspended: false };
         if (session.mode === SAVE_MODES.SINGLE) {
             if (!await openMainChatForTrial(session.groupId)) return false;
-            const prevDisabled = await muteMainChatForTrial(extension_settings[extensionName]?.trialRoster);
-            if (!prevDisabled) return false;
-            next.prevDisabled = prevDisabled;
+            const roster = extension_settings[extensionName]?.trialRoster;
+            if (!await overworldSceneController?.setTrialPresence?.(Array.isArray(roster) ? roster : [])) return false;
         } else if (!isCurrentGroup(session.groupId)) {
             next.returnTo = captureCurrentChatRef();
             await openGroupById(session.groupId);
@@ -5084,7 +5040,7 @@ async function resumeClassTrial() {
 }
 
 // "Start New" over a suspended trial: drop its saved phase so it can't be
-// resumed. Suspending already gave the main chat its mutes back.
+// resumed. Suspending already handed the main chat's mutes back to the room.
 function discardSuspendedTrial(session) {
     const trials = extension_settings[extensionName]?.trials;
     if (trials) delete trials[`group_${session.groupId}`];
@@ -10615,7 +10571,7 @@ jQuery(async () => {
                 window.dangan_overworld = overworldSceneController;
             } catch (e) {
                 console.error("[Dangan][Overworld] Failed to initialize overworld controller:", e);
-                overworldSceneController = { render: () => {}, randomizeLocations: () => {}, notifyPlayerMovedTo: () => {}, ensureCharacterLocations: () => {}, destroy: () => {}, onSingleChatOverworldChanged: () => {}, schedulePresenceSync: () => {} };
+                overworldSceneController = { render: () => {}, randomizeLocations: () => {}, notifyPlayerMovedTo: () => {}, ensureCharacterLocations: () => {}, destroy: () => {}, onSingleChatOverworldChanged: () => {}, schedulePresenceSync: () => {}, setTrialPresence: async () => false };
             }
 
             const initialRender = (tag) => {

@@ -148,6 +148,9 @@ export function createOverworldSceneController({
     let conversationViewOpen = false;
     let lastPresenceChatKey = "";
     let presenceTimer = null;
+    // While a Class Trial is held in the main chat, presence follows the trial
+    // roster instead of the player's room. Set through setTrialPresence().
+    let trialPresenceNames = null;
     let presenceWarned = false;
     const PRESENCE_DEBOUNCE_MS = 250;
 
@@ -2760,13 +2763,13 @@ export function createOverworldSceneController({
     }
 
     async function syncRoomPresence() {
-        if (!isSingleChatOverworldEnabled?.()) return;
-        if (isTrialUiActive()) return;
-        if (typeof editGroup !== "function") return;
+        if (!isSingleChatOverworldEnabled?.()) return false;
+        if (!trialPresenceNames && isTrialUiActive()) return false;
+        if (typeof editGroup !== "function") return false;
         const ctx = window.SillyTavern?.getContext?.();
-        if (!ctx?.groupId) return;
+        if (!ctx?.groupId) return false;
         const group = findLiveGroup(ctx);
-        if (!group || !Array.isArray(group.members)) return;
+        if (!group || !Array.isArray(group.members)) return false;
 
         if (!presenceWarned) {
             presenceWarned = true;
@@ -2778,9 +2781,9 @@ export function createOverworldSceneController({
         }
 
         const playerRoom = getCurrentLocationId();
-        const inRoomNames = isRoomLocationId(playerRoom)
-            ? getCharactersInRoom(playerRoom).map((c) => c.name)
-            : [];
+        const inRoomNames = trialPresenceNames
+            ? [...trialPresenceNames]
+            : (isRoomLocationId(playerRoom) ? getCharactersInRoom(playerRoom).map((c) => c.name) : []);
         const allChars = Array.isArray(ctx.characters) ? ctx.characters
             : (Array.isArray(window.characters) ? window.characters : []);
         const charByAvatar = indexCharsByAvatar(allChars);
@@ -2806,7 +2809,7 @@ export function createOverworldSceneController({
         if (muteSame && hideMutedAlready) {
             syncGroupMemberDisabledDom(nextDisabled, allChars);
             await emitGroupUpdated();
-            return;
+            return true;
         }
 
         const prevDisabled = [...currentDisabled];
@@ -2820,10 +2823,27 @@ export function createOverworldSceneController({
             try { onPresenceSynced?.(); } catch (err) {
                 console.warn("[Dangan][Overworld] onPresenceSynced failed:", err);
             }
+            return true;
         } catch (err) {
             group.disabled_members = prevDisabled;
             group.hideMutedSprites = prevHide;
             console.warn("[Dangan][Overworld] editGroup failed while syncing room presence:", err);
+            return false;
+        }
+    }
+
+    // Unmute only `names` (dead ones stay muted) for a Class Trial held in the
+    // main chat; null hands presence back to the player's room. Applies right
+    // away, so a queued room sync can't overwrite it.
+    async function setTrialPresence(names) {
+        clearTimeout(presenceTimer);
+        presenceTimer = null;
+        trialPresenceNames = Array.isArray(names) ? names.filter(Boolean) : null;
+        try {
+            return await syncRoomPresence();
+        } catch (err) {
+            console.warn("[Dangan][Overworld] trial presence sync failed:", err);
+            return false;
         }
     }
 
@@ -2853,6 +2873,7 @@ export function createOverworldSceneController({
         destroy,
         onSingleChatOverworldChanged,
         schedulePresenceSync,
+        setTrialPresence,
         // Diagnostic — call from DevTools to see why nothing is on screen.
         _diagnose() {
             const mp = getMapPanelController?.();
