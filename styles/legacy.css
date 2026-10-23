@@ -8603,6 +8603,19 @@ body.dangan-trial-vn-chat-hidden #chat {
     opacity: 1;
 }
 
+/* A selected room pin opens its editor on the next click. */
+.map-custom-pin-tooltip-hint {
+    display: none;
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    opacity: 0.7;
+}
+
+.map-custom-pin.highlighted .map-custom-pin-tooltip-hint {
+    display: block;
+}
+
 .map-custom-pin.highlighted {
     filter: brightness(1.15);
 }

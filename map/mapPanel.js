@@ -587,6 +587,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                         ${tooltipBgImageHtml}
                         <span class="map-custom-pin-tooltip-name">${escapeHtml(pin.label)}</span>
                         <span class="map-custom-pin-tooltip-id">${escapeHtml(pin.locationId || '')}</span>
+                        ${pin.type === "room" ? '<span class="map-custom-pin-tooltip-hint">CLICK AGAIN TO EDIT</span>' : ''}
                     </span>
                 </button>
             `);
@@ -1657,7 +1658,9 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             $panel.find(".map-pins-icon-section").prop("hidden", !isRoom);
         });
 
-        // Custom pin click — monomachine opens machine overlay, trial opens trial screen
+        // Custom pin click — selects the pin (highlighted on the map and in the
+        // pin list). Clicking a selected room pin again opens its editor;
+        // monomachine opens machine overlay, trial opens trial screen.
         $panel.off("click.customPin").on("click.customPin", selectors.customPin, function () {
             if (state.pinPlacementMode) return;
             if ($(this).data("drag-moved")) { $(this).removeData("drag-moved"); return; }
@@ -1665,7 +1668,11 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             const pin = state.customPins.find(p => p.id === pinId);
             if (!pin) return;
             playSfx?.(getSfx?.().click);
-            if (pin.type === "monomachine") {
+            const wasSelected = state.highlightedPinId === pinId;
+            selectPin($panel, pinId);
+            if (pin.type === "room") {
+                if (wasSelected) openPinEditor($panel, pinId);
+            } else if (pin.type === "monomachine") {
                 openMachineOverlay($panel);
             } else if (pin.type === "trial") {
                 onTrialStartRequest?.({ source: "map_pin", area: state.area, floor: state.floor });
@@ -1784,13 +1791,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
 
         $panel.off("click.pinListHighlight").on("click.pinListHighlight", ".map-pins-list-name", function () {
             const pinId = $(this).closest(".map-pins-list-item").data("pin-id");
-            state.highlightedPinId = state.highlightedPinId === pinId ? null : pinId;
-            $panel.find(selectors.customPin).removeClass("highlighted");
-            $panel.find(".map-pins-list-item").removeClass("active");
-            if (state.highlightedPinId) {
-                $panel.find(`[data-custom-pin-id="${state.highlightedPinId}"]`).addClass("highlighted");
-                $(this).closest(".map-pins-list-item").addClass("active");
-            }
+            selectPin($panel, state.highlightedPinId === pinId ? null : pinId, { scrollList: false });
         });
 
         // DRAG PIN to reposition
@@ -2196,6 +2197,27 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             });
         });
 
+    }
+
+    // Highlight a pin on the map and in the pin list (null clears it), and
+    // bring its list row into view.
+    function selectPin($panel, pinId, { scrollList = true } = {}) {
+        state.highlightedPinId = pinId || null;
+        $panel.find(selectors.customPin).removeClass("highlighted");
+        $panel.find(".map-pins-list-item").removeClass("active");
+        if (!state.highlightedPinId) return;
+        $panel.find(`${selectors.customPin}[data-custom-pin-id="${state.highlightedPinId}"]`).addClass("highlighted");
+        const $row = $panel.find(".map-pins-list-item").filter(function () {
+            return String($(this).data("pin-id")) === String(state.highlightedPinId);
+        }).addClass("active");
+        if (scrollList) $row.get(0)?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    }
+
+    // The same editor as the pin list's ✏ button.
+    function openPinEditor($panel, pinId) {
+        $panel.find(".map-pins-list-item").filter(function () {
+            return String($(this).data("pin-id")) === String(pinId);
+        }).find(".map-pins-list-edit").trigger("click");
     }
 
     function renderPinList($panel) {

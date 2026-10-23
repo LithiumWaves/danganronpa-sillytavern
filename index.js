@@ -4627,6 +4627,48 @@ function playBgmPath(path, settingKey = null) {
     console.log(`[Dangan][BGM] Playing track (${settingKey ?? "?"}): ${path}`);
 }
 
+// A room with its own music sets aside whatever was playing (the track and
+// where it was), and leaving for a room without one picks it back up.
+let _pinBgmSaved = null;
+
+function enterPinBgm(path) {
+    if (!path) return;
+    if (investigationTrackAudio && investigationTrackAudio.src
+        && decodeURI(investigationTrackAudio.src).endsWith(decodeURI(path))) return; // already on
+    if (!_pinBgmSaved) {
+        _pinBgmSaved = {
+            audio: investigationTrackAudio,
+            settingKey: bgmCurrentSettingKey,
+            list: [...bgmCurrentList],
+            index: bgmCurrentIndex,
+        };
+        // Detach it so playBgmPath leaves the saved element (and its place) alone.
+        if (investigationTrackAudio) { try { investigationTrackAudio.pause(); } catch (_) {} }
+        investigationTrackAudio = null;
+    }
+    playBgmPath(path);
+}
+
+function leavePinBgm() {
+    const saved = _pinBgmSaved;
+    if (!saved) return;
+    _pinBgmSaved = null;
+    if (investigationTrackAudio) {
+        const roomTrack = investigationTrackAudio;
+        investigationTrackAudio = null;
+        try { roomTrack.pause(); } catch (_) {}
+    }
+    bgmCurrentSettingKey = saved.settingKey;
+    bgmCurrentList = saved.list;
+    bgmCurrentIndex = saved.index;
+    if (saved.audio) {
+        investigationTrackAudio = saved.audio;
+        if (!bgmUserPaused) investigationTrackAudio.play().catch(() => {});
+    } else if (!bgmUserPaused) {
+        playPhaseTrack();
+    }
+}
+
 function playTrackFromSetting(settingKey, { forceDifferent = false } = {}) {
     const tracks = getMonopadSetting(settingKey) || [];
     if (!tracks.length) return;
@@ -4679,6 +4721,7 @@ function openAssignedSongPicker() {
         onPick: ({ path, settingKey }) => {
             try { dynamicSongsController?.holdManual?.(); } catch { /* ignore */ }
             bgmUserPaused = false;
+            _pinBgmSaved = null; // the player's pick replaces what was set aside
             playSpecificTrack(path, settingKey);
         },
     });
@@ -15457,7 +15500,8 @@ function performPinArrivalWithFade(pin) {
     setTimeout(() => {
         setCurrentLocationId(pin.locationId);
         if (pin.bg)  mapPanelController.switchChatBackground?.(pin.bg);
-        if (pin.bgm) mapPanelController.playPinBgm?.(pin.bgm);
+        if (pin.bgm) enterPinBgm(pin.bgm);
+        else leavePinBgm();
         mapPanelController.highlightPinByLocationId?.(pin.locationId);
         // Companion characters (1-on-1 partner or group members) follow the
         // player into the new room so their overworld presence stays accurate.
