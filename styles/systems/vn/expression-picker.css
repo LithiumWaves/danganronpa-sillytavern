@@ -237,3 +237,34 @@
         top: 12vh;
     }
 }
+
+/* Out of the way while the Monopad is open. */
+body.dangan-monopad-open #dangan-expr-picker {
+    display: none;
+}
+
+/* AUTO switch in the drawer header: Automatic expressions. */
+#dangan-expr-picker .dangan-expr-auto {
+    margin-left: auto;
+    margin-right: 6px;
+    height: 22px;
+    padding: 0 8px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 999px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.7);
+    font: 800 10px/1 "M PLUS Rounded 1c", "Noto Sans JP", sans-serif;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+}
+
+#dangan-expr-picker .dangan-expr-auto.is-on {
+    border-color: var(--dex-gold);
+    color: var(--dex-gold);
+}
+
+#dangan-expr-picker .dangan-expr-auto:hover,
+#dangan-expr-picker .dangan-expr-auto:focus-visible {
+    background: rgba(255, 255, 255, 0.08);
+    outline: none;
+}

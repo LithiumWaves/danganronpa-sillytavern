@@ -2,7 +2,8 @@
 // tab on the right edge opens a drawer listing everyone on screen plus you,
 // with a grid of their sprites. Picking one puts that sprite on screen until
 // the character's next line changes it. Works in conversations and Class
-// Trials. Settings → Customize → "Expression picker" hides it entirely.
+// Trials. Settings → Customize → "Expression picker" hides it entirely; its
+// AUTO switch is the "Automatic expressions" setting.
 //
 // index.js supplies who is on screen (getTargets) and how to show a sprite
 // (applySprite); this module only builds the drawer.
@@ -12,7 +13,7 @@ const ROOT_ID = "dangan-expr-picker";
 // Files that aren't expressions to pick from.
 const SKIP_STEM = /(-half$|^death-portrait$|^mugshot$)/i;
 
-export function createExpressionPicker({ getTargets, listSprites, applySprite, isAvailable, playSfx }) {
+export function createExpressionPicker({ getTargets, listSprites, applySprite, isAvailable, isAuto, setAuto, playSfx }) {
     let open = false;
     let selectedKey = null;
     let targets = [];
@@ -32,6 +33,7 @@ export function createExpressionPicker({ getTargets, listSprites, applySprite, i
             <div class="dangan-expr-drawer" id="dangan-expr-drawer" role="dialog" aria-label="Expressions">
                 <div class="dangan-expr-head">
                     <span class="dangan-expr-title">EXPRESSIONS</span>
+                    <button type="button" class="dangan-expr-auto" role="switch" title="Sprites change with what each character says"></button>
                     <button type="button" class="dangan-expr-close" aria-label="Hide expressions" title="Hide">›</button>
                 </div>
                 <div class="dangan-expr-people" role="tablist"></div>
@@ -41,6 +43,12 @@ export function createExpressionPicker({ getTargets, listSprites, applySprite, i
         root.querySelector(".dangan-expr-tab").addEventListener("click", (e) => {
             e.stopPropagation();
             setOpen(!open);
+        });
+        root.querySelector(".dangan-expr-auto").addEventListener("click", (e) => {
+            e.stopPropagation();
+            setAuto?.(!isAuto?.());
+            playSfx?.("click");
+            renderAuto();
         });
         root.querySelector(".dangan-expr-close").addEventListener("click", (e) => {
             e.stopPropagation();
@@ -73,6 +81,28 @@ export function createExpressionPicker({ getTargets, listSprites, applySprite, i
         root.addEventListener("pointerdown", (e) => e.stopPropagation());
         document.body.appendChild(root);
         return root;
+    }
+
+    function renderAuto() {
+        const btn = ensureRoot().querySelector(".dangan-expr-auto");
+        const on = isAuto?.() !== false;
+        btn.textContent = on ? "AUTO: ON" : "AUTO: OFF";
+        btn.classList.toggle("is-on", on);
+        btn.setAttribute("aria-checked", String(on));
+    }
+
+    // Sits just under the day / phase row of the top-right HUD when it's
+    // showing; otherwise at its default height. Publishes where this stack
+    // ends as --dangan-hud-stack-bottom, so your sprite window starts below it.
+    function place() {
+        const root = ensureRoot();
+        const row = document.querySelector("#dangan-hud-topright > #dangan-phase-hud:not([hidden]) .dangan-phase-chip");
+        const rect = row?.getBoundingClientRect?.();
+        const rowBottom = rect && rect.height ? Math.round(rect.bottom) : 0;
+        root.style.top = rowBottom ? `${rowBottom + 8}px` : "";
+        const tab = root.querySelector(".dangan-expr-tab");
+        const tabBottom = root.classList.contains("available") ? Math.round(tab.getBoundingClientRect().bottom) : 0;
+        document.documentElement.style.setProperty("--dangan-hud-stack-bottom", `${Math.max(rowBottom, tabBottom)}px`);
     }
 
     function setOpen(next) {
@@ -163,12 +193,15 @@ export function createExpressionPicker({ getTargets, listSprites, applySprite, i
             let show = false;
             try { show = !!isAvailable(); } catch { show = false; }
             root.classList.toggle("available", show);
+            place();
+            if (show) renderAuto();
             if (!show && open) {
                 open = false;
                 root.classList.remove("open");
                 root.querySelector(".dangan-expr-tab").setAttribute("aria-expanded", "false");
             }
         },
+        place,
         // Someone new on screen, or a new chat.
         refresh() {
             chosen.clear();

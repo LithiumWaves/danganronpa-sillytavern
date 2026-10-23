@@ -33,6 +33,11 @@ export function setVfxGcpLoadSuppressed(val) { vfxGcpLoadSuppressed = !!val; }
 let vfxGcpGroupActive = false;
 export function setVfxGcpGroupActive(val) { vfxGcpGroupActive = !!val; }
 
+// Automatic expressions off (Settings → Customize): sprites keep their face,
+// so the expression effects that would come with a new one don't play.
+let autoExpressionsGate = () => true;
+export function setAutoExpressionsGate(fn) { autoExpressionsGate = typeof fn === "function" ? fn : () => true; }
+
 const VFX_MAP = {
     realization:   { css: "dr-vfx-realization",   duration: 1000, sfx: "realization.wav" },
     surprise:      { css: "dr-vfx-surprise",       duration: 1000, sfx: "surprise.wav"   },
@@ -661,7 +666,7 @@ function setupObserver() {
                 // generic triggerVfx path here to avoid it targeting the stale
                 // gcpCurrentFloat (which still points to the previous speaker
                 // at the time this observer fires).
-                if (!vfxGcpGroupActive) triggerVfx(expression);
+                if (!vfxGcpGroupActive && autoExpressionsGate()) triggerVfx(expression);
             }
         }
     });

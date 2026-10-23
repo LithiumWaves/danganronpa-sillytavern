@@ -43,7 +43,7 @@ import { createEffectLedger, emptyEffects, hasEffects, messageIdentity } from ".
 import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers } from "./monokuma/announcementController.js";
 import { createClassTrialMenuController } from "./trial/menu/classTrialMenu.js";
 import { createTrialManager, TrialPhases } from "./trial/trialManager.js";
-import { initVfxSystem, onVfxChatChanged, setExpressionTarget, setEmotionBiasResolver, setVfxGcpLoadSuppressed, setVfxGcpGroupActive, triggerVfxOnElement } from "./vfx/vfxSystem.js";
+import { initVfxSystem, onVfxChatChanged, setExpressionTarget, setEmotionBiasResolver, setVfxGcpLoadSuppressed, setVfxGcpGroupActive, triggerVfxOnElement, setAutoExpressionsGate } from "./vfx/vfxSystem.js";
 import { initEmotionFontsSystem, getEmotionFont } from "./vfx/emotionFontsSystem.js";
 import { deleteSprite as deleteSpriteFile, fetchSprites as fetchSpriteFiles, initSpriteManager, uploadSprite as uploadSpriteFile } from "./vfx/spriteManager.js";
 import {
@@ -4833,6 +4833,8 @@ function refreshPhaseHud() {
         ? getStatusLine({ phase: getCurrentPhase(), day: ensureTimeTrackerState().day })
         : getCurrentStatusLine();
     if (!hud.querySelector(".dangan-phase-menu").hidden) renderPhaseMenu();
+    // The EXPRESSIONS tab hangs under this row.
+    expressionPickerController?.place?.();
 }
 
 // A looping track from one of the LOCATIONS playlists (Shop, Monokuma),
@@ -11144,7 +11146,10 @@ jQuery(async () => {
                 const folder = getPromeSpriteFolder();
                 return folder ? getSpriteUrl(folder, label) : Promise.resolve(null);
             },
-            classify: classifyPlayerText,
+            classify: (text) => isAutoExpressionsEnabled() ? classifyPlayerText(text) : Promise.resolve(null),
+            isCollapsed: () => !!getMonopadSetting("playerInsetCollapsed"),
+            setCollapsed: (v) => setMonopadSetting("playerInsetCollapsed", !!v),
+            playSfx: (name) => { if (sfx?.[name]) playSfx(sfx[name]); },
             getLastUserMessage: () => {
                 const chat = window.SillyTavern?.getContext?.()?.chat;
                 if (!Array.isArray(chat)) return "";
@@ -11169,6 +11174,11 @@ jQuery(async () => {
             getTargets: getExpressionPickerTargets,
             listSprites: listExpressionPickerSprites,
             applySprite: applyExpressionPickerSprite,
+            isAuto: isAutoExpressionsEnabled,
+            setAuto: (on) => {
+                setMonopadSetting("autoExpressionsEnabled", !!on);
+                applySettingsTabUI();
+            },
             isAvailable: () => {
                 if (getMonopadSetting("expressionPickerEnabled") === false) return false;
                 const body = document.body.classList;
@@ -11187,6 +11197,7 @@ jQuery(async () => {
                 raf = requestAnimationFrame(() => { raf = null; expressionPickerController?.sync(); });
             };
             new MutationObserver(sync).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+            window.addEventListener("resize", sync);
             sync();
         }
         monokumaAnnouncementController = createMonokumaAnnouncementController({
@@ -12834,6 +12845,7 @@ debugSTGlobals();
     initDeathPortraitGenerator({ getPlayerTarget: getPlayerSpriteTarget });
     setExpressionTarget(() => trialManager?.getGcpSpeakerImg?.() ?? document.getElementById('expression-image'));
     setEmotionBiasResolver(rollBiasedEmotion);
+    setAutoExpressionsGate(isAutoExpressionsEnabled);
 
     function promptForBlackened(suggested = '') {
         return new Promise(resolve => {
@@ -14033,6 +14045,10 @@ STATEMENT: <third statement>`;
 
             try { dynamicSongsController?.noteFromImage?.(imgEl, src); } catch { /* ignore */ }
             try { dynamicSongsController?.scheduleEvaluate?.({ restorePhaseOnMiss: true }); } catch { /* ignore */ }
+
+            // Automatic expressions off: everyone on screen keeps the sprite
+            // they have (or one picked in the expression picker).
+            if (!isAutoExpressionsEnabled()) return;
 
             if (window.__DREX_OUTFIT_DEBUG) console.log('[DREX-outfit] onExpressionChange', { src, prefix: getActiveOutfitPrefix(), curLoc: getCurrentLocationId(), cls: imgEl.className, id: imgEl.id, parent: imgEl.parentElement?.className });
 
@@ -15345,6 +15361,12 @@ function applyExpressionPickerSprite(target, path, stem) {
         try { triggerVfxOnElement(expression, img); } catch { /* ignore */ }
     }
     if (target.isPlayer) playerInsetController?.showUrl(path);
+}
+
+// Settings → Customize → Automatic expressions. Off: sprites only change
+// when picked in the expression picker.
+function isAutoExpressionsEnabled() {
+    return getMonopadSetting("autoExpressionsEnabled") !== false;
 }
 
 // Your sprite in conversations shows with VN mode and a Prome sprite folder.

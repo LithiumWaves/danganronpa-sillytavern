@@ -46,6 +46,15 @@ html body.dangan-hud-color-chapter .dangan-current-room-label {
     color: var(--dangan-hud-chapter-hex);
 }
 
+/* The day / phase row under it takes the same color. */
+html body.dangan-hud-color-chapter #dangan-hud-topright > #dangan-phase-hud {
+    --dangan-phase-accent: rgba(var(--dangan-hud-chapter-rgb), 0.95);
+}
+
+html body.dangan-hud-color-chapter #dangan-hud-topright > #dangan-phase-hud .dangan-phase-chip-label {
+    color: color-mix(in srgb, var(--dangan-hud-chapter-hex) 35%, #fff 65%);
+}
+
 /* ── Map display (minimap frame, its diamonds, MOVE TO panel) ─────────── */
 
 html body.dangan-hud-color-map #dangan-minimap .dangan-minimap-square {

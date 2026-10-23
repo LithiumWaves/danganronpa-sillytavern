@@ -72,6 +72,10 @@ export const defaultSettings = {
     playerInsetEnabled: false,
     // The EXPRESSIONS tab on the right edge (conversations and trials).
     expressionPickerEnabled: true,
+    // Characters' sprites change with what they say. Off: only by hand.
+    autoExpressionsEnabled: true,
+    // Your sprite window tucked away behind its stripes.
+    playerInsetCollapsed: false,
     // SillyTavern streaming checkboxes VN mode switched off, to switch back on.
     vnPausedStStreaming: [],
     // Half-Sprite Mode global adjustments (apply to every character): a size

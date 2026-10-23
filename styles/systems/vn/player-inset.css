@@ -2,23 +2,27 @@
    on the right, after Killing Harmony's protagonist window — a teal
    halftone frame, the room showing through, and yellow stripes at its
    foot. The text box sits over its bottom edge. Only while a conversation
-   is open in VN mode, never during a Class Trial. */
+   is open in VN mode, never during a Class Trial or with the Monopad open.
+   Clicking the stripes tucks the window away behind them. */
 
 #dangan-player-inset {
     --dpi-accent: var(--dangan-vn-skin-highlight, #ffd400);
     --dpi-slant: 22%;
+    /* Below the top-right HUD and the EXPRESSIONS tab (set by
+       core/ui/expressionPicker.js), ending at the same height either way. */
+    --dpi-top: max(27vh, calc(var(--dangan-hud-stack-bottom, 0px) + 10px));
     position: fixed;
     right: 0;
-    top: 27vh;
+    top: var(--dpi-top);
     width: clamp(170px, 22vw, 360px);
-    height: 52vh;
+    height: max(30vh, calc(79vh - var(--dpi-top)));
     z-index: 2147482900;
     display: none;
     pointer-events: none;
     user-select: none;
 }
 
-body.dangan-player-inset-on:is(.dangan-ow-chat-exit-active, .dangan-ow-conversation-view):not(.dangan-trial-active):not(.dangan-ui-hidden):not(.dangan-ow-edit-mode) #dangan-player-inset.has-sprite {
+body.dangan-player-inset-on:is(.dangan-ow-chat-exit-active, .dangan-ow-conversation-view):not(.dangan-trial-active):not(.dangan-ui-hidden):not(.dangan-ow-edit-mode):not(.dangan-monopad-open) #dangan-player-inset.has-sprite {
     display: block;
     animation: dangan-player-inset-in 360ms cubic-bezier(0.2, 0.8, 0.25, 1) both;
 }
@@ -66,22 +70,59 @@ body.dangan-player-inset-on:is(.dangan-ow-chat-exit-active, .dangan-ow-conversat
     filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45));
 }
 
-/* Yellow stripes on the slanted foot, like the game's corner accent. */
-#dangan-player-inset .dangan-player-inset-stripes {
+/* Yellow stripes on the slanted foot, like the game's corner accent. They
+   are a button: the window slides away behind them and comes back. */
+#dangan-player-inset .dangan-player-inset-toggle {
     position: absolute;
     left: -2%;
     bottom: -2%;
     width: 46%;
     height: 22%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    pointer-events: auto;
+}
+
+#dangan-player-inset .dangan-player-inset-stripes {
+    position: absolute;
+    inset: 0;
     clip-path: polygon(30% 0, 52% 0, 22% 100%, 0 100%, 0 70%);
     background: repeating-linear-gradient(115deg, var(--dpi-accent) 0 7px, transparent 7px 13px);
     filter: drop-shadow(1px 1px 0 rgba(0, 0, 0, 0.5));
+    transition: filter 140ms ease, transform 140ms ease;
+}
+
+#dangan-player-inset .dangan-player-inset-toggle:hover .dangan-player-inset-stripes,
+#dangan-player-inset .dangan-player-inset-toggle:focus-visible .dangan-player-inset-stripes {
+    filter: drop-shadow(1px 1px 0 rgba(0, 0, 0, 0.5)) brightness(1.25);
+    transform: translateX(-3px);
+}
+
+#dangan-player-inset .dangan-player-inset-toggle:focus-visible {
+    outline: none;
+}
+
+#dangan-player-inset .dangan-player-inset-frame {
+    transition: transform 320ms cubic-bezier(0.2, 0.8, 0.25, 1), opacity 320ms ease;
+}
+
+/* Collapsed: only the stripes stay, at the right edge. */
+#dangan-player-inset.collapsed .dangan-player-inset-frame {
+    transform: translateX(110%);
+    opacity: 0;
+}
+
+#dangan-player-inset.collapsed .dangan-player-inset-toggle {
+    left: auto;
+    right: -4%;
 }
 
 @media (max-width: 700px) {
     #dangan-player-inset {
-        top: 16vh;
+        --dpi-top: max(16vh, calc(var(--dangan-hud-stack-bottom, 0px) + 8px));
         width: 34vw;
-        height: 42vh;
+        height: max(24vh, calc(58vh - var(--dpi-top)));
     }
 }

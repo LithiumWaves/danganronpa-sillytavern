@@ -62,7 +62,7 @@ function frameSprite(img, win) {
     img.style.left = `${win.clientWidth * 0.58 - centerX}px`;
 }
 
-export function createPlayerInset({ getSpriteUrl, classify, getLastUserMessage }) {
+export function createPlayerInset({ getSpriteUrl, classify, getLastUserMessage, isCollapsed, setCollapsed, playSfx }) {
     let enabled = false;
     let label = "neutral";
     let token = 0;
@@ -79,8 +79,29 @@ export function createPlayerInset({ getSpriteUrl, classify, getLastUserMessage }
                     <img class="dangan-player-inset-sprite" alt="" draggable="false">
                 </div>
             </div>
-            <div class="dangan-player-inset-stripes"></div>
+            <button type="button" class="dangan-player-inset-toggle" aria-label="Hide your sprite" title="Hide your sprite">
+                <span class="dangan-player-inset-stripes"></span>
+            </button>
         `;
+        // The stripes tuck the window away behind them, and bring it back.
+        const toggle = el.querySelector(".dangan-player-inset-toggle");
+        const applyCollapsed = (collapsed) => {
+            el.classList.toggle("collapsed", collapsed);
+            const label = collapsed ? "Show your sprite" : "Hide your sprite";
+            toggle.setAttribute("aria-label", label);
+            toggle.title = label;
+            toggle.setAttribute("aria-expanded", String(!collapsed));
+        };
+        applyCollapsed(!!isCollapsed?.());
+        toggle.addEventListener("pointerdown", (e) => e.stopPropagation());
+        toggle.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const next = !el.classList.contains("collapsed");
+            applyCollapsed(next);
+            setCollapsed?.(next);
+            playSfx?.(next ? "close" : "open");
+        });
         const img = el.querySelector("img");
         const win = el.querySelector(".dangan-player-inset-window");
         img.addEventListener("error", () => el.classList.remove("has-sprite"));
@@ -90,7 +111,7 @@ export function createPlayerInset({ getSpriteUrl, classify, getLastUserMessage }
             requestAnimationFrame(() => frameSprite(img, win));
         });
         if (typeof ResizeObserver === "function") {
-            new ResizeObserver(() => frameSprite(img, win)).observe(win);
+            new ResizeObserver(() => { if (win.clientHeight) frameSprite(img, win); }).observe(win);
         }
         document.body.appendChild(el);
         return el;
