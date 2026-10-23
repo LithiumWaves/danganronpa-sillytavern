@@ -268,3 +268,52 @@ body.dangan-monopad-open #dangan-expr-picker {
     background: rgba(255, 255, 255, 0.08);
     outline: none;
 }
+
+/* One labeled row per emotion. The label sticks to the top while its
+   sprites scroll under it. */
+#dangan-expr-picker .dangan-expr-group {
+    grid-column: 1 / -1;
+    position: sticky;
+    top: -4px;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 6px -10px 0;
+    padding: 5px 10px 4px;
+    background: linear-gradient(90deg, rgba(233, 185, 73, 0.2), rgba(233, 185, 73, 0) 70%), rgba(16, 12, 10, 0.97);
+    border-top: 1px solid rgba(233, 185, 73, 0.35);
+}
+
+#dangan-expr-picker .dangan-expr-group:first-child {
+    margin-top: 0;
+    border-top: 0;
+}
+
+#dangan-expr-picker .dangan-expr-group::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(233, 185, 73, 0.5), transparent);
+    order: 1;
+}
+
+#dangan-expr-picker .dangan-expr-group-name {
+    color: var(--dex-gold);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+#dangan-expr-picker .dangan-expr-group-count {
+    order: 2;
+    min-width: 18px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: rgba(233, 185, 73, 0.18);
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 10px;
+    font-weight: 800;
+    text-align: center;
+}

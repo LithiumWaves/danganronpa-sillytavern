@@ -92,3 +92,35 @@ html body.dangan-hud-color-map #dangan-moveto-panel {
 .dangan-hud-color-input[hidden] {
     display: none;
 }
+
+/* ── Overworld buttons (EXPLORE, MENU and the rest) ──────────────────────
+   They drew their border and hover from SillyTavern's theme color. Now:
+   the phase color by default; the left column (under the song display)
+   follows the song color and the right column with MENU's list (under the
+   chapter display) follows the chapter color. They all read
+   --SmartThemeBorderColor, so it is redefined here for just these. */
+
+#dangan-overworld .dangan-ow-room-btn,
+#dangan-ow-action-menu {
+    --dangan-ow-accent: var(--dangan-phase-accent, rgba(60, 130, 230, 0.9));
+    --SmartThemeBorderColor: var(--dangan-ow-accent);
+}
+
+html body.dangan-hud-color-song #dangan-overworld .dangan-ow-room-btn:not(.dangan-ow-call-btn):not(.dangan-ow-edit-btn):not(.dangan-ow-tag-btn) {
+    --dangan-ow-accent: rgba(var(--dangan-hud-song-rgb), 0.9);
+}
+
+html body.dangan-hud-color-chapter #dangan-overworld :is(.dangan-ow-call-btn, .dangan-ow-edit-btn, .dangan-ow-tag-btn),
+html body.dangan-hud-color-chapter #dangan-ow-action-menu {
+    --dangan-ow-accent: rgba(var(--dangan-hud-chapter-rgb), 0.9);
+}
+
+/* Hover / open: a deep shade of the color, so the white label stays
+   readable on light colors like yellow. (`html body` outranks style.css's
+   own hover rules, which come after this file.) */
+html body #dangan-overworld .dangan-ow-room-btn:hover,
+html body.dangan-ow-action-menu-open #dangan-overworld .dangan-ow-menu-btn,
+html body #dangan-ow-action-menu .dangan-ow-action-item:hover,
+html body #dangan-ow-action-menu .dangan-ow-action-item:focus-visible {
+    background: color-mix(in srgb, var(--dangan-ow-accent) 55%, rgb(12, 12, 18));
+}

@@ -15344,9 +15344,15 @@ async function listExpressionPickerSprites(target) {
     const resp = await fetch(`/api/sprites/get?name=${encodeURIComponent(target.folder)}`);
     if (!resp.ok) return [];
     const sprites = await resp.json();
+    // Grouped by emotion (joy, joy-2 and pool-joy are all "joy"), neutral first.
+    const rank = (group) => (group === 'neutral' ? '' : group);
     return (Array.isArray(sprites) ? sprites : [])
-        .map((s) => ({ path: s.path, stem: spriteFileStem(s) }))
-        .sort((a, b) => a.stem.localeCompare(b.stem, undefined, { numeric: true }));
+        .map((s) => {
+            const stem = spriteFileStem(s);
+            return { path: s.path, stem, group: emotionFromSpriteStem(stem) || stem };
+        })
+        .sort((a, b) => rank(a.group).localeCompare(rank(b.group))
+            || a.stem.localeCompare(b.stem, undefined, { numeric: true }));
 }
 
 // Until their next line changes it.

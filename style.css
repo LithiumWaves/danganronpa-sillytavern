@@ -1803,6 +1803,20 @@ body.dangan-ow-single-chat #expression-wrapper {
     top: 240px;
     width: 256px;
 }
+/* "Tag Along" (without the MENU) — right column, under Edit. */
+#dangan-overworld .dangan-ow-tag-btn {
+    left: auto;
+    right: -10px;
+    top: 320px;
+    width: 240px;
+    transform: skewX(-22deg);
+}
+#dangan-overworld .dangan-ow-tag-btn:hover {
+    transform: skewX(-22deg) translateY(-2px);
+}
+#dangan-overworld .dangan-ow-tag-btn > .dangan-ow-room-btn-label {
+    transform: skewX(22deg);
+}
 /* "Edit Character Positions" — right column, second slot. */
 #dangan-overworld .dangan-ow-edit-btn {
     top: 280px;

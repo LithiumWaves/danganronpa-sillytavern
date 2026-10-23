@@ -165,7 +165,19 @@ export function createExpressionPicker({ getTargets, listSprites, applySprite, i
         const current = chosen.get(target.key) || target.currentPath || "";
         const currentStem = stemOf(current);
         grid.innerHTML = "";
+        // One labeled row per emotion (sprites arrive grouped).
+        let group = null;
         for (const s of items) {
+            const nextGroup = s.group || s.stem;
+            if (nextGroup !== group) {
+                group = nextGroup;
+                const head = document.createElement("div");
+                head.className = "dangan-expr-group";
+                const count = items.filter((x) => (x.group || x.stem) === group).length;
+                head.innerHTML = `<span class="dangan-expr-group-name"></span><span class="dangan-expr-group-count">${count}</span>`;
+                head.firstElementChild.textContent = group;
+                grid.appendChild(head);
+            }
             const cell = document.createElement("button");
             cell.type = "button";
             cell.className = "dangan-expr-cell" + (s.stem === currentStem ? " is-on" : "");
