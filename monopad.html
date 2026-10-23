@@ -1341,6 +1341,17 @@
                             <div class="settings-note">Teach the AI the hidden markers for Truth Bullets, trust, investigations and announcements. With this on, remove the marker prompts from your preset. Off during Class Trials.</div>
                         </div>
                         <button type="button" class="settings-toggle" data-setting="markerPromptsEnabled"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Share trust levels</span>
+                            <div class="settings-note">With AI instructions on, also tell the AI how much each character in the chat trusts or distrusts you, so they act like it. Hosts like Monokuma are never included.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="markerTrustLevelsEnabled"></button>
+                    </div>
+
+                    <div class="settings-item">
                         <details class="settings-prompt-editor">
                             <summary class="settings-prompt-summary">EDIT AI INSTRUCTIONS</summary>
                             <div class="settings-prompt-body">
@@ -1353,6 +1364,11 @@
                                 <textarea class="settings-prompt-textarea" data-setting="markerSocialPromptTemplate" data-template-key="markerSocial" rows="6" spellcheck="false"></textarea>
                                 <div class="settings-prompt-actions">
                                     <button type="button" class="settings-small-button settings-prompt-reset" data-setting="markerSocialPromptTemplate" data-template-key="markerSocial">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">TRUST LEVELS (how each character here feels about you; sent outside Class Trials, never for hosts)</div>
+                                <textarea class="settings-prompt-textarea" data-setting="markerTrustLevelsPromptTemplate" data-template-key="markerTrustLevels" rows="4" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="markerTrustLevelsPromptTemplate" data-template-key="markerTrustLevels">RESET TO DEFAULT</button>
                                 </div>
                                 <div class="settings-prompt-help">INVESTIGATION START (sent during daily life)</div>
                                 <textarea class="settings-prompt-textarea" data-setting="markerInvestigationPromptTemplate" data-template-key="markerInvestigation" rows="6" spellcheck="false"></textarea>
@@ -2172,22 +2188,34 @@
     </div>
 </div>
 
-<div id="trust-rankup-overlay">
-    <div class="trust-rankup-core">
-        <div class="trust-pie-stage">
-            <div class="trust-pie-halo" aria-hidden="true"></div>
-            <div class="trust-pie-ring" aria-hidden="true"></div>
-            <svg id="trust-decagram" viewBox="0 0 200 200"></svg>
-            <div class="trust-rank-hub">
-                <div class="trust-rank-value" id="trust-rank-value"></div>
-                <div class="trust-rank-caption" id="trust-rank-caption"></div>
-            </div>
-        </div>
-        <div class="trust-copy">
-            <div class="trust-banner" id="trust-rankup-banner"></div>
-            <div class="trust-char-name" id="trust-rankup-name"></div>
+<!-- Trust ceremony (trust/trustAnimations.js, styles/systems/trust/ceremony.css):
+     slanted slabs, the character's sprite cut-in, hand-cut lettering and a
+     rank card with the ten-shard meter. -->
+<div id="trust-rankup-overlay" aria-hidden="true">
+    <div class="tr-speedlines" aria-hidden="true"></div>
+    <div class="tr-burst" aria-hidden="true"></div>
+    <div class="tr-slab tr-slab-a" aria-hidden="true"><div class="tr-halftone"></div></div>
+    <div class="tr-slab tr-slab-b" aria-hidden="true"><div class="tr-halftone"></div></div>
+    <div class="tr-cutin" aria-hidden="true">
+        <div class="tr-cutin-frame">
+            <img class="tr-cutin-img" alt="" draggable="false">
+            <div class="tr-cutin-fallback"></div>
         </div>
     </div>
+    <div class="tr-title" role="status" aria-live="polite"></div>
+    <div class="tr-card">
+        <div class="tr-card-face">
+            <svg id="trust-decagram" viewBox="0 0 200 200"></svg>
+            <div class="tr-rank">
+                <div class="tr-rank-caption"></div>
+                <div class="tr-rank-value"></div>
+            </div>
+        </div>
+        <div class="tr-card-name"></div>
+    </div>
+    <div class="tr-pieces" aria-hidden="true"></div>
+    <div class="tr-flash" aria-hidden="true"></div>
+    <div class="tr-hint">CLICK TO CONTINUE</div>
 </div>
 
 <div id="monokuma-lesson-overlay" aria-hidden="true">

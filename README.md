@@ -111,12 +111,14 @@ Supplied in this extension are a wide array of minigames, including:
 ## V3C trigger format (chat parsing)
 The extension scans assistant messages for these patterns.
 
-**You don't have to teach the AI these yourself.** With **AI INSTRUCTIONS** on (Settings → Gameplay), the extension adds the rules to the prompt itself and sends only the ones that fit the current phase: evidence markers during investigations, trust markers outside Class Trials, and the investigation-start and announcement markers during daily life. Edit each block from the same setting. It's on for new players. If you're updating and already pasted the rules from `v3c-marker-prompts/prompts.txt` into your preset, a toast offers to turn it on; remove the pasted rules when you do. The extension warns you if both are active.
+**You don't have to teach the AI these yourself.** With **AI INSTRUCTIONS** on (Settings → Gameplay), the extension adds the rules to the prompt itself and sends only the ones that fit the current phase: evidence markers during investigations, trust markers outside Class Trials, and the investigation-start and announcement markers during daily life. With **Share trust levels** on, it also tells the AI how much each character in the chat trusts or distrusts you (hosts like Monokuma are never included). Edit each block from the same setting. It's on for new players. If you're updating and already pasted the rules from `v3c-marker-prompts/prompts.txt` into your preset, a toast offers to turn it on; remove the pasted rules when you do. The extension warns you if both are active.
 
 - `V3C| TB: <title> || <description>`
 - `V3C| SOCIAL: <name>`
 - `V3C| SOCIAL_UP: <name>`
 - `V3C| SOCIAL_DOWN: <name>`
+- `V3C| SOCIAL_DROP: <name> | <2-5>` (loses that many ranks at once; can run past Trust 1 into distrust)
+- `V3C| SOCIAL_BREAK: <name> | <1-10>` (trust shatters straight into that level of distrust; someone already in distrust sinks that much further)
 - `V3C| INVESTIGATION_START` (plays the Investigation Start banner/sfx and shows a toast with UNDO; with AI INSTRUCTIONS off, it also tries to enable an `Investigation Time` toggle in your current preset)
 - `V3C| TRIAL_START` (opens the Class Trial menu, which asks before the trial begins)
 - `V3C| BODY_DISCOVERY` (plays a separate static/shake body discovery cutscene using `assets/sfx/etc/despairnoise.mp3`)
@@ -131,6 +133,8 @@ V3C| TB: Bloody Handprint || Found on the west hall window.
 V3C| SOCIAL: Kyoko Kirigiri
 V3C| SOCIAL_UP: Aoi Asahina
 V3C| SOCIAL_DOWN: Byakuya Togami
+V3C| SOCIAL_DROP: Toko Fukawa | 3
+V3C| SOCIAL_BREAK: Leon Kuwata | 4
 V3C| INVESTIGATION_START
 V3C| TRIAL_START
 V3C| BODY_DISCOVERY

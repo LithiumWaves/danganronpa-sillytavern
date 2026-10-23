@@ -12,8 +12,8 @@ import { SlashCommandEnumValue } from '../../../slash-commands/SlashCommandEnumV
 import { initTruthBullets, handleTruthBullet, setNextTruthBulletSfxVariant, getTruthBulletByLocationId, showTruthBulletByLocationId, showTruthBulletById, getTruthBullets, clearAllTruthBullets, reloadTruthBullets, removeTruthBulletById, migrateTruthBulletImages } from "./truth/truthBullets.js";
 import { configureImageUploads, fetchAsDataUrl, isDataUrl, uploadDataUrlImage, uploadImagesIn } from "./core/media/uploadImage.js";
 import { initTrustAnimations } from "./trust/trustAnimations.js";
-import { increaseTrust, decreaseTrust } from "./trust/trustAPI.js";
-import { clampTrust, nextTrustDown, nextTrustUp } from "./trust/trustState.js";
+import { increaseTrust, decreaseTrust, breakTrust } from "./trust/trustAPI.js";
+import { clampTrust, nextTrustDown, nextTrustUp, stepTrust, trustDistance } from "./trust/trustState.js";
 import { createItemsPanelController, SKILL_PARAM_MAP, applySkillModifier } from "./items/itemsPanel.js";
 import { createRewardSystem } from "./items/rewardSystem.js";
 import { createSocialPanelController } from "./social/socialPanel.js";
@@ -23,7 +23,7 @@ import { DORM_PLAYER_KEY } from "./map/mapLinks.js";
 import { isHostName, readHostSetting, resolveHostNames } from "./host/hostCards.js";
 import { createHostStage } from "./host/hostStage.js";
 import { getLocationPromptReference, resolveLocationIdFromText } from "./map/locationPresence.js";
-import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, TRIAL_START_REGEX, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, TRIAL_CONTEXT_REGEX, defaultSettings, extensionFolderPath, extensionName, getDefaultPromptTemplate } from "./core/constants.js";
+import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, TRIAL_START_REGEX, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_DROP_REGEX, SOCIAL_BREAK_REGEX, parseSocialMarkerTarget, SOCIAL_REGEX, SOCIAL_UP_REGEX, TRIAL_CONTEXT_REGEX, defaultSettings, extensionFolderPath, extensionName, getDefaultPromptTemplate } from "./core/constants.js";
 import { VN_SKIN_CHOICES, normalizeVnSkin } from "./core/vnSkins.js";
 import { HUD_COLOR_DEFAULT, HUD_COLOR_TARGETS, hudColorVars, normalizeHudColorMode, resolveHudColor } from "./core/ui/hudColors.js";
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
@@ -39,6 +39,7 @@ import { createPhaseHistory, derivePhase, getNextStepHint, getPhaseActions, getS
 import { notify } from "./core/ui/notify.js";
 import { SAVE_MODES, createSaveStore } from "./core/saves/saveStore.js";
 import { MARKER_BLOCKS, MARKER_PROMPT_KEY, buildMarkerPrompt, textHasMarkerInstructions } from "./core/prompts/markerPrompts.js";
+import { TRUST_LEVELS_PROMPT_KEY, buildTrustLevelsPrompt } from "./core/prompts/trustLevelsPrompt.js";
 import { createEffectLedger, emptyEffects, hasEffects, messageIdentity } from "./core/ledger/effectLedger.js";
 import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers } from "./monokuma/announcementController.js";
 import { createClassTrialMenuController } from "./trial/menu/classTrialMenu.js";
@@ -7207,12 +7208,48 @@ function presetHasMarkerInstructions() {
     }
 }
 
+// Characters in the open chat for the trust levels prompt: the chat's
+// character, or a group's members who aren't muted (in One Main Chat, the
+// people in the room). Hosts, the dead, the missing and anyone not on the
+// roster are left out.
+function getTrustPromptEntries() {
+    const ctx = window.SillyTavern?.getContext?.();
+    if (!ctx) return [];
+    const chars = Array.isArray(ctx.characters) ? ctx.characters : [];
+    let names = [];
+    if (ctx.groupId) {
+        const group = (Array.isArray(ctx.groups) ? ctx.groups : []).find((g) => String(g.id) === String(ctx.groupId));
+        const muted = new Set(group?.disabled_members || []);
+        names = (group?.members || [])
+            .filter((avatar) => !muted.has(avatar))
+            .map((avatar) => chars.find((c) => c?.avatar === avatar)?.name)
+            .filter(Boolean);
+    } else if (ctx.characterId != null && chars[ctx.characterId]?.name) {
+        names = [chars[ctx.characterId].name];
+    }
+    const out = [];
+    for (const name of names) {
+        if (isHostCharacter(name)) continue;
+        const char = characters.get(normalizeName(name));
+        if (!char || char.dead || char.missing) continue;
+        out.push({ name: char.name || name, level: char.trustLevel ?? 1 });
+    }
+    return out;
+}
+
 function syncMarkerPrompts() {
     const setPrompt = window.SillyTavern?.getContext?.()?.setExtensionPrompt || window.setExtensionPrompt;
     if (typeof setPrompt !== "function") return;
     const enabled = !!getMonopadSetting("markerPromptsEnabled");
     const text = buildMarkerPrompt({ enabled, phase: getCurrentPhase(), getTemplate: getMarkerTemplate });
     setPrompt(MARKER_PROMPT_KEY, text, 0, 0, false, "system");
+
+    // How the characters here feel about the player (never hosts).
+    const shareTrust = enabled && getMonopadSetting("markerTrustLevelsEnabled") !== false && getCurrentPhase() !== "TRIAL";
+    const trustText = shareTrust
+        ? buildTrustLevelsPrompt({ template: getMarkerTemplate("trustLevels"), entries: getTrustPromptEntries() })
+        : "";
+    setPrompt(TRUST_LEVELS_PROMPT_KEY, trustText, 0, 0, false, "system");
 
     if (enabled && !markerPresetWarningShown && presetHasMarkerInstructions()) {
         markerPresetWarningShown = true;
@@ -7310,7 +7347,7 @@ function recordMessageEffects(ref, fx, totalsBefore) {
 function rekeyTrustSignatures(entry) {
     for (const item of entry.trust) {
         const char = characters.get(item.key);
-        const next = `${item.dir > 0 ? "UP" : "DOWN"}||${item.key}||id:${entry.identity}`;
+        const next = `${item.kind || (item.dir > 0 ? "UP" : "DOWN")}||${item.key}||id:${entry.identity}`;
         if (char?.trustHistory?.has(item.sig)) {
             char.trustHistory.delete(item.sig);
             char.trustHistory.add(next);
@@ -7333,9 +7370,10 @@ function revertMessageEffects(entry) {
         if (item.legacySig) char.trustHistory?.delete(item.legacySig);
         if (item.before === item.after) continue;
         const current = char.trustLevel ?? item.after;
+        // Changed again since: undo the same number of ranks it moved.
         char.trustLevel = current === item.after
             ? item.before
-            : clampTrust(item.dir > 0 ? nextTrustDown(current) : nextTrustUp(current));
+            : stepTrust(current, trustDistance(item.after, item.before));
         undone.push(`${char.name} trust ${item.dir > 0 ? "up" : "down"}`);
     }
     for (const item of entry.gifts || []) {
@@ -7450,7 +7488,7 @@ function processAllMessages() {
 // ---- Social Trust UP ----
 for (const regex of [SOCIAL_REGEX, SOCIAL_UP_REGEX]) {
 for (const match of rawText.matchAll(regex)) {
-    const name = match[1]?.trim();
+    const { name } = parseSocialMarkerTarget(match[1]);
     if (!name) continue;
 
     const key = normalizeName(name);
@@ -7474,7 +7512,7 @@ for (const match of rawText.matchAll(regex)) {
 
 // ---- Social Trust DOWN ----
 for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
-    const name = match[1]?.trim();
+    const { name } = parseSocialMarkerTarget(match[1]);
     if (!name) continue;
 
     const key = normalizeName(name);
@@ -7492,6 +7530,29 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
     const trustBefore = char.trustLevel ?? 1;
     decreaseTrust(char);
     fx.trust.push({ key, dir: -1, before: trustBefore, after: char.trustLevel ?? trustBefore, sig: signature, legacySig: legacySignature });
+}
+
+// ---- Social Trust DROP (several ranks) / BREAK (shattered into distrust) ----
+for (const [regex, kind] of [[SOCIAL_DROP_REGEX, "DROP"], [SOCIAL_BREAK_REGEX, "BREAK"]]) {
+for (const match of rawText.matchAll(regex)) {
+    const { name, amount } = parseSocialMarkerTarget(match[1]);
+    if (!name) continue;
+
+    const key = normalizeName(name);
+    const char = characters.get(key);
+    if (!char) continue;
+
+    const legacySignature = `${kind}||${key}||${rawText}`;
+    const signature = ledgerRef ? trustSignature(kind, key, ledgerRef) : legacySignature;
+    if (char.trustHistory.has(legacySignature) || char.trustHistory.has(signature)) continue;
+
+    char.trustHistory.add(signature);
+    char.trustHistory.add(legacySignature);
+    const trustBefore = char.trustLevel ?? 1;
+    if (kind === "DROP") decreaseTrust(char, { steps: Math.min(5, Math.max(2, amount ?? 2)) });
+    else breakTrust(char, Math.min(10, Math.max(1, amount ?? 1)));
+    fx.trust.push({ key, dir: -1, kind, before: trustBefore, after: char.trustLevel ?? trustBefore, sig: signature, legacySig: legacySignature });
+}
 }
 
         // ---- Investigation Start ----
@@ -11313,7 +11374,9 @@ jQuery(async () => {
         if (trialManager?.getState?.() === TrialPhases.NON_STOP_DEBATE) return;
         playSfx(sound);
     },
-    getSetting: getMonopadSetting
+    getSetting: getMonopadSetting,
+    // The ceremony's sprite cut-in.
+    getPortraitUrl: (name, emotion) => getSpriteUrl(name, emotion).catch(() => null),
 });
 
         itemsPanelController = createItemsPanelController({

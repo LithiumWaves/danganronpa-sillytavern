@@ -66,6 +66,8 @@ export const defaultSettings = {
     vnModeEnabled: false,
     // VN text box look: "current", or a recreation of one game's box.
     vnSkin: "current",
+    // AI instructions also tell the AI each present character's trust level.
+    markerTrustLevelsEnabled: true,
     // VN typewriter speed in percent (25–300); 100 is the original speed.
     vnTypingSpeed: 100,
     // Show the player's Prome user sprite in a window during conversations.
@@ -295,8 +297,15 @@ When the player's interaction with a character meaningfully deepens trust, under
 V3C| SOCIAL: Character Full Name
 When it seriously damages trust (betrayal, hostility, real harm; not playful teasing), add this instead:
 V3C| SOCIAL_DOWN: Character Full Name
+If something drastic badly damages trust (a serious betrayal or cruelty), use this instead, with how many ranks they lose (2 to 5):
+V3C| SOCIAL_DROP: Character Full Name | 3
+If it destroys their trust in the player outright, turning it into distrust, use this instead, with how deep their distrust now runs (1 to 10):
+V3C| SOCIAL_BREAK: Character Full Name | 4
 - Use the character's full name as it's displayed.
-- At most one of each per reply. Use them sparingly; not every friendly moment counts.`,
+- At most one trust marker per character per reply. Use them sparingly; not every friendly moment counts, and SOCIAL_DROP and SOCIAL_BREAK are rare: most bad moments are a plain SOCIAL_DOWN.`,
+    markerTrustLevels: `[TRUST LEVELS]
+How each character here currently feels about the player. Let it color how they act toward them; never mention ranks or numbers.
+{{trust_levels}}`,
     markerInvestigation: `[INVESTIGATION MARKER]
 If a body is discovered and the story moves into the investigation, put this on its own line at the start of that reply:
 V3C| INVESTIGATION_START
@@ -397,6 +406,19 @@ export const XP_REWARDS = {
 export const SOCIAL_REGEX = /V3C\|\s*SOCIAL:\s*([^\n\r]+)/g;
 export const SOCIAL_UP_REGEX = /V3C\|\s*SOCIAL_UP:\s*([^\n\r]+)/g;
 export const SOCIAL_DOWN_REGEX = /V3C\|\s*SOCIAL_DOWN:\s*([^\n\r]+)/g;
+// Several ranks at once: "V3C| SOCIAL_DROP: Name | 3" (2–5 ranks).
+export const SOCIAL_DROP_REGEX = /V3C\|\s*SOCIAL_DROP:\s*([^\n\r]+)/g;
+// Trust shattered into Distrust N: "V3C| SOCIAL_BREAK: Name | 4" (1–10).
+export const SOCIAL_BREAK_REGEX = /V3C\|\s*SOCIAL_BREAK:\s*([^\n\r]+)/g;
+
+// "Name | 3" (or "Name, 3" / "Name 3") → { name, amount }; amount is null
+// when the marker gives no number.
+export function parseSocialMarkerTarget(text) {
+    const raw = String(text || "").trim();
+    const m = raw.match(/^(.*?)(?:\s*[|｜,:]\s*|\s+)(\d{1,2})\s*[|｜]?\s*$/);
+    const name = (m ? m[1] : raw).replace(/[|｜,:\s]+$/, "").trim();
+    return { name, amount: m ? Number(m[2]) : null };
+}
 export const INVESTIGATION_START_REGEX = /V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/gi;
 export const TRIAL_START_REGEX = /V3C\s*[|｜]\s*TRIAL(?:\s*[_\-]?\s*)START\b/gi;
 export const TRIAL_CONTEXT_REGEX = /V3C\|\s*TRIAL_CONTEXT:\s*([^|\n\r]+?)(?:\|\|\s*([^|\n\r]+?))?(?:\|\|\s*([^\n\r]+))?$/gm;
