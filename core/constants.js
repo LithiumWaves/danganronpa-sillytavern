@@ -64,6 +64,8 @@ export const defaultSettings = {
     monomonoBgmVolume: 40,
     mapPresencePinsEnabled: true,
     vnModeEnabled: false,
+    // VN text box look: "current", or a recreation of one game's box.
+    vnSkin: "current",
     // Half-Sprite Mode global adjustments (apply to every character): a size
     // multiplier on the cropped sprite and a vertical pixel offset.
     halfspriteScale: 1,

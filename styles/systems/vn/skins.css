@@ -1,0 +1,799 @@
+/* VN text box skins and tucked-away box controls.
+
+   <body data-dangan-vn-skin="current|thh|sdr2|v3"> picks the look (Settings →
+   Text box style). "current" keeps the original box; the others recreate the
+   dialogue boxes of Trigger Happy Havoc, Goodbye Despair and Killing Harmony.
+   Class Trials keep their own aesthetic, so every rule skips them.
+
+   The frame carries inline fallback styles and the phase themes restyle it
+   with !important, hence the !important on the skin's box properties. */
+
+
+/* ── Tucked-away controls (every skin) ─────────────────────────────────────
+   The top controls and the Prev/Next/Swipe/Regen row float above the box and
+   only show while it is hovered or focused, or after the ⋯ toggle (touch).
+   The progress bar becomes a thin line along the bottom edge. */
+
+#dangan-vn-overlay .dangan-vn-chrome-toggle {
+    display: none;
+}
+
+body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame {
+    overflow: visible;
+    clip-path: inset(-240px -80px 0 -80px);
+}
+
+body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-toggle {
+    display: inline-flex;
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    z-index: 3;
+    width: 30px;
+    height: 24px;
+    padding: 0;
+    font-size: 16px;
+    opacity: 0.6;
+}
+
+body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-toggle:hover,
+body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame.chrome-open .dangan-vn-chrome-toggle {
+    opacity: 1;
+}
+
+body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-header {
+    padding-right: 36px;
+}
+
+body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-controls,
+body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-nav {
+    position: absolute;
+    top: auto;
+    right: 0;
+    left: auto;
+    margin: 0;
+    padding: 0 0 6px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+    width: auto;
+    max-width: 100%;
+    overflow: visible;
+    z-index: 3;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    /* Linger a moment so the pointer can cross from the box to the rows. */
+    transition: opacity 160ms ease 300ms, visibility 0s linear 460ms;
+}
+
+body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-controls {
+    bottom: 100%;
+}
+
+body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-nav {
+    bottom: calc(100% + 32px);
+}
+
+body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-position {
+    opacity: 0;
+    transition: opacity 160ms ease 300ms;
+}
+
+body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame.chrome-open :is(.dangan-vn-controls, .dangan-vn-nav),
+body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame:focus-within :is(.dangan-vn-controls, .dangan-vn-nav) {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: opacity 160ms ease, visibility 0s;
+}
+
+body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame.chrome-open .dangan-vn-position,
+body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame:focus-within .dangan-vn-position {
+    opacity: 1;
+    transition: opacity 160ms ease;
+}
+
+@media (hover: hover) {
+    body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame:hover :is(.dangan-vn-controls, .dangan-vn-nav) {
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+        transition: opacity 160ms ease, visibility 0s;
+    }
+
+    body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame:hover .dangan-vn-position {
+        opacity: 1;
+        transition: opacity 160ms ease;
+    }
+}
+
+body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-footer {
+    display: block;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-input {
+    display: none;
+}
+
+body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-progress {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 2px;
+    border-radius: 0;
+    z-index: 1;
+}
+
+@media (max-width: 700px) {
+    body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-controls,
+    body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-nav {
+        left: 0;
+        right: 0;
+    }
+
+    body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-controls {
+        bottom: 100%;
+    }
+
+    /* Six buttons in a 3-wide grid: two 36px rows above the controls row. */
+    body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-nav {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        bottom: calc(100% + 36px);
+    }
+
+    body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-toggle {
+        width: 34px;
+        height: 30px;
+    }
+}
+
+
+/* ── Shared by the three game skins ─────────────────────────────────────── */
+
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame {
+    animation: none !important;
+    filter: none !important;
+    transition: none !important;
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    isolation: isolate;
+    color: #ffffff;
+    min-height: 150px;
+}
+
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame::before,
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+}
+
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-nameplate {
+    animation: none !important;
+    transition: none !important;
+    text-shadow: none;
+    filter: none;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    letter-spacing: 0.01em;
+    text-transform: none;
+    margin: 0;
+}
+
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-position {
+    display: none;
+}
+
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-text-wrap {
+    min-height: 0;
+    scrollbar-width: thin;
+}
+
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-text {
+    min-height: 0;
+    padding-top: 0;
+    color: #ffffff;
+    letter-spacing: 0.005em;
+}
+
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-segment-dialogue {
+    color: #ffffff;
+}
+
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-segment-narrator {
+    color: #d2d6dc;
+    text-shadow: none;
+}
+
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-segment-action {
+    color: #a9d8e8;
+    font-style: italic;
+    text-shadow: none;
+}
+
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-text.has-action .dangan-vn-segment-action {
+    filter: none;
+}
+
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-segment-bold {
+    color: var(--dangan-vn-skin-highlight);
+    text-shadow: none;
+}
+
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-progress {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-progress-fill {
+    background: var(--dangan-vn-skin-accent);
+}
+
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-control {
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    background: rgba(18, 18, 18, 0.9);
+    color: #f2f2f2;
+}
+
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-control:is(:hover, :focus-visible) {
+    border-color: var(--dangan-vn-skin-accent);
+    background: rgba(40, 40, 40, 0.95);
+}
+
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-advance {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 2;
+}
+
+#dangan-vn-overlay .dangan-vn-advance {
+    display: none;
+}
+
+/* The docked typing bar under the box. */
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) .dangan-vn-compose-docked {
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: rgba(24, 24, 24, 0.9) !important;
+    box-shadow: none !important;
+    backdrop-filter: none;
+}
+
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) .dangan-vn-compose-docked::before {
+    animation: none;
+}
+
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) .dangan-vn-compose-docked :is(#send_textarea, textarea, .send_textarea) {
+    border: 1px solid rgba(255, 255, 255, 0.16) !important;
+    border-radius: 4px !important;
+    background: rgba(0, 0, 0, 0.4) !important;
+    color: #ffffff !important;
+    font-weight: 500;
+}
+
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) .dangan-vn-compose-docked .dangan-vn-compose-collapse-toggle,
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) .dangan-vn-compose-docked > button,
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) .dangan-vn-compose-docked > .menu_button,
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) .dangan-vn-compose-docked > [type="button"],
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) .dangan-vn-compose-docked > * > button,
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) .dangan-vn-compose-docked > * > .menu_button,
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) .dangan-vn-compose-docked > * > [type="button"] {
+    border: 1px solid rgba(255, 255, 255, 0.18) !important;
+    border-radius: 4px !important;
+    background: rgba(12, 12, 12, 0.9) !important;
+    color: #f2f2f2 !important;
+}
+
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) .dangan-vn-compose-docked .dangan-vn-compose-collapse-toggle:hover,
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) .dangan-vn-compose-docked > button:hover,
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) .dangan-vn-compose-docked > .menu_button:hover,
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) .dangan-vn-compose-docked > [type="button"]:hover,
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) .dangan-vn-compose-docked > * > button:hover,
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) .dangan-vn-compose-docked > * > .menu_button:hover,
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) .dangan-vn-compose-docked > * > [type="button"]:hover {
+    background: rgba(40, 40, 40, 0.95) !important;
+}
+
+
+/* ── Trigger Happy Havoc ───────────────────────────────────────────────────
+   Cream name strip that breaks into an orange SPEAKING band, over a dark
+   charcoal box with rounded right corners. Sits against the left edge. */
+
+body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay {
+    justify-content: flex-start;
+}
+
+body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame {
+    --dangan-vn-skin-accent: #f59a1b;
+    --dangan-vn-skin-accent-end: #ee8a12;
+    --dangan-vn-skin-highlight: #ffb340;
+    width: min(1040px, calc(100vw - 24px));
+    margin: 0 auto calc(var(--dangan-vn-bottom-offset) + 10px) 0;
+    padding: 0 !important;
+    font-family: "M PLUS Rounded 1c", "Noto Sans JP", sans-serif;
+}
+
+body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame::before {
+    inset: 34px 0 0 0;
+    z-index: -1;
+    background: rgba(38, 38, 38, 0.86);
+    border-radius: 0 44px 44px 0;
+}
+
+body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-header {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 34px;
+    margin: 0;
+    padding: 0 0 0 20px;
+    border-radius: 0 34px 0 0;
+    background:
+        linear-gradient(115deg,
+            #fdfde9 0, #f1eec6 calc(62% - 14px),
+            transparent calc(62% - 14px), transparent calc(62% - 9px),
+            #ffffff calc(62% - 9px), #ffffff calc(62% - 5px),
+            transparent calc(62% - 5px), transparent 62%,
+            var(--dangan-vn-skin-accent) 62%, var(--dangan-vn-skin-accent-end) 100%);
+}
+
+body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-header::after {
+    content: "SPEAKING";
+    position: absolute;
+    right: 56px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-family: "Rajdhani", "Noto Sans", sans-serif;
+    font-size: 17px;
+    font-weight: 500;
+    letter-spacing: 0.22em;
+    color: #ffe8c4;
+}
+
+body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-nameplate {
+    position: static;
+    display: block;
+    padding: 0;
+    font-family: "M PLUS Rounded 1c", "Noto Sans JP", sans-serif;
+    font-size: 20px;
+    font-weight: 800;
+    line-height: 1;
+    color: #2a2a2a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: calc(62% - 40px);
+}
+
+body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-text-wrap {
+    padding: 16px 104px 20px 36px;
+    min-height: 84px;
+}
+
+body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-text {
+    font-family: "M PLUS Rounded 1c", "Noto Sans JP", sans-serif;
+    font-size: clamp(16px, 1.75vw, 23px);
+    font-weight: 700;
+    line-height: 1.55;
+}
+
+/* The gold button on the right of the box. */
+body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-advance {
+    right: 30px;
+    top: calc(34px + (100% - 34px) / 2);
+    width: 52px;
+    height: 52px;
+    margin-top: -26px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 40%, #e8b83a 0 55%, #b9861a 100%);
+    box-shadow: inset 0 0 0 3px rgba(120, 82, 10, 0.55);
+}
+
+body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-advance::before {
+    content: "";
+    width: 0;
+    height: 0;
+    margin-left: 5px;
+    border-style: solid;
+    border-width: 10px 0 10px 16px;
+    border-color: transparent transparent transparent #4b3608;
+}
+
+body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-toggle {
+    top: 42px;
+    right: 42px;
+}
+
+body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) .dangan-vn-compose-docked {
+    background: rgba(38, 38, 38, 0.92) !important;
+    border-radius: 0 0 22px 0 !important;
+}
+
+
+/* ── Goodbye Despair ───────────────────────────────────────────────────────
+   Dark bar with a faint checkerboard, the name running up a yellow column on
+   the left, a speech-bubble badge and a yellow "A" button. */
+
+body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame {
+    --dangan-vn-skin-accent: #ffe100;
+    --dangan-vn-skin-highlight: #ffe100;
+    width: min(1180px, calc(100vw - 18px));
+    min-height: 160px;
+    padding: 0 !important;
+    font-family: "M PLUS Rounded 1c", "Noto Sans JP", sans-serif;
+}
+
+body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame::before {
+    inset: 0;
+    z-index: -2;
+    background: rgba(22, 22, 22, 0.78);
+    border-top: 2px solid rgba(255, 255, 255, 0.4);
+}
+
+body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame::after {
+    inset: 0;
+    z-index: -1;
+    background: repeating-conic-gradient(rgba(255, 255, 255, 0.06) 0 25%, transparent 0 50%) 0 0 / 32px 32px;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 35%, #000 100%);
+    mask-image: linear-gradient(to bottom, transparent 35%, #000 100%);
+}
+
+body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-header {
+    margin: 0;
+    padding: 0;
+}
+
+/* Turned 180°: the name reads bottom-to-top, the padding-top lands at the
+   bottom (room for the badge) and the cut corner lands top-right. Long names
+   make the column grow up past the box, as it runs up the screen in-game. */
+body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-nameplate {
+    position: absolute;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 66px;
+    min-height: 100%;
+    padding: 84px 0 22px;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    background: var(--dangan-vn-skin-accent);
+    box-shadow: inset 6px 0 0 #f39200;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 calc(100% - 22px));
+    font-family: "M PLUS Rounded 1c", "Noto Sans JP", sans-serif;
+    font-size: 24px;
+    font-weight: 800;
+    line-height: 1;
+    color: #262626;
+    white-space: nowrap;
+}
+
+body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-header::after {
+    content: "";
+    position: absolute;
+    left: 7px;
+    bottom: 12px;
+    z-index: 2;
+    width: 48px;
+    height: 48px;
+    box-sizing: border-box;
+    border-radius: 50%;
+    border: 3px solid var(--dangan-vn-skin-accent);
+    background: #141414 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23fff' d='M5 9c0-3 3-5 11-5s11 2 11 5v4c0 3-3 5-10 5l-5 5v-5c-4-.4-7-2.2-7-5z'/%3E%3Ccircle cx='9.5' cy='11' r='1.4' fill='%23141414'/%3E%3C/svg%3E") center / 64% no-repeat;
+}
+
+body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-text-wrap {
+    padding: 22px 78px 26px 92px;
+    min-height: 112px;
+}
+
+body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-text {
+    font-family: "M PLUS Rounded 1c", "Noto Sans JP", sans-serif;
+    font-size: clamp(17px, 2vw, 27px);
+    font-weight: 700;
+    line-height: 1.6;
+    text-shadow: 0 2px 3px rgba(0, 0, 0, 0.85);
+}
+
+body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-advance {
+    right: 16px;
+    bottom: 14px;
+    width: 34px;
+    height: 34px;
+    box-sizing: border-box;
+    border-radius: 50%;
+    border: 2px solid #111111;
+    background: var(--dangan-vn-skin-accent);
+    font-family: "M PLUS Rounded 1c", sans-serif;
+    font-size: 19px;
+    font-weight: 800;
+    color: #111111;
+}
+
+body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-advance::before {
+    content: "A";
+}
+
+body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-toggle {
+    top: 10px;
+    right: 12px;
+}
+
+body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) .dangan-vn-compose-docked {
+    background: rgba(22, 22, 22, 0.9) !important;
+    box-shadow: inset 6px 0 0 var(--dangan-vn-skin-accent, #ffe100) !important;
+    padding-left: 14px !important;
+}
+
+
+/* ── Killing Harmony ───────────────────────────────────────────────────────
+   Dark slanted box, name in white condensed type with a yellow first letter
+   over yellow slash marks, a yellow slash on the right and a » prompt. */
+
+body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame {
+    --dangan-vn-skin-accent: #ffd400;
+    --dangan-vn-skin-highlight: #ffd400;
+    width: min(1000px, calc(100vw - 40px));
+    min-height: 130px;
+    padding: 0 !important;
+    font-family: "Noto Sans", "Noto Sans JP", sans-serif;
+}
+
+body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame::before {
+    inset: 0;
+    z-index: -2;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.07), transparent 30%),
+        rgba(12, 12, 12, 0.86);
+    clip-path: polygon(16px 0, 100% 0, calc(100% - 16px) 100%, 0 100%);
+}
+
+/* Slash marks behind the name. */
+body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame::after {
+    left: -14px;
+    top: -22px;
+    z-index: -1;
+    width: 54px;
+    height: calc(100% + 4px);
+    max-height: 120px;
+    background: linear-gradient(104deg,
+        transparent 0 14%,
+        var(--dangan-vn-skin-accent) 14% 34%,
+        transparent 34% 44%,
+        var(--dangan-vn-skin-accent) 44% 56%,
+        transparent 56% 66%,
+        var(--dangan-vn-skin-accent) 66% 71%,
+        transparent 71%);
+    -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 55%, transparent 100%);
+}
+
+body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-header {
+    margin: 0;
+    padding: 0;
+}
+
+body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-nameplate {
+    position: absolute;
+    top: -16px;
+    left: 30px;
+    display: block;
+    padding: 0;
+    font-family: "Barlow Condensed", "Rajdhani", sans-serif;
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.02em;
+    color: #ffffff;
+    text-shadow: 0 2px 0 #000, 0 0 6px rgba(0, 0, 0, 0.8);
+    white-space: nowrap;
+}
+
+body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-nameplate::first-letter {
+    color: var(--dangan-vn-skin-accent);
+    font-size: 1.12em;
+}
+
+/* Slash on the right edge. */
+body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-header::after {
+    content: "";
+    position: absolute;
+    right: -12px;
+    top: 26%;
+    width: 26px;
+    height: 58%;
+    pointer-events: none;
+    background: linear-gradient(104deg,
+        transparent 0 22%,
+        var(--dangan-vn-skin-accent) 22% 46%,
+        transparent 46% 58%,
+        var(--dangan-vn-skin-accent) 58% 70%,
+        transparent 70%);
+}
+
+body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-text-wrap {
+    padding: 28px 64px 22px 52px;
+    min-height: 80px;
+}
+
+body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-text {
+    font-family: "Noto Sans", "Noto Sans JP", sans-serif;
+    font-size: clamp(16px, 1.6vw, 22px);
+    font-weight: 500;
+    line-height: 1.5;
+}
+
+body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-advance {
+    right: 30px;
+    bottom: 8px;
+    font-family: "Barlow Condensed", "Rajdhani", sans-serif;
+    font-size: 30px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--dangan-vn-skin-accent);
+}
+
+body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-advance::before {
+    content: "»";
+}
+
+body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-toggle {
+    top: 8px;
+    right: 26px;
+}
+
+body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) .dangan-vn-compose-docked {
+    background: rgba(12, 12, 12, 0.9) !important;
+}
+
+
+/* ── Phase themes ──────────────────────────────────────────────────────────
+   The game skins keep their own colours through Daily Life / Investigation /
+   Night; only damage turns the accent red so a hit still reads. */
+
+body.dangan-theme-damaged:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame {
+    --dangan-vn-skin-accent: #e52222;
+    --dangan-vn-skin-accent-end: #c41616;
+    --dangan-vn-skin-highlight: #ff5a5a;
+}
+
+body.dangan-theme-damaged:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-header {
+    filter: none;
+}
+
+body.dangan-theme-damaged[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-nameplate {
+    box-shadow: inset 6px 0 0 #8a0000;
+    color: #ffffff;
+}
+
+body.dangan-theme-damaged[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) .dangan-vn-compose-docked {
+    box-shadow: inset 6px 0 0 #e52222 !important;
+}
+
+
+/* ── Phones ─────────────────────────────────────────────────────────────── */
+
+@media (max-width: 700px) {
+    body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame {
+        width: calc(100vw - 10px);
+    }
+
+    body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-header {
+        height: 28px;
+        padding-left: 12px;
+    }
+
+    body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame::before {
+        top: 28px;
+        border-radius: 0 28px 28px 0;
+    }
+
+    body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-header::after {
+        right: 30px;
+        font-size: 12px;
+    }
+
+    body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-nameplate {
+        font-size: 16px;
+    }
+
+    body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-text-wrap {
+        padding: 12px 62px 16px 16px;
+        min-height: 64px;
+    }
+
+    body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-advance {
+        right: 14px;
+        top: calc(28px + (100% - 28px) / 2);
+        width: 38px;
+        height: 38px;
+        margin-top: -19px;
+    }
+
+    body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-advance::before {
+        border-width: 7px 0 7px 11px;
+        margin-left: 3px;
+    }
+
+    body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-toggle {
+        top: 32px;
+        right: 16px;
+    }
+
+    body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame {
+        width: calc(100vw - 8px);
+        min-height: 130px;
+    }
+
+    body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-nameplate {
+        width: 46px;
+        padding: 60px 0 16px;
+        font-size: 18px;
+        box-shadow: inset 4px 0 0 #f39200;
+        clip-path: polygon(0 0, 100% 0, 100% 100%, 0 calc(100% - 16px));
+    }
+
+    body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-header::after {
+        left: 5px;
+        bottom: 10px;
+        width: 36px;
+        height: 36px;
+        border-width: 2px;
+    }
+
+    body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-text-wrap {
+        padding: 16px 48px 20px 60px;
+        min-height: 90px;
+    }
+
+    body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-advance {
+        right: 10px;
+        bottom: 10px;
+        width: 28px;
+        height: 28px;
+        font-size: 15px;
+    }
+
+    body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame {
+        width: calc(100vw - 24px);
+        min-height: 110px;
+    }
+
+    body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-nameplate {
+        left: 22px;
+        top: -13px;
+        font-size: 23px;
+    }
+
+    body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-text-wrap {
+        padding: 22px 40px 18px 28px;
+        min-height: 64px;
+    }
+
+    body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-advance {
+        right: 20px;
+        bottom: 6px;
+        font-size: 24px;
+    }
+
+    body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-text {
+        font-size: clamp(15px, 4.2vw, 18px);
+    }
+}

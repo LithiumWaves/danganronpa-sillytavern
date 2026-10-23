@@ -21,6 +21,7 @@ export const OPTION_SECTIONS = Object.freeze([
             { key: "crtEffects", label: "CRT EFFECTS", type: "toggle", fallback: true },
             { key: "crtIntensity", label: "CRT INTENSITY", type: "slider", fallback: 35 },
             { key: "vnModeEnabled", label: "VISUAL NOVEL MODE", type: "toggle", fallback: false },
+            { key: "vnSkin", label: "TEXT BOX STYLE", type: "choice", fallback: "current", choices: [{ value: "current", label: "CURRENT" }, { value: "thh", label: "DR1" }, { value: "sdr2", label: "DR2" }, { value: "v3", label: "V3" }] },
             { key: "dynamicThemes", label: "DAILY / DEADLY LIFE THEMES", type: "toggle", fallback: true },
         ],
     },

@@ -101,6 +101,7 @@ let orientationController = null;
 let coachController = null;
 let onboardingState = null;
 let vnModeController = null;
+const VN_SKINS = ['current', 'thh', 'sdr2', 'v3'];
 let monokumaAnnouncementController = null;
 let classTrialMenuController = null;
 let trialManager = null;
@@ -2044,6 +2045,7 @@ function createVnModeController() {
     host.setAttribute('aria-hidden', 'true');
     host.innerHTML = `
         <div class="dangan-vn-frame" role="dialog" aria-live="polite" aria-label="Dangan Visual Novel dialogue">
+            <button type="button" class="dangan-vn-control dangan-vn-chrome-toggle" id="dangan-vn-chrome-toggle" aria-label="Show box controls" title="Show box controls" aria-expanded="false">⋯</button>
             <div class="dangan-vn-controls">
                 <button type="button" class="dangan-vn-control dangan-vn-stream-toggle" id="dangan-vn-stream-toggle" aria-label="Disable message streaming" title="Disable message streaming">STREAM: ON</button>
                 <button type="button" class="dangan-vn-control dangan-vn-transcript-toggle" id="dangan-vn-transcript-toggle" aria-label="Open transcript" title="Open transcript">TRANSCRIPT</button>
@@ -2060,6 +2062,7 @@ function createVnModeController() {
             <div class="dangan-vn-text-wrap">
                 <div class="dangan-vn-text" id="dangan-vn-text">Visual Novel Mode ready.</div>
             </div>
+            <span class="dangan-vn-advance" aria-hidden="true"></span>
             <div class="dangan-vn-footer">
                 <div class="dangan-vn-progress" aria-hidden="true"><div class="dangan-vn-progress-fill" id="dangan-vn-progress-fill"></div></div>
                 <div class="dangan-vn-input">Click text / ← → / Space · Swipe in the footer</div>
@@ -2086,6 +2089,7 @@ function createVnModeController() {
     const frameEl = host.querySelector('.dangan-vn-frame');
     const streamToggleEl = host.querySelector('#dangan-vn-stream-toggle');
     const lockBtnEl = host.querySelector('#dangan-vn-lock');
+    const chromeToggleEl = host.querySelector('#dangan-vn-chrome-toggle');
     const transcriptToggleEl = host.querySelector('#dangan-vn-transcript-toggle');
     const manageChatFilesBtnEl = host.querySelector('#dangan-vn-manage-chat-files');
     const transcriptEl = host.querySelector('#dangan-vn-transcript');
@@ -3037,6 +3041,17 @@ function createVnModeController() {
         renderCurrent();
     }
 
+    // Buttons stay tucked away until hover; touch screens use this toggle.
+    chromeToggleEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const open = !frameEl?.classList.contains('chrome-open');
+        frameEl?.classList.toggle('chrome-open', open);
+        chromeToggleEl.setAttribute('aria-expanded', open ? 'true' : 'false');
+        chromeToggleEl.setAttribute('aria-label', open ? 'Hide box controls' : 'Show box controls');
+        chromeToggleEl.title = open ? 'Hide box controls' : 'Show box controls';
+    });
+
     lockBtnEl?.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -3374,6 +3389,7 @@ function createVnModeController() {
         if (target instanceof Element && target.closest('.dangan-vn-manage-chat-files')) return;
         if (target instanceof Element && target.closest('.dangan-vn-stream-toggle')) return;
         if (target instanceof Element && target.closest('.dangan-vn-nav-button')) return;
+        if (target instanceof Element && target.closest('.dangan-vn-chrome-toggle')) return;
         advance();
     });
 
@@ -3495,6 +3511,12 @@ function createVnModeController() {
     }
 
     return {
+        setSkin(skin) {
+            const next = VN_SKINS.includes(skin) ? skin : 'current';
+            // On <body> so the docked typing bar (outside the overlay) can match.
+            document.body.dataset.danganVnSkin = next;
+            dockTypingSection();
+        },
         setEnabled(enabled) {
             const isEnabled = !!enabled;
             vnEnabled = isEnabled;
@@ -8665,6 +8687,10 @@ function applySettingsTabUI() {
     applyDynamicTheme();
     renderTimeTrackerUi();
     vnModeController?.setEnabled?.(!!tab.vnModeEnabled);
+    const vnSkinSelect = document.getElementById("dangan_vn_skin");
+    const vnSkin = VN_SKINS.includes(tab.vnSkin) ? tab.vnSkin : defaultSettings.vnSkin;
+    if (vnSkinSelect) vnSkinSelect.value = vnSkin;
+    vnModeController?.setSkin?.(vnSkin);
     applyAnnouncementCustomisationUI();
     applyLecternUI();
     applyVoteFaceUI();
@@ -11230,6 +11256,12 @@ $(".monopad-icon").on("mouseenter", function () {
         $("#dangan_card_hygiene_default").on("change", function () {
             const next = String(this.value || "ask").trim().toLowerCase();
             setMonopadSetting("cardHygieneDefault", ["ask", "keep", "clean"].includes(next) ? next : "ask");
+        });
+
+        $("#dangan_vn_skin").on("change", function () {
+            const next = VN_SKINS.includes(this.value) ? this.value : defaultSettings.vnSkin;
+            setMonopadSetting("vnSkin", next);
+            vnModeController?.setSkin?.(next);
         });
 
         $("#dangan_reward_difficulty").on("change", function () {
