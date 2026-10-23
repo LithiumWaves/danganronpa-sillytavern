@@ -70,6 +70,8 @@ export const defaultSettings = {
     vnTypingSpeed: 100,
     // Show the player's Prome user sprite in a window during conversations.
     playerInsetEnabled: false,
+    // The EXPRESSIONS tab on the right edge (conversations and trials).
+    expressionPickerEnabled: true,
     // SillyTavern streaming checkboxes VN mode switched off, to switch back on.
     vnPausedStStreaming: [],
     // Half-Sprite Mode global adjustments (apply to every character): a size

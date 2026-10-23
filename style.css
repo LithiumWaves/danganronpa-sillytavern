@@ -26,6 +26,7 @@
 @import url("./styles/systems/vn/skins.css");
 @import url("./styles/systems/vn/transcript.css");
 @import url("./styles/systems/vn/player-inset.css");
+@import url("./styles/systems/vn/expression-picker.css");
 @import url("./styles/systems/hud/hud-colors.css");
 
 /* SillyTavern puts transform: translateZ(0) on <html>, which makes it the box

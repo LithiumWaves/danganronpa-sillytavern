@@ -82,6 +82,7 @@ import { PRESENCE_URL, PROME_URL, countSetupProblems, countSetupReminders, evalu
 import { configureMinigameSessions, createSkipToken, installSkipKeyHandler, pushSkippable, runSkippableSequence } from "./core/skip/skipRegistry.js";
 import { confirmLeaveMinigame } from "./core/skip/leaveConfirm.js";
 import { createPlayerInset } from "./core/ui/playerInset.js";
+import { createExpressionPicker } from "./core/ui/expressionPicker.js";
 import { user_avatar } from "../../../personas.js";
 import { ConnectionManagerRequestService } from "../../shared.js";
 
@@ -107,6 +108,7 @@ let coachController = null;
 let onboardingState = null;
 let vnModeController = null;
 let playerInsetController = null;
+let expressionPickerController = null;
 let monokumaAnnouncementController = null;
 let classTrialMenuController = null;
 let trialManager = null;
@@ -130,6 +132,9 @@ let audioVisualizer              = null;
 let overworldSceneController     = null;
 let reapplyOutfitToSprites       = () => {};
 let refreshHalfSpriteDisplay     = () => {};
+// Puts a sprite URL on a chat/GCP sprite the way the expression mirror does
+// (half-sprite mode aware). Assigned in setupExpressionMirror.
+let applyMirroredSprite = (img, src) => { if (img && src) img.src = src; };
 
 
 const openRouterSettings = createOpenRouterSettingsManager({
@@ -9692,6 +9697,7 @@ function applySettingsTabUI() {
     });
     vnModeController?.setSkin?.(vnSkin);
     applyPlayerInset();
+    expressionPickerController?.sync();
     applyHudColors();
     applyHudColorsUI();
     applyAnnouncementCustomisationUI();
@@ -11157,7 +11163,32 @@ jQuery(async () => {
             // Prome's settings may have changed (or loaded) since.
             applyPlayerInset();
             playerInsetController?.onChatChanged();
+            expressionPickerController?.refresh();
         });
+        expressionPickerController = createExpressionPicker({
+            getTargets: getExpressionPickerTargets,
+            listSprites: listExpressionPickerSprites,
+            applySprite: applyExpressionPickerSprite,
+            isAvailable: () => {
+                if (getMonopadSetting("expressionPickerEnabled") === false) return false;
+                const body = document.body.classList;
+                if (body.contains("dangan-ui-hidden") || body.contains("dangan-ow-edit-mode")) return false;
+                return body.contains("dangan-trial-active")
+                    || body.contains("dangan-ow-chat-exit-active")
+                    || body.contains("dangan-ow-conversation-view");
+            },
+            playSfx: (name) => { if (sfx?.[name]) playSfx(sfx[name]); },
+        });
+        {
+            // Show the tab only while a conversation or a trial is on screen.
+            let raf = null;
+            const sync = () => {
+                if (raf) return;
+                raf = requestAnimationFrame(() => { raf = null; expressionPickerController?.sync(); });
+            };
+            new MutationObserver(sync).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+            sync();
+        }
         monokumaAnnouncementController = createMonokumaAnnouncementController({
             extensionFolderPath,
             shouldPlayAudio: () => Number(extension_settings[extensionName]?.announcementVolume ?? 65) > 0,
@@ -13899,6 +13930,7 @@ STATEMENT: <third statement>`;
         // (it detects an already -half src), so feeding each img its own src
         // adds -half when mode turns on and strips it when mode turns off —
         // letting the toggle take effect immediately without a new expression.
+        applyMirroredSprite = setMirroredSrc;
         refreshHalfSpriteDisplay = () => {
             document.querySelectorAll(
                 '.dangan-gcp-slot img:not(.dangan-gcp-horse):not(.dangan-gcp-lectern), ' +
@@ -15223,6 +15255,96 @@ async function classifyPlayerText(text) {
     } catch {
         return "neutral";
     }
+}
+
+// ── Expression picker (core/ui/expressionPicker.js) ──────────────────────
+function spriteFolderFromSrc(src) {
+    try {
+        const parts = new URL(src, location.href).pathname.split('/').filter(Boolean);
+        return decodeURIComponent(parts[parts.length - 2] || '');
+    } catch { return ''; }
+}
+
+// Sprite folder for a character name, resolved like getSpriteUrl does.
+function spriteFolderForName(name) {
+    const stChar = Array.isArray(window.characters) ? window.characters.find(c => c.name === name) : null;
+    return stChar?.avatar ? stChar.avatar.replace(/\.[^.]+$/, "") : name;
+}
+
+// Everyone on screen (the GCP stage, or SillyTavern's own sprites), then you.
+function getExpressionPickerTargets() {
+    const out = [];
+    const seen = new Set();
+    const player = getPlayerSpriteTarget();
+    const playerFolder = String(player?.folder || '').toLowerCase();
+    const add = (name, img, folder) => {
+        const key = `char:${normalizeName(name)}`;
+        if (!name || seen.has(key)) return;
+        seen.add(key);
+        const src = img?.getAttribute?.('src') || null;
+        out.push({
+            key,
+            name,
+            label: getCharacterDisplayName(name) || name,
+            folder: folder || spriteFolderForName(name),
+            imgs: img ? [img] : [],
+            currentPath: src,
+            thumb: src,
+        });
+    };
+    const slots = trialManager?.isGcpStageActive?.() ? (trialManager.getGcpSlotsForPicker?.() || []) : [];
+    if (slots.length) {
+        for (const s of slots) {
+            if (s.isPlayer) continue;
+            add(s.name, s.img, spriteFolderFromSrc(s.img.getAttribute('src') || '') || null);
+        }
+    } else {
+        document.querySelectorAll('#expression-image, #visual-novel-wrapper img.expression').forEach((img) => {
+            const src = img.getAttribute('src');
+            if (!src || img.closest('#expression-prome-user')) return;
+            const folder = spriteFolderFromSrc(src);
+            if (!folder || folder.toLowerCase() === 'narrator' || folder.toLowerCase() === playerFolder) return;
+            add(img.getAttribute('alt') || folder, img, folder);
+        });
+    }
+    if (player?.folder) {
+        const playerImg = trialManager?.getGcpPlayerImg?.() || null;
+        const insetImg = document.querySelector('#dangan-player-inset img');
+        const src = playerImg?.getAttribute('src') || insetImg?.getAttribute('src') || null;
+        out.push({
+            key: 'player',
+            name: player.name,
+            label: `${player.name} (you)`,
+            folder: player.folder,
+            imgs: playerImg ? [playerImg] : [],
+            isPlayer: true,
+            currentPath: src,
+            thumb: src,
+        });
+    }
+    return out;
+}
+
+async function listExpressionPickerSprites(target) {
+    if (!target?.folder) return [];
+    const resp = await fetch(`/api/sprites/get?name=${encodeURIComponent(target.folder)}`);
+    if (!resp.ok) return [];
+    const sprites = await resp.json();
+    return (Array.isArray(sprites) ? sprites : [])
+        .map((s) => ({ path: s.path, stem: spriteFileStem(s) }))
+        .sort((a, b) => a.stem.localeCompare(b.stem, undefined, { numeric: true }));
+}
+
+// Until their next line changes it.
+function applyExpressionPickerSprite(target, path, stem) {
+    const expression = emotionFromSpriteStem(stem || '') || 'neutral';
+    for (const img of target.imgs || []) {
+        if (!img?.isConnected) continue;
+        if (img.closest('.dangan-gcp-slot')) applyMirroredSprite(img, path);
+        else img.src = path;
+        try { triggerVfxOnElement(expression, img); } catch { /* ignore */ }
+    }
+    if (target.isPlayer) playerInsetController?.showUrl(path);
 }
 
 // Your sprite in conversations shows with VN mode and a Prome sprite folder.

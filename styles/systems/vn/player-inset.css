@@ -53,16 +53,16 @@ body.dangan-player-inset-on:is(.dangan-ow-chat-exit-active, .dangan-ow-conversat
     box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.55);
 }
 
-/* Head to waist: the full-body sprite is drawn about twice the window's
-   height, from its top. */
+/* Placed by core/ui/playerInset.js from the sprite's visible pixels: head
+   near the top, body down to the bottom edge. These are only the starting
+   values until it has measured. */
 #dangan-player-inset .dangan-player-inset-sprite {
     position: absolute;
-    left: 58%;
+    left: 10%;
     top: 4%;
     height: 190%;
     width: auto;
     max-width: none;
-    transform: translateX(-50%);
     filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45));
 }
 

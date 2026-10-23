@@ -9,6 +9,59 @@
 
 const INSET_ID = "dangan-player-inset";
 
+// Bounding box of a sprite's visible (non-transparent) pixels, as fractions
+// of the image, so any framing (full body, waist-up, padded) can be placed
+// head near the top and body down to the window's bottom edge.
+const boundsCache = new Map();
+function getVisibleBounds(img) {
+    const key = img.currentSrc || img.src;
+    if (boundsCache.has(key)) return boundsCache.get(key);
+    let bounds = { x: 0, y: 0, w: 1, h: 1 };
+    try {
+        const scale = Math.min(1, 240 / Math.max(img.naturalWidth, img.naturalHeight));
+        const w = Math.max(1, Math.round(img.naturalWidth * scale));
+        const h = Math.max(1, Math.round(img.naturalHeight * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const g = canvas.getContext("2d", { willReadFrequently: true });
+        g.drawImage(img, 0, 0, w, h);
+        const data = g.getImageData(0, 0, w, h).data;
+        let minX = w, minY = h, maxX = -1, maxY = -1;
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                if (data[(y * w + x) * 4 + 3] < 24) continue;
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+            }
+        }
+        if (maxX >= 0) bounds = { x: minX / w, y: minY / h, w: (maxX - minX + 1) / w, h: (maxY - minY + 1) / h };
+    } catch { /* unreadable image: use the whole thing */ }
+    boundsCache.set(key, bounds);
+    return bounds;
+}
+
+// Head 4% from the top; shows at most a waist-up's worth of a tall sprite,
+// and always reaches (or runs past) the bottom edge.
+function frameSprite(img, win) {
+    if (!img.naturalWidth || !win.clientHeight) return;
+    const b = getVisibleBounds(img);
+    const natW = img.naturalWidth;
+    const natH = img.naturalHeight;
+    const contentW = b.w * natW;
+    const contentH = b.h * natH;
+    const visibleH = Math.min(contentH, contentW * 1.7);
+    const winH = win.clientHeight;
+    const scale = (winH * 0.96) / visibleH;
+    const top = winH * 0.04 - b.y * natH * scale;
+    const centerX = (b.x + b.w / 2) * natW * scale;
+    img.style.height = `${natH * scale}px`;
+    img.style.top = `${top}px`;
+    img.style.left = `${win.clientWidth * 0.58 - centerX}px`;
+}
+
 export function createPlayerInset({ getSpriteUrl, classify, getLastUserMessage }) {
     let enabled = false;
     let label = "neutral";
@@ -29,8 +82,16 @@ export function createPlayerInset({ getSpriteUrl, classify, getLastUserMessage }
             <div class="dangan-player-inset-stripes"></div>
         `;
         const img = el.querySelector("img");
+        const win = el.querySelector(".dangan-player-inset-window");
         img.addEventListener("error", () => el.classList.remove("has-sprite"));
-        img.addEventListener("load", () => el.classList.add("has-sprite"));
+        img.addEventListener("load", () => {
+            el.classList.add("has-sprite");
+            // Measure once it's laid out (it's display:none until shown).
+            requestAnimationFrame(() => frameSprite(img, win));
+        });
+        if (typeof ResizeObserver === "function") {
+            new ResizeObserver(() => frameSprite(img, win)).observe(win);
+        }
         document.body.appendChild(el);
         return el;
     }
@@ -91,6 +152,13 @@ export function createPlayerInset({ getSpriteUrl, classify, getLastUserMessage }
         },
         refresh() {
             if (enabled) showLabel(label);
+        },
+        // A sprite picked by hand (the expression picker).
+        showUrl(url) {
+            if (!enabled || !url) return;
+            token += 1;
+            const img = ensureEl().querySelector("img");
+            if (img.getAttribute("src") !== url) img.src = url;
         },
     };
 }

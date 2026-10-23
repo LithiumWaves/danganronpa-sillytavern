@@ -8479,6 +8479,11 @@ JUDGMENT RULES:
         getGcpSpeakerImg:  () => gcpSlots[Math.round(gcpCurrentFloat)]?.img  ?? null,
         getGcpSpeakerName: () => gcpSlots[Math.round(gcpCurrentFloat)]?.name ?? null,
         getGcpPlayerImg:   () => gcpSlots.find(s => s.isPlayer)?.img ?? null,
+        // Everyone standing on the stage (dead and missing aside), for the
+        // expression picker.
+        getGcpSlotsForPicker: () => gcpSlots
+            .filter(s => s?.name && s.img && !s.isDead && !s.isMissing)
+            .map(s => ({ name: s.name, img: s.img, isPlayer: !!s.isPlayer })),
         isTrialActive:     () => !!trialActive,
         isGcpStageActive:  () => !!(gcpStage && gcpSlots.length),
         getGcpLivingSlots: () => gcpSlots

@@ -1,0 +1,239 @@
+/* Expression picker (core/ui/expressionPicker.js): a small EXPRESSIONS
+   tab on the right edge, above your sprite window, that opens a drawer
+   of everyone on screen and a grid of their sprites, after the Shinri
+   Trial fangame's picker. Only during conversations and Class Trials. */
+
+#dangan-expr-picker {
+    --dex-gold: #e9b949;
+    --dex-bg: rgba(16, 12, 10, 0.92);
+    position: fixed;
+    top: 19vh;
+    right: 0;
+    z-index: 2147483100;
+    display: none;
+    font-family: "M PLUS Rounded 1c", "Noto Sans JP", sans-serif;
+    pointer-events: none;
+}
+
+#dangan-expr-picker.available {
+    display: block;
+}
+
+/* Collapsed: a small pill hugging the edge, faint until hovered. */
+#dangan-expr-picker .dangan-expr-tab {
+    position: absolute;
+    top: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 12px 0 10px;
+    border: 2px solid var(--dex-gold);
+    border-right: 0;
+    border-radius: 999px 0 0 999px;
+    background: var(--dex-bg);
+    color: var(--dex-gold);
+    font: 800 11px/1 "M PLUS Rounded 1c", "Noto Sans JP", sans-serif;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    opacity: 0.55;
+    transform: translateX(calc(100% - 34px));
+    transition: opacity 160ms ease, transform 200ms ease;
+    pointer-events: auto;
+}
+
+#dangan-expr-picker .dangan-expr-tab:hover,
+#dangan-expr-picker .dangan-expr-tab:focus-visible {
+    opacity: 1;
+    transform: translateX(0);
+    outline: none;
+}
+
+#dangan-expr-picker .dangan-expr-tab-icon {
+    font-size: 16px;
+}
+
+#dangan-expr-picker.open .dangan-expr-tab {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Open: a drawer sliding in from the right. */
+#dangan-expr-picker .dangan-expr-drawer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: min(300px, 86vw);
+    max-height: 66vh;
+    display: flex;
+    flex-direction: column;
+    border: 2px solid var(--dex-gold);
+    border-right: 0;
+    border-radius: 10px 0 0 10px;
+    background: var(--dex-bg);
+    box-shadow: -6px 6px 20px rgba(0, 0, 0, 0.5);
+    transform: translateX(105%);
+    transition: transform 220ms cubic-bezier(0.2, 0.8, 0.25, 1);
+    pointer-events: none;
+    visibility: hidden;
+}
+
+#dangan-expr-picker.open .dangan-expr-drawer {
+    transform: translateX(0);
+    pointer-events: auto;
+    visibility: visible;
+}
+
+#dangan-expr-picker .dangan-expr-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 8px 6px 12px;
+    border-bottom: 1px solid rgba(233, 185, 73, 0.35);
+}
+
+#dangan-expr-picker .dangan-expr-title {
+    color: var(--dex-gold);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+}
+
+#dangan-expr-picker .dangan-expr-close {
+    width: 26px;
+    height: 26px;
+    border: 1px solid rgba(233, 185, 73, 0.6);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--dex-gold);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+#dangan-expr-picker .dangan-expr-close:hover,
+#dangan-expr-picker .dangan-expr-close:focus-visible {
+    background: var(--dex-gold);
+    color: #1a1206;
+    outline: none;
+}
+
+/* Who: round face chips with their name. */
+#dangan-expr-picker .dangan-expr-people {
+    display: flex;
+    gap: 6px;
+    padding: 8px 10px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    flex: none;
+}
+
+#dangan-expr-picker .dangan-expr-person {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    width: 58px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.75);
+    cursor: pointer;
+}
+
+#dangan-expr-picker .dangan-expr-person::before {
+    content: "";
+    width: 44px;
+    height: 44px;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    border-radius: 50%;
+    background: #2a2420 var(--dangan-expr-thumb, none) no-repeat;
+    background-size: 240% auto;
+    background-position: 50% 6%;
+}
+
+#dangan-expr-picker .dangan-expr-person.is-on::before,
+#dangan-expr-picker .dangan-expr-person:hover::before {
+    border-color: var(--dex-gold);
+}
+
+#dangan-expr-picker .dangan-expr-person-name {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+#dangan-expr-picker .dangan-expr-person.is-on .dangan-expr-person-name {
+    color: var(--dex-gold);
+}
+
+/* The sprites: a 3-wide grid of framed faces, the current one ticked. */
+#dangan-expr-picker .dangan-expr-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    padding: 4px 10px 10px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    min-height: 60px;
+}
+
+#dangan-expr-picker .dangan-expr-cell {
+    position: relative;
+    aspect-ratio: 1;
+    padding: 0;
+    border: 2px solid rgba(120, 86, 48, 0.9);
+    border-radius: 4px;
+    background: #3a2f27 var(--dangan-expr-sprite) no-repeat;
+    background-size: 210% auto;
+    background-position: 50% 4%;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.6);
+    cursor: pointer;
+    transition: border-color 120ms ease, transform 120ms ease;
+}
+
+#dangan-expr-picker .dangan-expr-cell:hover,
+#dangan-expr-picker .dangan-expr-cell:focus-visible {
+    border-color: #fff;
+    transform: translateY(-1px);
+    outline: none;
+}
+
+#dangan-expr-picker .dangan-expr-cell.is-on {
+    border-color: var(--dex-gold);
+}
+
+#dangan-expr-picker .dangan-expr-cell.is-on::after {
+    content: "✓";
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    background: var(--dex-gold);
+    color: #1a1206;
+    font: 900 12px/16px sans-serif;
+    text-align: center;
+}
+
+#dangan-expr-picker .dangan-expr-empty {
+    grid-column: 1 / -1;
+    padding: 14px 4px;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-align: center;
+}
+
+@media (max-width: 700px) {
+    #dangan-expr-picker {
+        top: 12vh;
+    }
+}
