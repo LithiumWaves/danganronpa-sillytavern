@@ -9,21 +9,22 @@
    with !important, hence the !important on the skin's box properties. */
 
 
-/* ── Tucked-away controls (every skin) ─────────────────────────────────────
+/* ── Tucked-away controls (game skins) ─────────────────────────────────────
    The top controls and the Prev/Next/Swipe/Regen row float above the box and
    only show while it is hovered or focused, or after the ⋯ toggle (touch).
-   The progress bar becomes a thin line along the bottom edge. */
+   The progress bar becomes a thin line along the bottom edge. "current"
+   keeps the original in-box buttons. */
 
 #dangan-vn-overlay .dangan-vn-chrome-toggle {
     display: none;
 }
 
-body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame {
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame {
     overflow: visible;
     clip-path: inset(-240px -80px 0 -80px);
 }
 
-body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-toggle {
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-toggle {
     display: inline-flex;
     position: absolute;
     top: 6px;
@@ -36,17 +37,17 @@ body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-toggle {
     opacity: 0.6;
 }
 
-body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-toggle:hover,
-body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame.chrome-open .dangan-vn-chrome-toggle {
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-toggle:hover,
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame.chrome-open .dangan-vn-chrome-toggle {
     opacity: 1;
 }
 
-body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-header {
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-header {
     padding-right: 36px;
 }
 
-body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-controls,
-body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-nav {
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-controls,
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-nav {
     position: absolute;
     top: auto;
     right: 0;
@@ -68,59 +69,59 @@ body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-nav {
     transition: opacity 160ms ease 300ms, visibility 0s linear 460ms;
 }
 
-body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-controls {
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-controls {
     bottom: 100%;
 }
 
-body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-nav {
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-nav {
     bottom: calc(100% + 32px);
 }
 
-body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-position {
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-position {
     opacity: 0;
     transition: opacity 160ms ease 300ms;
 }
 
-body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame.chrome-open :is(.dangan-vn-controls, .dangan-vn-nav),
-body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame:focus-within :is(.dangan-vn-controls, .dangan-vn-nav) {
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame.chrome-open :is(.dangan-vn-controls, .dangan-vn-nav),
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame:focus-within :is(.dangan-vn-controls, .dangan-vn-nav) {
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
     transition: opacity 160ms ease, visibility 0s;
 }
 
-body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame.chrome-open .dangan-vn-position,
-body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame:focus-within .dangan-vn-position {
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame.chrome-open .dangan-vn-position,
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame:focus-within .dangan-vn-position {
     opacity: 1;
     transition: opacity 160ms ease;
 }
 
 @media (hover: hover) {
-    body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame:hover :is(.dangan-vn-controls, .dangan-vn-nav) {
+    body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame:hover :is(.dangan-vn-controls, .dangan-vn-nav) {
         opacity: 1;
         visibility: visible;
         pointer-events: auto;
         transition: opacity 160ms ease, visibility 0s;
     }
 
-    body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame:hover .dangan-vn-position {
+    body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame:hover .dangan-vn-position {
         opacity: 1;
         transition: opacity 160ms ease;
     }
 }
 
-body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-footer {
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-footer {
     display: block;
     margin: 0;
     padding: 0;
     border: 0;
 }
 
-body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-input {
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-input {
     display: none;
 }
 
-body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-progress {
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-progress {
     position: absolute;
     left: 0;
     right: 0;
@@ -131,24 +132,24 @@ body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-progress {
 }
 
 @media (max-width: 700px) {
-    body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-controls,
-    body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-nav {
+    body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-controls,
+    body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-nav {
         left: 0;
         right: 0;
     }
 
-    body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-controls {
+    body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-controls {
         bottom: 100%;
     }
 
     /* Six buttons in a 3-wide grid: two 36px rows above the controls row. */
-    body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-nav {
+    body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-nav {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
         bottom: calc(100% + 36px);
     }
 
-    body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-toggle {
+    body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-toggle {
         width: 34px;
         height: 30px;
     }
@@ -425,7 +426,7 @@ body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) .dangan-vn-compose-doc
 
 /* ── Goodbye Despair ───────────────────────────────────────────────────────
    Dark bar with a faint checkerboard, the name running up a yellow column on
-   the left, a speech-bubble badge and a yellow "A" button. */
+   the left, and a speech-bubble badge. */
 
 body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame {
     --dangan-vn-skin-accent: #ffe100;
@@ -500,7 +501,7 @@ body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .d
 }
 
 body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-text-wrap {
-    padding: 22px 78px 26px 92px;
+    padding: 22px 40px 26px 92px;
     min-height: 112px;
 }
 
@@ -510,25 +511,6 @@ body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .d
     font-weight: 700;
     line-height: 1.6;
     text-shadow: 0 2px 3px rgba(0, 0, 0, 0.85);
-}
-
-body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-advance {
-    right: 16px;
-    bottom: 14px;
-    width: 34px;
-    height: 34px;
-    box-sizing: border-box;
-    border-radius: 50%;
-    border: 2px solid #111111;
-    background: var(--dangan-vn-skin-accent);
-    font-family: "M PLUS Rounded 1c", sans-serif;
-    font-size: 19px;
-    font-weight: 800;
-    color: #111111;
-}
-
-body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-advance::before {
-    content: "A";
 }
 
 body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-toggle {
@@ -759,16 +741,8 @@ body.dangan-theme-damaged[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) 
     }
 
     body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-text-wrap {
-        padding: 16px 48px 20px 60px;
+        padding: 16px 24px 20px 60px;
         min-height: 90px;
-    }
-
-    body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-advance {
-        right: 10px;
-        bottom: 10px;
-        width: 28px;
-        height: 28px;
-        font-size: 15px;
     }
 
     body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame {
