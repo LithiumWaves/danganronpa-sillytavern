@@ -6,8 +6,11 @@
 //
 // - Every room pin links to its floor's hub (and the hub back to it). The hub
 //   is a pin marked `hub: true`, else a built-in choice for that floor, else a
-//   room named like a corridor or hallway. A pin can name another hub with
-//   `hubId` (the Inn's dorm rooms use the Dorm Hallway).
+//   room named like a corridor or hallway.
+// - A room only reached through other rooms (a storeroom inside a classroom)
+//   links to those instead: the pin's own `hubId` (one id or a list; the
+//   Inn's dorm rooms use the Dorm Hallway), else BUILTIN_ROUTES for the
+//   built-in maps.
 // - Stairs pair up by id: `1f_to_2f` ↔ `2f_to_1f` in the same area.
 // - A few built-in links join floors that don't follow that naming.
 // - `autoConnect: false` on a pin turns all of this off for it.
@@ -19,6 +22,21 @@ export const AUTO_LINK_PIN_TYPES = Object.freeze(["room"]);
 export const BUILTIN_FLOOR_HUBS = Object.freeze({
     "hopes_peak/inn_floor_1": "door_to_hopes_peak_academy",
     "jabberwock_island/pier_cottages": "pier_cottages_courtyard",
+});
+
+// Built-in rooms you walk through other rooms to reach, as the map pictures
+// draw their doorways: "area/floor/room" → the rooms it opens onto.
+export const BUILTIN_ROUTES = Object.freeze({
+    "hopes_peak/floor_1/gym": ["trophy_room"],
+    "hopes_peak/floor_2/pool": ["girls_changing_rooms", "boys_changing_rooms"],
+    "hopes_peak/floor_2/girls_changing_rooms": ["pool_lounge"],
+    "hopes_peak/floor_2/boys_changing_rooms": ["pool_lounge"],
+    "hopes_peak/floor_3/physics_storeroom": ["physics_room"],
+    "hopes_peak/floor_3/gallery_storeroom": ["gallery"],
+    "hopes_peak/inn_floor_1/sauna": ["changing_room"],
+    "hopes_peak/inn_floor_1/steam_room": ["sauna"],
+    "hopes_peak/inn_floor_1/kitchen": ["cafeteria"],
+    "hopes_peak/inn_floor_1/incinerator": ["trash_room"],
 });
 
 // Links between floors that stairs naming doesn't cover.
@@ -55,16 +73,37 @@ export function findFloorHub(pins = [], areaKey, floorKey) {
     return floorPins.find((p) => !p.hubId && looksLikeHub(p)) || null;
 }
 
-// The hub this pin hangs off: its own `hubId` if that pin exists on the
-// floor, else the floor hub. Null when the pin is the hub itself.
-export function findPinHub(pin, pins = []) {
-    if (!isLinkable(pin)) return null;
-    if (pin.hubId) {
-        const own = pins.find((p) => p !== pin && isLinkable(p) && onFloor(p, pin.areaKey, pin.floorKey) && p.locationId === pin.hubId);
-        if (own) return own;
-    }
+function viaPins(pin, pins, ids) {
+    const list = (Array.isArray(ids) ? ids : [ids]).filter(Boolean);
+    return list
+        .map((id) => pins.find((p) => p !== pin && isLinkable(p) && onFloor(p, pin.areaKey, pin.floorKey) && p.locationId === id))
+        .filter((p, i, all) => p && all.indexOf(p) === i);
+}
+
+// The rooms this pin opens onto when nothing but its own floor's layout
+// decides: the built-in route, else the floor hub. Empty for the hub itself.
+export function findDefaultPinHubs(pin, pins = []) {
+    if (!isLinkable(pin)) return [];
+    const route = viaPins(pin, pins, BUILTIN_ROUTES[`${pin.areaKey}/${pin.floorKey}/${pin.locationId}`]);
+    if (route.length) return route;
     const hub = findFloorHub(pins, pin.areaKey, pin.floorKey);
-    return hub && hub !== pin ? hub : null;
+    return hub && hub !== pin ? [hub] : [];
+}
+
+// The rooms this pin hangs off: its own `hubId` (one id or a list) where
+// those pins exist on the floor, else findDefaultPinHubs.
+export function findPinHubs(pin, pins = []) {
+    if (!isLinkable(pin)) return [];
+    if (pin.hubId) {
+        const own = viaPins(pin, pins, pin.hubId);
+        if (own.length) return own;
+    }
+    return findDefaultPinHubs(pin, pins);
+}
+
+// The first of findPinHubs, or null.
+export function findPinHub(pin, pins = []) {
+    return findPinHubs(pin, pins)[0] || null;
 }
 
 function stairPartnerId(locationId) {
@@ -82,9 +121,9 @@ export function getAutoLinkedPins(pin, pins = []) {
     const out = [];
     const add = (p) => { if (p && p !== pin && !out.includes(p)) out.push(p); };
 
-    add(findPinHub(pin, pins));
+    for (const hub of findPinHubs(pin, pins)) add(hub);
     for (const other of pins) {
-        if (other !== pin && isLinkable(other) && onFloor(other, pin.areaKey, pin.floorKey) && findPinHub(other, pins) === pin) add(other);
+        if (other !== pin && isLinkable(other) && onFloor(other, pin.areaKey, pin.floorKey) && findPinHubs(other, pins).includes(pin)) add(other);
     }
 
     const partnerId = stairPartnerId(pin.locationId);
@@ -190,7 +229,7 @@ export function isDormPin(pin) {
 }
 
 // The fields a player can change on a dorm pin, kept in its save record.
-export const DORM_EDITABLE_FIELDS = Object.freeze(["label", "icon", "bg", "bgm", "outfitPrefix", "x", "y", "connectedTo", "autoConnect", "locked"]);
+export const DORM_EDITABLE_FIELDS = Object.freeze(["label", "icon", "bg", "bgm", "outfitPrefix", "x", "y", "connectedTo", "autoConnect", "locked", "hubId"]);
 
 function dormBasePin(resident, slot) {
     const pos = INN_DORM_SLOTS[slot];

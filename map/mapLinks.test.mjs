@@ -16,12 +16,29 @@ function run() {
     const door = byId("hopes_peak", "inn_floor_1", "door_to_hopes_peak_academy");
     assert(findFloorHub(pins, "hopes_peak", "inn_floor_1") === door, "the Door is Inn Floor 1's hub");
     const cafeteria = byId("hopes_peak", "inn_floor_1", "cafeteria");
-    assert(ids(getAutoLinkedPins(cafeteria, pins)) === "door_to_hopes_peak_academy", "a room links to its hub");
+    assert(ids(getAutoLinkedPins(cafeteria, pins)) === "door_to_hopes_peak_academy,kitchen", "a room links to its hub and the rooms behind it");
     const fromDoor = getAutoLinkedPins(door, pins).map((p) => p.locationId);
     for (const id of ["cafeteria", "changing_room", "laundry_room", "dorm_hallway", "inn_1f_to_2f", "1f_to_inn"]) {
         assert(fromDoor.includes(id), `the Door links to ${id}`);
     }
     assert(!fromDoor.includes("corridor_f1"), "the Door doesn't link to another floor's corridor");
+    for (const id of ["sauna", "steam_room", "kitchen", "incinerator"]) {
+        assert(!fromDoor.includes(id), `${id} is reached through another room, not from the Door`);
+    }
+
+    // Rooms behind rooms follow the doorways on the map pictures.
+    const sauna = byId("hopes_peak", "inn_floor_1", "sauna");
+    assert(ids(getAutoLinkedPins(sauna, pins)) === "changing_room,steam_room", "the Sauna opens onto the Changing Room and the Steam Room");
+    assert(ids(getAutoLinkedPins(byId("hopes_peak", "inn_floor_1", "steam_room"), pins)) === "sauna", "the Steam Room is only off the Sauna");
+    assert(ids(getAutoLinkedPins(byId("hopes_peak", "inn_floor_1", "incinerator"), pins)) === "trash_room", "the Incinerator is inside the Trash Room");
+    assert(ids(getAutoLinkedPins(byId("hopes_peak", "floor_2", "pool"), pins)) === "boys_changing_rooms,girls_changing_rooms", "the Pool is through either changing room");
+    assert(ids(getAutoLinkedPins(byId("hopes_peak", "floor_2", "girls_changing_rooms"), pins)) === "pool,pool_lounge", "a changing room sits between the lounge and the pool");
+    assert(ids(getAutoLinkedPins(byId("hopes_peak", "floor_2", "pool_lounge"), pins)) === "boys_changing_rooms,corridor_f2,girls_changing_rooms", "the lounge opens onto the corridor and both changing rooms");
+    assert(ids(getAutoLinkedPins(byId("hopes_peak", "floor_1", "gym"), pins)) === "trophy_room", "the Gym is through the Trophy Room");
+    assert(ids(getAutoLinkedPins(byId("hopes_peak", "floor_3", "gallery_storeroom"), pins)) === "gallery", "the gallery storeroom is off the Gallery");
+    // A pin's own hubId wins over the built-in route.
+    const ownRoute = { ...sauna, hubId: ["door_to_hopes_peak_academy"] };
+    assert(ids(getAutoLinkedPins(ownRoute, pins.map((p) => (p === sauna ? ownRoute : p)))) === "door_to_hopes_peak_academy,steam_room", "hubId overrides the built-in route");
 
     // Academy floors get their corridor; stairs pair up.
     const corridor1 = byId("hopes_peak", "floor_1", "corridor_f1");

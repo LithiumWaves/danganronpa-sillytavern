@@ -1,5 +1,5 @@
 import { DEFAULT_HUB_PIN_IDS, DEFAULT_PINS } from "./defaultPins.js";
-import { DORM_AREA_KEY, DORM_FLOOR_KEY, assignDormSlots, buildDormPins, describeFloorExit, diffDormEdits, findRedundantDefaultHubs, getAutoLinkedPins } from "./mapLinks.js";
+import { DORM_AREA_KEY, DORM_FLOOR_KEY, assignDormSlots, buildDormPins, describeFloorExit, diffDormEdits, findDefaultPinHubs, findPinHubs, findRedundantDefaultHubs, getAutoLinkedPins } from "./mapLinks.js";
 import { getFloorUnlockChapter, isFloorLocked, isStoryPin, listCustomFloors, mergePins, migrateLegacyMapStorage, pinInScope, resolveFloorImageSrc, scopeAreaKeys, scopeAreas, setFloorUnlockChapter, splitPins } from "./mapStorage.js";
 import { buildCustomArea } from "../core/title/titleMapSetup.js";
 
@@ -1930,6 +1930,19 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                 return `<label class="map-pin-edit-conn-row" data-search="${escapeHtml(label.toLowerCase())}"><input type="checkbox" class="map-pin-edit-conn" value="${escapeHtml(ref)}"${chk}> ${escapeHtml(label)}</label>`;
             }).join('');
 
+            // Rooms on this floor this one opens onto, for auto-connect: the
+            // corridor for most rooms, another room for one tucked behind it.
+            const floorRooms = isRoom
+                ? getAllPins().filter(p => p !== pin && p.type === 'room' && !p.hidden && p.locationId
+                    && p.areaKey === pin.areaKey && p.floorKey === pin.floorKey)
+                : [];
+            const viaIds = new Set(findPinHubs(pin, getAllPins()).map(p => p.locationId));
+            const viaOptions = floorRooms.map(p => {
+                const label = p.label || p.locationId;
+                const chk = viaIds.has(p.locationId) ? ' checked' : '';
+                return `<label class="map-pin-edit-conn-row"><input type="checkbox" class="map-pin-edit-via" value="${escapeHtml(p.locationId)}"${chk}> ${escapeHtml(label)}</label>`;
+            }).join('');
+
             const autoLinked = getAutoLinkedLabels(pin);
             const autoLinkedHtml = autoLinked.length
                 ? `Automatic: ${autoLinked.map(escapeHtml).join(', ')}`
@@ -1986,6 +1999,12 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                             <label class="map-pin-edit-conn-row"><input type="checkbox" class="map-pin-edit-autoconnect"${pin.autoConnect === false ? '' : ' checked'}> Auto-connect (to this floor's corridor, and stairs to their other end)</label>
                             <label class="map-pin-edit-conn-row"><input type="checkbox" class="map-pin-edit-hub"${pin.hub === true ? ' checked' : ''}> Floor hub (every room on this floor connects here)</label>
                         </div>
+                        ${viaOptions ? `
+                        <div class="map-pin-edit-field">
+                            <div class="map-pin-edit-label">REACHED THROUGH</div>
+                            <div class="map-pin-edit-conn-list map-pin-edit-via-list">${viaOptions}</div>
+                            <div class="map-pin-edit-hint">Which rooms you walk through to get here, following the doorways on the map. Auto-connect links this room to these instead of the corridor — e.g. a Steam Room only off the Sauna. Leave it on the corridor for an ordinary room.</div>
+                        </div>` : ''}
                         <div class="map-pin-edit-actions">
                             <button class="map-pin-edit-save" type="button">SAVE</button>
                             <button class="map-pin-edit-cancel" type="button">CANCEL</button>
@@ -2051,7 +2070,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             // Live filter the Connected To list by row label.
             $modal.find(".map-pin-edit-conn-search").on("input", function () {
                 const q = this.value.toLowerCase().trim();
-                $modal.find(".map-pin-edit-conn-row").each(function () {
+                $modal.find(".map-pin-edit-conn-list:not(.map-pin-edit-via-list) .map-pin-edit-conn-row").each(function () {
                     const hay = this.dataset.search || '';
                     this.style.display = !q || hay.includes(q) ? '' : 'none';
                 });
@@ -2092,6 +2111,15 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                 else pin.autoConnect = false;
                 if ($modal.find(".map-pin-edit-hub").is(":checked")) pin.hub = true;
                 else delete pin.hub;
+                if (viaOptions) {
+                    // Only kept when it differs from what the map works out.
+                    const via = $modal.find(".map-pin-edit-via:checked").map(function () { return this.value; }).get();
+                    const defaults = findDefaultPinHubs({ ...pin, hubId: undefined }, getAllPins()).map(p => p.locationId);
+                    const same = via.length === defaults.length && via.every(id => defaults.includes(id));
+                    // Dorm rooms rebuild their Dorm Hallway link, so they keep any choice.
+                    if (!via.length || (same && !pin._generated)) delete pin.hubId;
+                    else pin.hubId = via.length === 1 ? via[0] : via;
+                }
                 syncPinConnections(pin, oldSelfRef, oldConnected);
                 saveCustomPins();
                 $modal.remove();
