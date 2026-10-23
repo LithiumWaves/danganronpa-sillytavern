@@ -2045,6 +2045,9 @@ function createVnModeController() {
     let streamingEnabled = true;
     let streamTimerId = null;
     let streamToken = 0;
+    // The line in the box (whole, or still typing) and how much of it shows.
+    let shownText = null;
+    let shownRevealed = 0;
 
     const host = document.createElement('div');
     host.id = 'dangan-vn-overlay';
@@ -2230,6 +2233,7 @@ function createVnModeController() {
 
     function stopTextStreaming() {
         streamToken += 1;
+        shownText = null;
         if (streamTimerId !== null) {
             clearTimeout(streamTimerId);
             streamTimerId = null;
@@ -2352,14 +2356,23 @@ function createVnModeController() {
         textEl.classList.toggle('has-action', hasAction);
     }
 
+    // Returns false when the box already shows (or is typing) this line, so
+    // re-renders from unrelated chat changes don't restart it.
     function renderDialogueText(text) {
         const targetText = String(text || '...');
+        if (!textEl) return false;
+        if (targetText === shownText) return false;
+        // A line still being generated grows: keep typing from where it was.
+        const continueFrom = streamingEnabled && shownText && targetText.startsWith(shownText)
+            ? shownRevealed
+            : 0;
         stopTextStreaming();
-        if (!textEl) return;
+        shownText = targetText;
+        shownRevealed = Infinity;
 
         if (!streamingEnabled || targetText.length < 2) {
             applyVnMarkup(targetText);
-            return;
+            return true;
         }
 
         // Pre-parse the full response so formatting is applied up front; stream by
@@ -2370,11 +2383,12 @@ function createVnModeController() {
 
         if (totalVisible < 1) {
             applyVnMarkup(targetText);
-            return;
+            return true;
         }
 
         const token = streamToken;
-        let revealed = 0;
+        let revealed = Math.min(continueFrom, totalVisible);
+        shownRevealed = revealed;
         const step = () => {
             if (token != streamToken || !textEl) return;
             if (revealed >= totalVisible) {
@@ -2387,13 +2401,15 @@ function createVnModeController() {
             const remaining = totalVisible - revealed;
             const delta = remaining > 40 ? 3 : remaining > 18 ? 2 : 1;
             revealed = Math.min(totalVisible, revealed + delta);
+            shownRevealed = revealed;
             textEl.innerHTML = renderVnSegments(segments, revealed);
             textEl.classList.add('dangan-vn-text-streaming');
             streamTimerId = setTimeout(step, 14);
         };
 
-        textEl.innerHTML = '';
+        if (!revealed) textEl.innerHTML = '';
         step();
+        return true;
     }
 
     function updateNavigationState(messages = getMessageEntries()) {
@@ -3094,9 +3110,9 @@ function createVnModeController() {
 
         chunkIndex = Math.max(0, Math.min(chunkIndex, chunks.length - 1));
         nameEl.textContent = maskedName;
-        renderDialogueText(chunks[chunkIndex]);
+        const changed = renderDialogueText(chunks[chunkIndex]);
         updateNavigationState(messages);
-        pulseText();
+        if (changed) pulseText();
     }
 
     function advance() {
@@ -3287,6 +3303,7 @@ function createVnModeController() {
         streamingEnabled = !streamingEnabled;
         persistStreamingPreference();
         refreshStreamingToggle();
+        stopTextStreaming();
         renderCurrent();
     });
 
@@ -3421,7 +3438,7 @@ function createVnModeController() {
             }
             if (window.$) $(mesEl).find('.mes_edit_done').trigger('click');
             closeEdit();
-            setTimeout(() => renderDialogueText(), 100);
+            setTimeout(() => renderCurrent(), 100);
         });
 
         copyBtn.addEventListener('click', () => {
@@ -3677,21 +3694,25 @@ function createVnModeController() {
             }
 
             const maxIndex = messages.length - 1;
-            const wasAtTailBeforeNewMessage = hadMessageCountChange && messageIndex >= Math.max(0, maxIndex - 1);
+            const wasOnLastMessage = messageIndex >= Math.max(0, previousCount - 1);
+            const previousLastText = previousLastSignature.split('::').slice(2).join('::');
+            const lastText = messages[maxIndex]?.text || '';
 
             if (chatScopeChanged) {
                 jumpToLatest();
             } else if (hadMessageCountChange && previousCount === 0 && messages.length > 0) {
                 jumpToLatest();
-            } else if (!hadMessageCountChange && hadLastSignatureChange) {
-                if (messageIndex >= maxIndex) {
-                    jumpToLatest();
-                } else {
-                    renderCurrent();
-                }
-            } else if (hadMessageCountChange && messages.length > previousCount && wasAtTailBeforeNewMessage) {
+            } else if (hadMessageCountChange && messages.length > previousCount && wasOnLastMessage) {
+                // A new line came in while reading the last one: read it from the start.
+                jumpToLatestFromStart();
+            } else if (!hadMessageCountChange && hadLastSignatureChange && messageIndex >= maxIndex
+                && !lastText.startsWith(previousLastText)) {
+                // Swiped or regenerated: the reply was replaced, so start it over.
+                chunkIndex = 0;
                 renderCurrent();
             } else {
+                // Streaming text or unrelated chat changes: stay on the same bit.
+                // The box skips re-typing a line it already shows.
                 renderCurrent();
             }
         });
