@@ -519,7 +519,47 @@ body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .d
     box-sizing: border-box;
     border-radius: 50%;
     border: 3px solid var(--dangan-vn-skin-accent);
-    background: #141414 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23fff' d='M5 9c0-3 3-5 11-5s11 2 11 5v4c0 3-3 5-10 5l-5 5v-5c-4-.4-7-2.2-7-5z'/%3E%3Ccircle cx='9.5' cy='11' r='1.4' fill='%23141414'/%3E%3C/svg%3E") center / 64% no-repeat;
+    background: #141414 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23fff' d='M5 9c0-3 3-5 11-5s11 2 11 5v4c0 3-3 5-10 5l-5 5v-5c-4-.4-7-2.2-7-5z'/%3E%3C/svg%3E") center / 64% no-repeat;
+}
+
+/* The bubble's three dots, lit one after another. One dot plus two
+   box-shadow copies; --d is the dot size and --g the step between dots. */
+body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-header::before {
+    --d: 4px;
+    --g: 6px;
+    content: "";
+    position: absolute;
+    left: 23px;
+    bottom: 38px;
+    z-index: 3;
+    width: var(--d);
+    height: var(--d);
+    border-radius: 50%;
+    pointer-events: none;
+    background: #141414;
+    box-shadow: var(--g) 0 0 #141414, calc(var(--g) * 2) 0 0 #141414;
+    animation: dangan-sdr2-typing 1.2s linear infinite;
+}
+
+@keyframes dangan-sdr2-typing {
+    0%, 33.2% {
+        background: #141414;
+        box-shadow: var(--g) 0 0 #ffffff, calc(var(--g) * 2) 0 0 #ffffff;
+    }
+    33.3%, 66.5% {
+        background: #ffffff;
+        box-shadow: var(--g) 0 0 #141414, calc(var(--g) * 2) 0 0 #ffffff;
+    }
+    66.6%, 100% {
+        background: #ffffff;
+        box-shadow: var(--g) 0 0 #ffffff, calc(var(--g) * 2) 0 0 #141414;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-header::before {
+        animation: none;
+    }
 }
 
 body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-text-wrap {
@@ -813,6 +853,13 @@ body.dangan-theme-damaged:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="
         width: 36px;
         height: 36px;
         border-width: 2px;
+    }
+
+    body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-header::before {
+        --d: 3px;
+        --g: 4.5px;
+        left: 17px;
+        bottom: 28px;
     }
 
     body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-text-wrap {
