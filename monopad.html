@@ -945,6 +945,48 @@
                     </div>
                 </div>
                 <div class="settings-group">
+                    <div class="settings-group-title">HUD colors</div>
+                    <div class="settings-note dangan-hud-color-intro">PHASE follows day, night and investigation. TEXT BOX matches the text box style (Classic keeps the phase colors). CUSTOM lets you pick.</div>
+                    <div class="settings-item settings-announ-row dangan-hud-color-row">
+                        <div class="settings-text">
+                            <span class="settings-label">Song display</span>
+                            <div class="settings-note">The music player in the top-left corner.</div>
+                        </div>
+                        <div class="settings-lang-toggle" role="group" aria-label="Song display color">
+                            <button class="settings-lang-btn active" data-hud-color-target="song" data-hud-color-mode="phase" type="button">PHASE</button>
+                            <button class="settings-lang-btn" data-hud-color-target="song" data-hud-color-mode="textbox" type="button">TEXT BOX</button>
+                            <button class="settings-lang-btn" data-hud-color-target="song" data-hud-color-mode="custom" type="button">CUSTOM</button>
+                        </div>
+                        <input type="color" class="dangan-hud-color-input" data-hud-color-target="song" value="#f59a1b" aria-label="Song display color" hidden />
+                    </div>
+
+                    <div class="settings-item settings-announ-row dangan-hud-color-row">
+                        <div class="settings-text">
+                            <span class="settings-label">Chapter display</span>
+                            <div class="settings-note">The chapter, level bar and current room in the top-right corner.</div>
+                        </div>
+                        <div class="settings-lang-toggle" role="group" aria-label="Chapter display color">
+                            <button class="settings-lang-btn active" data-hud-color-target="chapter" data-hud-color-mode="phase" type="button">PHASE</button>
+                            <button class="settings-lang-btn" data-hud-color-target="chapter" data-hud-color-mode="textbox" type="button">TEXT BOX</button>
+                            <button class="settings-lang-btn" data-hud-color-target="chapter" data-hud-color-mode="custom" type="button">CUSTOM</button>
+                        </div>
+                        <input type="color" class="dangan-hud-color-input" data-hud-color-target="chapter" value="#f59a1b" aria-label="Chapter display color" hidden />
+                    </div>
+
+                    <div class="settings-item settings-announ-row dangan-hud-color-row">
+                        <div class="settings-text">
+                            <span class="settings-label">Map display</span>
+                            <div class="settings-note">The minimap and the MOVE TO panel.</div>
+                        </div>
+                        <div class="settings-lang-toggle" role="group" aria-label="Map display color">
+                            <button class="settings-lang-btn active" data-hud-color-target="map" data-hud-color-mode="phase" type="button">PHASE</button>
+                            <button class="settings-lang-btn" data-hud-color-target="map" data-hud-color-mode="textbox" type="button">TEXT BOX</button>
+                            <button class="settings-lang-btn" data-hud-color-target="map" data-hud-color-mode="custom" type="button">CUSTOM</button>
+                        </div>
+                        <input type="color" class="dangan-hud-color-input" data-hud-color-target="map" value="#f59a1b" aria-label="Map display color" hidden />
+                    </div>
+                </div>
+                <div class="settings-group">
                     <div class="settings-group-title">Branding</div>
                     <div class="settings-item settings-announ-row">
                         <div class="settings-text">

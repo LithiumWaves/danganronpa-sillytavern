@@ -25,6 +25,7 @@ import { createHostStage } from "./host/hostStage.js";
 import { getLocationPromptReference, resolveLocationIdFromText } from "./map/locationPresence.js";
 import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, TRIAL_START_REGEX, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, TRIAL_CONTEXT_REGEX, defaultSettings, extensionFolderPath, extensionName, getDefaultPromptTemplate } from "./core/constants.js";
 import { VN_SKIN_CHOICES, normalizeVnSkin } from "./core/vnSkins.js";
+import { HUD_COLOR_DEFAULT, HUD_COLOR_TARGETS, hudColorVars, normalizeHudColorMode, resolveHudColor } from "./core/ui/hudColors.js";
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 import { createCardHygieneController } from "./core/cardHygiene.js";
 import { createOnboardingState } from "./core/onboarding/onboardingState.js";
@@ -8203,6 +8204,56 @@ function getCurrentChatSpeakerNames() {
 }
 
 function applyDynamicTheme() {
+    applyDynamicThemeClasses();
+    // TEXT BOX colors follow the style's night / investigation accent.
+    applyHudColors();
+}
+
+const HUD_COLOR_SETTING = {
+    song:    { mode: "hudColorSongMode",    color: "hudColorSong" },
+    chapter: { mode: "hudColorChapterMode", color: "hudColorChapter" },
+    map:     { mode: "hudColorMapMode",     color: "hudColorMap" },
+};
+
+// Song / chapter / map display colors (Settings → Customize → HUD colors).
+function applyHudColors() {
+    const body = document.body;
+    const skin = body.dataset.danganVnSkin || "current";
+    const skinAccent = getComputedStyle(body).getPropertyValue("--dangan-vn-skin-accent");
+    const trialActive = body.classList.contains("dangan-trial-active");
+    for (const target of HUD_COLOR_TARGETS) {
+        const keys = HUD_COLOR_SETTING[target];
+        const color = resolveHudColor({
+            mode: getMonopadSetting(keys.mode),
+            custom: getMonopadSetting(keys.color),
+            skin, skinAccent, trialActive,
+        });
+        const vars = hudColorVars(target, color);
+        body.classList.toggle(`dangan-hud-color-${target}`, !!vars);
+        for (const suffix of ["rgb", "hex", "tint"]) {
+            const name = `--dangan-hud-${target}-${suffix}`;
+            if (vars) body.style.setProperty(name, vars[name]);
+            else body.style.removeProperty(name);
+        }
+    }
+}
+
+function applyHudColorsUI() {
+    for (const target of HUD_COLOR_TARGETS) {
+        const keys = HUD_COLOR_SETTING[target];
+        const mode = normalizeHudColorMode(getMonopadSetting(keys.mode));
+        document.querySelectorAll(`[data-hud-color-target="${target}"][data-hud-color-mode]`).forEach(btn => {
+            btn.classList.toggle("active", btn.dataset.hudColorMode === mode);
+        });
+        const input = document.querySelector(`input[data-hud-color-target="${target}"]`);
+        if (input) {
+            input.value = getMonopadSetting(keys.color) || HUD_COLOR_DEFAULT;
+            input.hidden = mode !== "custom";
+        }
+    }
+}
+
+function applyDynamicThemeClasses() {
     const body = document.body;
     body.classList.remove("dangan-theme-daily", "dangan-theme-night", "dangan-theme-investigation", "dangan-theme-damaged");
 
@@ -9170,6 +9221,8 @@ function applySettingsTabUI() {
         el.setAttribute("aria-checked", on ? "true" : "false");
     });
     vnModeController?.setSkin?.(vnSkin);
+    applyHudColors();
+    applyHudColorsUI();
     applyAnnouncementCustomisationUI();
     applyLecternUI();
     applyVoteFaceUI();
@@ -11370,6 +11423,23 @@ $(".monopad-icon").on("mouseenter", function () {
         });
 
         // Host / mascot cards: Auto (Monokuma) or a ticked list of cards.
+        $(document).on("click", "[data-hud-color-mode]", function () {
+            const keys = HUD_COLOR_SETTING[this.dataset.hudColorTarget];
+            if (!keys) return;
+            playSfx(sfx.click);
+            setMonopadSetting(keys.mode, normalizeHudColorMode(this.dataset.hudColorMode));
+            applyHudColors();
+            applyHudColorsUI();
+        });
+        // Live while dragging the picker; saved when it closes.
+        $(document).on("input change", "input[data-hud-color-target]", function (e) {
+            const keys = HUD_COLOR_SETTING[this.dataset.hudColorTarget];
+            if (!keys) return;
+            if (e.type === "change") setMonopadSetting(keys.color, this.value);
+            else extension_settings[extensionName][keys.color] = this.value;
+            applyHudColors();
+        });
+
         $(document).on("click", "[data-host-mode]", function () {
             const custom = this.dataset.hostMode === 'custom';
             hostPickerOpen = custom;
@@ -12104,6 +12174,7 @@ applySettingsTabUI();
 applyImageVisibilitySettings();
 applyExploreLayoutSettings();
 applyHostEntranceSettings();
+applyHudColors();
 applyHalfSpriteMode();
 // The initial chat's sprites mount asynchronously after boot (and CHAT_CHANGED
 // can be unreliable on first load), so re-apply once they've settled — otherwise

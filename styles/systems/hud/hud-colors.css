@@ -1,0 +1,85 @@
+/* =========================
+   HUD colors (Settings → Customize → HUD colors)
+   With TEXT BOX or CUSTOM picked for a display, index.js puts
+   dangan-hud-color-<song|chapter|map> on <body> with
+   --dangan-hud-<x>-rgb / -hex / -tint (core/ui/hudColors.js). These rules
+   then win over the phase colors; without the class nothing changes.
+   The `html` prefix outranks style.css's own phase rules, which come after
+   its @imports.
+   ========================= */
+
+/* ── Song display ─────────────────────────────────────────────────────── */
+
+html body.dangan-hud-color-song #dangan-bgm-display .dbgm-layer img {
+    filter: var(--dangan-hud-song-tint) !important;
+}
+
+html body.dangan-hud-color-song #dangan-bgm-display .dbgm-morning img {
+    animation: dbgm-rock 5s ease-in-out infinite, dangan-hud-song-glow 2s ease-in-out infinite !important;
+}
+
+@keyframes dangan-hud-song-glow {
+    0%, 100% { filter: var(--dangan-hud-song-tint) drop-shadow(0 0 4px rgba(var(--dangan-hud-song-rgb), 0.75)); }
+    50%      { filter: var(--dangan-hud-song-tint) drop-shadow(0 0 12px rgba(var(--dangan-hud-song-rgb), 0.95)); }
+}
+
+html body.dangan-hud-color-song #dangan-bgm-display .dbgm-playlist-label {
+    color: var(--dangan-hud-song-hex) !important;
+}
+
+/* ── Chapter display (level bar, chapter, room) ───────────────────────── */
+
+html body.dangan-hud-color-chapter #dangan-hud-topright {
+    --dlvl-rgb:      var(--dangan-hud-chapter-rgb);
+    --dlvl-fill-a:   color-mix(in srgb, var(--dangan-hud-chapter-hex) 75%, #000 25%);
+    --dlvl-fill-b:   color-mix(in srgb, var(--dangan-hud-chapter-hex) 70%, #fff 30%);
+    --dlvl-track-bg: color-mix(in srgb, var(--dangan-hud-chapter-hex) 14%, rgba(4, 4, 8, 0.85));
+    --dlvl-bg:       color-mix(in srgb, var(--dangan-hud-chapter-hex) 8%, rgba(4, 4, 8, 0.85));
+}
+
+/* The bar's backing strip is the song display's text-scroller art. */
+html body.dangan-hud-color-chapter #dangan-level-bar::before {
+    filter: var(--dangan-hud-chapter-tint) brightness(0.75);
+}
+
+html body.dangan-hud-color-chapter .dangan-current-room-label {
+    color: var(--dangan-hud-chapter-hex);
+}
+
+/* ── Map display (minimap frame, its diamonds, MOVE TO panel) ─────────── */
+
+html body.dangan-hud-color-map #dangan-minimap .dangan-minimap-square {
+    border-color: rgba(var(--dangan-hud-map-rgb), 0.82);
+    box-shadow: 0 0 14px rgba(var(--dangan-hud-map-rgb), 0.45), inset 0 0 16px rgba(0, 0, 0, 0.55);
+}
+
+html body.dangan-hud-color-map #dangan-minimap .dangan-minimap-zoom-btn {
+    filter: none;
+    border-color: rgba(var(--dangan-hud-map-rgb), 0.75);
+    box-shadow: 0 0 10px rgba(var(--dangan-hud-map-rgb), 0.45), inset 0 0 8px rgba(0, 0, 0, 0.4);
+    color: color-mix(in srgb, var(--dangan-hud-map-hex) 25%, #fff 75%);
+}
+
+html body.dangan-hud-color-map #dangan-moveto-panel {
+    filter: var(--dangan-hud-map-tint);
+}
+
+/* ── Settings rows ────────────────────────────────────────────────────── */
+
+.dangan-hud-color-intro {
+    margin: 0 0 6px;
+}
+
+.dangan-hud-color-input {
+    width: 44px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 6px;
+    background: transparent;
+    cursor: pointer;
+}
+
+.dangan-hud-color-input[hidden] {
+    display: none;
+}
