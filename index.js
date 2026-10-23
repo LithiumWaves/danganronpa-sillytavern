@@ -10838,8 +10838,6 @@ jQuery(async () => {
                     onHostCalled: (name) => bringHostOnStage(name),
                     getOnStageHosts: () => getOnStageHosts(),
                     getHostEntranceElapsed: (name) => getHostEntranceElapsed(name, 'overworld'),
-                    getFloorExits: () => getCurrentFloorExits(),
-                    onFloorExit: (moveLabel) => moveToDestination(moveLabel),
                     onPresenceSynced: () => {
                         try { trialManager?.refreshGroupChatPortraits?.(); }
                         catch (e) { console.warn("[Dangan][Overworld] GCP refresh after presence sync failed:", e); }
@@ -15526,8 +15524,15 @@ function performPinArrivalWithFade(pin) {
 // Resolve a destination string (label/ref/value) against the current pin's
 // connection list and execute the move. Shared by /moveto and the side panel
 // buttons so they behave identically.
+// While a conversation is open (Single-Chat "View conversation") the player
+// stays put; close it to walk again.
+function isMovementBlocked() {
+    return document.body.classList.contains('dangan-ow-conversation-view');
+}
+
 function moveToDestination(raw) {
     if (!mapPanelController) return false;
+    if (isMovementBlocked()) return false;
     const currentId = getCurrentLocationId();
     if (!currentId) return false;
     const conns = mapPanelController.getConnectionsForLocationId?.(currentId) ?? [];

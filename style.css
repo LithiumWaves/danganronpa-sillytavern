@@ -1736,20 +1736,6 @@ body.dangan-ow-single-chat #expression-wrapper {
     width: 280px;
 }
 
-/* Stairs / doors — "GO TO FLOOR 2" under the left column. index.js stacks
- * several by setting `top`; the gold edge marks them as ways out. */
-#dangan-overworld .dangan-ow-floor-btn {
-    top: 266px;
-    width: auto;
-    min-width: 260px;
-    max-width: min(440px, calc(100vw - 40px));
-    padding-right: 28px;
-    border-color: rgba(255, 214, 90, 0.85);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
 /* Right-side button column — mirror of the left column. The skewX sign flips
  * so the parallelogram leans toward the same screen edge it's pinned to, and
  * the label gets a matching counter-skew. The column starts lower than the
@@ -1951,6 +1937,22 @@ body.dangan-explore-menu-on.dangan-ow-scene-active:not(.dangan-explore-debug-sho
     background: rgba(255, 214, 90, 0.25);
     transform: skewX(-14deg) translateY(-2px);
     outline: none;
+}
+
+/* View conversation: nobody walks off, so the ways out go quiet. */
+body.dangan-ow-conversation-view .dangan-minimap-floor-exits,
+body.dangan-ow-conversation-view .dangan-minimap-move-col,
+body.dangan-ow-conversation-view #dangan-minimap-move-pop,
+body.dangan-ow-conversation-view #dangan-moveto-panel,
+body.dangan-ow-conversation-view .dangan-minimap-pin.dangan-minimap-pin-current.dangan-minimap-pin-exit {
+    display: none !important;
+}
+body.dangan-ow-conversation-view .dangan-minimap-pin.dangan-minimap-pin-reachable {
+    filter: grayscale(1) brightness(0.85);
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+    animation: none;
+    cursor: default;
+    pointer-events: none;
 }
 
 /* Move diamond — one lattice step left of the bottom apex, beside Photo

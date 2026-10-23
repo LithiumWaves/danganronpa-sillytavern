@@ -134,8 +134,6 @@ export function createOverworldSceneController({
     onHostCalled, // optional — (name) => void; a host was called in
     getOnStageHosts, // optional — () => { name, expression }[]; called-in hosts, who stand in the player's room
     getHostEntranceElapsed, // optional — (name) => ms into this host's slide-up, or null
-    getFloorExits, // optional — () => { moveLabel, direction, text }[]; stairs / doors off this floor
-    onFloorExit, // optional — (moveLabel) => void; go through one of them
 }) {
     function playOwSfx(key) {
         if (!playSfx) return;
@@ -1229,6 +1227,8 @@ export function createOverworldSceneController({
         body.classList.toggle("dangan-ow-chat-exit-active", mode === "chat-exit");
         body.classList.toggle("dangan-ow-inchat-explore", inchatExplore);
         body.classList.toggle("dangan-ow-single-chat", singleChatHud);
+        // Reading the conversation: nobody walks off (index.js blocks moves).
+        body.classList.toggle("dangan-ow-conversation-view", singleChatHud && conversationViewOpen);
         if (mode !== "scene") closeActionMenu();
         // With the text box hidden while exploring, a focused textarea could
         // still send on Enter — drop focus so nothing can be typed.
@@ -1592,14 +1592,6 @@ export function createOverworldSceneController({
             }
         }
 
-        // Stairs and doors: one button per way off this floor, stacked down
-        // the left column under Talk to the room / Grab.
-        if (!editMode) {
-            let exits = [];
-            try { exits = getFloorExits?.() || []; } catch (e) { console.warn("[Dangan][Overworld] floor exits failed:", e); }
-            exits.forEach((exit, i) => root.appendChild(buildFloorExitBtn(exit, i)));
-        }
-
         const liveRoot = getDomRoot();
         if (liveRoot) liveRoot.replaceWith(root);
         else document.body.appendChild(root);
@@ -1684,26 +1676,6 @@ export function createOverworldSceneController({
     function closeConversationView() {
         conversationViewOpen = false;
         scheduleRender();
-    }
-
-    const FLOOR_EXIT_ICONS = { up: "▲", down: "▼", door: "⇥" };
-
-    function buildFloorExitBtn(exit, index) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = `dangan-ow-room-btn dangan-ow-floor-btn dangan-ow-floor-btn-${exit.direction}`;
-        // Slots below the 186px / 226px left-column buttons.
-        btn.style.top = `${266 + index * 40}px`;
-        btn.title = `Go through to ${exit.text}`;
-        const label = document.createElement("span");
-        label.className = "dangan-ow-room-btn-label";
-        label.textContent = `${FLOOR_EXIT_ICONS[exit.direction] || FLOOR_EXIT_ICONS.door} GO TO ${exit.text}`;
-        btn.appendChild(label);
-        btn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            onFloorExit?.(exit.moveLabel);
-        });
-        return btn;
     }
 
     function buildViewConversationBtn() {
