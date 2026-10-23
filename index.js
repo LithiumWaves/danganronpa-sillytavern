@@ -2020,6 +2020,7 @@ function createVnModeController() {
     const VN_STREAMING_KEY = `${extensionName}-vn-streaming-enabled`;
     // Per text box style, since each starts at its own size.
     const VN_SIZE_KEY = `${extensionName}-vn-box-size`;
+    const VN_CHROME_HIDDEN_KEY = `${extensionName}-vn-chrome-hidden`;
     let chunkIndex = 0;
     let messageIndex = 0;
     let monopadOpen = false;
@@ -2057,6 +2058,7 @@ function createVnModeController() {
                 <button type="button" class="dangan-vn-control dangan-vn-edit-message" id="dangan-vn-edit-message" aria-label="Edit current message" title="Edit current message">✏</button>
                 <button type="button" class="dangan-vn-control dangan-vn-clear-chat" id="dangan-vn-clear-chat" aria-label="Clear all chat messages" title="Clear all chat messages">🗑</button>
                 <button type="button" class="dangan-vn-control dangan-vn-lock" id="dangan-vn-lock" aria-label="Unlock Visual Novel box movement" title="Unlock Visual Novel box movement">🔒</button>
+                <button type="button" class="dangan-vn-control dangan-vn-chrome-hide" id="dangan-vn-chrome-hide">HIDE</button>
             </div>
             <div class="dangan-vn-header">
                 <div class="dangan-vn-nameplate" id="dangan-vn-name">—</div>
@@ -2094,6 +2096,7 @@ function createVnModeController() {
     const lockBtnEl = host.querySelector('#dangan-vn-lock');
     const chromeToggleEl = host.querySelector('#dangan-vn-chrome-toggle');
     const resizeGripEl = host.querySelector('#dangan-vn-resize');
+    const chromeHideBtnEl = host.querySelector('#dangan-vn-chrome-hide');
     const transcriptToggleEl = host.querySelector('#dangan-vn-transcript-toggle');
     const manageChatFilesBtnEl = host.querySelector('#dangan-vn-manage-chat-files');
     const transcriptEl = host.querySelector('#dangan-vn-transcript');
@@ -2480,21 +2483,44 @@ function createVnModeController() {
         };
     }
 
-    function savePosition() {
-        if (!Number.isFinite(framePosX) || !Number.isFinite(framePosY)) return;
+    // Kept per text box style, like the size. An older single { x, y } is
+    // taken as the position of the style shown when it is first read.
+    function readSavedPositions() {
         try {
-            localStorage.setItem(VN_POSITION_KEY, JSON.stringify({ x: framePosX, y: framePosY }));
+            const parsed = JSON.parse(localStorage.getItem(VN_POSITION_KEY) || '{}');
+            if (!parsed || typeof parsed !== 'object') return {};
+            if (Number.isFinite(parsed.x) && Number.isFinite(parsed.y)) {
+                // Wait until the style is known (setSkin) to hand it over.
+                if (!document.body.dataset.danganVnSkin) return {};
+                const migrated = { [currentSkinKey()]: { x: parsed.x, y: parsed.y } };
+                writeSavedPositions(migrated);
+                return migrated;
+            }
+            return parsed;
+        } catch {
+            return {};
+        }
+    }
+
+    function writeSavedPositions(positions) {
+        try {
+            localStorage.setItem(VN_POSITION_KEY, JSON.stringify(positions));
         } catch {
             // ignore storage failures
         }
     }
 
+    function savePosition() {
+        if (!Number.isFinite(framePosX) || !Number.isFinite(framePosY)) return;
+        const positions = readSavedPositions();
+        positions[currentSkinKey()] = { x: framePosX, y: framePosY };
+        writeSavedPositions(positions);
+    }
+
     function clearSavedPosition() {
-        try {
-            localStorage.removeItem(VN_POSITION_KEY);
-        } catch {
-            // ignore storage failures
-        }
+        const positions = readSavedPositions();
+        delete positions[currentSkinKey()];
+        writeSavedPositions(positions);
     }
 
     function setFramePosition(nextX, nextY) {
@@ -2507,25 +2533,26 @@ function createVnModeController() {
         frameEl.style.top = `${y}px`;
     }
 
-    function resetFramePosition() {
+    function clearFramePosition() {
         if (!frameEl) return;
         framePosX = null;
         framePosY = null;
         frameEl.classList.remove('dangan-vn-custom-pos');
         frameEl.style.left = '';
         frameEl.style.top = '';
+    }
+
+    function resetFramePosition() {
+        clearFramePosition();
         clearSavedPosition();
     }
 
     function restoreSavedPosition() {
-        try {
-            const raw = localStorage.getItem(VN_POSITION_KEY);
-            if (!raw) return;
-            const parsed = JSON.parse(raw);
-            if (!parsed || !Number.isFinite(parsed.x) || !Number.isFinite(parsed.y)) return;
-            setFramePosition(parsed.x, parsed.y);
-        } catch {
-            // ignore storage failures
+        const saved = readSavedPositions()[currentSkinKey()];
+        if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
+            setFramePosition(saved.x, saved.y);
+        } else {
+            clearFramePosition();
         }
     }
 
@@ -2570,6 +2597,47 @@ function createVnModeController() {
     function restoreSavedSize() {
         const saved = readSavedSizes()[currentSkinKey()];
         setFrameSize(saved?.w, saved?.h);
+    }
+
+    function setChromeOpen(open) {
+        frameEl?.classList.toggle('chrome-open', open);
+        if (!chromeToggleEl) return;
+        chromeToggleEl.setAttribute('aria-expanded', open ? 'true' : 'false');
+        chromeToggleEl.setAttribute('aria-label', open ? 'Hide box buttons' : 'Show box buttons');
+        chromeToggleEl.title = open ? 'Hide box buttons' : 'Show box buttons';
+        chromeToggleEl.textContent = open ? '✕ CLOSE' : '☰ MENU';
+    }
+
+    // Hidden: hovering the box no longer brings up its buttons; MENU does.
+    function setChromeHidden(hidden, { persist = true } = {}) {
+        frameEl?.classList.toggle('chrome-hidden', hidden);
+        if (hidden) {
+            setChromeOpen(false);
+            if (frameEl?.contains(document.activeElement)) document.activeElement.blur?.();
+        }
+        if (chromeHideBtnEl) {
+            chromeHideBtnEl.textContent = hidden ? 'SHOW ON HOVER' : 'HIDE';
+            chromeHideBtnEl.title = hidden
+                ? 'Show these buttons again whenever the pointer is over the box'
+                : 'Stop showing these buttons on hover; use MENU to open them';
+            chromeHideBtnEl.setAttribute('aria-pressed', hidden ? 'true' : 'false');
+        }
+        if (!persist) return;
+        try {
+            localStorage.setItem(VN_CHROME_HIDDEN_KEY, hidden ? '1' : '0');
+        } catch {
+            // ignore storage failures
+        }
+    }
+
+    function restoreChromeHidden() {
+        let hidden = false;
+        try {
+            hidden = localStorage.getItem(VN_CHROME_HIDDEN_KEY) === '1';
+        } catch {
+            // ignore storage failures
+        }
+        setChromeHidden(hidden, { persist: false });
     }
 
     function setMoveUnlocked(unlocked) {
@@ -2784,8 +2852,9 @@ function createVnModeController() {
     refreshStreamingToggle();
     updateBottomOffset();
     syncMonopadVisibility();
-    restoreSavedPosition();
     restoreSavedSize();
+    restoreSavedPosition();
+    restoreChromeHidden();
     setMoveUnlocked(false);
 
     const htmlDecodeBuffer = document.createElement('div');
@@ -3099,12 +3168,13 @@ function createVnModeController() {
     chromeToggleEl?.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
-        const open = !frameEl?.classList.contains('chrome-open');
-        frameEl?.classList.toggle('chrome-open', open);
-        chromeToggleEl.setAttribute('aria-expanded', open ? 'true' : 'false');
-        chromeToggleEl.setAttribute('aria-label', open ? 'Hide box buttons' : 'Show box buttons');
-        chromeToggleEl.title = open ? 'Hide box buttons' : 'Show box buttons';
-        chromeToggleEl.textContent = open ? '✕ CLOSE' : '☰ MENU';
+        setChromeOpen(!frameEl?.classList.contains('chrome-open'));
+    });
+
+    chromeHideBtnEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setChromeHidden(!frameEl?.classList.contains('chrome-hidden'));
     });
 
     // The grip on the top-right corner: drag right to widen, up to heighten.
@@ -3516,6 +3586,7 @@ function createVnModeController() {
         if (target instanceof Element && target.closest('.dangan-vn-nav-button')) return;
         if (target instanceof Element && target.closest('.dangan-vn-chrome-toggle')) return;
         if (target instanceof Element && target.closest('.dangan-vn-resize')) return;
+        if (target instanceof Element && target.closest('.dangan-vn-chrome-hide')) return;
         advance();
     });
 
@@ -3637,6 +3708,10 @@ function createVnModeController() {
             _vnRelayoutRaf = null;
             if (!vnEnabled) return;
             updateBottomOffset();
+            // Keep a moved box on screen once its style's size applies.
+            if (Number.isFinite(framePosX) && Number.isFinite(framePosY) && !resizeState) {
+                setFramePosition(framePosX, framePosY);
+            }
             dockTypingSection();
         });
     };
@@ -3665,6 +3740,7 @@ function createVnModeController() {
             // On <body> so the docked typing bar (outside the overlay) can match.
             document.body.dataset.danganVnSkin = next;
             restoreSavedSize();
+            restoreSavedPosition();
             dockTypingSection();
         },
         setEnabled(enabled) {
@@ -4300,7 +4376,8 @@ function playLocationTrack(settingKey) {
     shopTrackAudio = new Audio(path);
     shopTrackAudio.loop = true;
     shopTrackAudio.volume = Number(getMonopadSetting("monomonoBgmVolume") ?? 40) / 100;
-    shopTrackAudio.play().catch(e => console.warn("[Dangan][BGM] Location track play failed:", e));
+    // A paused player keeps the room quiet too.
+    if (!bgmUserPaused) shopTrackAudio.play().catch(e => console.warn("[Dangan][BGM] Location track play failed:", e));
     return true;
 }
 
@@ -4448,9 +4525,13 @@ const BGM_PLAYLIST_PARENTS = {
 // through the fade-to-black even if ST/DA/etc. tries to clip it.
 let _bgmTransitionGuardUntilMs = 0;
 let _bgmTransitionWatchdogRaf  = null;
+// Set by the music widget's pause button. Until the player presses play or
+// picks a track, nothing else (room changes, Dynamic Songs, a pin's music,
+// the transition guard) starts the music again; new tracks load paused.
+let bgmUserPaused = false;
 function _bgmTransitionWatchdogTick() {
     const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-    if (now >= _bgmTransitionGuardUntilMs) {
+    if (now >= _bgmTransitionGuardUntilMs || bgmUserPaused) {
         _bgmTransitionWatchdogRaf = null;
         return;
     }
@@ -4498,7 +4579,7 @@ function playBgmPath(path, settingKey = null) {
     const audioEl = investigationTrackAudio;
     const origPause = audioEl.pause.bind(audioEl);
     audioEl.pause = function () {
-        if (audioEl !== investigationTrackAudio) return origPause();
+        if (audioEl !== investigationTrackAudio || bgmUserPaused) return origPause();
         const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
         if (now < _bgmTransitionGuardUntilMs) return; // suppress — guard armed
         return origPause();
@@ -4507,14 +4588,16 @@ function playBgmPath(path, settingKey = null) {
     // `load()` resetting state) bypass the .pause() override and fire the
     // 'pause' event directly. Catch those and resume during the guard window.
     audioEl.addEventListener('pause', () => {
-        if (audioEl !== investigationTrackAudio) return;
+        if (audioEl !== investigationTrackAudio || bgmUserPaused) return;
         const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
         if (now >= _bgmTransitionGuardUntilMs) return;
         audioEl.play().catch(() => {});
     });
-    investigationTrackAudio.play().catch(e =>
-        console.warn(`[Dangan][BGM] Track play failed (${settingKey ?? "?"}):`, e)
-    );
+    if (!bgmUserPaused) {
+        investigationTrackAudio.play().catch(e =>
+            console.warn(`[Dangan][BGM] Track play failed (${settingKey ?? "?"}):`, e)
+        );
+    }
 
     // Seed DA's internal lastBgmPath by triggering it to "select" our track.
     // DA's polling worker checks: if chosen path === lastBgmPath → return early (no el.load/play).
@@ -4595,6 +4678,7 @@ function openAssignedSongPicker() {
         currentSettingKey: bgmCurrentSettingKey || "",
         onPick: ({ path, settingKey }) => {
             try { dynamicSongsController?.holdManual?.(); } catch { /* ignore */ }
+            bgmUserPaused = false;
             playSpecificTrack(path, settingKey);
         },
     });
@@ -4607,6 +4691,7 @@ function getPhaseSettingKey() {
 }
 
 function handleScanMood() {
+    bgmUserPaused = false;
     const result = dynamicSongsController?.rescanAndPlay?.() || {};
     if (!getMonopadSetting("moodScanToastEnabled")) return;
     showMoodScanToast(formatMoodScanToast(result, BGM_PLAYLIST_LABELS));
@@ -4642,18 +4727,21 @@ function syncMoodScanButton() {
 
 function bgmPlayPrev() {
     if (!bgmCurrentList.length) return;
+    bgmUserPaused = false;
     bgmCurrentIndex = (bgmCurrentIndex - 1 + bgmCurrentList.length) % bgmCurrentList.length;
     playBgmPath(bgmCurrentList[bgmCurrentIndex], bgmCurrentSettingKey);
 }
 
 function bgmPlayNext() {
     if (!bgmCurrentList.length) return;
+    bgmUserPaused = false;
     bgmCurrentIndex = (bgmCurrentIndex + 1) % bgmCurrentList.length;
     playBgmPath(bgmCurrentList[bgmCurrentIndex], bgmCurrentSettingKey);
 }
 
 function bgmPlayShuffle() {
     if (!bgmCurrentList.length) return;
+    bgmUserPaused = false;
     bgmCurrentIndex = Math.floor(Math.random() * bgmCurrentList.length);
     playBgmPath(bgmCurrentList[bgmCurrentIndex], bgmCurrentSettingKey);
 }
@@ -4671,14 +4759,16 @@ function bgmAttachEndedListener(audioEl) {
 function bgmTogglePause() {
     // Prioritise the extension's own element — matches getAudioElement() priority.
     if (investigationTrackAudio) {
-        if (investigationTrackAudio.paused) investigationTrackAudio.play().catch(() => {});
-        else investigationTrackAudio.pause();
+        bgmUserPaused = !investigationTrackAudio.paused;
+        if (bgmUserPaused) investigationTrackAudio.pause();
+        else investigationTrackAudio.play().catch(() => {});
         return;
     }
     const audioEl = document.getElementById("audio_bgm");
     if (audioEl instanceof HTMLAudioElement) {
-        if (audioEl.paused) audioEl.play().catch(() => {});
-        else audioEl.pause();
+        bgmUserPaused = !audioEl.paused;
+        if (bgmUserPaused) audioEl.pause();
+        else audioEl.play().catch(() => {});
     }
 }
 
@@ -8259,7 +8349,7 @@ async function fadeOutAndPauseBgm(durationMs = 600) {
 async function fadeInAndResumeBgm(durationMs = 600) {
     // Resume whichever element we paused — prefer investigationTrackAudio if it exists
     const el = investigationTrackAudio ?? document.getElementById('audio_bgm');
-    if (!el || !el.paused) return;
+    if (!el || !el.paused || bgmUserPaused) return;
 
     const targetVolume = Number.isFinite(el.volume) ? el.volume : 1;
     el.volume = 0;
@@ -8622,7 +8712,7 @@ function resumeBgmAfterHG() {
     // Restore the ambient (phase) BGM that was playing before the minigame.
     if (savedInvAudio) {
         investigationTrackAudio = savedInvAudio;
-        investigationTrackAudio.play().catch(() => {});
+        if (!bgmUserPaused) investigationTrackAudio.play().catch(() => {});
     }
     try { dynamicSongsController?.scheduleEvaluate?.({ restorePhaseOnMiss: true }); } catch (_) {}
 }
@@ -11904,9 +11994,10 @@ audioVisualizer = createAudioVisualizerController({
         if (investigationTrackAudio) investigationTrackAudio.loop = isLoop;
     },
     getIsPaused: () => {
+        // Same priority as bgmTogglePause.
+        if (investigationTrackAudio) return investigationTrackAudio.paused;
         const audioEl = document.getElementById('audio_bgm');
-        if (audioEl instanceof HTMLAudioElement) return audioEl.paused;
-        return investigationTrackAudio?.paused ?? true;
+        return audioEl instanceof HTMLAudioElement ? audioEl.paused : true;
     },
     getPlaylistLabel: () => {
         const key = bgmCurrentSettingKey;

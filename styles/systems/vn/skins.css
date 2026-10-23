@@ -25,7 +25,7 @@ body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-
 }
 
 /* A mouse reveals the buttons by hovering the box, so the MENU toggle is
-   only for touch screens. */
+   only for touch screens, and for when HIDE has turned the hover off. */
 body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-toggle {
     display: inline-flex;
     position: absolute;
@@ -43,9 +43,23 @@ body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-
 }
 
 @media (hover: hover) and (pointer: fine) {
-    body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-toggle {
+    body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame:not(.chrome-hidden) .dangan-vn-chrome-toggle {
         display: none;
     }
+}
+
+/* HIDE / SHOW ON HOVER at the end of the top row. Classic keeps its buttons
+   in the box, so it has nothing to hide. */
+#dangan-vn-overlay .dangan-vn-chrome-hide {
+    display: none;
+}
+
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-hide {
+    display: inline-flex;
+    padding: 0 9px;
+    font-family: "Orbitron", "Rajdhani", monospace;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
 }
 
 body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-toggle:hover,
@@ -91,7 +105,7 @@ body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-
 }
 
 body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame.chrome-open :is(.dangan-vn-controls, .dangan-vn-nav),
-body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame:focus-within :is(.dangan-vn-controls, .dangan-vn-nav) {
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame:not(.chrome-hidden):focus-within :is(.dangan-vn-controls, .dangan-vn-nav) {
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
@@ -99,20 +113,20 @@ body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-
 }
 
 body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame.chrome-open .dangan-vn-position,
-body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame:focus-within .dangan-vn-position {
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame:not(.chrome-hidden):focus-within .dangan-vn-position {
     opacity: 1;
     transition: opacity 160ms ease;
 }
 
 @media (hover: hover) {
-    body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame:hover :is(.dangan-vn-controls, .dangan-vn-nav) {
+    body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame:not(.chrome-hidden):hover :is(.dangan-vn-controls, .dangan-vn-nav) {
         opacity: 1;
         visibility: visible;
         pointer-events: auto;
         transition: opacity 160ms ease, visibility 0s;
     }
 
-    body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame:hover .dangan-vn-position {
+    body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame:not(.chrome-hidden):hover .dangan-vn-position {
         opacity: 1;
         transition: opacity 160ms ease;
     }
@@ -192,7 +206,7 @@ body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-
         opacity: 0;
     }
 
-    #dangan-vn-overlay .dangan-vn-frame:hover .dangan-vn-resize {
+    #dangan-vn-overlay .dangan-vn-frame:not(.chrome-hidden):hover .dangan-vn-resize {
         opacity: 0.7;
     }
 }
