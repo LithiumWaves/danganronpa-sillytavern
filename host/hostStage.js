@@ -1,42 +1,34 @@
-// The host's entrance: like in the games, Monokuma (or whichever host was
-// called) pops up from the bottom of the screen and the music switches to his
-// theme. A DISMISS button sends every host back down and brings the earlier
-// music back.
+// Which hosts are on screen. Like in the games, a called-in host (Monokuma,
+// Monomi…) pops up from the bottom and stands in the room like any student;
+// the overworld and the chat stage draw them, this only tracks who is here,
+// when the slide-in should play, and the DISMISS button that sends them away.
 //
 // Music is the caller's business: onFirstEnter runs when the stage goes from
 // empty to occupied, onLastLeave when it empties again.
 
-const ENTER_MS = 520;
-const LEAVE_MS = 380;
+export const HOST_ENTER_MS = 600;
+// A renderer that only gets round to drawing the host this long after they
+// were called in skips the slide-up.
+const ENTRANCE_GRACE_MS = 5000;
+export const HOST_LEAVE_MS = 380;
+
+const keyOf = (name) => String(name || "").toLowerCase().trim();
 
 export function createHostStage({
-    getSpriteUrl,          // async (name, label) => url | null
     onFirstEnter,          // () => void | Promise<void>
     onLastLeave,           // () => void | Promise<void>
-    onChange,              // () => void — who's on stage changed
-    playSfx,               // optional () => void, played on entrance
+    onChange,              // () => void — who's on stage changed; re-render the room
+    beforeLeave,           // optional async (names) => void — play the slide-down
     document: doc = globalThis.document,
+    now = () => Date.now(),
 } = {}) {
-    // name → { el, img }
+    // key → { name, enteredAt, firstDrawn: Map<renderer, ms> }
     const onStage = new Map();
-    let root = null;
     let dismissBtn = null;
-    let leaving = null;
-    let leavingEls = [];
+    let dismissing = false;
 
-    function finishLeaving() {
-        if (leaving) { clearTimeout(leaving); leaving = null; }
-        for (const el of leavingEls) el.remove();
-        leavingEls = [];
-    }
-
-    function ensureRoot() {
-        if (root?.isConnected) return root;
-        root = doc.createElement("div");
-        root.id = "dangan-host-stage";
-        root.setAttribute("aria-live", "polite");
-        doc.body.appendChild(root);
-
+    function ensureButton() {
+        if (dismissBtn?.isConnected) return dismissBtn;
         dismissBtn = doc.createElement("button");
         dismissBtn.type = "button";
         dismissBtn.id = "dangan-host-dismiss";
@@ -46,94 +38,74 @@ export function createHostStage({
             void dismiss();
         });
         doc.body.appendChild(dismissBtn);
-        return root;
+        return dismissBtn;
     }
 
-    function updateDismissLabel() {
-        if (!dismissBtn) return;
-        const names = [...onStage.keys()];
-        dismissBtn.title = names.length ? `Send ${names.join(", ")} away` : "";
-        dismissBtn.setAttribute("aria-label", dismissBtn.title || "Dismiss");
-    }
-
-    function isOnStage(name) {
-        const key = String(name || "").toLowerCase().trim();
-        return [...onStage.keys()].some((n) => n.toLowerCase().trim() === key);
+    function syncButton() {
+        const btn = ensureButton();
+        const list = names();
+        btn.classList.toggle("is-on", list.length > 0);
+        btn.title = list.length ? `Send ${list.join(", ")} away` : "";
+        btn.setAttribute("aria-label", btn.title || "Dismiss");
     }
 
     function names() {
-        return [...onStage.keys()];
+        return [...onStage.values()].map((e) => e.name);
     }
 
-    async function enter(name, { expression = "neutral" } = {}) {
-        if (!name || isOnStage(name)) return false;
+    function isOnStage(name) {
+        return onStage.has(keyOf(name));
+    }
+
+    // How far into the slide-up a renderer drawing this host is, in ms, or
+    // null when it's done. Each renderer (overworld, chat stage) times it from
+    // its own first draw, and rebuilding the sprite mid-slide carries on from
+    // there instead of starting over.
+    function entranceElapsed(name, renderer = "default") {
+        const entry = onStage.get(keyOf(name));
+        if (!entry) return null;
+        const t = now();
+        let first = entry.firstDrawn.get(renderer);
+        if (first == null) {
+            if (t - entry.enteredAt > ENTRANCE_GRACE_MS) return null;
+            first = t;
+            entry.firstDrawn.set(renderer, first);
+        }
+        const elapsed = t - first;
+        return elapsed < HOST_ENTER_MS ? elapsed : null;
+    }
+
+    async function enter(name) {
+        const key = keyOf(name);
+        if (!key || onStage.has(key) || dismissing) return false;
         const wasEmpty = onStage.size === 0;
-        ensureRoot();
-        finishLeaving();
-
-        const el = doc.createElement("div");
-        el.className = "dangan-host";
-        el.dataset.name = name;
-        const img = doc.createElement("img");
-        img.alt = name;
-        img.draggable = false;
-        el.appendChild(img);
-        root.appendChild(el);
-        onStage.set(name, { el, img });
-        root.classList.add("is-on");
-        dismissBtn.classList.add("is-on");
-        updateDismissLabel();
+        onStage.set(key, { name: String(name).trim(), enteredAt: now(), firstDrawn: new Map() });
+        syncButton();
         onChange?.();
-
-        let url = null;
-        try { url = await getSpriteUrl?.(name, expression); } catch (_) { url = null; }
-        if (!onStage.has(name)) return false; // dismissed while loading
-        if (url) img.src = url;
-        else el.classList.add("is-missing");
-
-        // Two frames so the start position is painted before the slide.
-        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-        el.classList.add("is-in");
-        try { playSfx?.(); } catch (_) {}
         if (wasEmpty) {
             try { await onFirstEnter?.(); } catch (e) { console.warn("[Dangan][Host] entrance music failed:", e); }
         }
         return true;
     }
 
-    // Swap a host's sprite, e.g. when their message changes expression.
-    function setSprite(name, src) {
-        if (!src) return false;
-        const key = String(name || "").toLowerCase().trim();
-        for (const [n, entry] of onStage) {
-            if (n.toLowerCase().trim() !== key) continue;
-            if (entry.img.src !== src) entry.img.src = src;
-            entry.el.classList.remove("is-missing");
-            return true;
-        }
-        return false;
-    }
-
-    // Slide everyone down. `silent` skips the music hand-back (used when a
-    // chat or save switch already changes the music).
+    // Slide everyone down and out of the room. `silent` skips the slide and
+    // the music hand-back (used when a chat or save switch changes both).
     async function dismiss({ silent = false } = {}) {
-        if (!onStage.size) return false;
-        finishLeaving();
-        leavingEls = [...onStage.values()].map((e) => e.el);
+        if (!onStage.size || dismissing) return false;
+        const leaving = names();
+        if (!silent) {
+            dismissing = true;
+            try { await beforeLeave?.(leaving); } catch (e) { console.warn("[Dangan][Host] slide-down failed:", e); }
+            dismissing = false;
+        }
         onStage.clear();
-        for (const el of leavingEls) el.classList.remove("is-in");
-        dismissBtn?.classList.remove("is-on");
-        updateDismissLabel();
+        syncButton();
         onChange?.();
-        leaving = setTimeout(() => {
-            finishLeaving();
-            if (!onStage.size) root?.classList.remove("is-on");
-        }, LEAVE_MS);
         if (!silent) {
             try { await onLastLeave?.(); } catch (e) { console.warn("[Dangan][Host] music hand-back failed:", e); }
         }
         return true;
     }
 
-    return { enter, dismiss, setSprite, isOnStage, names, ENTER_MS, LEAVE_MS };
+    return { enter, dismiss, isOnStage, entranceElapsed, names };
 }

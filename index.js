@@ -7615,11 +7615,12 @@ function setHostCards(names) {
 
 let hostStage = null;
 let hostMusicPlaying = false;
+// Last expression each on-stage host showed in chat, so their room sprite matches.
+const hostExpressions = new Map();
 
 function getHostStage() {
     if (hostStage) return hostStage;
     hostStage = createHostStage({
-        getSpriteUrl: (name, label) => getSpriteUrl(name, label),
         onFirstEnter: async () => {
             if (!(getMonopadSetting('monokumaTracks') || []).length) return;
             await fadeOutAndPauseBgm();
@@ -7631,11 +7632,51 @@ function getHostStage() {
             stopLocationTrack();
             await fadeInAndResumeBgm();
         },
+        // Called-in hosts stand in the room like anyone else: re-render the
+        // overworld, and let presence add or drop them from the chat stage.
         onChange: () => {
+            for (const key of [...hostExpressions.keys()]) {
+                if (!hostStage?.isOnStage(key)) hostExpressions.delete(key);
+            }
+            try { overworldSceneController?.render?.(); } catch (_) {}
             try { overworldSceneController?.schedulePresenceSync?.(); } catch (_) {}
         },
+        beforeLeave: (names) => Promise.all([
+            overworldSceneController?.playHostExit?.(names),
+            trialManager?.playHostExit?.(names),
+        ]),
     });
     return hostStage;
+}
+
+function getOnStageHosts() {
+    return (hostStage?.names() || []).map(name => ({
+        name,
+        expression: hostExpressions.get(name.toLowerCase()) || 'neutral',
+    }));
+}
+
+function getHostEntranceElapsed(name, renderer) {
+    return hostStage?.entranceElapsed(name, renderer) ?? null;
+}
+
+// Keep a host's room sprite on the expression they last showed in chat.
+function noteHostExpression(names, src) {
+    if (!hostStage?.names().length || !src) return;
+    let label = '';
+    try {
+        label = decodeURIComponent(new URL(src, location.href).pathname.split('/').pop() || '')
+            .replace(/\.[^.]+$/, '').replace(/-half$/i, '').toLowerCase();
+    } catch { return; }
+    if (!label) return;
+    for (const name of names) {
+        if (!name || !hostStage.isOnStage(name)) continue;
+        const key = name.toLowerCase().trim();
+        if (hostExpressions.get(key) === label) return;
+        hostExpressions.set(key, label);
+        try { overworldSceneController?.render?.(); } catch (_) {}
+        return;
+    }
 }
 
 function listHostsForCall() {
@@ -7654,9 +7695,12 @@ function bringHostOnStage(name) {
     return true;
 }
 
-// Hosts who aren't part of the chat that just opened go back down.
+// Hosts who aren't part of the chat that just opened go back down. Leaving
+// for the overworld (no chat open) keeps them in the room.
 function dismissHostsNotInChat() {
     if (!hostStage?.names().length) return;
+    const ctx = window.SillyTavern?.getContext?.();
+    if (!ctx?.groupId && ctx?.characterId == null) return;
     const present = new Set(getCurrentChatSpeakerNames().map(n => n.toLowerCase()));
     if (hostStage.names().some(n => !present.has(n.toLowerCase()))) void hostStage.dismiss();
 }
@@ -10296,6 +10340,8 @@ jQuery(async () => {
                     isHostCharacter: (name) => isHostCharacter(name),
                     listHosts: () => listHostsForCall(),
                     onHostCalled: (name) => bringHostOnStage(name),
+                    getOnStageHosts: () => getOnStageHosts(),
+                    getHostEntranceElapsed: (name) => getHostEntranceElapsed(name, 'overworld'),
                     onPresenceSynced: () => {
                         try { trialManager?.refreshGroupChatPortraits?.(); }
                         catch (e) { console.warn("[Dangan][Overworld] GCP refresh after presence sync failed:", e); }
@@ -11748,6 +11794,7 @@ debugSTGlobals();
             getCustomGameMasterName,
             getCharacterDisplayName,
             deductMonocoins,
+            getHostEntranceElapsed: (name) => getHostEntranceElapsed(name, 'chat'),
             getOverworldRoomOccupants: () => {
                 const loc = getCurrentLocationId();
                 return overworldSceneController?.getCharactersInRoom?.(loc) || [];
@@ -12854,8 +12901,8 @@ STATEMENT: <third statement>`;
             } catch { /* ignore bad src */ }
             if (_altName === 'narrator' || _spriteFolder === 'narrator') return;
 
-            // A host on stage wears the expression of what they just said.
-            if (hostStage && !hostStage.setSprite(_altName, src)) hostStage.setSprite(_spriteFolder, src);
+            // A host in the room wears the expression of what they just said.
+            noteHostExpression([imgEl.getAttribute('alt') || '', _spriteFolder], src);
 
             try { dynamicSongsController?.noteFromImage?.(imgEl, src); } catch { /* ignore */ }
             try { dynamicSongsController?.scheduleEvaluate?.({ restorePhaseOnMiss: true }); } catch { /* ignore */ }
@@ -12925,7 +12972,7 @@ STATEMENT: <third statement>`;
                 // Monokuma skip it entirely (the overlay handles his expressions directly).
                 try {
                     const _parts = new URL(src, location.href).pathname.split('/').filter(Boolean);
-                    if (_parts.length >= 2 && decodeURIComponent(_parts[_parts.length - 2]).toLowerCase() === 'monokuma') return;
+                    if (isTrialUiActive() && _parts.length >= 2 && decodeURIComponent(_parts[_parts.length - 2]).toLowerCase() === 'monokuma') return;
                 } catch { /* ignore bad src */ }
                 // targetImg is null → GCP not yet initialised; fall through to debounce
                 // so the expression is buffered and applied once the stage is ready.

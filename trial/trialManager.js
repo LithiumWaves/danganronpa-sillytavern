@@ -67,6 +67,7 @@ export function createTrialManager(deps) {
         deductMonocoins,
         showMinigameLoadingState,
         getOverworldRoomOccupants,
+        getHostEntranceElapsed, // optional — (name) => ms into a called-in host's slide-up, or null
     } = deps;
 
     function getAssetUrl(name) {
@@ -7908,6 +7909,12 @@ JUDGMENT RULES:
         el.style.cssText = `width:${sw}px;height:${portraitSlotHeightPx(name)}px;`;
         if (isDead) el.classList.add('gcp-dead');
         if (isMissing) el.classList.add('gcp-missing');
+        // A called-in host (Monokuma…) rises from the bottom as they arrive.
+        const hostEntrance = !trialActive ? getHostEntranceElapsed?.(name) : null;
+        if (hostEntrance != null) {
+            el.classList.add('gcp-host-enter');
+            el.style.setProperty('--host-enter-elapsed', String(hostEntrance));
+        }
         if (trialActive && isGroupChat() && needsGymnasticsHorse(name)) {
             el.classList.add('has-horse');
             const horse = document.createElement('img');
@@ -8015,7 +8022,9 @@ JUDGMENT RULES:
                 // If destroyed by a concurrent call while we were awaiting sprites, abort.
                 if (gcpStage !== stageRef) return;
 
-                gcpSlots = resolved.filter(r => r && !isMonokuma(r.name)).map(({ name, url, isDead, isMissing }, i) =>
+                // Trials stage Monokuma on his own overlay; elsewhere he
+                // stands with everyone else.
+                gcpSlots = resolved.filter(r => r && !(trialActive && isMonokuma(r.name))).map(({ name, url, isDead, isMissing }, i) =>
                     gcpMakeSlot(name, url, isDead, i, isMissing));
 
                 // Mark the player's slot (Prome VN Extension) so it uses the Prome sprite.
@@ -8154,8 +8163,8 @@ JUDGMENT RULES:
         // Keep the CG label in sync with whichever message is highlighted.
         if (cgNameTextEl) cgNameTextEl.textContent = currentSpeaker || '';
 
-        // ── Monokuma: always handled via overlay, never via carousel ──────────
-        if (isMonokuma(speakerName)) {
+        // ── Monokuma: in trials, handled via overlay, never via carousel ──────
+        if (trialActive && isMonokuma(speakerName)) {
             const monoEmo = characterEmotions.get(speakerName) || characterEmotions.get('Monokuma') || 'neutral';
             showMonokumaOverlay(monoEmo);
             // Kick off GCP init in the background so the carousel is ready when
@@ -8290,6 +8299,19 @@ JUDGMENT RULES:
         document.body.classList.remove('dangan-gcp-active', 'dangan-gcp-visible');
     }
 
+    // Dismissed hosts sink back down before the stage is rebuilt without them.
+    function playHostExit(names) {
+        if (trialActive || !gcpSlots.length) return Promise.resolve();
+        const keys = new Set((names || []).map(n => normalizeSeatName(n)));
+        const slots = gcpSlots.filter(s => keys.has(normalizeSeatName(s.name)));
+        if (!slots.length) return Promise.resolve();
+        for (const s of slots) {
+            s.el.classList.remove('gcp-host-enter');
+            s.el.classList.add('gcp-host-leave');
+        }
+        return new Promise(r => setTimeout(r, 380));
+    }
+
     function refreshGroupChatPortraits() {
         if (trialActive) return Promise.resolve();
         const savedFloat = gcpCurrentFloat;
@@ -8352,6 +8374,7 @@ JUDGMENT RULES:
         endTrial,
         initGroupChatPortraits,
         refreshGroupChatPortraits,
+        playHostExit,
         updateGroupChatSpeaker,
         setGroupChatPortraitsVisible,
         destroyGroupChatPortraits,
@@ -8397,7 +8420,7 @@ JUDGMENT RULES:
                     const srcFolderRaw  = decodeURIComponent(parts[parts.length - 2]).toLowerCase();
                     // Monokuma is handled via overlay; route his expression to the overlay img
                     // so it updates there instead of falling through to a carousel slot.
-                    if (srcFolderRaw === 'monokuma') {
+                    if (trialActive && srcFolderRaw === 'monokuma') {
                         return document.getElementById('dangan-monokuma-overlay')?.querySelector('img') ?? null;
                     }
                     // Normalize hyphens/underscores to spaces so "alex-rivera" matches slot name "alex rivera"

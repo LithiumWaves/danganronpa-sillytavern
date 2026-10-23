@@ -3,70 +3,52 @@
    Monokuma & co. pop up from the bottom of the screen, like in the games.
    ========================= */
 
-/* Above the overworld (25), under SillyTavern's chat shell (#sheld, 30) so
-   the chat and VN box stay readable. */
-#dangan-host-stage {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 27;
-    display: none;
-    justify-content: center;
-    align-items: flex-end;
-    gap: 2vw;
-    height: 0;
-    overflow: visible;
-    pointer-events: none;
+/* A called-in host stands in the room like any student; they just rise
+   from the bottom on entry and sink on dismissal. Uses the standalone
+   `translate` property so the sprites' own scale transforms are untouched. */
+#dangan-overworld .dangan-ow-sprite.is-host-entering .dangan-ow-sprite-img,
+.dangan-gcp-slot.gcp-host-enter .dangan-gcp-scale-wrap {
+    animation: dgn-host-rise 0.6s cubic-bezier(0.2, 1.35, 0.4, 1) both;
+    /* A sprite rebuilt mid-slide picks up where the old one was. */
+    animation-delay: calc(-1ms * var(--host-enter-elapsed, 0));
 }
 
-#dangan-host-stage.is-on {
-    display: flex;
+#dangan-overworld .dangan-ow-sprite.is-host-leaving .dangan-ow-sprite-img,
+.dangan-gcp-slot.gcp-host-leave .dangan-gcp-scale-wrap {
+    animation: dgn-host-sink 0.38s cubic-bezier(0.55, 0, 0.9, 0.45) both;
 }
 
-.dangan-host {
-    position: relative;
-    height: min(62vh, 560px);
-    transform: translateY(105%);
-    transition: transform 0.38s cubic-bezier(0.55, 0, 0.9, 0.45);
-    flex: 0 1 auto;
+#dangan-overworld .dangan-ow-sprite.is-host-leaving .dangan-ow-shadow,
+#dangan-overworld .dangan-ow-sprite.is-host-entering .dangan-ow-shadow {
+    animation: dgn-host-shadow 0.6s ease both;
+    animation-delay: calc(-1ms * var(--host-enter-elapsed, 0));
 }
 
-.dangan-host.is-in {
-    transform: translateY(0);
-    /* Quick pop up with a little overshoot, like Monokuma's entrance. */
-    transition: transform 0.52s cubic-bezier(0.2, 1.4, 0.4, 1);
+#dangan-overworld .dangan-ow-sprite.is-host-leaving .dangan-ow-shadow {
+    animation-direction: reverse;
+    animation-duration: 0.38s;
 }
 
-.dangan-host img {
-    display: block;
-    height: 100%;
-    width: auto;
-    object-fit: contain;
-    filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.55));
-    user-select: none;
+/* In a room the host comes up through the floor: hide whatever is still
+   below their feet line while they rise or sink. */
+#dangan-overworld .dangan-ow-sprite.is-host-entering,
+#dangan-overworld .dangan-ow-sprite.is-host-leaving {
+    clip-path: inset(-200vh -100vw 0 -100vw);
 }
 
-/* No sprite for this card: show a name plate instead of a broken image. */
-.dangan-host.is-missing {
-    display: flex;
-    align-items: flex-end;
+@keyframes dgn-host-rise {
+    from { translate: 0 110%; }
+    to   { translate: 0 0; }
 }
 
-.dangan-host.is-missing img {
-    display: none;
+@keyframes dgn-host-sink {
+    from { translate: 0 0; }
+    to   { translate: 0 110%; }
 }
 
-.dangan-host.is-missing::after {
-    content: attr(data-name);
-    display: block;
-    margin-bottom: 12vh;
-    padding: 10px 22px;
-    background: #120a18;
-    border: 1px solid #f0479a;
-    color: #fff;
-    font: 600 22px "Bruno Ace", "Orbitron", sans-serif;
-    letter-spacing: 0.12em;
+@keyframes dgn-host-shadow {
+    from { opacity: 0; }
+    to   { opacity: 1; }
 }
 
 #dangan-host-dismiss {
@@ -99,15 +81,16 @@
 
 /* Hidden while the UI is hidden (photo mode) and during Class Trials. */
 body.dangan-ui-hidden #dangan-host-dismiss,
-body.dangan-trial-active #dangan-host-stage,
 body.dangan-trial-active #dangan-host-dismiss {
     display: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .dangan-host,
-    .dangan-host.is-in {
-        transition: none;
+    #dangan-overworld .dangan-ow-sprite.is-host-entering .dangan-ow-sprite-img,
+    #dangan-overworld .dangan-ow-sprite.is-host-leaving .dangan-ow-sprite-img,
+    .dangan-gcp-slot.gcp-host-enter .dangan-gcp-scale-wrap,
+    .dangan-gcp-slot.gcp-host-leave .dangan-gcp-scale-wrap {
+        animation-duration: 1ms;
     }
 }
 

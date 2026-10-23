@@ -126,7 +126,9 @@ export function createOverworldSceneController({
     getHostMenuActions, // optional — () => { id, label, active?, onSelect }[] appended to the MENU list
     isHostCharacter, // optional — (name) => boolean; hosts (Monokuma…) never wander the rooms
     listHosts, // optional — () => { name, onStage }[]; hosts the Call modal can bring in
-    onHostCalled, // optional — (name) => void; a host was called in (they slide in on the host stage)
+    onHostCalled, // optional — (name) => void; a host was called in
+    getOnStageHosts, // optional — () => { name, expression }[]; called-in hosts, who stand in the player's room
+    getHostEntranceElapsed, // optional — (name) => ms into this host's slide-up, or null
 }) {
     function playOwSfx(key) {
         if (!playSfx) return;
@@ -924,6 +926,25 @@ export function createOverworldSceneController({
         return out;
     }
 
+    // Called-in hosts stand in the player's room until dismissed. They aren't
+    // roster characters, so their entries are made fresh and never saved.
+    function getHostsHere() {
+        const out = [];
+        for (const h of getOnStageHosts?.() || []) {
+            const name = String(h?.name || "").trim();
+            if (!name) continue;
+            const key = normalizeName(name);
+            const rosterChar = characters.get(key);
+            out.push({
+                key,
+                char: rosterChar?.name ? rosterChar : { name },
+                entry: { expression: h.expression || "neutral", groupId: null },
+                isHost: true,
+            });
+        }
+        return out;
+    }
+
     function getRosterCharByKey(key) {
         return characters.get(key) || null;
     }
@@ -1278,6 +1299,7 @@ export function createOverworldSceneController({
             if (!char?.name) continue;
             charsHere.push({ key, char, entry });
         }
+        charsHere.push(...getHostsHere());
 
         debug(`room=${playerRoom} rosterTotal=${getActiveRosterKeys().length} inRoom=${charsHere.length}`);
         // NOTE: don't bail when charsHere is empty — Call-to-the-Room is still
@@ -1415,6 +1437,11 @@ export function createOverworldSceneController({
 
                 const spriteEl = document.createElement("div");
                 spriteEl.className = "dangan-ow-sprite";
+                const hostEntrance = m.isHost ? getHostEntranceElapsed?.(m.char.name) : null;
+                if (hostEntrance != null) {
+                    spriteEl.classList.add("is-host-entering");
+                    spriteEl.style.setProperty("--host-enter-elapsed", String(hostEntrance));
+                }
                 spriteEl.dataset.name = m.char.name;
                 spriteEl.dataset.key = m.key;
                 spriteEl.dataset.heightScale = String(heightScale);
@@ -2562,7 +2589,25 @@ export function createOverworldSceneController({
                 expression: entry.expression || null,
             });
         }
+        if (locationId === getCurrentLocationId()) {
+            for (const h of getHostsHere()) {
+                out.push({ name: h.char.name, groupId: null, expression: h.entry.expression, isHost: true });
+            }
+        }
         return out;
+    }
+
+    // Dismissed hosts sink back down before they leave the room.
+    function playHostExit(names) {
+        const keys = new Set((names || []).map((n) => normalizeName(n)));
+        const sprites = [...(getDomRoot()?.querySelectorAll(".dangan-ow-sprite") || [])]
+            .filter((el) => keys.has(normalizeName(el.dataset.name || "")));
+        if (!sprites.length) return Promise.resolve();
+        for (const el of sprites) {
+            el.classList.remove("is-host-entering");
+            el.classList.add("is-host-leaving");
+        }
+        return new Promise((r) => setTimeout(r, 380));
     }
 
     // Cross-room roster within the player's CURRENT area + sub-area. Powers the
@@ -2713,10 +2758,6 @@ export function createOverworldSceneController({
         const inRoomNames = isRoomLocationId(playerRoom)
             ? getCharactersInRoom(playerRoom).map((c) => c.name)
             : [];
-        // A host on stage is here too, so they can keep talking until dismissed.
-        for (const h of listHosts?.() || []) {
-            if (h?.onStage && h.name) inRoomNames.push(h.name);
-        }
         const allChars = Array.isArray(ctx.characters) ? ctx.characters
             : (Array.isArray(window.characters) ? window.characters : []);
         const charByAvatar = indexCharsByAvatar(allChars);
@@ -2782,6 +2823,7 @@ export function createOverworldSceneController({
         notifyPlayerMovedTo,
         ensureCharacterLocations,
         getCharactersInRoom,
+        playHostExit,
         isRoomFlat,
         setRoomFlat,
         toggleCurrentRoomFlat,
