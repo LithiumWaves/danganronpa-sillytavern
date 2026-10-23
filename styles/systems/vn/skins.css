@@ -266,6 +266,8 @@ body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-
 
 /* The docked typing bar under the box. */
 body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) .dangan-vn-compose-docked {
+    /* Docking sets the bar's width to the box's; keep padding inside it. */
+    box-sizing: border-box !important;
     border: 0 !important;
     border-radius: 0 !important;
     background: rgba(24, 24, 24, 0.9) !important;
@@ -313,14 +315,22 @@ body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-
    Cream name strip that breaks into an orange SPEAKING band, over a dark
    charcoal box with rounded right corners. Sits against the left edge. */
 
+body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) {
+    --dangan-vn-skin-accent: #f59a1b;
+    --dangan-vn-skin-accent-end: #ee8a12;
+    --dangan-vn-skin-strip: #fdfde9;
+    --dangan-vn-skin-strip-end: #f1eec6;
+    --dangan-vn-skin-button: radial-gradient(circle at 50% 40%, #e8b83a 0 55%, #b9861a 100%);
+    --dangan-vn-skin-button-edge: rgba(120, 82, 10, 0.55);
+    --dangan-vn-skin-button-glyph: #4b3608;
+    --dangan-vn-skin-highlight: #ffb340;
+}
+
 body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay {
     justify-content: flex-start;
 }
 
 body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame {
-    --dangan-vn-skin-accent: #f59a1b;
-    --dangan-vn-skin-accent-end: #ee8a12;
-    --dangan-vn-skin-highlight: #ffb340;
     width: min(1040px, calc(100vw - 24px));
     margin: 0 auto calc(var(--dangan-vn-bottom-offset) + 10px) 0;
     padding: 0 !important;
@@ -344,7 +354,7 @@ body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .da
     border-radius: 0 34px 0 0;
     background:
         linear-gradient(115deg,
-            #fdfde9 0, #f1eec6 calc(62% - 14px),
+            var(--dangan-vn-skin-strip) 0, var(--dangan-vn-skin-strip-end) calc(62% - 14px),
             transparent calc(62% - 14px), transparent calc(62% - 9px),
             #ffffff calc(62% - 9px), #ffffff calc(62% - 5px),
             transparent calc(62% - 5px), transparent 62%,
@@ -399,8 +409,8 @@ body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .da
     height: 52px;
     margin-top: -26px;
     border-radius: 50%;
-    background: radial-gradient(circle at 50% 40%, #e8b83a 0 55%, #b9861a 100%);
-    box-shadow: inset 0 0 0 3px rgba(120, 82, 10, 0.55);
+    background: var(--dangan-vn-skin-button);
+    box-shadow: inset 0 0 0 3px var(--dangan-vn-skin-button-edge);
 }
 
 body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-advance::before {
@@ -410,7 +420,7 @@ body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .da
     margin-left: 5px;
     border-style: solid;
     border-width: 10px 0 10px 16px;
-    border-color: transparent transparent transparent #4b3608;
+    border-color: transparent transparent transparent var(--dangan-vn-skin-button-glyph);
 }
 
 body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-toggle {
@@ -418,9 +428,16 @@ body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .da
     right: 42px;
 }
 
+/* The docked typing bar carries on the box's shape: the box gives up its
+   bottom-right curve and the bar finishes it, so the two read as one. */
+body[data-dangan-vn-skin="thh"].dangan-vn-compose-docked-active:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame::before {
+    border-radius: 0 44px 0 0;
+}
+
 body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) .dangan-vn-compose-docked {
-    background: rgba(38, 38, 38, 0.92) !important;
-    border-radius: 0 0 22px 0 !important;
+    background: rgba(38, 38, 38, 0.86) !important;
+    border-radius: 0 0 44px 0 !important;
+    padding: 4px 34px 10px 20px !important;
 }
 
 
@@ -428,9 +445,14 @@ body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) .dangan-vn-compose-doc
    Dark bar with a faint checkerboard, the name running up a yellow column on
    the left, and a speech-bubble badge. */
 
-body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame {
+body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) {
     --dangan-vn-skin-accent: #ffe100;
+    --dangan-vn-skin-edge: #f39200;
+    --dangan-vn-skin-name: #262626;
     --dangan-vn-skin-highlight: #ffe100;
+}
+
+body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame {
     width: min(1180px, calc(100vw - 18px));
     min-height: 160px;
     padding: 0 !important;
@@ -476,13 +498,13 @@ body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .d
     writing-mode: vertical-rl;
     transform: rotate(180deg);
     background: var(--dangan-vn-skin-accent);
-    box-shadow: inset 6px 0 0 #f39200;
+    box-shadow: inset 6px 0 0 var(--dangan-vn-skin-edge);
     clip-path: polygon(0 0, 100% 0, 100% 100%, 0 calc(100% - 22px));
     font-family: "M PLUS Rounded 1c", "Noto Sans JP", sans-serif;
     font-size: 24px;
     font-weight: 800;
     line-height: 1;
-    color: #262626;
+    color: var(--dangan-vn-skin-name);
     white-space: nowrap;
 }
 
@@ -520,7 +542,7 @@ body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .d
 
 body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) .dangan-vn-compose-docked {
     background: rgba(22, 22, 22, 0.9) !important;
-    box-shadow: inset 6px 0 0 var(--dangan-vn-skin-accent, #ffe100) !important;
+    box-shadow: inset 6px 0 0 var(--dangan-vn-skin-accent) !important;
     padding-left: 14px !important;
 }
 
@@ -529,9 +551,12 @@ body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) .dangan-vn-compose-do
    Dark slanted box, name in white condensed type with a yellow first letter
    over yellow slash marks, a yellow slash on the right and a » prompt. */
 
-body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame {
+body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) {
     --dangan-vn-skin-accent: #ffd400;
     --dangan-vn-skin-highlight: #ffd400;
+}
+
+body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame {
     width: min(1000px, calc(100vw - 40px));
     min-height: 130px;
     padding: 0 !important;
@@ -647,26 +672,67 @@ body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) .dangan-vn-compose-dock
 
 
 /* ── Phase themes ──────────────────────────────────────────────────────────
-   The game skins keep their own colours through Daily Life / Investigation /
-   Night; only damage turns the accent red so a hit still reads. */
+   Daily Life keeps each game's palette. Night follows the games (THH and SDR2
+   go blue, V3's yellow goes green); Investigation tints the details with the
+   extension's investigation pink. Damage turns everything red so a hit reads,
+   and comes last so it wins over the phase. */
 
-body.dangan-theme-damaged:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame {
+body.dangan-theme-night[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) {
+    --dangan-vn-skin-accent: #3aa8e8;
+    --dangan-vn-skin-accent-end: #1f86cf;
+    --dangan-vn-skin-strip: #f4f6ff;
+    --dangan-vn-skin-strip-end: #e1e7f7;
+    --dangan-vn-skin-button: rgba(20, 44, 66, 0.35);
+    --dangan-vn-skin-button-edge: #3aa8e8;
+    --dangan-vn-skin-button-glyph: #3aa8e8;
+}
+
+body.dangan-theme-night[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) {
+    --dangan-vn-skin-accent: #3fb6ef;
+    --dangan-vn-skin-edge: #1b78c2;
+    --dangan-vn-skin-name: #10283a;
+}
+
+body.dangan-theme-night[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) {
+    --dangan-vn-skin-accent: #5fe05a;
+    --dangan-vn-skin-highlight: #5fe05a;
+}
+
+body.dangan-theme-investigation[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) {
+    --dangan-vn-skin-accent: #f0509a;
+    --dangan-vn-skin-accent-end: #d63a84;
+    --dangan-vn-skin-strip: #fff3f8;
+    --dangan-vn-skin-strip-end: #f7dceb;
+    --dangan-vn-skin-button: radial-gradient(circle at 50% 40%, #f37ab3 0 55%, #c92f78 100%);
+    --dangan-vn-skin-button-edge: rgba(110, 15, 60, 0.55);
+    --dangan-vn-skin-button-glyph: #4a0d2a;
+}
+
+body.dangan-theme-investigation[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) {
+    --dangan-vn-skin-accent: #f0509a;
+    --dangan-vn-skin-edge: #a8205f;
+    --dangan-vn-skin-name: #2a0a1a;
+}
+
+body.dangan-theme-investigation[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) {
+    --dangan-vn-skin-accent: #f0509a;
+}
+
+body.dangan-theme-damaged:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) {
     --dangan-vn-skin-accent: #e52222;
     --dangan-vn-skin-accent-end: #c41616;
     --dangan-vn-skin-highlight: #ff5a5a;
+    --dangan-vn-skin-strip: #fff1f1;
+    --dangan-vn-skin-strip-end: #f6d6d6;
+    --dangan-vn-skin-button: radial-gradient(circle at 50% 40%, #ef4a4a 0 55%, #b81414 100%);
+    --dangan-vn-skin-button-edge: rgba(90, 0, 0, 0.55);
+    --dangan-vn-skin-button-glyph: #3a0000;
+    --dangan-vn-skin-edge: #8a0000;
+    --dangan-vn-skin-name: #ffffff;
 }
 
 body.dangan-theme-damaged:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-header {
     filter: none;
-}
-
-body.dangan-theme-damaged[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-nameplate {
-    box-shadow: inset 6px 0 0 #8a0000;
-    color: #ffffff;
-}
-
-body.dangan-theme-damaged[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) .dangan-vn-compose-docked {
-    box-shadow: inset 6px 0 0 #e52222 !important;
 }
 
 
@@ -685,6 +751,15 @@ body.dangan-theme-damaged[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) 
     body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame::before {
         top: 28px;
         border-radius: 0 28px 28px 0;
+    }
+
+    body[data-dangan-vn-skin="thh"].dangan-vn-compose-docked-active:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame::before {
+        border-radius: 0 28px 0 0;
+    }
+
+    body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) .dangan-vn-compose-docked {
+        border-radius: 0 0 28px 0 !important;
+        padding: 4px 22px 8px 10px !important;
     }
 
     body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-header::after {
@@ -728,7 +803,7 @@ body.dangan-theme-damaged[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) 
         width: 46px;
         padding: 60px 0 16px;
         font-size: 18px;
-        box-shadow: inset 4px 0 0 #f39200;
+        box-shadow: inset 4px 0 0 var(--dangan-vn-skin-edge);
         clip-path: polygon(0 0, 100% 0, 100% 100%, 0 calc(100% - 16px));
     }
 
