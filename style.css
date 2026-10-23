@@ -1320,6 +1320,28 @@ body.dangan-halfsprite-mode:not(.dangan-trial-active) .expression-holder {
     filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.45));
     transition: filter 120ms ease;
 }
+/* Tag Along: a small tag on students following the player. */
+#dangan-overworld .dangan-ow-follow-badge {
+    position: absolute;
+    left: 50%;
+    bottom: 14%;
+    transform: translateX(-50%);
+    z-index: 2;
+    padding: 3px 10px;
+    border: 2px solid #fff;
+    border-radius: 999px;
+    background: rgba(242, 181, 46, 0.92);
+    color: #1a1206;
+    font: 800 12px/1.2 "M PLUS Rounded 1c", "Noto Sans JP", sans-serif;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+}
+.dangan-tag-note {
+    padding: 4px 0 10px;
+    text-transform: none;
+}
 /* Ovular shadow anchored under each sprite's feet. */
 #dangan-overworld .dangan-ow-shadow {
     position: absolute;

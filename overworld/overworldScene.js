@@ -880,7 +880,52 @@ export function createOverworldSceneController({
         // Character Positions. Hosts aren't roster characters, so they live
         // apart from `characters` and survive room reshuffles.
         if (!ow.hostPlacements || typeof ow.hostPlacements !== "object") ow.hostPlacements = {};
+        // Students tagging along with the player (normalized keys): they move
+        // into every room the player enters.
+        if (!Array.isArray(ow.followers)) ow.followers = [];
         return ow;
+    }
+
+    // Followers still on the roster (not dead, missing or removed).
+    function getFollowerKeys() {
+        const active = new Set(getActiveRosterKeys());
+        return getState().followers.filter((k) => active.has(k));
+    }
+
+    function isFollowing(key) {
+        return getFollowerKeys().includes(key);
+    }
+
+    function setFollowers(keys) {
+        const state = getState();
+        state.followers = [...new Set(keys)];
+        // Bring them over if they aren't with the player yet.
+        moveFollowersTo(getCurrentLocationId());
+        saveState();
+        scheduleRender();
+        notifySceneChanged();
+        schedulePresenceSync();
+    }
+
+    // Moves the followers into `locationId` as one group standing together.
+    // Returns true when anyone moved.
+    function moveFollowersTo(locationId) {
+        if (!isRoomLocationId(locationId)) return false;
+        const state = getState();
+        const keys = getFollowerKeys().filter((k) => state.characters[k]?.locationId !== locationId);
+        if (!keys.length) return false;
+        const gid = keys.length > 1 ? makeGroupId() : null;
+        const offsetVh = randomVerticalOffsetVh();
+        for (const key of keys) {
+            const entry = state.characters[key] ??= { locationId: null, groupId: null };
+            entry.locationId = locationId;
+            entry.groupId = gid;
+            entry.verticalOffsetVh = offsetVh;
+            entry.customX = null;
+            entry.customScale = null;
+            delete entry.depthScale;
+        }
+        return true;
     }
 
     function isRoomFlat(locationId) {
@@ -1094,6 +1139,11 @@ export function createOverworldSceneController({
             newRoomByKey.set(key, room);
         });
 
+        // Students tagging along stay with the player.
+        if (isRoomLocationId(playerRoom)) {
+            for (const key of getFollowerKeys()) newRoomByKey.set(key, playerRoom);
+        }
+
         for (const key of keys) {
             const entry = state.characters[key] ??= { locationId: null, groupId: null };
             entry.locationId = newRoomByKey.get(key);
@@ -1138,6 +1188,8 @@ export function createOverworldSceneController({
     // mute (not location) decides who hears the next line.
     function notifyPlayerMovedTo(newLocationId) {
         if (!isRoomLocationId(newLocationId)) return;
+        // Students tagging along come too, whatever the chat.
+        if (moveFollowersTo(newLocationId)) { saveState(); notifySceneChanged(); }
         if (isSingleChatGroupContext()) {
             schedulePresenceSync();
             return;
@@ -1472,6 +1524,13 @@ export function createOverworldSceneController({
                 }
                 spriteEl.dataset.name = m.char.name;
                 spriteEl.dataset.key = m.key;
+                if (!m.isHost && isFollowing(m.key)) {
+                    spriteEl.classList.add("is-following");
+                    const badge = document.createElement("div");
+                    badge.className = "dangan-ow-follow-badge";
+                    badge.textContent = "WITH YOU";
+                    spriteEl.appendChild(badge);
+                }
                 spriteEl.dataset.heightScale = String(heightScale);
                 spriteEl.style.setProperty("--ow-scale", String(finalScale));
                 // Encode quotes so the URL is safe inside a CSS `url("…")` token.
@@ -1562,6 +1621,7 @@ export function createOverworldSceneController({
                 else root.appendChild(buildActionMenuBtn(total));
             } else {
                 root.appendChild(buildCallToRoomBtn());
+                if (total >= 1 || getFollowerKeys().length) root.appendChild(buildTagAlongBtn());
                 if (total >= 1) root.appendChild(buildEditPositionsBtn());
             }
         } else {
@@ -1586,6 +1646,7 @@ export function createOverworldSceneController({
                 else root.appendChild(buildActionMenuBtn(total));
             } else {
                 root.appendChild(buildCallToRoomBtn());
+                if (total >= 1 || getFollowerKeys().length) root.appendChild(buildTagAlongBtn());
                 if (total >= 1) {
                     root.appendChild(buildEditPositionsBtn());
                 }
@@ -1719,6 +1780,15 @@ export function createOverworldSceneController({
         ];
         if (!singleChat && total >= 2) {
             items.push({ id: "grab", label: "Grab Group Members", onSelect: () => showGrabGroupModal() });
+        }
+        const following = getFollowerKeys().length;
+        if (total >= 1 || following) {
+            items.push({
+                id: "tag-along",
+                label: following ? `Tag Along (${following})` : "Tag Along",
+                active: following > 0,
+                onSelect: () => showTagAlongModal(),
+            });
         }
         if (total >= 1) {
             items.push({ id: "edit", label: "Edit Character Positions", onSelect: () => { enterEditMode(); scheduleRender(); } });
@@ -1936,6 +2006,141 @@ export function createOverworldSceneController({
             out.push(ctx.name2);
         }
         return out;
+    }
+
+    function buildTagAlongBtn() {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "dangan-ow-room-btn dangan-ow-tag-btn";
+        const label = document.createElement("span");
+        label.className = "dangan-ow-room-btn-label";
+        const following = getFollowerKeys().length;
+        label.textContent = following ? `Tag Along (${following})` : "Tag Along";
+        btn.appendChild(label);
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            playOwSfx("click");
+            showTagAlongModal();
+        });
+        return btn;
+    }
+
+    // Pick students in this room to follow the player from room to room.
+    // Ticked students tag along; unticking lets them stay where they are.
+    function showTagAlongModal() {
+        if (document.getElementById("dangan-tag-modal")) return;
+
+        const state = getState();
+        const playerRoom = getCurrentLocationId();
+        const followers = getFollowerKeys();
+        const keys = getActiveRosterKeys().filter((k) =>
+            followers.includes(k) || (isRoomLocationId(playerRoom) && state.characters[k]?.locationId === playerRoom));
+        const nameOf = (key) => {
+            const name = getRosterCharByKey(key)?.name || key;
+            return (typeof getCharacterDisplayName === "function" ? getCharacterDisplayName(name) : name) || name;
+        };
+
+        const modal = document.createElement("div");
+        modal.id = "dangan-tag-modal";
+        modal.className = "dangan-grab-modal";
+        modal.setAttribute("role", "dialog");
+        modal.setAttribute("aria-modal", "true");
+
+        const backdrop = document.createElement("div");
+        backdrop.className = "dangan-grab-backdrop";
+        modal.appendChild(backdrop);
+
+        const card = document.createElement("div");
+        card.className = "dangan-grab-card";
+        card.setAttribute("role", "document");
+
+        const header = document.createElement("div");
+        header.className = "dangan-grab-header";
+        const title = document.createElement("span");
+        title.textContent = "Tag Along";
+        const closeBtn = document.createElement("button");
+        closeBtn.type = "button";
+        closeBtn.className = "dangan-grab-close";
+        closeBtn.setAttribute("aria-label", "Close");
+        closeBtn.textContent = "✕";
+        header.appendChild(title);
+        header.appendChild(closeBtn);
+        card.appendChild(header);
+
+        const body = document.createElement("div");
+        body.className = "dangan-grab-body";
+        const note = document.createElement("div");
+        note.className = "dangan-grab-empty dangan-tag-note";
+        note.textContent = keys.length
+            ? "Ticked students follow you into every room you go to."
+            : "Nobody is in this room.";
+        body.appendChild(note);
+        if (keys.length) {
+            const list = document.createElement("ul");
+            list.className = "dangan-grab-list";
+            for (const key of keys) {
+                const li = document.createElement("li");
+                const lbl = document.createElement("label");
+                const cb = document.createElement("input");
+                cb.type = "checkbox";
+                cb.dataset.key = key;
+                cb.checked = followers.includes(key);
+                const span = document.createElement("span");
+                span.textContent = nameOf(key);
+                lbl.appendChild(cb);
+                lbl.appendChild(span);
+                li.appendChild(lbl);
+                list.appendChild(li);
+            }
+            body.appendChild(list);
+        }
+        card.appendChild(body);
+
+        const footer = document.createElement("div");
+        footer.className = "dangan-grab-footer";
+        const cancelBtn = document.createElement("button");
+        cancelBtn.type = "button";
+        cancelBtn.className = "dangan-grab-cancel";
+        cancelBtn.textContent = "Cancel";
+        const confirmBtn = document.createElement("button");
+        confirmBtn.type = "button";
+        confirmBtn.className = "dangan-grab-confirm";
+        footer.appendChild(cancelBtn);
+        footer.appendChild(confirmBtn);
+        card.appendChild(footer);
+        modal.appendChild(card);
+
+        const checkboxes = () => [...modal.querySelectorAll('input[type="checkbox"]')];
+        const refreshConfirm = () => {
+            const n = checkboxes().filter((cb) => cb.checked).length;
+            confirmBtn.textContent = n ? "Tag Along" : (followers.length ? "Go Alone" : "Tag Along");
+            confirmBtn.disabled = !n && !followers.length;
+        };
+        for (const cb of checkboxes()) cb.addEventListener("change", refreshConfirm);
+        refreshConfirm();
+
+        const close = () => {
+            modal.remove();
+            document.removeEventListener("keydown", onKeydown);
+        };
+        const onKeydown = (e) => { if (e.key === "Escape") close(); };
+
+        closeBtn.addEventListener("click", close);
+        cancelBtn.addEventListener("click", close);
+        backdrop.addEventListener("click", close);
+        document.addEventListener("keydown", onKeydown);
+
+        confirmBtn.addEventListener("click", () => {
+            const picked = checkboxes().filter((cb) => cb.checked).map((cb) => cb.dataset.key);
+            close();
+            setFollowers(picked);
+            const names = picked.map(nameOf);
+            if (!names.length) showOwToast("YOU'RE ON YOUR OWN NOW.");
+            else if (names.length === 1) showOwToast(`${names[0].toUpperCase()} IS TAGGING ALONG.`);
+            else showOwToast(`${names.length} STUDENTS ARE TAGGING ALONG.`);
+        });
+
+        document.body.appendChild(modal);
     }
 
     function showGrabGroupModal() {
