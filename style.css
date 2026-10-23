@@ -21,6 +21,7 @@
 @import url("./styles/systems/phase/hud.css");
 @import url("./styles/systems/saves/saves.css");
 @import url("./styles/systems/skip/leave-confirm.css");
+@import url("./styles/systems/monokuma/host-stage.css");
 
 /* SillyTavern puts transform: translateZ(0) on <html>, which makes it the box
    that position: fixed elements size against. On phones <body> is fixed too,

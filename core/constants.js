@@ -139,6 +139,9 @@ export const defaultSettings = {
     hangmansGambitUseRecentContext: false,
     hangmansGambitUseDebateHistory: false,
     shopTracks: [],
+    monokumaTracks: [],
+    // Host / mascot cards for this save (empty = Auto: the card named Monokuma).
+    hostCards: [],
     titleTracks: [],
     daytimeTracks: [],
     nighttimeTracks: [],

@@ -1,4 +1,5 @@
 import { escapeHtml, isTypingTarget } from "./titleUtils.js";
+import { isHostName, resolveHostNames } from "../../host/hostCards.js";
 import {
     BUILT_IN_MAP_CHOICES,
     CUSTOM_MAP_CHOICE,
@@ -117,13 +118,24 @@ export function validateStep(state) {
     }
 }
 
+// The cards picked as hosts, or Auto's pick (the Monokuma card) when none are.
+export function effectiveHosts(state, candidateNames = null) {
+    return resolveHostNames([...(state?.hosts || [])], candidateNames);
+}
+
 export function buildFinishPayload(state) {
+    const hosts = [...(state.hosts || [])];
+    const hostNames = effectiveHosts(state);
     return {
         fresh: !!state.fresh,
         mode: state.mode,
         groupName: state.mode === "single" ? String(state.groupName || "").trim() : "",
         groupMembers: state.mode === "single" ? [...state.groupMembers] : [],
-        roster: [...state.roster.entries()].map(([name, ultimate]) => ({ name, ultimate: String(ultimate || "").trim() })),
+        roster: [...state.roster.entries()]
+            .filter(([name]) => !isHostName(name, hostNames))
+            .map(([name, ultimate]) => ({ name, ultimate: String(ultimate || "").trim() })),
+        // Empty means Auto (the card named Monokuma).
+        hosts,
         persona: state.persona || "",
         map: buildMapPayload(state.mapChoice ?? DEFAULT_MAP_CHOICE, state.customMap),
     };
@@ -168,6 +180,9 @@ export function mountNewGamePanel(container, api) {
         groupMembers: new Set(),
         roster: new Map(),
         rosterSeeded: false,
+        // Host / mascot cards. Empty means Auto (the card named Monokuma).
+        hosts: new Set(),
+        hostChoosing: false,
         persona: personas.current || "",
         mapChoice: DEFAULT_MAP_CHOICE,
         customMap: emptyCustomMap(),
@@ -177,6 +192,13 @@ export function mountNewGamePanel(container, api) {
         error: "",
     };
     const ultimateOf = (name) => candidates.find((c) => c.name === name)?.ultimate || "";
+    const candidateNames = candidates.map((c) => c.name);
+    const hostNames = () => effectiveHosts(state, candidateNames);
+    const isHost = (name) => isHostName(name, hostNames());
+    // Hosts aren't classmates: picking one takes them off the class roster.
+    const dropHostsFromRoster = () => {
+        for (const name of [...state.roster.keys()]) if (isHost(name)) state.roster.delete(name);
+    };
     const assetUrl = (rel) => {
         try { return services.assetUrl?.(rel) || ""; } catch { return ""; }
     };
@@ -207,12 +229,13 @@ export function mountNewGamePanel(container, api) {
         const names = state.mode === "single"
             ? [...state.groupMembers]
             : (state.fresh ? [] : candidates.filter((c) => c.inRoster).map((c) => c.name));
-        names.forEach((name) => state.roster.set(name, ultimateOf(name)));
+        names.filter((name) => !isHost(name)).forEach((name) => state.roster.set(name, ultimateOf(name)));
     };
 
     const visibleCandidates = () => {
         const q = state.query.trim().toLowerCase();
-        return q ? candidates.filter((c) => c.name.toLowerCase().includes(q)) : candidates;
+        const pool = state.step === "roster" ? candidates.filter((c) => !isHost(c.name)) : candidates;
+        return q ? pool.filter((c) => c.name.toLowerCase().includes(q)) : pool;
     };
 
     const renderGridOnly = () => {
@@ -236,6 +259,33 @@ export function mountNewGamePanel(container, api) {
         </div>
         <div class="dgn-title-grid"></div>
     `;
+
+    // HOSTS: Auto (the Monokuma card) or any number of cards, e.g. Monomi and
+    // the Monokubs. Hosts pop up when called in instead of wandering the rooms.
+    const renderHostPicker = () => {
+        const auto = state.hosts.size === 0;
+        const chip = (c, on) => `
+            <button type="button" class="dgn-title-persona${on ? " is-on" : ""}" data-host="${escapeHtml(c.name)}" aria-pressed="${on}">
+                ${c.avatarUrl ? `<img src="${escapeHtml(c.avatarUrl)}" alt="" loading="lazy" draggable="false">` : ""}
+                <span>${escapeHtml(c.name)}</span>
+            </button>`;
+        const shown = state.hostChoosing
+            ? candidates
+            : candidates.filter((c) => state.hosts.has(c.name));
+        const autoName = auto ? hostNames()[0] : "";
+        return `
+            <div class="dgn-title-field">
+                <span>HOSTS</span>
+                <div class="dgn-title-personas">
+                    <button type="button" class="dgn-title-persona${auto ? " is-on" : ""}" data-host-auto aria-pressed="${auto}">
+                        <span>AUTO (${escapeHtml(autoName || "MONOKUMA")})</span>
+                    </button>
+                    ${shown.map((c) => chip(c, state.hosts.has(c.name))).join("")}
+                    <button type="button" class="dgn-title-btn is-small" data-host-choose>${state.hostChoosing ? "DONE" : "CHOOSE…"}</button>
+                </div>
+                <p class="dgn-title-note">Hosts like Monokuma, Monomi or the Monokubs aren't classmates. They never wander the rooms: call one in or make them speak and they pop up from the bottom with the MONOKUMA playlist.${auto && !autoName ? " No card is named Monokuma, so there's no host yet." : ""}</p>
+            </div>`;
+    };
 
     const renderMapStep = () => {
         const cards = Object.entries(BUILT_IN_MAP_CHOICES).map(([key, c]) => {
@@ -386,6 +436,7 @@ export function mountNewGamePanel(container, api) {
                         <span>YOU ARE</span>
                         <div class="dgn-title-personas">${personaOptions}</div>
                     </div>` : ""}
+                ${renderHostPicker()}
                 <p class="dgn-title-note">Tick your classmates and set each one's Ultimate. Blank Ultimates stay "???" until the lorebook or Social tab fills them in.</p>
                 ${helpBlock("roster")}
                 ${gridToolbar()}
@@ -411,6 +462,7 @@ export function mountNewGamePanel(container, api) {
                     ${state.mode === "single" ? `<dt>STORY CHAT</dt><dd>${escapeHtml(payload.groupName)} <small>(${payload.groupMembers.length} members)</small></dd>` : ""}
                     ${personaName ? `<dt>YOU</dt><dd>${escapeHtml(personaName)}</dd>` : ""}
                     <dt>MAP</dt><dd>${mapText}</dd>
+                    <dt>HOSTS</dt><dd>${payload.hosts.length ? payload.hosts.map(escapeHtml).join(", ") : `Auto <small>(${escapeHtml(hostNames()[0] || "no card named Monokuma")})</small>`}</dd>
                     <dt>CLASS (${payload.roster.length})</dt>
                     <dd><ul class="dgn-title-summary-roster">${payload.roster.map((r) => `<li><strong>${escapeHtml(r.name)}</strong><span>${escapeHtml(r.ultimate ? `Ultimate ${r.ultimate}` : "Ultimate ???")}</span></li>`).join("")}</ul></dd>
                     ${removed.length ? `<dt>LEAVING</dt><dd>${removed.map(escapeHtml).join(", ")} <small>(removed from the roster)</small></dd>` : ""}
@@ -656,6 +708,34 @@ export function mountNewGamePanel(container, api) {
         const sel = t.closest?.("[data-select]");
         if (sel) {
             selectAll(sel.dataset.select === "all");
+            return;
+        }
+        if (t.closest?.("[data-host-auto]")) {
+            state.hosts.clear();
+            dropHostsFromRoster();
+            sfx("click");
+            renderStep();
+            return;
+        }
+        if (t.closest?.("[data-host-choose]")) {
+            state.hostChoosing = !state.hostChoosing;
+            sfx("click");
+            renderStep();
+            return;
+        }
+        const hostChip = t.closest?.("[data-host]");
+        if (hostChip) {
+            const name = hostChip.dataset.host;
+            if (state.hosts.has(name)) {
+                state.hosts.delete(name);
+                // No longer a host: back on the class if they're in the story chat.
+                if (state.groupMembers.has(name) && !state.roster.has(name)) state.roster.set(name, ultimateOf(name));
+            } else {
+                state.hosts.add(name);
+            }
+            dropHostsFromRoster();
+            sfx("click");
+            renderStep();
             return;
         }
         const persona = t.closest?.("[data-persona]");

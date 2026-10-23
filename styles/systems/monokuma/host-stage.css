@@ -1,0 +1,138 @@
+/* =========================
+   Host entrance (host/hostStage.js)
+   Monokuma & co. pop up from the bottom of the screen, like in the games.
+   ========================= */
+
+/* Above the overworld (25), under SillyTavern's chat shell (#sheld, 30) so
+   the chat and VN box stay readable. */
+#dangan-host-stage {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 27;
+    display: none;
+    justify-content: center;
+    align-items: flex-end;
+    gap: 2vw;
+    height: 0;
+    overflow: visible;
+    pointer-events: none;
+}
+
+#dangan-host-stage.is-on {
+    display: flex;
+}
+
+.dangan-host {
+    position: relative;
+    height: min(62vh, 560px);
+    transform: translateY(105%);
+    transition: transform 0.38s cubic-bezier(0.55, 0, 0.9, 0.45);
+    flex: 0 1 auto;
+}
+
+.dangan-host.is-in {
+    transform: translateY(0);
+    /* Quick pop up with a little overshoot, like Monokuma's entrance. */
+    transition: transform 0.52s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+.dangan-host img {
+    display: block;
+    height: 100%;
+    width: auto;
+    object-fit: contain;
+    filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.55));
+    user-select: none;
+}
+
+/* No sprite for this card: show a name plate instead of a broken image. */
+.dangan-host.is-missing {
+    display: flex;
+    align-items: flex-end;
+}
+
+.dangan-host.is-missing img {
+    display: none;
+}
+
+.dangan-host.is-missing::after {
+    content: attr(data-name);
+    display: block;
+    margin-bottom: 12vh;
+    padding: 10px 22px;
+    background: #120a18;
+    border: 1px solid #f0479a;
+    color: #fff;
+    font: 600 22px "Bruno Ace", "Orbitron", sans-serif;
+    letter-spacing: 0.12em;
+}
+
+#dangan-host-dismiss {
+    position: fixed;
+    top: 72px;
+    left: 50%;
+    z-index: 35;
+    display: none;
+    transform: translateX(-50%);
+    border: 1px solid #f0479a;
+    padding: 8px 22px;
+    background: #f0479a;
+    color: #fff;
+    font: 600 14px "Rajdhani", sans-serif;
+    letter-spacing: 0.18em;
+    cursor: pointer;
+    clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+}
+
+#dangan-host-dismiss.is-on {
+    display: block;
+}
+
+#dangan-host-dismiss:hover,
+#dangan-host-dismiss:focus-visible {
+    background: #fff;
+    color: #0a0610;
+    outline: none;
+}
+
+/* Hidden while the UI is hidden (photo mode) and during Class Trials. */
+body.dangan-ui-hidden #dangan-host-dismiss,
+body.dangan-trial-active #dangan-host-stage,
+body.dangan-trial-active #dangan-host-dismiss {
+    display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dangan-host,
+    .dangan-host.is-in {
+        transition: none;
+    }
+}
+
+/* ---------- Settings: HOST / MASCOT CARDS picker ---------- */
+
+.dangan-host-search {
+    width: 100%;
+}
+
+.dangan-host-pick-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 4px 12px;
+    width: 100%;
+    max-height: 220px;
+    margin-top: 8px;
+    overflow-y: auto;
+}
+
+.dangan-host-pick-list .settings-checkbox-row {
+    min-width: 0;
+}
+
+.dangan-host-pick-list .settings-checkbox-row span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

@@ -20,6 +20,8 @@ import { createSocialPanelController } from "./social/socialPanel.js";
 import { extractUltimateFromNotes, isIgnoredCharacter, lookupUltimateFromLorebook, normalizeList, normalizeName } from "./social/characterUtils.js";
 import { createMapPanelController } from "./map/mapPanel.js";
 import { DORM_PLAYER_KEY } from "./map/mapLinks.js";
+import { isHostName, readHostSetting, resolveHostNames } from "./host/hostCards.js";
+import { createHostStage } from "./host/hostStage.js";
 import { getLocationPromptReference, resolveLocationIdFromText } from "./map/locationPresence.js";
 import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, TRIAL_START_REGEX, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, TRIAL_CONTEXT_REGEX, defaultSettings, extensionFolderPath, extensionName, getDefaultPromptTemplate } from "./core/constants.js";
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
@@ -4115,26 +4117,34 @@ function refreshPhaseHud() {
     if (!hud.querySelector(".dangan-phase-menu").hidden) renderPhaseMenu();
 }
 
-function playShopTrack() {
-    const tracks = getMonopadSetting("shopTracks") || [];
-    if (!tracks.length) return;
+// A looping track from one of the LOCATIONS playlists (Shop, Monokuma),
+// played over the paused BGM. Returns false when the playlist is empty.
+function playLocationTrack(settingKey) {
+    const tracks = getMonopadSetting(settingKey) || [];
+    if (!tracks.length) return false;
     const path = tracks[Math.floor(Math.random() * tracks.length)];
-    if (!path) return;
-    if (shopTrackAudio) {
-        shopTrackAudio.pause();
-        shopTrackAudio = null;
-    }
+    if (!path) return false;
+    stopLocationTrack();
     shopTrackAudio = new Audio(path);
     shopTrackAudio.loop = true;
     shopTrackAudio.volume = Number(getMonopadSetting("monomonoBgmVolume") ?? 40) / 100;
-    shopTrackAudio.play().catch(e => console.warn("[Dangan][Shop] Track play failed:", e));
+    shopTrackAudio.play().catch(e => console.warn("[Dangan][BGM] Location track play failed:", e));
+    return true;
 }
 
-function stopShopTrack() {
+function stopLocationTrack() {
     if (shopTrackAudio) {
         shopTrackAudio.pause();
         shopTrackAudio = null;
     }
+}
+
+function playShopTrack() {
+    playLocationTrack("shopTracks");
+}
+
+function stopShopTrack() {
+    stopLocationTrack();
 }
 
 const BGM_TRACK_TABS = [
@@ -4149,6 +4159,7 @@ const BGM_TRACK_TABS = [
     { key: "angry",                  settingKey: "angryTracks",               listId: "angry-tracks-list",                  selectedId: "angry-selected-list" },
     { key: "romantic",               settingKey: "romanticTracks",            listId: "romantic-tracks-list",               selectedId: "romantic-selected-list" },
     { key: "shop",                   settingKey: "shopTracks",                listId: "shop-tracks-list",                   selectedId: "shop-selected-list" },
+    { key: "monokuma",               settingKey: "monokumaTracks",            listId: "monokuma-tracks-list",               selectedId: "monokuma-selected-list" },
     { key: "trial-general",          settingKey: "trialGeneralTracks",        listId: "trial-general-tracks-list",          selectedId: "trial-general-selected-list" },
     { key: "trial-preparation",      settingKey: "trialPreparationTracks",    listId: "trial-preparation-tracks-list",      selectedId: "trial-preparation-selected-list" },
     { key: "trial-debates",          settingKey: "trialDebatesTracks",        listId: "trial-debates-tracks-list",          selectedId: "trial-debates-selected-list" },
@@ -4212,6 +4223,7 @@ const BGM_PLAYLIST_LABELS = {
     angryTracks:             'ANGRY',
     romanticTracks:          'ROMANTIC',
     shopTracks:              'SHOP',
+    monokumaTracks:          'MONOKUMA',
     trialGeneralTracks:      'GENERAL',
     trialPreparationTracks:  'TRIAL PREP',
     trialDebatesTracks:      'NON-STOP DEBATE',
@@ -4241,6 +4253,7 @@ const BGM_PLAYLIST_PARENTS = {
     angryTracks:             'MOODS',
     romanticTracks:          'MOODS',
     shopTracks:              'LOCATIONS',
+    monokumaTracks:          'LOCATIONS',
     trialPreparationTracks:  'LOCATIONS',
     trialGeneralTracks:      'TRIAL',
     trialDebatesTracks:      'TRIAL',
@@ -7509,6 +7522,158 @@ function applyGameMasterUI() {
     select.value = saved || '';
 }
 
+// ── Host / mascot cards ───────────────────────────────────────────────────────
+// Monokuma & co. never wander the rooms. When one is called in or made to
+// speak, they pop up from the bottom with the MONOKUMA playlist until
+// dismissed (host/hostStage.js). Which cards are hosts is kept per save.
+
+let hostPickerOpen = false;
+
+function listCardNames() {
+    const ctx = window.SillyTavern?.getContext?.();
+    const chars = Array.isArray(ctx?.characters) ? ctx.characters : [];
+    const names = chars
+        .filter(c => c && !c.is_user && !c.isUser)
+        .map(c => String(c.name || '').trim())
+        .filter(Boolean);
+    return [...new Set(names)].sort((a, b) => a.localeCompare(b));
+}
+
+// Called per character on every overworld render, so cached until the
+// setting or SillyTavern's character list changes.
+let hostNamesCache = { chars: null, count: -1, setting: '', names: [] };
+
+function getHostNames() {
+    const ctx = window.SillyTavern?.getContext?.();
+    const chars = Array.isArray(ctx?.characters) ? ctx.characters : null;
+    const setting = JSON.stringify(getMonopadSetting('hostCards') ?? []);
+    const c = hostNamesCache;
+    if (c.chars === chars && c.count === (chars?.length ?? -1) && c.setting === setting) return c.names;
+    const cards = listCardNames();
+    const names = resolveHostNames(getMonopadSetting('hostCards'), cards.length ? cards : null);
+    hostNamesCache = { chars, count: chars?.length ?? -1, setting, names };
+    return names;
+}
+
+function isHostCharacter(name) {
+    return isHostName(name, getHostNames());
+}
+
+function applyHostCardsUI() {
+    const picked = readHostSetting(getMonopadSetting('hostCards'));
+    const custom = hostPickerOpen || picked.length > 0;
+    document.querySelectorAll('[data-host-mode]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.hostMode === (custom ? 'custom' : 'auto'));
+    });
+    const row = document.getElementById('dangan-host-custom-row');
+    if (row) row.classList.toggle('is-hidden', !custom);
+    renderHostCardList();
+}
+
+function renderHostCardList() {
+    const list = document.getElementById('dangan-host-list');
+    if (!list) return;
+    const picked = readHostSetting(getMonopadSetting('hostCards'));
+    const pickedKeys = new Set(picked.map(n => n.toLowerCase()));
+    const query = String(document.getElementById('dangan-host-search')?.value || '').trim().toLowerCase();
+    const names = listCardNames();
+    // Keep picks whose card is gone visible so they can be unticked.
+    for (const n of picked) if (!names.some(c => c.toLowerCase() === n.toLowerCase())) names.unshift(n);
+    list.replaceChildren(...names
+        .filter(n => !query || n.toLowerCase().includes(query))
+        .map(n => {
+            const label = document.createElement('label');
+            label.className = 'settings-checkbox-row';
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.className = 'dangan-host-pick';
+            cb.value = n;
+            cb.checked = pickedKeys.has(n.toLowerCase());
+            const span = document.createElement('span');
+            span.textContent = n;
+            span.title = n;
+            label.append(cb, span);
+            return label;
+        }));
+    const status = document.getElementById('dangan-host-status');
+    if (status) {
+        const hosts = getHostNames();
+        status.textContent = picked.length
+            ? `Hosts: ${picked.join(', ')}`
+            : (hosts.length ? 'Nothing ticked, so Auto is used: Monokuma.' : 'Nothing ticked, and there is no card named Monokuma.');
+    }
+}
+
+function setHostCards(names) {
+    setMonopadSetting('hostCards', readHostSetting(names));
+    saveSettingsDebounced();
+    // Hosts leave the rooms and the dorm wing; whoever stopped being one rejoins.
+    try { overworldSceneController?.render?.(); } catch (_) {}
+    try { overworldSceneController?.schedulePresenceSync?.(); } catch (_) {}
+    try { mapPanelController?.refreshDormRooms?.(); } catch (_) {}
+}
+
+let hostStage = null;
+let hostMusicPlaying = false;
+
+function getHostStage() {
+    if (hostStage) return hostStage;
+    hostStage = createHostStage({
+        getSpriteUrl: (name, label) => getSpriteUrl(name, label),
+        onFirstEnter: async () => {
+            if (!(getMonopadSetting('monokumaTracks') || []).length) return;
+            await fadeOutAndPauseBgm();
+            hostMusicPlaying = playLocationTrack('monokumaTracks');
+        },
+        onLastLeave: async () => {
+            if (!hostMusicPlaying) return;
+            hostMusicPlaying = false;
+            stopLocationTrack();
+            await fadeInAndResumeBgm();
+        },
+        onChange: () => {
+            try { overworldSceneController?.schedulePresenceSync?.(); } catch (_) {}
+        },
+    });
+    return hostStage;
+}
+
+function listHostsForCall() {
+    const stage = getHostStage();
+    return getHostNames().map(name => ({ name, onStage: stage.isOnStage(name) }));
+}
+
+// A host is called in or about to speak. Not during Class Trials, which stage
+// Monokuma themselves.
+function bringHostOnStage(name) {
+    if (!name || !isHostCharacter(name)) return false;
+    if (trialManager?.isTrialActive?.() || isTrialUiActive()) return false;
+    const stage = getHostStage();
+    if (stage.isOnStage(name)) return false;
+    void stage.enter(name);
+    return true;
+}
+
+// Hosts who aren't part of the chat that just opened go back down.
+function dismissHostsNotInChat() {
+    if (!hostStage?.names().length) return;
+    const present = new Set(getCurrentChatSpeakerNames().map(n => n.toLowerCase()));
+    if (hostStage.names().some(n => !present.has(n.toLowerCase()))) void hostStage.dismiss();
+}
+
+function getCurrentChatSpeakerNames() {
+    const ctx = window.SillyTavern?.getContext?.();
+    if (!ctx) return [];
+    const chars = Array.isArray(ctx.characters) ? ctx.characters : [];
+    if (ctx.groupId) {
+        const group = (ctx.groups || []).find(g => String(g.id) === String(ctx.groupId));
+        const avatars = new Set(group?.members || []);
+        return chars.filter(c => avatars.has(c.avatar)).map(c => c.name);
+    }
+    const solo = ctx.characterId != null ? chars[ctx.characterId] : null;
+    return solo?.name ? [solo.name] : [];
+}
+
 function applyDynamicTheme() {
     const body = document.body;
     body.classList.remove("dangan-theme-daily", "dangan-theme-night", "dangan-theme-investigation", "dangan-theme-damaged");
@@ -8461,6 +8626,7 @@ function applySettingsTabUI() {
     applyVoteFaceUI();
     applyVoteCoinUI();
     applyGameMasterUI();
+    applyHostCardsUI();
 }
 
 function saveCharacters() {
@@ -8484,7 +8650,7 @@ function getDormResidents() {
     const residents = [{ key: DORM_PLAYER_KEY, name: getActivePersonaName() }];
     const playerKey = normalizeName(getActivePersonaName());
     for (const [key, char] of characters.entries()) {
-        if (!char?.name || key === playerKey || isIgnoredCharacter(char.name)) continue;
+        if (!char?.name || key === playerKey || isIgnoredCharacter(char.name) || isHostCharacter(char.name)) continue;
         residents.push({ key, name: char.name });
     }
     return residents;
@@ -10127,6 +10293,9 @@ jQuery(async () => {
                     isTrialActive: () => !!trialManager?.isTrialActive?.(),
                     isActionMenuEnabled: () => !!getMonopadSetting("exploreActionMenu"),
                     getHostMenuActions: () => getExploreMenuActions(),
+                    isHostCharacter: (name) => isHostCharacter(name),
+                    listHosts: () => listHostsForCall(),
+                    onHostCalled: (name) => bringHostOnStage(name),
                     onPresenceSynced: () => {
                         try { trialManager?.refreshGroupChatPortraits?.(); }
                         catch (e) { console.warn("[Dangan][Overworld] GCP refresh after presence sync failed:", e); }
@@ -10643,6 +10812,24 @@ $(".monopad-icon").on("mouseenter", function () {
             setMonopadSetting('gameMasterMode', value);
             saveSettingsDebounced();
             applyGameMasterUI();
+        });
+
+        // Host / mascot cards: Auto (Monokuma) or a ticked list of cards.
+        $(document).on("click", "[data-host-mode]", function () {
+            const custom = this.dataset.hostMode === 'custom';
+            hostPickerOpen = custom;
+            if (!custom) setHostCards([]);
+            applyHostCardsUI();
+        });
+        $(document).on("input", "#dangan-host-search", () => renderHostCardList());
+        $(document).on("change", ".dangan-host-pick", function () {
+            const picked = readHostSetting(getMonopadSetting('hostCards'));
+            const name = String(this.value || '');
+            const next = this.checked
+                ? [...picked, name]
+                : picked.filter(n => n.toLowerCase() !== name.toLowerCase());
+            setHostCards(next);
+            renderHostCardList();
         });
 
         // Game Master character pick
@@ -12338,6 +12525,24 @@ STATEMENT: <third statement>`;
         };
         eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, handleCharacterMessage);
 
+        // Host entrance: a host drafted to speak in a group (force-talk or
+        // /trigger — in One Main Chat hosts are muted until called), or
+        // generating in their own 1-on-1 chat, slides in if not already up.
+        if (event_types.GROUP_MEMBER_DRAFTED) {
+            eventSource.on(event_types.GROUP_MEMBER_DRAFTED, (chId) => {
+                const ctx = window.SillyTavern?.getContext?.();
+                const name = ctx?.characters?.[chId]?.name;
+                if (name) bringHostOnStage(name);
+            });
+        }
+        eventSource.on(event_types.GENERATION_STARTED, (type, _options, dryRun) => {
+            if (dryRun || type === "quiet" || type === "impersonate") return;
+            const ctx = window.SillyTavern?.getContext?.();
+            if (!ctx || ctx.groupId || ctx.characterId == null) return;
+            const name = ctx.characters?.[ctx.characterId]?.name;
+            if (name) bringHostOnStage(name);
+        });
+
         document.addEventListener('click', e => {
             const btn = e.target.closest('.dangan-suspect-refresh-btn');
             if (!btn) return;
@@ -12357,6 +12562,7 @@ STATEMENT: <third statement>`;
             // Load the chat's save first; the trial and overworld code below
             // read story state.
             try { syncSaveWithCurrentChat(); } catch (e) { console.warn('[Dangan][Saves] sync failed:', e); }
+            try { dismissHostsNotInChat(); } catch (e) { console.warn('[Dangan][Host] dismiss on chat change failed:', e); }
             setVfxGcpLoadSuppressed(true);
             setVfxGcpGroupActive(false); // reset until new chat's GCP init completes
             try { renderMoveToPanel(); renderMinimap(); } catch (e) { console.warn('[Dangan][moveto-panel] render failed:', e); }
@@ -12647,6 +12853,9 @@ STATEMENT: <third statement>`;
                 _spriteFolder = decodeURIComponent(_p[_p.length - 2] || '').toLowerCase();
             } catch { /* ignore bad src */ }
             if (_altName === 'narrator' || _spriteFolder === 'narrator') return;
+
+            // A host on stage wears the expression of what they just said.
+            if (hostStage && !hostStage.setSprite(_altName, src)) hostStage.setSprite(_spriteFolder, src);
 
             try { dynamicSongsController?.noteFromImage?.(imgEl, src); } catch { /* ignore */ }
             try { dynamicSongsController?.scheduleEvaluate?.({ restorePhaseOnMiss: true }); } catch { /* ignore */ }
@@ -13220,6 +13429,8 @@ function reloadStoryStateFromSettings() {
 // turns Single-Chat Overworld on and a Several Chats save turns it off.
 function switchToSave(id, { announce = true } = {}) {
     if (!saveStore.activate(id)) return false;
+    // The new save picks its own music below.
+    if (hostStage?.names().length) { hostMusicPlaying = false; stopLocationTrack(); void hostStage.dismiss({ silent: true }); }
     const save = saveStore.getActive();
     saveSettingsDebounced();
     reloadStoryStateFromSettings();
@@ -13532,7 +13743,7 @@ async function createStoryGroupChat(name, memberNames) {
     return data.id;
 }
 
-async function finishTitleScreenNewGame({ fresh, mode, groupName, groupMembers, roster, persona, map }) {
+async function finishTitleScreenNewGame({ fresh, mode, groupName, groupMembers, roster, hosts, persona, map }) {
     const saveMode = mode === "single" ? SAVE_MODES.SINGLE : SAVE_MODES.MULTI;
     // The first NEW GAME on an install makes the first save.
     if (fresh || !saveStore.getActive()) {
@@ -13541,6 +13752,8 @@ async function finishTitleScreenNewGame({ fresh, mode, groupName, groupMembers, 
         const active = saveStore.getActive();
         if (active) active.mode = saveMode;
     }
+    // Before the roster, so hosts stay off it and out of the dorm wing.
+    setMonopadSetting("hostCards", readHostSetting(hosts));
     applyTitleScreenRoster(roster, { pruneOthers: !fresh });
     applyTitleScreenMap(map);
     try {

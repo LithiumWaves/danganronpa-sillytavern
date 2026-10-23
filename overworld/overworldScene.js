@@ -124,6 +124,9 @@ export function createOverworldSceneController({
     onPresenceSynced, // optional — () => void; rebuild GCP after room mute changes
     isActionMenuEnabled, // optional — () => boolean; Single-Chat explore uses one MENU button
     getHostMenuActions, // optional — () => { id, label, active?, onSelect }[] appended to the MENU list
+    isHostCharacter, // optional — (name) => boolean; hosts (Monokuma…) never wander the rooms
+    listHosts, // optional — () => { name, onStage }[]; hosts the Call modal can bring in
+    onHostCalled, // optional — (name) => void; a host was called in (they slide in on the host stage)
 }) {
     function playOwSfx(key) {
         if (!playSfx) return;
@@ -909,6 +912,8 @@ export function createOverworldSceneController({
             if (!char || !char.name) continue;
             if (char.dead || char.missing) continue;
             if (playerKey && key === playerKey) continue;
+            // Hosts run the game rather than play it: they only show up when called.
+            if (isHostCharacter?.(char.name)) continue;
             // Defensive belt-and-braces: drop ST system / narrator chars even
             // if they slipped past the load-time filter (older persisted
             // rosters could have them stored).
@@ -2154,9 +2159,14 @@ export function createOverworldSceneController({
         const allCandidates = singleChat
             ? getCharactersOutsidePlayerRoom()
             : (isRoomLocationId(getCurrentLocationId()) ? getCharactersInPlayerArea() : []);
-        const inArea = singleChat
-            ? allCandidates
-            : allCandidates.filter(c => !c.isInPlayerRoom);
+        // Hosts (Monokuma…) aren't in any room, so they can always be called in.
+        const hostCandidates = (listHosts?.() || [])
+            .filter(h => h?.name && !h.onStage)
+            .map(h => ({ name: h.name, roomLabel: "HOST", isInPlayerRoom: false, isHost: true }));
+        const inArea = [
+            ...(singleChat ? allCandidates : allCandidates.filter(c => !c.isInPlayerRoom)),
+            ...hostCandidates,
+        ];
         const rosterTotal = getActiveRosterKeys().length;
         const preCheck = new Set(getCurrentChatMemberNames());
 
@@ -2263,6 +2273,9 @@ export function createOverworldSceneController({
             const names = checkboxes().filter(cb => cb.checked).map(cb => cb.dataset.name);
             if (names.length < 1) return;
             close();
+            for (const name of names) {
+                if (isHostCharacter?.(name)) onHostCalled?.(name);
+            }
             warpNamesToPlayerRoom(names);
             if (singleChat) {
                 scheduleRender();
@@ -2700,6 +2713,10 @@ export function createOverworldSceneController({
         const inRoomNames = isRoomLocationId(playerRoom)
             ? getCharactersInRoom(playerRoom).map((c) => c.name)
             : [];
+        // A host on stage is here too, so they can keep talking until dismissed.
+        for (const h of listHosts?.() || []) {
+            if (h?.onStage && h.name) inRoomNames.push(h.name);
+        }
         const allChars = Array.isArray(ctx.characters) ? ctx.characters
             : (Array.isArray(window.characters) ? window.characters : []);
         const charByAvatar = indexCharsByAvatar(allChars);

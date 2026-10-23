@@ -50,6 +50,18 @@ function run() {
     });
     assert(single.groupName === "Hope's Peak" && single.groupMembers.join() === "A,B", "single keeps story chat");
     assert(single.roster.length === 2, "single keeps roster");
+    assert(Array.isArray(single.hosts) && single.hosts.length === 0, "no hosts picked means Auto");
+
+    const hosted = buildFinishPayload({
+        fresh: false, mode: "single", groupName: "X", groupMembers: new Set(["A", "Monokuma", "Monomi"]),
+        roster: new Map([["A", ""], ["Monokuma", ""], ["Monomi", ""]]), hosts: new Set(["Monomi"]), persona: "",
+    });
+    assert(hosted.hosts.join() === "Monomi", "picked hosts are carried");
+    assert(hosted.roster.map((r) => r.name).join() === "A,Monokuma", "hosts are kept off the class roster");
+    const auto = buildFinishPayload({
+        fresh: false, mode: "multi", groupMembers: new Set(), roster: new Map([["A", ""], ["monokuma", ""]]), persona: "",
+    });
+    assert(auto.roster.map((r) => r.name).join() === "A", "Auto keeps Monokuma off the class roster");
 
     console.log("titleNewGame tests passed");
 }
