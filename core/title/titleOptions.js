@@ -66,7 +66,7 @@ export function cycleChoice(choices, current, dir) {
 }
 
 export function mountOptionsPanel(container, api) {
-    const { services, sfx, close } = api;
+    const { services, sfx } = api;
     const rows = OPTION_SECTIONS.flatMap((s) => s.rows);
 
     const renderControl = (row) => {
@@ -108,8 +108,7 @@ export function mountOptionsPanel(container, api) {
                 </section>
             `).join("")}
             <div class="dgn-title-options-foot">
-                <span class="dgn-title-note">Changes save immediately.</span>
-                <button type="button" class="dgn-title-btn" data-all-settings>ALL SETTINGS (MONOPAD)</button>
+                <span class="dgn-title-note">Changes save immediately. Everything else is in the Monopad's Settings once you're playing.</span>
             </div>
         </div>
     `;
@@ -145,11 +144,6 @@ export function mountOptionsPanel(container, api) {
 
     container.addEventListener("click", (ev) => {
         const t = ev.target;
-        if (t.closest?.("[data-all-settings]")) {
-            sfx("click");
-            close(() => services.openMonopadSettings?.());
-            return;
-        }
         const row = rowFor(t);
         if (!row) return;
         if (row.type === "toggle" && t.closest(".dgn-title-switch, .dgn-title-option-label")) toggle(row);
@@ -175,7 +169,7 @@ export function mountOptionsPanel(container, api) {
     });
 
     const focusables = () => Array.from(container.querySelectorAll(
-        ".dgn-title-switch, .dgn-title-slider input, .dgn-title-choice-value, [data-all-settings]",
+        ".dgn-title-switch, .dgn-title-slider input, .dgn-title-choice-value",
     ));
 
     return {

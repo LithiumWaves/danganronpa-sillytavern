@@ -1,4 +1,8 @@
 import { mountBackgroundsPanel } from "./titleBackgrounds.js";
+import { mountCharactersPanel } from "./titleCharacters.js";
+import { mountPersonaPanel } from "./titlePersona.js";
+import { mountPresencePanel } from "./titlePresence.js";
+import { mountSpritesPanel } from "./titleSprites.js";
 import { mountContinuePanel } from "./titleContinue.js";
 import { mountLorebookPanel } from "./titleLorebook.js";
 import { mountMusicPanel } from "./titleMusic.js";
@@ -25,6 +29,10 @@ const PANELS = Object.freeze({
     music: { title: "MUSIC", mount: mountMusicPanel },
     backgrounds: { title: "ROOM BACKGROUNDS", mount: mountBackgroundsPanel },
     lorebook: { title: "LOREBOOKS", mount: mountLorebookPanel },
+    characters: { title: "CHARACTER CARDS", mount: mountCharactersPanel },
+    sprites: { title: "SPRITES", mount: mountSpritesPanel },
+    persona: { title: "PERSONA", mount: mountPersonaPanel },
+    presence: { title: "PRESENCE EXTENSION", mount: mountPresencePanel },
 });
 
 const EXIT_DURATION_MS = 620;

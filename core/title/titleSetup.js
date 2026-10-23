@@ -3,24 +3,38 @@ import { escapeHtml } from "./titleUtils.js";
 const STATUS_ICON = Object.freeze({ ok: "✓", warn: "!", missing: "✕", skip: "–" });
 const STATUS_TEXT = Object.freeze({ ok: "READY", warn: "CHECK", missing: "NEEDED", skip: "N/A" });
 
-// Fixes that stay inside the title screen instead of closing it.
+// Every fix stays inside the title screen: leaving it half-way through
+// setup leaves the game in a bad state.
 const IN_TITLE_FIXES = Object.freeze({
     newGame: "newGame",
     continue: "continue",
+    saves: "continue",
     bgm: "music",
     backgrounds: "backgrounds",
     worldInfo: "lorebook",
+    characters: "characters",
+    sprites: "sprites",
+    extensions: "presence",
+    persona: "persona",
+});
+
+// Fixes that are a single setting, done in place.
+const IN_PLACE_FIXES = Object.freeze({
+    aiInstructions: (services) => services.settings?.set?.("markerPromptsEnabled", true),
 });
 
 export function mountSetupPanel(container, api) {
-    const { services, sfx, close } = api;
+    const { services, sfx } = api;
     container.innerHTML = `
         <div class="dgn-title-setup">
-            <p class="dgn-title-note">What the game needs from SillyTavern. FIX takes you to the place to change it.</p>
+            <p class="dgn-title-note">What the game needs from SillyTavern. Each button fixes it right here.</p>
             <div class="dgn-title-toolbar dgn-title-setup-shortcuts">
                 <button type="button" class="dgn-title-btn" data-open-panel="music">MUSIC</button>
                 <button type="button" class="dgn-title-btn" data-open-panel="backgrounds">ROOM BACKGROUNDS</button>
                 <button type="button" class="dgn-title-btn" data-open-panel="lorebook">LOREBOOKS</button>
+                <button type="button" class="dgn-title-btn" data-open-panel="characters">CHARACTER CARDS</button>
+                <button type="button" class="dgn-title-btn" data-open-panel="sprites">SPRITES</button>
+                <button type="button" class="dgn-title-btn" data-open-panel="persona">PERSONA</button>
             </div>
             <div class="dgn-title-setup-list" role="list">
                 <div class="dgn-title-empty">CHECKING…</div>
@@ -93,8 +107,14 @@ export function mountSetupPanel(container, api) {
         if (!row) return;
         sfx("click");
         const inTitle = IN_TITLE_FIXES[row.fix];
-        if (inTitle) api.openPanel(inTitle);
-        else close(() => services.runSetupFix?.(row.fix));
+        if (inTitle) {
+            api.openPanel(inTitle);
+            return;
+        }
+        const inPlace = IN_PLACE_FIXES[row.fix];
+        if (!inPlace) return;
+        try { inPlace(services); } catch (e) { console.warn(`[Dangan][Title] fix ${row.fix} failed:`, e); }
+        check();
     });
 
     check();

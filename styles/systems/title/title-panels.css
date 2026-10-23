@@ -1811,3 +1811,30 @@ select.dgn-title-input option {
         gap: 0;
     }
 }
+
+/* ── SETUP: character cards, sprites, persona ── */
+
+.dgn-title-persona.is-static {
+    cursor: default;
+}
+
+.dgn-title-persona.is-missing {
+    border-color: rgba(255, 196, 0, 0.55);
+}
+
+.dgn-title-persona:disabled {
+    opacity: 0.5;
+    cursor: wait;
+}
+
+.dgn-title-sprite-thumb {
+    aspect-ratio: 3 / 4;
+    background: #1a1220;
+}
+
+.dgn-title-sprite-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    object-position: center bottom;
+}

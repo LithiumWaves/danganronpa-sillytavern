@@ -31,9 +31,9 @@ export function evaluateSetup(facts = {}) {
         status: cards > 0 ? OK : MISSING,
         detail: cards > 0
             ? `${plural(cards, "card")} imported.`
-            : "No character cards yet. Import the cards in /sample-character-cards, or your own.",
+            : "No character cards yet. IMPORT CARDS brings in the sample cards or your own.",
         fix: "characters",
-        fixLabel: "OPEN CHARACTERS",
+        fixLabel: "IMPORT CARDS",
     });
 
     const withSprites = facts.sprites?.with || [];
@@ -50,7 +50,7 @@ export function evaluateSetup(facts = {}) {
             : withoutSprites.length === 0 ? `Everyone checked has sprites (${spriteTotal}).`
             : `No sprites for ${listNames(withoutSprites)}.`,
         fix: "sprites",
-        fixLabel: "OPEN SPRITES",
+        fixLabel: "UPLOAD SPRITES",
     });
 
     const ultimatesKnown = Number(facts.ultimates?.known || 0);
@@ -74,7 +74,7 @@ export function evaluateSetup(facts = {}) {
             : facts.presence ? "Installed. Characters outside the room forget what they didn't hear."
             : `Not found. Without it, muted characters still read the whole chat. Install it from ${PRESENCE_URL}.`,
         fix: "extensions",
-        fixLabel: "OPEN EXTENSIONS",
+        fixLabel: "INSTALL IT",
     });
 
     const bgmFiles = Number(facts.bgm?.files || 0);
@@ -109,9 +109,9 @@ export function evaluateSetup(facts = {}) {
         status: facts.markerPrompts || facts.presetHasMarkers ? OK : WARN,
         detail: facts.markerPrompts ? "The extension tells the AI how to write Truth Bullets, trust and announcements."
             : facts.presetHasMarkers ? "Your preset has the V3C marker rules."
-            : "The AI isn't told how to write Truth Bullets, trust or announcements. Turn on AI INSTRUCTIONS.",
+            : "The AI isn't told how to write Truth Bullets, trust or announcements. TURN ON fixes it.",
         fix: "aiInstructions",
-        fixLabel: "OPEN GAMEPLAY",
+        fixLabel: "TURN ON",
     });
 
     rows.push({
@@ -120,7 +120,7 @@ export function evaluateSetup(facts = {}) {
         status: facts.persona ? OK : WARN,
         detail: facts.persona ? `Playing as ${facts.persona}.` : "No persona picked. Your character will be called \"User\".",
         fix: "persona",
-        fixLabel: "OPEN PERSONAS",
+        fixLabel: "PICK PERSONA",
     });
 
     const save = facts.save || {};
@@ -132,7 +132,7 @@ export function evaluateSetup(facts = {}) {
             : save.mode === "single" && !save.groupOk ? `"${save.name}" is One Main Chat, but its story chat is gone. Load another save or start a NEW GAME.`
             : `"${save.name}", ${save.mode === "single" ? "One Main Chat" : "Several Chats"}.`,
         fix: save.exists ? "saves" : "newGame",
-        fixLabel: save.exists ? "OPEN SAVES" : "NEW GAME",
+        fixLabel: save.exists ? "LOAD A SAVE" : "NEW GAME",
     });
 
     return rows;

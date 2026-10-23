@@ -106,7 +106,7 @@ function getActiveCharacterName() {
 
 // ── Sprite API ────────────────────────────────────────────────────────────────
 
-async function fetchSprites(folder) {
+export async function fetchSprites(folder) {
     if (!folder) return [];
     try {
         const resp = await fetch(`/api/sprites/get?name=${encodeURIComponent(folder)}`);
@@ -119,7 +119,7 @@ async function fetchSprites(folder) {
     }
 }
 
-async function uploadSprite(folder, emotion, spriteName, file) {
+export async function uploadSprite(folder, emotion, spriteName, file) {
     const fd = new FormData();
     fd.append("name", folder);          // character sprite folder
     fd.append("label", emotion);        // expression label (kept for ST metadata)
@@ -139,7 +139,7 @@ async function uploadSprite(folder, emotion, spriteName, file) {
     }
 }
 
-async function deleteSprite(folder, emotion, spriteName) {
+export async function deleteSprite(folder, emotion, spriteName) {
     try {
         const resp = await fetch("/api/sprites/delete", {
             method: "POST",

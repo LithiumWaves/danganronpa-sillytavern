@@ -45,9 +45,11 @@ import { createClassTrialMenuController } from "./trial/menu/classTrialMenu.js";
 import { createTrialManager, TrialPhases } from "./trial/trialManager.js";
 import { initVfxSystem, onVfxChatChanged, setExpressionTarget, setEmotionBiasResolver, setVfxGcpLoadSuppressed, setVfxGcpGroupActive, triggerVfxOnElement } from "./vfx/vfxSystem.js";
 import { initEmotionFontsSystem, getEmotionFont } from "./vfx/emotionFontsSystem.js";
-import { initSpriteManager } from "./vfx/spriteManager.js";
+import { deleteSprite as deleteSpriteFile, fetchSprites as fetchSpriteFiles, initSpriteManager, uploadSprite as uploadSpriteFile } from "./vfx/spriteManager.js";
 import {
     EXACT_SPRITE_LABELS,
+    MANAGED_SPRITES,
+    displayStem,
     expressionLabelsFromSprites,
     resolveEmotionPath,
     emotionFromSpriteStem,
@@ -76,7 +78,7 @@ import { createOverworldSceneController } from "./overworld/overworldScene.js";
 import { showCgByBgName, showCgPicker } from "./overworld/cgViewer.js";
 import { buildRoomContextPrompt, resolveRoomLabel, ROOM_CONTEXT_PROMPT_KEY } from "./overworld/roomContextPrompt.js";
 import { isPresenceExtensionPresent } from "./overworld/roomPresence.js";
-import { countSetupProblems, countSetupReminders, evaluateSetup } from "./core/setup/setupChecks.js";
+import { PRESENCE_URL, countSetupProblems, countSetupReminders, evaluateSetup } from "./core/setup/setupChecks.js";
 import { configureMinigameSessions, createSkipToken, installSkipKeyHandler, pushSkippable, runSkippableSequence } from "./core/skip/skipRegistry.js";
 import { confirmLeaveMinigame } from "./core/skip/leaveConfirm.js";
 import { user_avatar } from "../../../personas.js";
@@ -14551,47 +14553,160 @@ async function getSetupRows() {
     return evaluateSetup(await gatherSetupFacts());
 }
 
-// Opens one of SillyTavern's top-bar drawers (if it isn't open already).
-function openSillyTavernDrawer(drawerId) {
-    const drawer = document.getElementById(drawerId);
-    const toggle = drawer?.querySelector(".drawer-toggle");
-    if (!toggle) {
-        notify({ tone: "warn", title: "COULDN'T OPEN IT", message: "Open it from SillyTavern's top bar." });
-        return;
+// ── Title screen SETUP: cards, sprites, persona, Presence ──────────────────
+// The title screen fixes everything itself; nothing here leaves it.
+
+const CARD_IMPORT_TYPES = new Set(["png", "json", "charx", "yaml", "yml", "byaf"]);
+
+async function importCharacterCardFile(file) {
+    const ext = String(file?.name || "").split(".").pop().toLowerCase();
+    if (!CARD_IMPORT_TYPES.has(ext)) return false;
+    const form = new FormData();
+    form.append("avatar", file);
+    form.append("file_type", ext);
+    form.append("user_name", window.SillyTavern?.getContext?.()?.name1 || "");
+    try {
+        const resp = await fetch("/api/characters/import", {
+            method: "POST",
+            headers: getRequestHeaders({ omitContentType: true }),
+            body: form,
+            cache: "no-cache",
+        });
+        if (!resp.ok) return false;
+        const data = await resp.json().catch(() => ({}));
+        return !data?.error;
+    } catch (e) {
+        console.warn("[Dangan][Title] card import failed:", e);
+        return false;
     }
-    if (drawer.querySelector(".drawer-icon")?.classList.contains("closedIcon")) toggle.click();
 }
 
-function runSetupFix(fix) {
-    switch (fix) {
-        case "characters":
-            openSillyTavernDrawer("rightNavHolder");
-            document.getElementById("rm_button_characters")?.click();
-            break;
-        case "sprites":
-            openMonopadTab("settings", { section: "fx" });
-            break;
-        case "worldInfo":
-            openSillyTavernDrawer("WI-SP-button");
-            break;
-        case "extensions":
-            openSillyTavernDrawer("extensions-settings-button");
-            break;
-        case "bgm":
-            openMonopadTab("settings", { section: "audio" });
-            document.querySelector(".bgm-tracks-tab")?.scrollIntoView?.({ block: "start", behavior: "smooth" });
-            break;
-        case "aiInstructions":
-            openMonopadTab("settings", { section: "gameplay" });
-            break;
-        case "persona":
-            openSillyTavernDrawer("persona-management-button");
-            break;
-        case "saves":
-            openMonopadTab("settings", { section: "saves" });
-            break;
-        default:
-            break;
+async function refreshSillyTavernCharacters() {
+    const ctx = window.SillyTavern?.getContext?.();
+    try { await ctx?.getCharacters?.(); } catch (e) { console.warn("[Dangan][Title] refreshing characters failed:", e); }
+}
+
+async function importTitleCharacterFiles(files) {
+    let imported = 0;
+    let failed = 0;
+    for (const file of files || []) {
+        if (await importCharacterCardFile(file)) imported++;
+        else failed++;
+    }
+    if (imported) await refreshSillyTavernCharacters();
+    return { imported, failed };
+}
+
+const sampleCardUrl = (path) => `${extensionFolderPath}/sample-character-cards/${String(path).split("/").map(encodeURIComponent).join("/")}`;
+
+async function listTitleSampleCardSets() {
+    try {
+        const resp = await fetch(sampleCardUrl("manifest.json"), { cache: "no-cache" });
+        if (!resp.ok) return [];
+        const data = await resp.json();
+        return Array.isArray(data?.sets) ? data.sets : [];
+    } catch (e) {
+        console.warn("[Dangan][Title] sample card list failed:", e);
+        return [];
+    }
+}
+
+async function importTitleSampleCards(paths) {
+    const files = [];
+    let failed = 0;
+    for (const path of paths || []) {
+        try {
+            const resp = await fetch(sampleCardUrl(path), { cache: "no-cache" });
+            if (!resp.ok) { failed++; continue; }
+            files.push(new File([await resp.blob()], String(path).split("/").pop(), { type: "application/json" }));
+        } catch { failed++; }
+    }
+    const result = await importTitleCharacterFiles(files);
+    return { imported: result.imported, failed: result.failed + failed };
+}
+
+async function listTitleSpriteCharacters() {
+    const cards = getImportedCharacterCards();
+    return Promise.all(cards.map(async (c) => {
+        const folder = c.avatar ? String(c.avatar).replace(/\.[^.]+$/, "") : c.name;
+        return {
+            name: c.name,
+            folder,
+            avatarUrl: avatarThumbUrl(c.avatar),
+            hasSprites: (await fetchSpriteFiles(folder)).length > 0,
+        };
+    })).then((list) => list.sort((a, b) => Number(a.hasSprites) - Number(b.hasSprites) || a.name.localeCompare(b.name)));
+}
+
+async function listTitleSprites(folder) {
+    return (await fetchSpriteFiles(folder)).map((s) => ({ stem: displayStem(s), path: s.path }));
+}
+
+// Replaces the emotion's main sprite (whatever its file type was).
+async function uploadTitleSprite(folder, emotion, file) {
+    const existing = (await fetchSpriteFiles(folder)).find((s) => displayStem(s).toLowerCase() === emotion.toLowerCase());
+    if (existing) await deleteSpriteFile(folder, emotion, displayStem(existing));
+    return uploadSpriteFile(folder, emotion, emotion, file);
+}
+
+async function uploadTitleSpriteZip(folder, file) {
+    const form = new FormData();
+    form.append("name", folder);
+    form.append("avatar", file);
+    try {
+        const resp = await fetch("/api/sprites/upload-zip", {
+            method: "POST",
+            headers: getRequestHeaders({ omitContentType: true }),
+            body: form,
+            cache: "no-cache",
+        });
+        return resp.ok;
+    } catch (e) {
+        console.warn("[Dangan][Title] sprite pack upload failed:", e);
+        return false;
+    }
+}
+
+async function createTitleScreenPersona({ name, description = "", file = null } = {}) {
+    const personaName = String(name || "").trim();
+    if (!personaName) throw new Error("A persona needs a name.");
+    const personas = await import("../../../personas.js");
+    const avatarId = `${Date.now()}-${personaName.replace(/[^a-zA-Z0-9]/g, "") || "persona"}.png`;
+    let picture = file;
+    if (!picture) {
+        const resp = await fetch("img/user-default.png");
+        picture = new File([await resp.blob()], "avatar.png", { type: "image/png" });
+    }
+    const form = new FormData();
+    form.append("avatar", picture);
+    form.append("overwrite_name", avatarId);
+    const resp = await fetch("/api/avatars/upload", {
+        method: "POST",
+        headers: getRequestHeaders({ omitContentType: true }),
+        body: form,
+        cache: "no-cache",
+    });
+    if (!resp.ok) throw new Error(`Avatar upload failed: ${resp.status}`);
+    const saved = await resp.json().catch(() => ({}));
+    const key = saved?.path || avatarId;
+    await personas.initPersona(key, personaName, String(description || ""), "");
+    try { await personas.getUserAvatars?.(true, key); } catch (_) {}
+    await setTitleScreenPersona(key);
+    return key;
+}
+
+async function installPresenceExtension() {
+    try {
+        const resp = await fetch("/api/extensions/install", {
+            method: "POST",
+            headers: getRequestHeaders(),
+            body: JSON.stringify({ url: PRESENCE_URL }),
+        });
+        if (resp.ok) return { ok: true };
+        const text = await resp.text().catch(() => "");
+        return { ok: false, error: text || `${resp.status}` };
+    } catch (e) {
+        return { ok: false, error: String(e?.message || e) };
     }
 }
 
@@ -14809,7 +14924,21 @@ function buildTitleServices() {
             onboardingState?.resetAllTutorials?.();
             try { applySettingsTabUI(); } catch (_) {}
         },
-        runSetupFix,
+        listCharacterCards: () => getImportedCharacterCards().map((c) => ({ name: c.name, avatarUrl: avatarThumbUrl(c.avatar) })),
+        importCharacterFiles: importTitleCharacterFiles,
+        listSampleCardSets: listTitleSampleCardSets,
+        importSampleCards: importTitleSampleCards,
+        getSpriteEmotions: () => [...MANAGED_SPRITES],
+        listSpriteCharacters: listTitleSpriteCharacters,
+        listSprites: listTitleSprites,
+        uploadSprite: uploadTitleSprite,
+        uploadSpriteZip: uploadTitleSpriteZip,
+        setPersona: setTitleScreenPersona,
+        createPersona: createTitleScreenPersona,
+        presenceUrl: PRESENCE_URL,
+        isPresenceInstalled: () => isPresenceExtensionPresent(),
+        installPresence: installPresenceExtension,
+        reloadPage: () => window.location.reload(),
         getBgmPlaylists: getTitleBgmPlaylists,
         listBgmFiles: async () => {
             cachedBgmPaths = null;
@@ -14843,7 +14972,6 @@ function buildTitleServices() {
         getChoices: (id) => id === "rewardDifficulty"
             ? Object.entries(REWARD_DIFFICULTY_LABELS).map(([value, label]) => ({ value, label }))
             : [],
-        openMonopadSettings: () => openMonopadTab("settings"),
     };
 }
 
