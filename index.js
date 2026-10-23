@@ -3299,7 +3299,74 @@ function createVnModeController() {
             }
             if (rem) chunks.push(rem);
         }
-        return chunks;
+        return balanceChunkMarkup(chunks);
+    }
+
+    // A *action*, **bold** or "quote" that spans bits would be cut open, so
+    // the bit shows a raw * and loses its color. Close each open marker at
+    // the end of its bit and reopen it at the start of the next. Markers
+    // with no partner anywhere in the message stay as they are.
+    function balanceChunkMarkup(chunks) {
+        if (chunks.length < 2) return chunks;
+        const scan = (text, onMarker) => {
+            for (let i = 0; i < text.length; i++) {
+                if (text.startsWith('**', i)) { onMarker('**', i); i += 1; }
+                else if (text[i] === '*') onMarker('*', i);
+                else if (text[i] === '"') onMarker('"', i);
+            }
+        };
+
+        // Pair the markers across the whole message, in order.
+        const pairUp = () => {
+            const paired = new Set();
+            const closers = new Set();
+            const open = {};
+            chunks.forEach((chunk, c) => scan(chunk, (marker, i) => {
+                const id = `${c}:${i}`;
+                if (open[marker]) {
+                    paired.add(open[marker]);
+                    paired.add(id);
+                    closers.add(id);
+                    open[marker] = null;
+                } else {
+                    open[marker] = id;
+                }
+            }));
+            return { paired, closers };
+        };
+
+        // A bit split right before a closing marker (`nice!*`) hands the
+        // marker back to the bit it closes.
+        chunks = [...chunks];
+        const { closers } = pairUp();
+        for (let c = 1; c < chunks.length; c++) {
+            let moved = '';
+            let i = 0;
+            while (i < chunks[c].length) {
+                const marker = chunks[c].startsWith('**', i) ? '**' : (chunks[c][i] === '*' || chunks[c][i] === '"') ? chunks[c][i] : null;
+                if (!marker || !closers.has(`${c}:${i}`)) break;
+                moved += marker;
+                i += marker.length;
+            }
+            if (!moved) continue;
+            chunks[c - 1] += moved;
+            chunks[c] = chunks[c].slice(i).trim();
+        }
+        chunks = chunks.filter(Boolean);
+        const { paired } = pairUp();
+
+        const stack = [];
+        return chunks.map((chunk, c) => {
+            const prefix = stack.join('');
+            scan(chunk, (marker, i) => {
+                if (!paired.has(`${c}:${i}`)) return;
+                const at = stack.lastIndexOf(marker);
+                if (at >= 0) stack.splice(at, 1);
+                else stack.push(marker);
+            });
+            const suffix = [...stack].reverse().join('');
+            return prefix + chunk + suffix;
+        });
     }
 
     function pulseText() {
