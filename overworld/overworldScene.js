@@ -2056,6 +2056,11 @@ export function createOverworldSceneController({
         if (document.getElementById("dangan-gift-pick-modal")) return;
         const characterName = member?.char?.name;
         if (!characterName) return;
+        // Hosts (Monokuma and co.) don't take gifts.
+        if (isHostCharacter?.(characterName)) {
+            showOwToast(`${String(getCharacterDisplayName?.(characterName) || characterName).toUpperCase()} WON'T TAKE GIFTS.`);
+            return;
+        }
 
         const displayName = (typeof getCharacterDisplayName === "function"
             ? getCharacterDisplayName(characterName)

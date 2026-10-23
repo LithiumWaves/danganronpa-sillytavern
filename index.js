@@ -5725,6 +5725,7 @@ function queueGiftForNextReply(gift, targetName) {
     if (!gift?.id) return false;
 
     const target = String(targetName || "").trim();
+    if (target && isHostCharacter(target)) return false;
     // Only a reply that comes after this point reacts; the observer scans
     // every message, including old ones.
     const ctx = window.SillyTavern?.getContext?.();
@@ -5894,6 +5895,8 @@ async function tryResolvePendingGiftForMessage(msgEl, rawText) {
     const characterName = msgEl.getAttribute("ch_name");
 
     if (isUser || isSystem || !characterName) return;
+    // Hosts (Monokuma and co.) don't take gifts: a gift waits for a student.
+    if (isHostCharacter(characterName)) return;
 
     const gift = pendingGiftDeliveryQueue[0];
     if (gift?.targetName && normalizeName(gift.targetName) !== normalizeName(characterName)) return;
