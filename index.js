@@ -8170,7 +8170,13 @@ function bringHostOnStage(name) {
     const stage = getHostStage();
     if (stage.isOnStage(name)) return false;
     void stage.enter(name);
+    if (getMonopadSetting('hostEntranceSfx') !== false) playSfx(sfx.host_bwomp);
     return true;
+}
+
+// The landing bounce is CSS, switched by a body class.
+function applyHostEntranceSettings() {
+    document.body.classList.toggle('dangan-host-bounce', getMonopadSetting('hostEntranceBounce') !== false);
 }
 
 // Hosts who aren't part of the chat that just opened go back down. Leaving
@@ -10686,6 +10692,7 @@ jQuery(async () => {
         monochine_track: document.getElementById("monopad_sfx_monochine_track"),
         monokuma: document.getElementById("monopad_sfx_monokuma"),
         monokumasad: document.getElementById("sfx_monokuma_sad"),
+        host_bwomp: document.getElementById("host_sfx_bwomp"),
         bullet_get: document.getElementById("bullet_sfx_get"),
         bullet_get_alt: document.getElementById("bullet_sfx_get_alt"),
         trust_up: document.getElementById("trust_sfx_up"),
@@ -11220,6 +11227,9 @@ $(".monopad-icon").on("mouseenter", function () {
             }
             if (key === "dynamicThemes") {
                 applyDynamicTheme();
+            }
+            if (key === "hostEntranceBounce") {
+                applyHostEntranceSettings();
             }
             if (key === "phaseHudEnabled") {
                 refreshPhaseHud();
@@ -12093,6 +12103,7 @@ itemsPanelController.loadInventoryState();
 applySettingsTabUI();
 applyImageVisibilitySettings();
 applyExploreLayoutSettings();
+applyHostEntranceSettings();
 applyHalfSpriteMode();
 // The initial chat's sprites mount asynchronously after boot (and CHAT_CHANGED
 // can be unreliable on first load), so re-apply once they've settled — otherwise

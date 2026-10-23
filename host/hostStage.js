@@ -6,7 +6,8 @@
 // Music is the caller's business: onFirstEnter runs when the stage goes from
 // empty to occupied, onLastLeave when it empties again.
 
-export const HOST_ENTER_MS = 600;
+// Long enough for the rise and the landing bounce (host-stage.css).
+export const HOST_ENTER_MS = 1000;
 // A renderer that only gets round to drawing the host this long after they
 // were called in skips the slide-up.
 const ENTRANCE_GRACE_MS = 5000;

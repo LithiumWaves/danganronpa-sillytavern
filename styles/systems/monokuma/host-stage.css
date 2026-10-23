@@ -13,6 +13,20 @@
     animation-delay: calc(-1ms * var(--host-enter-elapsed, 0));
 }
 
+/* Host entrance bounce (setting on): a quicker rise, then they land
+   squashed, spring up taller, dip and settle, feet planted — Monokuma
+   arriving in V3. The bounce uses the standalone `scale` property. */
+body.dangan-host-bounce #dangan-overworld .dangan-ow-sprite.is-host-entering .dangan-ow-sprite-img,
+body.dangan-host-bounce .dangan-gcp-slot.gcp-host-enter .dangan-gcp-scale-wrap {
+    transform-origin: 50% 100%;
+    animation:
+        dgn-host-rise 0.4s cubic-bezier(0.25, 0.8, 0.35, 1) both,
+        dgn-host-bounce 0.55s ease-out forwards;
+    animation-delay:
+        calc(-1ms * var(--host-enter-elapsed, 0)),
+        calc(400ms - 1ms * var(--host-enter-elapsed, 0));
+}
+
 #dangan-overworld .dangan-ow-sprite.is-host-leaving .dangan-ow-sprite-img,
 .dangan-gcp-slot.gcp-host-leave .dangan-gcp-scale-wrap {
     animation: dgn-host-sink 0.38s cubic-bezier(0.55, 0, 0.9, 0.45) both;
@@ -44,6 +58,14 @@
 @keyframes dgn-host-sink {
     from { translate: 0 0; }
     to   { translate: 0 110%; }
+}
+
+@keyframes dgn-host-bounce {
+    0%   { scale: 1.16 0.8; }
+    30%  { scale: 0.93 1.12; }
+    58%  { scale: 1.05 0.94; }
+    80%  { scale: 0.99 1.02; }
+    100% { scale: 1 1; }
 }
 
 @keyframes dgn-host-shadow {
@@ -90,7 +112,9 @@ body.dangan-trial-active #dangan-host-dismiss {
     #dangan-overworld .dangan-ow-sprite.is-host-entering .dangan-ow-sprite-img,
     #dangan-overworld .dangan-ow-sprite.is-host-leaving .dangan-ow-sprite-img,
     .dangan-gcp-slot.gcp-host-enter .dangan-gcp-scale-wrap,
-    .dangan-gcp-slot.gcp-host-leave .dangan-gcp-scale-wrap {
+    .dangan-gcp-slot.gcp-host-leave .dangan-gcp-scale-wrap,
+    body.dangan-host-bounce #dangan-overworld .dangan-ow-sprite.is-host-entering .dangan-ow-sprite-img,
+    body.dangan-host-bounce .dangan-gcp-slot.gcp-host-enter .dangan-gcp-scale-wrap {
         animation-duration: 1ms;
     }
 }

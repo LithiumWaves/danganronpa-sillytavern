@@ -95,6 +95,8 @@ export const defaultSettings = {
     hideTruthBulletImages: false,
     hideGiftImages: false,
     spriteClickGiftsEnabled: false,
+    hostEntranceSfx: true,
+    hostEntranceBounce: true,
     singleChatOverworldEnabled: false,
     singleChatGroupId: "",
     roomContextPromptEnabled: false,

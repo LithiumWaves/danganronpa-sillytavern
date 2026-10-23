@@ -977,6 +977,22 @@
 
                     <div class="settings-item">
                         <div class="settings-text">
+                            <span class="settings-label">Host entrance sound</span>
+                            <div class="settings-note">The "bwomp" when a host is called in.</div>
+                        </div>
+                        <button type="button" class="settings-toggle on" data-setting="hostEntranceSfx"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Host entrance bounce</span>
+                            <div class="settings-note">A called-in host lands with a little squash and bounce, like Monokuma in V3.</div>
+                        </div>
+                        <button type="button" class="settings-toggle on" data-setting="hostEntranceBounce"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
                             <span class="settings-label">Hide Hope's Peak branding</span>
                             <div class="settings-note">Lets you pick your own Game Master, voting wheel and announcements.</div>
                         </div>
@@ -1984,6 +2000,10 @@
     src="scripts/extensions/third-party/danganronpa-extension/assets/images/ui/monokumasad_popup.png"
     alt="Monokuma"
 >
+
+<audio id="host_sfx_bwomp" preload="auto">
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/monokuma/bwomp.mp3" type="audio/mpeg">
+</audio>
 
 <audio id="sfx_monokuma_sad" preload="auto">
     <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/monokuma/sfx_monokuma_sad.mp3" type="audio/mpeg">
