@@ -1,4 +1,4 @@
-/* VN text box skins and tucked-away box controls.
+/* VN text box skins, tucked-away box controls and resizing.
 
    <body data-dangan-vn-skin="current|thh|sdr2|v3"> picks the look (Settings →
    Text box style). "current" keeps the original box; the others recreate the
@@ -24,17 +24,28 @@ body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-
     clip-path: inset(-240px -80px 0 -80px);
 }
 
+/* A mouse reveals the buttons by hovering the box, so the MENU toggle is
+   only for touch screens. */
 body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-toggle {
     display: inline-flex;
     position: absolute;
     top: 6px;
     right: 8px;
     z-index: 3;
-    width: 30px;
+    width: auto;
     height: 24px;
-    padding: 0;
-    font-size: 16px;
-    opacity: 0.6;
+    padding: 0 8px;
+    font-family: "Orbitron", "Rajdhani", monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+    opacity: 0.75;
+}
+
+@media (hover: hover) and (pointer: fine) {
+    body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-toggle {
+        display: none;
+    }
 }
 
 body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-toggle:hover,
@@ -42,9 +53,6 @@ body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-
     opacity: 1;
 }
 
-body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-header {
-    padding-right: 36px;
-}
 
 body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-controls,
 body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-nav {
@@ -150,9 +158,104 @@ body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-
     }
 
     body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-toggle {
-        width: 34px;
-        height: 30px;
+        height: 28px;
     }
+}
+
+
+/* ── Resizing (every style) ─────────────────────────────────────────────────
+   The grip on the box's top-right corner sets a width and height of the
+   player's own (index.js keeps them per style). Shows while the box is
+   hovered or its buttons are open; always faintly on touch screens. */
+
+#dangan-vn-overlay .dangan-vn-resize {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    z-index: 5;
+    width: 22px;
+    height: 22px;
+    cursor: nesw-resize;
+    touch-action: none;
+    opacity: 0.45;
+    transition: opacity 160ms ease;
+    background:
+        linear-gradient(225deg,
+            transparent 0 30%, rgba(255, 255, 255, 0.85) 30% 38%,
+            transparent 38% 52%, rgba(255, 255, 255, 0.85) 52% 60%,
+            transparent 60%);
+    filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.9));
+}
+
+@media (hover: hover) and (pointer: fine) {
+    #dangan-vn-overlay .dangan-vn-resize {
+        opacity: 0;
+    }
+
+    #dangan-vn-overlay .dangan-vn-frame:hover .dangan-vn-resize {
+        opacity: 0.7;
+    }
+}
+
+#dangan-vn-overlay .dangan-vn-frame.chrome-open .dangan-vn-resize,
+#dangan-vn-overlay .dangan-vn-frame.dangan-vn-resizing .dangan-vn-resize,
+#dangan-vn-overlay .dangan-vn-resize:is(:hover, :focus-visible) {
+    opacity: 1;
+}
+
+#dangan-vn-overlay .dangan-vn-frame.dangan-vn-resizing {
+    cursor: nesw-resize;
+    user-select: none;
+}
+
+body.dangan-trial-active #dangan-vn-overlay .dangan-vn-resize {
+    display: none;
+}
+
+body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame.dangan-vn-custom-size {
+    width: min(var(--dangan-vn-user-width, 980px), calc(100vw - 8px)) !important;
+    min-height: min(var(--dangan-vn-user-height, 150px), 85vh) !important;
+    max-height: none;
+}
+
+/* A taller box shows more of the line before it scrolls. */
+body:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame.dangan-vn-custom-size .dangan-vn-text-wrap {
+    max-height: max(min(34vh, 280px), calc(min(var(--dangan-vn-user-height, 150px), 85vh) - 70px));
+}
+
+
+/* ── Classic: docked typing bar ────────────────────────────────────────────
+   Same idea as the game skins below: SillyTavern's and other extensions'
+   pieces of the bar use the Classic box colors instead of the page theme. */
+
+body[data-dangan-vn-skin="current"]:not(.dangan-trial-active) .dangan-vn-compose-docked {
+    --SmartThemeBlurTintColor: rgba(21, 31, 49, 0.92);
+    --SmartThemeBorderColor: rgba(146, 183, 236, 0.45);
+    --SmartThemeBodyColor: #edf5ff;
+}
+
+body.dangan-theme-night[data-dangan-vn-skin="current"]:not(.dangan-trial-active) .dangan-vn-compose-docked {
+    --SmartThemeBlurTintColor: rgba(20, 20, 30, 0.92);
+    --SmartThemeBorderColor: rgba(140, 140, 160, 0.30);
+    --SmartThemeBodyColor: #c8c8d8;
+}
+
+body.dangan-theme-daily[data-dangan-vn-skin="current"]:not(.dangan-trial-active) .dangan-vn-compose-docked {
+    --SmartThemeBlurTintColor: rgba(12, 24, 62, 0.92);
+    --SmartThemeBorderColor: rgba(60, 130, 230, 0.45);
+    --SmartThemeBodyColor: #d8eaff;
+}
+
+body.dangan-theme-investigation[data-dangan-vn-skin="current"]:not(.dangan-trial-active) .dangan-vn-compose-docked {
+    --SmartThemeBlurTintColor: rgba(62, 10, 22, 0.92);
+    --SmartThemeBorderColor: rgba(230, 60, 110, 0.45);
+    --SmartThemeBodyColor: #ffd8e8;
+}
+
+body.dangan-theme-damaged[data-dangan-vn-skin="current"]:not(.dangan-trial-active) .dangan-vn-compose-docked {
+    --SmartThemeBlurTintColor: rgba(60, 0, 0, 0.92);
+    --SmartThemeBorderColor: rgba(220, 20, 20, 0.50);
+    --SmartThemeBodyColor: #ffe0e0;
 }
 
 
@@ -266,17 +369,43 @@ body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-
 
 /* The docked typing bar under the box. */
 body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) .dangan-vn-compose-docked {
+    /* SillyTavern and other extensions paint their bits of the bar (quick
+       replies, extension buttons, menus) with the theme colors; point those
+       at the box's own colors here so nothing inside stays the theme's blue. */
+    --SmartThemeBlurTintColor: var(--dangan-vn-skin-bar);
+    --SmartThemeChatTintColor: var(--dangan-vn-skin-bar);
+    --SmartThemeBorderColor: rgba(255, 255, 255, 0.16);
+    --SmartThemeBodyColor: #f2f2f2;
+    --SmartThemeEmColor: #d2d6dc;
+    --SmartThemeShadowColor: transparent;
     /* Docking sets the bar's width to the box's; keep padding inside it. */
     box-sizing: border-box !important;
     border: 0 !important;
     border-radius: 0 !important;
-    background: rgba(24, 24, 24, 0.9) !important;
+    background: var(--dangan-vn-skin-bar) !important;
     box-shadow: none !important;
     backdrop-filter: none;
 }
 
 body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) .dangan-vn-compose-docked::before {
     animation: none;
+}
+
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) .dangan-vn-compose-docked :is(#nonQRFormItems, #leftSendForm, #rightSendForm, #qr--bar, .qr--buttons) {
+    background: transparent !important;
+    border-color: rgba(255, 255, 255, 0.16) !important;
+    box-shadow: none !important;
+}
+
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) .dangan-vn-compose-docked :is(#leftSendForm, #rightSendForm) > *,
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) .dangan-vn-compose-docked .qr--button {
+    color: #f2f2f2 !important;
+}
+
+body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) .dangan-vn-compose-docked .qr--button {
+    border: 1px solid rgba(255, 255, 255, 0.18) !important;
+    border-radius: 4px !important;
+    background: rgba(12, 12, 12, 0.9) !important;
 }
 
 body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]):not(.dangan-trial-active) .dangan-vn-compose-docked :is(#send_textarea, textarea, .send_textarea) {
@@ -324,6 +453,7 @@ body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) {
     --dangan-vn-skin-button-edge: rgba(120, 82, 10, 0.55);
     --dangan-vn-skin-button-glyph: #4b3608;
     --dangan-vn-skin-highlight: #ffb340;
+    --dangan-vn-skin-bar: rgba(38, 38, 38, 0.86);
 }
 
 body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay {
@@ -424,8 +554,8 @@ body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .da
 }
 
 body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-toggle {
-    top: 42px;
-    right: 42px;
+    top: 40px;
+    right: 30px;
 }
 
 /* The docked typing bar carries on the box's shape: the box gives up its
@@ -435,7 +565,6 @@ body[data-dangan-vn-skin="thh"].dangan-vn-compose-docked-active:not(.dangan-tria
 }
 
 body[data-dangan-vn-skin="thh"]:not(.dangan-trial-active) .dangan-vn-compose-docked {
-    background: rgba(38, 38, 38, 0.86) !important;
     border-radius: 0 0 44px 0 !important;
     padding: 4px 34px 10px 20px !important;
 }
@@ -450,6 +579,7 @@ body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) {
     --dangan-vn-skin-edge: #f39200;
     --dangan-vn-skin-name: #262626;
     --dangan-vn-skin-highlight: #ffe100;
+    --dangan-vn-skin-bar: rgba(22, 22, 22, 0.9);
 }
 
 body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame {
@@ -576,12 +706,11 @@ body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .d
 }
 
 body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-toggle {
-    top: 10px;
-    right: 12px;
+    top: 2px;
+    right: 26px;
 }
 
 body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) .dangan-vn-compose-docked {
-    background: rgba(22, 22, 22, 0.9) !important;
     box-shadow: inset 6px 0 0 var(--dangan-vn-skin-accent) !important;
     padding-left: 14px !important;
 }
@@ -594,6 +723,7 @@ body[data-dangan-vn-skin="sdr2"]:not(.dangan-trial-active) .dangan-vn-compose-do
 body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) {
     --dangan-vn-skin-accent: #ffd400;
     --dangan-vn-skin-highlight: #ffd400;
+    --dangan-vn-skin-bar: rgba(12, 12, 12, 0.9);
 }
 
 body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-frame {
@@ -702,12 +832,8 @@ body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) #dangan-vn-overlay .dan
 }
 
 body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) #dangan-vn-overlay .dangan-vn-chrome-toggle {
-    top: 8px;
-    right: 26px;
-}
-
-body[data-dangan-vn-skin="v3"]:not(.dangan-trial-active) .dangan-vn-compose-docked {
-    background: rgba(12, 12, 12, 0.9) !important;
+    top: 3px;
+    right: 30px;
 }
 
 

@@ -9733,7 +9733,8 @@ body.dangan-trial-vn-chat-hidden #chat {
     letter-spacing: 0.06em;
 }
 
-.dangan-vn-manage-chat-files {
+.dangan-vn-manage-chat-files,
+.dangan-vn-extra-actions {
     padding: 0 9px;
     font-family: "Orbitron", "Rajdhani", monospace;
     letter-spacing: 0.06em;
@@ -10305,7 +10306,8 @@ body.dangan-trial-vn-chat-hidden #chat {
     display: none !important;
 }
 
-.dangan-vn-nav-button:disabled {
+.dangan-vn-nav-button:disabled,
+.dangan-vn-extra-actions:disabled {
     opacity: 0.45;
     cursor: not-allowed;
 }

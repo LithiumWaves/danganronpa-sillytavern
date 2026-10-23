@@ -2018,6 +2018,8 @@ function createVnModeController() {
     const CHUNK_SIZE = 750;
     const VN_POSITION_KEY = `${extensionName}-vn-box-position`;
     const VN_STREAMING_KEY = `${extensionName}-vn-streaming-enabled`;
+    // Per text box style, since each starts at its own size.
+    const VN_SIZE_KEY = `${extensionName}-vn-box-size`;
     let chunkIndex = 0;
     let messageIndex = 0;
     let monopadOpen = false;
@@ -2045,12 +2047,13 @@ function createVnModeController() {
     host.setAttribute('aria-hidden', 'true');
     host.innerHTML = `
         <div class="dangan-vn-frame" role="dialog" aria-live="polite" aria-label="Dangan Visual Novel dialogue">
-            <button type="button" class="dangan-vn-control dangan-vn-chrome-toggle" id="dangan-vn-chrome-toggle" aria-label="Show box controls" title="Show box controls" aria-expanded="false">⋯</button>
+            <button type="button" class="dangan-vn-control dangan-vn-chrome-toggle" id="dangan-vn-chrome-toggle" aria-label="Show box buttons" title="Show box buttons" aria-expanded="false">☰ MENU</button>
+            <div class="dangan-vn-resize" id="dangan-vn-resize" role="separator" aria-label="Resize text box" title="Drag to resize the text box · double-click to reset"></div>
             <div class="dangan-vn-controls">
                 <button type="button" class="dangan-vn-control dangan-vn-stream-toggle" id="dangan-vn-stream-toggle" aria-label="Disable message streaming" title="Disable message streaming">STREAM: ON</button>
                 <button type="button" class="dangan-vn-control dangan-vn-transcript-toggle" id="dangan-vn-transcript-toggle" aria-label="Open transcript" title="Open transcript">TRANSCRIPT</button>
                 <button type="button" class="dangan-vn-control dangan-vn-manage-chat-files" id="dangan-vn-manage-chat-files" aria-label="Manage chat files" title="Manage chat files">FILES</button>
-                <button type="button" class="dangan-vn-control dangan-vn-extra-actions" id="dangan-vn-extra-actions" aria-label="Message actions" title="Message actions">···</button>
+                <button type="button" class="dangan-vn-control dangan-vn-extra-actions" id="dangan-vn-extra-actions" aria-label="Message actions" title="Edit, translate, branch, copy and more for this line">ACTIONS</button>
                 <button type="button" class="dangan-vn-control dangan-vn-edit-message" id="dangan-vn-edit-message" aria-label="Edit current message" title="Edit current message">✏</button>
                 <button type="button" class="dangan-vn-control dangan-vn-clear-chat" id="dangan-vn-clear-chat" aria-label="Clear all chat messages" title="Clear all chat messages">🗑</button>
                 <button type="button" class="dangan-vn-control dangan-vn-lock" id="dangan-vn-lock" aria-label="Unlock Visual Novel box movement" title="Unlock Visual Novel box movement">🔒</button>
@@ -2090,6 +2093,7 @@ function createVnModeController() {
     const streamToggleEl = host.querySelector('#dangan-vn-stream-toggle');
     const lockBtnEl = host.querySelector('#dangan-vn-lock');
     const chromeToggleEl = host.querySelector('#dangan-vn-chrome-toggle');
+    const resizeGripEl = host.querySelector('#dangan-vn-resize');
     const transcriptToggleEl = host.querySelector('#dangan-vn-transcript-toggle');
     const manageChatFilesBtnEl = host.querySelector('#dangan-vn-manage-chat-files');
     const transcriptEl = host.querySelector('#dangan-vn-transcript');
@@ -2404,6 +2408,7 @@ function createVnModeController() {
         })();
 
         if (prevBtnEl) prevBtnEl.disabled = !hasPrevious;
+        if (extraActionsBtnEl) extraActionsBtnEl.disabled = !total;
         if (nextBtnEl) nextBtnEl.disabled = !hasNext;
         if (latestBtnEl) {
             const unreadCount = Math.max(0, total - (messageIndex + 1));
@@ -2524,6 +2529,49 @@ function createVnModeController() {
         }
     }
 
+    function currentSkinKey() {
+        return normalizeVnSkin(document.body.dataset.danganVnSkin);
+    }
+
+    function readSavedSizes() {
+        try {
+            const parsed = JSON.parse(localStorage.getItem(VN_SIZE_KEY) || '{}');
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch {
+            return {};
+        }
+    }
+
+    function setFrameSize(width, height) {
+        if (!frameEl) return;
+        const hasWidth = Number.isFinite(width) && width > 0;
+        const hasHeight = Number.isFinite(height) && height > 0;
+        frameEl.classList.toggle('dangan-vn-custom-size', hasWidth || hasHeight);
+        if (hasWidth) frameEl.style.setProperty('--dangan-vn-user-width', `${Math.round(width)}px`);
+        else frameEl.style.removeProperty('--dangan-vn-user-width');
+        if (hasHeight) frameEl.style.setProperty('--dangan-vn-user-height', `${Math.round(height)}px`);
+        else frameEl.style.removeProperty('--dangan-vn-user-height');
+    }
+
+    function saveFrameSize(width, height) {
+        const sizes = readSavedSizes();
+        if (Number.isFinite(width) && Number.isFinite(height)) {
+            sizes[currentSkinKey()] = { w: Math.round(width), h: Math.round(height) };
+        } else {
+            delete sizes[currentSkinKey()];
+        }
+        try {
+            localStorage.setItem(VN_SIZE_KEY, JSON.stringify(sizes));
+        } catch {
+            // ignore storage failures
+        }
+    }
+
+    function restoreSavedSize() {
+        const saved = readSavedSizes()[currentSkinKey()];
+        setFrameSize(saved?.w, saved?.h);
+    }
+
     function setMoveUnlocked(unlocked) {
         moveUnlocked = !!unlocked;
         if (!lockBtnEl) return;
@@ -2633,7 +2681,9 @@ function createVnModeController() {
         composeEl.style.margin = '';
         composeEl.style.transform = '';
         composeEl.style.zIndex = '';
-        document.body.classList.remove('dangan-vn-compose-docked-active');
+        if (document.body.classList.contains('dangan-vn-compose-docked-active')) {
+            document.body.classList.remove('dangan-vn-compose-docked-active');
+        }
     }
 
     function ensureComposeCollapseToggle(composeEl) {
@@ -2720,7 +2770,10 @@ function createVnModeController() {
         composeEl.style.margin = '0';
         composeEl.style.transform = 'none';
         composeEl.style.zIndex = '2147483644';
-        document.body.classList.add('dangan-vn-compose-docked-active');
+        // Only when it changes: the body class observer re-docks on writes.
+        if (!document.body.classList.contains('dangan-vn-compose-docked-active')) {
+            document.body.classList.add('dangan-vn-compose-docked-active');
+        }
         // How much of the screen bottom the box and typing bar take, so the
         // minimap and MOVE TO panel can sit above them on small screens.
         document.body.style.setProperty('--dangan-vn-stack-height', `${Math.max(0, Math.round(viewportHeight - frameRect.top))}px`);
@@ -2732,6 +2785,7 @@ function createVnModeController() {
     updateBottomOffset();
     syncMonopadVisibility();
     restoreSavedPosition();
+    restoreSavedSize();
     setMoveUnlocked(false);
 
     const htmlDecodeBuffer = document.createElement('div');
@@ -3048,8 +3102,79 @@ function createVnModeController() {
         const open = !frameEl?.classList.contains('chrome-open');
         frameEl?.classList.toggle('chrome-open', open);
         chromeToggleEl.setAttribute('aria-expanded', open ? 'true' : 'false');
-        chromeToggleEl.setAttribute('aria-label', open ? 'Hide box controls' : 'Show box controls');
-        chromeToggleEl.title = open ? 'Hide box controls' : 'Show box controls';
+        chromeToggleEl.setAttribute('aria-label', open ? 'Hide box buttons' : 'Show box buttons');
+        chromeToggleEl.title = open ? 'Hide box buttons' : 'Show box buttons';
+        chromeToggleEl.textContent = open ? '✕ CLOSE' : '☰ MENU';
+    });
+
+    // The grip on the top-right corner: drag right to widen, up to heighten.
+    // The box keeps its anchor (left edge, or centre for centred styles) and
+    // its bottom edge, so the typing bar stays put underneath.
+    let resizeState = null;
+
+    resizeGripEl?.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0 || !frameEl) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const rect = frameEl.getBoundingClientRect();
+        const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+        const isCustomPos = frameEl.classList.contains('dangan-vn-custom-pos');
+        const isCentred = !isCustomPos && Math.abs((rect.left + rect.width / 2) - vw / 2) < 6;
+        resizeState = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            startW: rect.width,
+            startH: rect.height,
+            startTop: rect.top,
+            startLeft: rect.left,
+            widthFactor: isCentred ? 2 : 1,
+            isCustomPos,
+        };
+        frameEl.classList.add('dangan-vn-resizing');
+        resizeGripEl.setPointerCapture?.(event.pointerId);
+    });
+
+    resizeGripEl?.addEventListener('pointermove', (event) => {
+        if (!resizeState || event.pointerId !== resizeState.pointerId) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+        const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+        const dx = event.clientX - resizeState.startX;
+        const dy = event.clientY - resizeState.startY;
+        const maxW = Math.max(280, vw - (resizeState.widthFactor === 2 ? 8 : resizeState.startLeft + 4));
+        const width = Math.max(280, Math.min(maxW, resizeState.startW + dx * resizeState.widthFactor));
+        const height = Math.max(96, Math.min(Math.round(vh * 0.85), resizeState.startH - dy));
+        setFrameSize(width, height);
+        if (resizeState.isCustomPos) {
+            setFramePosition(resizeState.startLeft, resizeState.startTop + resizeState.startH - height);
+        }
+        updateBottomOffset();
+        dockTypingSection();
+    });
+
+    const endResize = (event) => {
+        if (!resizeState || event.pointerId !== resizeState.pointerId) return;
+        event.stopPropagation();
+        resizeState = null;
+        frameEl?.classList.remove('dangan-vn-resizing');
+        resizeGripEl?.releasePointerCapture?.(event.pointerId);
+        const rect = frameEl?.getBoundingClientRect();
+        if (rect) saveFrameSize(rect.width, rect.height);
+        if (Number.isFinite(framePosX) && Number.isFinite(framePosY)) savePosition();
+    };
+    resizeGripEl?.addEventListener('pointerup', endResize);
+    resizeGripEl?.addEventListener('pointercancel', endResize);
+    resizeGripEl?.addEventListener('click', (event) => event.stopPropagation());
+
+    resizeGripEl?.addEventListener('dblclick', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setFrameSize(null, null);
+        saveFrameSize(null, null);
+        updateBottomOffset();
+        dockTypingSection();
     });
 
     lockBtnEl?.addEventListener('click', (event) => {
@@ -3390,6 +3515,7 @@ function createVnModeController() {
         if (target instanceof Element && target.closest('.dangan-vn-stream-toggle')) return;
         if (target instanceof Element && target.closest('.dangan-vn-nav-button')) return;
         if (target instanceof Element && target.closest('.dangan-vn-chrome-toggle')) return;
+        if (target instanceof Element && target.closest('.dangan-vn-resize')) return;
         advance();
     });
 
@@ -3500,6 +3626,29 @@ function createVnModeController() {
     const chatEl = document.getElementById('chat');
     if (chatEl) observer.observe(chatEl, { childList: true, subtree: true });
 
+    // The typing bar is pinned by measured position, so re-dock whenever the
+    // box or the bar changes size (new text, streaming, late web fonts,
+    // resizing) or a body class shows or restyles them (View conversation,
+    // phase themes). Without this the bar is left where the box used to end.
+    let _vnRelayoutRaf = null;
+    const scheduleRelayout = () => {
+        if (_vnRelayoutRaf) return;
+        _vnRelayoutRaf = requestAnimationFrame(() => {
+            _vnRelayoutRaf = null;
+            if (!vnEnabled) return;
+            updateBottomOffset();
+            dockTypingSection();
+        });
+    };
+    if (typeof ResizeObserver === 'function') {
+        const sizeObserver = new ResizeObserver(scheduleRelayout);
+        if (frameEl) sizeObserver.observe(frameEl);
+        const composeForObserver = getComposeElement();
+        if (composeForObserver) sizeObserver.observe(composeForObserver);
+    }
+    new MutationObserver(scheduleRelayout).observe(document.body, { attributes: true, attributeFilter: ['class', 'data-dangan-vn-skin'] });
+    document.fonts?.ready?.then(scheduleRelayout).catch(() => {});
+
     const panelEl = document.getElementById('dangan_monopad_panel');
     if (panelEl) {
         const panelObserver = new MutationObserver(() => {
@@ -3515,6 +3664,7 @@ function createVnModeController() {
             const next = normalizeVnSkin(skin);
             // On <body> so the docked typing bar (outside the overlay) can match.
             document.body.dataset.danganVnSkin = next;
+            restoreSavedSize();
             dockTypingSection();
         },
         setEnabled(enabled) {
