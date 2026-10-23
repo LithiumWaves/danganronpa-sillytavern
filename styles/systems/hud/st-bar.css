@@ -1,4 +1,4 @@
-/* SillyTavern's bar, Steins;Gate-style (Settings → Exploration layout →
+/* SillyTavern's bar as a capsule (Settings → Exploration layout →
    SillyTavern's bar style): a rounded capsule with a thick white rim,
    smoky glass inside and light grey icons with a dark outline. Along the
    top by default, or down the left edge (dangan-stbar-left). Auto-hide
@@ -81,6 +81,65 @@ body.dangan-stbar-sg:not(.dangan-trial-active) #top-settings-holder .drawer-icon
     color: #fff;
     background: rgba(255, 255, 255, 0.18);
     box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.55);
+}
+
+/* SillyTavern's own drawers get pictograms in the capsule's style (grey
+   gradient, thick dark outline; assets/icons/stbar/), in place of their
+   Font Awesome glyphs. Icons other extensions add keep the outlined glyph. */
+body.dangan-stbar-sg:not(.dangan-trial-active) :is(
+    #ai-config-button, #sys-settings-button, #advanced-formatting-button,
+    #WI-SP-button, #user-settings-button, #backgrounds-button,
+    #extensions-settings-button, #persona-management-button, #rightNavHolder
+) > .drawer-toggle > .drawer-icon {
+    position: relative;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    color: transparent;
+    text-shadow: none;
+    background-position: center;
+    background-size: 80%;
+    background-repeat: no-repeat;
+    filter: drop-shadow(0 2px 1px rgba(0, 0, 0, 0.45));
+}
+
+body.dangan-stbar-sg:not(.dangan-trial-active) :is(
+    #ai-config-button, #sys-settings-button, #advanced-formatting-button,
+    #WI-SP-button, #user-settings-button, #backgrounds-button,
+    #extensions-settings-button, #persona-management-button, #rightNavHolder
+) > .drawer-toggle > .drawer-icon::before {
+    content: none;
+}
+
+body.dangan-stbar-sg:not(.dangan-trial-active) :is(
+    #ai-config-button, #sys-settings-button, #advanced-formatting-button,
+    #WI-SP-button, #user-settings-button, #backgrounds-button,
+    #extensions-settings-button, #persona-management-button, #rightNavHolder
+) > .drawer-toggle > .drawer-icon:hover {
+    filter: drop-shadow(0 2px 1px rgba(0, 0, 0, 0.45)) brightness(1.12);
+}
+
+body.dangan-stbar-sg:not(.dangan-trial-active) #ai-config-button > .drawer-toggle > .drawer-icon { background-image: url("../../../assets/icons/stbar/sliders.svg"); }
+body.dangan-stbar-sg:not(.dangan-trial-active) #sys-settings-button > .drawer-toggle > .drawer-icon { background-image: url("../../../assets/icons/stbar/plug.svg"); }
+body.dangan-stbar-sg:not(.dangan-trial-active) #advanced-formatting-button > .drawer-toggle > .drawer-icon { background-image: url("../../../assets/icons/stbar/notepad.svg"); }
+body.dangan-stbar-sg:not(.dangan-trial-active) #WI-SP-button > .drawer-toggle > .drawer-icon { background-image: url("../../../assets/icons/stbar/book.svg"); }
+body.dangan-stbar-sg:not(.dangan-trial-active) #user-settings-button > .drawer-toggle > .drawer-icon { background-image: url("../../../assets/icons/stbar/gear.svg"); }
+body.dangan-stbar-sg:not(.dangan-trial-active) #backgrounds-button > .drawer-toggle > .drawer-icon { background-image: url("../../../assets/icons/stbar/windows.svg"); }
+body.dangan-stbar-sg:not(.dangan-trial-active) #extensions-settings-button > .drawer-toggle > .drawer-icon { background-image: url("../../../assets/icons/stbar/orbit.svg"); }
+body.dangan-stbar-sg:not(.dangan-trial-active) #persona-management-button > .drawer-toggle > .drawer-icon { background-image: url("../../../assets/icons/stbar/person.svg"); }
+body.dangan-stbar-sg:not(.dangan-trial-active) #rightNavHolder > .drawer-toggle > .drawer-icon { background-image: url("../../../assets/icons/stbar/cards.svg"); }
+
+/* Not connected to an API: a small red dot on the plug. */
+body.dangan-stbar-sg:not(.dangan-trial-active) #sys-settings-button > .drawer-toggle > .drawer-icon.fa-plug-circle-exclamation::after {
+    content: "";
+    position: absolute;
+    right: 2px;
+    bottom: 3px;
+    width: 9px;
+    height: 9px;
+    border: 2px solid #1c1c20;
+    border-radius: 50%;
+    background: #e8343c;
 }
 
 /* Down the left edge. */

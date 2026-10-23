@@ -105,7 +105,7 @@ export const defaultSettings = {
     exploreActionMenu: true,
     moveToOnMinimap: true,
     autoHideStTopBar: true,
-    // SillyTavern's bar: "sg" (Steins;Gate-style capsule) or "classic".
+    // SillyTavern's bar: "sg" (the capsule) or "classic".
     stTopBarStyle: "sg",
     // Where the capsule sits: "top" or "left".
     stTopBarPosition: "top",

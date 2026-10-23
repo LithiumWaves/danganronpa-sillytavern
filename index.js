@@ -16760,7 +16760,7 @@ function applyExploreLayoutSettings() {
     body.classList.toggle('dangan-moveto-on-minimap', !!getMonopadSetting('moveToOnMinimap'));
     body.classList.toggle('dangan-stbar-autohide', !!getMonopadSetting('autoHideStTopBar'));
     if (!getMonopadSetting('autoHideStTopBar')) body.classList.remove('dangan-stbar-peek');
-    // Steins;Gate-style capsule, along the top or down the left edge.
+    // The capsule, along the top or down the left edge.
     const sgBar = getMonopadSetting('stTopBarStyle') !== 'classic';
     body.classList.toggle('dangan-stbar-sg', sgBar);
     body.classList.toggle('dangan-stbar-left', sgBar && getMonopadSetting('stTopBarPosition') === 'left');

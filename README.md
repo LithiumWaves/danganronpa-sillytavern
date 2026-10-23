@@ -187,7 +187,7 @@ V3C| BODY_DISCOVERY
 | **Daily / Deadly Life Dynamic Themes** | Toggle | On | Automatically switches the UI theme based on daytime, nighttime, or investigation state |
 | **Class Trial Podium** | DEFAULT / CUSTOM | Default | Use the built-in lectern sprite or upload a custom replacement image |
 | **Hide Hope's Peak Branding** | Toggle | Off | Unlocks Announcement Customization — replace default announcement images, voice lines, and text for Daytime, Nighttime, and Body Discovery announcements |
-| **SillyTavern's bar style / position** | STEINS;GATE / CLASSIC, TOP / LEFT | Steins;Gate, Top | Restyles SillyTavern's top bar as a rounded Steins;Gate-style capsule, along the top or down the left edge. With auto-hide on it slides in when you point at its edge |
+| **SillyTavern's bar style / position** | CAPSULE / CLASSIC, TOP / LEFT | Capsule, Top | Restyles SillyTavern's top bar as a rounded capsule of grey outlined icons, along the top or down the left edge. With auto-hide on it slides in when you point at its edge |
 | **Keybinds** | Key or mouse button | See below | Rebind or clear (Backspace) each action. Keybinds never fire while you type. Defaults: right click shows SillyTavern's bar, M the Monopad, L the transcript, E the expression picker, H hides the interface |
 ---
 
