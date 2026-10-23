@@ -10,6 +10,7 @@
 export const SETUP_STATUS = Object.freeze({ OK: "ok", WARN: "warn", MISSING: "missing", SKIP: "skip" });
 
 export const PRESENCE_URL = "https://github.com/leandrojofre/SillyTavern-Presence";
+export const PROME_URL = "https://github.com/Bronya-Rand/Prome-VN-Extension";
 
 function plural(n, one, many = `${one}s`) {
     return `${n} ${n === 1 ? one : many}`;
@@ -74,6 +75,21 @@ export function evaluateSetup(facts = {}) {
             : facts.presence ? "Installed. Characters outside the room forget what they didn't hear."
             : `Not found. Without it, muted characters still read the whole chat. Install it from ${PRESENCE_URL}.`,
         fix: "extensions",
+        fixLabel: "INSTALL IT",
+    });
+
+    // Prome's "user sprite" folder is where the extension reads your own
+    // character's sprites from (Class Trials, minigames, your sprite in
+    // conversations, the Sprite Manager).
+    const prome = facts.prome || {};
+    rows.push({
+        id: "prome",
+        label: "Prome extension",
+        status: prome.installed && prome.userSprite ? OK : WARN,
+        detail: prome.installed && prome.userSprite ? `Installed. Your sprites come from "${prome.userSprite}".`
+            : prome.installed ? "Installed, but no user sprite is picked. Turn on User Sprite in Prome's settings and pick your sprite folder."
+            : `Not found. Your character has no sprite in Class Trials, minigames and conversations without it. Install it from ${PROME_URL}.`,
+        fix: prome.installed ? null : "prome",
         fixLabel: "INSTALL IT",
     });
 

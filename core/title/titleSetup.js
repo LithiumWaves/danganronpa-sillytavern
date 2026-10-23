@@ -15,6 +15,7 @@ const IN_TITLE_FIXES = Object.freeze({
     characters: "characters",
     sprites: "sprites",
     extensions: "presence",
+    prome: "prome",
     persona: "persona",
 });
 

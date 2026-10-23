@@ -1,0 +1,87 @@
+/* Your sprite in conversations (core/ui/playerInset.js): a slanted window
+   on the right, after Killing Harmony's protagonist window — a teal
+   halftone frame, the room showing through, and yellow stripes at its
+   foot. The text box sits over its bottom edge. Only while a conversation
+   is open in VN mode, never during a Class Trial. */
+
+#dangan-player-inset {
+    --dpi-accent: var(--dangan-vn-skin-highlight, #ffd400);
+    --dpi-slant: 22%;
+    position: fixed;
+    right: 0;
+    top: 27vh;
+    width: clamp(170px, 22vw, 360px);
+    height: 52vh;
+    z-index: 2147482900;
+    display: none;
+    pointer-events: none;
+    user-select: none;
+}
+
+body.dangan-player-inset-on:is(.dangan-ow-chat-exit-active, .dangan-ow-conversation-view):not(.dangan-trial-active):not(.dangan-ui-hidden):not(.dangan-ow-edit-mode) #dangan-player-inset.has-sprite {
+    display: block;
+    animation: dangan-player-inset-in 360ms cubic-bezier(0.2, 0.8, 0.25, 1) both;
+}
+
+@keyframes dangan-player-inset-in {
+    from { transform: translateX(105%); }
+    to   { transform: translateX(0); }
+}
+
+/* Teal halftone frame with a slanted left edge. */
+#dangan-player-inset .dangan-player-inset-frame {
+    position: absolute;
+    inset: 0;
+    clip-path: polygon(var(--dpi-slant) 0, 100% 0, 100% 100%, 0 100%);
+    background-color: #0d4a4c;
+    background-image: radial-gradient(rgba(0, 0, 0, 0.55) 1.2px, transparent 1.6px);
+    background-size: 6px 6px;
+    filter: drop-shadow(-4px 4px 0 rgba(0, 0, 0, 0.45));
+}
+
+/* The window itself: the room shows through, the sprite stands in it. */
+#dangan-player-inset .dangan-player-inset-window {
+    position: absolute;
+    inset: 12px 0 12px 12px;
+    clip-path: polygon(calc(var(--dpi-slant) - 3%) 0, 100% 0, 100% 100%, 0 100%);
+    overflow: hidden;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.35)),
+        rgba(20, 24, 30, 0.35);
+    backdrop-filter: blur(3px) brightness(0.85);
+    -webkit-backdrop-filter: blur(3px) brightness(0.85);
+    box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.55);
+}
+
+/* Head to waist: the full-body sprite is drawn about twice the window's
+   height, from its top. */
+#dangan-player-inset .dangan-player-inset-sprite {
+    position: absolute;
+    left: 58%;
+    top: 4%;
+    height: 190%;
+    width: auto;
+    max-width: none;
+    transform: translateX(-50%);
+    filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45));
+}
+
+/* Yellow stripes on the slanted foot, like the game's corner accent. */
+#dangan-player-inset .dangan-player-inset-stripes {
+    position: absolute;
+    left: -2%;
+    bottom: -2%;
+    width: 46%;
+    height: 22%;
+    clip-path: polygon(30% 0, 52% 0, 22% 100%, 0 100%, 0 70%);
+    background: repeating-linear-gradient(115deg, var(--dpi-accent) 0 7px, transparent 7px 13px);
+    filter: drop-shadow(1px 1px 0 rgba(0, 0, 0, 0.5));
+}
+
+@media (max-width: 700px) {
+    #dangan-player-inset {
+        top: 16vh;
+        width: 34vw;
+        height: 42vh;
+    }
+}

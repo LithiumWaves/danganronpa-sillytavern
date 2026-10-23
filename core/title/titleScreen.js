@@ -1,7 +1,7 @@
 import { mountBackgroundsPanel } from "./titleBackgrounds.js";
 import { mountCharactersPanel } from "./titleCharacters.js";
 import { mountPersonaPanel } from "./titlePersona.js";
-import { mountPresencePanel } from "./titlePresence.js";
+import { mountPresencePanel, mountPromePanel } from "./titlePresence.js";
 import { mountSpritesPanel } from "./titleSprites.js";
 import { mountContinuePanel } from "./titleContinue.js";
 import { mountLorebookPanel } from "./titleLorebook.js";
@@ -33,6 +33,7 @@ const PANELS = Object.freeze({
     sprites: { title: "SPRITES", mount: mountSpritesPanel },
     persona: { title: "PERSONA", mount: mountPersonaPanel },
     presence: { title: "PRESENCE EXTENSION", mount: mountPresencePanel },
+    prome: { title: "PROME EXTENSION", mount: mountPromePanel },
 });
 
 const EXIT_DURATION_MS = 620;

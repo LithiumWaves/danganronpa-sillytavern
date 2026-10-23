@@ -68,6 +68,8 @@ export const defaultSettings = {
     vnSkin: "current",
     // VN typewriter speed in percent (25–300); 100 is the original speed.
     vnTypingSpeed: 100,
+    // Show the player's Prome user sprite in a window during conversations.
+    playerInsetEnabled: false,
     // SillyTavern streaming checkboxes VN mode switched off, to switch back on.
     vnPausedStStreaming: [],
     // Half-Sprite Mode global adjustments (apply to every character): a size

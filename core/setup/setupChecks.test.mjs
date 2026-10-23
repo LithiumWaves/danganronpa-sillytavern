@@ -18,6 +18,7 @@ function run() {
     assert(empty.backgrounds.status === SKIP && empty.backgrounds.fix === "backgrounds", "backgrounds skip without rooms");
     assert(empty.ai.status === WARN, "no marker rules is a warning");
     assert(empty.persona.status === WARN, "no persona is a warning");
+    assert(empty.prome.status === WARN && empty.prome.fix === "prome", "no Prome warns and offers to install it");
     assert(empty.save.status === MISSING && empty.save.fix === "newGame", "no save points to NEW GAME");
     assert(countSetupProblems(evaluateSetup({})) === 2, "counts only missing rows");
 
@@ -27,6 +28,7 @@ function run() {
         ultimates: { known: 3, total: 3 },
         singleChat: true,
         presence: true,
+        prome: { installed: true, userSprite: "Hajime" },
         bgm: { files: 12, emptyLists: [] },
         rooms: { total: 4, withBg: 4 },
         markerPrompts: true,
@@ -54,6 +56,9 @@ function run() {
     assert(partial.ai.status === OK, "preset marker rules count");
     assert(partial.save.status === WARN, "single save without its chat warns");
 
+    const promeNoSprite = byId(evaluateSetup({ prome: { installed: true, userSprite: "" } }));
+    assert(promeNoSprite.prome.status === WARN && !promeNoSprite.prome.fix, "Prome without a user sprite warns, nothing to install");
+
     const noSprites = byId(evaluateSetup({ cards: 2, sprites: { with: [], without: ["A", "B"] } }));
     assert(noSprites.sprites.status === MISSING, "nobody with sprites is missing");
 
@@ -66,6 +71,7 @@ function run() {
         sprites: { with: [], without: ["A", "B"] },
         ultimates: { known: 0, total: 2 },
         singleChat: false,
+        prome: { installed: true, userSprite: "Makoto" },
         bgm: { files: 4, emptyLists: [] },
         rooms: { total: 5, withBg: 0 },
         markerPrompts: true,

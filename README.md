@@ -17,6 +17,8 @@ Alternatively, install directly from SillyTavern by accessing the extensions tab
 
 **Recommended way to play: One Main Chat.** Pick NEW GAME on the title screen and keep the selected **One Main Chat** style: one group chat holds the whole story, and exploring the overworld stays inside it (Single-Chat Overworld). Install the [Presence](https://github.com/leandrojofre/SillyTavern-Presence) extension so characters who aren't in the room don't remember what was said there. Several Chats is still available if you prefer separate chats.
 
+Install the [Prome VN](https://github.com/Bronya-Rand/Prome-VN-Extension) extension too and pick your sprite folder as its **User Sprite**: your own character's sprites in Class Trials, minigames, conversations (Settings → Customize → Your sprite in conversations) and the Sprite Manager all come from it. The title screen's SETUP checklist can install both.
+
 ## Requirements:
 - The Lorebook: You can select one of the supplied Lorebooks in `/sample-lorebooks`, or create your own.
 - Character Cards: You can import one (Or multiple) characters from `/sample-character-cards`, or create your own.

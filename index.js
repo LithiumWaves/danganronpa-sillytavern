@@ -78,9 +78,10 @@ import { createOverworldSceneController } from "./overworld/overworldScene.js";
 import { showCgByBgName, showCgPicker } from "./overworld/cgViewer.js";
 import { buildRoomContextPrompt, resolveRoomLabel, ROOM_CONTEXT_PROMPT_KEY } from "./overworld/roomContextPrompt.js";
 import { isPresenceExtensionPresent } from "./overworld/roomPresence.js";
-import { PRESENCE_URL, countSetupProblems, countSetupReminders, evaluateSetup } from "./core/setup/setupChecks.js";
+import { PRESENCE_URL, PROME_URL, countSetupProblems, countSetupReminders, evaluateSetup } from "./core/setup/setupChecks.js";
 import { configureMinigameSessions, createSkipToken, installSkipKeyHandler, pushSkippable, runSkippableSequence } from "./core/skip/skipRegistry.js";
 import { confirmLeaveMinigame } from "./core/skip/leaveConfirm.js";
+import { createPlayerInset } from "./core/ui/playerInset.js";
 import { user_avatar } from "../../../personas.js";
 import { ConnectionManagerRequestService } from "../../shared.js";
 
@@ -105,6 +106,7 @@ let orientationController = null;
 let coachController = null;
 let onboardingState = null;
 let vnModeController = null;
+let playerInsetController = null;
 let monokumaAnnouncementController = null;
 let classTrialMenuController = null;
 let trialManager = null;
@@ -9689,6 +9691,7 @@ function applySettingsTabUI() {
         el.setAttribute("aria-checked", on ? "true" : "false");
     });
     vnModeController?.setSkin?.(vnSkin);
+    applyPlayerInset();
     applyHudColors();
     applyHudColorsUI();
     applyAnnouncementCustomisationUI();
@@ -11130,6 +11133,31 @@ jQuery(async () => {
         normalizeSettingsHeaderActionButtons();
         ensureGlobalDebugUi();
         vnModeController = createVnModeController();
+        playerInsetController = createPlayerInset({
+            getSpriteUrl: (label) => {
+                const folder = getPromeSpriteFolder();
+                return folder ? getSpriteUrl(folder, label) : Promise.resolve(null);
+            },
+            classify: classifyPlayerText,
+            getLastUserMessage: () => {
+                const chat = window.SillyTavern?.getContext?.()?.chat;
+                if (!Array.isArray(chat)) return "";
+                for (let i = chat.length - 1; i >= 0; i--) {
+                    if (chat[i]?.is_user && !chat[i]?.is_system) return String(chat[i].mes || "");
+                }
+                return "";
+            },
+        });
+        eventSource.on(event_types.USER_MESSAGE_RENDERED, (mesId) => {
+            const chat = window.SillyTavern?.getContext?.()?.chat;
+            const msg = Array.isArray(chat) ? (chat[mesId] ?? chat[chat.length - 1]) : null;
+            if (msg?.is_user) playerInsetController?.onUserMessage(msg.mes);
+        });
+        eventSource.on(event_types.CHAT_CHANGED, () => {
+            // Prome's settings may have changed (or loaded) since.
+            applyPlayerInset();
+            playerInsetController?.onChatChanged();
+        });
         monokumaAnnouncementController = createMonokumaAnnouncementController({
             extensionFolderPath,
             shouldPlayAudio: () => Number(extension_settings[extensionName]?.announcementVolume ?? 65) > 0,
@@ -15009,6 +15037,10 @@ async function gatherSetupFacts() {
         ultimates: { known: ultimatesKnown, total: ultimateNames.length },
         singleChat: !!getMonopadSetting("singleChatOverworldEnabled"),
         presence: isPresenceExtensionPresent(),
+        prome: {
+            installed: isPromeExtensionPresent(),
+            userSprite: getPromeSettings()?.enableUserSprite ? String(getPromeSettings()?.userSprite || "") : "",
+        },
         bgm: { files: bgmFiles, emptyLists },
         rooms: { total: rooms.length, withBg: rooms.filter((r) => r.bg).length },
         markerPrompts: !!getMonopadSetting("markerPromptsEnabled"),
@@ -15169,12 +15201,48 @@ async function createTitleScreenPersona({ name, description = "", file = null } 
     return key;
 }
 
-async function installPresenceExtension() {
+// Prome VN's settings hold the player's sprite folder (its "user sprite").
+function getPromeSettings() {
+    const prome = extension_settings?.['Prome-VN-Extension'];
+    return prome && typeof prome === 'object' ? prome : null;
+}
+
+// Prome's user sprite folder, when User Sprite is on.
+function getPromeSpriteFolder() {
+    const prome = getPromeSettings();
+    return prome?.enableUserSprite && prome?.userSprite ? String(prome.userSprite) : null;
+}
+
+// Expression of something the player wrote, through SillyTavern's own
+// Character Expressions classifier (whatever source it is set to use).
+async function classifyPlayerText(text) {
+    try {
+        const expressions = await import("../../expressions/index.js");
+        if (typeof expressions.getExpressionLabel !== "function") return "neutral";
+        return await expressions.getExpressionLabel(String(text || "").slice(0, 1500)) || "neutral";
+    } catch {
+        return "neutral";
+    }
+}
+
+// Your sprite in conversations shows with VN mode and a Prome sprite folder.
+function applyPlayerInset() {
+    const on = !!getMonopadSetting("playerInsetEnabled")
+        && !!getMonopadSetting("vnModeEnabled")
+        && !!getPromeSpriteFolder();
+    playerInsetController?.setEnabled(on);
+}
+
+function isPromeExtensionPresent() {
+    return !!getPromeSettings() || !!document.getElementById('expression-prome-user');
+}
+
+async function installExtensionFromUrl(url) {
     try {
         const resp = await fetch("/api/extensions/install", {
             method: "POST",
             headers: getRequestHeaders(),
-            body: JSON.stringify({ url: PRESENCE_URL }),
+            body: JSON.stringify({ url }),
         });
         if (resp.ok) return { ok: true };
         const text = await resp.text().catch(() => "");
@@ -15411,7 +15479,10 @@ function buildTitleServices() {
         createPersona: createTitleScreenPersona,
         presenceUrl: PRESENCE_URL,
         isPresenceInstalled: () => isPresenceExtensionPresent(),
-        installPresence: installPresenceExtension,
+        installPresence: () => installExtensionFromUrl(PRESENCE_URL),
+        promeUrl: PROME_URL,
+        isPromeInstalled: () => isPromeExtensionPresent(),
+        installProme: () => installExtensionFromUrl(PROME_URL),
         reloadPage: () => window.location.reload(),
         getBgmPlaylists: getTitleBgmPlaylists,
         listBgmFiles: async () => {
