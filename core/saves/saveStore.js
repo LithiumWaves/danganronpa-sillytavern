@@ -31,6 +31,7 @@ export const STORY_KEYS = Object.freeze([
     "markerRegistry",
     "investigationMarkers",
     "trials",
+    "trialSession",
     "manualDebateTruthBulletIds",
     "effectLedger",
     "singleChatGroupId",

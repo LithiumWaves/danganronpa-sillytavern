@@ -69,6 +69,9 @@ export function createTrialManager(deps) {
         getOverworldRoomOccupants,
         getHostEntranceElapsed, // optional — (name) => ms into a called-in host's slide-up, or null
         isHostCharacter, // optional — (name) => boolean; hosts with no height stand mascot-sized
+        getTrialRoster, // optional — () => string[]; participants picked for the current trial
+        onSuspendRequest, // optional — trial panel "Suspend Trial" button
+        onLeaveRequest, // optional — trial panel "Leave Trial" button
     } = deps;
 
     function getAssetUrl(name) {
@@ -1747,7 +1750,9 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
             heading: 'Class Trial',
             items: [
                 { cmd: '/startclasstrial', desc: 'Begin a Class Trial in the current group chat. Converts the chat into a Class Trial chat.' },
-                { cmd: '/endtrial', desc: 'Immediately ends the current Class Trial and clears all persistent trial state.' },
+                { cmd: '/endtrial', desc: 'Immediately ends the current Class Trial, clears all persistent trial state, and returns to the chat the trial was started from.' },
+                { cmd: '/suspendtrial', desc: 'Steps out of the current Class Trial without clearing its progress.' },
+                { cmd: '/resumetrial', desc: 'Resumes a suspended Class Trial in the phase it was left in.' },
                 { cmd: '/setclasstrialgoal', desc: 'Sets the overall objective text shown in the Trial Context panel.', opts: ['(unnamed, required) — The goal text, e.g. /setclasstrialgoal Who killed the victim?'] },
                 { cmd: '/givetruthbullet', desc: 'Manually adds a Truth Bullet to the Monopad. Add an image via the Truth Bullet Monopad tab afterwards.', opts: ['name (required) — Truth Bullet title; quote if it contains spaces', '(unnamed, required) — The Truth Bullet description'] },
                 { cmd: '/suspectchoosing', desc: 'Opens the character selection screen to single out a suspect. Arrow keys to navigate, Enter to confirm.' },
@@ -2281,6 +2286,10 @@ ${historyText}
                         </div>
                         <div class="dgn-controls-footer">
                             <button id="dangan-load-truth-bullets-btn" class="dangan-trial-start-btn dgn-controls-footer-btn" style="display:none" type="button" aria-label="Load Truth Bullets">Load Truth Bullets</button>
+                            <div class="dgn-controls-exit">
+                                <button id="dangan-suspend-trial-btn" class="dgn-controls-footer-btn" type="button" title="Step out of the trial. Resume it later from Begin Class Trial.">Suspend Trial</button>
+                                <button id="dangan-leave-trial-btn" class="dgn-controls-footer-btn" type="button" title="End the trial and clear its progress.">Leave Trial</button>
+                            </div>
                         </div>
                     </div>
                     ${isGroupChat() ? `
@@ -2417,6 +2426,12 @@ ${historyText}
         };
         notification.querySelector('#dangan-load-truth-bullets-btn').onclick = () => {
             showTruthBulletLoadoutModal();
+        };
+        notification.querySelector('#dangan-suspend-trial-btn').onclick = () => {
+            void onSuspendRequest?.();
+        };
+        notification.querySelector('#dangan-leave-trial-btn').onclick = () => {
+            void onLeaveRequest?.();
         };
         notification.querySelector('#dangan-start-mpdebate-btn').onclick = () => {
             notification.remove();
@@ -3711,8 +3726,13 @@ ${historyText}
         // object isn't readable yet.
         const full = getFullGroupMemberNames().filter(n => n && !isAssistantLikeName(n));
         const source = full.length ? full : getChatCardMembers().map(m => m.name);
+        // A trial held in the main chat shares the group with everyone, so seat
+        // only the chosen participants.
+        const roster = trialActive ? (getTrialRoster?.() || []) : [];
+        const rosterKeys = new Set(roster.map(n => normalizeLooseName(n)));
         const members = source
             .filter(Boolean)
+            .filter(n => !rosterKeys.size || rosterKeys.has(normalizeLooseName(n)))
             .filter(n => !isCharacterMuted(n) || isCharacterDead(n));
         const playerName = getPlayerName();
         if (playerName && !members.some(n => normalizeLooseName(n) === normalizeLooseName(playerName))) {
@@ -7369,9 +7389,62 @@ JUDGMENT RULES:
                 extensionSettings[extensionName].trials[key].persistentDebateHistory = [];
                 extensionSettings[extensionName].trials[key].trialTopic = '';
                 extensionSettings[extensionName].trials[key].trialGoal  = '';
+                delete extensionSettings[extensionName].trials[key].suspended;
                 saveSettingsDebounced();
             }
         }
+    }
+
+    // Step out of the trial but keep its saved phase, history and context so
+    // resumeTrial() can pick it back up. setState() is bypassed on purpose: it
+    // would persist IDLE over the saved phase.
+    function suspendTrial() {
+        if (!trialActive) return false;
+        const key = getTrialPersistenceKey();
+        const trials = (extensionSettings[extensionName].trials ??= {});
+        const entry = (trials[key] ??= {});
+        if (!entry.currentTrialState || entry.currentTrialState === TrialPhases.IDLE) {
+            entry.currentTrialState = currentState === TrialPhases.IDLE ? TrialPhases.PRE_DEBATE : currentState;
+        }
+        entry.suspended = true;
+        entry.persistentDebateHistory = persistentDebateHistory;
+        entry.trialTopic = trialContext.topic;
+        entry.trialGoal  = trialContext.goal;
+        saveSettingsDebounced?.();
+        console.log(`[Dangan][Trial] Suspending trial for ${key} at ${entry.currentTrialState}.`);
+
+        trialActive = false;
+        debateSeatingPlan = null;
+        unmountTrialAesthetic();
+        destroyGroupChatPortraits();
+        document.getElementById('dangan-trial-pre-debate-notif')?.remove();
+        document.getElementById('dangan-trial-context-panel')?.remove();
+        // Saved above; a new trial started over this one must not inherit it.
+        persistentDebateHistory = [];
+        trialContext = { topic: '', goal: '', suspects: [] };
+        currentState = TrialPhases.IDLE;
+        try { onTrialStateChange?.(TrialPhases.IDLE, entry.currentTrialState); } catch {}
+        syncUI();
+        syncPrompt();
+        initGroupChatPortraits();
+        return true;
+    }
+
+    function resumeTrial() {
+        const entry = extensionSettings[extensionName]?.trials?.[getTrialPersistenceKey()];
+        if (!entry?.suspended) return false;
+        delete entry.suspended;
+        saveSettingsDebounced?.();
+        try { destroyGroupChatPortraits(); } catch {}
+        initFromPersistentState();
+        if (!trialActive) return false;
+        setTimeout(() => {
+            if (!trialActive || !isGroupChat()) return;
+            debateSeatingPlan = null;
+            try { destroyGroupChatPortraits(); } catch {}
+            initGroupChatPortraits();
+        }, 500);
+        return true;
     }
 
     function initFromPersistentState() {
@@ -7387,6 +7460,12 @@ JUDGMENT RULES:
         currentState = TrialPhases.IDLE;
         persistentDebateHistory = [];
         trialContext = { topic: '', goal: '', suspects: [] };
+
+        // A suspended trial stays on disk until it is resumed.
+        if (saved?.suspended) {
+            syncUI();
+            return;
+        }
 
         if (Array.isArray(savedHistory)) {
             persistentDebateHistory = savedHistory;
@@ -8346,6 +8425,8 @@ JUDGMENT RULES:
         stop: () => {
             endTrial();
         },
+        suspendTrial,
+        resumeTrial,
         onChatChanged: () => {
             // Remove the existing panel so it can rebuild with fresh members/context
             document.getElementById('dangan-trial-pre-debate-notif')?.remove();

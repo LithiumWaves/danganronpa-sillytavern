@@ -4848,6 +4848,25 @@ const investigationStartController = {
 
 
 async function triggerTrialStartFromMapPin() {
+    const suspended = getTrialSession();
+    if (suspended?.suspended) {
+        const resume = await confirmOutsideMonopad({
+            title: "SUSPENDED CLASS TRIAL",
+            message: "A Class Trial is suspended. Resume it where you left off?",
+            confirmLabel: "RESUME",
+            cancelLabel: "START NEW",
+        });
+        if (resume) return resumeClassTrial();
+        const discard = await confirmOutsideMonopad({
+            title: "START A NEW CLASS TRIAL?",
+            message: "The suspended Class Trial will be ended and its progress cleared.",
+            confirmLabel: "START NEW",
+            cancelLabel: "CANCEL",
+        });
+        if (!discard) return false;
+        discardSuspendedTrial(suspended);
+    }
+
     const accepted = await classTrialMenuController?.open?.();
     if (!accepted) return false;
 
@@ -4860,14 +4879,24 @@ async function triggerTrialStartFromMapPin() {
     // Close the Monopad (if open) and cover the transition with a loading screen
     // while the trial chat is created and the Class Trial stage mounts — then fade
     // the loading screen out to reveal the trial.
-    if (document.body.classList.contains('dangan-monopad-open')) {
-        document.getElementById('dangan_monopad_close')?.click();
-    }
+    closeMonopadIfOpen();
     const loadingEl = showMinigameLoadingState('Entering the Class Trial');
 
     console.log(`[Dangan][Trial] Begin Class Trial with ${roster.length} participant(s):`, roster);
     try {
-        await createClassTrialGroupChat(roster);
+        const mainGroupId = getMainChatGroupId();
+        if (mainGroupId) {
+            // One Main Chat: the trial is held in the story chat itself.
+            const ok = await openMainChatForTrial(mainGroupId);
+            const prevDisabled = ok ? await muteMainChatForTrial(roster) : null;
+            if (!prevDisabled) return false;
+            setTrialSession({ mode: SAVE_MODES.SINGLE, groupId: mainGroupId, returnTo: null, prevDisabled, suspended: false });
+        } else {
+            const returnTo = captureCurrentChatRef();
+            const groupId = await createClassTrialGroupChat(roster);
+            if (!groupId) return false;
+            setTrialSession({ mode: SAVE_MODES.MULTI, groupId, returnTo, suspended: false });
+        }
         trialManager?.start();
     } finally {
         // Let the trial chat load + the stage mount/fade in behind the loading
@@ -4875,6 +4904,191 @@ async function triggerTrialStartFromMapPin() {
         setTimeout(() => loadingEl?.hide?.(), 1600);
     }
     return true;
+}
+
+// ── Class Trial session ──────────────────────────────────────────────────────
+// Where the current trial lives and how to get back out of it. Stored per save
+// ("trialSession" story key): { mode, groupId, returnTo, prevDisabled, suspended }.
+
+function getTrialSession() {
+    const session = extension_settings[extensionName]?.trialSession;
+    return session && typeof session === "object" && session.groupId ? session : null;
+}
+
+function setTrialSession(session) {
+    extension_settings[extensionName].trialSession = session || null;
+    saveSettingsDebounced();
+}
+
+function closeMonopadIfOpen() {
+    if (document.body.classList.contains('dangan-monopad-open')) {
+        document.getElementById('dangan_monopad_close')?.click();
+    }
+}
+
+// The One Main Chat group, when that play style is on.
+function getMainChatGroupId() {
+    if (!getMonopadSetting("singleChatOverworldEnabled")) return null;
+    return getMonopadSetting("singleChatGroupId") || null;
+}
+
+function isCurrentGroup(groupId) {
+    const ctx = window.SillyTavern?.getContext?.();
+    return !!groupId && String(ctx?.groupId ?? "") === String(groupId);
+}
+
+async function openMainChatForTrial(groupId) {
+    if (isCurrentGroup(groupId)) return true;
+    try { await openGroupById(groupId); } catch (err) {
+        console.error("[Dangan][Trial] Couldn't open the main chat for the trial:", err);
+    }
+    return isCurrentGroup(groupId);
+}
+
+// The chat the player is in, in the row shape openTitleScreenChat() opens.
+function captureCurrentChatRef() {
+    const ctx = window.SillyTavern?.getContext?.();
+    if (!ctx) return null;
+    const chatFile = String(ctx.getCurrentChatId?.() ?? "");
+    if (ctx.groupId) return { kind: "group", id: ctx.groupId, chatFile, title: "" };
+    const char = ctx.characters?.[ctx.characterId];
+    if (char?.avatar) return { kind: "char", id: char.avatar, chatFile, title: char.name || "" };
+    return null;
+}
+
+function findLiveGroup(groupId) {
+    const ctx = window.SillyTavern?.getContext?.();
+    const groups = Array.isArray(ctx?.groups) ? ctx.groups : [];
+    return groups.find(g => g && String(g.id) === String(groupId) && Array.isArray(g.members)) || null;
+}
+
+async function saveGroupDisabledMembers(group, disabled) {
+    const prev = group.disabled_members;
+    group.disabled_members = disabled;
+    try {
+        await editGroup(group.id, true, false);
+        try { await eventSource.emit(event_types.GROUP_UPDATED); } catch {}
+        return true;
+    } catch (err) {
+        group.disabled_members = prev;
+        console.warn("[Dangan][Trial] Couldn't update the main chat's muted members:", err);
+        return false;
+    }
+}
+
+// Mute everyone in the main chat who isn't taking part (and dead participants,
+// as createClassTrialGroupChat does). Resolves to the previous mute list so it
+// can be restored on the way out, or null on failure.
+async function muteMainChatForTrial(roster) {
+    const ctx = window.SillyTavern?.getContext?.();
+    const group = findLiveGroup(ctx?.groupId);
+    if (!group) return null;
+    const stChars = Array.isArray(ctx?.characters) ? ctx.characters : [];
+    const playing = new Set();
+    (Array.isArray(roster) ? roster : []).forEach(name => {
+        if (characters.get(normalizeName(name))?.dead === true) return;
+        const avatar = stChars.find(c => c?.name === name)?.avatar;
+        if (avatar) playing.add(avatar);
+    });
+    const prevDisabled = Array.isArray(group.disabled_members) ? [...group.disabled_members] : [];
+    const disabled = group.members.filter(av => !playing.has(av));
+    return await saveGroupDisabledMembers(group, disabled) ? prevDisabled : null;
+}
+
+// The trial manager only narrows seating to the roster when the trial shares
+// the main chat with everyone else; a trial group already holds just them.
+function getMainChatTrialRoster() {
+    const session = getTrialSession();
+    if (session?.mode !== SAVE_MODES.SINGLE || !isCurrentGroup(session.groupId)) return [];
+    const roster = extension_settings[extensionName]?.trialRoster;
+    return Array.isArray(roster) ? roster : [];
+}
+
+// Leave the trial's chat state behind: in the main chat give the room its
+// mutes back, otherwise go back to the chat the trial was started from.
+async function exitTrialContext(session) {
+    if (session?.mode === SAVE_MODES.SINGLE) {
+        const group = isCurrentGroup(session.groupId) ? findLiveGroup(session.groupId) : null;
+        if (group && Array.isArray(session.prevDisabled)) {
+            await saveGroupDisabledMembers(group, session.prevDisabled);
+        }
+        overworldSceneController?.schedulePresenceSync?.();
+        overworldSceneController?.render?.();
+    } else if (session && isCurrentGroup(session.groupId)) {
+        if (session.returnTo) {
+            await openTitleScreenChat(session.returnTo);
+        } else {
+            try { await executeSlashCommandsWithOptions("/closechat"); } catch {}
+        }
+    }
+    try { playCurrentPhaseTrack(); } catch {}
+}
+
+async function leaveClassTrial({ confirm = true } = {}) {
+    if (confirm) {
+        const accepted = await confirmOutsideMonopad({
+            title: "LEAVE CLASS TRIAL?",
+            message: "The trial will end and its progress will be cleared.",
+            confirmLabel: "LEAVE",
+            cancelLabel: "CANCEL",
+        });
+        if (!accepted) return false;
+    }
+    const session = getTrialSession();
+    // /endtrial while a trial is suspended ends that one, wherever it is.
+    if (session?.suspended) {
+        discardSuspendedTrial(session);
+        return true;
+    }
+    trialManager?.endTrial();
+    setTrialSession(null);
+    await exitTrialContext(session);
+    return true;
+}
+
+async function suspendClassTrial() {
+    if (!trialManager?.suspendTrial?.()) return false;
+    const session = getTrialSession() || { mode: SAVE_MODES.MULTI, groupId: window.SillyTavern?.getContext?.()?.groupId, returnTo: null };
+    setTrialSession({ ...session, suspended: true });
+    await exitTrialContext(session);
+    notify({ title: "CLASS TRIAL SUSPENDED", message: "Begin Class Trial again to resume it." });
+    return true;
+}
+
+async function resumeClassTrial() {
+    const session = getTrialSession();
+    if (!session?.suspended) return false;
+    closeMonopadIfOpen();
+    const loadingEl = showMinigameLoadingState('Returning to the Class Trial');
+    try {
+        const next = { ...session, suspended: false };
+        if (session.mode === SAVE_MODES.SINGLE) {
+            if (!await openMainChatForTrial(session.groupId)) return false;
+            const prevDisabled = await muteMainChatForTrial(extension_settings[extensionName]?.trialRoster);
+            if (!prevDisabled) return false;
+            next.prevDisabled = prevDisabled;
+        } else if (!isCurrentGroup(session.groupId)) {
+            next.returnTo = captureCurrentChatRef();
+            await openGroupById(session.groupId);
+            if (!isCurrentGroup(session.groupId)) return false;
+        }
+        if (!trialManager?.resumeTrial?.()) return false;
+        setTrialSession(next);
+        return true;
+    } catch (err) {
+        console.error("[Dangan][Trial] Couldn't resume the Class Trial:", err);
+        return false;
+    } finally {
+        setTimeout(() => loadingEl?.hide?.(), 1600);
+    }
+}
+
+// "Start New" over a suspended trial: drop its saved phase so it can't be
+// resumed. Suspending already gave the main chat its mutes back.
+function discardSuspendedTrial(session) {
+    const trials = extension_settings[extensionName]?.trials;
+    if (trials) delete trials[`group_${session.groupId}`];
+    setTrialSession(null);
 }
 
 // Create a fresh group chat for the trial containing the chosen participants,
@@ -11856,6 +12070,9 @@ debugSTGlobals();
             generateTrialDialogueWithProfile,
             getCharacterSourceText,
             getEmotionFont,
+            getTrialRoster: getMainChatTrialRoster,
+            onSuspendRequest: () => suspendClassTrial(),
+            onLeaveRequest: () => leaveClassTrial(),
             onTrialStateChange: () => { renderMoveToPanel(); renderMinimap(); overworldSceneController?.render?.(); try { syncMoodScanButton(); } catch { /* ignore */ } try { syncRoomContextPrompt(); } catch { /* ignore */ } },
             // Re-apply the day/night/investigation phase theme. The trial owns
             // the theme while active (applyDynamicTheme bails on dangan-trial-active),
@@ -14456,10 +14673,28 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'endtrial',
     callback: async () => {
         console.log('[Dangan] Manual trial termination requested.');
-        trialManager?.endTrial();
+        await leaveClassTrial({ confirm: false });
         return '';
     },
-    helpString: 'Immediately ends the current Class Trial and clears persistent state.',
+    helpString: 'Immediately ends the current Class Trial, clears persistent state, and returns to the chat the trial was started from.',
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'suspendtrial',
+    callback: async () => {
+        await suspendClassTrial();
+        return '';
+    },
+    helpString: 'Steps out of the current Class Trial without clearing its progress.',
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'resumetrial',
+    callback: async () => {
+        await resumeClassTrial();
+        return '';
+    },
+    helpString: 'Resumes a suspended Class Trial in the phase it was left in.',
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
@@ -16645,12 +16880,3 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     ],
 }));
 
-SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'endtrial',
-    callback: async () => {
-        console.log('[Dangan] Manual trial termination requested.');
-        trialManager?.endTrial();
-        return '';
-    },
-    helpString: 'Immediately ends the current Class Trial and clears persistent state.',
-}));

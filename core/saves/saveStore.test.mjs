@@ -109,6 +109,17 @@ function run() {
     mapStore.activate(second.id);
     assert(mapRoot.map.storyPins.map((p) => p.id).join() === "p2", "each save keeps its own pins");
 
+    // A suspended Class Trial belongs to the save it was suspended in.
+    const trialRoot = { chapterIndex: 1 };
+    const trialStore = makeStore(trialRoot);
+    trialStore.migrateIfNeeded({ mode: SAVE_MODES.SINGLE, groupIds: ["main"] });
+    trialRoot.trialSession = { mode: SAVE_MODES.SINGLE, groupId: "main", suspended: true };
+    const otherSave = trialStore.create({ name: "Other" });
+    trialStore.activate(otherSave.id);
+    assert(trialRoot.trialSession === undefined, "a new save has no trial session");
+    trialStore.activate("s1");
+    assert(trialRoot.trialSession?.suspended === true, "the suspended trial comes back with its save");
+
     assert(!hasStoryProgress({}), "empty state has no progress");
     assert(hasStoryProgress({ chapterIndex: 1 }), "chapter counts as progress");
     assert(summarizeState({ characters: [["a", { name: "A" }], ["me", { name: "Me", isPlayer: true }]] }).rosterNames.join() === "A", "summary skips the player");
