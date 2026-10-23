@@ -826,7 +826,8 @@ export function createOverworldSceneController({
     function listSpawnableRoomIds() {
         const mp = getMapPanelController?.();
         const pins = mp?.getAllPins?.() || [];
-        const roomPins = pins.filter(p => SPAWNABLE_PIN_TYPES.has(p.type) && !p.hidden);
+        // Dorm rooms are private: nobody gets shuffled into someone's bedroom.
+        const roomPins = pins.filter(p => SPAWNABLE_PIN_TYPES.has(p.type) && !p.hidden && !p._generated);
         // Floors locked until a later chapter never take characters.
         let filtered = roomPins.filter(p => !mp?.isPinLocked?.(p));
         if (roomPins.length > 0 && filtered.length === 0) return [];

@@ -45,6 +45,7 @@ export const STORY_KEYS = Object.freeze([
     "map.currentLocationId",
     "map.storyPins",
     "map.scope",
+    "map.dormRooms",
 ]);
 
 const EXPORT_FORMAT = "dangan-save";

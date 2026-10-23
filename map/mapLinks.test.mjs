@@ -1,0 +1,80 @@
+import { DEFAULT_HUB_PIN_IDS, DEFAULT_PINS } from "./defaultPins.js";
+import { INN_DORM_SLOTS, assignDormSlots, buildDormPins, diffDormEdits, findFloorHub, findRedundantDefaultHubs, getAutoLinkedPins } from "./mapLinks.js";
+import { mergePins, splitPins } from "./mapStorage.js";
+
+function assert(cond, msg) {
+    if (!cond) throw new Error(msg);
+}
+
+const ids = (pins) => pins.map((p) => p.locationId).sort().join();
+
+function run() {
+    const pins = mergePins({ defaults: DEFAULT_PINS });
+    const byId = (areaKey, floorKey, locationId) => pins.find((p) => p.areaKey === areaKey && p.floorKey === floorKey && p.locationId === locationId);
+
+    // Inn Floor 1: the Door is the hub.
+    const door = byId("hopes_peak", "inn_floor_1", "door_to_hopes_peak_academy");
+    assert(findFloorHub(pins, "hopes_peak", "inn_floor_1") === door, "the Door is Inn Floor 1's hub");
+    const cafeteria = byId("hopes_peak", "inn_floor_1", "cafeteria");
+    assert(ids(getAutoLinkedPins(cafeteria, pins)) === "door_to_hopes_peak_academy", "a room links to its hub");
+    const fromDoor = getAutoLinkedPins(door, pins).map((p) => p.locationId);
+    for (const id of ["cafeteria", "changing_room", "laundry_room", "dorm_hallway", "inn_1f_to_2f", "1f_to_inn"]) {
+        assert(fromDoor.includes(id), `the Door links to ${id}`);
+    }
+    assert(!fromDoor.includes("corridor_f1"), "the Door doesn't link to another floor's corridor");
+
+    // Academy floors get their corridor; stairs pair up.
+    const corridor1 = byId("hopes_peak", "floor_1", "corridor_f1");
+    assert(findFloorHub(pins, "hopes_peak", "floor_1") === corridor1, "Corridor F1 is Floor 1's hub");
+    const stairs1 = byId("hopes_peak", "floor_1", "1f_to_2f");
+    assert(ids(getAutoLinkedPins(stairs1, pins)) === "2f_to_1f,corridor_f1", "1F to 2F links to its corridor and 2F to 1F");
+    const innStairs = byId("hopes_peak", "inn_floor_1", "inn_1f_to_2f");
+    assert(ids(getAutoLinkedPins(innStairs, pins)) === "door_to_hopes_peak_academy", "the Inn's stairs have no partner");
+    assert(getAutoLinkedPins(byId("hopes_peak", "floor_1", "school_store"), pins).length === 0, "Monomachines aren't auto-linked");
+
+    // Opting out.
+    const lonely = { ...cafeteria, autoConnect: false };
+    const withLonely = pins.map((p) => (p === cafeteria ? lonely : p));
+    assert(getAutoLinkedPins(lonely, withLonely).length === 0, "autoConnect: false gets no links");
+    assert(!getAutoLinkedPins(door, withLonely).includes(lonely), "nor do others link to it");
+
+    // A player's own corridor replaces the default one, without a tombstone.
+    const own = { id: "custom_1", type: "room", label: "Corridor F1", locationId: "corridor_f1", areaKey: "hopes_peak", floorKey: "floor_1", x: 1, y: 1 };
+    const withOwn = mergePins({ layoutPins: [own], defaults: DEFAULT_PINS });
+    const redundant = findRedundantDefaultHubs(withOwn, DEFAULT_HUB_PIN_IDS);
+    assert(redundant.has("default_hub_corridor_f1") && redundant.size === 1, "only the clashing default corridor steps aside");
+    const kept = withOwn.filter((p) => !redundant.has(p.id));
+    const { deletedDefaultPins } = splitPins(kept, { defaults: DEFAULT_PINS.filter((d) => !redundant.has(d.id)), isUnchangedDefault: (p) => !!p._default });
+    assert(deletedDefaultPins.length === 0, "no tombstone for a corridor that stepped aside");
+    assert(findRedundantDefaultHubs(pins, DEFAULT_HUB_PIN_IDS).size === 0, "defaults alone keep every corridor");
+
+    // Dorm rooms.
+    const residents = [{ key: "__player", name: "Makoto" }, { key: "kyoko", name: "Kyoko" }, { key: "byakuya", name: "Byakuya" }];
+    const first = assignDormSlots({}, residents);
+    assert(first.rooms.__player.slot === 0 && first.rooms.kyoko.slot === 1 && first.rooms.byakuya.slot === 2, "the player first, then the roster");
+    const again = assignDormSlots(first.rooms, [residents[0], residents[2], { key: "aoi", name: "Aoi" }]);
+    assert(again.rooms.byakuya.slot === 2 && again.rooms.aoi.slot === 1, "rooms stay put; newcomers take a free one");
+    const crowd = Array.from({ length: INN_DORM_SLOTS.length + 1 }, (_, i) => ({ key: `c${i}`, name: `C${i}` }));
+    const full = assignDormSlots({}, crowd);
+    assert(Object.keys(full.rooms).length === INN_DORM_SLOTS.length && full.homeless.length === 1 && full.homeless[0].key === `c${INN_DORM_SLOTS.length}`, "past 15, nobody gets a room");
+
+    const dormPins = buildDormPins(first.rooms, residents);
+    assert(dormPins[0].label === "Makoto's Room" && dormPins[0].locationId === "dorm_player" && dormPins.every((p) => p._generated), "dorm pins are built");
+    const inn = [...pins, ...dormPins];
+    const hallway = byId("hopes_peak", "inn_floor_1", "dorm_hallway");
+    assert(ids(getAutoLinkedPins(dormPins[1], inn)) === "dorm_hallway", "a dorm room links to the Dorm Hallway");
+    const fromHall = getAutoLinkedPins(hallway, inn).map((p) => p.locationId);
+    assert(fromHall.includes("door_to_hopes_peak_academy") && dormPins.every((p) => fromHall.includes(p.locationId)), "the Dorm Hallway links to the Door and every dorm room");
+    assert(!getAutoLinkedPins(door, inn).some((p) => p._generated), "dorm rooms hang off the hallway, not the Door");
+
+    const edits = diffDormEdits({ ...dormPins[1], label: "Detective's Room", x: 5 }, residents[1], 1);
+    assert(edits.label === "Detective's Room" && edits.x === 5 && Object.keys(edits).length === 2, "only changed fields are kept");
+    assert(buildDormPins({ kyoko: { slot: 1, edits } }, [residents[1]])[0].label === "Detective's Room", "edits are laid over");
+
+    const split = splitPins([...pins, ...dormPins].filter((p) => !p._generated), { defaults: DEFAULT_PINS, isUnchangedDefault: (p) => !!p._default });
+    assert(!split.layoutPins.some((p) => p._generated), "generated pins never reach the layout");
+
+    console.log("mapLinks tests passed");
+}
+
+run();

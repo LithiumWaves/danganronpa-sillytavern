@@ -1,4 +1,5 @@
-import { DEFAULT_PINS } from "./defaultPins.js";
+import { DEFAULT_HUB_PIN_IDS, DEFAULT_PINS } from "./defaultPins.js";
+import { DORM_AREA_KEY, DORM_FLOOR_KEY, assignDormSlots, buildDormPins, diffDormEdits, findRedundantDefaultHubs, getAutoLinkedPins } from "./mapLinks.js";
 import { getFloorUnlockChapter, isFloorLocked, isStoryPin, listCustomFloors, mergePins, migrateLegacyMapStorage, pinInScope, resolveFloorImageSrc, scopeAreaKeys, scopeAreas, setFloorUnlockChapter, splitPins } from "./mapStorage.js";
 import { buildCustomArea } from "../core/title/titleMapSetup.js";
 
@@ -68,7 +69,7 @@ function getFloorByKey(areaKey, floorKey) {
     return area.floors.find(floor => floor.key === floorKey) || null;
 }
 
-export function createMapPanelController({ extensionFolderPath, getItemsPanelController, playSfx, getSfx, getSetting, onWalkStep, onTrialStartRequest, getTruthBulletByLocationId, navigateToTruth, onMachineOpen, onMachineClose, onReshuffleCharacters, playShopTrack, stopShopTrack, fetchBgmPaths, playBgmPath, getSettingsRoot, saveSettings, uploadImage }) {
+export function createMapPanelController({ extensionFolderPath, getItemsPanelController, playSfx, getSfx, getSetting, onWalkStep, onTrialStartRequest, getTruthBulletByLocationId, navigateToTruth, onMachineOpen, onMachineClose, onReshuffleCharacters, playShopTrack, stopShopTrack, fetchBgmPaths, playBgmPath, getSettingsRoot, saveSettings, uploadImage, getDormResidents }) {
     const state = {
         area: "hopes_peak",
         floor: "floor_1",
@@ -185,25 +186,91 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
     // Working pin set: stored layout pins, every shipped default the user hasn't
     // deleted or adopted (edited), and the active save's evidence/body pins.
     // Defaults are tagged _default so saving knows they live in code.
+    // Default corridors left out because the player has their own hub there.
+    // They get no tombstone, so they come back if that hub is deleted.
+    let redundantDefaultHubIds = new Set();
+
     function loadCustomPins() {
         const layout = layoutStore() || {};
         const storyPins = getSettingsRoot?.()?.map?.storyPins;
-        return mergePins({
+        const merged = mergePins({
             layoutPins: clone(layout.pins || []),
             storyPins: clone(Array.isArray(storyPins) ? storyPins : []),
             deletedDefaultPins: layout.deletedDefaultPins || [],
             defaults: DEFAULT_PINS,
         });
+        redundantDefaultHubIds = findRedundantDefaultHubs(merged, DEFAULT_HUB_PIN_IDS);
+        const pins = merged.filter(p => !redundantDefaultHubIds.has(p.id));
+        return [...pins, ...buildDormPinsForSave()];
+    }
+
+    // ── Inn dorm rooms ──
+    // {{user}} and the roster each get a room in the Inn's dorm wing. Which
+    // room is whose (and any edits to it) is kept per save in map.dormRooms;
+    // the pins themselves are rebuilt at load and never stored in the layout.
+    let dormHomeless = [];
+
+    function listDormResidents() {
+        const raw = typeof getDormResidents === "function" ? (getDormResidents() || []) : [];
+        const seen = new Set();
+        const out = [];
+        for (const r of raw) {
+            if (!r?.key || !r?.name || seen.has(r.key)) continue;
+            seen.add(r.key);
+            out.push({ key: String(r.key), name: String(r.name) });
+        }
+        return out;
+    }
+
+    function buildDormPinsForSave() {
+        const root = getSettingsRoot?.();
+        const residents = listDormResidents();
+        if (!root || !residents.length) { dormHomeless = []; return []; }
+        const existing = root.map?.dormRooms || {};
+        const { rooms, homeless } = assignDormSlots(existing, residents);
+        dormHomeless = homeless;
+        if (JSON.stringify(rooms) !== JSON.stringify(existing)) {
+            root.map ??= {};
+            root.map.dormRooms = rooms;
+            saveSettings?.();
+        }
+        return buildDormPins(rooms, residents);
+    }
+
+    // Called when the roster or the player's name changes.
+    function refreshDormRooms() {
+        const next = buildDormPinsForSave();
+        // Keep the same pin objects when nothing changed (an open editor holds one).
+        if (JSON.stringify(next) === JSON.stringify(state.customPins.filter(p => p._generated))) return;
+        state.customPins = [...state.customPins.filter(p => !p._generated), ...next];
+        renderMapPanel();
+    }
+
+    // Keep the player's edits to dorm pins in the save's dorm records.
+    function saveDormEdits(root) {
+        const rooms = root.map?.dormRooms;
+        if (!rooms) return;
+        const residents = new Map(listDormResidents().map(r => [r.key, r]));
+        for (const pin of state.customPins) {
+            if (!pin._generated || !pin._dormKey) continue;
+            const rec = rooms[pin._dormKey];
+            const resident = residents.get(pin._dormKey);
+            if (!rec || !resident) continue;
+            const edits = diffDormEdits(pin, resident, rec.slot);
+            if (Object.keys(edits).length) rec.edits = edits;
+            else delete rec.edits;
+        }
     }
 
     function saveCustomPins() {
         const root = getSettingsRoot?.();
         const layout = layoutStore();
         if (!root || !layout) return;
-        const { layoutPins, storyPins, deletedDefaultPins } = splitPins(state.customPins || [], {
-            defaults: DEFAULT_PINS,
+        const { layoutPins, storyPins, deletedDefaultPins } = splitPins((state.customPins || []).filter(p => !p._generated), {
+            defaults: DEFAULT_PINS.filter(d => !redundantDefaultHubIds.has(d.id)),
             isUnchangedDefault,
         });
+        saveDormEdits(root);
         layout.pins = layoutPins;
         layout.deletedDefaultPins = deletedDefaultPins;
         root.map ??= {};
@@ -1863,6 +1930,11 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                 return `<label class="map-pin-edit-conn-row" data-search="${escapeHtml(label.toLowerCase())}"><input type="checkbox" class="map-pin-edit-conn" value="${escapeHtml(ref)}"${chk}> ${escapeHtml(label)}</label>`;
             }).join('');
 
+            const autoLinked = getAutoLinkedLabels(pin);
+            const autoLinkedHtml = autoLinked.length
+                ? `Automatic: ${autoLinked.map(escapeHtml).join(', ')}`
+                : 'Automatic: none';
+
             const $modal = $(`
                 <div class="map-pin-edit-modal">
                     <div class="map-pin-edit-box">
@@ -1874,7 +1946,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                         </div>
                         <div class="map-pin-edit-field">
                             <div class="map-pin-edit-label">LOCATION ID</div>
-                            <input type="text" class="map-pin-edit-input map-pin-edit-id" value="${escapeHtml(pin.locationId || '')}" maxlength="80" />
+                            <input type="text" class="map-pin-edit-input map-pin-edit-id" value="${escapeHtml(pin.locationId || '')}" maxlength="80"${pin._generated ? ' disabled title="Dorm room ids follow the character"' : ''} />
                         </div>
                         <div class="map-pin-edit-field">
                             <div class="map-pin-edit-label">BG</div>
@@ -1910,6 +1982,9 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                                 ${conAreaOptions}
                                 ${conFloorOptions}
                             </div>
+                            <div class="map-pin-edit-hint map-pin-edit-auto">${autoLinkedHtml}</div>
+                            <label class="map-pin-edit-conn-row"><input type="checkbox" class="map-pin-edit-autoconnect"${pin.autoConnect === false ? '' : ' checked'}> Auto-connect (to this floor's corridor, and stairs to their other end)</label>
+                            <label class="map-pin-edit-conn-row"><input type="checkbox" class="map-pin-edit-hub"${pin.hub === true ? ' checked' : ''}> Floor hub (every room on this floor connects here)</label>
                         </div>
                         <div class="map-pin-edit-actions">
                             <button class="map-pin-edit-save" type="button">SAVE</button>
@@ -1996,7 +2071,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
 
             $modal.find(".map-pin-edit-save").on("click", () => {
                 const newLabel = $modal.find(".map-pin-edit-name").val().trim();
-                const newId    = $modal.find(".map-pin-edit-id").val().trim();
+                const newId    = pin._generated ? pin.locationId : $modal.find(".map-pin-edit-id").val().trim();
                 if (!newId) {
                     $modal.find(".map-pin-edit-id").css("border-color", "rgba(255,80,80,0.8)").trigger("focus");
                     return;
@@ -2013,6 +2088,10 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                 pin.bgm = String($modal.find(".map-pin-edit-bgm-btn").attr('data-bgm') || '');
                 pin.outfitPrefix = String($modal.find(".map-pin-edit-outfit").val() || '').trim();
                 pin.connectedTo = $modal.find(".map-pin-edit-conn:checked").map(function () { return this.value; }).get();
+                if ($modal.find(".map-pin-edit-autoconnect").is(":checked")) delete pin.autoConnect;
+                else pin.autoConnect = false;
+                if ($modal.find(".map-pin-edit-hub").is(":checked")) pin.hub = true;
+                else delete pin.hub;
                 syncPinConnections(pin, oldSelfRef, oldConnected);
                 saveCustomPins();
                 $modal.remove();
@@ -2032,6 +2111,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         $panel.off("click.pinListDelete").on("click.pinListDelete", ".map-pins-list-delete", function () {
             const pinId = $(this).closest(".map-pins-list-item").data("pin-id");
             const removed = state.customPins.find(p => p.id === pinId);
+            if (removed?._generated) return; // dorm rooms follow the roster
             state.customPins = state.customPins.filter(p => p.id !== pinId);
             if (removed) {
                 // Drop dangling links other pins held to the deleted pin.
@@ -2073,7 +2153,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             $modal.find(".truth-discard-confirm").on("click", () => {
                 $modal.remove();
                 state.customPins = state.customPins.filter(
-                    p => !(p.areaKey === state.area && p.floorKey === state.floor)
+                    p => p._generated || !(p.areaKey === state.area && p.floorKey === state.floor)
                 );
                 saveCustomPins();
                 renderMapPanel();
@@ -2104,9 +2184,13 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                     <button type="button" class="map-pins-list-name" title="${escapeHtml(pin.locationId || '')}">${escapeHtml(pin.label)}</button>
                     <button type="button" class="map-pins-list-lock${pin.locked ? " is-locked" : ""}" aria-label="${pin.locked ? "Unlock" : "Lock"} ${escapeHtml(pin.label)}" title="${pin.locked ? "Unlock pin" : "Lock pin"}"><img src="${extensionFolderPath}/assets/icons/${pin.locked ? "padlock.svg" : "padlock-open.svg"}" alt="" /></button>
                     <button type="button" class="map-pins-list-edit" aria-label="Edit ${escapeHtml(pin.label)}">✏</button>
-                    <button type="button" class="map-pins-list-delete" aria-label="Delete ${escapeHtml(pin.label)}">✕</button>
+                    ${pin._generated ? '' : `<button type="button" class="map-pins-list-delete" aria-label="Delete ${escapeHtml(pin.label)}">✕</button>`}
                 </div>
             `);
+        }
+        if (state.area === DORM_AREA_KEY && state.floor === DORM_FLOOR_KEY && dormHomeless.length) {
+            const names = dormHomeless.map(r => escapeHtml(r.name)).join(", ");
+            $list.append(`<div class="map-pin-edit-hint">The dorm wing is full. No room for: ${names}</div>`);
         }
     }
 
@@ -2529,7 +2613,10 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         const selfRef = `pin:${pin.locationId || pin.id}`;
         const findByRef = (ref) => {
             const id = ref.slice(4);
-            return state.customPins.find(p => p !== pin && (p.locationId || p.id) === id) || null;
+            const matches = state.customPins.filter(p => p !== pin && (p.locationId || p.id) === id);
+            return matches.find(p => p.areaKey === pin.areaKey && p.floorKey === pin.floorKey)
+                || matches.find(p => p.areaKey === pin.areaKey)
+                || matches[0] || null;
         };
         if (oldSelfRef !== selfRef) {
             for (const p of state.customPins) {
@@ -2645,8 +2732,24 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
 
     function getConnectionsForLocationId(locationId) {
         const pin = getPinByLocationId(locationId);
-        if (!pin || !Array.isArray(pin.connectedTo)) return [];
-        return pin.connectedTo.map(describeConnectionRef).filter(c => c && !isConnectionLocked(c));
+        if (!pin) return [];
+        const manual = (Array.isArray(pin.connectedTo) ? pin.connectedTo : []).map(describeConnectionRef);
+        const auto = getAutoLinkedPins(pin, getAllPins()).map(p => ({
+            ref: `pin:${p.locationId}`, kind: 'pin', value: p.locationId, label: p.label || p.locationId, auto: true,
+        }));
+        const seen = new Set();
+        return [...manual, ...auto].filter(c => {
+            if (!c || isConnectionLocked(c)) return false;
+            const key = `${c.kind}:${c.value}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+    }
+
+    // Pins this pin links to on its own (corridor hub, stairs), for the editor.
+    function getAutoLinkedLabels(pin) {
+        return getAutoLinkedPins(pin, getAllPins()).map(p => p.label || p.locationId);
     }
 
     function isConnectionLocked(conn) {
@@ -2713,6 +2816,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         getPinByLocationId,
         describeConnectionRef,
         getConnectionsForLocationId,
+        refreshDormRooms,
         isPinLocked,
         isFloorLocked: isFloorLockedNow,
         applyNewGameMap,

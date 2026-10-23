@@ -19,6 +19,7 @@ import { createRewardSystem } from "./items/rewardSystem.js";
 import { createSocialPanelController } from "./social/socialPanel.js";
 import { extractUltimateFromNotes, isIgnoredCharacter, lookupUltimateFromLorebook, normalizeList, normalizeName } from "./social/characterUtils.js";
 import { createMapPanelController } from "./map/mapPanel.js";
+import { DORM_PLAYER_KEY } from "./map/mapLinks.js";
 import { getLocationPromptReference, resolveLocationIdFromText } from "./map/locationPresence.js";
 import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, TRIAL_START_REGEX, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, TRIAL_CONTEXT_REGEX, defaultSettings, extensionFolderPath, extensionName, getDefaultPromptTemplate } from "./core/constants.js";
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
@@ -8475,6 +8476,18 @@ function saveCharacters() {
 
     extension_settings[extensionName].characters = serialized;
     saveSettingsDebounced();
+    try { mapPanelController?.refreshDormRooms?.(); } catch (_) {}
+}
+
+// Who gets a room in the Inn's dorm wing: the player first, then the roster.
+function getDormResidents() {
+    const residents = [{ key: DORM_PLAYER_KEY, name: getActivePersonaName() }];
+    const playerKey = normalizeName(getActivePersonaName());
+    for (const [key, char] of characters.entries()) {
+        if (!char?.name || key === playerKey || isIgnoredCharacter(char.name)) continue;
+        residents.push({ key, name: char.name });
+    }
+    return residents;
 }
 
 function loadCharacters() {
@@ -10072,6 +10085,7 @@ jQuery(async () => {
                 playBgmPath,
                 getSettingsRoot: () => (extension_settings[extensionName] ??= {}),
                 saveSettings: saveSettingsDebounced,
+                getDormResidents,
                 uploadImage: async (dataUrl, options) => {
                     await sillyTavernReady;
                     return uploadDataUrlImage(dataUrl, options);
@@ -10252,6 +10266,7 @@ if (tab === "truth" && window.renderTruthBullets) {
     }
 
     if (tab === "map") {
+        mapPanelController?.refreshDormRooms?.();
         mapPanelController?.renderMapPanel();
     }
 
