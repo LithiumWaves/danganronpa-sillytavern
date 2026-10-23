@@ -89,6 +89,11 @@ function partitionIntoSpawnGroups(keys) {
     return groups;
 }
 
+// Hosts (Monokuma…) without a height on their card stand mascot-sized, and
+// start off to the right instead of centre stage.
+const HOST_FALLBACK_HEIGHT_CM = 90;
+const HOST_DEFAULT_X = 0.84;
+
 export function createOverworldSceneController({
     extension_settings,
     extensionName,
@@ -735,7 +740,10 @@ export function createOverworldSceneController({
             const memberKeys = [...groupEl.querySelectorAll(".dangan-ow-sprite")]
                 .map(el => el.dataset.key).filter(Boolean);
             for (const key of memberKeys) {
-                const entry = state.characters[key];
+                const isHostSprite = !!groupEl.querySelector(`.dangan-ow-sprite[data-key="${CSS.escape(key)}"][data-host]`);
+                const entry = isHostSprite
+                    ? (state.hostPlacements[key] ??= {})
+                    : state.characters[key];
                 if (!entry) continue;
                 if (isFinite(customX)) entry.customX = customX;
                 if (isFinite(offsetVh)) entry.verticalOffsetVh = offsetVh;
@@ -865,6 +873,10 @@ export function createOverworldSceneController({
         const ow = root.overworld ??= { version: STATE_VERSION, characters: {} };
         if (!ow.characters || typeof ow.characters !== "object") ow.characters = {};
         if (!ow.flatRooms || typeof ow.flatRooms !== "object") ow.flatRooms = {};
+        // Where each host (Monokuma…) stands when called in, set via Edit
+        // Character Positions. Hosts aren't roster characters, so they live
+        // apart from `characters` and survive room reshuffles.
+        if (!ow.hostPlacements || typeof ow.hostPlacements !== "object") ow.hostPlacements = {};
         return ow;
     }
 
@@ -930,15 +942,24 @@ export function createOverworldSceneController({
     // roster characters, so their entries are made fresh and never saved.
     function getHostsHere() {
         const out = [];
+        const placements = getState().hostPlacements;
         for (const h of getOnStageHosts?.() || []) {
             const name = String(h?.name || "").trim();
             if (!name) continue;
             const key = normalizeName(name);
             const rosterChar = characters.get(key);
+            const placed = placements[key] || {};
             out.push({
                 key,
                 char: rosterChar?.name ? rosterChar : { name },
-                entry: { expression: h.expression || "neutral", groupId: null },
+                entry: {
+                    expression: h.expression || "neutral",
+                    groupId: null,
+                    // Off to the side rather than centre stage until moved.
+                    customX: typeof placed.customX === "number" ? placed.customX : HOST_DEFAULT_X,
+                    customScale: typeof placed.customScale === "number" ? placed.customScale : null,
+                    verticalOffsetVh: typeof placed.verticalOffsetVh === "number" ? placed.verticalOffsetVh : undefined,
+                },
                 isHost: true,
             });
         }
@@ -1422,7 +1443,8 @@ export function createOverworldSceneController({
             }
             const customScaleMul = savedCustomScale != null ? savedCustomScale : 1;
             for (const m of group.members) {
-                const heightCm = getCharacterHeightCm(m.char.name);
+                const heightCm = getCharacterHeightCm(m.char.name)
+                    ?? (m.isHost ? HOST_FALLBACK_HEIGHT_CM : null);
                 // Exaggerate the spread: raw (cm/170) only swings ~0.76-1.17
                 // across a typical cast (a ~130cm character up to a ~198cm one),
                 // which reads as nearly flat. Multiply the deviation from the
@@ -1437,6 +1459,7 @@ export function createOverworldSceneController({
 
                 const spriteEl = document.createElement("div");
                 spriteEl.className = "dangan-ow-sprite";
+                if (m.isHost) spriteEl.dataset.host = "1";
                 const hostEntrance = m.isHost ? getHostEntranceElapsed?.(m.char.name) : null;
                 if (hostEntrance != null) {
                     spriteEl.classList.add("is-host-entering");

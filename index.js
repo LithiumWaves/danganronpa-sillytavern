@@ -11795,6 +11795,7 @@ debugSTGlobals();
             getCharacterDisplayName,
             deductMonocoins,
             getHostEntranceElapsed: (name) => getHostEntranceElapsed(name, 'chat'),
+            isHostCharacter: (name) => isHostCharacter(name),
             getOverworldRoomOccupants: () => {
                 const loc = getCurrentLocationId();
                 return overworldSceneController?.getCharactersInRoom?.(loc) || [];

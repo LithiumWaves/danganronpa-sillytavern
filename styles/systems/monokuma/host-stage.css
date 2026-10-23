@@ -53,19 +53,20 @@
 
 #dangan-host-dismiss {
     position: fixed;
-    top: 72px;
-    left: 50%;
+    /* Out of the way on the right edge: clear of the top-right HUD above
+       and the chat composer below. */
+    top: 45%;
+    right: 16px;
     z-index: 35;
     display: none;
-    transform: translateX(-50%);
-    border: 1px solid #f0479a;
-    padding: 8px 22px;
-    background: #f0479a;
-    color: #fff;
-    font: 600 14px "Rajdhani", sans-serif;
-    letter-spacing: 0.18em;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    padding: 4px 12px;
+    background: rgba(10, 6, 16, 0.7);
+    color: rgba(255, 255, 255, 0.85);
+    font: 600 11px "Rajdhani", sans-serif;
+    letter-spacing: 0.16em;
     cursor: pointer;
-    clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+    clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
 }
 
 #dangan-host-dismiss.is-on {

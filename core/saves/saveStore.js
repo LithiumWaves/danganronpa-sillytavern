@@ -42,6 +42,7 @@ export const STORY_KEYS = Object.freeze([
     "inventory.skills",
     "inventory.equippedSkills",
     "overworld.characters",
+    "overworld.hostPlacements",
     "map.currentLocationId",
     "map.storyPins",
     "map.scope",

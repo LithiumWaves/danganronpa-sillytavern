@@ -68,6 +68,7 @@ export function createTrialManager(deps) {
         showMinigameLoadingState,
         getOverworldRoomOccupants,
         getHostEntranceElapsed, // optional — (name) => ms into a called-in host's slide-up, or null
+        isHostCharacter, // optional — (name) => boolean; hosts with no height stand mascot-sized
     } = deps;
 
     function getAssetUrl(name) {
@@ -3060,7 +3061,9 @@ ${historyText}
     }
 
     function portraitSlotHeightPx(name) {
-        const cm = getCharacterHeightCm(name);
+        // Outside trials a host with no height on their card is mascot-sized.
+        const cm = getCharacterHeightCm(name)
+            || (!trialActive && isHostCharacter?.(name) ? 90 : null);
         if (!cm) return BASE_PORTRAIT_PX;
         const scale = Math.min(1.45, Math.max(0.55, cm / AVG_HEIGHT_CM));
         return Math.round(BASE_PORTRAIT_PX * scale);
