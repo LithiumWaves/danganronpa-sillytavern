@@ -1,23 +1,31 @@
 // Expression picker, for fun (after the Shinri Trial fangame's): a small
 // tab on the right edge opens a drawer listing everyone on screen plus you,
 // with a grid of their sprites. Picking one puts that sprite on screen until
-// the character's next line changes it. Works in conversations, exploring and Class
-// Trials. Settings → Customize → "Expression picker" hides it entirely; its
-// AUTO switch is the "Automatic expressions" setting.
+// the character's next line changes it (core/ui/pickedSprites.js keeps it,
+// so the room and the conversation agree). Works while exploring, in
+// conversations and in Class Trials. Settings → Customize → "Expression
+// picker" hides it entirely; its AUTO switch is the "Automatic expressions"
+// setting.
 //
-// index.js supplies who is on screen (getTargets) and how to show a sprite
-// (applySprite); this module only builds the drawer.
+// index.js supplies who is on screen (getTargets), how to show a sprite
+// (applySprite) and which view is up (getContextKey, so the drawer re-lists
+// when it changes); this module only builds the drawer.
 
 const ROOT_ID = "dangan-expr-picker";
 
 // Files that aren't expressions to pick from.
 const SKIP_STEM = /(-half$|^death-portrait$|^mugshot$)/i;
 
-export function createExpressionPicker({ getTargets, listSprites, applySprite, isAvailable, isAuto, setAuto }) {
+// The overworld's right-hand buttons (Menu, Call, Edit, Tag Along): the tab
+// goes below them rather than over them.
+const OVERWORLD_RIGHT_BUTTONS = "#dangan-overworld .dangan-ow-call-btn, #dangan-overworld .dangan-ow-edit-btn, #dangan-overworld .dangan-ow-tag-btn";
+
+export function createExpressionPicker({ getTargets, listSprites, applySprite, isAvailable, isAuto, setAuto, getContextKey }) {
     let open = false;
     let selectedKey = null;
     let targets = [];
     let renderToken = 0;
+    let contextKey = null;
     const chosen = new Map(); // target key → path picked in this drawer
 
     function ensureRoot() {
@@ -89,14 +97,21 @@ export function createExpressionPicker({ getTargets, listSprites, applySprite, i
     }
 
     // Sits just under the day / phase row of the top-right HUD when it's
-    // showing; otherwise at its default height. Publishes where this stack
-    // ends as --dangan-hud-stack-bottom, so your sprite window starts below it.
+    // showing (and under the overworld's right-hand buttons while exploring);
+    // otherwise at its default height. Publishes where this stack ends as
+    // --dangan-hud-stack-bottom, so your sprite window starts below it.
     function place() {
         const root = ensureRoot();
         const row = document.querySelector("#dangan-hud-topright > #dangan-phase-hud:not([hidden]) .dangan-phase-chip");
         const rect = row?.getBoundingClientRect?.();
         const rowBottom = rect && rect.height ? Math.round(rect.bottom) : 0;
-        root.style.top = rowBottom ? `${rowBottom + 8}px` : "";
+        let buttonsBottom = 0;
+        for (const btn of document.querySelectorAll(OVERWORLD_RIGHT_BUTTONS)) {
+            const r = btn.getBoundingClientRect();
+            if (r.width && r.height) buttonsBottom = Math.max(buttonsBottom, Math.round(r.bottom));
+        }
+        const above = Math.max(rowBottom, buttonsBottom);
+        root.style.top = above ? `${above + 8}px` : "";
         const tab = root.querySelector(".dangan-expr-tab");
         const tabBottom = root.classList.contains("available") ? Math.round(tab.getBoundingClientRect().bottom) : 0;
         document.documentElement.style.setProperty("--dangan-hud-stack-bottom", `${Math.max(rowBottom, tabBottom)}px`);
@@ -110,7 +125,12 @@ export function createExpressionPicker({ getTargets, listSprites, applySprite, i
         if (open) refreshTargets();
     }
 
+    function readContextKey() {
+        try { return String(getContextKey?.() ?? ""); } catch { return ""; }
+    }
+
     function refreshTargets() {
+        contextKey = readContextKey();
         try { targets = getTargets() || []; } catch { targets = []; }
         if (!targets.some((t) => t.key === selectedKey)) selectedKey = targets[0]?.key ?? null;
         renderPeople();
@@ -162,7 +182,8 @@ export function createExpressionPicker({ getTargets, listSprites, applySprite, i
             grid.innerHTML = `<div class="dangan-expr-empty">No sprites found.</div>`;
             return;
         }
-        const current = chosen.get(target.key) || target.currentPath || "";
+        // Picks for classmates come back in currentPath; yours only live here.
+        const current = (target.isPlayer && chosen.get(target.key)) || target.currentPath || "";
         const currentStem = stemOf(current);
         grid.innerHTML = "";
         // One labeled row per emotion (sprites arrive grouped).
@@ -180,7 +201,7 @@ export function createExpressionPicker({ getTargets, listSprites, applySprite, i
             }
             const cell = document.createElement("button");
             cell.type = "button";
-            cell.className = "dangan-expr-cell" + (s.stem === currentStem ? " is-on" : "");
+            cell.className = "dangan-expr-cell" + (s.stem.toLowerCase() === currentStem ? " is-on" : "");
             cell.dataset.path = s.path;
             cell.dataset.stem = s.stem;
             cell.title = s.stem;
@@ -208,6 +229,9 @@ export function createExpressionPicker({ getTargets, listSprites, applySprite, i
                 root.classList.remove("open");
                 root.querySelector(".dangan-expr-tab").setAttribute("aria-expanded", "false");
             }
+            // Another view (View conversation, back to exploring) or someone
+            // arriving: list who's on screen now, without reopening.
+            if (show && open && readContextKey() !== contextKey) refreshTargets();
         },
         place,
         // Someone new on screen, or a new chat.
@@ -221,6 +245,18 @@ export function createExpressionPicker({ getTargets, listSprites, applySprite, i
         refresh() {
             chosen.clear();
             if (open) refreshTargets();
+        },
+        // A pick was made or cleared elsewhere: re-mark the grid without
+        // reloading it.
+        remark() {
+            if (!open) return;
+            try { targets = getTargets() || []; } catch { return; }
+            const target = targets.find((t) => t.key === selectedKey);
+            if (!target) return;
+            const stem = stemOf((target.isPlayer && chosen.get(target.key)) || target.currentPath || "");
+            ensureRoot().querySelectorAll(".dangan-expr-cell").forEach((cell) => {
+                cell.classList.toggle("is-on", cell.dataset.stem?.toLowerCase() === stem);
+            });
         },
     };
 }

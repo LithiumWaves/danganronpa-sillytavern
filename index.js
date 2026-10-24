@@ -90,6 +90,7 @@ import { TITLE_SCREEN_ID } from "./core/title/titleScreen.js";
 import { user_avatar } from "../../../personas.js";
 import { ConnectionManagerRequestService } from "../../shared.js";
 import { findBackgroundElement } from "./core/media/findBackground.js";
+import { clearPickedSprite, getPickedSprite, onPickedSpritesChanged, setPickedSprite } from "./core/ui/pickedSprites.js";
 
 window.refreshActiveCharacterUI = function () {
     if (!activeSocialCharacterId || !socialPanelController) return;
@@ -11300,10 +11301,12 @@ jQuery(async () => {
                 setMonopadSetting("autoExpressionsEnabled", !!on);
                 applySettingsTabUI();
             },
+            getContextKey: getExpressionPickerContextKey,
             isAvailable: () => {
                 if (getMonopadSetting("expressionPickerEnabled") === false) return false;
                 const body = document.body.classList;
-                if (body.contains("dangan-ui-hidden") || body.contains("dangan-ow-edit-mode")) return false;
+                if (body.contains("dangan-ui-hidden") || body.contains("dangan-ow-edit-mode")
+                    || body.contains("dangan-ow-action-menu-open")) return false;
                 return body.contains("dangan-trial-active")
                     || body.contains("dangan-ow-scene-active")
                     || body.contains("dangan-ow-chat-exit-active")
@@ -11318,6 +11321,10 @@ jQuery(async () => {
                 raf = requestAnimationFrame(() => { raf = null; expressionPickerController?.sync(); });
             };
             new MutationObserver(sync).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+            // The overworld and the portrait stage are rebuilt as new children
+            // of <body>; follow them (placement, who's listed).
+            new MutationObserver(sync).observe(document.body, { childList: true });
+            onPickedSpritesChanged(() => expressionPickerController?.remark?.());
             window.addEventListener("resize", sync);
             sync();
         }
@@ -13081,6 +13088,8 @@ debugSTGlobals();
             getTrialRoster: getMainChatTrialRoster,
             onSuspendRequest: () => suspendClassTrial(),
             onLeaveRequest: () => leaveClassTrial(),
+            getPickedSprite,
+            applyPickedSprite: (img, path) => applyMirroredSprite(img, path),
             onTrialStateChange: () => { renderMoveToPanel(); renderMinimap(); overworldSceneController?.render?.(); try { syncMoodScanButton(); } catch { /* ignore */ } try { syncRoomContextPrompt(); } catch { /* ignore */ } },
             // Re-apply the day/night/investigation phase theme. The trial owns
             // the theme while active (applyDynamicTheme bails on dangan-trial-active),
@@ -13841,6 +13850,8 @@ STATEMENT: <third statement>`;
             if (!ctx) return;
             const msg = ctx.chat?.[mesId] ?? ctx.chat?.[ctx.chat.length - 1];
             if (msg && !msg.is_user && msg.name) {
+                // A sprite picked for them lasts until their next line.
+                clearPickedSprite(msg.name);
                 trialManager?.updateGroupChatSpeaker?.(msg.name);
             }
             updateSuspectsFromChat();
@@ -15425,7 +15436,56 @@ function spriteFolderForName(name) {
     return stChar?.avatar ? stChar.avatar.replace(/\.[^.]+$/, "") : name;
 }
 
-// Everyone on screen (the GCP stage, or SillyTavern's own sprites), then you.
+// What the expression picker is looking at: the room while exploring, the
+// portrait stage in conversations and trials, else SillyTavern's sprites.
+function getExpressionPickerView() {
+    const body = document.body.classList;
+    if (body.contains('dangan-ow-scene-active') && !body.contains('dangan-ow-conversation-view')) return 'overworld';
+    if (trialManager?.isGcpStageActive?.()) return 'gcp';
+    return 'vn';
+}
+
+// Changes when the picker should re-list who's on screen: another view, or
+// someone arriving or leaving.
+function getExpressionPickerContextKey() {
+    const view = getExpressionPickerView();
+    let names = [];
+    if (view === 'overworld') {
+        names = [...document.querySelectorAll('#dangan-overworld .dangan-ow-sprite')].map((el) => el.dataset.name || '');
+    } else if (view === 'gcp') {
+        names = (trialManager?.getGcpSlotsForPicker?.() || []).map((slot) => slot.name || '');
+    } else {
+        names = [...document.querySelectorAll('#expression-image, #visual-novel-wrapper img.expression')]
+            .map((img) => img.getAttribute('alt') || spriteFolderFromSrc(img.getAttribute('src') || ''));
+    }
+    return `${view}|${names.join(',')}`;
+}
+
+// Every <img> currently showing this character, in any view (the hidden
+// portrait stage included, so View conversation opens on the pick).
+function findExpressionPickerImgs(name, folder) {
+    const key = normalizeName(name || '');
+    const lcFolder = String(folder || '').toLowerCase();
+    const imgs = [];
+    document.querySelectorAll('#dangan-overworld .dangan-ow-sprite').forEach((el) => {
+        if (normalizeName(el.dataset.name || '') !== key) return;
+        const img = el.querySelector('img.dangan-ow-sprite-img');
+        if (img) imgs.push(img);
+    });
+    for (const slot of trialManager?.getGcpSlotsForPicker?.() || []) {
+        if (!slot.isPlayer && slot.img?.isConnected && normalizeName(slot.name || '') === key) imgs.push(slot.img);
+    }
+    document.querySelectorAll('#expression-image, #visual-novel-wrapper img.expression').forEach((img) => {
+        if (img.closest('#expression-prome-user')) return;
+        const alt = normalizeName(img.getAttribute('alt') || '');
+        const imgFolder = spriteFolderFromSrc(img.getAttribute('src') || '').toLowerCase();
+        if (alt === key || (lcFolder && imgFolder === lcFolder)) imgs.push(img);
+    });
+    return imgs;
+}
+
+// Everyone on screen (the room, the portrait stage, or SillyTavern's own
+// sprites), then you.
 function getExpressionPickerTargets() {
     const out = [];
     const seen = new Set();
@@ -15442,26 +15502,23 @@ function getExpressionPickerTargets() {
             label: getCharacterDisplayName(name) || name,
             folder: folder || spriteFolderForName(name),
             imgs: img ? [img] : [],
-            currentPath: src,
+            currentPath: getPickedSprite(name)?.path || src,
             thumb: src,
         });
     };
-    const slots = trialManager?.isGcpStageActive?.() ? (trialManager.getGcpSlotsForPicker?.() || []) : [];
-    const owSprites = document.body.classList.contains('dangan-ow-scene-active')
-        ? [...document.querySelectorAll('#dangan-overworld .dangan-ow-sprite')]
-        : [];
-    if (slots.length) {
-        for (const s of slots) {
-            if (s.isPlayer) continue;
-            add(s.name, s.img, spriteFolderFromSrc(s.img.getAttribute('src') || '') || null);
-        }
-    } else if (owSprites.length) {
+    const view = getExpressionPickerView();
+    if (view === 'overworld') {
         // Exploring: whoever is standing in the room.
-        for (const el of owSprites) {
+        for (const el of document.querySelectorAll('#dangan-overworld .dangan-ow-sprite')) {
             const img = el.querySelector('img.dangan-ow-sprite-img');
             const name = el.dataset.name;
             if (!img || !name || el.style.display === 'none') continue;
             add(name, img, spriteFolderFromSrc(img.getAttribute('src') || '') || null);
+        }
+    } else if (view === 'gcp') {
+        for (const s of trialManager.getGcpSlotsForPicker?.() || []) {
+            if (s.isPlayer) continue;
+            add(s.name, s.img, spriteFolderFromSrc(s.img.getAttribute('src') || '') || null);
         }
     } else {
         document.querySelectorAll('#expression-image, #visual-novel-wrapper img.expression').forEach((img) => {
@@ -15506,23 +15563,40 @@ async function listExpressionPickerSprites(target) {
             || a.stem.localeCompare(b.stem, undefined, { numeric: true }));
 }
 
-// Until their next line changes it.
+// Shows everywhere they appear until their next line (or the next shuffle
+// of locations).
 function applyExpressionPickerSprite(target, path, stem) {
     const expression = emotionFromSpriteStem(stem || '') || 'neutral';
-    for (const img of target.imgs || []) {
-        if (!img?.isConnected) continue;
-        if (img.closest('.dangan-gcp-slot')) applyMirroredSprite(img, path);
-        else img.src = path;
-        // Overworld sprites also mask their hover outline with the sprite.
-        img.closest('.dangan-ow-sprite')?.style.setProperty('--ow-sprite-url', `url("${String(path).replace(/"/g, '%22')}")`);
-        try { triggerVfxOnElement(expression, img); } catch { /* ignore */ }
+    if (target.isPlayer) {
+        for (const img of target.imgs || []) {
+            if (img?.isConnected) applyMirroredSprite(img, path);
+        }
+        playerInsetController?.showUrl(path);
+        return;
     }
-    if (target.isPlayer) playerInsetController?.showUrl(path);
-    else if (document.body.classList.contains('dangan-ow-scene-active')) {
-        overworldSceneController?.setSpriteOverride?.(target.name, path, expression);
-        // The room was redrawn since the drawer listed them.
-        if (!(target.imgs || []).some((img) => img?.isConnected)) overworldSceneController?.render?.();
+    setPickedSprite(target.name, path, expression);
+    overworldSceneController?.setPickedExpression?.(target.name, expression);
+    // Look the images up now: the room or the stage may have been rebuilt
+    // since the drawer listed them.
+    const imgs = findExpressionPickerImgs(target.name, target.folder);
+    let onOverworld = false;
+    for (const img of imgs) {
+        const owSprite = img.closest('.dangan-ow-sprite');
+        if (owSprite) {
+            onOverworld = true;
+            img.src = path;
+            // Its hover outline is masked with the sprite too.
+            owSprite.style.setProperty('--ow-sprite-url', `url("${String(path).replace(/"/g, '%22')}")`);
+        } else if (img.closest('.dangan-gcp-slot')) {
+            applyMirroredSprite(img, path);
+        } else {
+            img.src = path;
+        }
+        if (img.getClientRects().length) {
+            try { triggerVfxOnElement(expression, img); } catch { /* ignore */ }
+        }
     }
+    if (!onOverworld && getExpressionPickerView() === 'overworld') overworldSceneController?.render?.();
 }
 
 // Settings → Customize → Automatic expressions. Off: sprites only change

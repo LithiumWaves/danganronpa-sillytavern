@@ -72,6 +72,8 @@ export function createTrialManager(deps) {
         getTrialRoster, // optional — () => string[]; participants picked for the current trial
         onSuspendRequest, // optional — trial panel "Suspend Trial" button
         onLeaveRequest, // optional — trial panel "Leave Trial" button
+        getPickedSprite, // optional — (name) => { path } picked in the expression picker, or null
+        applyPickedSprite, // optional — (img, path) => void; shows a picked sprite (half-sprite aware)
     } = deps;
 
     function getAssetUrl(name) {
@@ -8153,6 +8155,18 @@ JUDGMENT RULES:
                     const url = await getSpriteUrl(slot.name, emotion).catch(() => null);
                     if (url && gcpStage === stageRef) slot.img.src = url;
                 }));
+
+                // Outside trials, a sprite picked in the expression picker
+                // (on the overworld or here) wins until their next line.
+                if (!trialActive && typeof getPickedSprite === 'function') {
+                    for (const slot of gcpSlots) {
+                        if (slot.isDead || slot.isPlayer || slot.isMissing || !slot.img) continue;
+                        const picked = getPickedSprite(slot.name)?.path;
+                        if (!picked) continue;
+                        if (typeof applyPickedSprite === 'function') applyPickedSprite(slot.img, picked);
+                        else slot.img.src = picked;
+                    }
+                }
 
                 // Snap to last speaker without animation. If the last message was the
                 // human player's, target the isPlayer slot directly — its name in
