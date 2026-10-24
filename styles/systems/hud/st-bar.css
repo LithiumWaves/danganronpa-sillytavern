@@ -51,8 +51,36 @@ body.dangan-stbar-sg:not(.dangan-trial-active) #top-settings-holder::before {
     pointer-events: none;
 }
 
+/* SillyTavern makes every drawer as wide as the bar; in the capsule they
+   only take the room their icon needs. */
 body.dangan-stbar-sg:not(.dangan-trial-active) #top-settings-holder > .drawer {
     flex: none;
+    width: auto;
+}
+
+/* SillyTavern opens its panels positioned against the bar (absolute, centred
+   on #top-settings-holder). Against the small capsule that pins them to it,
+   so here they take the same place measured from the screen instead. The
+   side panels (fillLeft / fillRight) are already fixed to the screen. */
+body.dangan-stbar-sg:not(.dangan-trial-active) #top-settings-holder .drawer-content:not(.fillLeft):not(.fillRight) {
+    position: fixed;
+    top: var(--topBarBlockSize);
+    left: 0;
+    right: 0;
+    margin: 0 auto;
+    width: var(--sheldWidth);
+}
+
+/* Along the top, panels open just below the capsule, which is taller than
+   SillyTavern's own bar. */
+body.dangan-stbar-sg:not(.dangan-stbar-left):not(.dangan-trial-active) #top-settings-holder .drawer-content:not(.fillLeft):not(.fillRight) {
+    top: 60px;
+    max-height: calc(100dvh - 60px - var(--bottomFormBlockSize));
+}
+
+/* SillyTavern dims closed icons; the capsule shows them at full strength. */
+body.dangan-stbar-sg:not(.dangan-trial-active) #top-settings-holder .drawer-icon.closedIcon {
+    opacity: 1;
 }
 
 body.dangan-stbar-sg:not(.dangan-trial-active) #top-settings-holder .drawer-icon {
@@ -202,4 +230,30 @@ body.dangan-stbar-hidden:not(.dangan-trial-active) #top-settings-holder {
 
 @keyframes dangan-keybind-wait {
     50% { opacity: 0.45; }
+}
+
+/* While a panel is open the capsule stays put with no transform: a
+   transform would make it the frame its fixed panels are placed in. */
+body.dangan-stbar-sg:not(.dangan-trial-active) #top-settings-holder:has(.openDrawer) {
+    transform: none !important;
+}
+
+/* Down the left edge, panels that SillyTavern opens at the left edge (the
+   AI settings side panel; every panel on narrow screens) start just right
+   of the capsule instead of covering it. */
+body.dangan-stbar-sg.dangan-stbar-left:not(.dangan-trial-active) #top-settings-holder .drawer-content.fillLeft {
+    left: 64px;
+}
+
+@media screen and (max-width: 1000px) {
+    body.dangan-stbar-sg:not(.dangan-stbar-left):not(.dangan-trial-active) #top-settings-holder .drawer-content {
+        top: 60px !important;
+        max-height: calc(100dvh - 60px - var(--bottomFormBlockSize));
+    }
+
+    body.dangan-stbar-sg.dangan-stbar-left:not(.dangan-trial-active) #top-settings-holder .drawer-content {
+        left: 64px !important;
+        width: calc(100dvw - 64px) !important;
+        max-width: calc(100dvw - 64px);
+    }
 }
