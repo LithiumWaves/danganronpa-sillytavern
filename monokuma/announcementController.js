@@ -1,3 +1,6 @@
+import { createSkipToken, pushSkippable } from "../core/skip/skipRegistry.js";
+import { findBackgroundElement } from "../core/media/findBackground.js";
+
 const MONOKUMA_MARKER_REGEX = /V3C\s*[|｜]\s*(DAY(?:\s*[_\-]?\s*)ANNOUN|NIGHT(?:\s*[_\-]?\s*)ANNOUN|BDA|BODY(?:\s*[_\-]?\s*)DISCOVERY)\b/gi;
 
 const MARKER_TYPES = {
@@ -477,25 +480,40 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         document.body.appendChild(root);
     }
 
+    // Escape skips the announcement playing now: its waits resolve at once
+    // and its audio stops, so the cleanup at the end of each run still runs.
+    let skipToken = null;
+
     function delay(ms) {
+        if (skipToken) return skipToken.delay(ms);
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     function playTrack(track, { fallbackMs = null } = {}) {
         if (!track || !shouldPlayAudio()) return Promise.resolve();
+        if (skipToken?.skipped) return Promise.resolve();
+        const token = skipToken;
 
         track.currentTime = 0;
         track.volume = Math.min(1, Math.max(0, getVolume()));
 
         return new Promise(resolve => {
             let done = false;
+            let offSkip = () => {};
             const finish = () => {
                 if (done) return;
                 done = true;
+                offSkip();
                 track.removeEventListener("ended", finish);
                 track.removeEventListener("error", finish);
                 resolve();
             };
+            if (token) {
+                offSkip = token.onSkip(() => {
+                    try { track.pause(); } catch (_) {}
+                    finish();
+                });
+            }
 
             track.addEventListener("ended", finish, { once: true });
             track.addEventListener("error", finish, { once: true });
@@ -575,6 +593,7 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
 
         return new Promise(resolve => {
             let index = 0;
+            let offSkip = () => {};
             dialogueEl.textContent = "";
 
             const timer = setInterval(() => {
@@ -583,9 +602,17 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
 
                 if (index >= chars.length) {
                     clearInterval(timer);
+                    offSkip();
                     resolve();
                 }
             }, stepMs);
+            if (skipToken) {
+                offSkip = skipToken.onSkip(() => {
+                    clearInterval(timer);
+                    dialogueEl.textContent = fullText;
+                    resolve();
+                });
+            }
         });
     }
 
@@ -705,9 +732,7 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
 
             if (seg.bgFile) {
                 timers.push(setTimeout(() => {
-                    const lower = seg.bgFile.toLowerCase();
-                    const els = Array.from(document.querySelectorAll(".bg_example"));
-                    const match = els.find(el => el.getAttribute("bgfile")?.toLowerCase().includes(lower));
+                    const match = findBackgroundElement(seg.bgFile);
                     if (match instanceof HTMLElement) {
                         // Instantly show black mask so ST's cross-fade frames are hidden
                         bgMaskEl.style.transition = "none";
@@ -779,6 +804,7 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
         let lastSegId  = undefined;
 
         function tick() {
+            if (skipToken?.skipped) { rafId = null; return; }
             if (!voiceTrack || voiceTrack.paused || voiceTrack.ended) return;
 
             const elapsed = Number.isFinite(voiceTrack.duration) && voiceTrack.duration > 0
@@ -845,7 +871,7 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
             rafId = requestAnimationFrame(tick);
         }
 
-        voiceTrack.addEventListener("play", () => { rafId = requestAnimationFrame(tick); }, { once: true });
+        voiceTrack.addEventListener("play", () => { if (!skipToken?.skipped) rafId = requestAnimationFrame(tick); }, { once: true });
 
         await playTrack(voiceTrack, { fallbackMs: trackDurationMs + 600 });
 
@@ -964,6 +990,18 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
     }
 
     async function runAnnouncement(type, options = {}) {
+        const token = createSkipToken();
+        const release = pushSkippable({ kind: "sequence", skip: () => token.skip() });
+        skipToken = token;
+        try {
+            await playAnnouncement(type, options);
+        } finally {
+            release();
+            if (skipToken === token) skipToken = null;
+        }
+    }
+
+    async function playAnnouncement(type, options = {}) {
         const config = MARKER_TYPES[type];
         if (!config) return;
 

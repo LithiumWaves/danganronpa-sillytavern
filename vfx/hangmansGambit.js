@@ -1,5 +1,6 @@
 import { attachCursorSway } from "./cursorSway.js";
 import { promptMinigameTutorial, destroyMinigameGuideUi } from "../core/onboarding/minigameGuides.js";
+import { beginMinigame } from "../core/skip/skipRegistry.js";
 
 const HG_ID    = "dangan-hg-overlay";
 const HG_STYLE = "dangan-hg-style";
@@ -853,6 +854,9 @@ export function createHangmansGambitController({
             }
 
             const keyAC = new AbortController();
+            // Escape backs out: nothing is awarded or deducted (index.js
+            // restores anything already deducted).
+            const endSession = beginMinigame({ abort: onAbort, label: "Hangman's Gambit" });
             // capture: true so we fire before any SillyTavern element can stopPropagation
             window.addEventListener('keydown', e => {
                 if (isResolved || tutorialActive) return;
@@ -1209,6 +1213,7 @@ export function createHangmansGambitController({
             function onWin() {
                 if (isResolved) return;
                 isResolved = true;
+                endSession();
                 cancelAnimationFrame(rafId);
                 clearTimeout(recoverTimer);
                 clearTimeout(sheenTimerId);
@@ -1233,9 +1238,25 @@ export function createHangmansGambitController({
             }
 
             // ── Lose ─────────────────────────────────────────────────
+            function onAbort() {
+                if (isResolved) return;
+                isResolved = true;
+                endSession();
+                cancelAnimationFrame(rafId);
+                clearTimeout(recoverTimer);
+                clearTimeout(sheenTimerId);
+                keyAC.abort();
+                setBulletTimeActive(false);
+                destroy();
+                restoreTheme?.();
+                resumeDynamicAudio?.();
+                resolve(null);
+            }
+
             function onLose() {
                 if (isResolved) return;
                 isResolved = true;
+                endSession();
                 cancelAnimationFrame(rafId);
                 clearTimeout(recoverTimer);
                 clearTimeout(sheenTimerId);

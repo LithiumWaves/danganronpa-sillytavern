@@ -1,0 +1,146 @@
+/* =========================
+   Host entrance (host/hostStage.js)
+   Monokuma & co. pop up from the bottom of the screen, like in the games.
+   ========================= */
+
+/* A called-in host stands in the room like any student; they just rise
+   from the bottom on entry and sink on dismissal. Uses the standalone
+   `translate` property so the sprites' own scale transforms are untouched. */
+#dangan-overworld .dangan-ow-sprite.is-host-entering .dangan-ow-sprite-img,
+.dangan-gcp-slot.gcp-host-enter .dangan-gcp-scale-wrap {
+    animation: dgn-host-rise 0.6s cubic-bezier(0.2, 1.35, 0.4, 1) both;
+    /* A sprite rebuilt mid-slide picks up where the old one was. */
+    animation-delay: calc(-1ms * var(--host-enter-elapsed, 0));
+}
+
+/* Host entrance bounce (setting on): a quicker rise, then they land
+   squashed, spring up taller, dip and settle, feet planted — Monokuma
+   arriving in V3. The bounce uses the standalone `scale` property. */
+body.dangan-host-bounce #dangan-overworld .dangan-ow-sprite.is-host-entering .dangan-ow-sprite-img,
+body.dangan-host-bounce .dangan-gcp-slot.gcp-host-enter .dangan-gcp-scale-wrap {
+    transform-origin: 50% 100%;
+    animation:
+        dgn-host-rise 0.4s cubic-bezier(0.25, 0.8, 0.35, 1) both,
+        dgn-host-bounce 0.55s ease-out forwards;
+    animation-delay:
+        calc(-1ms * var(--host-enter-elapsed, 0)),
+        calc(400ms - 1ms * var(--host-enter-elapsed, 0));
+}
+
+#dangan-overworld .dangan-ow-sprite.is-host-leaving .dangan-ow-sprite-img,
+.dangan-gcp-slot.gcp-host-leave .dangan-gcp-scale-wrap {
+    animation: dgn-host-sink 0.38s cubic-bezier(0.55, 0, 0.9, 0.45) both;
+}
+
+#dangan-overworld .dangan-ow-sprite.is-host-leaving .dangan-ow-shadow,
+#dangan-overworld .dangan-ow-sprite.is-host-entering .dangan-ow-shadow {
+    animation: dgn-host-shadow 0.6s ease both;
+    animation-delay: calc(-1ms * var(--host-enter-elapsed, 0));
+}
+
+#dangan-overworld .dangan-ow-sprite.is-host-leaving .dangan-ow-shadow {
+    animation-direction: reverse;
+    animation-duration: 0.38s;
+}
+
+/* In a room the host comes up through the floor: hide whatever is still
+   below their feet line while they rise or sink. */
+#dangan-overworld .dangan-ow-sprite.is-host-entering,
+#dangan-overworld .dangan-ow-sprite.is-host-leaving {
+    clip-path: inset(-200vh -100vw 0 -100vw);
+}
+
+@keyframes dgn-host-rise {
+    from { translate: 0 110%; }
+    to   { translate: 0 0; }
+}
+
+@keyframes dgn-host-sink {
+    from { translate: 0 0; }
+    to   { translate: 0 110%; }
+}
+
+@keyframes dgn-host-bounce {
+    0%   { scale: 1.16 0.8; }
+    30%  { scale: 0.93 1.12; }
+    58%  { scale: 1.05 0.94; }
+    80%  { scale: 0.99 1.02; }
+    100% { scale: 1 1; }
+}
+
+@keyframes dgn-host-shadow {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+#dangan-host-dismiss {
+    position: fixed;
+    /* Out of the way on the right edge: clear of the top-right HUD above
+       and the chat composer below. */
+    top: 45%;
+    right: 16px;
+    z-index: 35;
+    display: none;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    padding: 4px 12px;
+    background: rgba(10, 6, 16, 0.7);
+    color: rgba(255, 255, 255, 0.85);
+    font: 600 11px "Rajdhani", sans-serif;
+    letter-spacing: 0.16em;
+    cursor: pointer;
+    clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
+}
+
+#dangan-host-dismiss.is-on {
+    display: block;
+}
+
+#dangan-host-dismiss:hover,
+#dangan-host-dismiss:focus-visible {
+    background: #fff;
+    color: #0a0610;
+    outline: none;
+}
+
+/* Hidden while the UI is hidden (photo mode) and during Class Trials. */
+body.dangan-ui-hidden #dangan-host-dismiss,
+body.dangan-trial-active #dangan-host-dismiss {
+    display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #dangan-overworld .dangan-ow-sprite.is-host-entering .dangan-ow-sprite-img,
+    #dangan-overworld .dangan-ow-sprite.is-host-leaving .dangan-ow-sprite-img,
+    .dangan-gcp-slot.gcp-host-enter .dangan-gcp-scale-wrap,
+    .dangan-gcp-slot.gcp-host-leave .dangan-gcp-scale-wrap,
+    body.dangan-host-bounce #dangan-overworld .dangan-ow-sprite.is-host-entering .dangan-ow-sprite-img,
+    body.dangan-host-bounce .dangan-gcp-slot.gcp-host-enter .dangan-gcp-scale-wrap {
+        animation-duration: 1ms;
+    }
+}
+
+/* ---------- Settings: HOST / MASCOT CARDS picker ---------- */
+
+.dangan-host-search {
+    width: 100%;
+}
+
+.dangan-host-pick-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 4px 12px;
+    width: 100%;
+    max-height: 220px;
+    margin-top: 8px;
+    overflow-y: auto;
+}
+
+.dangan-host-pick-list .settings-checkbox-row {
+    min-width: 0;
+}
+
+.dangan-host-pick-list .settings-checkbox-row span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

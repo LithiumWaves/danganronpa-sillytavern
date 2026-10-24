@@ -72,11 +72,11 @@ export const DEFAULT_PINS = [
     {"id":"custom_1774462968468_lrpwy","icon":"changing-room.svg","type":"room","label":"Changing Room","locationId":"changing_room","areaKey":"hopes_peak","floorKey":"inn_floor_1","x":150,"y":64},
     {"id":"custom_1774462983484_21fwi","icon":"sauna.svg","type":"room","label":"Sauna","locationId":"sauna","areaKey":"hopes_peak","floorKey":"inn_floor_1","x":99,"y":64},
     {"id":"custom_1774462992451_sm76q","icon":"steam-room.svg","type":"room","label":"Steam Room","locationId":"steam_room","areaKey":"hopes_peak","floorKey":"inn_floor_1","x":110,"y":17},
-    {"id":"custom_1774463010609_984ay","icon":"mens-bathroom.svg","type":"room","label":"Boys' Toilets 1F","locationId":"boys_toilets_1f","areaKey":"hopes_peak","floorKey":"inn_floor_1","x":244,"y":33},
-    {"id":"custom_1774463019634_qnxll","icon":"womens-bathroom.svg","type":"room","label":"Girls' Toilets 1F","locationId":"girls_toilets_1f","areaKey":"hopes_peak","floorKey":"inn_floor_1","x":221,"y":33},
+    {"id":"custom_1774463010609_984ay","icon":"mens-bathroom.svg","type":"room","label":"Boys' Toilets 1F","locationId":"inn_boys_toilets_1f","areaKey":"hopes_peak","floorKey":"inn_floor_1","x":244,"y":33},
+    {"id":"custom_1774463019634_qnxll","icon":"womens-bathroom.svg","type":"room","label":"Girls' Toilets 1F","locationId":"inn_girls_toilets_1f","areaKey":"hopes_peak","floorKey":"inn_floor_1","x":221,"y":33},
     {"id":"custom_1774463031417_krg52","icon":"trash-room.svg","type":"room","label":"Trash Room","locationId":"trash_room","areaKey":"hopes_peak","floorKey":"inn_floor_1","x":311,"y":31},
     {"id":"custom_1774463046659_2j8lj","icon":"furnace.svg","type":"room","label":"Incinerator","locationId":"incinerator","areaKey":"hopes_peak","floorKey":"inn_floor_1","x":265,"y":30},
-    {"id":"custom_1774463068314_ek0se","icon":"stairs.svg","type":"room","label":"1F to 2F","locationId":"1f_to_2f","areaKey":"hopes_peak","floorKey":"inn_floor_1","x":224,"y":254},
+    {"id":"custom_1774463068314_ek0se","icon":"stairs.svg","type":"room","label":"1F to 2F","locationId":"inn_1f_to_2f","areaKey":"hopes_peak","floorKey":"inn_floor_1","x":224,"y":254},
     {"id":"custom_1774463079100_w7ju1","icon":"stairs.svg","type":"room","label":"Door to Hope's Peak Academy","locationId":"door_to_hopes_peak_academy","areaKey":"hopes_peak","floorKey":"inn_floor_1","x":65,"y":137},
     {"id":"custom_1779033600908_nmob6","icon":"rec-room.svg","type":"room","label":"Shack Hallway","locationId":"shack_hallway","areaKey":"jabberwock_island","floorKey":"floor_1","x":263,"y":188,"bg":"island_shack_hallway.png","connectedTo":["pin:party_room","pin:storage_room","pin:kitchen","pin:bathroom","pin:office","pin:exit","pin:kitchen","pin:storage_room"]},
     {"id":"custom_1779368177246_kkqbt","icon":"stairs.svg","type":"room","label":"Pier Cottages Entrance","locationId":"pier_cottages_entrance","areaKey":"jabberwock_island","floorKey":"pier_cottages","x":117,"y":136,"bg":"island_bridge.png","bgm":"","connectedTo":["pin:exit","pin:pier_cottages_courtyard"]},
@@ -84,7 +84,19 @@ export const DEFAULT_PINS = [
     {"id":"custom_1779368376011_khodl","icon":"bedroom.svg","type":"room","label":"Hotel Pool","locationId":"hotel_pool","areaKey":"jabberwock_island","floorKey":"pier_cottages","x":260,"y":137,"bg":"pool_left.png","bgm":"","outfitPrefix":"pool-","connectedTo":["pin:pier_cottages_courtyard","pin:hotel_despair"]},
     {"id":"custom_1779368387762_4eq2v","icon":"monokuma-eye.svg","type":"room","label":"Hotel Despair","locationId":"hotel_despair","areaKey":"jabberwock_island","floorKey":"pier_cottages","x":325,"y":140,"bg":"hotel_lobby.png","bgm":"","connectedTo":["pin:hotel_pool","pin:hotel_despair_diner"]},
     {"id":"custom_1779368403845_tr53v","icon":"rec-room.svg","type":"room","label":"Hotel Despair Diner","locationId":"hotel_despair_diner","areaKey":"jabberwock_island","floorKey":"pier_cottages","x":358,"y":158,"bg":"island_restaraunt.png","bgm":"","connectedTo":["pin:hotel_despair"]},
+    {"id":"default_hub_corridor_f1","icon":"rec-room.svg","type":"room","label":"Corridor F1","locationId":"corridor_f1","areaKey":"hopes_peak","floorKey":"floor_1","x":169,"y":214},
+    {"id":"default_hub_corridor_f2","icon":"rec-room.svg","type":"room","label":"Corridor F2","locationId":"corridor_f2","areaKey":"hopes_peak","floorKey":"floor_2","x":230,"y":215},
+    {"id":"default_hub_corridor_f3","icon":"rec-room.svg","type":"room","label":"Corridor F3","locationId":"corridor_f3","areaKey":"hopes_peak","floorKey":"floor_3","x":250,"y":150},
+    {"id":"default_hub_corridor_f4","icon":"rec-room.svg","type":"room","label":"Corridor F4","locationId":"corridor_f4","areaKey":"hopes_peak","floorKey":"floor_4","x":230,"y":150},
+    {"id":"default_hub_corridor_f5","icon":"rec-room.svg","type":"room","label":"Corridor F5","locationId":"corridor_f5","areaKey":"hopes_peak","floorKey":"floor_5","x":295,"y":128},
+    {"id":"default_hub_dorm_hallway","icon":"rec-room.svg","type":"room","label":"Dorm Hallway","locationId":"dorm_hallway","areaKey":"hopes_peak","floorKey":"inn_floor_1","x":300,"y":137},
+    {"id":"default_hub_hotel_corridor_f1","icon":"rec-room.svg","type":"room","label":"Hotel Corridor","locationId":"hotel_corridor_f1","areaKey":"hotel_despair","floorKey":"floor_1","x":210,"y":140},
+    {"id":"default_hub_hidden_floor_corridor","icon":"rec-room.svg","type":"room","label":"Hidden Floor Corridor","locationId":"hidden_floor_corridor","areaKey":"hotel_despair","floorKey":"hidden_floor","x":207,"y":140}
 ];
 
 // Stable id set used by the merge logic to recognise which pins are defaults.
 export const DEFAULT_PIN_IDS = new Set(DEFAULT_PINS.map(p => p.id));
+
+// Default corridor/hallway pins. One steps aside when the player already has
+// their own hub on that floor (see findRedundantDefaultHubs in mapLinks.js).
+export const DEFAULT_HUB_PIN_IDS = new Set(DEFAULT_PINS.filter(p => p.id.startsWith("default_hub_")).map(p => p.id));

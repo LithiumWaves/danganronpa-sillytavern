@@ -710,30 +710,6 @@
         }
     }
 
-    #trust-rankup-overlay {
-        padding: 12px;
-        box-sizing: border-box;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .trust-rankup-core {
-        max-width: 92vw;
-    }
-
-    #trust-decagram {
-        width: min(200px, 62vw);
-        height: min(200px, 62vw);
-    }
-
-    .trust-banner {
-        margin-top: 12px;
-        font-size: 15px;
-        letter-spacing: 1px;
-        line-height: 1.25;
-        word-break: break-word;
-    }
-
     #monokuma-trust-down {
         width: 120px;
         left: 8px;

@@ -1,0 +1,72 @@
+/* Saves list in Monopad Settings. */
+.dangan-saves-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 95%;
+    margin: 6px 0;
+}
+
+.dangan-save-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 8px 10px;
+    border: 1px solid rgba(126, 173, 255, 0.3);
+    border-radius: 6px;
+    background: rgba(5, 13, 23, 0.7);
+}
+
+.dangan-save-row.is-active {
+    border-color: rgba(84, 223, 255, 0.85);
+    box-shadow: 0 0 0 1px rgba(84, 223, 255, 0.2);
+}
+
+.dangan-save-main {
+    flex: 1 1 220px;
+    min-width: 0;
+}
+
+.dangan-save-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    color: #eaf2ff;
+    overflow-wrap: anywhere;
+}
+
+.dangan-save-badge {
+    padding: 1px 6px;
+    border: 1px solid rgba(84, 223, 255, 0.8);
+    border-radius: 3px;
+    font-size: 9px;
+    color: rgba(84, 223, 255, 0.95);
+}
+
+.dangan-save-meta,
+.dangan-save-roster {
+    margin-top: 3px;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    color: rgba(188, 215, 255, 0.8);
+}
+
+.dangan-save-roster {
+    color: rgba(188, 215, 255, 0.6);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dangan-save-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.dangan-save-rename {
+    width: 100%;
+}

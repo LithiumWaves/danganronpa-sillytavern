@@ -1,22 +1,32 @@
 import { extension_settings } from "../../../extensions.js";
 import { saveSettingsDebounced, getRequestHeaders, eventSource, event_types } from "../../../../script.js";
 import { power_user } from "../../../power-user.js";
+// A namespace import so a SillyTavern version missing one of these doesn't stop the extension loading.
+import * as worldInfoApi from "../../../world-info.js";
 import { openGroupById, editGroup } from "../../../group-chats.js";
 import { executeSlashCommandsWithOptions } from '../../../slash-commands.js';
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../../slash-commands/SlashCommandArgument.js';
 import { SlashCommandEnumValue } from '../../../slash-commands/SlashCommandEnumValue.js';
-import { initTruthBullets, handleTruthBullet, setNextTruthBulletSfxVariant, getTruthBulletByLocationId, showTruthBulletByLocationId, showTruthBulletById, getTruthBullets, clearAllTruthBullets } from "./truth/truthBullets.js";
+import { initTruthBullets, handleTruthBullet, setNextTruthBulletSfxVariant, getTruthBulletByLocationId, showTruthBulletByLocationId, showTruthBulletById, getTruthBullets, clearAllTruthBullets, reloadTruthBullets, removeTruthBulletById, migrateTruthBulletImages } from "./truth/truthBullets.js";
+import { configureImageUploads, fetchAsDataUrl, isDataUrl, uploadDataUrlImage, uploadImagesIn } from "./core/media/uploadImage.js";
 import { initTrustAnimations } from "./trust/trustAnimations.js";
-import { increaseTrust, decreaseTrust } from "./trust/trustAPI.js";
+import { TRUST_CEREMONY_STYLE_CHOICES, normalizeTrustCeremonyStyle } from "./trust/ceremonyStyles.js";
+import { increaseTrust, decreaseTrust, breakTrust } from "./trust/trustAPI.js";
+import { clampTrust, nextTrustDown, nextTrustUp, stepTrust, trustDistance } from "./trust/trustState.js";
 import { createItemsPanelController, SKILL_PARAM_MAP, applySkillModifier } from "./items/itemsPanel.js";
 import { createRewardSystem } from "./items/rewardSystem.js";
 import { createSocialPanelController } from "./social/socialPanel.js";
 import { extractUltimateFromNotes, isIgnoredCharacter, lookupUltimateFromLorebook, normalizeList, normalizeName } from "./social/characterUtils.js";
 import { createMapPanelController } from "./map/mapPanel.js";
+import { DORM_PLAYER_KEY } from "./map/mapLinks.js";
+import { isHostName, readHostSetting, resolveHostNames } from "./host/hostCards.js";
+import { createHostStage } from "./host/hostStage.js";
 import { getLocationPromptReference, resolveLocationIdFromText } from "./map/locationPresence.js";
-import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_REGEX, SOCIAL_UP_REGEX, TRIAL_CONTEXT_REGEX, defaultSettings, extensionFolderPath, extensionName, getDefaultPromptTemplate } from "./core/constants.js";
+import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, TRIAL_START_REGEX, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_DROP_REGEX, SOCIAL_BREAK_REGEX, parseSocialMarkerTarget, SOCIAL_REGEX, SOCIAL_UP_REGEX, TRIAL_CONTEXT_REGEX, defaultSettings, extensionFolderPath, extensionName, getDefaultPromptTemplate } from "./core/constants.js";
+import { VN_SKIN_CHOICES, normalizeVnSkin } from "./core/vnSkins.js";
+import { HUD_COLOR_DEFAULT, HUD_COLOR_TARGETS, hudColorVars, normalizeHudColorMode, resolveHudColor } from "./core/ui/hudColors.js";
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 import { createCardHygieneController } from "./core/cardHygiene.js";
 import { createOnboardingState } from "./core/onboarding/onboardingState.js";
@@ -24,14 +34,24 @@ import { createCoachController } from "./core/onboarding/coachMarks.js";
 import { createOrientationController } from "./core/onboarding/orientation.js";
 import { configureMinigameGuides } from "./core/onboarding/minigameGuides.js";
 import { maybeShowBootGreeting } from "./core/onboarding/bootGreeting.js";
+import { maybeShowTitleScreen, showTitleScreen } from "./core/title/titleScreen.js";
+import { releaseLoadingCurtain, showLoadingCurtain, waitForSplashToClose } from "./core/title/titleLoader.js";
+import { createPhaseHistory, derivePhase, getNextStepHint, getPhaseActions, getStatusLine } from "./core/phase/phaseState.js";
+import { notify } from "./core/ui/notify.js";
+import { SAVE_MODES, createSaveStore } from "./core/saves/saveStore.js";
+import { MARKER_BLOCKS, MARKER_PROMPT_KEY, buildMarkerPrompt, textHasMarkerInstructions } from "./core/prompts/markerPrompts.js";
+import { TRUST_LEVELS_PROMPT_KEY, buildTrustLevelsPrompt } from "./core/prompts/trustLevelsPrompt.js";
+import { createEffectLedger, emptyEffects, hasEffects, messageIdentity } from "./core/ledger/effectLedger.js";
 import { createMonokumaAnnouncementController, parseMonokumaAnnouncementMarkers } from "./monokuma/announcementController.js";
 import { createClassTrialMenuController } from "./trial/menu/classTrialMenu.js";
 import { createTrialManager, TrialPhases } from "./trial/trialManager.js";
-import { initVfxSystem, onVfxChatChanged, setExpressionTarget, setEmotionBiasResolver, setVfxGcpLoadSuppressed, setVfxGcpGroupActive, triggerVfxOnElement } from "./vfx/vfxSystem.js";
+import { initVfxSystem, onVfxChatChanged, setExpressionTarget, setEmotionBiasResolver, setVfxGcpLoadSuppressed, setVfxGcpGroupActive, triggerVfxOnElement, setAutoExpressionsGate } from "./vfx/vfxSystem.js";
 import { initEmotionFontsSystem, getEmotionFont } from "./vfx/emotionFontsSystem.js";
-import { initSpriteManager } from "./vfx/spriteManager.js";
+import { deleteSprite as deleteSpriteFile, fetchSprites as fetchSpriteFiles, initSpriteManager, uploadSprite as uploadSpriteFile } from "./vfx/spriteManager.js";
 import {
     EXACT_SPRITE_LABELS,
+    MANAGED_SPRITES,
+    displayStem,
     expressionLabelsFromSprites,
     resolveEmotionPath,
     emotionFromSpriteStem,
@@ -59,8 +79,18 @@ import { buildAssignedTrackCatalog, openSongPicker } from "./audio/songPicker.js
 import { createOverworldSceneController } from "./overworld/overworldScene.js";
 import { showCgByBgName, showCgPicker } from "./overworld/cgViewer.js";
 import { buildRoomContextPrompt, resolveRoomLabel, ROOM_CONTEXT_PROMPT_KEY } from "./overworld/roomContextPrompt.js";
+import { isPresenceExtensionPresent } from "./overworld/roomPresence.js";
+import { PRESENCE_URL, PROME_URL, countSetupProblems, countSetupReminders, evaluateSetup } from "./core/setup/setupChecks.js";
+import { configureMinigameSessions, createSkipToken, installSkipKeyHandler, pushSkippable, runSkippableSequence } from "./core/skip/skipRegistry.js";
+import { confirmLeaveMinigame } from "./core/skip/leaveConfirm.js";
+import { createPlayerInset } from "./core/ui/playerInset.js";
+import { createExpressionPicker } from "./core/ui/expressionPicker.js";
+import { KEYBIND_ACTIONS, actionForBinding, bindingFromKeyEvent, bindingFromMouseEvent, isTypingTarget, keybindLabel, resolveKeybinds } from "./core/input/keybinds.js";
+import { TITLE_SCREEN_ID } from "./core/title/titleScreen.js";
 import { user_avatar } from "../../../personas.js";
 import { ConnectionManagerRequestService } from "../../shared.js";
+import { findBackgroundElement } from "./core/media/findBackground.js";
+import { clearPickedSprite, getPickedSprite, onPickedSpritesChanged, setPickedSprite } from "./core/ui/pickedSprites.js";
 
 window.refreshActiveCharacterUI = function () {
     if (!activeSocialCharacterId || !socialPanelController) return;
@@ -83,6 +113,10 @@ let orientationController = null;
 let coachController = null;
 let onboardingState = null;
 let vnModeController = null;
+let playerInsetController = null;
+let expressionPickerController = null;
+// Assigned where the Monopad button is wired up.
+let toggleMonopadFromKeybind = () => {};
 let monokumaAnnouncementController = null;
 let classTrialMenuController = null;
 let trialManager = null;
@@ -106,43 +140,10 @@ let audioVisualizer              = null;
 let overworldSceneController     = null;
 let reapplyOutfitToSprites       = () => {};
 let refreshHalfSpriteDisplay     = () => {};
+// Puts a sprite URL on a chat/GCP sprite the way the expression mirror does
+// (half-sprite mode aware). Assigned in setupExpressionMirror.
+let applyMirroredSprite = (img, src) => { if (img && src) img.src = src; };
 
-// #region debug-point A:overlay-report
-function reportFullscreenOverlayDebug(hypothesisId, location, msg, data = {}) {
-    fetch("http://127.0.0.1:7777/event", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            sessionId: "fullscreen-overlays-broken",
-            runId: "pre-fix",
-            hypothesisId,
-            location,
-            msg: `[DEBUG] ${msg}`,
-            data,
-            ts: Date.now(),
-        }),
-    }).catch(() => {});
-}
-
-// #region debug-point A:global-errors
-try {
-    window.addEventListener("error", (e) => {
-        reportFullscreenOverlayDebug("A", "window:error", "Unhandled error", {
-            message: String(e?.message || ""),
-            filename: String(e?.filename || ""),
-            lineno: e?.lineno,
-            colno: e?.colno,
-        });
-    });
-    window.addEventListener("unhandledrejection", (e) => {
-        const reason = e?.reason;
-        reportFullscreenOverlayDebug("A", "window:unhandledrejection", "Unhandled promise rejection", {
-            reason: typeof reason === "string" ? reason : (reason?.message || String(reason || "")),
-        });
-    });
-} catch {}
-// #endregion
-// #endregion
 
 const openRouterSettings = createOpenRouterSettingsManager({
     extensionName,
@@ -455,13 +456,17 @@ function buildGenerationTimeContext(state) {
         ? "Night period: curfew rules and low-visibility assumptions are active."
         : "Day period: normal campus activity assumptions are active.";
 
-    return [
+    const lines = [
         "[DANGANRONPA TIME CONTEXT]",
         `In-game day: ${safeState.day}`,
         `In-game phase: ${phaseLabel}`,
         periodHint,
-        "Use this context when generating your next reply.",
-    ].join("\n");
+    ];
+    if (investigationUnderway) {
+        lines.push("An investigation is underway: a body has been found and everyone is gathering evidence before the Class Trial.");
+    }
+    lines.push("Use this context when generating your next reply.");
+    return lines.join("\n");
 }
 
 function applyTimeContextToGeneration() {
@@ -495,8 +500,13 @@ function ensureTimeTrackerState() {
         normalized.dayActionUsed = true;
     }
 
+    // Normalize in place: callers keep a reference and mutate it.
+    if (raw && typeof raw === "object" && raw !== fallback) {
+        Object.assign(raw, normalized);
+        return raw;
+    }
     extension_settings[extensionName].timeTracker = normalized;
-    return extension_settings[extensionName].timeTracker;
+    return normalized;
 }
 
 function getTimeReadoutLabel(state) {
@@ -513,7 +523,9 @@ function renderTimeTrackerUi() {
     const investigationBtn = document.getElementById("monopad-investigation-underway");
 
     if (readoutEl) {
-        readoutEl.textContent = getTimeReadoutLabel(state);
+        readoutEl.textContent = investigationUnderway
+            ? `DAY ${state.day} · INVESTIGATION`
+            : getTimeReadoutLabel(state);
     }
 
     if (investigationUnderway) {
@@ -537,12 +549,16 @@ function renderTimeTrackerUi() {
             sleepBtn.setAttribute("aria-disabled", String(isDisabled));
         }
     }
+
+    refreshPhaseHud();
+    syncMarkerPrompts();
 }
 
 async function passTimeToNight({ source = "manual" } = {}) {
     const state = ensureTimeTrackerState();
     if (state.phase !== TIME_PHASE_DAY || state.dayActionUsed) return false;
 
+    rememberPhaseForUndo("Pass time");
     state.phase = TIME_PHASE_NIGHT;
     state.dayActionUsed = true;
     setInvestigationUnderway(false); // advancing time ends the investigation
@@ -563,6 +579,7 @@ async function sleepToNextDay({ source = "manual" } = {}) {
     const state = ensureTimeTrackerState();
     if (state.phase !== TIME_PHASE_NIGHT) return false;
 
+    rememberPhaseForUndo("Sleep");
     state.day = Math.max(1, Number(state.day || 1) + 1);
     state.phase = TIME_PHASE_DAY;
     state.dayActionUsed = false;
@@ -592,11 +609,24 @@ function resetDayCounter({ source = "manual" } = {}) {
     state.phase = TIME_PHASE_DAY;
     state.dayActionUsed = false;
     setInvestigationUnderway(false);
+    phaseHistory.clear();
 
     saveSettingsDebounced();
     renderTimeTrackerUi();
     applyTimeContextToGeneration();
     console.log(`[${extensionName}] Time tracker reset to DAY 1 / DAYTIME (source: ${source}).`);
+    return true;
+}
+
+// Same shuffle Pass Time / Sleep do, without touching the clock.
+function reshuffleCharacterLocations() {
+    if (trialManager?.isTrialActive?.()) {
+        notify({ tone: "warn", title: "NOT NOW", message: "Characters can't be reshuffled during a Class Trial." });
+        return false;
+    }
+    overworldSceneController?.randomizeLocations?.();
+    try { renderMinimap(); } catch (_) {}
+    notify({ title: "RESHUFFLED", message: "Everyone has moved to new rooms." });
     return true;
 }
 
@@ -614,6 +644,7 @@ function updateChapterDisplay() {
     if (el) el.textContent = getChapterLabel();
     trialManager?.refreshTrialBadge?.();
     refreshSettingsChapterSelect();
+    refreshPhaseHud();
 }
 
 // ── Chapter Journal ───────────────────────────────────────────────────────────
@@ -663,7 +694,17 @@ function setCurrentChapterIndex(idx) {
     updateChapterDisplay();
     refreshSettingsChapterSelect();
     if (document.getElementById('chapters-body')) renderChaptersPanel();
+    refreshChapterLockedFloors();
     return true;
+}
+
+// Chapter-gated map floors open (or close) with the chapter: redraw the map,
+// Move To and the overworld so spawns and exits follow the new lock state.
+function refreshChapterLockedFloors() {
+    try { mapPanelController?.renderMapPanel?.(); } catch (_) {}
+    try { renderMoveToPanel(); } catch (_) {}
+    try { renderMinimap(); } catch (_) {}
+    try { overworldSceneController?.render?.(); } catch (_) {}
 }
 
 function migrateScopedChapterJournalIfNeeded(settings) {
@@ -1627,8 +1668,6 @@ function openMonopadConfirmDialog({ title = "CONFIRM ACTION", message = "", conf
     });
 }
 
-const truthBullets = [];
-
 const truthBulletQueue = [];
 let truthBulletAnimating = false;
 
@@ -1641,6 +1680,7 @@ const processedSocialSignatures = new Set();
 const processedInvestigationSignatures = new Set();
 const INVESTIGATION_START_PARSE_REGEX = /V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/gi;
 const processedMonokumaAnnouncementSignatures = new Set();
+const processedTrialStartSignatures = new Set();
 const PERSISTENT_MARKER_MAX_ENTRIES = 2400;
 
 function normalizeTextToken(value) {
@@ -1928,6 +1968,45 @@ function trySetVisualNovelToggleInObject(root, enabled, { maxDepth = 8 } = {}) {
     return touched;
 }
 
+// SillyTavern's own streaming (one checkbox per API) rewrites the reply
+// while the VN box is reading it, so it is switched off during VN mode and
+// switched back on afterwards. Which ones were on is saved across reloads.
+const ST_STREAMING_TOGGLE_IDS = ['stream_toggle', 'streaming_textgenerationwebui', 'streaming_kobold', 'streaming_novel'];
+
+function setStStreamingToggle(el, checked) {
+    if (window.$) $(el).prop('checked', checked).trigger('input').trigger('change');
+    else {
+        el.checked = checked;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+}
+
+function syncStStreamingForVn(vnOn) {
+    const saved = getMonopadSetting('vnPausedStStreaming');
+    const paused = new Set(Array.isArray(saved) ? saved : []);
+    if (vnOn) {
+        let turnedOff = false;
+        for (const id of ST_STREAMING_TOGGLE_IDS) {
+            const el = document.getElementById(id);
+            if (!(el instanceof HTMLInputElement) || !el.checked) continue;
+            paused.add(id);
+            setStStreamingToggle(el, false);
+            turnedOff = true;
+        }
+        if (!turnedOff) return;
+        setMonopadSetting('vnPausedStStreaming', [...paused]);
+        toastr.info("SillyTavern's streaming is off while VN mode is on.");
+        return;
+    }
+    if (!paused.size) return;
+    for (const id of paused) {
+        const el = document.getElementById(id);
+        if (el instanceof HTMLInputElement && !el.checked) setStStreamingToggle(el, true);
+    }
+    setMonopadSetting('vnPausedStStreaming', []);
+}
+
 function trySetSillyTavernVisualNovelMode(enabled) {
     const ctx = window.SillyTavern?.getContext?.();
     let touched = false;
@@ -1996,6 +2075,9 @@ function createVnModeController() {
     const CHUNK_SIZE = 750;
     const VN_POSITION_KEY = `${extensionName}-vn-box-position`;
     const VN_STREAMING_KEY = `${extensionName}-vn-streaming-enabled`;
+    // Per text box style, since each starts at its own size.
+    const VN_SIZE_KEY = `${extensionName}-vn-box-size`;
+    const VN_CHROME_HIDDEN_KEY = `${extensionName}-vn-chrome-hidden`;
     let chunkIndex = 0;
     let messageIndex = 0;
     let monopadOpen = false;
@@ -2017,20 +2099,26 @@ function createVnModeController() {
     let streamingEnabled = true;
     let streamTimerId = null;
     let streamToken = 0;
+    // The line in the box (whole, or still typing) and how much of it shows.
+    let shownText = null;
+    let shownRevealed = 0;
 
     const host = document.createElement('div');
     host.id = 'dangan-vn-overlay';
     host.setAttribute('aria-hidden', 'true');
     host.innerHTML = `
         <div class="dangan-vn-frame" role="dialog" aria-live="polite" aria-label="Dangan Visual Novel dialogue">
+            <button type="button" class="dangan-vn-control dangan-vn-chrome-toggle" id="dangan-vn-chrome-toggle" aria-label="Show box buttons" title="Show box buttons" aria-expanded="false">☰ MENU</button>
+            <div class="dangan-vn-resize" id="dangan-vn-resize" role="separator" aria-label="Resize text box" title="Drag to resize the text box · double-click to reset"></div>
             <div class="dangan-vn-controls">
                 <button type="button" class="dangan-vn-control dangan-vn-stream-toggle" id="dangan-vn-stream-toggle" aria-label="Disable message streaming" title="Disable message streaming">STREAM: ON</button>
                 <button type="button" class="dangan-vn-control dangan-vn-transcript-toggle" id="dangan-vn-transcript-toggle" aria-label="Open transcript" title="Open transcript">TRANSCRIPT</button>
                 <button type="button" class="dangan-vn-control dangan-vn-manage-chat-files" id="dangan-vn-manage-chat-files" aria-label="Manage chat files" title="Manage chat files">FILES</button>
-                <button type="button" class="dangan-vn-control dangan-vn-extra-actions" id="dangan-vn-extra-actions" aria-label="Message actions" title="Message actions">···</button>
+                <button type="button" class="dangan-vn-control dangan-vn-extra-actions" id="dangan-vn-extra-actions" aria-label="Message actions" title="Edit, translate, branch, copy and more for this line">ACTIONS</button>
                 <button type="button" class="dangan-vn-control dangan-vn-edit-message" id="dangan-vn-edit-message" aria-label="Edit current message" title="Edit current message">✏</button>
                 <button type="button" class="dangan-vn-control dangan-vn-clear-chat" id="dangan-vn-clear-chat" aria-label="Clear all chat messages" title="Clear all chat messages">🗑</button>
                 <button type="button" class="dangan-vn-control dangan-vn-lock" id="dangan-vn-lock" aria-label="Unlock Visual Novel box movement" title="Unlock Visual Novel box movement">🔒</button>
+                <button type="button" class="dangan-vn-control dangan-vn-chrome-hide" id="dangan-vn-chrome-hide">HIDE</button>
             </div>
             <div class="dangan-vn-header">
                 <div class="dangan-vn-nameplate" id="dangan-vn-name">—</div>
@@ -2039,6 +2127,7 @@ function createVnModeController() {
             <div class="dangan-vn-text-wrap">
                 <div class="dangan-vn-text" id="dangan-vn-text">Visual Novel Mode ready.</div>
             </div>
+            <span class="dangan-vn-advance" aria-hidden="true"></span>
             <div class="dangan-vn-footer">
                 <div class="dangan-vn-progress" aria-hidden="true"><div class="dangan-vn-progress-fill" id="dangan-vn-progress-fill"></div></div>
                 <div class="dangan-vn-input">Click text / ← → / Space · Swipe in the footer</div>
@@ -2052,12 +2141,30 @@ function createVnModeController() {
                 </div>
             </div>
         </div>
-        <div class="dangan-vn-transcript" id="dangan-vn-transcript" aria-hidden="true">
+        <div class="dangan-vn-transcript" id="dangan-vn-transcript" role="dialog" aria-label="Transcript" aria-hidden="true">
             <div class="dangan-vn-transcript-header">
-                <div class="dangan-vn-transcript-title">Class Transcript</div>
-                <button type="button" class="dangan-vn-transcript-close" id="dangan-vn-transcript-close" aria-label="Close transcript">✕</button>
+                <svg class="dangan-vn-transcript-icon" viewBox="0 0 48 40" aria-hidden="true">
+                    <path d="M4 8h24v28H4z M8 4h24v4" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
+                    <path d="M9 15h14M9 21h14M9 27h9" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                    <path d="M26 30l2-7 15-15 5 5-15 15z" fill="currentColor"/>
+                </svg>
+                <div class="dangan-vn-transcript-title">Transcript</div>
+                <div class="dangan-vn-transcript-actions">
+                    <button type="button" class="dangan-vn-transcript-btn" id="dangan-vn-transcript-latest" title="Show the most recent message in the text box">LATEST</button>
+                    <button type="button" class="dangan-vn-transcript-btn" id="dangan-vn-transcript-select" title="Pick messages to delete">SELECT</button>
+                    <button type="button" class="dangan-vn-transcript-btn" id="dangan-vn-transcript-clear" title="Hide the lines so far without deleting them">CLEAR</button>
+                    <button type="button" class="dangan-vn-transcript-close" id="dangan-vn-transcript-close" aria-label="Close transcript" title="Close (Esc)">✕</button>
+                </div>
             </div>
-            <div class="dangan-vn-transcript-body" id="dangan-vn-transcript-body"></div>
+            <div class="dangan-vn-transcript-panel">
+                <div class="dangan-vn-transcript-track" aria-hidden="true"><div class="dangan-vn-transcript-thumb" id="dangan-vn-transcript-thumb"></div></div>
+                <div class="dangan-vn-transcript-body" id="dangan-vn-transcript-body"></div>
+            </div>
+            <div class="dangan-vn-transcript-selectbar" id="dangan-vn-transcript-selectbar">
+                <span class="dangan-vn-transcript-selectcount" id="dangan-vn-transcript-selectcount">0 selected</span>
+                <button type="button" class="dangan-vn-transcript-btn dangan-vn-transcript-btn-danger" id="dangan-vn-transcript-delete-selected" disabled>DELETE</button>
+                <button type="button" class="dangan-vn-transcript-btn" id="dangan-vn-transcript-cancel-select">CANCEL</button>
+            </div>
         </div>
     `;
     document.body.appendChild(host);
@@ -2065,11 +2172,21 @@ function createVnModeController() {
     const frameEl = host.querySelector('.dangan-vn-frame');
     const streamToggleEl = host.querySelector('#dangan-vn-stream-toggle');
     const lockBtnEl = host.querySelector('#dangan-vn-lock');
+    const chromeToggleEl = host.querySelector('#dangan-vn-chrome-toggle');
+    const resizeGripEl = host.querySelector('#dangan-vn-resize');
+    const chromeHideBtnEl = host.querySelector('#dangan-vn-chrome-hide');
     const transcriptToggleEl = host.querySelector('#dangan-vn-transcript-toggle');
     const manageChatFilesBtnEl = host.querySelector('#dangan-vn-manage-chat-files');
     const transcriptEl = host.querySelector('#dangan-vn-transcript');
     const transcriptCloseEl = host.querySelector('#dangan-vn-transcript-close');
     const transcriptBodyEl = host.querySelector('#dangan-vn-transcript-body');
+    const transcriptThumbEl = host.querySelector('#dangan-vn-transcript-thumb');
+    const transcriptLatestEl = host.querySelector('#dangan-vn-transcript-latest');
+    const transcriptSelectEl = host.querySelector('#dangan-vn-transcript-select');
+    const transcriptClearEl = host.querySelector('#dangan-vn-transcript-clear');
+    const transcriptSelectCountEl = host.querySelector('#dangan-vn-transcript-selectcount');
+    const transcriptDeleteSelectedEl = host.querySelector('#dangan-vn-transcript-delete-selected');
+    const transcriptCancelSelectEl = host.querySelector('#dangan-vn-transcript-cancel-select');
     const nameEl = host.querySelector('#dangan-vn-name');
     const positionEl = host.querySelector('#dangan-vn-position');
     const textEl = host.querySelector('#dangan-vn-text');
@@ -2195,6 +2312,7 @@ function createVnModeController() {
 
     function stopTextStreaming() {
         streamToken += 1;
+        shownText = null;
         if (streamTimerId !== null) {
             clearTimeout(streamTimerId);
             streamTimerId = null;
@@ -2317,14 +2435,40 @@ function createVnModeController() {
         textEl.classList.toggle('has-action', hasAction);
     }
 
+    // Typing speed as a multiplier: 1 is the original 14 ms per step.
+    function getTypingSpeed() {
+        const pct = Number(getMonopadSetting('vnTypingSpeed')) || 100;
+        return Math.min(300, Math.max(25, pct)) / 100;
+    }
+
+    // Show the rest of a line that is still typing.
+    function finishTyping() {
+        if (streamTimerId === null || !shownText) return false;
+        const text = shownText;
+        stopTextStreaming();
+        applyVnMarkup(text);
+        shownText = text;
+        shownRevealed = Infinity;
+        return true;
+    }
+
+    // Returns false when the box already shows (or is typing) this line, so
+    // re-renders from unrelated chat changes don't restart it.
     function renderDialogueText(text) {
         const targetText = String(text || '...');
+        if (!textEl) return false;
+        if (targetText === shownText) return false;
+        // A line still being generated grows: keep typing from where it was.
+        const continueFrom = streamingEnabled && shownText && targetText.startsWith(shownText)
+            ? shownRevealed
+            : 0;
         stopTextStreaming();
-        if (!textEl) return;
+        shownText = targetText;
+        shownRevealed = Infinity;
 
         if (!streamingEnabled || targetText.length < 2) {
             applyVnMarkup(targetText);
-            return;
+            return true;
         }
 
         // Pre-parse the full response so formatting is applied up front; stream by
@@ -2335,11 +2479,12 @@ function createVnModeController() {
 
         if (totalVisible < 1) {
             applyVnMarkup(targetText);
-            return;
+            return true;
         }
 
         const token = streamToken;
-        let revealed = 0;
+        let revealed = Math.min(continueFrom, totalVisible);
+        shownRevealed = revealed;
         const step = () => {
             if (token != streamToken || !textEl) return;
             if (revealed >= totalVisible) {
@@ -2352,13 +2497,15 @@ function createVnModeController() {
             const remaining = totalVisible - revealed;
             const delta = remaining > 40 ? 3 : remaining > 18 ? 2 : 1;
             revealed = Math.min(totalVisible, revealed + delta);
+            shownRevealed = revealed;
             textEl.innerHTML = renderVnSegments(segments, revealed);
             textEl.classList.add('dangan-vn-text-streaming');
-            streamTimerId = setTimeout(step, 14);
+            streamTimerId = setTimeout(step, 14 / getTypingSpeed());
         };
 
-        textEl.innerHTML = '';
+        if (!revealed) textEl.innerHTML = '';
         step();
+        return true;
     }
 
     function updateNavigationState(messages = getMessageEntries()) {
@@ -2379,6 +2526,7 @@ function createVnModeController() {
         })();
 
         if (prevBtnEl) prevBtnEl.disabled = !hasPrevious;
+        if (extraActionsBtnEl) extraActionsBtnEl.disabled = !total;
         if (nextBtnEl) nextBtnEl.disabled = !hasNext;
         if (latestBtnEl) {
             const unreadCount = Math.max(0, total - (messageIndex + 1));
@@ -2415,16 +2563,14 @@ function createVnModeController() {
         });
 
         if (frameEl) {
+            // Size and spacing come from the stylesheet so its phone layouts
+            // and the bottom offset (room for the typing bar) apply.
             Object.assign(frameEl.style, {
-                width: 'min(980px, calc(100vw - 18px))',
-                minHeight: '170px',
-                margin: '0 9px 10px',
                 borderRadius: '12px',
                 border: '1px solid rgba(191, 229, 255, 0.45)',
                 background: 'linear-gradient(180deg, rgba(8, 12, 20, 0.96), rgba(6, 9, 14, 0.97))',
                 boxShadow: '0 -3px 20px rgba(0, 0, 0, 0.45)',
                 color: '#f4f8ff',
-                padding: '14px 14px 10px',
                 cursor: 'pointer',
                 pointerEvents: 'auto',
             });
@@ -2452,21 +2598,44 @@ function createVnModeController() {
         };
     }
 
-    function savePosition() {
-        if (!Number.isFinite(framePosX) || !Number.isFinite(framePosY)) return;
+    // Kept per text box style, like the size. An older single { x, y } is
+    // taken as the position of the style shown when it is first read.
+    function readSavedPositions() {
         try {
-            localStorage.setItem(VN_POSITION_KEY, JSON.stringify({ x: framePosX, y: framePosY }));
+            const parsed = JSON.parse(localStorage.getItem(VN_POSITION_KEY) || '{}');
+            if (!parsed || typeof parsed !== 'object') return {};
+            if (Number.isFinite(parsed.x) && Number.isFinite(parsed.y)) {
+                // Wait until the style is known (setSkin) to hand it over.
+                if (!document.body.dataset.danganVnSkin) return {};
+                const migrated = { [currentSkinKey()]: { x: parsed.x, y: parsed.y } };
+                writeSavedPositions(migrated);
+                return migrated;
+            }
+            return parsed;
+        } catch {
+            return {};
+        }
+    }
+
+    function writeSavedPositions(positions) {
+        try {
+            localStorage.setItem(VN_POSITION_KEY, JSON.stringify(positions));
         } catch {
             // ignore storage failures
         }
     }
 
+    function savePosition() {
+        if (!Number.isFinite(framePosX) || !Number.isFinite(framePosY)) return;
+        const positions = readSavedPositions();
+        positions[currentSkinKey()] = { x: framePosX, y: framePosY };
+        writeSavedPositions(positions);
+    }
+
     function clearSavedPosition() {
-        try {
-            localStorage.removeItem(VN_POSITION_KEY);
-        } catch {
-            // ignore storage failures
-        }
+        const positions = readSavedPositions();
+        delete positions[currentSkinKey()];
+        writeSavedPositions(positions);
     }
 
     function setFramePosition(nextX, nextY) {
@@ -2479,26 +2648,111 @@ function createVnModeController() {
         frameEl.style.top = `${y}px`;
     }
 
-    function resetFramePosition() {
+    function clearFramePosition() {
         if (!frameEl) return;
         framePosX = null;
         framePosY = null;
         frameEl.classList.remove('dangan-vn-custom-pos');
         frameEl.style.left = '';
         frameEl.style.top = '';
+    }
+
+    function resetFramePosition() {
+        clearFramePosition();
         clearSavedPosition();
     }
 
     function restoreSavedPosition() {
+        const saved = readSavedPositions()[currentSkinKey()];
+        if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
+            setFramePosition(saved.x, saved.y);
+        } else {
+            clearFramePosition();
+        }
+    }
+
+    function currentSkinKey() {
+        return normalizeVnSkin(document.body.dataset.danganVnSkin);
+    }
+
+    function readSavedSizes() {
         try {
-            const raw = localStorage.getItem(VN_POSITION_KEY);
-            if (!raw) return;
-            const parsed = JSON.parse(raw);
-            if (!parsed || !Number.isFinite(parsed.x) || !Number.isFinite(parsed.y)) return;
-            setFramePosition(parsed.x, parsed.y);
+            const parsed = JSON.parse(localStorage.getItem(VN_SIZE_KEY) || '{}');
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch {
+            return {};
+        }
+    }
+
+    function setFrameSize(width, height) {
+        if (!frameEl) return;
+        const hasWidth = Number.isFinite(width) && width > 0;
+        const hasHeight = Number.isFinite(height) && height > 0;
+        frameEl.classList.toggle('dangan-vn-custom-size', hasWidth || hasHeight);
+        if (hasWidth) frameEl.style.setProperty('--dangan-vn-user-width', `${Math.round(width)}px`);
+        else frameEl.style.removeProperty('--dangan-vn-user-width');
+        if (hasHeight) frameEl.style.setProperty('--dangan-vn-user-height', `${Math.round(height)}px`);
+        else frameEl.style.removeProperty('--dangan-vn-user-height');
+    }
+
+    function saveFrameSize(width, height) {
+        const sizes = readSavedSizes();
+        if (Number.isFinite(width) && Number.isFinite(height)) {
+            sizes[currentSkinKey()] = { w: Math.round(width), h: Math.round(height) };
+        } else {
+            delete sizes[currentSkinKey()];
+        }
+        try {
+            localStorage.setItem(VN_SIZE_KEY, JSON.stringify(sizes));
         } catch {
             // ignore storage failures
         }
+    }
+
+    function restoreSavedSize() {
+        const saved = readSavedSizes()[currentSkinKey()];
+        setFrameSize(saved?.w, saved?.h);
+    }
+
+    function setChromeOpen(open) {
+        frameEl?.classList.toggle('chrome-open', open);
+        if (!chromeToggleEl) return;
+        chromeToggleEl.setAttribute('aria-expanded', open ? 'true' : 'false');
+        chromeToggleEl.setAttribute('aria-label', open ? 'Hide box buttons' : 'Show box buttons');
+        chromeToggleEl.title = open ? 'Hide box buttons' : 'Show box buttons';
+        chromeToggleEl.textContent = open ? '✕ CLOSE' : '☰ MENU';
+    }
+
+    // Hidden: hovering the box no longer brings up its buttons; MENU does.
+    function setChromeHidden(hidden, { persist = true } = {}) {
+        frameEl?.classList.toggle('chrome-hidden', hidden);
+        if (hidden) {
+            setChromeOpen(false);
+            if (frameEl?.contains(document.activeElement)) document.activeElement.blur?.();
+        }
+        if (chromeHideBtnEl) {
+            chromeHideBtnEl.textContent = hidden ? 'SHOW ON HOVER' : 'HIDE';
+            chromeHideBtnEl.title = hidden
+                ? 'Show these buttons again whenever the pointer is over the box'
+                : 'Stop showing these buttons on hover; use MENU to open them';
+            chromeHideBtnEl.setAttribute('aria-pressed', hidden ? 'true' : 'false');
+        }
+        if (!persist) return;
+        try {
+            localStorage.setItem(VN_CHROME_HIDDEN_KEY, hidden ? '1' : '0');
+        } catch {
+            // ignore storage failures
+        }
+    }
+
+    function restoreChromeHidden() {
+        let hidden = false;
+        try {
+            hidden = localStorage.getItem(VN_CHROME_HIDDEN_KEY) === '1';
+        } catch {
+            // ignore storage failures
+        }
+        setChromeHidden(hidden, { persist: false });
     }
 
     function setMoveUnlocked(unlocked) {
@@ -2516,7 +2770,10 @@ function createVnModeController() {
         transcriptEl?.setAttribute('aria-hidden', transcriptOpen ? 'false' : 'true');
         transcriptToggleEl?.setAttribute('aria-expanded', transcriptOpen ? 'true' : 'false');
         if (transcriptOpen) {
-            renderTranscript();
+            transcriptSignature = null;
+            renderTranscript({ toBottom: true });
+        } else {
+            setTranscriptSelecting(false);
         }
     }
 
@@ -2552,11 +2809,26 @@ function createVnModeController() {
         return true;
     }
 
+    // Height of the on-screen keyboard where the browser lays it over the page
+    // (iOS) instead of shrinking the window.
+    function getKeyboardInset() {
+        const vv = window.visualViewport;
+        if (!vv) return 0;
+        return Math.max(0, Math.round((window.innerHeight || 0) - vv.height - vv.offsetTop));
+    }
+
     function updateBottomOffset() {
         if (!frameEl) return;
 
         if (vnEnabled) {
-            host.style.setProperty('--dangan-vn-bottom-offset', '0px');
+            // The typing bar docks under the box, so leave room for it (Class
+            // Trials pin both themselves).
+            const composeEl = document.body.classList.contains('dangan-trial-active') ? null : getComposeElement();
+            const composeHeight = composeEl?.classList.contains('dangan-vn-compose-docked')
+                ? composeEl.getBoundingClientRect().height
+                : 0;
+            const offset = composeHeight > 0 ? Math.round(composeHeight + 4) + getKeyboardInset() : 0;
+            host.style.setProperty('--dangan-vn-bottom-offset', `${offset}px`);
             return;
         }
 
@@ -2585,6 +2857,7 @@ function createVnModeController() {
         composeCollapsed = false;
         composeEl.classList.remove('dangan-vn-compose-docked');
         composeEl.classList.remove('dangan-vn-compose-collapsed');
+        document.body.style.removeProperty('--dangan-vn-stack-height');
         composeEl.style.position = '';
         composeEl.style.left = '';
         composeEl.style.top = '';
@@ -2594,7 +2867,9 @@ function createVnModeController() {
         composeEl.style.margin = '';
         composeEl.style.transform = '';
         composeEl.style.zIndex = '';
-        document.body.classList.remove('dangan-vn-compose-docked-active');
+        if (document.body.classList.contains('dangan-vn-compose-docked-active')) {
+            document.body.classList.remove('dangan-vn-compose-docked-active');
+        }
     }
 
     function ensureComposeCollapseToggle(composeEl) {
@@ -2645,7 +2920,7 @@ function createVnModeController() {
         const width = Math.max(220, Math.round(frameRect.width));
         const maxLeft = Math.max(0, viewportWidth - width);
         const left = Math.max(0, Math.min(maxLeft, Math.round(frameRect.left)));
-        const maxTop = Math.max(0, viewportHeight - composeHeight - 4);
+        const maxTop = Math.max(0, viewportHeight - composeHeight - 4 - getKeyboardInset());
         // In a Class Trial the VN frame is pinned to the bottom via
         // `bottom: var(--dgn-input-height)`, and --dgn-input-height is derived
         // from this composer's top edge. Docking the composer *below the frame*
@@ -2681,7 +2956,13 @@ function createVnModeController() {
         composeEl.style.margin = '0';
         composeEl.style.transform = 'none';
         composeEl.style.zIndex = '2147483644';
-        document.body.classList.add('dangan-vn-compose-docked-active');
+        // Only when it changes: the body class observer re-docks on writes.
+        if (!document.body.classList.contains('dangan-vn-compose-docked-active')) {
+            document.body.classList.add('dangan-vn-compose-docked-active');
+        }
+        // How much of the screen bottom the box and typing bar take, so the
+        // minimap and MOVE TO panel can sit above them on small screens.
+        document.body.style.setProperty('--dangan-vn-stack-height', `${Math.max(0, Math.round(viewportHeight - frameRect.top))}px`);
     }
 
     applyInlineFallbackStyles();
@@ -2689,7 +2970,9 @@ function createVnModeController() {
     refreshStreamingToggle();
     updateBottomOffset();
     syncMonopadVisibility();
+    restoreSavedSize();
     restoreSavedPosition();
+    restoreChromeHidden();
     setMoveUnlocked(false);
 
     const htmlDecodeBuffer = document.createElement('div');
@@ -2765,54 +3048,201 @@ function createVnModeController() {
         return `${entry.key || ''}::${entry.name || ''}::${entry.text || ''}`;
     }
 
-    function renderTranscript() {
+    // ── Transcript ──────────────────────────────────────────────────────
+    // Lines up to a "cleared" marker (saved in the chat's metadata) are
+    // hidden without deleting them. Entries from the chat context know their
+    // real chat index, so they can be deleted; DOM fallback entries can't.
+    const TRANSCRIPT_CLEARED_KEY = 'dangan_transcript_cleared';
+    let transcriptSignature = null;
+    let transcriptSelecting = false;
+    const transcriptSelected = new Set();
+    let transcriptArmedEl = null;
+    let transcriptArmTimer = null;
+    let transcriptDeleteArmed = false;
+
+    function getEntryChatIndex(entry) {
+        const m = /^ctx-(\d+)$/.exec(entry?.key || '');
+        return m ? Number(m[1]) : null;
+    }
+
+    // Chat index of the last hidden line, or -1 when nothing is hidden.
+    function getTranscriptClearedIndex() {
+        const ctx = window.SillyTavern?.getContext?.();
+        const marker = ctx?.chatMetadata?.[TRANSCRIPT_CLEARED_KEY];
+        if (!marker || typeof marker !== 'object') return -1;
+        const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+        if (marker.sendDate) {
+            for (let i = chat.length - 1; i >= 0; i--) {
+                if (chat[i]?.send_date === marker.sendDate) return i;
+            }
+        }
+        return Number.isInteger(marker.index) ? Math.min(marker.index, chat.length - 1) : -1;
+    }
+
+    async function setTranscriptCleared(cleared) {
+        const ctx = window.SillyTavern?.getContext?.();
+        if (!ctx?.chatMetadata || typeof ctx.chatMetadata !== 'object') return;
+        const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+        if (cleared && chat.length) {
+            const index = chat.length - 1;
+            ctx.chatMetadata[TRANSCRIPT_CLEARED_KEY] = { index, sendDate: chat[index]?.send_date || null };
+        } else {
+            delete ctx.chatMetadata[TRANSCRIPT_CLEARED_KEY];
+        }
+        try { await ctx.saveMetadata?.(); } catch { /* ignore */ }
+        transcriptSignature = null;
+        renderTranscript({ toBottom: true });
+    }
+
+    function updateTranscriptThumb() {
+        if (!transcriptBodyEl || !transcriptThumbEl) return;
+        const { scrollTop, scrollHeight, clientHeight } = transcriptBodyEl;
+        if (scrollHeight <= clientHeight + 1) {
+            transcriptThumbEl.style.display = 'none';
+            return;
+        }
+        const ratio = clientHeight / scrollHeight;
+        const height = Math.max(24, clientHeight * ratio);
+        const top = (clientHeight - height) * (scrollTop / (scrollHeight - clientHeight));
+        transcriptThumbEl.style.display = '';
+        transcriptThumbEl.style.height = `${height}px`;
+        transcriptThumbEl.style.transform = `translateY(${top}px)`;
+    }
+
+    function disarmTranscriptDelete() {
+        if (transcriptArmTimer) clearTimeout(transcriptArmTimer);
+        transcriptArmTimer = null;
+        if (transcriptArmedEl) {
+            transcriptArmedEl.classList.remove('armed');
+            transcriptArmedEl.textContent = '🗑';
+            transcriptArmedEl.setAttribute('aria-label', 'Delete this message');
+        }
+        transcriptArmedEl = null;
+    }
+
+    function refreshTranscriptSelectBar() {
+        const count = transcriptSelected.size;
+        if (transcriptSelectCountEl) transcriptSelectCountEl.textContent = `${count} selected`;
+        if (transcriptDeleteSelectedEl) {
+            transcriptDeleteSelectedEl.disabled = !count;
+            transcriptDeleteSelectedEl.textContent = transcriptDeleteArmed && count ? `DELETE ${count}?` : 'DELETE';
+            transcriptDeleteSelectedEl.classList.toggle('armed', transcriptDeleteArmed && !!count);
+        }
+    }
+
+    function setTranscriptSelecting(on) {
+        transcriptSelecting = !!on;
+        transcriptSelected.clear();
+        transcriptDeleteArmed = false;
+        disarmTranscriptDelete();
+        transcriptEl?.classList.toggle('selecting', transcriptSelecting);
+        transcriptSelectEl?.classList.toggle('active', transcriptSelecting);
+        transcriptBodyEl?.querySelectorAll('.dangan-vn-transcript-entry.selected').forEach((el) => {
+            el.classList.remove('selected');
+            const box = el.querySelector('.dangan-vn-transcript-check');
+            if (box) box.checked = false;
+        });
+        refreshTranscriptSelectBar();
+    }
+
+    async function deleteChatMessages(indexes) {
+        // Highest first so earlier indexes stay valid.
+        const sorted = [...new Set(indexes)].filter(Number.isInteger).sort((a, b) => b - a);
+        for (const index of sorted) {
+            await runSlash(`/cut ${index}`);
+        }
+        transcriptSignature = null;
+        if (transcriptOpen) renderTranscript();
+        renderCurrent();
+    }
+
+    function renderTranscript({ toBottom = false } = {}) {
         if (!transcriptBodyEl) return;
 
         // Use the same raw-text source as the VN box so *markers* are preserved
         // for parseVnMarkup to colour action/bold/dialogue segments correctly.
         // (getDomMessages strips * markers — ST already rendered them to <em> in the DOM.)
-        const entries = getMessageEntries();
+        const allEntries = getMessageEntries();
+        const clearedIndex = getTranscriptClearedIndex();
+        const entries = allEntries
+            .map((entry, position) => ({ entry, position, chatIndex: getEntryChatIndex(entry) }))
+            .filter(({ chatIndex }) => clearedIndex < 0 || chatIndex === null || chatIndex > clearedIndex);
+
+        if (transcriptClearEl) {
+            const hidden = clearedIndex >= 0;
+            transcriptClearEl.textContent = hidden ? 'SHOW ALL' : 'CLEAR';
+            transcriptClearEl.title = hidden ? 'Show the hidden lines again' : 'Hide the lines so far without deleting them';
+        }
+
+        // The chat observer calls this on every chat change: skip identical renders.
+        const signature = `${clearedIndex}|${entries.map(({ entry }) => getMessageSignature(entry)).join('\n')}`;
+        if (signature === transcriptSignature && !toBottom) return;
+        transcriptSignature = signature;
+
+        const wasAtBottom = transcriptBodyEl.scrollTop + transcriptBodyEl.clientHeight >= transcriptBodyEl.scrollHeight - 8;
+        const previousScroll = transcriptBodyEl.scrollTop;
+        disarmTranscriptDelete();
         transcriptBodyEl.innerHTML = '';
 
         if (!entries.length) {
             const emptyEl = document.createElement('div');
             emptyEl.className = 'dangan-vn-transcript-empty';
-            emptyEl.textContent = 'No transcript entries yet.';
+            emptyEl.textContent = clearedIndex >= 0
+                ? 'Transcript cleared. New lines will appear here.'
+                : 'No transcript entries yet.';
             transcriptBodyEl.appendChild(emptyEl);
+            updateTranscriptThumb();
             return;
         }
 
-        // Copy only the font-family from the chat; size/line-height stay as the transcript
-        // defines them — the chat's configured font size is often very small and would make
-        // the transcript unreadable if copied verbatim.
-        const sampleMesText = document.querySelector('.mes .mes_text');
-        const chatFontFamily = sampleMesText
-            ? getComputedStyle(sampleMesText).fontFamily
-            : null;
-
-        for (const entry of entries) {
+        for (const { entry, position, chatIndex } of entries) {
             const row = document.createElement('div');
             row.className = 'dangan-vn-transcript-entry';
+            row.dataset.entryIndex = String(position);
+            row.tabIndex = 0;
+            if (chatIndex !== null) {
+                row.dataset.chatIndex = String(chatIndex);
+                if (transcriptSelected.has(chatIndex)) row.classList.add('selected');
+
+                const check = document.createElement('input');
+                check.type = 'checkbox';
+                check.className = 'dangan-vn-transcript-check';
+                check.tabIndex = -1;
+                check.checked = transcriptSelected.has(chatIndex);
+                check.setAttribute('aria-label', 'Select this message');
+                row.appendChild(check);
+            }
 
             const speaker = document.createElement('div');
             speaker.className = 'dangan-vn-transcript-speaker';
-            speaker.textContent = entry.name || 'UNKNOWN';
+            speaker.textContent = entry.name ? getCharacterDisplayName(entry.name) : 'UNKNOWN';
 
             const message = document.createElement('div');
             message.className = 'dangan-vn-transcript-message';
-            if (chatFontFamily) {
-                message.style.fontFamily = chatFontFamily;
-            }
-
-            // Use the same VN markup parser so colours match what the VN text box shows
-            // (*action* → green, **bold** → orange, "dialogue" → white, narrator → body colour).
             const cleanText = stripV3CMarkersFromText(entry.text || '').replace(/\s+/g, ' ').trim();
             message.innerHTML = cleanText ? parseVnMarkup(cleanText).html : '...';
 
             row.appendChild(speaker);
             row.appendChild(message);
+
+            if (chatIndex !== null) {
+                const del = document.createElement('button');
+                del.type = 'button';
+                del.className = 'dangan-vn-transcript-delete';
+                del.textContent = '🗑';
+                del.setAttribute('aria-label', 'Delete this message');
+                del.title = 'Delete this message';
+                row.appendChild(del);
+            }
             transcriptBodyEl.appendChild(row);
         }
+
+        if (toBottom || wasAtBottom) {
+            transcriptBodyEl.scrollTop = transcriptBodyEl.scrollHeight;
+        } else {
+            transcriptBodyEl.scrollTop = previousScroll;
+        }
+        updateTranscriptThumb();
     }
 
     function splitIntoChunks(text = '') {
@@ -2884,7 +3314,74 @@ function createVnModeController() {
             }
             if (rem) chunks.push(rem);
         }
-        return chunks;
+        return balanceChunkMarkup(chunks);
+    }
+
+    // A *action*, **bold** or "quote" that spans bits would be cut open, so
+    // the bit shows a raw * and loses its color. Close each open marker at
+    // the end of its bit and reopen it at the start of the next. Markers
+    // with no partner anywhere in the message stay as they are.
+    function balanceChunkMarkup(chunks) {
+        if (chunks.length < 2) return chunks;
+        const scan = (text, onMarker) => {
+            for (let i = 0; i < text.length; i++) {
+                if (text.startsWith('**', i)) { onMarker('**', i); i += 1; }
+                else if (text[i] === '*') onMarker('*', i);
+                else if (text[i] === '"') onMarker('"', i);
+            }
+        };
+
+        // Pair the markers across the whole message, in order.
+        const pairUp = () => {
+            const paired = new Set();
+            const closers = new Set();
+            const open = {};
+            chunks.forEach((chunk, c) => scan(chunk, (marker, i) => {
+                const id = `${c}:${i}`;
+                if (open[marker]) {
+                    paired.add(open[marker]);
+                    paired.add(id);
+                    closers.add(id);
+                    open[marker] = null;
+                } else {
+                    open[marker] = id;
+                }
+            }));
+            return { paired, closers };
+        };
+
+        // A bit split right before a closing marker (`nice!*`) hands the
+        // marker back to the bit it closes.
+        chunks = [...chunks];
+        const { closers } = pairUp();
+        for (let c = 1; c < chunks.length; c++) {
+            let moved = '';
+            let i = 0;
+            while (i < chunks[c].length) {
+                const marker = chunks[c].startsWith('**', i) ? '**' : (chunks[c][i] === '*' || chunks[c][i] === '"') ? chunks[c][i] : null;
+                if (!marker || !closers.has(`${c}:${i}`)) break;
+                moved += marker;
+                i += marker.length;
+            }
+            if (!moved) continue;
+            chunks[c - 1] += moved;
+            chunks[c] = chunks[c].slice(i).trim();
+        }
+        chunks = chunks.filter(Boolean);
+        const { paired } = pairUp();
+
+        const stack = [];
+        return chunks.map((chunk, c) => {
+            const prefix = stack.join('');
+            scan(chunk, (marker, i) => {
+                if (!paired.has(`${c}:${i}`)) return;
+                const at = stack.lastIndexOf(marker);
+                if (at >= 0) stack.splice(at, 1);
+                else stack.push(marker);
+            });
+            const suffix = [...stack].reverse().join('');
+            return prefix + chunk + suffix;
+        });
     }
 
     function pulseText() {
@@ -2926,23 +3423,24 @@ function createVnModeController() {
 
         chunkIndex = Math.max(0, Math.min(chunkIndex, chunks.length - 1));
         nameEl.textContent = maskedName;
-        renderDialogueText(chunks[chunkIndex]);
+        const changed = renderDialogueText(chunks[chunkIndex]);
         updateNavigationState(messages);
-        pulseText();
+        if (changed) pulseText();
     }
 
+    // Returns true when it moved to another bit.
     function advance() {
         const messages = getMessageEntries();
         if (!messages.length) {
             renderCurrent();
-            return;
+            return false;
         }
 
         if (messageIndex >= messages.length - 1) {
             const currentEntry = messages[messages.length - 1];
             const currentChunks = splitIntoChunks(stripV3CMarkersFromText(currentEntry?.text || ''));
             if (chunkIndex >= Math.max(0, currentChunks.length - 1)) {
-                return;
+                return false;
             }
         }
 
@@ -2957,15 +3455,18 @@ function createVnModeController() {
         }
 
         renderCurrent();
+        return true;
     }
 
+    // Returns true when it moved to another bit.
     function retreat() {
         const messages = getMessageEntries();
         if (!messages.length) {
             renderCurrent();
-            return;
+            return false;
         }
 
+        const before = `${messageIndex}:${chunkIndex}`;
         const entry = messages[Math.min(messageIndex, messages.length - 1)];
         const chunks = splitIntoChunks(stripV3CMarkersFromText(entry.text));
 
@@ -2981,6 +3482,18 @@ function createVnModeController() {
         }
 
         renderCurrent();
+        return `${messageIndex}:${chunkIndex}` !== before;
+    }
+
+    // Clicking the box, keys and swipes: finish a typing line first, then
+    // move on, with the same sound as the arrow buttons.
+    function stepForward() {
+        if (finishTyping()) return;
+        if (advance()) playSfx(sfx.message_move);
+    }
+
+    function stepBack() {
+        if (retreat()) playSfx(sfx.message_move);
     }
 
     function jumpToLatest() {
@@ -2998,6 +3511,89 @@ function createVnModeController() {
         chunkIndex = 0;
         renderCurrent();
     }
+
+    // Buttons stay tucked away until hover; touch screens use this toggle.
+    chromeToggleEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setChromeOpen(!frameEl?.classList.contains('chrome-open'));
+    });
+
+    chromeHideBtnEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setChromeHidden(!frameEl?.classList.contains('chrome-hidden'));
+    });
+
+    // The grip on the top-right corner: drag right to widen, up to heighten.
+    // The box keeps its anchor (left edge, or centre for centred styles) and
+    // its bottom edge, so the typing bar stays put underneath.
+    let resizeState = null;
+
+    resizeGripEl?.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0 || !frameEl) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const rect = frameEl.getBoundingClientRect();
+        const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+        const isCustomPos = frameEl.classList.contains('dangan-vn-custom-pos');
+        const isCentred = !isCustomPos && Math.abs((rect.left + rect.width / 2) - vw / 2) < 6;
+        resizeState = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            startW: rect.width,
+            startH: rect.height,
+            startTop: rect.top,
+            startLeft: rect.left,
+            widthFactor: isCentred ? 2 : 1,
+            isCustomPos,
+        };
+        frameEl.classList.add('dangan-vn-resizing');
+        resizeGripEl.setPointerCapture?.(event.pointerId);
+    });
+
+    resizeGripEl?.addEventListener('pointermove', (event) => {
+        if (!resizeState || event.pointerId !== resizeState.pointerId) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+        const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+        const dx = event.clientX - resizeState.startX;
+        const dy = event.clientY - resizeState.startY;
+        const maxW = Math.max(280, vw - (resizeState.widthFactor === 2 ? 8 : resizeState.startLeft + 4));
+        const width = Math.max(280, Math.min(maxW, resizeState.startW + dx * resizeState.widthFactor));
+        const height = Math.max(96, Math.min(Math.round(vh * 0.85), resizeState.startH - dy));
+        setFrameSize(width, height);
+        if (resizeState.isCustomPos) {
+            setFramePosition(resizeState.startLeft, resizeState.startTop + resizeState.startH - height);
+        }
+        updateBottomOffset();
+        dockTypingSection();
+    });
+
+    const endResize = (event) => {
+        if (!resizeState || event.pointerId !== resizeState.pointerId) return;
+        event.stopPropagation();
+        resizeState = null;
+        frameEl?.classList.remove('dangan-vn-resizing');
+        resizeGripEl?.releasePointerCapture?.(event.pointerId);
+        const rect = frameEl?.getBoundingClientRect();
+        if (rect) saveFrameSize(rect.width, rect.height);
+        if (Number.isFinite(framePosX) && Number.isFinite(framePosY)) savePosition();
+    };
+    resizeGripEl?.addEventListener('pointerup', endResize);
+    resizeGripEl?.addEventListener('pointercancel', endResize);
+    resizeGripEl?.addEventListener('click', (event) => event.stopPropagation());
+
+    resizeGripEl?.addEventListener('dblclick', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setFrameSize(null, null);
+        saveFrameSize(null, null);
+        updateBottomOffset();
+        dockTypingSection();
+    });
 
     lockBtnEl?.addEventListener('click', (event) => {
         event.preventDefault();
@@ -3036,6 +3632,7 @@ function createVnModeController() {
         streamingEnabled = !streamingEnabled;
         persistStreamingPreference();
         refreshStreamingToggle();
+        stopTextStreaming();
         renderCurrent();
     });
 
@@ -3049,6 +3646,115 @@ function createVnModeController() {
         event.preventDefault();
         event.stopPropagation();
         setTranscriptOpen(false);
+    });
+
+    transcriptBodyEl?.addEventListener('scroll', updateTranscriptThumb, { passive: true });
+    window.addEventListener('resize', () => { if (transcriptOpen) updateTranscriptThumb(); });
+
+    transcriptLatestEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setTranscriptOpen(false);
+        jumpToLatest();
+        playSfx(sfx.message_move);
+    });
+
+    transcriptSelectEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setTranscriptSelecting(!transcriptSelecting);
+    });
+
+    transcriptCancelSelectEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setTranscriptSelecting(false);
+    });
+
+    transcriptClearEl?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setTranscriptCleared(getTranscriptClearedIndex() < 0);
+    });
+
+    transcriptDeleteSelectedEl?.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!transcriptSelected.size) return;
+        if (!transcriptDeleteArmed) {
+            transcriptDeleteArmed = true;
+            refreshTranscriptSelectBar();
+            return;
+        }
+        const indexes = [...transcriptSelected];
+        setTranscriptSelecting(false);
+        await deleteChatMessages(indexes);
+    });
+
+    transcriptBodyEl?.addEventListener('click', async (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        const row = target.closest('.dangan-vn-transcript-entry');
+        if (!row) return;
+        event.stopPropagation();
+        const chatIndex = row.dataset.chatIndex !== undefined ? Number(row.dataset.chatIndex) : null;
+
+        const delBtn = target.closest('.dangan-vn-transcript-delete');
+        if (delBtn) {
+            event.preventDefault();
+            if (chatIndex === null) return;
+            if (transcriptArmedEl !== delBtn) {
+                disarmTranscriptDelete();
+                transcriptArmedEl = delBtn;
+                delBtn.classList.add('armed');
+                delBtn.textContent = 'Delete?';
+                delBtn.setAttribute('aria-label', 'Press again to delete this message');
+                transcriptArmTimer = setTimeout(disarmTranscriptDelete, 3000);
+                return;
+            }
+            disarmTranscriptDelete();
+            await deleteChatMessages([chatIndex]);
+            return;
+        }
+        disarmTranscriptDelete();
+
+        if (transcriptSelecting) {
+            if (chatIndex === null) return;
+            if (transcriptSelected.has(chatIndex)) transcriptSelected.delete(chatIndex);
+            else transcriptSelected.add(chatIndex);
+            const on = transcriptSelected.has(chatIndex);
+            row.classList.toggle('selected', on);
+            const box = row.querySelector('.dangan-vn-transcript-check');
+            if (box) box.checked = on;
+            transcriptDeleteArmed = false;
+            refreshTranscriptSelectBar();
+            return;
+        }
+
+        // Touch has no hover: the first tap shows the line's delete button.
+        if (event.pointerType === 'touch' || window.matchMedia?.('(hover: none)').matches) {
+            if (!row.classList.contains('touched')) {
+                transcriptBodyEl.querySelectorAll('.dangan-vn-transcript-entry.touched').forEach((el) => el.classList.remove('touched'));
+                row.classList.add('touched');
+                return;
+            }
+        }
+
+        const position = Number(row.dataset.entryIndex);
+        if (!Number.isInteger(position)) return;
+        messageIndex = position;
+        chunkIndex = 0;
+        setTranscriptOpen(false);
+        renderCurrent();
+        playSfx(sfx.message_move);
+    });
+
+    transcriptBodyEl?.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        const row = event.target instanceof Element ? event.target.closest('.dangan-vn-transcript-entry') : null;
+        if (!row || event.target !== row) return;
+        event.preventDefault();
+        row.click();
     });
 
     manageChatFilesBtnEl?.addEventListener('click', (event) => {
@@ -3170,7 +3876,7 @@ function createVnModeController() {
             }
             if (window.$) $(mesEl).find('.mes_edit_done').trigger('click');
             closeEdit();
-            setTimeout(() => renderDialogueText(), 100);
+            setTimeout(() => renderCurrent(), 100);
         });
 
         copyBtn.addEventListener('click', () => {
@@ -3336,23 +4042,40 @@ function createVnModeController() {
         if (target instanceof Element && target.closest('.dangan-vn-manage-chat-files')) return;
         if (target instanceof Element && target.closest('.dangan-vn-stream-toggle')) return;
         if (target instanceof Element && target.closest('.dangan-vn-nav-button')) return;
-        advance();
+        if (target instanceof Element && target.closest('.dangan-vn-chrome-toggle')) return;
+        if (target instanceof Element && target.closest('.dangan-vn-resize')) return;
+        if (target instanceof Element && target.closest('.dangan-vn-chrome-hide')) return;
+        stepForward();
     });
 
+    // Capture phase on window, so it runs before SillyTavern's own hotkeys
+    // (its arrow keys swipe) and can stop them.
     window.addEventListener('keydown', (event) => {
         if (!vnEnabled || !host.classList.contains('active')) return;
+        if (transcriptOpen) {
+            if (event.key !== 'Escape') return;
+            if (transcriptSelecting) setTranscriptSelecting(false);
+            else setTranscriptOpen(false);
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            return;
+        }
         const target = event.target;
         const isEditable = target instanceof HTMLElement && (
             target.matches('input, textarea, select') ||
             target.isContentEditable ||
             !!target.closest('[contenteditable="true"]')
         );
-        if (isEditable) return;
+        // SillyTavern swipes from an empty typing bar too.
+        const isEmptySendBar = target instanceof HTMLTextAreaElement
+            && target.id === 'send_textarea' && !target.value
+            && (event.key === 'ArrowRight' || event.key === 'ArrowLeft');
+        if (isEditable && !isEmptySendBar) return;
 
         if (event.key === 'ArrowRight' || event.key === ' ' || event.key === 'Enter') {
-            advance();
+            stepForward();
         } else if (event.key === 'ArrowLeft' || event.key === 'Backspace') {
-            retreat();
+            stepBack();
         } else if ((event.key === 'r' || event.key === 'R') && !event.ctrlKey && !event.metaKey && !event.altKey) {
             triggerRegenerate();
             updateNavigationState();
@@ -3360,7 +4083,8 @@ function createVnModeController() {
             return;
         }
         event.preventDefault();
-    });
+        event.stopImmediatePropagation();
+    }, true);
 
     let swipeStartX = null;
 
@@ -3375,19 +4099,23 @@ function createVnModeController() {
         swipeStartX = null;
         if (Math.abs(deltaX) < 36) return;
         if (deltaX < 0) {
-            advance();
+            stepForward();
         } else {
-            retreat();
+            stepBack();
         }
     }, { passive: true });
 
-    window.addEventListener('resize', () => {
+    const onViewportResize = () => {
         updateBottomOffset();
         if (Number.isFinite(framePosX) && Number.isFinite(framePosY)) {
             setFramePosition(framePosX, framePosY);
         }
         dockTypingSection();
-    });
+    };
+    window.addEventListener('resize', onViewportResize);
+    // Phone keyboards resize the visual viewport only.
+    window.visualViewport?.addEventListener('resize', onViewportResize);
+    window.visualViewport?.addEventListener('scroll', onViewportResize);
 
     let _vnObsRaf = null;
     const observer = new MutationObserver(() => {
@@ -3419,21 +4147,25 @@ function createVnModeController() {
             }
 
             const maxIndex = messages.length - 1;
-            const wasAtTailBeforeNewMessage = hadMessageCountChange && messageIndex >= Math.max(0, maxIndex - 1);
+            const wasOnLastMessage = messageIndex >= Math.max(0, previousCount - 1);
+            const previousLastText = previousLastSignature.split('::').slice(2).join('::');
+            const lastText = messages[maxIndex]?.text || '';
 
             if (chatScopeChanged) {
                 jumpToLatest();
             } else if (hadMessageCountChange && previousCount === 0 && messages.length > 0) {
                 jumpToLatest();
-            } else if (!hadMessageCountChange && hadLastSignatureChange) {
-                if (messageIndex >= maxIndex) {
-                    jumpToLatest();
-                } else {
-                    renderCurrent();
-                }
-            } else if (hadMessageCountChange && messages.length > previousCount && wasAtTailBeforeNewMessage) {
+            } else if (hadMessageCountChange && messages.length > previousCount && wasOnLastMessage) {
+                // A new line came in while reading the last one: read it from the start.
+                jumpToLatestFromStart();
+            } else if (!hadMessageCountChange && hadLastSignatureChange && messageIndex >= maxIndex
+                && !lastText.startsWith(previousLastText)) {
+                // Swiped or regenerated: the reply was replaced, so start it over.
+                chunkIndex = 0;
                 renderCurrent();
             } else {
+                // Streaming text or unrelated chat changes: stay on the same bit.
+                // The box skips re-typing a line it already shows.
                 renderCurrent();
             }
         });
@@ -3441,6 +4173,33 @@ function createVnModeController() {
 
     const chatEl = document.getElementById('chat');
     if (chatEl) observer.observe(chatEl, { childList: true, subtree: true });
+
+    // The typing bar is pinned by measured position, so re-dock whenever the
+    // box or the bar changes size (new text, streaming, late web fonts,
+    // resizing) or a body class shows or restyles them (View conversation,
+    // phase themes). Without this the bar is left where the box used to end.
+    let _vnRelayoutRaf = null;
+    const scheduleRelayout = () => {
+        if (_vnRelayoutRaf) return;
+        _vnRelayoutRaf = requestAnimationFrame(() => {
+            _vnRelayoutRaf = null;
+            if (!vnEnabled) return;
+            updateBottomOffset();
+            // Keep a moved box on screen once its style's size applies.
+            if (Number.isFinite(framePosX) && Number.isFinite(framePosY) && !resizeState) {
+                setFramePosition(framePosX, framePosY);
+            }
+            dockTypingSection();
+        });
+    };
+    if (typeof ResizeObserver === 'function') {
+        const sizeObserver = new ResizeObserver(scheduleRelayout);
+        if (frameEl) sizeObserver.observe(frameEl);
+        const composeForObserver = getComposeElement();
+        if (composeForObserver) sizeObserver.observe(composeForObserver);
+    }
+    new MutationObserver(scheduleRelayout).observe(document.body, { attributes: true, attributeFilter: ['class', 'data-dangan-vn-skin'] });
+    document.fonts?.ready?.then(scheduleRelayout).catch(() => {});
 
     const panelEl = document.getElementById('dangan_monopad_panel');
     if (panelEl) {
@@ -3453,6 +4212,14 @@ function createVnModeController() {
     }
 
     return {
+        setSkin(skin) {
+            const next = normalizeVnSkin(skin);
+            // On <body> so the docked typing bar (outside the overlay) can match.
+            document.body.dataset.danganVnSkin = next;
+            restoreSavedSize();
+            restoreSavedPosition();
+            dockTypingSection();
+        },
         setEnabled(enabled) {
             const isEnabled = !!enabled;
             vnEnabled = isEnabled;
@@ -3483,6 +4250,7 @@ function createVnModeController() {
             }
 
             trySetSillyTavernVisualNovelMode(isEnabled);
+            syncStStreamingForVn(isEnabled);
         },
         refresh() {
             ensureHostAttached();
@@ -3502,6 +4270,12 @@ function createVnModeController() {
             }
             renderCurrent();
         },
+        // The Transcript keybind.
+        toggleTranscript() {
+            if (!vnEnabled || !host.classList.contains('active')) return false;
+            setTranscriptOpen(!transcriptOpen);
+            return true;
+        },
         setMonopadOpen(isOpen) {
             monopadOpen = !!isOpen;
             syncMonopadVisibility();
@@ -3510,7 +4284,7 @@ function createVnModeController() {
     };
 }
 
-function tryEnableInvestigationToggleInObject(root, { maxDepth = 8 } = {}) {
+function tryEnableInvestigationToggleInObject(root, { maxDepth = 8, on = true } = {}) {
     if (!root || typeof root !== "object") return false;
 
     const target = normalizeTextToken("Investigation Time");
@@ -3528,35 +4302,35 @@ function tryEnableInvestigationToggleInObject(root, { maxDepth = 8 } = {}) {
         const hasInvestigationKey = /investigation/.test(label) && /time|mode|toggle|enabled|active/.test(label);
         if (label === target || label.includes(target) || hasInvestigationKey) {
             if (typeof node.enabled === "boolean") {
-                node.enabled = true;
+                node.enabled = on;
                 touched = true;
             }
             if (typeof node.value === "boolean") {
-                node.value = true;
+                node.value = on;
                 touched = true;
             }
             if (typeof node.active === "boolean") {
-                node.active = true;
+                node.active = on;
                 touched = true;
             }
             if (typeof node.toggled === "boolean") {
-                node.toggled = true;
+                node.toggled = on;
                 touched = true;
             }
             if (typeof node.isEnabled === "boolean") {
-                node.isEnabled = true;
+                node.isEnabled = on;
                 touched = true;
             }
             if (typeof node.isActive === "boolean") {
-                node.isActive = true;
+                node.isActive = on;
                 touched = true;
             }
             if (typeof node.setValue === "function") {
-                node.setValue(true);
+                node.setValue(on);
                 touched = true;
             }
             if (typeof node.set === "function") {
-                node.set(true);
+                node.set(on);
                 touched = true;
             }
         }
@@ -3576,7 +4350,7 @@ function tryEnableInvestigationToggleInObject(root, { maxDepth = 8 } = {}) {
     return touched;
 }
 
-function tryEnableInvestigationToggleViaContext() {
+function tryEnableInvestigationToggleViaContext(on = true) {
     if (!window.SillyTavern?.getContext) return false;
 
     const ctx = window.SillyTavern.getContext();
@@ -3594,7 +4368,7 @@ function tryEnableInvestigationToggleViaContext() {
     let touched = false;
     for (const candidate of candidates) {
         try {
-            touched = tryEnableInvestigationToggleInObject(candidate) || touched;
+            touched = tryEnableInvestigationToggleInObject(candidate, { on }) || touched;
         } catch {
             // Skip malformed or protected objects without breaking Investigation start flow.
         }
@@ -3611,7 +4385,7 @@ function tryEnableInvestigationToggleViaContext() {
     return true;
 }
 
-function tryEnableInvestigationToggleViaDom() {
+function tryEnableInvestigationToggleViaDom(on = true) {
     const target = normalizeTextToken("Investigation Time");
     const scope = Array.from(document.querySelectorAll("label, .menu_button, .inline-drawer-toggle, button, .toggle-item"));
 
@@ -3623,7 +4397,7 @@ function tryEnableInvestigationToggleViaDom() {
         const checkbox = host.querySelector('input[type="checkbox"]') || el.querySelector?.('input[type="checkbox"]');
 
         if (checkbox) {
-            if (checkbox.checked) return true;
+            if (checkbox.checked === on) return true;
             checkbox.click();
             checkbox.dispatchEvent(new Event("input", { bubbles: true }));
             checkbox.dispatchEvent(new Event("change", { bubbles: true }));
@@ -3631,7 +4405,7 @@ function tryEnableInvestigationToggleViaDom() {
         }
 
         const pressed = host.getAttribute("aria-pressed");
-        if (pressed === "true") return true;
+        if (pressed === String(on)) return true;
 
         if (typeof host.click === "function") {
             host.click();
@@ -3642,11 +4416,62 @@ function tryEnableInvestigationToggleViaDom() {
     return false;
 }
 
-function triggerInvestigationTimeToggle() {
-    const byContext = tryEnableInvestigationToggleViaContext();
+function triggerInvestigationTimeToggle(on = true) {
+    const byContext = tryEnableInvestigationToggleViaContext(on);
     if (byContext) return true;
 
-    return tryEnableInvestigationToggleViaDom();
+    return tryEnableInvestigationToggleViaDom(on);
+}
+
+// Phase banners for the game text box styles (Settings → text box). Classic
+// keeps the original banner; THH / SDR2 / V3 show this one instead, styled in
+// styles/systems/phase/banners.css. `label` is the THH / SDR2 band text; `v3`
+// is the V3 title card, as groups of lines whose letters pop in one by one.
+const GAME_BANNER_KINDS = {
+    investigation: { label: "Investigate", full: "Investigation START!", v3: [["In", "vestiga", "atio"], ["n"], ["START!"]] },
+    freetime: { label: "Free Time", full: "Free Time START!", v3: [["FreeTime"], ["START!"]] },
+    nighttime: { label: "Nighttime", full: "Nighttime START!", v3: [["Night", "time"], ["START!"]] },
+};
+
+// START! is a ransom note: every letter a different size and tilt.
+const GAME_BANNER_START_SCALE = [1.18, 0.82, 1.06, 0.86, 1.24, 1.02];
+const GAME_BANNER_START_TILT = [-9, 7, -4, 11, -7, 13];
+
+function buildGameBannerCards(groups) {
+    let index = 0;
+    return groups.map((lines, g) => {
+        const isStart = lines.length === 1 && lines[0] === "START!";
+        const rows = lines.map((line, l) => {
+            const letters = [...line].map((ch, c) => {
+                const scale = isStart ? GAME_BANNER_START_SCALE[c % GAME_BANNER_START_SCALE.length] : 1;
+                const tilt = isStart ? GAME_BANNER_START_TILT[c % GAME_BANNER_START_TILT.length] : 0;
+                return `<span class="dangan-gb-letter" style="--i:${index++};--s:${scale};--r:${tilt}deg">${ch}</span>`;
+            }).join("");
+            return `<span class="dangan-gb-line-text l${l}">${letters}</span>`;
+        }).join("");
+        return `<span class="dangan-gb-group g${g}${isStart ? " start" : ""}"><span class="dangan-gb-card"></span>${rows}</span>`;
+    }).join("");
+}
+
+function ensureGameBanner(overlay, kind) {
+    if (!overlay || overlay.querySelector(":scope > .dangan-gb")) return;
+    const spec = GAME_BANNER_KINDS[kind];
+    if (!spec) return;
+    const banner = document.createElement("div");
+    banner.className = "dangan-gb";
+    banner.dataset.kind = kind;
+    banner.setAttribute("role", "status");
+    banner.setAttribute("aria-label", spec.full);
+    banner.innerHTML = `
+        <div class="dangan-gb-dim"></div>
+        <div class="dangan-gb-band"><div class="dangan-gb-streaks"></div></div>
+        <div class="dangan-gb-rule top"></div>
+        <div class="dangan-gb-rule bottom"></div>
+        <div class="dangan-gb-diamond"></div>
+        <div class="dangan-gb-label" aria-hidden="true"><span class="dangan-gb-label-text">${spec.label}</span><span class="dangan-gb-label-ghost">${spec.label}</span></div>
+        <div class="dangan-gb-cards" aria-hidden="true">${buildGameBannerCards(spec.v3)}</div>
+    `;
+    overlay.appendChild(banner);
 }
 
 function ensureInvestigationOverlay() {
@@ -3674,6 +4499,7 @@ function ensureInvestigationOverlay() {
         document.body.appendChild(overlay);
     }
 
+    ensureGameBanner(overlay, "investigation");
     return overlay;
 }
 
@@ -3695,7 +4521,58 @@ function ensureFreeTimeOverlay() {
         `;
         document.body.appendChild(overlay);
     }
+    ensureGameBanner(overlay, "freetime");
     return overlay;
+}
+
+// Dialogs that handle Escape themselves; the skip handler leaves it to them.
+function isEscapeOwnedByDialog() {
+    return !!document.querySelector(
+        "#dangan-title-screen, #monopad-confirm-overlay.open, #dangan-boot-greeting, #dangan-minigame-guide-modal, #dangan-leave-confirm",
+    );
+}
+
+// What a minigame can change while it runs: Monocoins (wrong answers cost
+// some), Trust Fragments, skill points and XP. Backing out with Escape puts
+// them back.
+function snapshotMinigameState() {
+    const root = extension_settings[extensionName] || {};
+    const inv = root.inventory || {};
+    return JSON.parse(JSON.stringify({
+        monocoins: inv.monocoins ?? 0,
+        trustFragments: inv.trustFragments ?? 0,
+        skillPoints: inv.skillPoints,
+        progression: root.progression ?? null,
+    }));
+}
+
+function restoreMinigameState(snapshot) {
+    if (!snapshot) return;
+    const root = extension_settings[extensionName] ??= {};
+    root.inventory ??= {};
+    root.inventory.monocoins = snapshot.monocoins;
+    root.inventory.trustFragments = snapshot.trustFragments;
+    if (snapshot.skillPoints !== undefined) root.inventory.skillPoints = snapshot.skillPoints;
+    if (snapshot.progression) root.progression = snapshot.progression;
+    saveSettingsDebounced();
+    try { rewards?.renderProgressionUi?.(); } catch (_) {}
+    try { itemsPanelController?.renderSkillsItemsPanel?.(); } catch (_) {}
+}
+
+// A phase banner can be skipped with Escape: it hides at once, its sound
+// stops, and whatever was waiting on it carries on. Returns the skip token.
+function registerSkippableBanner(controller, displayMs, sound, onSkip) {
+    const token = createSkipToken();
+    const release = pushSkippable({ kind: "sequence", skip: () => token.skip() });
+    const timer = setTimeout(release, displayMs);
+    token.onSkip(() => {
+        clearTimeout(timer);
+        release();
+        controller.clearBanner();
+        try { sound?.pause?.(); } catch (_) {}
+        onSkip?.();
+    });
+    return token;
 }
 
 const freeTimeStartController = {
@@ -3731,7 +4608,7 @@ const freeTimeStartController = {
     triggerAsync() {
         if (!sfx?.investigation_start) {
             this.showBanner(2200);
-            return new Promise(resolve => setTimeout(resolve, 2200));
+            return registerSkippableBanner(this, 2200, null).delay(2200);
         }
         playSfx(sfx.investigation_start);
         const durationSec = Number(sfx.investigation_start.duration);
@@ -3740,7 +4617,7 @@ const freeTimeStartController = {
             : 2200;
         const displayDuration = Math.max(1400, durationMs + 120);
         this.showBanner(displayDuration);
-        return new Promise(resolve => setTimeout(resolve, displayDuration));
+        return registerSkippableBanner(this, displayDuration, sfx.investigation_start).delay(displayDuration);
     },
 };
 
@@ -3762,6 +4639,7 @@ function ensureNightTimeOverlay() {
         `;
         document.body.appendChild(overlay);
     }
+    ensureGameBanner(overlay, "nighttime");
     return overlay;
 }
 
@@ -3798,7 +4676,7 @@ const nightTimeStartController = {
     triggerAsync() {
         if (!sfx?.investigation_start) {
             this.showBanner(2200);
-            return new Promise(resolve => setTimeout(resolve, 2200));
+            return registerSkippableBanner(this, 2200, null).delay(2200);
         }
         playSfx(sfx.investigation_start);
         const durationSec = Number(sfx.investigation_start.duration);
@@ -3807,7 +4685,7 @@ const nightTimeStartController = {
             : 2200;
         const displayDuration = Math.max(1400, durationMs + 120);
         this.showBanner(displayDuration);
-        return new Promise(resolve => setTimeout(resolve, displayDuration));
+        return registerSkippableBanner(this, displayDuration, sfx.investigation_start).delay(displayDuration);
     },
 };
 
@@ -3825,32 +4703,244 @@ function setInvestigationUnderway(on) {
     saveSettingsDebounced();
 }
 
-function playShopTrack() {
-    const tracks = getMonopadSetting("shopTracks") || [];
-    if (!tracks.length) return;
-    const path = tracks[Math.floor(Math.random() * tracks.length)];
-    if (!path) return;
-    if (shopTrackAudio) {
-        shopTrackAudio.pause();
-        shopTrackAudio = null;
+// ── Phase changes, undo and the Phase HUD ─────────────────────────────────────
+
+const phaseHistory = createPhaseHistory();
+
+function isClassTrialActive() {
+    return document.body.classList.contains("dangan-trial-active");
+}
+
+function getCurrentPhase() {
+    return derivePhase({
+        timeTracker: ensureTimeTrackerState(),
+        investigationUnderway,
+        trialActive: isClassTrialActive(),
+    });
+}
+
+function getCurrentStatusLine() {
+    return getStatusLine({
+        phase: getCurrentPhase(),
+        day: ensureTimeTrackerState().day,
+        chapterLabel: getChapterLabel(),
+    });
+}
+
+// Reads the tracker without ensureTimeTrackerState(), which swaps in a new
+// object: callers like passTimeToNight hold the current one and mutate it.
+function rememberPhaseForUndo(label) {
+    phaseHistory.push({ timeTracker: extension_settings[extensionName]?.timeTracker, investigationUnderway }, label);
+}
+
+function playCurrentPhaseTrack() {
+    if (investigationUnderway) playInvestigationTrack();
+    else if (ensureTimeTrackerState().phase === TIME_PHASE_NIGHT) playNighttimeTrack();
+    else playDaytimeTrack();
+}
+
+function syncAfterPhaseChange() {
+    saveSettingsDebounced();
+    renderTimeTrackerUi();
+    applyTimeContextToGeneration();
+    applyDynamicTheme();
+    playCurrentPhaseTrack();
+}
+
+function undoLastPhaseChange() {
+    const entry = phaseHistory.pop();
+    if (!entry) return false;
+
+    const wasInvestigating = investigationUnderway;
+    Object.assign(ensureTimeTrackerState(), entry.snapshot.timeTracker);
+    setInvestigationUnderway(entry.snapshot.investigationUnderway);
+    if (wasInvestigating !== investigationUnderway) {
+        investigationStartController.setPresetToggle(investigationUnderway);
     }
+    syncAfterPhaseChange();
+    notify({ title: "UNDONE", message: `${entry.label || "Last change"} undone. Now: ${getCurrentStatusLine()}` });
+    return true;
+}
+
+function endInvestigation({ source = "manual" } = {}) {
+    if (!investigationUnderway) return false;
+
+    rememberPhaseForUndo("End investigation");
+    setInvestigationUnderway(false);
+    investigationStartController.setPresetToggle(false);
+    syncAfterPhaseChange();
+    notify({
+        title: "INVESTIGATION ENDED",
+        message: `Back to ${ensureTimeTrackerState().phase === TIME_PHASE_NIGHT ? "nighttime" : "daytime"}. Your Truth Bullets are kept.`,
+        actionLabel: "UNDO",
+        onAction: undoLastPhaseChange,
+    });
+    console.log(`[${extensionName}] Investigation ended (source: ${source}).`);
+    return true;
+}
+
+// The confirm dialog is part of the Monopad markup, which is hidden while the
+// Monopad is closed. Lift it to <body> so the HUD can use it at any time.
+function confirmOutsideMonopad(options) {
+    const overlay = document.getElementById("monopad-confirm-overlay");
+    if (overlay && overlay.parentElement !== document.body) document.body.appendChild(overlay);
+    return openMonopadConfirmDialog(options);
+}
+
+async function runPhaseAction(action) {
+    if (!action || action.disabled) return;
+    if (action.confirm) {
+        const accepted = await confirmOutsideMonopad({ cancelLabel: "CANCEL", ...action.confirm });
+        if (!accepted) return;
+    }
+
+    setPhaseMenuOpen(false);
+    switch (action.id) {
+        case "end-investigation":
+            endInvestigation({ source: "phase_hud" });
+            break;
+        case "start-trial":
+            await triggerTrialStartFromMapPin();
+            break;
+        case "pass-time":
+            await passTimeToNight({ source: "phase_hud" });
+            break;
+        case "sleep":
+            await sleepToNextDay({ source: "phase_hud" });
+            break;
+        case "start-investigation":
+            investigationStartController.trigger();
+            break;
+        case "undo":
+            undoLastPhaseChange();
+            break;
+    }
+}
+
+function ensurePhaseHud() {
+    let hud = document.getElementById("dangan-phase-hud");
+    if (hud) return hud;
+    if (!document.body) return null;
+
+    hud = document.createElement("div");
+    hud.id = "dangan-phase-hud";
+    hud.innerHTML = `
+        <button type="button" class="dangan-phase-chip" aria-expanded="false" aria-controls="dangan-phase-menu" title="Where the story is, and what you can do next">
+            <span class="dangan-phase-chip-dot" aria-hidden="true"></span>
+            <span class="dangan-phase-chip-label"></span>
+        </button>
+        <div class="dangan-phase-menu" id="dangan-phase-menu" hidden>
+            <div class="dangan-phase-hint"></div>
+            <div class="dangan-phase-actions"></div>
+        </div>
+    `;
+    document.body.appendChild(hud);
+
+    hud.querySelector(".dangan-phase-chip").addEventListener("click", (event) => {
+        event.stopPropagation();
+        setPhaseMenuOpen(hud.querySelector(".dangan-phase-menu").hidden);
+    });
+    document.addEventListener("click", (event) => {
+        if (!hud.contains(event.target)) setPhaseMenuOpen(false);
+    });
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") setPhaseMenuOpen(false);
+    });
+    return hud;
+}
+
+function setPhaseMenuOpen(open) {
+    const hud = document.getElementById("dangan-phase-hud");
+    const menu = hud?.querySelector(".dangan-phase-menu");
+    if (!menu) return;
+    menu.hidden = !open;
+    hud.querySelector(".dangan-phase-chip")?.setAttribute("aria-expanded", String(Boolean(open)));
+    if (open) renderPhaseMenu();
+}
+
+function renderPhaseMenu() {
+    const hud = document.getElementById("dangan-phase-hud");
+    if (!hud) return;
+
+    const phase = getCurrentPhase();
+    const timeTracker = ensureTimeTrackerState();
+    hud.querySelector(".dangan-phase-hint").textContent = getNextStepHint({
+        phase,
+        timeTracker,
+        truthBulletCount: getTruthBullets().length,
+        rosterCount: characters.size,
+    });
+
+    const last = phaseHistory.peek();
+    const actions = getPhaseActions({ phase, timeTracker, canUndo: Boolean(last), undoLabel: last?.label });
+    const list = hud.querySelector(".dangan-phase-actions");
+    list.replaceChildren(...actions.map((action) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = `dangan-phase-action${action.id === "undo" ? " dangan-phase-action-undo" : ""}`;
+        btn.textContent = action.label;
+        btn.disabled = Boolean(action.disabled);
+        if (action.reason) btn.title = action.reason;
+        btn.addEventListener("click", (event) => {
+            event.stopPropagation();
+            void runPhaseAction(action);
+        });
+        return btn;
+    }));
+}
+
+function refreshPhaseHud() {
+    const hud = ensurePhaseHud();
+    if (!hud) return;
+    // Sit under the chapter / level / room readout at the top right once it
+    // exists. Its big chapter title is already showing, so leave it out here.
+    const corner = document.getElementById("dangan-hud-topright");
+    if (corner && hud.parentElement !== corner) corner.appendChild(hud);
+    hud.hidden = getMonopadSetting("phaseHudEnabled") === false;
+    hud.querySelector(".dangan-phase-chip-label").textContent = hud.parentElement === corner
+        ? getStatusLine({ phase: getCurrentPhase(), day: ensureTimeTrackerState().day })
+        : getCurrentStatusLine();
+    if (!hud.querySelector(".dangan-phase-menu").hidden) renderPhaseMenu();
+    // The EXPRESSIONS tab hangs under this row.
+    expressionPickerController?.place?.();
+}
+
+// A looping track from one of the LOCATIONS playlists (Shop, Monokuma),
+// played over the paused BGM. Returns false when the playlist is empty.
+function playLocationTrack(settingKey) {
+    const tracks = getMonopadSetting(settingKey) || [];
+    if (!tracks.length) return false;
+    const path = tracks[Math.floor(Math.random() * tracks.length)];
+    if (!path) return false;
+    stopLocationTrack();
     shopTrackAudio = new Audio(path);
     shopTrackAudio.loop = true;
     shopTrackAudio.volume = Number(getMonopadSetting("monomonoBgmVolume") ?? 40) / 100;
-    shopTrackAudio.play().catch(e => console.warn("[Dangan][Shop] Track play failed:", e));
+    // A paused player keeps the room quiet too.
+    if (!bgmUserPaused) shopTrackAudio.play().catch(e => console.warn("[Dangan][BGM] Location track play failed:", e));
+    return true;
 }
 
-function stopShopTrack() {
+function stopLocationTrack() {
     if (shopTrackAudio) {
         shopTrackAudio.pause();
         shopTrackAudio = null;
     }
+}
+
+function playShopTrack() {
+    playLocationTrack("shopTracks");
+}
+
+function stopShopTrack() {
+    stopLocationTrack();
 }
 
 const BGM_TRACK_TABS = [
     { key: "daytime",                settingKey: "daytimeTracks",             listId: "daytime-tracks-list",                selectedId: "daytime-selected-list" },
     { key: "nighttime",              settingKey: "nighttimeTracks",           listId: "nighttime-tracks-list",              selectedId: "nighttime-selected-list" },
     { key: "investigation",          settingKey: "investigationTracks",       listId: "investigation-tracks-list",          selectedId: "investigation-selected-list" },
+    { key: "title",                  settingKey: "titleTracks",               listId: "title-tracks-list",                  selectedId: "title-selected-list" },
     { key: "happy",                  settingKey: "happyTracks",               listId: "happy-tracks-list",                  selectedId: "happy-selected-list" },
     { key: "sad",                    settingKey: "sadTracks",                 listId: "sad-tracks-list",                    selectedId: "sad-selected-list" },
     { key: "dramatic",               settingKey: "dramaticTracks",            listId: "dramatic-tracks-list",               selectedId: "dramatic-selected-list" },
@@ -3858,6 +4948,7 @@ const BGM_TRACK_TABS = [
     { key: "angry",                  settingKey: "angryTracks",               listId: "angry-tracks-list",                  selectedId: "angry-selected-list" },
     { key: "romantic",               settingKey: "romanticTracks",            listId: "romantic-tracks-list",               selectedId: "romantic-selected-list" },
     { key: "shop",                   settingKey: "shopTracks",                listId: "shop-tracks-list",                   selectedId: "shop-selected-list" },
+    { key: "monokuma",               settingKey: "monokumaTracks",            listId: "monokuma-tracks-list",               selectedId: "monokuma-selected-list" },
     { key: "trial-general",          settingKey: "trialGeneralTracks",        listId: "trial-general-tracks-list",          selectedId: "trial-general-selected-list" },
     { key: "trial-preparation",      settingKey: "trialPreparationTracks",    listId: "trial-preparation-tracks-list",      selectedId: "trial-preparation-selected-list" },
     { key: "trial-debates",          settingKey: "trialDebatesTracks",        listId: "trial-debates-tracks-list",          selectedId: "trial-debates-selected-list" },
@@ -3913,6 +5004,7 @@ const BGM_PLAYLIST_LABELS = {
     daytimeTracks:           'DAYTIME',
     nighttimeTracks:         'NIGHTTIME',
     investigationTracks:     'INVESTIGATION',
+    titleTracks:             'TITLE',
     happyTracks:             'HAPPY',
     sadTracks:               'SAD',
     dramaticTracks:          'DRAMATIC',
@@ -3920,6 +5012,7 @@ const BGM_PLAYLIST_LABELS = {
     angryTracks:             'ANGRY',
     romanticTracks:          'ROMANTIC',
     shopTracks:              'SHOP',
+    monokumaTracks:          'MONOKUMA',
     trialGeneralTracks:      'GENERAL',
     trialPreparationTracks:  'TRIAL PREP',
     trialDebatesTracks:      'NON-STOP DEBATE',
@@ -3941,6 +5034,7 @@ const BGM_PLAYLIST_PARENTS = {
     daytimeTracks:           'PHASES',
     nighttimeTracks:         'PHASES',
     investigationTracks:     'PHASES',
+    titleTracks:             'PHASES',
     happyTracks:             'MOODS',
     sadTracks:               'MOODS',
     dramaticTracks:          'MOODS',
@@ -3948,6 +5042,7 @@ const BGM_PLAYLIST_PARENTS = {
     angryTracks:             'MOODS',
     romanticTracks:          'MOODS',
     shopTracks:              'LOCATIONS',
+    monokumaTracks:          'LOCATIONS',
     trialPreparationTracks:  'LOCATIONS',
     trialGeneralTracks:      'TRIAL',
     trialDebatesTracks:      'TRIAL',
@@ -3970,9 +5065,13 @@ const BGM_PLAYLIST_PARENTS = {
 // through the fade-to-black even if ST/DA/etc. tries to clip it.
 let _bgmTransitionGuardUntilMs = 0;
 let _bgmTransitionWatchdogRaf  = null;
+// Set by the music widget's pause button. Until the player presses play or
+// picks a track, nothing else (room changes, Dynamic Songs, a pin's music,
+// the transition guard) starts the music again; new tracks load paused.
+let bgmUserPaused = false;
 function _bgmTransitionWatchdogTick() {
     const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-    if (now >= _bgmTransitionGuardUntilMs) {
+    if (now >= _bgmTransitionGuardUntilMs || bgmUserPaused) {
         _bgmTransitionWatchdogRaf = null;
         return;
     }
@@ -4020,7 +5119,7 @@ function playBgmPath(path, settingKey = null) {
     const audioEl = investigationTrackAudio;
     const origPause = audioEl.pause.bind(audioEl);
     audioEl.pause = function () {
-        if (audioEl !== investigationTrackAudio) return origPause();
+        if (audioEl !== investigationTrackAudio || bgmUserPaused) return origPause();
         const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
         if (now < _bgmTransitionGuardUntilMs) return; // suppress — guard armed
         return origPause();
@@ -4029,14 +5128,16 @@ function playBgmPath(path, settingKey = null) {
     // `load()` resetting state) bypass the .pause() override and fire the
     // 'pause' event directly. Catch those and resume during the guard window.
     audioEl.addEventListener('pause', () => {
-        if (audioEl !== investigationTrackAudio) return;
+        if (audioEl !== investigationTrackAudio || bgmUserPaused) return;
         const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
         if (now >= _bgmTransitionGuardUntilMs) return;
         audioEl.play().catch(() => {});
     });
-    investigationTrackAudio.play().catch(e =>
-        console.warn(`[Dangan][BGM] Track play failed (${settingKey ?? "?"}):`, e)
-    );
+    if (!bgmUserPaused) {
+        investigationTrackAudio.play().catch(e =>
+            console.warn(`[Dangan][BGM] Track play failed (${settingKey ?? "?"}):`, e)
+        );
+    }
 
     // Seed DA's internal lastBgmPath by triggering it to "select" our track.
     // DA's polling worker checks: if chosen path === lastBgmPath → return early (no el.load/play).
@@ -4064,6 +5165,48 @@ function playBgmPath(path, settingKey = null) {
     }
 
     console.log(`[Dangan][BGM] Playing track (${settingKey ?? "?"}): ${path}`);
+}
+
+// A room with its own music sets aside whatever was playing (the track and
+// where it was), and leaving for a room without one picks it back up.
+let _pinBgmSaved = null;
+
+function enterPinBgm(path) {
+    if (!path) return;
+    if (investigationTrackAudio && investigationTrackAudio.src
+        && decodeURI(investigationTrackAudio.src).endsWith(decodeURI(path))) return; // already on
+    if (!_pinBgmSaved) {
+        _pinBgmSaved = {
+            audio: investigationTrackAudio,
+            settingKey: bgmCurrentSettingKey,
+            list: [...bgmCurrentList],
+            index: bgmCurrentIndex,
+        };
+        // Detach it so playBgmPath leaves the saved element (and its place) alone.
+        if (investigationTrackAudio) { try { investigationTrackAudio.pause(); } catch (_) {} }
+        investigationTrackAudio = null;
+    }
+    playBgmPath(path);
+}
+
+function leavePinBgm() {
+    const saved = _pinBgmSaved;
+    if (!saved) return;
+    _pinBgmSaved = null;
+    if (investigationTrackAudio) {
+        const roomTrack = investigationTrackAudio;
+        investigationTrackAudio = null;
+        try { roomTrack.pause(); } catch (_) {}
+    }
+    bgmCurrentSettingKey = saved.settingKey;
+    bgmCurrentList = saved.list;
+    bgmCurrentIndex = saved.index;
+    if (saved.audio) {
+        investigationTrackAudio = saved.audio;
+        if (!bgmUserPaused) investigationTrackAudio.play().catch(() => {});
+    } else if (!bgmUserPaused) {
+        playPhaseTrack();
+    }
 }
 
 function playTrackFromSetting(settingKey, { forceDifferent = false } = {}) {
@@ -4117,6 +5260,8 @@ function openAssignedSongPicker() {
         currentSettingKey: bgmCurrentSettingKey || "",
         onPick: ({ path, settingKey }) => {
             try { dynamicSongsController?.holdManual?.(); } catch { /* ignore */ }
+            bgmUserPaused = false;
+            _pinBgmSaved = null; // the player's pick replaces what was set aside
             playSpecificTrack(path, settingKey);
         },
     });
@@ -4129,6 +5274,7 @@ function getPhaseSettingKey() {
 }
 
 function handleScanMood() {
+    bgmUserPaused = false;
     const result = dynamicSongsController?.rescanAndPlay?.() || {};
     if (!getMonopadSetting("moodScanToastEnabled")) return;
     showMoodScanToast(formatMoodScanToast(result, BGM_PLAYLIST_LABELS));
@@ -4164,18 +5310,21 @@ function syncMoodScanButton() {
 
 function bgmPlayPrev() {
     if (!bgmCurrentList.length) return;
+    bgmUserPaused = false;
     bgmCurrentIndex = (bgmCurrentIndex - 1 + bgmCurrentList.length) % bgmCurrentList.length;
     playBgmPath(bgmCurrentList[bgmCurrentIndex], bgmCurrentSettingKey);
 }
 
 function bgmPlayNext() {
     if (!bgmCurrentList.length) return;
+    bgmUserPaused = false;
     bgmCurrentIndex = (bgmCurrentIndex + 1) % bgmCurrentList.length;
     playBgmPath(bgmCurrentList[bgmCurrentIndex], bgmCurrentSettingKey);
 }
 
 function bgmPlayShuffle() {
     if (!bgmCurrentList.length) return;
+    bgmUserPaused = false;
     bgmCurrentIndex = Math.floor(Math.random() * bgmCurrentList.length);
     playBgmPath(bgmCurrentList[bgmCurrentIndex], bgmCurrentSettingKey);
 }
@@ -4193,14 +5342,16 @@ function bgmAttachEndedListener(audioEl) {
 function bgmTogglePause() {
     // Prioritise the extension's own element — matches getAudioElement() priority.
     if (investigationTrackAudio) {
-        if (investigationTrackAudio.paused) investigationTrackAudio.play().catch(() => {});
-        else investigationTrackAudio.pause();
+        bgmUserPaused = !investigationTrackAudio.paused;
+        if (bgmUserPaused) investigationTrackAudio.pause();
+        else investigationTrackAudio.play().catch(() => {});
         return;
     }
     const audioEl = document.getElementById("audio_bgm");
     if (audioEl instanceof HTMLAudioElement) {
-        if (audioEl.paused) audioEl.play().catch(() => {});
-        else audioEl.pause();
+        bgmUserPaused = !audioEl.paused;
+        if (bgmUserPaused) audioEl.pause();
+        else audioEl.play().catch(() => {});
     }
 }
 
@@ -4464,14 +5615,18 @@ const investigationStartController = {
         return { played: true, durationMs };
     },
 
-    enableToggle() {
+    setPresetToggle(on = true) {
+        // With the extension giving the AI its marker instructions, the
+        // preset's own Investigation Time toggle isn't needed.
+        if (getMonopadSetting("markerPromptsEnabled")) return false;
+        const verb = on ? "enable" : "disable";
         try {
-            const enabled = triggerInvestigationTimeToggle();
-            if (enabled) {
-                console.log("[Dangan][Investigation] Investigation Time toggle enabled in current preset.");
+            const changed = triggerInvestigationTimeToggle(on);
+            if (changed) {
+                console.log(`[Dangan][Investigation] Investigation Time toggle ${verb}d in current preset.`);
                 return true;
             }
-            console.warn("[Dangan][Investigation] Could not auto-enable the Investigation Time toggle.");
+            console.warn(`[Dangan][Investigation] Could not auto-${verb} the Investigation Time toggle.`);
             return false;
         } catch (error) {
             console.warn("[Dangan][Investigation] Toggle automation failed:", error);
@@ -4480,13 +5635,25 @@ const investigationStartController = {
     },
 
     trigger() {
+        if (!investigationUnderway) rememberPhaseForUndo("Start investigation");
         const sfxResult = this.playSfx();
         const displayDuration = Math.max(1400, (sfxResult?.durationMs || 2200) + 120);
         const bannerShown = this.showBanner(displayDuration);
-        const toggled = this.enableToggle();
+        const toggled = this.setPresetToggle(true);
 
         const trackDelay = sfxResult?.played ? (sfxResult.durationMs + 120) : 0;
-        setTimeout(() => playInvestigationTrack(), trackDelay);
+        let trackTimer = setTimeout(() => {
+            trackTimer = null;
+            playInvestigationTrack();
+        }, trackDelay);
+        if (bannerShown) {
+            registerSkippableBanner(this, displayDuration, sfxResult?.played ? sfx.investigation_start : null, () => {
+                if (!trackTimer) return;
+                clearTimeout(trackTimer);
+                trackTimer = null;
+                playInvestigationTrack();
+            });
+        }
 
         setInvestigationUnderway(true);
         renderTimeTrackerUi();
@@ -4504,6 +5671,25 @@ const investigationStartController = {
 
 
 async function triggerTrialStartFromMapPin() {
+    const suspended = getTrialSession();
+    if (suspended?.suspended) {
+        const resume = await confirmOutsideMonopad({
+            title: "SUSPENDED CLASS TRIAL",
+            message: "A Class Trial is suspended. Resume it where you left off?",
+            confirmLabel: "RESUME",
+            cancelLabel: "START NEW",
+        });
+        if (resume) return resumeClassTrial();
+        const discard = await confirmOutsideMonopad({
+            title: "START A NEW CLASS TRIAL?",
+            message: "The suspended Class Trial will be ended and its progress cleared.",
+            confirmLabel: "START NEW",
+            cancelLabel: "CANCEL",
+        });
+        if (!discard) return false;
+        discardSuspendedTrial(suspended);
+    }
+
     const accepted = await classTrialMenuController?.open?.();
     if (!accepted) return false;
 
@@ -4516,14 +5702,24 @@ async function triggerTrialStartFromMapPin() {
     // Close the Monopad (if open) and cover the transition with a loading screen
     // while the trial chat is created and the Class Trial stage mounts — then fade
     // the loading screen out to reveal the trial.
-    if (document.body.classList.contains('dangan-monopad-open')) {
-        document.getElementById('dangan_monopad_close')?.click();
-    }
+    closeMonopadIfOpen();
     const loadingEl = showMinigameLoadingState('Entering the Class Trial');
 
     console.log(`[Dangan][Trial] Begin Class Trial with ${roster.length} participant(s):`, roster);
     try {
-        await createClassTrialGroupChat(roster);
+        const mainGroupId = getMainChatGroupId();
+        if (mainGroupId) {
+            // One Main Chat: the trial is held in the story chat itself.
+            const ok = await openMainChatForTrial(mainGroupId)
+                && await overworldSceneController?.setTrialPresence?.(roster);
+            if (!ok) return false;
+            setTrialSession({ mode: SAVE_MODES.SINGLE, groupId: mainGroupId, returnTo: null, suspended: false });
+        } else {
+            const returnTo = captureCurrentChatRef();
+            const groupId = await createClassTrialGroupChat(roster);
+            if (!groupId) return false;
+            setTrialSession({ mode: SAVE_MODES.MULTI, groupId, returnTo, suspended: false });
+        }
         trialManager?.start();
     } finally {
         // Let the trial chat load + the stage mount/fade in behind the loading
@@ -4531,6 +5727,147 @@ async function triggerTrialStartFromMapPin() {
         setTimeout(() => loadingEl?.hide?.(), 1600);
     }
     return true;
+}
+
+// ── Class Trial session ──────────────────────────────────────────────────────
+// Where the current trial lives and how to get back out of it. Stored per save
+// ("trialSession" story key): { mode, groupId, returnTo, suspended }.
+
+function getTrialSession() {
+    const session = extension_settings[extensionName]?.trialSession;
+    return session && typeof session === "object" && session.groupId ? session : null;
+}
+
+function setTrialSession(session) {
+    extension_settings[extensionName].trialSession = session || null;
+    saveSettingsDebounced();
+}
+
+function closeMonopadIfOpen() {
+    if (document.body.classList.contains('dangan-monopad-open')) {
+        document.getElementById('dangan_monopad_close')?.click();
+    }
+}
+
+// The One Main Chat group, when that play style is on.
+function getMainChatGroupId() {
+    if (!getMonopadSetting("singleChatOverworldEnabled")) return null;
+    return getMonopadSetting("singleChatGroupId") || null;
+}
+
+function isCurrentGroup(groupId) {
+    const ctx = window.SillyTavern?.getContext?.();
+    return !!groupId && String(ctx?.groupId ?? "") === String(groupId);
+}
+
+async function openMainChatForTrial(groupId) {
+    if (isCurrentGroup(groupId)) return true;
+    try { await openGroupById(groupId); } catch (err) {
+        console.error("[Dangan][Trial] Couldn't open the main chat for the trial:", err);
+    }
+    return isCurrentGroup(groupId);
+}
+
+// The chat the player is in, in the row shape openTitleScreenChat() opens.
+function captureCurrentChatRef() {
+    const ctx = window.SillyTavern?.getContext?.();
+    if (!ctx) return null;
+    const chatFile = String(ctx.getCurrentChatId?.() ?? "");
+    if (ctx.groupId) return { kind: "group", id: ctx.groupId, chatFile, title: "" };
+    const char = ctx.characters?.[ctx.characterId];
+    if (char?.avatar) return { kind: "char", id: char.avatar, chatFile, title: char.name || "" };
+    return null;
+}
+
+// The trial manager only narrows seating to the roster when the trial shares
+// the main chat with everyone else; a trial group already holds just them.
+function getMainChatTrialRoster() {
+    const session = getTrialSession();
+    if (session?.mode !== SAVE_MODES.SINGLE || !isCurrentGroup(session.groupId)) return [];
+    const roster = extension_settings[extensionName]?.trialRoster;
+    return Array.isArray(roster) ? roster : [];
+}
+
+// Leave the trial's chat state behind: in the main chat give the room its
+// mutes back, otherwise go back to the chat the trial was started from.
+async function exitTrialContext(session) {
+    if (session?.mode === SAVE_MODES.SINGLE) {
+        await overworldSceneController?.setTrialPresence?.(null);
+        overworldSceneController?.render?.();
+    } else if (session && isCurrentGroup(session.groupId)) {
+        if (session.returnTo) {
+            await openTitleScreenChat(session.returnTo);
+        } else {
+            try { await executeSlashCommandsWithOptions("/closechat"); } catch {}
+        }
+    }
+    try { playCurrentPhaseTrack(); } catch {}
+}
+
+async function leaveClassTrial({ confirm = true } = {}) {
+    if (confirm) {
+        const accepted = await confirmOutsideMonopad({
+            title: "LEAVE CLASS TRIAL?",
+            message: "The trial will end and its progress will be cleared.",
+            confirmLabel: "LEAVE",
+            cancelLabel: "CANCEL",
+        });
+        if (!accepted) return false;
+    }
+    const session = getTrialSession();
+    // /endtrial while a trial is suspended ends that one, wherever it is.
+    if (session?.suspended) {
+        discardSuspendedTrial(session);
+        return true;
+    }
+    trialManager?.endTrial();
+    setTrialSession(null);
+    await exitTrialContext(session);
+    return true;
+}
+
+async function suspendClassTrial() {
+    if (!trialManager?.suspendTrial?.()) return false;
+    const session = getTrialSession() || { mode: SAVE_MODES.MULTI, groupId: window.SillyTavern?.getContext?.()?.groupId, returnTo: null };
+    setTrialSession({ ...session, suspended: true });
+    await exitTrialContext(session);
+    notify({ title: "CLASS TRIAL SUSPENDED", message: "Begin Class Trial again to resume it." });
+    return true;
+}
+
+async function resumeClassTrial() {
+    const session = getTrialSession();
+    if (!session?.suspended) return false;
+    closeMonopadIfOpen();
+    const loadingEl = showMinigameLoadingState('Returning to the Class Trial');
+    try {
+        const next = { ...session, suspended: false };
+        if (session.mode === SAVE_MODES.SINGLE) {
+            if (!await openMainChatForTrial(session.groupId)) return false;
+            const roster = extension_settings[extensionName]?.trialRoster;
+            if (!await overworldSceneController?.setTrialPresence?.(Array.isArray(roster) ? roster : [])) return false;
+        } else if (!isCurrentGroup(session.groupId)) {
+            next.returnTo = captureCurrentChatRef();
+            await openGroupById(session.groupId);
+            if (!isCurrentGroup(session.groupId)) return false;
+        }
+        if (!trialManager?.resumeTrial?.()) return false;
+        setTrialSession(next);
+        return true;
+    } catch (err) {
+        console.error("[Dangan][Trial] Couldn't resume the Class Trial:", err);
+        return false;
+    } finally {
+        setTimeout(() => loadingEl?.hide?.(), 1600);
+    }
+}
+
+// "Start New" over a suspended trial: drop its saved phase so it can't be
+// resumed. Suspending already handed the main chat's mutes back to the room.
+function discardSuspendedTrial(session) {
+    const trials = extension_settings[extensionName]?.trials;
+    if (trials) delete trials[`group_${session.groupId}`];
+    setTrialSession(null);
 }
 
 // Create a fresh group chat for the trial containing the chosen participants,
@@ -4590,6 +5927,8 @@ async function createClassTrialGroupChat(roster) {
 
         const data = await resp.json();
         console.log(`[Dangan][Trial] Created Class Trial group "${groupName}" (${data.id}) with ${members.length} member(s).`);
+        // The trial chat belongs to the save it was started from.
+        bindGroupToActiveSave(data.id);
 
         // Refresh ST's character/group lists so openGroupById can resolve the new
         // group (the in-memory `groups` array won't include it until we reload).
@@ -4926,9 +6265,15 @@ function queueGiftForNextReply(gift, targetName) {
     if (!gift?.id) return false;
 
     const target = String(targetName || "").trim();
+    if (target && isHostCharacter(target)) return false;
+    // Only a reply that comes after this point reacts; the observer scans
+    // every message, including old ones.
+    const ctx = window.SillyTavern?.getContext?.();
     pendingGiftDeliveryQueue.push({
         ...gift,
         queuedAt: Date.now(),
+        chatId: String(ctx?.getCurrentChatId?.() ?? ""),
+        queuedAtIndex: Array.isArray(ctx?.chat) ? ctx.chat.length : 0,
         ...(target ? { targetName: target } : {}),
     });
 
@@ -5007,22 +6352,26 @@ ${getLocationPromptReference()}
     }
 }
 
+// Returns the trust change it made, for the message effects ledger.
 function applyGiftOutcome(characterName, verdict, signatureSeed) {
     const key = normalizeName(characterName);
     const char = characters.get(key);
-    if (!char) return;
+    if (!char) return null;
 
     const signature = `GIFT||${verdict}||${signatureSeed}`;
-    if (char.trustHistory?.has(signature)) return;
+    if (char.trustHistory?.has(signature)) return null;
 
     char.trustHistory ||= new Set();
     char.trustHistory.add(signature);
 
+    const before = char.trustLevel ?? 1;
     if (verdict === "SOCIAL_UP") {
         increaseTrustWithRewards(char);
     } else if (verdict === "SOCIAL_DOWN") {
         decreaseTrust(char);
     }
+    const dir = verdict === "SOCIAL_UP" ? 1 : verdict === "SOCIAL_DOWN" ? -1 : 0;
+    return { key, dir, before, after: char.trustLevel ?? before, sig: signature };
 }
 
 function injectGiftReactionBanner(msgEl, { signature, verdict, reaction, giftName, characterName, collapsed = false }) {
@@ -5086,9 +6435,14 @@ async function tryResolvePendingGiftForMessage(msgEl, rawText) {
     const characterName = msgEl.getAttribute("ch_name");
 
     if (isUser || isSystem || !characterName) return;
+    // Hosts (Monokuma and co.) don't take gifts: a gift waits for a student.
+    if (isHostCharacter(characterName)) return;
 
     const gift = pendingGiftDeliveryQueue[0];
     if (gift?.targetName && normalizeName(gift.targetName) !== normalizeName(characterName)) return;
+    const ctx = window.SillyTavern?.getContext?.();
+    const mesId = Number(msgEl.getAttribute("mesid"));
+    if (gift?.chatId && gift.chatId === String(ctx?.getCurrentChatId?.() ?? "") && mesId < Number(gift.queuedAtIndex ?? 0)) return;
 
     const signature = buildMessageSignature(msgEl, rawText);
     if (processedGiftMessageSignatures.has(signature)) return;
@@ -5118,10 +6472,18 @@ async function tryResolvePendingGiftForMessage(msgEl, rawText) {
         ...judgement,
     });
 
-    applyGiftOutcome(characterName, reactionData.verdict, signature);
+    // Recorded against the reacting message, so swiping or deleting it
+    // takes the reaction back and hands the gift to the next reply.
+    const totalsBefore = rewards?.getRewardTotals?.();
+    const trustChange = applyGiftOutcome(characterName, reactionData.verdict, signature);
     awardXp(XP_REWARDS.giftGiven, "gift delivered");
     pendingGiftDeliveryQueue.shift();
     pendingGiftResolutionInFlight = false;
+
+    const fx = emptyEffects();
+    if (trustChange) fx.trust.push(trustChange);
+    fx.gifts.push({ gift, signature, giftName: gift.name, characterName });
+    recordMessageEffects(getLedgerRefForElement(msgEl), fx, totalsBefore);
 }
 
 // Sends a prompt through SillyTavern's Connection Manager using the given
@@ -5482,18 +6844,30 @@ ${contextLines || "NONE"}
 }
 
 
-async function generateCharacterNotes(char) {
-const profile = char.social?.profile;
+const PROFILE_FIELDS = ["ultimate", "height", "measurements", "personality", "likes", "dislikes"];
 
-const hasRealData =
-    profile &&
-    Object.values(profile).some(
-        v => v && v !== "unknown"
-    );
-
-if (hasRealData && char.social?.notes) {
-    return char.social.notes;
+// Pull "key: value" lines out of a reply, forgiving the markdown and
+// reasoning models wrap them in ("**Height:** 160 cm", "- likes: tea").
+function parseCharacterProfile(text) {
+    const map = {};
+    const clean = String(text || "")
+        .replace(/<think>[\s\S]*?<\/think>/gi, "")
+        .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "");
+    for (const raw of clean.split("\n")) {
+        const line = raw.replace(/[*_`#>]/g, "").replace(/^\s*[-•\d.)]+\s*/, "").trim();
+        const m = line.match(/^([a-z ]+?)\s*:\s*(.+)$/i);
+        if (!m) continue;
+        const key = m[1].trim().toLowerCase();
+        if (PROFILE_FIELDS.includes(key) && !map[key]) map[key] = m[2].trim();
+    }
+    return map;
 }
+
+async function generateCharacterNotes(char) {
+    const profile = char.social?.profile;
+    const hasRealData = profile && Object.values(profile).some(v => v && v !== "unknown");
+    // Already analyzed, or filled in by hand with EDIT.
+    if (hasRealData) return char.social.notes || "";
 
     const sourceText = getCharacterSourceText(char.name);
 
@@ -5510,57 +6884,24 @@ dislikes: <2-3 items, comma-separated>
 SOURCE:
 ${sourceText.slice(0, 800)}`.trim();
 
-    try {
-        const result = (await generateIsolated(prompt, { maxTokens: 200 })) || "";
-        console.log("[Dangan][Social] Raw generation result:", JSON.stringify(result));
-        const lines = result
-    .split("\n")
-    .map(l => l.trim())
-    .filter(Boolean);
-        
-const map = {};
-
-lines.forEach(line => {
-    const [key, ...rest] = line.split(":");
-    if (!key || !rest.length) return;
-    map[key.trim().toLowerCase()] = rest.join(":").trim();
-});
-
-char.social = {
-    profile: {
-        ultimate: map.ultimate || "unknown",
-        height: map.height || "unknown",
-        measurements: map.measurements || "unknown",
-        personality: map.personality || "unknown",
-        likes: map.likes || "unknown",
-        dislikes: map.dislikes || "unknown"
-    },
-    notes: result,
-    generatedAt: Date.now()
-};
-
-if (char.social.profile.ultimate !== "unknown") {
-    char.ultimate = char.social.profile.ultimate;
-}
-
-saveCharacters();
-return char.social.notes;
-    } catch (err) {
-        console.error("[Dangan][Social] Generation failed:", err);
-        char.social = {
-            profile: {
-                ultimate: "unknown",
-                height: "unknown",
-                measurements: "unknown",
-                personality: "unknown",
-                likes: "unknown",
-                dislikes: "unknown"
-            },
-            notes: "",
-            generatedAt: Date.now()
-        };
-        return "";
+    // Room for models that think before answering.
+    const result = (await generateIsolated(prompt, { maxTokens: 600 })) || "";
+    console.log("[Dangan][Social] Raw generation result:", JSON.stringify(result));
+    const map = parseCharacterProfile(result);
+    if (!PROFILE_FIELDS.some(k => map[k] && map[k].toLowerCase() !== "unknown")) {
+        throw new Error(result.trim() ? "the reply wasn't a profile" : "the AI returned nothing");
     }
+
+    char.social = {
+        profile: Object.fromEntries(PROFILE_FIELDS.map(k => [k, map[k] || "unknown"])),
+        notes: result,
+        generatedAt: Date.now(),
+    };
+    if (char.social.profile.ultimate !== "unknown") {
+        char.ultimate = char.social.profile.ultimate;
+    }
+    saveCharacters();
+    return char.social.notes;
 }
 
 // ── Execution Cinematic Playback ─────────────────────────────────────────────
@@ -5583,14 +6924,17 @@ async function runExecutionCinematic(cinematic, charName) {
     overlay.style.opacity = "1";
     await new Promise(r => setTimeout(r, 380));
 
-    if (!cinematic) {
-        // No cinematic configured — just hold black for 1s then fade out
-        await new Promise(r => setTimeout(r, 1000));
-    } else if (cinematic.type === "video" && cinematic.videoSrc) {
-        await runExecutionVideo(overlay, cinematic);
-    } else if (cinematic.type === "cinematic") {
-        await runExecutionImageCinematic(overlay, cinematic);
-    }
+    // Escape stops the playback and goes straight to the fade-out.
+    await runSkippableSequence(async (token) => {
+        if (!cinematic) {
+            // No cinematic configured — just hold black for 1s then fade out
+            await token.delay(1000);
+        } else if (cinematic.type === "video" && cinematic.videoSrc) {
+            await runExecutionVideo(overlay, cinematic, token);
+        } else if (cinematic.type === "cinematic") {
+            await runExecutionImageCinematic(overlay, cinematic, token);
+        }
+    });
 
     // Fade out overlay
     overlay.style.opacity = "0";
@@ -5599,7 +6943,7 @@ async function runExecutionCinematic(cinematic, charName) {
     overlay.style.pointerEvents = "none";
 }
 
-async function runExecutionVideo(overlay, cinematic) {
+async function runExecutionVideo(overlay, cinematic, token) {
     overlay.innerHTML = "";
     const video = document.createElement("video");
     video.src = cinematic.videoSrc;
@@ -5607,15 +6951,16 @@ async function runExecutionVideo(overlay, cinematic) {
     video.autoplay = true;
     overlay.appendChild(video);
 
-    await new Promise(resolve => {
+    token.onSkip(() => { try { video.pause(); } catch (_) {} });
+    await token.race(new Promise(resolve => {
         video.addEventListener("ended", resolve, { once: true });
         video.addEventListener("error", resolve, { once: true });
         // Fallback: timeout at 5 minutes
         setTimeout(resolve, 5 * 60 * 1000);
-    });
+    }));
 }
 
-async function runExecutionImageCinematic(overlay, cinematic) {
+async function runExecutionImageCinematic(overlay, cinematic, token) {
     overlay.innerHTML = "";
 
     const bg = document.createElement("div");
@@ -5628,7 +6973,7 @@ async function runExecutionImageCinematic(overlay, cinematic) {
     overlay.appendChild(bg); overlay.appendChild(colorize); overlay.appendChild(staticEl);
 
     if (!cinematic.audioSrc) {
-        await new Promise(r => setTimeout(r, 10000));
+        await token.delay(10000);
         return;
     }
 
@@ -5742,12 +7087,15 @@ async function runExecutionImageCinematic(overlay, cinematic) {
 
     audio.addEventListener("play", () => { rafId = requestAnimationFrame(tick); }, { once: true });
 
-    await new Promise(resolve => {
-        audio.addEventListener("ended", resolve, { once: true });
-        audio.addEventListener("error", resolve, { once: true });
-        setTimeout(resolve, trackDurationMs + 1000);
-        audio.play().catch(resolve);
-    });
+    token.onSkip(() => { try { audio.pause(); } catch (_) {} });
+    if (!token.skipped) {
+        await token.race(new Promise(resolve => {
+            audio.addEventListener("ended", resolve, { once: true });
+            audio.addEventListener("error", resolve, { once: true });
+            setTimeout(resolve, trackDurationMs + 1000);
+            audio.play().catch(resolve);
+        }));
+    }
 
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
     timers.forEach(clearTimeout);
@@ -5821,6 +7169,7 @@ function stripV3CMarkersFromText(value) {
         if (canonical.includes("V3C|BODYDISCOVERY")) return false;
         if (canonical.includes("V3C|PASSTIME")) return false;
         if (canonical.includes("V3C|SLEEP")) return false;
+        if (canonical.includes("V3C|TRIALSTART")) return false;
         return true;
     });
 
@@ -5836,6 +7185,7 @@ function stripV3CMarkersFromText(value) {
         .replace(/V3C\s*[|｜]\s*BODY(?:\s*[_\-]?\s*)DISCOVERY\b/gi, "")
         .replace(/V3C\s*[|｜]\s*PASS(?:\s*[_\-]?\s*)TIME\b/gi, "")
         .replace(/V3C\s*[|｜]\s*SLEEP\b/gi, "")
+        .replace(/V3C\s*[|｜]\s*TRIAL(?:\s*[_\-]?\s*)START\b/gi, "")
         .replace(/^[ \t]+/gm, "")
         .trimStart();
 }
@@ -5881,6 +7231,258 @@ function waitForSfx(key, callback, tries = 20) {
     setTimeout(() => waitForSfx(key, callback, tries - 1), 50);
 }
 
+// ── AI marker instructions ────────────────────────────────────────────────────
+// The extension gives the AI the V3C marker rules that fit the current phase
+// (core/prompts), instead of players pasting them into their preset.
+
+let markerPresetWarningShown = false;
+let markerPromptsNoticePending = false;
+
+function getMarkerTemplate(blockId) {
+    const block = MARKER_BLOCKS[blockId];
+    if (!block) return "";
+    const edited = getMonopadSetting(block.settingKey);
+    return typeof edited === "string" && edited.length ? edited : getDefaultPromptTemplate(block.templateKey);
+}
+
+function presetHasMarkerInstructions() {
+    const ctx = window.SillyTavern?.getContext?.();
+    try {
+        return textHasMarkerInstructions(JSON.stringify(ctx?.chatCompletionSettings?.prompts ?? ""));
+    } catch {
+        return false;
+    }
+}
+
+// Characters in the open chat for the trust levels prompt: the chat's
+// character, or a group's members who aren't muted (in One Main Chat, the
+// people in the room). Hosts, the dead, the missing and anyone not on the
+// roster are left out.
+function getTrustPromptEntries() {
+    const ctx = window.SillyTavern?.getContext?.();
+    if (!ctx) return [];
+    const chars = Array.isArray(ctx.characters) ? ctx.characters : [];
+    let names = [];
+    if (ctx.groupId) {
+        const group = (Array.isArray(ctx.groups) ? ctx.groups : []).find((g) => String(g.id) === String(ctx.groupId));
+        const muted = new Set(group?.disabled_members || []);
+        names = (group?.members || [])
+            .filter((avatar) => !muted.has(avatar))
+            .map((avatar) => chars.find((c) => c?.avatar === avatar)?.name)
+            .filter(Boolean);
+    } else if (ctx.characterId != null && chars[ctx.characterId]?.name) {
+        names = [chars[ctx.characterId].name];
+    }
+    const out = [];
+    for (const name of names) {
+        if (isHostCharacter(name)) continue;
+        const char = characters.get(normalizeName(name));
+        if (!char || char.dead || char.missing) continue;
+        out.push({ name: char.name || name, level: char.trustLevel ?? 1 });
+    }
+    return out;
+}
+
+function syncMarkerPrompts() {
+    const setPrompt = window.SillyTavern?.getContext?.()?.setExtensionPrompt || window.setExtensionPrompt;
+    if (typeof setPrompt !== "function") return;
+    const enabled = !!getMonopadSetting("markerPromptsEnabled");
+    const text = buildMarkerPrompt({ enabled, phase: getCurrentPhase(), getTemplate: getMarkerTemplate });
+    setPrompt(MARKER_PROMPT_KEY, text, 0, 0, false, "system");
+
+    // How the characters here feel about the player (never hosts).
+    const shareTrust = enabled && getMonopadSetting("markerTrustLevelsEnabled") !== false && getCurrentPhase() !== "TRIAL";
+    const trustText = shareTrust
+        ? buildTrustLevelsPrompt({ template: getMarkerTemplate("trustLevels"), entries: getTrustPromptEntries() })
+        : "";
+    setPrompt(TRUST_LEVELS_PROMPT_KEY, trustText, 0, 0, false, "system");
+
+    if (enabled && !markerPresetWarningShown && presetHasMarkerInstructions()) {
+        markerPresetWarningShown = true;
+        notify({
+            tone: "warn",
+            title: "MARKER RULES TWICE",
+            message: "Your preset also has V3C marker instructions, and the extension now sends them too. Remove them from the preset, or turn off AI INSTRUCTIONS in Settings → Gameplay.",
+            actionLabel: "OPEN GAMEPLAY",
+            onAction: () => openMonopadTab("settings", { section: "gameplay" }),
+            durationMs: 15000,
+        });
+    }
+}
+
+// First run after updating: new players get the instructions on. Existing
+// players have probably pasted them into their preset, so they stay off
+// until the player turns them on, and a toast explains the option.
+function initMarkerPromptsSetting() {
+    const root = extension_settings[extensionName] ??= {};
+    if (typeof root.markerPromptsEnabled === "boolean") return;
+    const existingPlayer = root.welcomeSeen === true
+        || (Array.isArray(root.characters) && root.characters.length > 0)
+        || (Array.isArray(root.truthBullets) && root.truthBullets.length > 0);
+    root.markerPromptsEnabled = !existingPlayer;
+    saveSettingsDebounced();
+    markerPromptsNoticePending = existingPlayer;
+}
+
+// Shown once the title screen is out of the way, so it isn't missed.
+function showMarkerPromptsNoticeIfPending() {
+    if (!markerPromptsNoticePending) return;
+    markerPromptsNoticePending = false;
+    notify({
+        title: "NEW: AI INSTRUCTIONS",
+        message: "The extension can give the AI its V3C marker instructions itself, matched to the current phase, so they don't need to be in your preset. Turn it on, then remove the pasted ones from your preset.",
+        actionLabel: "TURN ON",
+        onAction: () => {
+            setMonopadSetting("markerPromptsEnabled", true);
+            try { applySettingsTabUI(); } catch (_) {}
+            syncMarkerPrompts();
+        },
+        durationMs: 20000,
+    });
+}
+
+// ── Message effects ledger ────────────────────────────────────────────────────
+// Each message's Truth Bullets, trust changes, rewards and investigation start
+// are recorded (core/ledger) so swiping, deleting or editing the message takes
+// them back. Trust signatures name the message (speaker, swipe, text hash)
+// rather than its rendered text, so they survive re-renders and deletions
+// above it. A message still being generated is named by its position until
+// it finishes.
+
+const effectLedger = createEffectLedger({
+    getStore: () => ((extension_settings[extensionName] ??= {}).effectLedger ??= {}),
+});
+let generationInProgress = false;
+
+function getLedgerRefForElement(msgEl) {
+    const ctx = window.SillyTavern?.getContext?.();
+    const mesId = Number(msgEl?.getAttribute?.("mesid"));
+    const chat = ctx?.chat;
+    if (!Array.isArray(chat) || !Number.isInteger(mesId) || mesId < 0 || !chat[mesId]) return null;
+    const chatId = String(ctx.getCurrentChatId?.() ?? ctx.chatId ?? "");
+    if (!chatId) return null;
+    return {
+        chatId,
+        mesId,
+        message: chat[mesId],
+        pending: generationInProgress && mesId === chat.length - 1,
+    };
+}
+
+function trustSignature(direction, key, ref) {
+    if (ref.pending) return `${direction}||${key}||pos:${ref.chatId}|${ref.mesId}|${Number(ref.message.swipe_id ?? 0)}`;
+    return `${direction}||${key}||id:${messageIdentity(ref.message)}`;
+}
+
+function recordMessageEffects(ref, fx, totalsBefore) {
+    if (!ref) return;
+    const after = rewards?.getRewardTotals?.();
+    if (totalsBefore && after) {
+        fx.coins = Math.max(0, after.monocoins - totalsBefore.monocoins);
+        fx.fragments = Math.max(0, after.trustFragments - totalsBefore.trustFragments);
+        fx.xp = Math.max(0, after.totalXp - totalsBefore.totalXp);
+    }
+    if (!hasEffects(fx)) return;
+    effectLedger.record({ chatId: ref.chatId, mesId: ref.mesId, message: ref.message, effects: fx, pending: ref.pending });
+    saveCharacters();
+    saveSettingsDebounced();
+}
+
+// Trust signatures follow the entry's identity after it finishes generating
+// or is edited without touching its markers.
+function rekeyTrustSignatures(entry) {
+    for (const item of entry.trust) {
+        const char = characters.get(item.key);
+        const next = `${item.kind || (item.dir > 0 ? "UP" : "DOWN")}||${item.key}||id:${entry.identity}`;
+        if (char?.trustHistory?.has(item.sig)) {
+            char.trustHistory.delete(item.sig);
+            char.trustHistory.add(next);
+        }
+        item.sig = next;
+    }
+}
+
+function revertMessageEffects(entry) {
+    const undone = [];
+    for (const item of entry.truth) {
+        processedTruthSignatures.delete(item.sig);
+        const bullet = removeTruthBulletById(item.id);
+        if (bullet) undone.push(`Truth Bullet "${bullet.title}"`);
+    }
+    for (const item of [...entry.trust].reverse()) {
+        const char = characters.get(item.key);
+        if (!char) continue;
+        char.trustHistory?.delete(item.sig);
+        if (item.legacySig) char.trustHistory?.delete(item.legacySig);
+        if (item.before === item.after) continue;
+        const current = char.trustLevel ?? item.after;
+        // Changed again since: undo the same number of ranks it moved.
+        char.trustLevel = current === item.after
+            ? item.before
+            : stepTrust(current, trustDistance(item.after, item.before));
+        undone.push(`${char.name} trust ${item.dir > 0 ? "up" : "down"}`);
+    }
+    for (const item of entry.gifts || []) {
+        delete getGiftJudgementStore()[item.signature];
+        processedGiftMessageSignatures.delete(item.signature);
+        if (item.gift) pendingGiftDeliveryQueue.unshift({ ...item.gift, chatId: entry.chatId, queuedAtIndex: entry.mesId });
+        undone.push(`${item.characterName}'s reaction to ${item.giftName} (the next reply will react instead)`);
+    }
+    if (entry.gifts?.length) {
+        document.querySelectorAll(`#chat .mes[mesid="${entry.mesId}"] .dangan-gift-reaction`).forEach((el) => el.remove());
+    }
+    if (entry.coins) {
+        deductMonocoins(entry.coins, "message removed");
+        undone.push(`${entry.coins} Monocoins`);
+    }
+    if (entry.fragments) rewards?.revokeTrustFragments?.(entry.fragments, "message removed");
+    if (entry.xp) {
+        rewards?.revokeXp?.(entry.xp, "message removed");
+        undone.push(`${entry.xp} XP`);
+    }
+    if (entry.investigation && investigationUnderway && phaseHistory.peek()?.label === "Start investigation") {
+        undoLastPhaseChange();
+        undone.push("the investigation start");
+    }
+    saveCharacters();
+    try { socialPanelController?.renderSocialPanel?.(); } catch (_) {}
+    try { window.refreshActiveCharacterUI?.(); } catch (_) {}
+    return undone;
+}
+
+// Runs after a swipe, delete or edit: anything recorded for a message that's
+// gone or changed is taken back.
+function reconcileMessageEffects() {
+    if (generationInProgress) return;
+    const ctx = window.SillyTavern?.getContext?.();
+    const chatId = String(ctx?.getCurrentChatId?.() ?? ctx?.chatId ?? "");
+    if (!chatId || !Array.isArray(ctx?.chat)) return;
+
+    const { revert, rekeyed } = effectLedger.reconcile(chatId, ctx.chat);
+    rekeyed.forEach(({ entry }) => rekeyTrustSignatures(entry));
+    const undone = revert.flatMap(revertMessageEffects);
+    if (revert.length || rekeyed.length) {
+        saveCharacters();
+        saveSettingsDebounced();
+    }
+    if (undone.length) {
+        notify({ title: "MESSAGE CHANGED", message: `Took back: ${undone.join(", ")}.` });
+    }
+}
+
+function onGenerationFinished() {
+    generationInProgress = false;
+    const ctx = window.SillyTavern?.getContext?.();
+    const chatId = String(ctx?.getCurrentChatId?.() ?? ctx?.chatId ?? "");
+    if (!chatId || !Array.isArray(ctx?.chat)) return;
+    const finished = effectLedger.finalize(chatId, ctx.chat);
+    finished.forEach(rekeyTrustSignatures);
+    if (finished.length) {
+        saveCharacters();
+        saveSettingsDebounced();
+    }
+}
+
 function startV3CObserver() {
     const chat = document.getElementById("chat");
     if (!chat) return;
@@ -5907,6 +7509,12 @@ function processAllMessages() {
         injectPersistedGiftReactionForMessage(msgEl, messageSignature);
         void tryResolvePendingGiftForMessage(msgEl, rawText);
 
+        // What this message does gets recorded, so a swipe, delete or edit
+        // can take it back.
+        const ledgerRef = getLedgerRefForElement(msgEl);
+        const fx = emptyEffects();
+        const totalsBefore = rewards?.getRewardTotals?.();
+
         // ---- Truth Bullets ----
         for (const match of rawText.matchAll(TB_REGEX)) {
             const title = match[1]?.trim();
@@ -5917,45 +7525,80 @@ function processAllMessages() {
             if (processedTruthSignatures.has(signature)) continue;
 
             processedTruthSignatures.add(signature);
-            handleTruthBullet(title, description);
+            if (handleTruthBullet(title, description)) {
+                const bullet = getTruthBullets().find((tb) => tb.title === title);
+                if (bullet) fx.truth.push({ id: bullet.id, title, sig: signature });
+            }
         }
 
 // ---- Social Trust UP ----
 for (const regex of [SOCIAL_REGEX, SOCIAL_UP_REGEX]) {
 for (const match of rawText.matchAll(regex)) {
-    const name = match[1]?.trim();
+    const { name } = parseSocialMarkerTarget(match[1]);
     if (!name) continue;
 
     const key = normalizeName(name);
     const char = characters.get(key);
     if (!char) continue;
 
-    const signature = `UP||${key}||${rawText}`;
+    const legacySignature = `UP||${key}||${rawText}`;
+    const signature = ledgerRef ? trustSignature("UP", key, ledgerRef) : legacySignature;
 
     // 🛑 Already used this message
-    if (char.trustHistory.has(signature)) continue;
+    if (char.trustHistory.has(legacySignature) || char.trustHistory.has(signature)) continue;
 
+    // The text-based signature stays as a backstop for older checks.
     char.trustHistory.add(signature);
+    char.trustHistory.add(legacySignature);
+    const trustBefore = char.trustLevel ?? 1;
     increaseTrustWithRewards(char);
+    fx.trust.push({ key, dir: 1, before: trustBefore, after: char.trustLevel ?? trustBefore, sig: signature, legacySig: legacySignature });
 }
 }
 
 // ---- Social Trust DOWN ----
 for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
-    const name = match[1]?.trim();
+    const { name } = parseSocialMarkerTarget(match[1]);
     if (!name) continue;
 
     const key = normalizeName(name);
     const char = characters.get(key);
     if (!char) continue;
 
-    const signature = `DOWN||${key}||${rawText}`;
+    const legacySignature = `DOWN||${key}||${rawText}`;
+    const signature = ledgerRef ? trustSignature("DOWN", key, ledgerRef) : legacySignature;
 
     // 🛑 Already used this message
-    if (char.trustHistory.has(signature)) continue;
+    if (char.trustHistory.has(legacySignature) || char.trustHistory.has(signature)) continue;
 
     char.trustHistory.add(signature);
+    char.trustHistory.add(legacySignature);
+    const trustBefore = char.trustLevel ?? 1;
     decreaseTrust(char);
+    fx.trust.push({ key, dir: -1, before: trustBefore, after: char.trustLevel ?? trustBefore, sig: signature, legacySig: legacySignature });
+}
+
+// ---- Social Trust DROP (several ranks) / BREAK (shattered into distrust) ----
+for (const [regex, kind] of [[SOCIAL_DROP_REGEX, "DROP"], [SOCIAL_BREAK_REGEX, "BREAK"]]) {
+for (const match of rawText.matchAll(regex)) {
+    const { name, amount } = parseSocialMarkerTarget(match[1]);
+    if (!name) continue;
+
+    const key = normalizeName(name);
+    const char = characters.get(key);
+    if (!char) continue;
+
+    const legacySignature = `${kind}||${key}||${rawText}`;
+    const signature = ledgerRef ? trustSignature(kind, key, ledgerRef) : legacySignature;
+    if (char.trustHistory.has(legacySignature) || char.trustHistory.has(signature)) continue;
+
+    char.trustHistory.add(signature);
+    char.trustHistory.add(legacySignature);
+    const trustBefore = char.trustLevel ?? 1;
+    if (kind === "DROP") decreaseTrust(char, { steps: Math.min(5, Math.max(2, amount ?? 2)) });
+    else breakTrust(char, Math.min(10, Math.max(1, amount ?? 1)));
+    fx.trust.push({ key, dir: -1, kind, before: trustBefore, after: char.trustLevel ?? trustBefore, sig: signature, legacySig: legacySignature });
+}
 }
 
         // ---- Investigation Start ----
@@ -5966,11 +7609,40 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
             const persistentSignature = buildPersistentInvestigationSignature(msgEl, marker, idx, rawText);
             if (hasProcessedInvestigationSignature(signature, persistentSignature)) return;
 
+            const wasInvestigating = investigationUnderway;
             const triggered = investigationStartController.trigger();
             if (triggered) {
                 markInvestigationSignatureProcessed(signature, persistentSignature);
             }
+            if (!wasInvestigating && investigationUnderway) {
+                fx.investigation = true;
+                notify({
+                    title: "INVESTIGATION STARTED",
+                    message: "The story started an investigation. Wrong time? Undo it.",
+                    actionLabel: "UNDO",
+                    onAction: undoLastPhaseChange,
+                    durationMs: 10000,
+                });
+            }
         });
+
+        recordMessageEffects(ledgerRef, fx, totalsBefore);
+
+        // ---- Trial Start ----
+        // Opens the Class Trial menu, which asks before anything starts.
+        if (!isClassTrialActive()) {
+            TRIAL_START_REGEX.lastIndex = 0;
+            const trialMatch = TRIAL_START_REGEX.exec(rawText);
+            if (trialMatch) {
+                const signature = `TRIAL_START||${messageSignature}||${trialMatch.index}`;
+                const persistentSignature = buildGenericPersistentMarkerSignature(msgEl, "TRIAL_START", trialMatch.index, 0, rawText);
+                if (!processedTrialStartSignatures.has(signature) && !hasProcessedPersistentMarker("trialStartMarkers", persistentSignature)) {
+                    processedTrialStartSignatures.add(signature);
+                    markProcessedPersistentMarker("trialStartMarkers", persistentSignature);
+                    void triggerTrialStartFromMapPin();
+                }
+            }
+        }
 
         // ---- Monokuma Announcements ----
         const monokumaAnnouncementMarkers = parseMonokumaAnnouncementMarkers(rawText)
@@ -6412,6 +8084,31 @@ ultimate: lookupUltimateFromLorebook(charName),
     );
 }
 
+// Whether the open chat is part of the loaded save's story, so speakers in it
+// join the class. Other chats (anything opened outside the game) are left out.
+function isGameChat() {
+    let save = null;
+    try { save = saveStore.getActive(); } catch (_) { return false; }
+    if (!save) return false;
+    const ctx = window.SillyTavern?.getContext?.();
+    const groupId = ctx?.groupId ?? ctx?.group_id;
+    if (save.mode === SAVE_MODES.SINGLE) {
+        return groupId !== undefined && groupId !== null && groupId !== ""
+            && (save.groupIds || []).includes(String(groupId));
+    }
+    // Several Chats: a chat with someone already in the class.
+    if (!characters.size) return false;
+    let names = [];
+    if (groupId !== undefined && groupId !== null && groupId !== "") {
+        const group = (ctx?.groups || []).find((g) => String(g?.id) === String(groupId));
+        const cards = Array.isArray(ctx?.characters) ? ctx.characters : [];
+        names = (group?.members || []).map((avatar) => cards.find((c) => c?.avatar === avatar)?.name);
+    } else {
+        names = [ctx?.name2 || ctx?.characters?.[ctx?.characterId]?.name];
+    }
+    return names.some((name) => name && characters.has(normalizeName(name)));
+}
+
 function registerCharacterFromMessage(msgEl) {
     const chName = msgEl.getAttribute("ch_name");
     const isUser = msgEl.getAttribute("is_user") === "true";
@@ -6423,6 +8120,7 @@ function registerCharacterFromMessage(msgEl) {
 
     const key = normalizeName(chName);
     if (characters.has(key)) return;
+    if (!isGameChat()) return;
 
     const character = {
         id: `char_${Date.now()}_${Math.random()}`,
@@ -6881,7 +8579,259 @@ function applyGameMasterUI() {
     select.value = saved || '';
 }
 
+// ── Host / mascot cards ───────────────────────────────────────────────────────
+// Monokuma & co. never wander the rooms. When one is called in or made to
+// speak, they pop up from the bottom with the MONOKUMA playlist until
+// dismissed (host/hostStage.js). Which cards are hosts is kept per save.
+
+let hostPickerOpen = false;
+
+function listCardNames() {
+    const ctx = window.SillyTavern?.getContext?.();
+    const chars = Array.isArray(ctx?.characters) ? ctx.characters : [];
+    const names = chars
+        .filter(c => c && !c.is_user && !c.isUser)
+        .map(c => String(c.name || '').trim())
+        .filter(Boolean);
+    return [...new Set(names)].sort((a, b) => a.localeCompare(b));
+}
+
+// Called per character on every overworld render, so cached until the
+// setting or SillyTavern's character list changes.
+let hostNamesCache = { chars: null, count: -1, setting: '', names: [] };
+
+function getHostNames() {
+    const ctx = window.SillyTavern?.getContext?.();
+    const chars = Array.isArray(ctx?.characters) ? ctx.characters : null;
+    const setting = JSON.stringify(getMonopadSetting('hostCards') ?? []);
+    const c = hostNamesCache;
+    if (c.chars === chars && c.count === (chars?.length ?? -1) && c.setting === setting) return c.names;
+    const cards = listCardNames();
+    const names = resolveHostNames(getMonopadSetting('hostCards'), cards.length ? cards : null);
+    hostNamesCache = { chars, count: chars?.length ?? -1, setting, names };
+    return names;
+}
+
+function isHostCharacter(name) {
+    return isHostName(name, getHostNames());
+}
+
+function applyHostCardsUI() {
+    const picked = readHostSetting(getMonopadSetting('hostCards'));
+    const custom = hostPickerOpen || picked.length > 0;
+    document.querySelectorAll('[data-host-mode]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.hostMode === (custom ? 'custom' : 'auto'));
+    });
+    const row = document.getElementById('dangan-host-custom-row');
+    if (row) row.classList.toggle('is-hidden', !custom);
+    renderHostCardList();
+}
+
+function renderHostCardList() {
+    const list = document.getElementById('dangan-host-list');
+    if (!list) return;
+    const picked = readHostSetting(getMonopadSetting('hostCards'));
+    const pickedKeys = new Set(picked.map(n => n.toLowerCase()));
+    const query = String(document.getElementById('dangan-host-search')?.value || '').trim().toLowerCase();
+    const names = listCardNames();
+    // Keep picks whose card is gone visible so they can be unticked.
+    for (const n of picked) if (!names.some(c => c.toLowerCase() === n.toLowerCase())) names.unshift(n);
+    list.replaceChildren(...names
+        .filter(n => !query || n.toLowerCase().includes(query))
+        .map(n => {
+            const label = document.createElement('label');
+            label.className = 'settings-checkbox-row';
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.className = 'dangan-host-pick';
+            cb.value = n;
+            cb.checked = pickedKeys.has(n.toLowerCase());
+            const span = document.createElement('span');
+            span.textContent = n;
+            span.title = n;
+            label.append(cb, span);
+            return label;
+        }));
+    const status = document.getElementById('dangan-host-status');
+    if (status) {
+        const hosts = getHostNames();
+        status.textContent = picked.length
+            ? `Hosts: ${picked.join(', ')}`
+            : (hosts.length ? 'Nothing ticked, so Auto is used: Monokuma.' : 'Nothing ticked, and there is no card named Monokuma.');
+    }
+}
+
+function setHostCards(names) {
+    setMonopadSetting('hostCards', readHostSetting(names));
+    saveSettingsDebounced();
+    // Hosts leave the rooms and the dorm wing; whoever stopped being one rejoins.
+    try { overworldSceneController?.render?.(); } catch (_) {}
+    try { overworldSceneController?.schedulePresenceSync?.(); } catch (_) {}
+    try { mapPanelController?.refreshDormRooms?.(); } catch (_) {}
+}
+
+let hostStage = null;
+let hostMusicPlaying = false;
+// Last expression each on-stage host showed in chat, so their room sprite matches.
+const hostExpressions = new Map();
+
+function getHostStage() {
+    if (hostStage) return hostStage;
+    hostStage = createHostStage({
+        onFirstEnter: async () => {
+            if (!(getMonopadSetting('monokumaTracks') || []).length) return;
+            await fadeOutAndPauseBgm();
+            hostMusicPlaying = playLocationTrack('monokumaTracks');
+        },
+        onLastLeave: async () => {
+            if (!hostMusicPlaying) return;
+            hostMusicPlaying = false;
+            stopLocationTrack();
+            await fadeInAndResumeBgm();
+        },
+        // Called-in hosts stand in the room like anyone else: re-render the
+        // overworld, and let presence add or drop them from the chat stage.
+        onChange: () => {
+            for (const key of [...hostExpressions.keys()]) {
+                if (!hostStage?.isOnStage(key)) hostExpressions.delete(key);
+            }
+            try { overworldSceneController?.render?.(); } catch (_) {}
+            try { overworldSceneController?.schedulePresenceSync?.(); } catch (_) {}
+        },
+        beforeLeave: (names) => Promise.all([
+            overworldSceneController?.playHostExit?.(names),
+            trialManager?.playHostExit?.(names),
+        ]),
+    });
+    return hostStage;
+}
+
+function getOnStageHosts() {
+    return (hostStage?.names() || []).map(name => ({
+        name,
+        expression: hostExpressions.get(name.toLowerCase()) || 'neutral',
+    }));
+}
+
+function getHostEntranceElapsed(name, renderer) {
+    return hostStage?.entranceElapsed(name, renderer) ?? null;
+}
+
+// Keep a host's room sprite on the expression they last showed in chat.
+function noteHostExpression(names, src) {
+    if (!hostStage?.names().length || !src) return;
+    let label = '';
+    try {
+        label = decodeURIComponent(new URL(src, location.href).pathname.split('/').pop() || '')
+            .replace(/\.[^.]+$/, '').replace(/-half$/i, '').toLowerCase();
+    } catch { return; }
+    if (!label) return;
+    for (const name of names) {
+        if (!name || !hostStage.isOnStage(name)) continue;
+        const key = name.toLowerCase().trim();
+        if (hostExpressions.get(key) === label) return;
+        hostExpressions.set(key, label);
+        try { overworldSceneController?.render?.(); } catch (_) {}
+        return;
+    }
+}
+
+function listHostsForCall() {
+    const stage = getHostStage();
+    return getHostNames().map(name => ({ name, onStage: stage.isOnStage(name) }));
+}
+
+// A host is called in or about to speak. Not during Class Trials, which stage
+// Monokuma themselves.
+function bringHostOnStage(name) {
+    if (!name || !isHostCharacter(name)) return false;
+    if (trialManager?.isTrialActive?.() || isTrialUiActive()) return false;
+    const stage = getHostStage();
+    if (stage.isOnStage(name)) return false;
+    void stage.enter(name);
+    if (getMonopadSetting('hostEntranceSfx') !== false) playSfx(sfx.host_bwomp);
+    return true;
+}
+
+// The landing bounce is CSS, switched by a body class.
+function applyHostEntranceSettings() {
+    document.body.classList.toggle('dangan-host-bounce', getMonopadSetting('hostEntranceBounce') !== false);
+}
+
+// Hosts who aren't part of the chat that just opened go back down. Leaving
+// for the overworld (no chat open) keeps them in the room.
+function dismissHostsNotInChat() {
+    if (!hostStage?.names().length) return;
+    const ctx = window.SillyTavern?.getContext?.();
+    if (!ctx?.groupId && ctx?.characterId == null) return;
+    const present = new Set(getCurrentChatSpeakerNames().map(n => n.toLowerCase()));
+    if (hostStage.names().some(n => !present.has(n.toLowerCase()))) void hostStage.dismiss();
+}
+
+function getCurrentChatSpeakerNames() {
+    const ctx = window.SillyTavern?.getContext?.();
+    if (!ctx) return [];
+    const chars = Array.isArray(ctx.characters) ? ctx.characters : [];
+    if (ctx.groupId) {
+        const group = (ctx.groups || []).find(g => String(g.id) === String(ctx.groupId));
+        const avatars = new Set(group?.members || []);
+        return chars.filter(c => avatars.has(c.avatar)).map(c => c.name);
+    }
+    const solo = ctx.characterId != null ? chars[ctx.characterId] : null;
+    return solo?.name ? [solo.name] : [];
+}
+
 function applyDynamicTheme() {
+    applyDynamicThemeClasses();
+    // TEXT BOX colors follow the style's night / investigation accent.
+    applyHudColors();
+}
+
+const HUD_COLOR_SETTING = {
+    song:    { mode: "hudColorSongMode",    color: "hudColorSong" },
+    chapter: { mode: "hudColorChapterMode", color: "hudColorChapter" },
+    map:     { mode: "hudColorMapMode",     color: "hudColorMap" },
+};
+
+// Song / chapter / map display colors (Settings → Customize → HUD colors).
+function applyHudColors() {
+    const body = document.body;
+    const skin = body.dataset.danganVnSkin || "current";
+    const skinAccent = getComputedStyle(body).getPropertyValue("--dangan-vn-skin-accent");
+    const trialActive = body.classList.contains("dangan-trial-active");
+    for (const target of HUD_COLOR_TARGETS) {
+        const keys = HUD_COLOR_SETTING[target];
+        const color = resolveHudColor({
+            mode: getMonopadSetting(keys.mode),
+            custom: getMonopadSetting(keys.color),
+            skin, skinAccent, trialActive,
+        });
+        const vars = hudColorVars(target, color);
+        body.classList.toggle(`dangan-hud-color-${target}`, !!vars);
+        for (const suffix of ["rgb", "hex", "tint"]) {
+            const name = `--dangan-hud-${target}-${suffix}`;
+            if (vars) body.style.setProperty(name, vars[name]);
+            else body.style.removeProperty(name);
+        }
+    }
+}
+
+function applyHudColorsUI() {
+    for (const target of HUD_COLOR_TARGETS) {
+        const keys = HUD_COLOR_SETTING[target];
+        const mode = normalizeHudColorMode(getMonopadSetting(keys.mode));
+        document.querySelectorAll(`[data-hud-color-target="${target}"][data-hud-color-mode]`).forEach(btn => {
+            btn.classList.toggle("active", btn.dataset.hudColorMode === mode);
+        });
+        const input = document.querySelector(`input[data-hud-color-target="${target}"]`);
+        if (input) {
+            input.value = getMonopadSetting(keys.color) || HUD_COLOR_DEFAULT;
+            input.hidden = mode !== "custom";
+        }
+    }
+}
+
+function applyDynamicThemeClasses() {
     const body = document.body;
     body.classList.remove("dangan-theme-daily", "dangan-theme-night", "dangan-theme-investigation", "dangan-theme-damaged");
 
@@ -6912,6 +8862,26 @@ function setActiveMonopadTab(tab) {
 
     $(".monopad-panel-content").removeClass("active");
     $(`.monopad-panel-content[data-panel="${tab}"]`).addClass("active");
+    if (tab === "settings") refreshSavesPanel();
+}
+
+const SETTINGS_SUBTABS = ["audio", "display", "customize", "gameplay", "fx", "saves", "ai", "trials"];
+
+// Monopad Settings shows one section at a time; the last one picked is
+// remembered. PROGRESSION was folded into SAVES.
+function setActiveSettingsTab(id) {
+    if (id === "progression") id = "saves";
+    const tab = SETTINGS_SUBTABS.includes(id) ? id : "audio";
+    $(".settings-subtab").each(function () {
+        const on = this.dataset.settingsTab === tab;
+        this.classList.toggle("active", on);
+        this.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    $(".settings-grid > .settings-section[data-settings-tab]").each(function () {
+        this.classList.toggle("is-active-tab", this.dataset.settingsTab === tab);
+    });
+    if (getMonopadSetting("settingsSubtab") !== tab) setMonopadSetting("settingsSubtab", tab);
+    if (tab === "saves") refreshSavesPanel();
 }
 
 // ── Trial-prep info modal ───────────────────────────────────────────────────
@@ -7060,7 +9030,7 @@ async function fadeOutAndPauseBgm(durationMs = 600) {
 async function fadeInAndResumeBgm(durationMs = 600) {
     // Resume whichever element we paused — prefer investigationTrackAudio if it exists
     const el = investigationTrackAudio ?? document.getElementById('audio_bgm');
-    if (!el || !el.paused) return;
+    if (!el || !el.paused || bgmUserPaused) return;
 
     const targetVolume = Number.isFinite(el.volume) ? el.volume : 1;
     el.volume = 0;
@@ -7423,7 +9393,7 @@ function resumeBgmAfterHG() {
     // Restore the ambient (phase) BGM that was playing before the minigame.
     if (savedInvAudio) {
         investigationTrackAudio = savedInvAudio;
-        investigationTrackAudio.play().catch(() => {});
+        if (!bgmUserPaused) investigationTrackAudio.play().catch(() => {});
     }
     try { dynamicSongsController?.scheduleEvaluate?.({ restorePhaseOnMiss: true }); } catch (_) {}
 }
@@ -7582,6 +9552,32 @@ function applyTrialPodiumOffset() {
     if (sliderEl && document.activeElement !== sliderEl) sliderEl.value = String(value);
 }
 
+// Settings → Customize: a picture card per VN text box style. Built once; the
+// picked one is marked by applySettingsTabUI.
+function renderVnSkinPicker() {
+    const picker = document.getElementById("dangan_vn_skin_picker");
+    if (!picker || picker.childElementCount) return;
+    picker.innerHTML = VN_SKIN_CHOICES.map((c) => `
+        <button type="button" class="settings-vn-skin" data-vn-skin="${c.value}" role="radio" aria-checked="false">
+            <img src="${extensionFolderPath}/assets/${c.image}" alt="" loading="lazy" draggable="false">
+            <span class="settings-vn-skin-name">${c.label}</span>
+            <span class="settings-vn-skin-game">${c.game}</span>
+        </button>`).join("");
+}
+
+// Settings → Customize: a picture card per trust ceremony style, built the
+// same way as the text box picker.
+function renderTrustStylePicker() {
+    const picker = document.getElementById("dangan_trust_style_picker");
+    if (!picker || picker.childElementCount) return;
+    picker.innerHTML = TRUST_CEREMONY_STYLE_CHOICES.map((c) => `
+        <button type="button" class="settings-vn-skin" data-trust-style="${c.value}" role="radio" aria-checked="false">
+            <img src="${extensionFolderPath}/assets/${c.image}" alt="" loading="lazy" draggable="false">
+            <span class="settings-vn-skin-name">${c.label}</span>
+            <span class="settings-vn-skin-game">${c.note}</span>
+        </button>`).join("");
+}
+
 function applySettingsTabUI() {
     const tab = extension_settings[extensionName];
     const activeDifficulty = applyRewardDifficultyProfile(tab.rewardDifficulty || defaultSettings.rewardDifficulty);
@@ -7594,13 +9590,27 @@ function applySettingsTabUI() {
 
         const isOn = !!tab[key];
         el.classList.toggle("on", isOn);
-        el.setAttribute("aria-pressed", String(isOn));
+        el.setAttribute("role", "switch");
+        el.setAttribute("aria-checked", String(isOn));
+        // aria-labelledby, not aria-label: trySetSillyTavernVisualNovelMode
+        // scans aria-labels for "visual novel" and would click this row.
+        const label = el.closest(".settings-item")?.querySelector(".settings-label");
+        if (label && !el.hasAttribute("aria-labelledby")) {
+            label.id ||= `dangan-setting-label-${key}`;
+            el.setAttribute("aria-labelledby", label.id);
+        }
     });
 
     const slider = document.getElementById("dangan_crt_slider");
     if (slider) {
         slider.value = String(Number(tab.crtIntensity) || 35);
     }
+
+    const vnSpeed = Math.min(300, Math.max(25, Number(tab.vnTypingSpeed) || 100));
+    const vnSpeedSlider = document.getElementById("dangan_vn_speed_slider");
+    if (vnSpeedSlider) vnSpeedSlider.value = String(vnSpeed);
+    const vnSpeedValue = document.getElementById("dangan_vn_speed_value");
+    if (vnSpeedValue) vnSpeedValue.textContent = `${vnSpeed}%`;
 
     const soundsSlider = document.getElementById("dangan_sounds_slider");
     if (soundsSlider) {
@@ -7800,11 +9810,38 @@ function applySettingsTabUI() {
     applyDynamicTheme();
     renderTimeTrackerUi();
     vnModeController?.setEnabled?.(!!tab.vnModeEnabled);
+    const vnSkin = normalizeVnSkin(tab.vnSkin);
+    renderVnSkinPicker();
+    document.querySelectorAll("#dangan_vn_skin_picker [data-vn-skin]").forEach((el) => {
+        const on = el.dataset.vnSkin === vnSkin;
+        el.classList.toggle("is-on", on);
+        el.setAttribute("aria-checked", on ? "true" : "false");
+    });
+    vnModeController?.setSkin?.(vnSkin);
+    const trustStyle = normalizeTrustCeremonyStyle(tab.trustCeremonyStyle);
+    renderTrustStylePicker();
+    document.querySelectorAll("#dangan_trust_style_picker [data-trust-style]").forEach((el) => {
+        const on = el.dataset.trustStyle === trustStyle;
+        el.classList.toggle("is-on", on);
+        el.setAttribute("aria-checked", on ? "true" : "false");
+    });
+    applyPlayerInset();
+    expressionPickerController?.sync();
+    // Buttons that pick one value of a setting (data-choice-setting/-value).
+    document.querySelectorAll('[data-choice-setting][data-choice-value]').forEach((btn) => {
+        const current = String(getMonopadSetting(btn.dataset.choiceSetting) ?? '');
+        btn.classList.toggle('active', current === btn.dataset.choiceValue);
+        btn.setAttribute('aria-pressed', String(current === btn.dataset.choiceValue));
+    });
+    renderKeybindSettings();
+    applyHudColors();
+    applyHudColorsUI();
     applyAnnouncementCustomisationUI();
     applyLecternUI();
     applyVoteFaceUI();
     applyVoteCoinUI();
     applyGameMasterUI();
+    applyHostCardsUI();
 }
 
 function saveCharacters() {
@@ -7820,6 +9857,18 @@ function saveCharacters() {
 
     extension_settings[extensionName].characters = serialized;
     saveSettingsDebounced();
+    try { mapPanelController?.refreshDormRooms?.(); } catch (_) {}
+}
+
+// Who gets a room in the Inn's dorm wing: the player first, then the roster.
+function getDormResidents() {
+    const residents = [{ key: DORM_PLAYER_KEY, name: getActivePersonaName() }];
+    const playerKey = normalizeName(getActivePersonaName());
+    for (const [key, char] of characters.entries()) {
+        if (!char?.name || key === playerKey || isIgnoredCharacter(char.name) || isHostCharacter(char.name)) continue;
+        residents.push({ key, name: char.name });
+    }
+    return residents;
 }
 
 function loadCharacters() {
@@ -8597,6 +10646,13 @@ function ensureGlobalDebugUi() {
             <div class="trust-debug-buttons" role="group" aria-label="Debug controls">
                 <button id="trust-debug-up" type="button">TRUST +</button>
                 <button id="trust-debug-down" type="button">TRUST -</button>
+                <div class="trust-debug-amount-row" title="Ranks for DROP; distrust depth for SHATTER">
+                    <input id="trust-debug-amount" type="number" min="1" max="10" value="3" aria-label="Ranks">
+                    <button id="trust-debug-drop" type="button">DROP</button>
+                    <button id="trust-debug-break" type="button">SHATTER</button>
+                </div>
+                <button id="trust-debug-max" type="button">TRUST MAX</button>
+                <button id="trust-debug-reset" type="button">RESET TO TRUST 1</button>
                 <button id="truth-debug-open" type="button">NEW TRUTH BULLET</button>
                 <button id="investigation-debug-trigger" type="button">INVESTIGATION START</button>
                 <button id="announcement-debug-open" type="button">MONOKUMA ANNOUNCEMENT</button>
@@ -8861,7 +10917,7 @@ function bindDebugControlEvents() {
         }
     });
 
-    $(document).on("click.debugControls", "#truth-debug-acquire", () => {
+    $(document).on("click.debugControls", "#truth-debug-acquire", async () => {
         playDebugClickSfx();
 
         const title = String($("#truth-debug-name").val() || "").trim();
@@ -8875,7 +10931,10 @@ function bindDebugControlEvents() {
         const selectedSfx = String($("input[name='truth-debug-sfx']:checked").val() || "thh").trim().toLowerCase();
         setNextTruthBulletSfxVariant(selectedSfx === "udg" ? "udg" : "thh");
 
-        handleTruthBullet(title, description, { image: pendingTruthBulletImage || undefined });
+        const image = pendingTruthBulletImage
+            ? (await uploadDataUrlImage(pendingTruthBulletImage, { prefix: "truth" })) || pendingTruthBulletImage
+            : undefined;
+        handleTruthBullet(title, description, { image, manual: true });
         $("#truth-debug-name").val("");
         $("#truth-debug-description").val("");
         closeTruthDebugModal();
@@ -8891,6 +10950,42 @@ function bindDebugControlEvents() {
         }
 
         increaseTrustWithRewards(char);
+    });
+
+    // DROP: lose that many ranks (can run into distrust). SHATTER: trust
+    // breaks straight into that level of distrust, as SOCIAL_BREAK does.
+    const debugTrustChar = () => {
+        playDebugClickSfx();
+        const char = getActiveSocialCharacter();
+        if (!char) console.warn("[Dangan][Debug] No social character selected. Click a character name first.");
+        return char;
+    };
+    const debugTrustAmount = () => Math.min(10, Math.max(1, Math.trunc(Number($("#trust-debug-amount").val()) || 1)));
+
+    $(document).on("click.debugControls", "#trust-debug-drop", () => {
+        const char = debugTrustChar();
+        if (char) { decreaseTrust(char, { steps: debugTrustAmount() }); saveCharacters(); }
+    });
+
+    $(document).on("click.debugControls", "#trust-debug-break", () => {
+        const char = debugTrustChar();
+        if (char) { breakTrust(char, debugTrustAmount()); saveCharacters(); }
+    });
+
+    $(document).on("click.debugControls", "#trust-debug-max", () => {
+        const char = debugTrustChar();
+        if (!char || (char.trustLevel ?? 1) >= 10) return;
+        char.trustLevel = 9;
+        increaseTrust(char);
+        saveCharacters();
+    });
+
+    $(document).on("click.debugControls", "#trust-debug-reset", () => {
+        const char = debugTrustChar();
+        if (!char) return;
+        char.trustLevel = 1;
+        saveCharacters();
+        window.refreshActiveCharacterUI?.();
     });
 
     $(document).on("click.debugControls", "#trust-debug-down", () => {
@@ -9191,14 +11286,29 @@ async function loadExtensionHtmlFile(fileName) {
 }
 
 
+
+// Cover SillyTavern's start-up splash with our loading screen; it stays up
+// until the title screen is showing (or has been skipped).
+try {
+    showLoadingCurtain({ extensionFolderPath });
+} catch (e) {
+    console.warn("[Dangan][Title] loading screen failed:", e);
+}
+
 jQuery(async () => {
     console.log(`[${extensionName}] Loading...`);
+    installSkipKeyHandler({ isEscapeOwned: isEscapeOwnedByDialog });
+    configureImageUploads({ getRequestHeaders });
+    configureMinigameSessions({
+        snapshot: snapshotMinigameState,
+        restore: restoreMinigameState,
+        confirm: confirmLeaveMinigame,
+    });
 
     bootstrapDebugUi();
     bindDebugControlEvents();
 
     try {
-        reportFullscreenOverlayDebug("A", "index.js:boot", "Entered extension boot try block");
         const settingsHtml = await loadExtensionHtmlFile("example.html");
         $("#extensions_settings2").append(settingsHtml);
 
@@ -9208,6 +11318,70 @@ jQuery(async () => {
         normalizeSettingsHeaderActionButtons();
         ensureGlobalDebugUi();
         vnModeController = createVnModeController();
+        playerInsetController = createPlayerInset({
+            getSpriteUrl: (label) => {
+                const folder = getPromeSpriteFolder();
+                return folder ? getSpriteUrl(folder, label) : Promise.resolve(null);
+            },
+            classify: (text) => isAutoExpressionsEnabled() ? classifyPlayerText(text) : Promise.resolve(null),
+            isCollapsed: () => !!getMonopadSetting("playerInsetCollapsed"),
+            setCollapsed: (v) => setMonopadSetting("playerInsetCollapsed", !!v),
+            getLastUserMessage: () => {
+                const chat = window.SillyTavern?.getContext?.()?.chat;
+                if (!Array.isArray(chat)) return "";
+                for (let i = chat.length - 1; i >= 0; i--) {
+                    if (chat[i]?.is_user && !chat[i]?.is_system) return String(chat[i].mes || "");
+                }
+                return "";
+            },
+        });
+        eventSource.on(event_types.USER_MESSAGE_RENDERED, (mesId) => {
+            const chat = window.SillyTavern?.getContext?.()?.chat;
+            const msg = Array.isArray(chat) ? (chat[mesId] ?? chat[chat.length - 1]) : null;
+            if (msg?.is_user) playerInsetController?.onUserMessage(msg.mes);
+        });
+        eventSource.on(event_types.CHAT_CHANGED, () => {
+            // Prome's settings may have changed (or loaded) since.
+            applyPlayerInset();
+            playerInsetController?.onChatChanged();
+            expressionPickerController?.refresh();
+        });
+        expressionPickerController = createExpressionPicker({
+            getTargets: getExpressionPickerTargets,
+            listSprites: listExpressionPickerSprites,
+            applySprite: applyExpressionPickerSprite,
+            isAuto: isAutoExpressionsEnabled,
+            setAuto: (on) => {
+                setMonopadSetting("autoExpressionsEnabled", !!on);
+                applySettingsTabUI();
+            },
+            getContextKey: getExpressionPickerContextKey,
+            isAvailable: () => {
+                if (getMonopadSetting("expressionPickerEnabled") === false) return false;
+                const body = document.body.classList;
+                if (body.contains("dangan-ui-hidden") || body.contains("dangan-ow-edit-mode")
+                    || body.contains("dangan-ow-action-menu-open")) return false;
+                return body.contains("dangan-trial-active")
+                    || body.contains("dangan-ow-scene-active")
+                    || body.contains("dangan-ow-chat-exit-active")
+                    || body.contains("dangan-ow-conversation-view");
+            },
+        });
+        {
+            // Show the tab only while a conversation or a trial is on screen.
+            let raf = null;
+            const sync = () => {
+                if (raf) return;
+                raf = requestAnimationFrame(() => { raf = null; expressionPickerController?.sync(); });
+            };
+            new MutationObserver(sync).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+            // The overworld and the portrait stage are rebuilt as new children
+            // of <body>; follow them (placement, who's listed).
+            new MutationObserver(sync).observe(document.body, { childList: true });
+            onPickedSpritesChanged(() => expressionPickerController?.remark?.());
+            window.addEventListener("resize", sync);
+            sync();
+        }
         monokumaAnnouncementController = createMonokumaAnnouncementController({
             extensionFolderPath,
             shouldPlayAudio: () => Number(extension_settings[extensionName]?.announcementVolume ?? 65) > 0,
@@ -9291,6 +11465,7 @@ jQuery(async () => {
         monochine_track: document.getElementById("monopad_sfx_monochine_track"),
         monokuma: document.getElementById("monopad_sfx_monokuma"),
         monokumasad: document.getElementById("sfx_monokuma_sad"),
+        host_bwomp: document.getElementById("host_sfx_bwomp"),
         bullet_get: document.getElementById("bullet_sfx_get"),
         bullet_get_alt: document.getElementById("bullet_sfx_get_alt"),
         trust_up: document.getElementById("trust_sfx_up"),
@@ -9322,7 +11497,9 @@ jQuery(async () => {
         if (trialManager?.getState?.() === TrialPhases.NON_STOP_DEBATE) return;
         playSfx(sound);
     },
-    getSetting: getMonopadSetting
+    getSetting: getMonopadSetting,
+    // The ceremony's sprite cut-in.
+    getPortraitUrl: (name, emotion) => getSpriteUrl(name, emotion).catch(() => null),
 });
 
         itemsPanelController = createItemsPanelController({
@@ -9392,10 +11569,18 @@ jQuery(async () => {
                 },
                 onMachineOpen: () => fadeOutAndPauseBgm(),
                 onMachineClose: () => fadeInAndResumeBgm(),
+                onReshuffleCharacters: () => reshuffleCharacterLocations(),
                 playShopTrack,
                 stopShopTrack,
                 fetchBgmPaths,
                 playBgmPath,
+                getSettingsRoot: () => (extension_settings[extensionName] ??= {}),
+                saveSettings: saveSettingsDebounced,
+                getDormResidents,
+                uploadImage: async (dataUrl, options) => {
+                    await sillyTavernReady;
+                    return uploadDataUrlImage(dataUrl, options);
+                },
             });
             mapPanelController?.renderMapPanel?.();
 
@@ -9431,6 +11616,13 @@ jQuery(async () => {
                     isSingleChatOverworldEnabled: () => !!getMonopadSetting("singleChatOverworldEnabled"),
                     editGroup,
                     isTrialActive: () => !!trialManager?.isTrialActive?.(),
+                    isActionMenuEnabled: () => !!getMonopadSetting("exploreActionMenu"),
+                    getHostMenuActions: () => getExploreMenuActions(),
+                    isHostCharacter: (name) => isHostCharacter(name),
+                    listHosts: () => listHostsForCall(),
+                    onHostCalled: (name) => bringHostOnStage(name),
+                    getOnStageHosts: () => getOnStageHosts(),
+                    getHostEntranceElapsed: (name) => getHostEntranceElapsed(name, 'overworld'),
                     onPresenceSynced: () => {
                         try { trialManager?.refreshGroupChatPortraits?.(); }
                         catch (e) { console.warn("[Dangan][Overworld] GCP refresh after presence sync failed:", e); }
@@ -9447,7 +11639,7 @@ jQuery(async () => {
                 window.dangan_overworld = overworldSceneController;
             } catch (e) {
                 console.error("[Dangan][Overworld] Failed to initialize overworld controller:", e);
-                overworldSceneController = { render: () => {}, randomizeLocations: () => {}, notifyPlayerMovedTo: () => {}, ensureCharacterLocations: () => {}, destroy: () => {}, onSingleChatOverworldChanged: () => {}, schedulePresenceSync: () => {} };
+                overworldSceneController = { render: () => {}, randomizeLocations: () => {}, notifyPlayerMovedTo: () => {}, ensureCharacterLocations: () => {}, destroy: () => {}, onSingleChatOverworldChanged: () => {}, schedulePresenceSync: () => {}, setTrialPresence: async () => false };
             }
 
             const initialRender = (tag) => {
@@ -9570,6 +11762,7 @@ if (tab === "truth" && window.renderTruthBullets) {
     }
 
     if (tab === "map") {
+        mapPanelController?.refreshDormRooms?.();
         mapPanelController?.renderMapPanel();
     }
 
@@ -9643,6 +11836,10 @@ $(".monopad-icon").on("mouseenter", function () {
 
         }
 
+        toggleMonopadFromKeybind = () => {
+            unlockAudio();
+            togglePanel();
+        };
         const handleMonopadToggle = () => {
             const suppressUntil = Number(monopadButtonEl?.dataset?.suppressMonopadClickUntil || "0");
             if (Date.now() < suppressUntil) return;
@@ -9782,8 +11979,8 @@ $(".monopad-icon").on("mouseenter", function () {
 
         $("#dangan_reset_lesson_hints").on("click", () => {
             playSfx(sfx.click);
-            onboardingState?.resetCoaches?.();
-            onboardingState?.clearWelcomeSeen?.();
+            onboardingState?.resetAllTutorials?.();
+            applySettingsTabUI();
             const btn = document.getElementById("dangan_reset_lesson_hints");
             if (btn) {
                 const prev = btn.textContent;
@@ -9792,28 +11989,37 @@ $(".monopad-icon").on("mouseenter", function () {
             }
         });
 
-        $("#monopad-pass-time").on("click", async () => {
+        // The header buttons go through the same confirmations as the Phase HUD.
+        const runHeaderPhaseAction = async (actionId) => {
             playSfx(sfx.click);
-            await passTimeToNight({ source: "monopad_button" });
-        });
+            const action = getPhaseActions({ phase: getCurrentPhase(), timeTracker: ensureTimeTrackerState() })
+                .find((a) => a.id === actionId);
+            await runPhaseAction(action);
+        };
+        $("#monopad-pass-time").on("click", () => runHeaderPhaseAction("pass-time"));
+        $("#monopad-sleep").on("click", () => runHeaderPhaseAction("sleep"));
+        $("#monopad-investigation-underway").on("click", () => runHeaderPhaseAction("end-investigation"));
 
-        $("#monopad-sleep").on("click", async () => {
-            playSfx(sfx.click);
-            await sleepToNextDay({ source: "monopad_button" });
-        });
-
-        $(".settings-toggle").on("click", function () {
-            const key = this.dataset.setting;
-            if (!key) return;
-
-            const next = !getMonopadSetting(key);
-            setMonopadSetting(key, next);
-            applySettingsTabUI();
+        applyToggleSettingSideEffects = (key, next) => {
             if (key === "vnModeEnabled" && next) {
                 trySetSillyTavernVisualNovelMode(true);
             }
             if (key === "dynamicThemes") {
                 applyDynamicTheme();
+            }
+            if (key === "hostEntranceBounce") {
+                applyHostEntranceSettings();
+            }
+            if (key === "phaseHudEnabled") {
+                refreshPhaseHud();
+            }
+            if (key === "exploreHideComposer" || key === "exploreActionMenu" || key === "moveToOnMinimap" || key === "autoHideStTopBar") {
+                applyExploreLayoutSettings();
+            }
+            if (key === "markerPromptsEnabled") {
+                // Warn again the next time it's turned on.
+                if (!next) markerPresetWarningShown = false;
+                syncMarkerPrompts();
             }
             if (key === "dynamicSongsEnabled") {
                 dynamicSongsController?.onEnabledChanged?.(next);
@@ -9847,6 +12053,34 @@ $(".monopad-icon").on("mouseenter", function () {
                 applyHalfSpriteMode();
             }
             mapPanelController?.handleSettingsChanged?.();
+        };
+
+        $(".settings-toggle").on("click", function () {
+            const key = this.dataset.setting;
+            if (!key) return;
+
+            const next = !getMonopadSetting(key);
+            setMonopadSetting(key, next);
+            applySettingsTabUI();
+            applyToggleSettingSideEffects(key, next);
+        });
+
+        // The whole row of a toggle setting is its hit area, not just the switch.
+        $(document).on("click", ".settings-panel .settings-item", function (e) {
+            if (e.target.closest("button, a, input, select, textarea, label, summary, details")) return;
+            $(this).children(".settings-toggle").first().trigger("click");
+        });
+
+        $("#dangan_open_setup_checklist").on("click", () => {
+            playSfx(sfx.click);
+            if ($panel.hasClass("open")) closeMonopadPanel();
+            setTimeout(() => openTitleScreen({ initialPanel: "setup" }), 250);
+        });
+
+        $("#dangan_return_to_title").on("click", () => {
+            playSfx(sfx.click);
+            if ($panel.hasClass("open")) closeMonopadPanel();
+            setTimeout(() => openTitleScreen({ skipSplash: titleScreenStartedThisSession }), 250);
         });
 
         // Announcement customisation mode buttons (DEFAULT / CUSTOM toggles)
@@ -9912,6 +12146,41 @@ $(".monopad-icon").on("mouseenter", function () {
             setMonopadSetting('gameMasterMode', value);
             saveSettingsDebounced();
             applyGameMasterUI();
+        });
+
+        // Host / mascot cards: Auto (Monokuma) or a ticked list of cards.
+        $(document).on("click", "[data-hud-color-mode]", function () {
+            const keys = HUD_COLOR_SETTING[this.dataset.hudColorTarget];
+            if (!keys) return;
+            playSfx(sfx.click);
+            setMonopadSetting(keys.mode, normalizeHudColorMode(this.dataset.hudColorMode));
+            applyHudColors();
+            applyHudColorsUI();
+        });
+        // Live while dragging the picker; saved when it closes.
+        $(document).on("input change", "input[data-hud-color-target]", function (e) {
+            const keys = HUD_COLOR_SETTING[this.dataset.hudColorTarget];
+            if (!keys) return;
+            if (e.type === "change") setMonopadSetting(keys.color, this.value);
+            else extension_settings[extensionName][keys.color] = this.value;
+            applyHudColors();
+        });
+
+        $(document).on("click", "[data-host-mode]", function () {
+            const custom = this.dataset.hostMode === 'custom';
+            hostPickerOpen = custom;
+            if (!custom) setHostCards([]);
+            applyHostCardsUI();
+        });
+        $(document).on("input", "#dangan-host-search", () => renderHostCardList());
+        $(document).on("change", ".dangan-host-pick", function () {
+            const picked = readHostSetting(getMonopadSetting('hostCards'));
+            const name = String(this.value || '');
+            const next = this.checked
+                ? [...picked, name]
+                : picked.filter(n => n.toLowerCase() !== name.toLowerCase());
+            setHostCards(next);
+            renderHostCardList();
         });
 
         // Game Master character pick
@@ -9993,6 +12262,12 @@ $(".monopad-icon").on("mouseenter", function () {
             saveSettingsDebounced();
         });
 
+        $("#dangan_vn_speed_slider").on("input", e => {
+            const value = Math.min(300, Math.max(25, Number(e.target.value) || 100));
+            setMonopadSetting("vnTypingSpeed", value);
+            $("#dangan_vn_speed_value").text(`${value}%`);
+        });
+
         $("#dangan_crt_slider").on("input", e => {
             const value = Number(e.target.value);
             setMonopadSetting("crtIntensity", Number.isFinite(value) ? value : 35);
@@ -10067,6 +12342,12 @@ $(".monopad-icon").on("mouseenter", function () {
             $list.find(".bgm-track-select-all-checkbox").prop("checked", total > 0 && checked === total);
             renderSelectedTracksForTab(settingKey, selectedId);
         });
+
+        $(document).on("click", ".settings-subtab", function () {
+            playSfx(sfx.click);
+            setActiveSettingsTab(String(this.dataset.settingsTab || ""));
+        });
+        setActiveSettingsTab(getMonopadSetting("settingsSubtab"));
 
         $(document).on("click", ".bgm-tracks-tab", function () {
             const tabKey = String(this.dataset.tab || "");
@@ -10239,6 +12520,7 @@ $(".monopad-icon").on("mouseenter", function () {
             if (settingKey === "roomContextPromptTemplate") {
                 try { syncRoomContextPrompt(); } catch { /* ignore */ }
             }
+            if (settingKey.startsWith("marker")) syncMarkerPrompts();
         });
 
         $(document).on("click", ".settings-prompt-reset", function () {
@@ -10253,11 +12535,28 @@ $(".monopad-icon").on("mouseenter", function () {
             if (settingKey === "roomContextPromptTemplate") {
                 try { syncRoomContextPrompt(); } catch { /* ignore */ }
             }
+            if (settingKey.startsWith("marker")) syncMarkerPrompts();
         });
 
         $("#dangan_card_hygiene_default").on("change", function () {
             const next = String(this.value || "ask").trim().toLowerCase();
             setMonopadSetting("cardHygieneDefault", ["ask", "keep", "clean"].includes(next) ? next : "ask");
+        });
+
+        $(document).on("click", "[data-choice-setting][data-choice-value]", function () {
+            setMonopadSetting(this.dataset.choiceSetting, this.dataset.choiceValue);
+            applySettingsTabUI();
+            applyExploreLayoutSettings();
+        });
+
+        $(document).on("click", "#dangan_trust_style_picker [data-trust-style]", function () {
+            setMonopadSetting("trustCeremonyStyle", normalizeTrustCeremonyStyle(this.dataset.trustStyle));
+            applySettingsTabUI();
+        });
+
+        $(document).on("click", "#dangan_vn_skin_picker [data-vn-skin]", function () {
+            setMonopadSetting("vnSkin", normalizeVnSkin(this.dataset.vnSkin));
+            applySettingsTabUI();
         });
 
         $("#dangan_reward_difficulty").on("change", function () {
@@ -10350,6 +12649,8 @@ $(".monopad-icon").on("mouseenter", function () {
             itemsPanelController?.resetSkillOwnership?.();
             if (statusEl) statusEl.textContent = "All skills un-owned.";
         });
+
+        bindSavesPanel();
 
         $("#dangan_reset_day_counter").on("click", async function () {
             const statusEl = document.getElementById("dangan_reset_day_counter_status");
@@ -10449,7 +12750,11 @@ $(".monopad-icon").on("mouseenter", function () {
                 : "Trial context cleared.";
         });
 
+hadSavedExtensionData = Object.keys(extension_settings[extensionName] || {}).length > 0;
 loadSettings();
+if (!hadSavedExtensionData) setMonopadSetting("returningNoticeDismissed", true);
+migrateSavesIfNeeded();
+initMarkerPromptsSetting();
 ensureTimeTrackerState();
 // Restore Investigation Mode from the persisted flag so it survives refreshes;
 // renderTimeTrackerUi + applyDynamicTheme below pick it up.
@@ -10558,9 +12863,10 @@ audioVisualizer = createAudioVisualizerController({
         if (investigationTrackAudio) investigationTrackAudio.loop = isLoop;
     },
     getIsPaused: () => {
+        // Same priority as bgmTogglePause.
+        if (investigationTrackAudio) return investigationTrackAudio.paused;
         const audioEl = document.getElementById('audio_bgm');
-        if (audioEl instanceof HTMLAudioElement) return audioEl.paused;
-        return investigationTrackAudio?.paused ?? true;
+        return audioEl instanceof HTMLAudioElement ? audioEl.paused : true;
     },
     getPlaylistLabel: () => {
         const key = bgmCurrentSettingKey;
@@ -10600,6 +12906,8 @@ setTimeout(() => {
 // DOM node when present).
 setInterval(() => {
     try { renderMoveToPanel(); renderMinimap(); } catch {}
+    // #top-settings-holder may not exist yet when the layout settings apply.
+    try { ensureStTopBarAutoHide(); } catch {}
 }, 2000);
 
 rewards?.renderProgressionUi?.();
@@ -10607,6 +12915,9 @@ updateChapterDisplay();
 itemsPanelController.loadInventoryState();
 applySettingsTabUI();
 applyImageVisibilitySettings();
+applyExploreLayoutSettings();
+applyHostEntranceSettings();
+applyHudColors();
 applyHalfSpriteMode();
 // The initial chat's sprites mount asynchronously after boot (and CHAT_CHANGED
 // can be unreliable on first load), so re-apply once they've settled — otherwise
@@ -10723,6 +13034,8 @@ debugSTGlobals();
         removePin: (locationId) => mapPanelController?.removePinByLocationId?.(locationId),
         setPinHidden: (locationId, hidden) => mapPanelController?.setPinHidden?.(locationId, hidden),
     });
+    // Old base64 Truth Bullet pictures become files once SillyTavern is up.
+    sillyTavernReady.then(() => migrateStoredImages()).catch((e) => console.warn("[Dangan][Truth] image migration failed:", e));
 
     vfxCleanup = initVfxSystem();
     initEmotionFontsSystem();
@@ -10731,6 +13044,7 @@ debugSTGlobals();
     initDeathPortraitGenerator({ getPlayerTarget: getPlayerSpriteTarget });
     setExpressionTarget(() => trialManager?.getGcpSpeakerImg?.() ?? document.getElementById('expression-image'));
     setEmotionBiasResolver(rollBiasedEmotion);
+    setAutoExpressionsGate(isAutoExpressionsEnabled);
 
     function promptForBlackened(suggested = '') {
         return new Promise(resolve => {
@@ -10811,6 +13125,8 @@ debugSTGlobals();
             getCustomGameMasterName,
             getCharacterDisplayName,
             deductMonocoins,
+            getHostEntranceElapsed: (name) => getHostEntranceElapsed(name, 'chat'),
+            isHostCharacter: (name) => isHostCharacter(name),
             getOverworldRoomOccupants: () => {
                 const loc = getCurrentLocationId();
                 return overworldSceneController?.getCharactersInRoom?.(loc) || [];
@@ -10823,6 +13139,14 @@ debugSTGlobals();
             generateTrialDialogueWithProfile,
             getCharacterSourceText,
             getEmotionFont,
+            getTrialRoster: getMainChatTrialRoster,
+            onSuspendRequest: () => suspendClassTrial(),
+            onLeaveRequest: () => leaveClassTrial(),
+            getPickedSprite,
+            applyPickedSprite: (img, path) => applyMirroredSprite(img, path),
+            // The stage is added before its characters load; an open
+            // expression picker re-lists once they're in.
+            onPortraitsBuilt: () => expressionPickerController?.sync?.(),
             onTrialStateChange: () => { renderMoveToPanel(); renderMinimap(); overworldSceneController?.render?.(); try { syncMoodScanButton(); } catch { /* ignore */ } try { syncRoomContextPrompt(); } catch { /* ignore */ } },
             // Re-apply the day/night/investigation phase theme. The trial owns
             // the theme while active (applyDynamicTheme bails on dangan-trial-active),
@@ -10851,21 +13175,11 @@ debugSTGlobals();
             unsuppressVisualizer: () => audioVisualizer.unsuppress(),
             showMinigameLoadingState,
             onStartHangmansGambit: async () => {
-                // #region debug-point B:hangman-trial-entry
-                reportFullscreenOverlayDebug("B", "index.js:onStartHangmansGambit", "Entered Hangman's Gambit trial callback", {
-                    hangmansGambitController: Boolean(hangmansGambitController),
-                });
-                // #endregion
                 // Show a loading overlay and silence whatever BGM was
                 // playing before the click. The controller starts the HG
                 // OST itself from inside playBgm after the tutorial closes,
                 // so the pre-game window stays quiet.
                 const loadingEl = showHangmanLoadingState();
-                // #region debug-point B:hangman-loading
-                reportFullscreenOverlayDebug("B", "index.js:onStartHangmansGambit", "Created Hangman loading overlay", {
-                    loadingEl: Boolean(loadingEl),
-                });
-                // #endregion
                 fadeOutAndPauseBgm().catch(() => {});
 
                 // Generate a contextual question/answer from the trial context.
@@ -10930,14 +13244,6 @@ ANSWER: <UPPERCASEWORD>${hangmanExtraContextBlocks}`;
                 }
 
                 const hangmanRun = hangmansGambitController?.run({ question, answer, time: 120, health: 7, difficulty: 2 });
-                // #region debug-point B:hangman-run
-                reportFullscreenOverlayDebug("B", "index.js:onStartHangmansGambit", "Invoked Hangman controller run()", {
-                    hasRunResult: Boolean(hangmanRun),
-                    thenable: Boolean(hangmanRun && typeof hangmanRun.then === "function"),
-                    questionLength: question.length,
-                    answerLength: answer.length,
-                });
-                // #endregion
                 hangmanRun?.then(() => trialManager?.resumeAfterActivity?.());
             },
             onStartArgumentArmament: async () => {
@@ -11123,21 +13429,11 @@ QUOTE: <climactic accusation>`;
                 trialManager?.resumeAfterActivity?.();
             },
             onStartQuestionTime: async () => {
-                // #region debug-point C:qtime-trial-entry
-                reportFullscreenOverlayDebug("C", "index.js:onStartQuestionTime", "Entered Question Time trial callback", {
-                    questionTimeController: Boolean(questionTimeController),
-                });
-                // #endregion
                 // Show a loading overlay while the LLM drafts a question + 4
                 // answers from the current trial context. Falls back to a
                 // generic suspect picker if generation fails or the model
                 // returns something we can't parse cleanly.
                 const loadingEl = showMinigameLoadingState('Loading Question Time', { command: '/questiontime' });
-                // #region debug-point C:qtime-loading
-                reportFullscreenOverlayDebug("C", "index.js:onStartQuestionTime", "Created Question Time loading overlay", {
-                    loadingEl: Boolean(loadingEl),
-                });
-                // #endregion
                 loadingEl?.setProgress?.(0);
                 // Question Time is one generateRaw call, so there's no true
                 // segment-by-segment progress. Drive a soft asymptotic
@@ -11220,32 +13516,14 @@ ANSWER: <answer>${qtimeExtraContextBlocks}`;
                 }
 
                 const questionTimeRun = questionTimeController?.run({ title, time: resolveSkillParam("qttTimer", 30), answers, correct });
-                // #region debug-point C:qtime-run
-                reportFullscreenOverlayDebug("C", "index.js:onStartQuestionTime", "Invoked Question Time controller run()", {
-                    hasRunResult: Boolean(questionTimeRun),
-                    thenable: Boolean(questionTimeRun && typeof questionTimeRun.then === "function"),
-                    answersCount: Array.isArray(answers) ? answers.length : 0,
-                    correct,
-                });
-                // #endregion
                 questionTimeRun?.then(() => trialManager?.resumeAfterActivity?.());
             },
             onStartQuestionTruth: async () => {
-                // #region debug-point D:qtruth-trial-entry
-                reportFullscreenOverlayDebug("D", "index.js:onStartQuestionTruth", "Entered Question Truth trial callback", {
-                    questionTruthController: Boolean(questionTruthController),
-                });
-                // #endregion
                 // Generate a question whose correct answer is exactly one of
                 // the player's collected Truth Bullet titles.  Falls back to
                 // the prior stub if generation fails or there are no bullets
                 // to pick from.
                 const loadingEl = showMinigameLoadingState('Loading Question Truth', { command: '/questiontruth' });
-                // #region debug-point D:qtruth-loading
-                reportFullscreenOverlayDebug("D", "index.js:onStartQuestionTruth", "Created Question Truth loading overlay", {
-                    loadingEl: Boolean(loadingEl),
-                });
-                // #endregion
                 loadingEl?.setProgress?.(0);
                 let softProgress = 0;
                 const softInterval = window.setInterval(() => {
@@ -11341,14 +13619,6 @@ TIME: <whole-second integer, minimum 60, maximum 180>${qtruthExtraContextBlocks}
                 }
 
                 const questionTruthRun = questionTruthController?.run({ question, answer, time: resolveSkillParam("qthTimer", time), playerHp: resolveSkillParam("qthHealth", 5) });
-                // #region debug-point D:qtruth-run
-                reportFullscreenOverlayDebug("D", "index.js:onStartQuestionTruth", "Invoked Question Truth controller run()", {
-                    hasRunResult: Boolean(questionTruthRun),
-                    thenable: Boolean(questionTruthRun && typeof questionTruthRun.then === "function"),
-                    questionLength: question.length,
-                    answerLength: answer.length,
-                });
-                // #endregion
                 questionTruthRun?.then(() => trialManager?.resumeAfterActivity?.());
             },
             onStartChoosing: ({ characters = [], startIdx = 0 } = {}) => {
@@ -11612,18 +13882,57 @@ STATEMENT: <third statement>`;
         eventSource.on(event_types.MESSAGE_SENT, handleMessage);
         eventSource.on(event_types.USER_MESSAGE_RENDERED, handleMessage);
 
+        // Message effects: track generations, and take back what a swiped,
+        // deleted or edited message did.
+        eventSource.on(event_types.GENERATION_STARTED, (type, _options, dryRun) => {
+            if (!dryRun && type !== "quiet") generationInProgress = true;
+            // Catch streaming turned back on, or settings that loaded late.
+            if (!dryRun && getMonopadSetting("vnModeEnabled")) syncStStreamingForVn(true);
+            // Right before the prompt is built, so trials starting or ending
+            // are always reflected.
+            try { syncMarkerPrompts(); } catch (e) { console.warn("[Dangan][Markers] sync failed:", e); }
+        });
+        for (const done of [event_types.GENERATION_ENDED, event_types.GENERATION_STOPPED, event_types.CHARACTER_MESSAGE_RENDERED]) {
+            if (done) eventSource.on(done, () => onGenerationFinished());
+        }
+        for (const changed of [event_types.MESSAGE_SWIPED, event_types.MESSAGE_DELETED, event_types.MESSAGE_EDITED]) {
+            if (changed) eventSource.on(changed, () => {
+                try { reconcileMessageEffects(); } catch (e) { console.warn("[Dangan][Ledger] reconcile failed:", e); }
+            });
+        }
+
         // Update group chat portrait stage when a character speaks
         const handleCharacterMessage = (mesId) => {
             const ctx = window.SillyTavern?.getContext?.();
             if (!ctx) return;
             const msg = ctx.chat?.[mesId] ?? ctx.chat?.[ctx.chat.length - 1];
             if (msg && !msg.is_user && msg.name) {
+                // A sprite picked for them lasts until their next line.
+                clearPickedSprite(msg.name);
                 trialManager?.updateGroupChatSpeaker?.(msg.name);
             }
             updateSuspectsFromChat();
             try { cardHygiene?.enforceCleanGreetings?.(ctx); } catch {}
         };
         eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, handleCharacterMessage);
+
+        // Host entrance: a host drafted to speak in a group (force-talk or
+        // /trigger — in One Main Chat hosts are muted until called), or
+        // generating in their own 1-on-1 chat, slides in if not already up.
+        if (event_types.GROUP_MEMBER_DRAFTED) {
+            eventSource.on(event_types.GROUP_MEMBER_DRAFTED, (chId) => {
+                const ctx = window.SillyTavern?.getContext?.();
+                const name = ctx?.characters?.[chId]?.name;
+                if (name) bringHostOnStage(name);
+            });
+        }
+        eventSource.on(event_types.GENERATION_STARTED, (type, _options, dryRun) => {
+            if (dryRun || type === "quiet" || type === "impersonate") return;
+            const ctx = window.SillyTavern?.getContext?.();
+            if (!ctx || ctx.groupId || ctx.characterId == null) return;
+            const name = ctx.characters?.[ctx.characterId]?.name;
+            if (name) bringHostOnStage(name);
+        });
 
         document.addEventListener('click', e => {
             const btn = e.target.closest('.dangan-suspect-refresh-btn');
@@ -11641,6 +13950,10 @@ STATEMENT: <third statement>`;
         // Suppress VFX/SFX for the duration of the init + a grace period so the expressions
         // that fire as ST re-renders the chat don't play sounds — then lift automatically.
         eventSource.on(event_types.CHAT_CHANGED, () => {
+            // Load the chat's save first; the trial and overworld code below
+            // read story state.
+            try { syncSaveWithCurrentChat(); } catch (e) { console.warn('[Dangan][Saves] sync failed:', e); }
+            try { dismissHostsNotInChat(); } catch (e) { console.warn('[Dangan][Host] dismiss on chat change failed:', e); }
             setVfxGcpLoadSuppressed(true);
             setVfxGcpGroupActive(false); // reset until new chat's GCP init completes
             try { renderMoveToPanel(); renderMinimap(); } catch (e) { console.warn('[Dangan][moveto-panel] render failed:', e); }
@@ -11835,6 +14148,7 @@ STATEMENT: <third statement>`;
         // (it detects an already -half src), so feeding each img its own src
         // adds -half when mode turns on and strips it when mode turns off —
         // letting the toggle take effect immediately without a new expression.
+        applyMirroredSprite = setMirroredSrc;
         refreshHalfSpriteDisplay = () => {
             document.querySelectorAll(
                 '.dangan-gcp-slot img:not(.dangan-gcp-horse):not(.dangan-gcp-lectern), ' +
@@ -11932,8 +14246,15 @@ STATEMENT: <third statement>`;
             } catch { /* ignore bad src */ }
             if (_altName === 'narrator' || _spriteFolder === 'narrator') return;
 
+            // A host in the room wears the expression of what they just said.
+            noteHostExpression([imgEl.getAttribute('alt') || '', _spriteFolder], src);
+
             try { dynamicSongsController?.noteFromImage?.(imgEl, src); } catch { /* ignore */ }
             try { dynamicSongsController?.scheduleEvaluate?.({ restorePhaseOnMiss: true }); } catch { /* ignore */ }
+
+            // Automatic expressions off: everyone on screen keeps the sprite
+            // they have (or one picked in the expression picker).
+            if (!isAutoExpressionsEnabled()) return;
 
             if (window.__DREX_OUTFIT_DEBUG) console.log('[DREX-outfit] onExpressionChange', { src, prefix: getActiveOutfitPrefix(), curLoc: getCurrentLocationId(), cls: imgEl.className, id: imgEl.id, parent: imgEl.parentElement?.className });
 
@@ -12000,7 +14321,7 @@ STATEMENT: <third statement>`;
                 // Monokuma skip it entirely (the overlay handles his expressions directly).
                 try {
                     const _parts = new URL(src, location.href).pathname.split('/').filter(Boolean);
-                    if (_parts.length >= 2 && decodeURIComponent(_parts[_parts.length - 2]).toLowerCase() === 'monokuma') return;
+                    if (isTrialUiActive() && _parts.length >= 2 && decodeURIComponent(_parts[_parts.length - 2]).toLowerCase() === 'monokuma') return;
                 } catch { /* ignore bad src */ }
                 // targetImg is null → GCP not yet initialised; fall through to debounce
                 // so the expression is buffered and applied once the stage is ready.
@@ -12152,23 +14473,9 @@ STATEMENT: <third statement>`;
         if (!prome?.enableUserSprite || !prome?.userSprite) return null;
         return getSpriteUrl(prome.userSprite, emotion).catch(() => null);
     };
-    // #region debug-point A:controller-init-enter
-    reportFullscreenOverlayDebug("A", "index.js:create-minigame-controllers", "About to initialize fullscreen minigame controllers", {
-        hasCreateQuestionTimeController: typeof createQuestionTimeController === "function",
-        hasCreateQuestionTruthController: typeof createQuestionTruthController === "function",
-        hasCreateHangmansGambitController: typeof createHangmansGambitController === "function",
-    });
-    // #endregion
     questionTimeController   = createQuestionTimeController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, getPlayerSpriteUrl });
     questionTruthController  = createQuestionTruthController({ extensionFolderPath, getTruthBullets: getTruthBulletsSnapshot, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, getPlayerSpriteUrl });
     hangmansGambitController  = createHangmansGambitController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, pauseDynamicAudio: fadeOutAndPauseBgm, resumeDynamicAudio: resumeBgmAfterHG, playBgm: playHGBgm, getPlayerSpriteUrl });
-    // #region debug-point A:controller-init
-    reportFullscreenOverlayDebug("A", "index.js:create-minigame-controllers", "Initialized fullscreen minigame controllers", {
-        hangmansGambitController: Boolean(hangmansGambitController),
-        questionTimeController: Boolean(questionTimeController),
-        questionTruthController: Boolean(questionTruthController),
-    });
-    // #endregion
     argumentArmamentController = createArgumentArmamentController({ extensionFolderPath, awardMonocoins, deductMonocoins, restoreTheme: applyDynamicTheme, getPlayerSpriteUrl });
     mindMineController        = createMindMineController({
         extensionFolderPath,
@@ -12218,11 +14525,24 @@ STATEMENT: <third statement>`;
     } catch (error) {
         bootstrapDebugUi();
         console.error(`[${extensionName}] ❌ Load failed:`, error);
-        reportFullscreenOverlayDebug("A", "index.js:boot", "Extension boot try block threw", {
-            message: String(error?.message || error || ""),
-            stack: String(error?.stack || ""),
-        });
     }
+
+    // Title screen first; the play-mode greeting waits until it is dismissed.
+    try {
+        await maybeShowTitleScreen({
+            isEnabled: () => getMonopadSetting("titleScreenEnabled") !== false,
+            ...buildTitleScreenOptions(),
+            // The title screen comes in as the loading curtain opens.
+            revealAfter: waitForSplashToClose(),
+            onShown: () => releaseLoadingCurtain(),
+        });
+    } catch (e) {
+        console.warn("[Dangan][Title] failed:", e);
+    }
+    // No-op once released; otherwise the title screen was skipped.
+    releaseLoadingCurtain();
+
+    setTimeout(() => showMarkerPromptsNoticeIfPending(), 2500);
 
     setTimeout(() => {
         try {
@@ -12236,7 +14556,1462 @@ STATEMENT: <third statement>`;
     }, 800);
 });
 
+// ── Title Screen ────────────────────────────────────────────────────────────
+
+// Assigned inside the boot block, next to the .settings-toggle handler, so
+// the title screen's Options run the same per-key side effects.
+let applyToggleSettingSideEffects = () => {};
+let titleScreenStartedThisSession = false;
+// Whether anything was stored before this load, meaning the player used the
+// extension before (settings live on the server, so this survives reinstalling).
+let hadSavedExtensionData = false;
+
+function openMonopadTab(tab, { section } = {}) {
+    if (!$("#dangan_monopad_panel").hasClass("open")) {
+        $("#dangan_monopad_button").trigger("click");
+    }
+    $(`.monopad-icon[data-tab="${tab}"]`).trigger("click");
+    if (tab === "settings" && section) setActiveSettingsTab(section);
+}
+
+function avatarThumbUrl(avatar) {
+    return avatar ? `/thumbnail?type=avatar&file=${encodeURIComponent(avatar)}` : "";
+}
+
+function stripChatExtension(fileName) {
+    return String(fileName || "").replace(/\.jsonl$/i, "");
+}
+
+function buildTitleChatRow(info, ctx) {
+    const chatFile = stripChatExtension(info?.file_name || info?.file_id);
+    if (!chatFile) return null;
+    const chars = Array.isArray(ctx?.characters) ? ctx.characters : [];
+    const currentChatId = String(ctx?.getCurrentChatId?.() ?? ctx?.chatId ?? "");
+    const base = {
+        chatFile,
+        lastMessage: String(info?.mes ?? ""),
+        lastDate: info?.last_mes ?? 0,
+        messageCount: Number.isFinite(Number(info?.chat_items)) ? Number(info.chat_items) : undefined,
+        current: !!currentChatId && currentChatId === chatFile,
+    };
+    if (info?.group) {
+        const group = (Array.isArray(ctx?.groups) ? ctx.groups : []).find((g) => g?.id === info.group);
+        if (!group) return null;
+        const members = (Array.isArray(group.members) ? group.members : [])
+            .map((avatar) => chars.find((c) => c?.avatar === avatar))
+            .filter(Boolean);
+        return {
+            ...base,
+            kind: "group",
+            id: group.id,
+            title: group.name || "Group chat",
+            avatars: members.map((c) => avatarThumbUrl(c.avatar)),
+            memberNames: members.map((c) => c.name),
+            current: base.current && String(ctx?.groupId ?? "") === String(group.id),
+        };
+    }
+    const char = chars.find((c) => c?.avatar === info?.avatar);
+    if (!char) return null;
+    return {
+        ...base,
+        kind: "char",
+        id: char.avatar,
+        title: char.name,
+        avatars: [avatarThumbUrl(char.avatar)],
+        memberNames: [char.name],
+        current: base.current && !ctx?.groupId,
+    };
+}
+
+async function listTitleScreenChats() {
+    const ctx = window.SillyTavern?.getContext?.();
+    try {
+        const response = await fetch("/api/chats/recent", {
+            method: "POST",
+            headers: getRequestHeaders(),
+            body: JSON.stringify({ max: 200 }),
+            cache: "no-cache",
+        });
+        if (response.ok) {
+            const data = await response.json();
+            if (Array.isArray(data)) return data.map((info) => buildTitleChatRow(info, ctx)).filter(Boolean);
+        }
+    } catch (e) {
+        console.warn("[Dangan][Title] /api/chats/recent failed, listing per character:", e);
+    }
+
+    // Older SillyTavern: no recent-chats endpoint. Ask each character for
+    // its chats, and list group chats from the loaded groups.
+    const chars = Array.isArray(ctx?.characters) ? ctx.characters : [];
+    const perChar = await Promise.all(chars.map(async (char) => {
+        if (!char?.avatar) return [];
+        try {
+            const response = await fetch("/api/characters/chats", {
+                method: "POST",
+                headers: getRequestHeaders(),
+                body: JSON.stringify({ avatar_url: char.avatar }),
+            });
+            if (!response.ok) return [];
+            const data = await response.json();
+            const list = Array.isArray(data) ? data : (data && !data.error ? Object.values(data) : []);
+            return list.map((info) => buildTitleChatRow({ ...info, avatar: char.avatar }, ctx));
+        } catch {
+            return [];
+        }
+    }));
+    const groupRows = (await getGroupsListForPicker()).flatMap((group) => {
+        const chats = Array.isArray(group?.chats) ? group.chats : (group?.chat_id ? [group.chat_id] : []);
+        return chats.map((chatId) => buildTitleChatRow({
+            file_name: chatId,
+            group: group.id,
+            last_mes: chatId === group.chat_id ? (group.date_last_chat || 0) : 0,
+            mes: "",
+        }, { ...ctx, groups: [group] }));
+    });
+    return [...perChar.flat(), ...groupRows].filter(Boolean);
+}
+
+async function openTitleScreenChat(row) {
+    const ctx = window.SillyTavern?.getContext?.();
+    if (!ctx || !row) return;
+    if (row.kind === "group") {
+        // openGroupById is the call that sets selected_group (ctx.groupId).
+        await openGroupById(row.id);
+        if (String(ctx.getCurrentChatId?.() ?? "") !== row.chatFile) {
+            await ctx.openGroupChat?.(row.id, row.chatFile);
+        }
+        return;
+    }
+    const index = (ctx.characters || []).findIndex((c) => c?.avatar === row.id);
+    if (index < 0) {
+        await executeSlashCommandsWithOptions(`/go ${row.title}`);
+        return;
+    }
+    await ctx.selectCharacterById?.(index);
+    if (String(ctx.getCurrentChatId?.() ?? "") !== row.chatFile) {
+        await ctx.openCharacterChat?.(row.chatFile);
+    }
+}
+
+function getTitleScreenCandidates() {
+    return getImportedCharacterCards().map(({ name, avatar }) => {
+        const existing = characters.get(normalizeName(name));
+        return {
+            name,
+            avatarUrl: avatarThumbUrl(avatar),
+            ultimate: String(existing?.ultimate || lookupUltimateFromLorebook(name) || ""),
+            inRoster: !!existing,
+        };
+    });
+}
+
+function getTitleScreenPersonas() {
+    const ctx = window.SillyTavern?.getContext?.();
+    const map = power_user?.personas && typeof power_user.personas === "object" ? power_user.personas : {};
+    const list = Object.entries(map).map(([key, name]) => ({
+        key,
+        name: String(name || key),
+        avatarUrl: ctx?.getThumbnailUrl ? ctx.getThumbnailUrl("persona", key) : `/thumbnail?type=persona&file=${encodeURIComponent(key)}`,
+    }));
+    return { list, current: user_avatar || "" };
+}
+
+async function setTitleScreenPersona(key) {
+    if (!key || key === user_avatar) return;
+    const personas = await import("../../../personas.js");
+    await personas.setUserAvatar?.(key);
+}
+
+function hasTitleScreenProgress() {
+    const root = extension_settings[extensionName] || {};
+    const tracker = root.timeTracker || {};
+    const progression = root.progression || {};
+    return characters.size > 0
+        || getTruthBullets().length > 0
+        || Number(root.chapterIndex || 0) > 0
+        || Number(tracker.day || 1) > 1
+        || Number(progression.level || 1) > 1
+        || Number(progression.xp || 0) > 0
+        || Number(root.inventory?.monocoins || 0) > 0
+        || Object.keys(root.introducedCharacters || {}).length > 0;
+}
+
+function setTitleToggleSetting(key, value) {
+    if (!!getMonopadSetting(key) === !!value) return;
+    setMonopadSetting(key, !!value);
+    applySettingsTabUI();
+    applyToggleSettingSideEffects(key, !!value);
+}
+
+function setTitleOptionSetting(key, value) {
+    if (key === "rewardDifficulty") {
+        setMonopadSetting(key, applyRewardDifficultyProfile(value || defaultSettings.rewardDifficulty));
+        applySettingsTabUI();
+        return;
+    }
+    if (typeof value === "boolean") {
+        setTitleToggleSetting(key, value);
+        return;
+    }
+    setMonopadSetting(key, value);
+    applySettingsTabUI();
+    if (key === "monomonoBgmVolume" && shopTrackAudio) shopTrackAudio.volume = Number(value) / 100;
+}
+
+// ── Save files ────────────────────────────────────────────────────────────────
+// Story state is swapped in and out of the settings object by core/saves.
+// After a swap, everything that cached the old state in memory reloads here.
+
+const saveStore = createSaveStore({
+    getRoot: () => (extension_settings[extensionName] ??= {}),
+    defaults: defaultSettings,
+});
+
+function migrateSavesIfNeeded() {
+    const groupId = getMonopadSetting("singleChatGroupId");
+    const single = !!getMonopadSetting("singleChatOverworldEnabled") && !!groupId;
+    const created = saveStore.migrateIfNeeded({
+        mode: single ? SAVE_MODES.SINGLE : SAVE_MODES.MULTI,
+        groupIds: single ? [groupId] : [],
+    });
+    if (created) saveSettingsDebounced();
+}
+
+function reloadStoryStateFromSettings() {
+    const root = extension_settings[extensionName] ??= {};
+
+    characters.clear();
+    loadCharacters();
+    try { reloadTruthBullets(); } catch (e) { console.warn("[Dangan][Saves] truth reload failed:", e); }
+
+    // Markers already handled belong to the save they were handled in.
+    processedTruthSignatures.clear();
+    processedInvestigationSignatures.clear();
+    processedMonokumaAnnouncementSignatures.clear();
+    processedTrialStartSignatures.clear();
+    processedGiftMessageSignatures.clear();
+    pendingGiftDeliveryQueue = [];
+    recentLocationMentions = [];
+
+    const wasInvestigating = investigationUnderway;
+    ensureTimeTrackerState();
+    investigationUnderway = !!root.investigationUnderway;
+    phaseHistory.clear();
+    if (wasInvestigating !== investigationUnderway) {
+        investigationStartController.setPresetToggle(investigationUnderway);
+    }
+    renderTimeTrackerUi();
+    applyTimeContextToGeneration();
+    applyDynamicTheme();
+
+    chaptersActiveIdx = Number(root.chapterIndex || 0);
+    updateChapterDisplay();
+    try { if (document.getElementById("chapters-body")) renderChaptersPanel(); } catch (_) {}
+
+    try { itemsPanelController?.loadInventoryState?.(); } catch (_) {}
+    try { itemsPanelController?.renderSkillsItemsPanel?.(); } catch (_) {}
+    try { rewards?.renderProgressionUi?.(); } catch (_) {}
+    try { socialPanelController?.renderSocialPanel?.(); } catch (_) {}
+    try { overworldSceneController?.render?.(); } catch (_) {}
+    try { mapPanelController?.reloadFromSettings?.(); } catch (_) {}
+    _minimapCharPositions.clear();
+    _minimapCharRotations.clear();
+    try { _minimapSig = null; renderMinimap(); renderMoveToPanel(); updateCurrentRoomDisplay(); syncRoomContextPrompt(); } catch (_) {}
+    try { trialManager?.onChatChanged?.(); } catch (_) {}
+    refreshSavesPanel();
+}
+
+// Loads a save. The play style follows the save, so a One Main Chat save
+// turns Single-Chat Overworld on and a Several Chats save turns it off.
+function switchToSave(id, { announce = true } = {}) {
+    if (!saveStore.activate(id)) return false;
+    // The new save picks its own music below.
+    if (hostStage?.names().length) { hostMusicPlaying = false; stopLocationTrack(); void hostStage.dismiss({ silent: true }); }
+    const save = saveStore.getActive();
+    saveSettingsDebounced();
+    reloadStoryStateFromSettings();
+    setTitleToggleSetting("singleChatOverworldEnabled", save.mode === SAVE_MODES.SINGLE);
+    playCurrentPhaseTrack();
+    if (announce) notify({ title: "SAVE LOADED", message: `${save.name} · ${getCurrentStatusLine()}` });
+    return true;
+}
+
+// Opening a chat that belongs to another save loads that save. Other chats
+// keep whatever save is loaded, so side chats and trial chats share it.
+function syncSaveWithCurrentChat() {
+    const ctx = window.SillyTavern?.getContext?.();
+    const groupId = ctx?.groupId ?? ctx?.group_id;
+    const owner = saveStore.findByGroupId(groupId);
+    if (owner && owner.id !== saveStore.getActiveId()) switchToSave(owner.id);
+}
+
+// After loading a save by hand, don't leave the player typing into a story
+// chat that belongs to a different save.
+async function leaveChatOwnedByOtherSave() {
+    const ctx = window.SillyTavern?.getContext?.();
+    const owner = saveStore.findByGroupId(ctx?.groupId ?? ctx?.group_id);
+    if (!owner || owner.id === saveStore.getActiveId()) return;
+    try {
+        await executeSlashCommandsWithOptions("/closechat");
+    } catch (e) {
+        console.warn("[Dangan][Saves] couldn't close the other save's chat:", e);
+    }
+}
+
+function bindGroupToActiveSave(groupId) {
+    const active = saveStore.getActiveId();
+    if (active && saveStore.bindGroup(active, groupId)) saveSettingsDebounced();
+}
+
+function describeSave(save) {
+    const s = save.summary || {};
+    const phase = s.investigation ? "INVESTIGATION" : (s.night ? "NIGHTTIME" : "DAYTIME");
+    const bullets = s.truthBulletCount === 1 ? "1 TRUTH BULLET" : `${s.truthBulletCount || 0} TRUTH BULLETS`;
+    return [
+        save.mode === SAVE_MODES.SINGLE ? "ONE MAIN CHAT" : "SEVERAL CHATS",
+        getChapterJournalLabel(s.chapterIndex || 0),
+        `DAY ${s.day || 1}`,
+        phase,
+        bullets,
+    ].join(" · ");
+}
+
+function setSavesStatus(text) {
+    const el = document.getElementById("dangan_saves_status");
+    if (el) el.textContent = text || "";
+}
+
+function refreshSavesPanel() {
+    const listEl = document.getElementById("dangan_saves_list");
+    if (!listEl) return;
+    const saves = saveStore.list();
+    listEl.replaceChildren(...saves.map((save) => {
+        const row = document.createElement("div");
+        row.className = `dangan-save-row${save.active ? " is-active" : ""}`;
+        row.dataset.saveId = save.id;
+
+        const main = document.createElement("div");
+        main.className = "dangan-save-main";
+        const name = document.createElement("div");
+        name.className = "dangan-save-name";
+        name.textContent = save.name;
+        if (save.active) {
+            const badge = document.createElement("span");
+            badge.className = "dangan-save-badge";
+            badge.textContent = "LOADED";
+            name.appendChild(badge);
+        }
+        const meta = document.createElement("div");
+        meta.className = "dangan-save-meta";
+        meta.textContent = describeSave(save);
+        main.append(name, meta);
+        if (save.summary?.rosterNames?.length) {
+            const roster = document.createElement("div");
+            roster.className = "dangan-save-roster";
+            roster.textContent = save.summary.rosterNames.join(", ");
+            main.appendChild(roster);
+        }
+
+        const actions = document.createElement("div");
+        actions.className = "dangan-save-actions";
+        const buttons = save.active
+            ? [["rename", "RENAME"], ["duplicate", "COPY"], ["export", "EXPORT"]]
+            : [["load", "LOAD"], ["rename", "RENAME"], ["duplicate", "COPY"], ["export", "EXPORT"], ["delete", "DELETE"]];
+        for (const [action, label] of buttons) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "settings-small-button";
+            btn.dataset.saveAction = action;
+            btn.textContent = label;
+            actions.appendChild(btn);
+        }
+        row.append(main, actions);
+        return row;
+    }));
+}
+
+function startSaveRename(row, save) {
+    const nameEl = row.querySelector(".dangan-save-name");
+    if (!nameEl || row.querySelector(".dangan-save-rename")) return;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "settings-input dangan-save-rename";
+    input.value = save.name;
+    input.maxLength = 80;
+    nameEl.replaceWith(input);
+    input.focus();
+    input.select();
+    let done = false;
+    const finish = (commit) => {
+        if (done) return;
+        done = true;
+        if (commit && saveStore.rename(save.id, input.value)) saveSettingsDebounced();
+        refreshSavesPanel();
+    };
+    input.addEventListener("keydown", (event) => {
+        event.stopPropagation();
+        if (event.key === "Enter") finish(true);
+        if (event.key === "Escape") finish(false);
+    });
+    input.addEventListener("blur", () => finish(true));
+}
+
+// Pictures live as files on this install, so an exported save carries them
+// inline; importing uploads them again.
+async function inlineSaveImages(state) {
+    for (const list of [state?.truthBullets, state?.archivedTruthBullets]) {
+        for (const bullet of Array.isArray(list) ? list : []) {
+            if (bullet?.image && !isDataUrl(bullet.image)) bullet.image = await fetchAsDataUrl(bullet.image);
+        }
+    }
+}
+
+// Base64 pictures from before images were files: the live ones and those in
+// other saves are uploaded once SillyTavern is ready.
+async function migrateStoredImages() {
+    await migrateTruthBulletImages();
+    const cache = new Map();
+    let replaced = 0;
+    for (const save of Object.values(extension_settings[extensionName]?.saves || {})) {
+        const state = save?.state;
+        if (!state) continue;
+        replaced += await uploadImagesIn(state.truthBullets, { cache, prefix: "truth" });
+        replaced += await uploadImagesIn(state.archivedTruthBullets, { cache, prefix: "truth" });
+    }
+    if (replaced) saveSettingsDebounced();
+}
+
+async function downloadSaveFile(save) {
+    const data = saveStore.exportSave(save.id);
+    if (!data) return;
+    await inlineSaveImages(data.state);
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${save.name.replace(/[^\w\- ]+/g, "").trim() || "save"}.dangan-save.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function runSaveAction(action, id, row) {
+    const save = saveStore.get(id);
+    if (!save) return;
+    switch (action) {
+        case "load": {
+            const accepted = await openMonopadConfirmDialog({
+                title: "LOAD SAVE",
+                message: `Load "${save.name}"? Your current save is kept and can be loaded again from here.`,
+                confirmLabel: "LOAD",
+                cancelLabel: "CANCEL",
+            });
+            if (!accepted) return;
+            switchToSave(id);
+            if (save.mode === SAVE_MODES.SINGLE && save.groupIds?.[0]) {
+                try { await openGroupById(save.groupIds[0]); } catch (e) { console.warn("[Dangan][Saves] couldn't open the save's chat:", e); }
+            }
+            await leaveChatOwnedByOtherSave();
+            setSavesStatus(`Loaded ${save.name}.`);
+            break;
+        }
+        case "rename":
+            startSaveRename(row, save);
+            break;
+        case "duplicate": {
+            const copy = saveStore.duplicate(id);
+            saveSettingsDebounced();
+            refreshSavesPanel();
+            setSavesStatus(`Made ${copy.name}. Copies are Several Chats saves.`);
+            break;
+        }
+        case "export":
+            downloadSaveFile(save);
+            setSavesStatus(`Exported ${save.name}.`);
+            break;
+        case "delete": {
+            const accepted = await openMonopadConfirmDialog({
+                title: "DELETE SAVE",
+                message: `Delete "${save.name}" for good? Its classmates, trust, Truth Bullets and progress are erased. Your chats are not deleted. Export it first if you might want it back.`,
+                confirmLabel: "DELETE",
+                cancelLabel: "CANCEL",
+            });
+            if (!accepted) return;
+            saveStore.remove(id);
+            saveSettingsDebounced();
+            refreshSavesPanel();
+            setSavesStatus(`Deleted ${save.name}.`);
+            break;
+        }
+    }
+}
+
+function bindSavesPanel() {
+    $(document).on("click", "#dangan_saves_list [data-save-action]", function () {
+        const row = this.closest(".dangan-save-row");
+        void runSaveAction(this.dataset.saveAction, row?.dataset.saveId, row);
+    });
+    $(document).on("click", "#dangan_save_new", async () => {
+        const accepted = await openMonopadConfirmDialog({
+            title: "NEW EMPTY SAVE",
+            message: "Start an empty Several Chats save and load it? Your current save is kept. For a guided start, use NEW GAME on the title screen instead.",
+            confirmLabel: "CREATE",
+            cancelLabel: "CANCEL",
+        });
+        if (!accepted) return;
+        const save = startFreshSave({ name: "Killing Game", mode: SAVE_MODES.MULTI });
+        await leaveChatOwnedByOtherSave();
+        setSavesStatus(`Created and loaded ${save.name}.`);
+    });
+    $(document).on("click", "#dangan_save_import", () => document.getElementById("dangan_save_import_file")?.click());
+    $(document).on("change", "#dangan_save_import_file", async function () {
+        const file = this.files?.[0];
+        this.value = "";
+        if (!file) return;
+        try {
+            const save = saveStore.importSave(JSON.parse(await file.text()));
+            saveSettingsDebounced();
+            refreshSavesPanel();
+            setSavesStatus(`Imported ${save.name}. Press LOAD to play it.`);
+            migrateStoredImages().catch((e) => console.warn("[Dangan][Saves] image upload failed:", e));
+        } catch (e) {
+            setSavesStatus(e?.message || "Couldn't read that file.");
+        }
+    });
+    refreshSavesPanel();
+}
+
+// NEW GAME's "new save": a blank save, loaded straight away.
+function startFreshSave({ name, mode }) {
+    const save = saveStore.create({ name, mode });
+    switchToSave(save.id, { announce: false });
+    return save;
+}
+
+function applyTitleScreenRoster(roster, { pruneOthers }) {
+    const wanted = new Map(roster.map((r) => [normalizeName(r.name), r]));
+    if (pruneOthers) {
+        for (const key of [...characters.keys()]) {
+            if (!wanted.has(key)) characters.delete(key);
+        }
+    }
+    addCharactersToRoster(roster.map((r) => r.name));
+    for (const [key, r] of wanted) {
+        const entry = characters.get(key);
+        if (entry) entry.ultimate = r.ultimate || null;
+    }
+    saveCharacters();
+    try { socialPanelController?.renderSocialPanel?.(); } catch (_) {}
+}
+
+async function createStoryGroupChat(name, memberNames) {
+    const ctx = window.SillyTavern?.getContext?.();
+    const stChars = Array.isArray(ctx?.characters) ? ctx.characters : [];
+    const members = memberNames
+        .map((n) => stChars.find((c) => c?.name === n)?.avatar)
+        .filter(Boolean);
+    if (members.length < 2) throw new Error("the story chat needs at least two characters");
+    const chatId = ctx?.humanizedDateTime?.() || String(Date.now());
+    const response = await fetch("/api/groups/create", {
+        method: "POST",
+        headers: getRequestHeaders(),
+        body: JSON.stringify({
+            name,
+            members,
+            avatar_url: "img/ai4.png",
+            allow_self_responses: false,
+            hideMutedSprites: true,
+            activation_strategy: 0,
+            generation_mode: 0,
+            disabled_members: [],
+            fav: false,
+            chat_id: chatId,
+            chats: [chatId],
+            auto_mode_delay: 5,
+        }),
+    });
+    if (!response.ok) throw new Error(`group create failed (${response.status})`);
+    const data = await response.json();
+    await ctx?.getCharacters?.();
+    await new Promise((r) => setTimeout(r, 150));
+    await openGroupById(data.id);
+    return data.id;
+}
+
+async function finishTitleScreenNewGame({ fresh, mode, groupName, groupMembers, roster, hosts, persona, map, vnSkin, vnMode }) {
+    const saveMode = mode === "single" ? SAVE_MODES.SINGLE : SAVE_MODES.MULTI;
+    // The first NEW GAME on an install makes the first save.
+    if (fresh || !saveStore.getActive()) {
+        startFreshSave({ name: mode === "single" ? groupName : "Killing Game", mode: saveMode });
+    } else {
+        const active = saveStore.getActive();
+        if (active) active.mode = saveMode;
+    }
+    // Before the roster, so hosts stay off it and out of the dorm wing.
+    setMonopadSetting("hostCards", readHostSetting(hosts));
+    applyTitleScreenRoster(roster, { pruneOthers: !fresh });
+    applyTitleScreenMap(map);
+    setMonopadSetting("vnSkin", normalizeVnSkin(vnSkin));
+    setTitleToggleSetting("vnModeEnabled", vnMode !== false);
+    applySettingsTabUI();
+    try {
+        await setTitleScreenPersona(persona);
+    } catch (e) {
+        console.warn("[Dangan][Title] persona switch failed:", e);
+    }
+    if (mode === "single") {
+        const groupId = await createStoryGroupChat(groupName, groupMembers);
+        setMonopadSetting("singleChatGroupId", groupId);
+        bindGroupToActiveSave(groupId);
+        setTitleToggleSetting("singleChatOverworldEnabled", true);
+    } else {
+        setTitleToggleSetting("singleChatOverworldEnabled", false);
+        await leaveChatOwnedByOtherSave();
+    }
+    saveStore.touchActive();
+    refreshSavesPanel();
+    onboardingState?.markWelcomeSeen?.();
+    return {
+        afterClose: mode === "single" ? null : () => openMonopadTab("map"),
+    };
+}
+
+// The New Game map step: limit the save to the chosen map, start the player in
+// its starting room and spread the class over its rooms.
+function applyTitleScreenMap(map) {
+    if (!map) return;
+    let applied = mapPanelController?.applyNewGameMap?.(map);
+    if (!applied && !mapPanelController && map.areas?.length) {
+        // Map panel not built yet: a built-in map only needs the scope stored.
+        const root = extension_settings[extensionName] ??= {};
+        root.map ??= {};
+        root.map.scope = { areas: [...map.areas] };
+        saveSettingsDebounced();
+        applied = { areas: [...map.areas], startLocationId: map.startLocationId || null };
+    }
+    if (!applied) return;
+    const current = getCurrentLocationId();
+    const currentPin = current ? mapPanelController?.getPinByLocationId?.(current) : null;
+    const inMap = !!currentPin && applied.areas.includes(currentPin.areaKey);
+    if (applied.startLocationId) {
+        setCurrentLocationId(applied.startLocationId);
+    } else if (!inMap) {
+        setCurrentLocationId(null);
+    }
+    try { overworldSceneController?.randomizeLocations?.(); } catch (e) { console.warn("[Dangan][Title] couldn't place the class:", e); }
+    try { renderMinimap(); } catch (_) {}
+}
+
+function listTitleScreenSaves() {
+    const avatars = new Map(getImportedCharacterCards().map((c) => [normalizeName(c.name), c.avatar]));
+    return saveStore.list().map((save) => {
+        const names = save.summary?.rosterNames || [];
+        return {
+            kind: "save",
+            id: save.id,
+            title: save.name,
+            chip: save.mode === SAVE_MODES.SINGLE ? "ONE MAIN CHAT" : "SEVERAL CHATS",
+            chatFile: describeSave(save).split(" · ").slice(1).join(" · "),
+            lastMessage: names.join(", "),
+            // The loaded save is being played right now.
+            lastDate: save.active ? Date.now() : save.updatedAt,
+            memberNames: names,
+            avatars: names.map((n) => avatars.get(normalizeName(n))).filter(Boolean).map(avatarThumbUrl),
+            current: save.active,
+        };
+    });
+}
+
+// One Main Chat saves open their story chat; Several Chats saves open the
+// Monopad map, the same place NEW GAME leaves you.
+async function openTitleScreenSave(row) {
+    const save = saveStore.get(row?.id);
+    if (!save) return;
+    switchToSave(save.id);
+    const groupId = save.mode === SAVE_MODES.SINGLE ? save.groupIds?.[0] : "";
+    if (groupId) {
+        try {
+            await openGroupById(groupId);
+            return;
+        } catch (e) {
+            console.warn("[Dangan][Saves] couldn't open the save's chat:", e);
+        }
+    }
+    await leaveChatOwnedByOtherSave();
+    openMonopadTab("map");
+}
+
+// ── Setup checklist ─────────────────────────────────────────────────────────
+
+// The title screen opens while SillyTavern is still loading characters and
+// groups, so the menu's badge waits for APP_READY (or gives up after 20 s).
+const sillyTavernReady = new Promise((resolve) => {
+    try { eventSource.on(event_types.APP_READY, () => resolve(true)); } catch (_) {}
+    setTimeout(() => resolve(false), 20000);
+});
+
+const SETUP_BGM_LISTS = Object.freeze([
+    ["daytimeTracks", "Daytime"],
+    ["nighttimeTracks", "Nighttime"],
+    ["investigationTracks", "Investigation"],
+    ["trialGeneralTracks", "Class Trial"],
+]);
+
+async function gatherSetupFacts() {
+    const ctx = window.SillyTavern?.getContext?.();
+    const cards = getImportedCharacterCards();
+    // Check the class if there is one, otherwise every imported card.
+    const classNames = characters.size
+        ? [...characters.values()].map((c) => c?.name).filter(Boolean)
+        : cards.map((c) => c.name);
+    const checked = classNames.slice(0, 60);
+    const spriteResults = await Promise.all(checked.map(async (name) => [name, (await getAvailableExpressionLabels(name)).length > 0]));
+
+    const ultimateNames = characters.size ? classNames : [];
+    const ultimatesKnown = ultimateNames.filter((name) => {
+        const entry = characters.get(normalizeName(name));
+        return !!(String(entry?.ultimate || "").trim() || lookupUltimateFromLorebook(name));
+    }).length;
+
+    const bgmFiles = (await fetchBgmPaths()).length;
+    const emptyLists = SETUP_BGM_LISTS
+        .filter(([key]) => !(getMonopadSetting(key) || []).length)
+        .map(([, label]) => label);
+
+    const rooms = listTitleRoomPins();
+    const save = saveStore.getActive();
+    const groups = Array.isArray(ctx?.groups) ? ctx.groups : [];
+    return {
+        cards: cards.length,
+        sprites: {
+            with: spriteResults.filter(([, ok]) => ok).map(([name]) => name),
+            without: spriteResults.filter(([, ok]) => !ok).map(([name]) => name),
+        },
+        ultimates: { known: ultimatesKnown, total: ultimateNames.length },
+        singleChat: !!getMonopadSetting("singleChatOverworldEnabled"),
+        presence: isPresenceExtensionPresent(),
+        prome: {
+            installed: isPromeExtensionPresent(),
+            userSprite: getPromeSettings()?.enableUserSprite ? String(getPromeSettings()?.userSprite || "") : "",
+        },
+        bgm: { files: bgmFiles, emptyLists },
+        rooms: { total: rooms.length, withBg: rooms.filter((r) => r.bg).length },
+        markerPrompts: !!getMonopadSetting("markerPromptsEnabled"),
+        presetHasMarkers: presetHasMarkerInstructions(),
+        persona: user_avatar ? String(power_user?.personas?.[user_avatar] || ctx?.name1 || "") : "",
+        save: {
+            exists: !!save,
+            name: save?.name || "",
+            mode: save?.mode || "",
+            groupOk: (save?.groupIds || []).some((id) => groups.some((g) => String(g?.id) === String(id))),
+        },
+    };
+}
+
+async function getSetupRows() {
+    return evaluateSetup(await gatherSetupFacts());
+}
+
+// ── Title screen SETUP: cards, sprites, persona, Presence ──────────────────
+// The title screen fixes everything itself; nothing here leaves it.
+
+const CARD_IMPORT_TYPES = new Set(["png", "json", "charx", "yaml", "yml", "byaf"]);
+
+async function importCharacterCardFile(file) {
+    const ext = String(file?.name || "").split(".").pop().toLowerCase();
+    if (!CARD_IMPORT_TYPES.has(ext)) return false;
+    const form = new FormData();
+    form.append("avatar", file);
+    form.append("file_type", ext);
+    form.append("user_name", window.SillyTavern?.getContext?.()?.name1 || "");
+    try {
+        const resp = await fetch("/api/characters/import", {
+            method: "POST",
+            headers: getRequestHeaders({ omitContentType: true }),
+            body: form,
+            cache: "no-cache",
+        });
+        if (!resp.ok) return false;
+        const data = await resp.json().catch(() => ({}));
+        return !data?.error;
+    } catch (e) {
+        console.warn("[Dangan][Title] card import failed:", e);
+        return false;
+    }
+}
+
+async function refreshSillyTavernCharacters() {
+    const ctx = window.SillyTavern?.getContext?.();
+    try { await ctx?.getCharacters?.(); } catch (e) { console.warn("[Dangan][Title] refreshing characters failed:", e); }
+}
+
+async function importTitleCharacterFiles(files) {
+    let imported = 0;
+    let failed = 0;
+    for (const file of files || []) {
+        if (await importCharacterCardFile(file)) imported++;
+        else failed++;
+    }
+    if (imported) await refreshSillyTavernCharacters();
+    return { imported, failed };
+}
+
+const sampleCardUrl = (path) => `${extensionFolderPath}/sample-character-cards/${String(path).split("/").map(encodeURIComponent).join("/")}`;
+
+async function listTitleSampleCardSets() {
+    try {
+        const resp = await fetch(sampleCardUrl("manifest.json"), { cache: "no-cache" });
+        if (!resp.ok) return [];
+        const data = await resp.json();
+        return Array.isArray(data?.sets) ? data.sets : [];
+    } catch (e) {
+        console.warn("[Dangan][Title] sample card list failed:", e);
+        return [];
+    }
+}
+
+async function importTitleSampleCards(paths) {
+    const files = [];
+    let failed = 0;
+    for (const path of paths || []) {
+        try {
+            const resp = await fetch(sampleCardUrl(path), { cache: "no-cache" });
+            if (!resp.ok) { failed++; continue; }
+            files.push(new File([await resp.blob()], String(path).split("/").pop(), { type: "application/json" }));
+        } catch { failed++; }
+    }
+    const result = await importTitleCharacterFiles(files);
+    return { imported: result.imported, failed: result.failed + failed };
+}
+
+async function listTitleSpriteCharacters() {
+    const cards = getImportedCharacterCards();
+    return Promise.all(cards.map(async (c) => {
+        const folder = c.avatar ? String(c.avatar).replace(/\.[^.]+$/, "") : c.name;
+        return {
+            name: c.name,
+            folder,
+            avatarUrl: avatarThumbUrl(c.avatar),
+            hasSprites: (await fetchSpriteFiles(folder)).length > 0,
+        };
+    })).then((list) => list.sort((a, b) => Number(a.hasSprites) - Number(b.hasSprites) || a.name.localeCompare(b.name)));
+}
+
+async function listTitleSprites(folder) {
+    return (await fetchSpriteFiles(folder)).map((s) => ({ stem: displayStem(s), path: s.path }));
+}
+
+// Replaces the emotion's main sprite (whatever its file type was).
+async function uploadTitleSprite(folder, emotion, file) {
+    const existing = (await fetchSpriteFiles(folder)).find((s) => displayStem(s).toLowerCase() === emotion.toLowerCase());
+    if (existing) await deleteSpriteFile(folder, emotion, displayStem(existing));
+    return uploadSpriteFile(folder, emotion, emotion, file);
+}
+
+async function uploadTitleSpriteZip(folder, file) {
+    const form = new FormData();
+    form.append("name", folder);
+    form.append("avatar", file);
+    try {
+        const resp = await fetch("/api/sprites/upload-zip", {
+            method: "POST",
+            headers: getRequestHeaders({ omitContentType: true }),
+            body: form,
+            cache: "no-cache",
+        });
+        return resp.ok;
+    } catch (e) {
+        console.warn("[Dangan][Title] sprite pack upload failed:", e);
+        return false;
+    }
+}
+
+async function createTitleScreenPersona({ name, description = "", file = null } = {}) {
+    const personaName = String(name || "").trim();
+    if (!personaName) throw new Error("A persona needs a name.");
+    const personas = await import("../../../personas.js");
+    const avatarId = `${Date.now()}-${personaName.replace(/[^a-zA-Z0-9]/g, "") || "persona"}.png`;
+    let picture = file;
+    if (!picture) {
+        const resp = await fetch("img/user-default.png");
+        picture = new File([await resp.blob()], "avatar.png", { type: "image/png" });
+    }
+    const form = new FormData();
+    form.append("avatar", picture);
+    form.append("overwrite_name", avatarId);
+    const resp = await fetch("/api/avatars/upload", {
+        method: "POST",
+        headers: getRequestHeaders({ omitContentType: true }),
+        body: form,
+        cache: "no-cache",
+    });
+    if (!resp.ok) throw new Error(`Avatar upload failed: ${resp.status}`);
+    const saved = await resp.json().catch(() => ({}));
+    const key = saved?.path || avatarId;
+    await personas.initPersona(key, personaName, String(description || ""), "");
+    try { await personas.getUserAvatars?.(true, key); } catch (_) {}
+    await setTitleScreenPersona(key);
+    return key;
+}
+
+// Prome VN's settings hold the player's sprite folder (its "user sprite").
+function getPromeSettings() {
+    const prome = extension_settings?.['Prome-VN-Extension'];
+    return prome && typeof prome === 'object' ? prome : null;
+}
+
+// Prome's user sprite folder, when User Sprite is on.
+function getPromeSpriteFolder() {
+    const prome = getPromeSettings();
+    return prome?.enableUserSprite && prome?.userSprite ? String(prome.userSprite) : null;
+}
+
+// Expression of something the player wrote, through SillyTavern's own
+// Character Expressions classifier (whatever source it is set to use).
+async function classifyPlayerText(text) {
+    try {
+        const expressions = await import("../../expressions/index.js");
+        if (typeof expressions.getExpressionLabel !== "function") return "neutral";
+        return await expressions.getExpressionLabel(String(text || "").slice(0, 1500)) || "neutral";
+    } catch {
+        return "neutral";
+    }
+}
+
+// ── Expression picker (core/ui/expressionPicker.js) ──────────────────────
+function spriteFolderFromSrc(src) {
+    try {
+        const parts = new URL(src, location.href).pathname.split('/').filter(Boolean);
+        return decodeURIComponent(parts[parts.length - 2] || '');
+    } catch { return ''; }
+}
+
+// Sprite folder for a character name, resolved like getSpriteUrl does.
+function spriteFolderForName(name) {
+    const stChar = Array.isArray(window.characters) ? window.characters.find(c => c.name === name) : null;
+    return stChar?.avatar ? stChar.avatar.replace(/\.[^.]+$/, "") : name;
+}
+
+// What the expression picker is looking at: the room while exploring, the
+// portrait stage in conversations and trials, else SillyTavern's sprites.
+function getExpressionPickerView() {
+    const body = document.body.classList;
+    if (body.contains('dangan-ow-scene-active') && !body.contains('dangan-ow-conversation-view')) return 'overworld';
+    if (trialManager?.isGcpStageActive?.()) return 'gcp';
+    return 'vn';
+}
+
+// Changes when the picker should re-list who's on screen: another view, or
+// someone arriving or leaving.
+function getExpressionPickerContextKey() {
+    const view = getExpressionPickerView();
+    let names = [];
+    if (view === 'overworld') {
+        names = [...document.querySelectorAll('#dangan-overworld .dangan-ow-sprite')].map((el) => el.dataset.name || '');
+    } else if (view === 'gcp') {
+        names = (trialManager?.getGcpSlotsForPicker?.() || []).map((slot) => slot.name || '');
+    } else {
+        names = [...document.querySelectorAll('#expression-image, #visual-novel-wrapper img.expression')]
+            .map((img) => img.getAttribute('alt') || spriteFolderFromSrc(img.getAttribute('src') || ''));
+    }
+    return `${view}|${names.join(',')}`;
+}
+
+// Every <img> currently showing this character, in any view (the hidden
+// portrait stage included, so View conversation opens on the pick).
+function findExpressionPickerImgs(name, folder) {
+    const key = normalizeName(name || '');
+    const lcFolder = String(folder || '').toLowerCase();
+    const imgs = [];
+    document.querySelectorAll('#dangan-overworld .dangan-ow-sprite').forEach((el) => {
+        if (normalizeName(el.dataset.name || '') !== key) return;
+        const img = el.querySelector('img.dangan-ow-sprite-img');
+        if (img) imgs.push(img);
+    });
+    for (const slot of trialManager?.getGcpSlotsForPicker?.() || []) {
+        if (!slot.isPlayer && slot.img?.isConnected && normalizeName(slot.name || '') === key) imgs.push(slot.img);
+    }
+    document.querySelectorAll('#expression-image, #visual-novel-wrapper img.expression').forEach((img) => {
+        if (img.closest('#expression-prome-user')) return;
+        const alt = normalizeName(img.getAttribute('alt') || '');
+        const imgFolder = spriteFolderFromSrc(img.getAttribute('src') || '').toLowerCase();
+        if (alt === key || (lcFolder && imgFolder === lcFolder)) imgs.push(img);
+    });
+    return imgs;
+}
+
+// Everyone on screen (the room, the portrait stage, or SillyTavern's own
+// sprites), then you.
+function getExpressionPickerTargets() {
+    const out = [];
+    const seen = new Set();
+    const player = getPlayerSpriteTarget();
+    const playerFolder = String(player?.folder || '').toLowerCase();
+    const add = (name, img, folder) => {
+        const key = `char:${normalizeName(name)}`;
+        if (!name || seen.has(key)) return;
+        seen.add(key);
+        const src = img?.getAttribute?.('src') || null;
+        out.push({
+            key,
+            name,
+            label: getCharacterDisplayName(name) || name,
+            folder: folder || spriteFolderForName(name),
+            imgs: img ? [img] : [],
+            currentPath: getPickedSprite(name)?.path || src,
+            thumb: src,
+        });
+    };
+    const view = getExpressionPickerView();
+    if (view === 'overworld') {
+        // Exploring: whoever is standing in the room.
+        for (const el of document.querySelectorAll('#dangan-overworld .dangan-ow-sprite')) {
+            const img = el.querySelector('img.dangan-ow-sprite-img');
+            const name = el.dataset.name;
+            if (!img || !name || el.style.display === 'none') continue;
+            add(name, img, spriteFolderFromSrc(img.getAttribute('src') || '') || null);
+        }
+    } else if (view === 'gcp') {
+        for (const s of trialManager.getGcpSlotsForPicker?.() || []) {
+            if (s.isPlayer) continue;
+            add(s.name, s.img, spriteFolderFromSrc(s.img.getAttribute('src') || '') || null);
+        }
+    } else {
+        document.querySelectorAll('#expression-image, #visual-novel-wrapper img.expression').forEach((img) => {
+            const src = img.getAttribute('src');
+            if (!src || img.closest('#expression-prome-user')) return;
+            const folder = spriteFolderFromSrc(src);
+            if (!folder || folder.toLowerCase() === 'narrator' || folder.toLowerCase() === playerFolder) return;
+            add(img.getAttribute('alt') || folder, img, folder);
+        });
+    }
+    if (player?.folder) {
+        const playerImg = trialManager?.getGcpPlayerImg?.() || null;
+        const insetImg = document.querySelector('#dangan-player-inset img');
+        const src = playerImg?.getAttribute('src') || insetImg?.getAttribute('src') || null;
+        out.push({
+            key: 'player',
+            name: player.name,
+            label: `${player.name} (you)`,
+            folder: player.folder,
+            imgs: playerImg ? [playerImg] : [],
+            isPlayer: true,
+            currentPath: src,
+            thumb: src,
+        });
+    }
+    return out;
+}
+
+async function listExpressionPickerSprites(target) {
+    if (!target?.folder) return [];
+    const resp = await fetch(`/api/sprites/get?name=${encodeURIComponent(target.folder)}`);
+    if (!resp.ok) return [];
+    const sprites = await resp.json();
+    // Grouped by emotion (joy, joy-2 and pool-joy are all "joy"), neutral first.
+    const rank = (group) => (group === 'neutral' ? '' : group);
+    return (Array.isArray(sprites) ? sprites : [])
+        .map((s) => {
+            const stem = spriteFileStem(s);
+            return { path: s.path, stem, group: emotionFromSpriteStem(stem) || stem };
+        })
+        .sort((a, b) => rank(a.group).localeCompare(rank(b.group))
+            || a.stem.localeCompare(b.stem, undefined, { numeric: true }));
+}
+
+// Shows everywhere they appear until their next line (or the next shuffle
+// of locations).
+function applyExpressionPickerSprite(target, path, stem) {
+    const expression = emotionFromSpriteStem(stem || '') || 'neutral';
+    if (target.isPlayer) {
+        for (const img of target.imgs || []) {
+            if (img?.isConnected) applyMirroredSprite(img, path);
+        }
+        playerInsetController?.showUrl(path);
+        return;
+    }
+    setPickedSprite(target.name, path, expression);
+    overworldSceneController?.setPickedExpression?.(target.name, expression);
+    // Look the images up now: the room or the stage may have been rebuilt
+    // since the drawer listed them.
+    const imgs = findExpressionPickerImgs(target.name, target.folder);
+    let onOverworld = false;
+    for (const img of imgs) {
+        const owSprite = img.closest('.dangan-ow-sprite');
+        if (owSprite) {
+            onOverworld = true;
+            img.src = path;
+            // Its hover outline is masked with the sprite too.
+            owSprite.style.setProperty('--ow-sprite-url', `url("${String(path).replace(/"/g, '%22')}")`);
+        } else if (img.closest('.dangan-gcp-slot')) {
+            applyMirroredSprite(img, path);
+        } else {
+            img.src = path;
+        }
+        if (img.getClientRects().length) {
+            try { triggerVfxOnElement(expression, img); } catch { /* ignore */ }
+        }
+    }
+    if (!onOverworld && getExpressionPickerView() === 'overworld') overworldSceneController?.render?.();
+}
+
+// Settings → Customize → Automatic expressions. Off: sprites only change
+// when picked in the expression picker.
+function isAutoExpressionsEnabled() {
+    return getMonopadSetting("autoExpressionsEnabled") !== false;
+}
+
+// Your sprite in conversations shows with VN mode and a Prome sprite folder.
+function applyPlayerInset() {
+    const on = !!getMonopadSetting("playerInsetEnabled")
+        && !!getMonopadSetting("vnModeEnabled")
+        && !!getPromeSpriteFolder();
+    playerInsetController?.setEnabled(on);
+}
+
+function isPromeExtensionPresent() {
+    return !!getPromeSettings() || !!document.getElementById('expression-prome-user');
+}
+
+async function installExtensionFromUrl(url) {
+    try {
+        const resp = await fetch("/api/extensions/install", {
+            method: "POST",
+            headers: getRequestHeaders(),
+            body: JSON.stringify({ url }),
+        });
+        if (resp.ok) return { ok: true };
+        const text = await resp.text().catch(() => "");
+        return { ok: false, error: text || `${resp.status}` };
+    } catch (e) {
+        return { ok: false, error: String(e?.message || e) };
+    }
+}
+
+// ── Title screen SETUP: music, room backgrounds, lorebooks ──────────────────
+
+const LEGACY_BGM_KEYS = new Set(["trialAaTracks", "trialReenactmentTracks", "trialClosingTracks", "trialVotingTracks"]);
+const BGM_GROUP_ORDER = ["PHASES", "MOODS", "LOCATIONS", "TRIAL", "ARGUMENT ARMAMENT"];
+
+function getTitleBgmPlaylists() {
+    return BGM_TRACK_TABS
+        .filter((tab) => !LEGACY_BGM_KEYS.has(tab.settingKey))
+        .map((tab) => ({
+            settingKey: tab.settingKey,
+            label: BGM_PLAYLIST_LABELS[tab.settingKey] || tab.key.toUpperCase(),
+            group: BGM_PLAYLIST_PARENTS[tab.settingKey] || "OTHER",
+            tracks: [...(getMonopadSetting(tab.settingKey) || [])],
+        }))
+        .sort((a, b) => BGM_GROUP_ORDER.indexOf(a.group) - BGM_GROUP_ORDER.indexOf(b.group));
+}
+
+function setTitleBgmPlaylist(settingKey, tracks) {
+    const tab = BGM_TRACK_TABS.find((t) => t.settingKey === settingKey);
+    if (!tab) return false;
+    setMonopadSetting(settingKey, Array.isArray(tracks) ? tracks.filter(Boolean) : []);
+    try { renderTracksForTab(tab.settingKey, tab.listId, tab.selectedId); } catch (_) {}
+    return true;
+}
+
+// The preview pauses whatever is playing (the title music) and resumes it after.
+let titleBgmPreview = null;
+let titleBgmPreviewPaused = null;
+function previewTitleBgm(path) {
+    stopTitleBgmPreview();
+    if (!path) return false;
+    if (investigationTrackAudio && !investigationTrackAudio.paused) {
+        titleBgmPreviewPaused = investigationTrackAudio;
+        investigationTrackAudio.pause();
+    }
+    titleBgmPreview = new Audio(path);
+    titleBgmPreview.loop = true;
+    titleBgmPreview.volume = Number(getMonopadSetting("monopadVolume") ?? 50) / 100;
+    titleBgmPreview.play().catch((e) => console.warn("[Dangan][Title] preview failed:", e));
+    return true;
+}
+
+function stopTitleBgmPreview() {
+    titleBgmPreview?.pause();
+    titleBgmPreview = null;
+    if (titleBgmPreviewPaused && titleBgmPreviewPaused === investigationTrackAudio) {
+        titleBgmPreviewPaused.play().catch(() => {});
+    }
+    titleBgmPreviewPaused = null;
+}
+
+function listTitleRoomPins() {
+    if (!mapPanelController) return [];
+    const areas = mapPanelController.getAllAreas?.() || [];
+    return (mapPanelController.getAllPins?.() || [])
+        .filter((pin) => pin?.type === "room")
+        .map((pin) => {
+            const area = areas.find((a) => a.key === pin.areaKey);
+            const floor = area?.floors?.find((f) => f.key === pin.floorKey);
+            return {
+                id: pin.id,
+                label: pin.label || pin.locationId || "Room",
+                area: area?.label || pin.areaKey || "",
+                floor: floor && area?.floors?.length > 1 ? floor.label : "",
+                bg: pin.bg || "",
+            };
+        });
+}
+
+function listTitleLorebookNames() {
+    return Array.isArray(worldInfoApi.world_names) ? [...worldInfoApi.world_names] : [];
+}
+
+function isTitleLorebookActive(name) {
+    return Array.isArray(worldInfoApi.selected_world_info) && worldInfoApi.selected_world_info.includes(name);
+}
+
+async function listTitleLorebooks() {
+    await worldInfoApi.updateWorldInfoList?.();
+    const ctx = window.SillyTavern?.getContext?.();
+    const chars = Array.isArray(ctx?.characters) ? ctx.characters : [];
+    const chatLore = ctx?.chatMetadata?.world_info || "";
+    return listTitleLorebookNames()
+        .sort((a, b) => a.localeCompare(b))
+        .map((name) => ({
+            name,
+            active: isTitleLorebookActive(name),
+            linked: [
+                ...(chatLore === name ? ["this chat"] : []),
+                ...chars.filter((c) => c?.data?.extensions?.world === name).map((c) => c.name),
+            ],
+        }));
+}
+
+// Ticks the book in SillyTavern's global World Info list, which saves the
+// selection and keeps its own UI in step.
+async function setTitleLorebookActive(name, on) {
+    if (isTitleLorebookActive(name) === !!on) return true;
+    const index = listTitleLorebookNames().indexOf(name);
+    const $select = $("#world_info");
+    const $option = $select.find("option").filter((_, o) => o.value === String(index));
+    if (index >= 0 && $option.length) {
+        $option.prop("selected", !!on);
+        $select.trigger("change");
+        return true;
+    }
+    const selected = worldInfoApi.selected_world_info;
+    if (!Array.isArray(selected)) return false;
+    if (on) selected.push(name);
+    else if (selected.includes(name)) selected.splice(selected.indexOf(name), 1);
+    saveSettingsDebounced();
+    return true;
+}
+
+async function loadTitleLorebook(name) {
+    const data = await worldInfoApi.loadWorldInfo?.(name);
+    return data ? structuredClone(data) : null;
+}
+
+async function saveTitleLorebook(name, data) {
+    if (!name || !data) return;
+    await worldInfoApi.saveWorldInfo?.(name, structuredClone(data), true);
+    try { worldInfoApi.reloadEditor?.(name); } catch (_) {}
+}
+
+function createTitleLorebookEntry(data) {
+    if (typeof worldInfoApi.createWorldInfoEntry === "function") return worldInfoApi.createWorldInfoEntry(null, data);
+    data.entries ??= {};
+    let uid = 0;
+    while (uid in data.entries) uid++;
+    const template = worldInfoApi.newWorldInfoEntryTemplate || {};
+    const entry = { uid, ...structuredClone(template), key: [], keysecondary: [], comment: "", content: "" };
+    data.entries[uid] = entry;
+    return entry;
+}
+
+async function createTitleLorebook(name) {
+    if (typeof worldInfoApi.createNewWorldInfo === "function") {
+        return (await worldInfoApi.createNewWorldInfo(name)) !== false;
+    }
+    await worldInfoApi.saveWorldInfo?.(name, { entries: {} }, true);
+    await worldInfoApi.updateWorldInfoList?.();
+    return true;
+}
+
+// Saves the book under the new name, deletes the old one and moves the
+// links (global list, this chat, characters' primary lorebook) across.
+async function renameTitleLorebook(oldName, newName) {
+    const data = await worldInfoApi.loadWorldInfo?.(oldName);
+    if (!data || !newName) return false;
+    const wasActive = isTitleLorebookActive(oldName);
+    await worldInfoApi.saveWorldInfo?.(newName, structuredClone(data), true);
+    await worldInfoApi.deleteWorldInfo?.(oldName);
+    await worldInfoApi.updateWorldInfoList?.();
+    if (wasActive) await setTitleLorebookActive(newName, true);
+
+    for (const charLore of worldInfoApi.world_info?.charLore || []) {
+        if (!Array.isArray(charLore?.extraBooks) || !charLore.extraBooks.includes(oldName)) continue;
+        charLore.extraBooks = [...charLore.extraBooks.filter((b) => b !== oldName), newName];
+        saveSettingsDebounced();
+    }
+    const ctx = window.SillyTavern?.getContext?.();
+    if (ctx?.chatMetadata?.world_info === oldName) {
+        ctx.chatMetadata.world_info = newName;
+        try { await ctx.saveMetadata?.(); } catch (_) {}
+    }
+    for (const character of Array.isArray(ctx?.characters) ? ctx.characters : []) {
+        if (character?.data?.extensions?.world !== oldName) continue;
+        try {
+            const response = await fetch("/api/characters/merge-attributes", {
+                method: "POST",
+                headers: getRequestHeaders(),
+                body: JSON.stringify({ avatar: character.avatar, data: { extensions: { world: newName } } }),
+            });
+            if (response.ok) character.data.extensions.world = newName;
+        } catch (e) {
+            console.warn(`[Dangan][Title] relinking ${character.name}'s lorebook failed:`, e);
+        }
+    }
+    return true;
+}
+
+async function deleteTitleLorebook(name) {
+    return (await worldInfoApi.deleteWorldInfo?.(name)) !== false;
+}
+
+// The panel has already asked about replacing a book with the same name, so
+// it's deleted first and SillyTavern doesn't ask again behind the title screen.
+async function importTitleLorebook(file) {
+    if (!file || typeof worldInfoApi.importWorldInfo !== "function") return false;
+    const name = file.name.replace(/\.[^.]+$/, "");
+    if (listTitleLorebookNames().includes(name)) await worldInfoApi.deleteWorldInfo?.(name);
+    await worldInfoApi.importWorldInfo(file);
+    return true;
+}
+
+function buildTitleServices() {
+    return {
+        getSetupRows,
+        countSetupProblems: async () => {
+            await sillyTavernReady;
+            return countSetupProblems(await getSetupRows());
+        },
+        countSetupReminders: async () => {
+            await sillyTavernReady;
+            return countSetupReminders(await getSetupRows());
+        },
+        isSetupPulseEnabled: () => getMonopadSetting("setupPulseEnabled") !== false,
+        shouldShowReturningNotice: () => hadSavedExtensionData && !getMonopadSetting("returningNoticeDismissed"),
+        dismissReturningNotice: () => setMonopadSetting("returningNoticeDismissed", true),
+        resetTutorials: () => {
+            onboardingState?.resetAllTutorials?.();
+            try { applySettingsTabUI(); } catch (_) {}
+        },
+        listCharacterCards: () => getImportedCharacterCards().map((c) => ({ name: c.name, avatarUrl: avatarThumbUrl(c.avatar) })),
+        importCharacterFiles: importTitleCharacterFiles,
+        listSampleCardSets: listTitleSampleCardSets,
+        importSampleCards: importTitleSampleCards,
+        getSpriteEmotions: () => [...MANAGED_SPRITES],
+        listSpriteCharacters: listTitleSpriteCharacters,
+        listSprites: listTitleSprites,
+        uploadSprite: uploadTitleSprite,
+        uploadSpriteZip: uploadTitleSpriteZip,
+        setPersona: setTitleScreenPersona,
+        createPersona: createTitleScreenPersona,
+        presenceUrl: PRESENCE_URL,
+        isPresenceInstalled: () => isPresenceExtensionPresent(),
+        installPresence: () => installExtensionFromUrl(PRESENCE_URL),
+        promeUrl: PROME_URL,
+        isPromeInstalled: () => isPromeExtensionPresent(),
+        installProme: () => installExtensionFromUrl(PROME_URL),
+        reloadPage: () => window.location.reload(),
+        getBgmPlaylists: getTitleBgmPlaylists,
+        listBgmFiles: async () => {
+            cachedBgmPaths = null;
+            return fetchBgmPaths();
+        },
+        setBgmPlaylist: setTitleBgmPlaylist,
+        previewBgm: previewTitleBgm,
+        stopBgmPreview: stopTitleBgmPreview,
+        listRoomPins: listTitleRoomPins,
+        listBackgrounds: () => mapPanelController?.listBackgrounds?.() || [],
+        setRoomBackground: (pinId, bgfile) => !!mapPanelController?.setPinBackground?.(pinId, bgfile),
+        listLorebooks: listTitleLorebooks,
+        loadLorebook: loadTitleLorebook,
+        saveLorebook: saveTitleLorebook,
+        createLorebook: createTitleLorebook,
+        renameLorebook: renameTitleLorebook,
+        deleteLorebook: deleteTitleLorebook,
+        importLorebook: importTitleLorebook,
+        setLorebookActive: setTitleLorebookActive,
+        createLorebookEntry: createTitleLorebookEntry,
+        listSaves: listTitleScreenSaves,
+        openSave: openTitleScreenSave,
+        listChats: listTitleScreenChats,
+        openChat: openTitleScreenChat,
+        getCandidates: getTitleScreenCandidates,
+        getPersonas: getTitleScreenPersonas,
+        hasProgress: hasTitleScreenProgress,
+        finishNewGame: finishTitleScreenNewGame,
+        assetUrl: (rel) => `${extensionFolderPath}/assets/${rel}`,
+        settings: { get: getMonopadSetting, set: setTitleOptionSetting },
+        getChoices: (id) => id === "rewardDifficulty"
+            ? Object.entries(REWARD_DIFFICULTY_LABELS).map(([value, label]) => ({ value, label }))
+            : [],
+    };
+}
+
+function buildTitleScreenOptions({ skipSplash = false, initialPanel = "" } = {}) {
+    let titleBgmPlaying = false;
+    return {
+        initialPanel,
+        logoUrl: `${extensionFolderPath}/assets/images/title/drst.png`,
+        playSfx: (name) => playSfx(sfx[name]),
+        services: buildTitleServices(),
+        skipSplash,
+        onStart: () => {
+            titleScreenStartedThisSession = true;
+            unlockAudio();
+            const path = pickBgmTrackFromSetting("titleTracks");
+            if (path) titleBgmPlaying = !!playMinigameBgmPath(path);
+        },
+        onClose: async () => {
+            if (titleBgmPlaying) {
+                titleBgmPlaying = false;
+                await fadeOutAndPauseBgm(800);
+                resumeBgmAfterHG();
+            }
+            schedulePostTitleBgm();
+        },
+    };
+}
+
+// After the title screen, start the phase's music (daytime, nighttime or
+// investigation) following a short beat of silence, unless something else
+// (a resumed track, Dynamic Songs, a trial) has already started playing.
+const POST_TITLE_BGM_DELAY_MS = 3000;
+let postTitleBgmTimer = null;
+function schedulePostTitleBgm() {
+    clearTimeout(postTitleBgmTimer);
+    postTitleBgmTimer = setTimeout(() => {
+        postTitleBgmTimer = null;
+        if (document.getElementById("dangan-title-screen")) return;
+        if (_getActiveBgmElement()) return;
+        if (trialManager?.isTrialActive?.()) return;
+        playTrackFromSetting(getPhaseSettingKey());
+    }, POST_TITLE_BGM_DELAY_MS);
+}
+
+function openTitleScreen(options) {
+    return showTitleScreen(buildTitleScreenOptions(options));
+}
+
 // ── Slash Commands ──────────────────────────────────────────────────────────
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'title',
+    callback: async () => {
+        openTitleScreen();
+        return '';
+    },
+    helpString: 'Opens the Danganronpa title screen.',
+}));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'introduce',
@@ -12333,10 +16108,28 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'endtrial',
     callback: async () => {
         console.log('[Dangan] Manual trial termination requested.');
-        trialManager?.endTrial();
+        await leaveClassTrial({ confirm: false });
         return '';
     },
-    helpString: 'Immediately ends the current Class Trial and clears persistent state.',
+    helpString: 'Immediately ends the current Class Trial, clears persistent state, and returns to the chat the trial was started from.',
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'suspendtrial',
+    callback: async () => {
+        await suspendClassTrial();
+        return '';
+    },
+    helpString: 'Steps out of the current Class Trial without clearing its progress.',
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'resumetrial',
+    callback: async () => {
+        await resumeClassTrial();
+        return '';
+    },
+    helpString: 'Resumes a suspended Class Trial in the phase it was left in.',
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
@@ -12557,9 +16350,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         // Switch the background underneath the static overlay so the transition is hidden
         const switchBackground = () => {
             if (!bgName || cinematic) return;
-            const bgElements = Array.from(document.querySelectorAll('.bg_example'));
-            const lower = bgName.toLowerCase();
-            const match = bgElements.find(el => el.getAttribute('bgfile')?.toLowerCase().includes(lower));
+            const match = findBackgroundElement(bgName);
             if (match instanceof HTMLElement) match.click();
         };
 
@@ -12648,12 +16439,24 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'endinvestigation',
+    callback: async () => { endInvestigation({ source: 'slash_command' }); return ''; },
+    helpString: 'Ends the current investigation and returns to daytime or nighttime. Truth Bullets are kept.',
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'undophase',
+    callback: async () => { undoLastPhaseChange(); return ''; },
+    helpString: 'Undoes the last phase change (investigation start or end, passing time, sleeping).',
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'givetruthbullet',
     callback: (args, description) => {
         const name = String(args.name || '').trim();
         const desc = String(description || '').trim();
         if (!name) return 'Error: name is required.';
-        const added = handleTruthBullet(name, desc);
+        const added = handleTruthBullet(name, desc, { manual: true });
         if (!added) return `Truth Bullet "${name}" already exists.`;
         return '';
     },
@@ -12728,19 +16531,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             console.warn('[QuestionTime] title and all four answers are required.');
             return '';
         }
-        // #region debug-point C:qtime-slash-entry
-        reportFullscreenOverlayDebug("C", "index.js:/questiontime", "Entered Question Time slash command", {
-            questionTimeController: Boolean(questionTimeController),
-            answersCount: answers.length,
-            correct,
-        });
-        // #endregion
         const won = await questionTimeController?.run({ title, time: resolveSkillParam("qttTimer", time), answers, correct });
-        // #region debug-point C:qtime-slash-run
-        reportFullscreenOverlayDebug("C", "index.js:/questiontime", "Question Time slash command completed run()", {
-            won: Boolean(won),
-        });
-        // #endregion
         if (won) awardXp(XP_REWARDS.questionTime ?? 8, 'question time completed');
         return '';
     },
@@ -12766,19 +16557,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             return '';
         }
         const time = args.time ? Number(args.time) : 0;
-        // #region debug-point D:qtruth-slash-entry
-        reportFullscreenOverlayDebug("D", "index.js:/questiontruth", "Entered Question Truth slash command", {
-            questionTruthController: Boolean(questionTruthController),
-            questionLength: question.length,
-            answerLength: answer.length,
-        });
-        // #endregion
         const won = await questionTruthController?.run({ question, answer, time: resolveSkillParam("qthTimer", time), playerHp: resolveSkillParam("qthHealth", 5) });
-        // #region debug-point D:qtruth-slash-run
-        reportFullscreenOverlayDebug("D", "index.js:/questiontruth", "Question Truth slash command completed run()", {
-            won: Boolean(won),
-        });
-        // #endregion
         if (won) awardXp(XP_REWARDS.questionTruth ?? 10, 'question truth completed');
         return '';
     },
@@ -12912,7 +16691,8 @@ function performPinArrivalWithFade(pin) {
     setTimeout(() => {
         setCurrentLocationId(pin.locationId);
         if (pin.bg)  mapPanelController.switchChatBackground?.(pin.bg);
-        if (pin.bgm) mapPanelController.playPinBgm?.(pin.bgm);
+        if (pin.bgm) enterPinBgm(pin.bgm);
+        else leavePinBgm();
         mapPanelController.highlightPinByLocationId?.(pin.locationId);
         // Companion characters (1-on-1 partner or group members) follow the
         // player into the new room so their overworld presence stays accurate.
@@ -12937,8 +16717,15 @@ function performPinArrivalWithFade(pin) {
 // Resolve a destination string (label/ref/value) against the current pin's
 // connection list and execute the move. Shared by /moveto and the side panel
 // buttons so they behave identically.
+// While a conversation is open (Single-Chat "View conversation") the player
+// stays put; close it to walk again.
+function isMovementBlocked() {
+    return document.body.classList.contains('dangan-ow-conversation-view');
+}
+
 function moveToDestination(raw) {
     if (!mapPanelController) return false;
+    if (isMovementBlocked()) return false;
     const currentId = getCurrentLocationId();
     if (!currentId) return false;
     const conns = mapPanelController.getConnectionsForLocationId?.(currentId) ?? [];
@@ -12988,6 +16775,337 @@ const MINIMAP_ZOOM_STEP = 0.25;
 // Mirrors the moveTo panel's visibility gates: hides during any trial phase and
 // while the Monopad is open. Shows only the current sub-area's floor + location
 // pins (rooms / monomachines / trials) — no evidence, no bodies, no hover.
+// Shared by the minimap diamonds and the exploration MENU.
+function toggleRoomFlatFromUi() {
+    overworldSceneController?.toggleCurrentRoomFlat?.();
+    _minimapSig = null;
+    renderMinimap();
+}
+
+function toggleHalfSpriteFromUi() {
+    // Mirror the settings-toggle handler so the Monopad → Display toggle stays
+    // in sync and the body-class / sprite refresh runs.
+    const next = !getMonopadSetting('halfspriteMode');
+    setMonopadSetting('halfspriteMode', next);
+    applySettingsTabUI();
+    applyHalfSpriteMode();
+    // The size/offset control only exists in half-sprite mode — close its
+    // popover when the mode is switched off.
+    if (!next) document.getElementById('dangan-hs-adjust')?.remove();
+    _minimapSig = null;
+    renderMinimap();
+}
+
+function enterPhotoMode() {
+    document.body.classList.add('dangan-ui-hidden');
+}
+
+// Items the host adds to the overworld's exploration MENU, after Call Student
+// and Edit Character Positions.
+function getExploreMenuActions() {
+    const playerRoomId = getCurrentLocationId();
+    const halfOn = !!getMonopadSetting('halfspriteMode');
+    const items = [
+        { id: 'set-location', label: 'Set Location', onSelect: () => openSetLocationPicker() },
+        { id: 'cg', label: 'Show CG', onSelect: () => showCgPicker() },
+        { id: 'photo', label: 'Photo Mode', onSelect: () => enterPhotoMode() },
+        { id: 'half-sprite', label: halfOn ? 'Half-Sprite Mode: On' : 'Half-Sprite Mode: Off', active: halfOn, onSelect: () => toggleHalfSpriteFromUi() },
+    ];
+    if (halfOn) {
+        items.push({ id: 'half-sprite-adjust', label: 'Adjust Half-Sprites', onSelect: () => openHalfSpriteAdjustPanel() });
+    }
+    if (playerRoomId) {
+        const isFlat = !!overworldSceneController?.isRoomFlat?.(playerRoomId);
+        items.push({ id: 'flat', label: isFlat ? 'Perspective: Locked' : 'Perspective: Unlocked', active: isFlat, onSelect: () => toggleRoomFlatFromUi() });
+    }
+    if (isDebugAccessGranted() && !isDebugControlsHidden()) {
+        const shown = document.body.classList.contains('dangan-explore-debug-shown');
+        items.push({
+            id: 'debug',
+            label: shown ? 'Hide Debug' : 'Show Debug',
+            active: shown,
+            onSelect: () => document.body.classList.toggle('dangan-explore-debug-shown'),
+        });
+    }
+    return items;
+}
+
+// Connected pins from the current location, as locationId → label. Only pins
+// can light up on the minimap; areas / sub-areas live in the Move popover.
+function getReachablePinLabels() {
+    const out = new Map();
+    const currentId = getCurrentLocationId();
+    if (!currentId) return out;
+    for (const c of (mapPanelController?.getConnectionsForLocationId?.(currentId) ?? [])) {
+        if (c.kind === 'pin' && c.value && !out.has(c.value)) out.set(c.value, c.label);
+    }
+    return out;
+}
+
+// Stairs and doors off the current floor, named by where they lead.
+function getCurrentFloorExits() {
+    const currentId = getCurrentLocationId();
+    if (!currentId) return [];
+    return mapPanelController?.getFloorExitsForLocationId?.(currentId) ?? [];
+}
+
+const FLOOR_EXIT_ICONS = { up: '▲', down: '▼', door: '⇥' };
+
+function goThroughFloorExits(exits) {
+    if (exits.length === 1) moveToDestination(exits[0].moveLabel);
+    else toggleMinimapMovePopover();
+}
+
+function closeMinimapMovePopover() {
+    document.getElementById('dangan-minimap-move-pop')?.remove();
+}
+
+function toggleMinimapMovePopover() {
+    if (document.getElementById('dangan-minimap-move-pop')) { closeMinimapMovePopover(); return; }
+    playSfx(sfx.click);
+    const pop = document.createElement('div');
+    pop.id = 'dangan-minimap-move-pop';
+    const title = document.createElement('div');
+    title.className = 'dangan-minimap-move-pop-title';
+    title.textContent = 'MOVE TO';
+    pop.appendChild(title);
+
+    const list = document.createElement('div');
+    list.className = 'dangan-minimap-move-pop-list';
+    const conns = getCurrentConnections();
+    if (!getCurrentLocationId()) {
+        list.innerHTML = '<div class="dangan-moveto-empty">No location set — choose where you are below.</div>';
+    } else if (!conns.length) {
+        list.innerHTML = '<div class="dangan-moveto-empty">No connected rooms from here. Edit the current pin to add some.</div>';
+    }
+    for (const c of conns) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `dangan-moveto-btn dangan-moveto-kind-${c.kind}`;
+        btn.textContent = c.label;
+        btn.addEventListener('click', () => { closeMinimapMovePopover(); moveToDestination(c.label); });
+        list.appendChild(btn);
+    }
+    pop.appendChild(list);
+
+    const setBtn = document.createElement('button');
+    setBtn.type = 'button';
+    setBtn.className = 'dangan-minimap-move-pop-set';
+    setBtn.textContent = 'SET LOCATION';
+    setBtn.addEventListener('click', () => { closeMinimapMovePopover(); openSetLocationPicker(); });
+    pop.appendChild(setBtn);
+
+    pop.addEventListener('pointerdown', (e) => e.stopPropagation());
+    document.body.appendChild(pop);
+    const onOutside = (e) => {
+        if (!pop.isConnected) { document.removeEventListener('pointerdown', onOutside); return; }
+        if (e.target.closest?.('.dangan-minimap-move-btn')) return;
+        closeMinimapMovePopover();
+        document.removeEventListener('pointerdown', onOutside);
+    };
+    document.addEventListener('pointerdown', onOutside);
+}
+
+// Body classes for the exploration-screen layout settings.
+function applyExploreLayoutSettings() {
+    const body = document.body;
+    body.classList.toggle('dangan-legacy-explore-composer', !getMonopadSetting('exploreHideComposer'));
+    body.classList.toggle('dangan-explore-menu-on', !!getMonopadSetting('exploreActionMenu'));
+    body.classList.toggle('dangan-moveto-on-minimap', !!getMonopadSetting('moveToOnMinimap'));
+    body.classList.toggle('dangan-stbar-autohide', !!getMonopadSetting('autoHideStTopBar'));
+    if (!getMonopadSetting('autoHideStTopBar')) body.classList.remove('dangan-stbar-peek');
+    // The capsule, along the top or down the left edge.
+    const sgBar = getMonopadSetting('stTopBarStyle') !== 'classic';
+    body.classList.toggle('dangan-stbar-sg', sgBar);
+    body.classList.toggle('dangan-stbar-left', sgBar && getMonopadSetting('stTopBarPosition') === 'left');
+    if (!getMonopadSetting('moveToOnMinimap')) closeMinimapMovePopover();
+    // Also runs at boot, before the module-level state these touch is
+    // initialised — the 2s poll picks them up then.
+    try {
+        ensureStTopBarAutoHide();
+        _minimapSig = null;
+        _moveToPanelSig = null;
+        renderMoveToPanel();
+        renderMinimap();
+    } catch { /* ignore */ }
+    overworldSceneController?.render?.();
+}
+
+// The "Show SillyTavern's bar" keybind: brings the auto-hidden bar in (or
+// tucks it away again). With auto-hide off it hides and shows the bar.
+function toggleStTopBarFromKeybind() {
+    const body = document.body;
+    if (body.classList.contains('dangan-stbar-autohide')) body.classList.toggle('dangan-stbar-peek');
+    else body.classList.toggle('dangan-stbar-hidden');
+}
+
+// ── Keybinds (core/input/keybinds.js) ───────────────────────────────────
+const KEYBIND_RUNNERS = {
+    topBar: () => { toggleStTopBarFromKeybind(); return true; },
+    monopad: () => { toggleMonopadFromKeybind(); return true; },
+    transcript: () => vnModeController?.toggleTranscript?.() ?? false,
+    expressions: () => expressionPickerController?.toggle?.() ?? false,
+    hideUi: () => {
+        if (document.body.classList.contains('dangan-ui-hidden')) document.body.classList.remove('dangan-ui-hidden');
+        else enterPhotoMode();
+        return true;
+    },
+};
+let keybindCaptureId = null;
+
+function getKeybinds() {
+    return resolveKeybinds(getMonopadSetting('keybinds'));
+}
+
+// Runs the action bound to `binding`. Returns true when one ran.
+function runKeybind(binding, target) {
+    if (keybindCaptureId || !binding) return false;
+    if (isTypingTarget(target)) return false;
+    if (document.getElementById(TITLE_SCREEN_ID)) return false;
+    const action = actionForBinding(getKeybinds(), binding);
+    if (!action) return false;
+    try { return KEYBIND_RUNNERS[action]?.() !== false; } catch (e) {
+        console.warn(`[Dangan][Keybinds] "${action}" failed:`, e);
+        return false;
+    }
+}
+
+function renderKeybindSettings() {
+    const list = document.getElementById('dangan_keybind_list');
+    if (!list) return;
+    const binds = getKeybinds();
+    if (!list.childElementCount) {
+        list.innerHTML = KEYBIND_ACTIONS.map((a) => `
+            <div class="settings-item">
+                <div class="settings-text">
+                    <span class="settings-label">${a.label}</span>
+                    ${a.note ? `<div class="settings-note">${a.note}</div>` : ''}
+                </div>
+                <button type="button" class="settings-small-button dangan-keybind-btn" data-keybind="${a.id}"></button>
+            </div>`).join('');
+    }
+    list.querySelectorAll('[data-keybind]').forEach((btn) => {
+        const id = btn.dataset.keybind;
+        const capturing = keybindCaptureId === id;
+        btn.textContent = capturing ? 'PRESS A KEY…' : keybindLabel(binds[id]);
+        btn.classList.toggle('is-capturing', capturing);
+        btn.title = capturing ? 'A key, or a right / middle click. Esc cancels, Backspace clears.' : 'Click to change';
+    });
+}
+
+function setKeybind(id, binding) {
+    const binds = getKeybinds();
+    // A binding belongs to one action: take it off any other.
+    if (binding) for (const key of Object.keys(binds)) if (binds[key] === binding) binds[key] = '';
+    binds[id] = binding;
+    setMonopadSetting('keybinds', binds);
+}
+
+(function installKeybinds() {
+    // Capture phase, so a bound key doesn't also reach SillyTavern's hotkeys.
+    window.addEventListener('keydown', (e) => {
+        if (keybindCaptureId) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            const id = keybindCaptureId;
+            if (e.code === 'Escape') keybindCaptureId = null;
+            else if (e.code === 'Backspace' || e.code === 'Delete') { setKeybind(id, ''); keybindCaptureId = null; }
+            else {
+                const binding = bindingFromKeyEvent(e);
+                if (!binding) return; // a lone modifier: keep waiting
+                setKeybind(id, binding);
+                keybindCaptureId = null;
+            }
+            renderKeybindSettings();
+            return;
+        }
+        if (e.repeat) return;
+        if (runKeybind(bindingFromKeyEvent(e), e.target)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        }
+    }, true);
+
+    const onMouse = (e) => {
+        const binding = bindingFromMouseEvent(e);
+        if (!binding) return;
+        if (keybindCaptureId) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            setKeybind(keybindCaptureId, binding);
+            keybindCaptureId = null;
+            renderKeybindSettings();
+            return;
+        }
+        if (runKeybind(binding, e.target)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        }
+    };
+    // Right click (the context menu) and middle click.
+    window.addEventListener('contextmenu', onMouse, true);
+    window.addEventListener('auxclick', (e) => { if (e.button === 1) onMouse(e); }, true);
+
+    document.addEventListener('click', (e) => {
+        const btn = e.target?.closest?.('[data-keybind]');
+        if (btn) {
+            e.preventDefault();
+            keybindCaptureId = keybindCaptureId === btn.dataset.keybind ? null : btn.dataset.keybind;
+            renderKeybindSettings();
+            return;
+        }
+        if (e.target?.closest?.('#dangan_keybind_reset')) {
+            e.preventDefault();
+            keybindCaptureId = null;
+            setMonopadSetting('keybinds', {});
+            renderKeybindSettings();
+            return;
+        }
+        // Clicking elsewhere stops waiting for a key.
+        if (keybindCaptureId) {
+            keybindCaptureId = null;
+            renderKeybindSettings();
+        }
+    });
+})();
+
+// SillyTavern's top bar slides away; a thin strip along the top edge (and the
+// bar itself) brings it back on hover. It stays out while a drawer is open.
+let _stTopBarAutoHideBound = false;
+function ensureStTopBarAutoHide() {
+    if (_stTopBarAutoHideBound) return;
+    const holder = document.getElementById('top-settings-holder');
+    if (!holder) return;
+    _stTopBarAutoHideBound = true;
+
+    const zone = document.createElement('div');
+    zone.id = 'dangan-stbar-hotzone';
+    document.body.appendChild(zone);
+
+    let hideTimer = null;
+    const peek = () => {
+        clearTimeout(hideTimer);
+        document.body.classList.add('dangan-stbar-peek');
+    };
+    const maybeHide = (delay = 350) => {
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(() => {
+            if (holder.matches(':hover') || zone.matches(':hover')) return;
+            if (holder.querySelector('.openDrawer')) return;
+            document.body.classList.remove('dangan-stbar-peek');
+        }, delay);
+    };
+    zone.addEventListener('mouseenter', peek);
+    holder.addEventListener('mouseenter', peek);
+    holder.addEventListener('mouseleave', () => maybeHide());
+    zone.addEventListener('mouseleave', () => maybeHide());
+    // Closing a drawer (from inside or by clicking away) re-checks once its
+    // close animation has had a moment to clear .openDrawer.
+    document.addEventListener('click', () => {
+        if (document.body.classList.contains('dangan-stbar-peek')) maybeHide(450);
+    });
+}
+
 function renderMinimap() {
     const existing = document.getElementById('dangan-minimap');
     const removeIt = () => { if (existing) { existing.remove(); _minimapSig = null; } };
@@ -13019,7 +17137,11 @@ function renderMinimap() {
         const list = overworldSceneController?.getCharactersInRoom?.(currentId) || [];
         return list.map(c => `${c.name}/${c.groupId || ''}`).join(',');
     })();
-    const sig = `${data.areaKey}/${data.floorKey}|${data.imageSrc}|${pinSig}|cur:${getCurrentLocationId() || ''}|spk:${lastSpeaker || ''}|grp:${groupSig}|ow:${owSig}`;
+    const moveToOnMinimap = !!getMonopadSetting('moveToOnMinimap');
+    const reachSig = moveToOnMinimap ? [...getReachablePinLabels().keys()].join(',') : 'off';
+    const floorExits = getCurrentFloorExits();
+    const exitSig = floorExits.map(x => `${x.direction}:${x.moveLabel}:${x.text}`).join(',');
+    const sig = `${data.areaKey}/${data.floorKey}|${data.imageSrc}|${pinSig}|cur:${getCurrentLocationId() || ''}|spk:${lastSpeaker || ''}|grp:${groupSig}|ow:${owSig}|mv:${reachSig}|ex:${exitSig}`;
     if (existing && sig === _minimapSig) return;
     _minimapSig = sig;
 
@@ -13050,10 +17172,33 @@ function renderMinimap() {
     const currentPin = (currentId && !currentId.startsWith('area:') && !currentId.startsWith('subarea:'))
         ? mapPanelController?.getPinByLocationId?.(currentId)
         : null;
+    // Rooms connected to the current one glow and move the player on click.
+    const reachable = moveToOnMinimap ? getReachablePinLabels() : new Map();
     for (const p of data.pins) {
         const isCurrent = currentPin && p.id === currentPin.id;
+        const reachLabel = !isCurrent && p.locationId ? reachable.get(p.locationId) : null;
+        const isExit = isCurrent && floorExits.length > 0;
         const pin = document.createElement('div');
-        pin.className = `dangan-minimap-pin dangan-minimap-pin-${p.type}${isCurrent ? ' dangan-minimap-pin-current' : ''}`;
+        pin.className = `dangan-minimap-pin dangan-minimap-pin-${p.type}${isCurrent ? ' dangan-minimap-pin-current' : ''}${reachLabel ? ' dangan-minimap-pin-reachable' : ''}${isExit ? ' dangan-minimap-pin-exit' : ''}`;
+        if (isExit) {
+            // Standing on stairs or a door: clicking it goes through.
+            pin.title = floorExits.length === 1 ? `Go to ${floorExits[0].text}` : 'Choose where to go';
+            pin.addEventListener('pointerdown', (e) => e.stopPropagation());
+            pin.addEventListener('click', (e) => {
+                e.stopPropagation();
+                goThroughFloorExits(floorExits);
+            });
+        }
+        if (reachLabel) {
+            pin.dataset.name = reachLabel;
+            pin.title = `Move to ${reachLabel}`;
+            // Stop the press reaching the root so it doesn't start a pan.
+            pin.addEventListener('pointerdown', (e) => e.stopPropagation());
+            pin.addEventListener('click', (e) => {
+                e.stopPropagation();
+                moveToDestination(reachLabel);
+            });
+        }
         pin.style.left = `${(p.x / data.mapWidth) * 100}%`;
         pin.style.top  = `${(p.y / data.mapHeight) * 100}%`;
         if (p.iconUrl) {
@@ -13107,9 +17252,7 @@ function renderMinimap() {
     flatBtn.innerHTML = `<span><i class="fa-solid ${isFlat ? 'fa-lock' : 'fa-lock-open'}"></i></span>`;
     flatBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        overworldSceneController?.toggleCurrentRoomFlat?.();
-        _minimapSig = null;
-        renderMinimap();
+        toggleRoomFlatFromUi();
     });
     flatBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
     flatCol.appendChild(flatBtn);
@@ -13130,11 +17273,47 @@ function renderMinimap() {
     hideBtn.innerHTML = '<span><i class="fa-solid fa-camera"></i></span>';
     hideBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        document.body.classList.add('dangan-ui-hidden');
+        enterPhotoMode();
     });
     hideBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
     hideCol.appendChild(hideBtn);
     root.appendChild(hideCol);
+
+    // Ways off this floor, beside the map, so the next floor is one click away.
+    if (floorExits.length) {
+        const exitCol = document.createElement('div');
+        exitCol.className = 'dangan-minimap-floor-exits';
+        for (const exit of floorExits) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = `dangan-minimap-floor-exit dangan-minimap-floor-exit-${exit.direction}`;
+            btn.textContent = `${FLOOR_EXIT_ICONS[exit.direction] || FLOOR_EXIT_ICONS.door} ${exit.text}`;
+            btn.title = `Go to ${exit.text}`;
+            btn.addEventListener('pointerdown', (e) => e.stopPropagation());
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                moveToDestination(exit.moveLabel);
+            });
+            exitCol.appendChild(btn);
+        }
+        root.appendChild(exitCol);
+    }
+
+    // Move — replaces the MOVE TO list: a popover of every exit from here,
+    // including areas / sub-areas that have no pin on this floor.
+    if (moveToOnMinimap) {
+        const moveCol = document.createElement('div');
+        moveCol.className = 'dangan-minimap-move-col';
+        const moveBtn = document.createElement('button');
+        moveBtn.type = 'button';
+        moveBtn.className = 'dangan-minimap-zoom-btn dangan-minimap-move-btn';
+        moveBtn.title = 'Move to…';
+        moveBtn.innerHTML = '<span><i class="fa-solid fa-person-walking"></i></span>';
+        moveBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMinimapMovePopover(); });
+        moveBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+        moveCol.appendChild(moveBtn);
+        root.appendChild(moveCol);
+    }
 
     // Bottom action row — mirrors the zoom +/- row at the top, sitting just above
     // the Photo Mode button. Two diamond controls: Show CG, and the Half-Sprite
@@ -13161,17 +17340,7 @@ function renderMinimap() {
     halfBtn.innerHTML = '<span><i class="fa-solid fa-crop"></i></span>';
     halfBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        // Mirror the settings-toggle handler so the Monopad → Display toggle stays
-        // in sync and the body-class / sprite refresh runs.
-        const next = !getMonopadSetting('halfspriteMode');
-        setMonopadSetting('halfspriteMode', next);
-        applySettingsTabUI();
-        applyHalfSpriteMode();
-        // The size/offset control only exists in half-sprite mode — close its
-        // popover when the mode is switched off.
-        if (!next) document.getElementById('dangan-hs-adjust')?.remove();
-        _minimapSig = null;
-        renderMinimap();
+        toggleHalfSpriteFromUi();
     });
     halfBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
 
@@ -13692,6 +17861,25 @@ function isTrialUiActive() {
     return document.body.classList.contains('dangan-trial-active');
 }
 
+// Every exit from the current location, deduped by kind:value — the upstream
+// list occasionally repeats the same destination (e.g. a pin connection listed
+// twice in the pin's data), which would surface as duplicate buttons.
+function getCurrentConnections() {
+    const currentId = getCurrentLocationId();
+    const rawConns = currentId
+        ? (mapPanelController?.getConnectionsForLocationId?.(currentId) ?? [])
+        : [];
+    const conns = [];
+    const seenConnKeys = new Set();
+    for (const c of rawConns) {
+        const key = `${c.kind}:${c.value}`;
+        if (seenConnKeys.has(key)) continue;
+        seenConnKeys.add(key);
+        conns.push(c);
+    }
+    return conns;
+}
+
 function renderMoveToPanel() {
     const existing = document.getElementById('dangan-moveto-panel');
 
@@ -13710,20 +17898,15 @@ function renderMoveToPanel() {
     }
 
     const currentId = getCurrentLocationId();
-    const rawConns = currentId
-        ? (mapPanelController?.getConnectionsForLocationId?.(currentId) ?? [])
-        : [];
-    // Dedupe by kind:value — the upstream list occasionally repeats the same
-    // destination (e.g. a pin connection listed twice in the pin's data),
-    // which surfaces as duplicate "Move to <X>" buttons in the panel.
-    const conns = [];
-    const seenConnKeys = new Set();
-    for (const c of rawConns) {
-        const key = `${c.kind}:${c.value}`;
-        if (seenConnKeys.has(key)) continue;
-        seenConnKeys.add(key);
-        conns.push(c);
+    // The minimap handles moving once a location is set; the panel only stays
+    // to offer SET when there's nowhere to move from yet, or when this floor
+    // has no minimap to move from.
+    if (currentId && getMonopadSetting('moveToOnMinimap')
+        && mapPanelController?.getMinimapState?.(currentId)?.imageSrc) {
+        if (existing) { existing.remove(); _moveToPanelSig = null; }
+        return;
     }
+    const conns = getCurrentConnections();
 
     // Dirty-check signature — short-circuit when nothing observable has changed.
     // The poll calls this every 2s; without this guard each call would rebuild
@@ -13802,6 +17985,8 @@ function renderMoveToPanel() {
         // system creates lazily. Re-tick keeps the label correct once the
         // wrapper materialises and once mapPanelController has its pins.
         try { updateCurrentRoomDisplay(); } catch (e) { console.warn('[Dangan][current-room] bootstrap render failed:', e); }
+        // The Phase HUD moves under the same wrapper once it exists.
+        try { if (!document.querySelector('#dangan-hud-topright > #dangan-phase-hud')) refreshPhaseHud(); } catch (e) { console.warn('[Dangan][phase-hud] bootstrap render failed:', e); }
         elapsed += STEP;
         if (elapsed < DURATION) setTimeout(tick, STEP);
     };
@@ -14061,19 +18246,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         const resolveSpeed = (base) => resolveSkillParam("hangmanSpeed", base);
         const concDrain = resolveSkillParam("hangmanConcDrain", 1 / 3);
         const concRegen = resolveSkillParam("hangmanConcRegen", 1 / 10);
-        // #region debug-point B:hangman-slash-entry
-        reportFullscreenOverlayDebug("B", "index.js:/hangmansgambit", "Entered Hangman's Gambit slash command", {
-            hangmansGambitController: Boolean(hangmansGambitController),
-            questionLength: question.length,
-            answerLength: answer.length,
-        });
-        // #endregion
         const won = await hangmansGambitController?.run({ question, answer, time, health, difficulty, spotlightScale, resolveSpeed, concDrain, concRegen });
-        // #region debug-point B:hangman-slash-run
-        reportFullscreenOverlayDebug("B", "index.js:/hangmansgambit", "Hangman's Gambit slash command completed run()", {
-            won: Boolean(won),
-        });
-        // #endregion
         if (won) awardXp(XP_REWARDS.hangmansGambit ?? 15, "hangman's gambit completed");
         return '';
     },
@@ -14235,9 +18408,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         const bgArg = String(args.bg || args.BG || '').trim();
         let BG = '';
         if (bgArg) {
-            const lower = bgArg.toLowerCase();
-            const match = Array.from(document.querySelectorAll('.bg_example'))
-                .find(el => el.getAttribute('bgfile')?.toLowerCase().includes(lower));
+            const match = findBackgroundElement(bgArg);
             if (match) {
                 const bgfile   = match.getAttribute('bgfile') || '';
                 const isCustom = match.getAttribute('custom') === 'true';
@@ -14336,12 +18507,3 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     ],
 }));
 
-SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-    name: 'endtrial',
-    callback: async () => {
-        console.log('[Dangan] Manual trial termination requested.');
-        trialManager?.endTrial();
-        return '';
-    },
-    helpString: 'Immediately ends the current Class Trial and clears persistent state.',
-}));

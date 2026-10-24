@@ -15,6 +15,10 @@ Adds a menu based on the Monopad from **Danganronpa V3** with progression, trust
 Alternatively, install directly from SillyTavern by accessing the extensions tab and pasting the main link.
 3. In chat, click the Monopad crest button to open the UI.
 
+**Recommended way to play: One Main Chat.** Pick NEW GAME on the title screen and keep the selected **One Main Chat** style: one group chat holds the whole story, and exploring the overworld stays inside it (Single-Chat Overworld). Install the [Presence](https://github.com/leandrojofre/SillyTavern-Presence) extension so characters who aren't in the room don't remember what was said there. Several Chats is still available if you prefer separate chats.
+
+Install the [Prome VN](https://github.com/Bronya-Rand/Prome-VN-Extension) extension too and pick your sprite folder as its **User Sprite**: your own character's sprites in Class Trials, minigames, conversations (Settings → Customize → Your sprite in conversations) and the Sprite Manager all come from it. The title screen's SETUP checklist can install both.
+
 ## Requirements:
 - The Lorebook: You can select one of the supplied Lorebooks in `/sample-lorebooks`, or create your own.
 - Character Cards: You can import one (Or multiple) characters from `/sample-character-cards`, or create your own.
@@ -22,12 +26,52 @@ Alternatively, install directly from SillyTavern by accessing the extensions tab
 ## What the Extension Includes:
 
 ### Monopad Tabs
-- **Truth (🧠):** Stores discovered Truth Bullets, supports detail view, archival and removal.
-- **Map (🌐):** Shows the current Map & Floor, supports custom maps, pin locations, and evidence placement.
+- **Truth (🧠):** Stores discovered Truth Bullets, supports detail view, editing the title and description, archival and removal. Archived and deleted bullets stay that way; the message that found them won't add them again.
+- **Map (🌐):** Shows the current Map & Floor, supports custom maps, pin locations, and evidence placement. Evidence and body pins belong to the current save; rooms, custom areas and floors are shared by every save and stored with your SillyTavern settings, so they follow you to other browsers. Which areas a save uses is picked in NEW GAME and kept with the save. Lock a floor (or island, or any floor of a custom area) until a chapter with the pencil button → **OPENS IN**: like the original games, it opens when the story reaches that chapter. Until then nobody spawns there and Move To won't lead there; the floor button shows a 🔒. **RESHUFFLE CHARACTERS** moves everyone to new rooms (the same shuffle Pass Time and Sleep do) without changing the time.
 - **Gifts & Skills (🎁):** Shows the Inventory, item browsing, gifting flow, and skill shop display.
-- **Social (👥):** Shows the Roster, trust/distrust progress, and generated profile notes.
+- **Social (👥):** Shows the Roster, trust/distrust progress, and generated profile notes. The − and + buttons next to the trust value correct it one rank at a time, without a ceremony or rewards.
 - **Chapters (📖):** Shows a log of your chats in an easy-to-read, easy-to-revisit format to help you build narratives.
 - **Settings (⚙️):** Shows Audio/display toggles, progression reset, expression configurer, CG creators, generation provider selection, and Mr. Monokuma's Lesson (replayable).
+
+### Title Screen
+SillyTavern opens on a Trigger Happy Havoc-style title screen. Press any key or click to start, then pick from the menu (arrow keys, Enter, Escape/BACK all work):
+- **NEW GAME:** a guided setup. If you have progress it first asks whether to start a **NEW SAVE** (your current save is kept and can be loaded again) or **KEEP CURRENT SAVE**. Then:
+  1. Choose a play style: **One Main Chat** (recommended, and selected by default) or **Several Chats**.
+  2. One Main Chat only: name the story chat and pick its members. The group chat is created for you and Single-Chat Overworld is turned on.
+  3. Class roster: tick your classmates, set each one's Ultimate, and choose your persona.
+  4. Choose the map: **Hope's Peak Academy** (recommended, built in with every room placed), **Jabberwock Island**, or **Upload Your Own**. For your own map, name it and upload one picture per floor, then click on each picture to place its rooms, name them, and pick the room you start in. The save only uses the map you chose: other areas are hidden and characters only spawn in its rooms. **SHOW ALL MAPS** in the Monopad MAP tab brings the other areas back for that save.
+  5. Review and **BEGIN**.
+
+  Every step has a **WHAT DOES THIS MEAN?** panel that explains it in more detail.
+- **Music:** a few seconds after you leave the title screen, the current phase's music (Daytime, Nighttime or Investigation) starts by itself, unless something is already playing.
+- **CONTINUE:** the **SAVES** tab lists your saves with their chapter, day, Truth Bullets and classmates. Picking a One Main Chat save opens its story chat; picking a Several Chats save opens the Monopad map. **ALL CHATS** lists every chat, newest first, with avatars, a last-message preview, message count and time. Search by name or message, or filter by one-on-one / group.
+- **OPTIONS:** the main audio, display and gameplay settings in the title screen's own style. Changes save immediately; **ALL SETTINGS (MONOPAD)** opens the full list.
+- **SETUP:** a checklist of what the game needs from SillyTavern: character cards, sprites, a lorebook with Ultimates, the Presence extension (One Main Chat), music, room backgrounds, AI instructions, a persona and a save. Each row says what's missing and has a button that opens the place to fix it. A badge on SETUP counts anything the game can't run without. Also in Monopad Settings → Gameplay.
+  - Music, room backgrounds and lorebooks are set up without leaving the title screen:
+    - **MUSIC** picks the tracks for each playlist (phases, moods, locations, trial), with a preview button.
+    - **ROOM BACKGROUNDS** gives each room on your save's map a SillyTavern background, shown when you walk in.
+    - **LOREBOOKS** is a World Info editor: create, import, rename, delete and turn books on, and add, copy, delete or edit entries (title, keywords, optional filter, content, enabled, always on, position, depth, order and trigger chance).
+
+Assign music under BGM Tracks → Phases → Title. Turn the screen off with the **Title Screen** setting, reopen it with `/title`, or use **Return to Title** in Monopad Settings → Gameplay.
+
+### Save Files
+Each save keeps its own story: classmates and trust, Truth Bullets, chapter, day and phase, Monocoins, items, skills and level, introductions, journal and trial state. Settings, music, cinematics and custom item definitions are shared by every save.
+- **One Main Chat** saves belong to their story chat (and any Class Trial chats started from it). Opening that chat loads the save by itself.
+- **Several Chats** saves are named slots. Chats that don't belong to a save keep whichever save is loaded.
+- Manage saves in Monopad Settings → **SAVES**: load, rename, copy, delete, export to a file and import from one. Loading a save switches Single-Chat Overworld to match its play style.
+- Updating from an older version wraps your existing progress into a save called **Imported Save**, so nothing is lost.
+
+### Phase HUD
+A small readout under the chapter title and level bar at the top right shows where the story is, for example `DAY 4 · INVESTIGATION`. Click it to see what usually comes next and the actions for the current phase:
+- **End Investigation:** go back to daily life without starting a trial. Your Truth Bullets are kept.
+- **Start Class Trial**, **Pass Time**, **Sleep** and **Start Investigation**, each with a confirmation.
+- **Undo:** reverses the last phase change, whether you made it or the story did.
+
+When the story starts an investigation on its own, a toast offers **UNDO** for a few seconds. Turn the readout off under Settings → Display → **Phase HUD**.
+
+### Escape
+- **Cutscenes:** Escape ends the one playing now: Monokuma announcements, body discoveries, phase banners, character introductions, the chapter-end roster, vote results, execution cinematics, trust ceremonies, Truth Bullet pop-ups and interjections. Whatever they change still happens (the investigation still starts, the chapter still advances). Queued ones play next.
+- **Minigames:** Escape asks to leave. Leaving puts back everything the game changed: Monocoins, Trust Fragments, XP, and the trial phase and debate history. In Non-Stop Debate, Mass Panic Debate and Scrum Debate, holding Escape still fast-forwards; a quick tap asks to leave.
 
 ### Character Introductions
 Character Introductions takes a character's `neutral` sprite and renders them on an animated background, grabbing their `name` and `ultimate` values. Commenced through the `/introduce` command.
@@ -65,15 +109,23 @@ Supplied in this extension are a wide array of minigames, including:
 - OpenRouter key is session-only by default unless “Remember key” is enabled.
 
 ## V3C trigger format (chat parsing)
-The extension scans assistant messages for these patterns:
+The extension scans assistant messages for these patterns.
+
+**You don't have to teach the AI these yourself.** With **AI INSTRUCTIONS** on (Settings → Gameplay), the extension adds the rules to the prompt itself and sends only the ones that fit the current phase: evidence markers during investigations, trust markers outside Class Trials, and the investigation-start and announcement markers during daily life. With **Share trust levels** on, it also tells the AI how much each character in the chat trusts or distrusts you (hosts like Monokuma are never included). Edit each block from the same setting. It's on for new players. If you're updating and already pasted the rules from `v3c-marker-prompts/prompts.txt` into your preset, a toast offers to turn it on; remove the pasted rules when you do. The extension warns you if both are active.
 
 - `V3C| TB: <title> || <description>`
 - `V3C| SOCIAL: <name>`
 - `V3C| SOCIAL_UP: <name>`
 - `V3C| SOCIAL_DOWN: <name>`
-- `V3C| INVESTIGATION_START` (plays Investigation Start banner/sfx and attempts to enable the `Investigation Time` toggle in your current preset)
-- `V3C| TRIAL_START` (opens a confirmation prompt to begin Class Trial phase flow)
+- `V3C| SOCIAL_DROP: <name> | <2-5>` (loses that many ranks at once; can run past Trust 1 into distrust)
+- `V3C| SOCIAL_BREAK: <name> | <1-10>` (trust shatters straight into that level of distrust; someone already in distrust sinks that much further)
+- `V3C| INVESTIGATION_START` (plays the Investigation Start banner/sfx and shows a toast with UNDO; with AI INSTRUCTIONS off, it also tries to enable an `Investigation Time` toggle in your current preset)
+- `V3C| TRIAL_START` (opens the Class Trial menu, which asks before the trial begins)
 - `V3C| BODY_DISCOVERY` (plays a separate static/shake body discovery cutscene using `assets/sfx/etc/despairnoise.mp3`)
+- `V3C| DAY_ANNOUN`, `V3C| NIGHT_ANNOUN`, `V3C| BDA` (play Monokuma's daytime, nighttime or body discovery announcement; they don't change the day or phase)
+
+### Swipes, deletes and edits
+What a message did is remembered per save: Truth Bullets, trust changes, gift reactions, the Monocoins, Trust Fragments and XP that came with them, and an investigation it started. Swiping that message away, deleting it, or editing its markers out takes all of that back, and a toast lists what was undone. Swiping back to it applies it again. Edits that keep the markers change nothing. If the message held a gift reaction, the gift goes back to waiting and the next reply reacts to it instead.
 
 ### Examples
 ```text
@@ -81,6 +133,8 @@ V3C| TB: Bloody Handprint || Found on the west hall window.
 V3C| SOCIAL: Kyoko Kirigiri
 V3C| SOCIAL_UP: Aoi Asahina
 V3C| SOCIAL_DOWN: Byakuya Togami
+V3C| SOCIAL_DROP: Toko Fukawa | 3
+V3C| SOCIAL_BREAK: Leon Kuwata | 4
 V3C| INVESTIGATION_START
 V3C| TRIAL_START
 V3C| BODY_DISCOVERY
@@ -88,7 +142,7 @@ V3C| BODY_DISCOVERY
 
 ## Typical usage flow
 1. Roleplay/investigate in chat.
-2. Emit V3C lines from your prompt template/character logic.
+2. Let the extension give the AI the V3C rules (AI INSTRUCTIONS), or put them in your own prompt template.
 3. Open Monopad to review Truth Bullets and Social updates.
 4. Spend rewards in Gifts & Skills and use gifts in conversations.
 5. Partake in Class Trials and advance the story
@@ -109,7 +163,7 @@ V3C| BODY_DISCOVERY
 | **Play BGM in Assistant Chat** | Toggle | Off | Keeps phase BGM playing outside of group chats |
 | **Dynamic Songs** | Toggle | Off | When on, the extension majority-votes the latest sprite of every living character in the current scene (group-chat portraits, or overworld room if portraits are not up) and plays a matching mood track. Only replaces daytime / nighttime / investigation BGM — shop, map-pin BGM, class trials, and minigames are left alone. Neutral and unknown sprites are ignored. Ties keep the current mood if it is still tied for first, otherwise fall back to phase BGM. The media player list button opens assigned songs filtered by mood or phase. SCAN on the player re-reads current sprites and forces a mood change. |
 | **Mood Scan Toast** | Toggle | Off | After SCAN, shows a themed HUD toast with sprite vote counts and the track that started playing. |
-| **BGM Tracks** | File multi-select | — | Assign audio files to each game phase or mood. Available phases: Shop, Daytime, Nighttime, Investigation, Trial General, Trial Preparation, Non-Stop Debates, Mass Panic Debates, Scrum Debates, Hangman's Gambit, Rebuttal Showdown, Interjection, Suspect Choice, AA Phase 1/2/3. Moods (used by Dynamic Songs): Happy (joy, excitement), Sad (sadness, grief), Dramatic (realization, surprise), Tense (fear, nervousness), Angry (anger, disgust), Romantic (love, embarrassment). A track can belong to both a phase list and a mood list. |
+| **BGM Tracks** | File multi-select | — | Assign audio files to each game phase or mood. Available phases: Title, Shop, Daytime, Nighttime, Investigation, Trial General, Trial Preparation, Non-Stop Debates, Mass Panic Debates, Scrum Debates, Hangman's Gambit, Rebuttal Showdown, Interjection, Suspect Choice, AA Phase 1/2/3. Moods (used by Dynamic Songs): Happy (joy, excitement), Sad (sadness, grief), Dramatic (realization, surprise), Tense (fear, nervousness), Angry (anger, disgust), Romantic (love, embarrassment). A track can belong to both a phase list and a mood list. |
 ---
 
 ### Display
@@ -118,12 +172,23 @@ V3C| BODY_DISCOVERY
 | **CRT Effects** | Toggle | On | Applies a CRT scanline filter over the Monopad UI |
 | **CRT Intensity** | Slider (0–100) | 35 | Controls the strength of the CRT scanline filter |
 | **Boot Animations** | Toggle | On | Shows the startup animation sequence when SillyTavern loads |
-| **Visual Novel Mode** | Toggle | Off | Enables VN-style character sprite and text presentation in chat |
-| **Daily / Deadly Life Dynamic Themes** | Toggle | On | Automatically switches the UI theme based on daytime, nighttime, or investigation state |
+| **Title Screen** | Toggle | On | Shows the title screen when SillyTavern loads. `/title` opens it any time |
+| **Setup Reminder** | Toggle | On | The title screen's SETUP glows while something the game needs isn't set up (sprites, Ultimates and room backgrounds don't count), and NEW GAME / CONTINUE suggest checking it first |
+| **Return to Title** | Button | — | Closes the Monopad and opens the title screen |
 | **Hide Truth Bullet Images** | Toggle | Off | Hides thumbnail images on Truth Bullet entries in the Monopad |
 | **Hide Gift Images** | Toggle | Off | Hides thumbnail images on gift and inventory entries |
+---
+
+### Customize
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| **Visual Novel Mode** | Toggle | Off | Enables VN-style character sprite and text presentation in chat |
+| **Text Box Style** | Picture picker | Classic | How the VN text box looks: Classic (the original box), Trigger Happy Havoc, Goodbye Despair or Killing Harmony. The game styles change colour at night and during investigations. Also picked during NEW GAME |
+| **Daily / Deadly Life Dynamic Themes** | Toggle | On | Automatically switches the UI theme based on daytime, nighttime, or investigation state |
 | **Class Trial Podium** | DEFAULT / CUSTOM | Default | Use the built-in lectern sprite or upload a custom replacement image |
 | **Hide Hope's Peak Branding** | Toggle | Off | Unlocks Announcement Customization — replace default announcement images, voice lines, and text for Daytime, Nighttime, and Body Discovery announcements |
+| **SillyTavern's bar style / position** | CAPSULE / CLASSIC, TOP / LEFT | Capsule, Top | Restyles SillyTavern's top bar as a rounded capsule of grey outlined icons, along the top or down the left edge. With auto-hide on it slides in when you point at its edge |
+| **Keybinds** | Key or mouse button | See below | Rebind or clear (Backspace) each action. Keybinds never fire while you type. Defaults: right click shows SillyTavern's bar, M the Monopad, L the transcript, E the expression picker, H hides the interface |
 ---
 
 ### Gameplay
@@ -183,6 +248,9 @@ Plays the execution cinematic for the named character, then marks them as dead i
 | `name` | **Yes** | — | Character name — must match both a configured execution cinematic and a registered character |
 ---
 
+#### `/title`
+Opens the title screen, even when the **Title Screen** setting is off.
+
 #### `/introduce`
 Shows a 4-second character introduction screen for the current SillyTavern speaker.
 
@@ -202,6 +270,12 @@ Triggers the nighttime announcement, shows a Night Time Start banner, and switch
 
 #### `/gotosleep`
 Advances to the next day, plays the daytime announcement, shows a Free Time Start banner, and switches to the Day theme.
+
+#### `/endinvestigation`
+Ends the current investigation and returns to daytime or nighttime. Truth Bullets are kept, and the `Investigation Time` preset toggle is switched back off.
+
+#### `/undophase`
+Undoes the last phase change: an investigation starting or ending, passing time, or sleeping.
 
 #### `/endtrial`
 Immediately ends the current Class Trial and clears all persistent trial states.
@@ -331,7 +405,7 @@ Displays the Truth Bullet list and asks the player to select the correct one for
 ## Q&A
 - **Q: How do gifts work?**
   
-  **A: First and foremost, gifts are obtained through a gacha minigame on the MonoMono Machine, accessible through the map tab. To use them, access your inventory, select the gift and press use. The next character who sends a message in chat will receive and judge it, granting you either a rank up or down or simply staying neutral. If Sprite Click Gifts is on in Settings, clicking an overworld sprite queues a gift for that specific character instead of opening a new chat — they react the next time they speak in your main group chat. Talk to the Room and Grab Group Members still open chats when Single-Chat Overworld is off.**
+  **A: First and foremost, gifts are obtained through a gacha minigame on the MonoMono Machine, accessible through the map tab. To use them, access your inventory, select the gift and press use. The next character who replies after you use it will receive and judge it (older messages in the chat don't count), granting you either a rank up or down or simply staying neutral. If Sprite Click Gifts is on in Settings, clicking an overworld sprite queues a gift for that specific character instead of opening a new chat — they react the next time they speak in your main group chat. Talk to the Room and Grab Group Members still open chats when Single-Chat Overworld is off.**
 
 ---
 
@@ -343,7 +417,7 @@ Displays the Truth Bullet list and asks the player to select the correct one for
 
 - **Q: There's something you didn't explain here. I'm confused. What do I do?**
   
-  **A: On first load, a play-mode overlay explains several chats vs one main chat. Leave Don't show again on and press CONTINUE to hide it for later sessions; Reset Lesson Hints in Settings brings it back. The question mark in the top right of Settings starts Mr. Monokuma's Lesson, which walks you through the Monopad. After that, he explains each tab and minigame the first time you use it.**
+  **A: On first load, a play-mode overlay explains several chats vs one main chat. Leave Don't show again on and press CONTINUE to hide it for later sessions; Reset Lesson Hints in Settings brings it back. The question mark in the top right of Settings starts Mr. Monokuma's Lesson, which walks you through the Monopad. After that, he explains each tab and minigame the first time you use it. Each minigame's explanation opens with a short looping clip of it being played, then walks through every control.**
 
 ---
 

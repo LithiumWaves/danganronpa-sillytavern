@@ -4,8 +4,12 @@
 @import url("https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Limelight&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Bruno+Ace&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;700;800&family=Noto+Sans:wght@400;500;700&family=Barlow+Condensed:wght@600;700&display=swap");
 @import url("./styles/legacy.css");
+@import url("./styles/systems/settings/subtabs.css");
+@import url("./styles/systems/settings/layout.css");
 @import url("./styles/systems/trust/ceremony.css");
+@import url("./styles/systems/trust/ceremony-dr.css");
 @import url("./styles/systems/vfx/vfx.css");
 @import url("./styles/systems/trial/trial.css");
 @import url("./styles/systems/trial/trial-aesthetic.css");
@@ -13,6 +17,28 @@
 @import url("./styles/systems/truth/panel.css");
 @import url("./styles/groupChat.css");
 @import url("./styles/systems/onboarding/onboarding.css");
+@import url("./styles/systems/title/title-screen.css");
+@import url("./styles/systems/title/title-panels.css");
+@import url("./styles/systems/title/title-loader.css");
+@import url("./styles/systems/phase/hud.css");
+@import url("./styles/systems/phase/banners.css");
+@import url("./styles/systems/saves/saves.css");
+@import url("./styles/systems/skip/leave-confirm.css");
+@import url("./styles/systems/monokuma/host-stage.css");
+@import url("./styles/systems/vn/skins.css");
+@import url("./styles/systems/vn/transcript.css");
+@import url("./styles/systems/vn/player-inset.css");
+@import url("./styles/systems/vn/expression-picker.css");
+@import url("./styles/systems/hud/hud-colors.css");
+@import url("./styles/systems/hud/st-bar.css");
+
+/* SillyTavern puts transform: translateZ(0) on <html>, which makes it the box
+   that position: fixed elements size against. On phones <body> is fixed too,
+   so <html> collapses to 0px and every full-screen overlay (VN box, group
+   stage, dialogs) gets squashed against the top of the screen. */
+html {
+    min-height: 100%;
+}
 
 
 
@@ -65,7 +91,7 @@
     border-color: rgba(255, 200, 60, 0.65);
     background: linear-gradient(180deg, rgba(48, 32, 4, 0.92), rgba(28, 18, 2, 0.92));
     color: #ffd04a;
-    cursor: default;
+    cursor: pointer;
     opacity: 1;
     letter-spacing: 0.1em;
 }
@@ -265,6 +291,23 @@ body.dangan-theme-investigation #dangan-hud-topright {
     top: 65px;
     padding: 0 10px 0 0;
     z-index: 2;
+}
+
+/* A skewed band behind the chapter name so it reads over any background,
+   in the HUD's own colors (phase, text box or custom). */
+#dangan-chapter-label::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: 3px -4px 1px -22px;
+    background: linear-gradient(90deg,
+        transparent 0,
+        rgba(var(--dlvl-rgb), 0.92) 16px,
+        rgba(var(--dlvl-rgb), 0.92) 100%);
+    border-bottom: 2px solid rgba(255, 255, 255, 0.55);
+    transform: skewX(-18deg);
+    transform-origin: 100% 100%;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
 }
 
 #dangan-level-bar {
@@ -1299,6 +1342,28 @@ body.dangan-halfsprite-mode:not(.dangan-trial-active) .expression-holder {
     filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.45));
     transition: filter 120ms ease;
 }
+/* Tag Along: a small tag on students following the player. */
+#dangan-overworld .dangan-ow-follow-badge {
+    position: absolute;
+    left: 50%;
+    bottom: 14%;
+    transform: translateX(-50%);
+    z-index: 2;
+    padding: 3px 10px;
+    border: 2px solid #fff;
+    border-radius: 999px;
+    background: rgba(242, 181, 46, 0.92);
+    color: #1a1206;
+    font: 800 12px/1.2 "M PLUS Rounded 1c", "Noto Sans JP", sans-serif;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+}
+.dangan-tag-note {
+    padding: 4px 0 10px;
+    text-transform: none;
+}
 /* Ovular shadow anchored under each sprite's feet. */
 #dangan-overworld .dangan-ow-shadow {
     position: absolute;
@@ -1679,11 +1744,23 @@ body.dangan-ow-inchat-explore #expression-wrapper {
     opacity: 0 !important;
     pointer-events: none !important;
 }
-body.dangan-ow-inchat-explore #form_sheld,
-body.dangan-ow-inchat-explore #send_form {
+/* Old layout (Monopad → HIDE TEXT BOX WHILE EXPLORING off): the composer
+ * stays usable on top of the scene. */
+body.dangan-legacy-explore-composer.dangan-ow-inchat-explore #form_sheld,
+body.dangan-legacy-explore-composer.dangan-ow-inchat-explore #send_form {
     z-index: 40 !important;
     pointer-events: auto !important;
     opacity: 1 !important;
+}
+/* Default: nobody talks while exploring the overworld (Single-Chat or
+ * multi-chat). The dialogue box and the composer (docked inside it) come back
+ * once a conversation opens. */
+body.dangan-ow-scene-active:not(.dangan-legacy-explore-composer) #dangan-vn-overlay,
+body.dangan-ow-scene-active:not(.dangan-legacy-explore-composer) #form_sheld,
+body.dangan-ow-scene-active:not(.dangan-legacy-explore-composer) #send_form {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
 }
 
 /* Keep Prome / ST group sprites hidden for the whole single-chat session.
@@ -1707,8 +1784,9 @@ body.dangan-ow-single-chat #expression-wrapper {
 
 /* Right-side button column — mirror of the left column. The skewX sign flips
  * so the parallelogram leans toward the same screen edge it's pinned to, and
- * the label gets a matching counter-skew. Top values match the left column so
- * Call sits opposite Talk and Edit sits opposite Grab. */
+ * the label gets a matching counter-skew. The column starts lower than the
+ * left one: the Phase HUD chip (DAY n · DAYTIME) hangs under the top-right
+ * HUD at roughly 196–223px and would otherwise cover Call / Edit. */
 #dangan-overworld .dangan-ow-call-btn,
 #dangan-overworld .dangan-ow-edit-btn {
     left: auto;
@@ -1723,21 +1801,309 @@ body.dangan-ow-single-chat #expression-wrapper {
 #dangan-overworld .dangan-ow-edit-btn > .dangan-ow-room-btn-label {
     transform: skewX(22deg);
 }
-/* "Call to the Room" — mirrors "Talk to the Room" on the right at top:186. */
+/* "Call to the Room" — right column, first slot (clear of the Phase HUD). */
 #dangan-overworld .dangan-ow-call-btn {
-    top: 186px;
+    top: 240px;
     width: 256px;
 }
-/* "Edit Character Positions" — mirrors "Grab Group Members" on the right at
- * top:226. */
+/* "Tag Along" (without the MENU) — right column, under Edit. */
+#dangan-overworld .dangan-ow-tag-btn {
+    left: auto;
+    right: -10px;
+    top: 320px;
+    width: 240px;
+    transform: skewX(-22deg);
+}
+#dangan-overworld .dangan-ow-tag-btn:hover {
+    transform: skewX(-22deg) translateY(-2px);
+}
+#dangan-overworld .dangan-ow-tag-btn > .dangan-ow-room-btn-label {
+    transform: skewX(22deg);
+}
+/* "Edit Character Positions" — right column, second slot. */
 #dangan-overworld .dangan-ow-edit-btn {
-    top: 226px;
+    top: 280px;
     width: 274px;
 }
 /* Single-character room: no Talk / Grab / Call buttons exist. Edit takes
  * the top slot, still on the right side. */
 #dangan-overworld .dangan-ow-edit-btn.dangan-ow-edit-btn-solo {
-    top: 186px;
+    top: 240px;
+}
+
+/* ── Exploration MENU (overworld scene) ──────────────────────────────────
+ * The MENU button reuses the Call Student slot. Its list hangs under it as a
+ * stack of right-leaning slabs that slide in one after another. */
+#dangan-ow-action-menu {
+    position: fixed;
+    top: 282px;
+    right: -10px;
+    z-index: 1500001;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    pointer-events: auto;
+}
+#dangan-ow-action-menu .dangan-ow-action-item {
+    min-width: 284px;
+    padding: 7px 26px 7px 18px;
+    background: rgba(12, 12, 18, 0.9);
+    color: #fff;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-align: left;
+    text-transform: uppercase;
+    border: 1.5px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.35));
+    border-radius: 4px;
+    cursor: pointer;
+    box-shadow: 0 0 10px -2px var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.25));
+    transform: skewX(-22deg);
+    opacity: 0;
+    animation: dangan-ow-action-in 180ms ease-out forwards;
+    animation-delay: calc(var(--i, 0) * 30ms);
+    transition: background 140ms ease, box-shadow 160ms ease, margin 120ms ease;
+}
+#dangan-ow-action-menu .dangan-ow-action-item-label {
+    display: inline-block;
+    transform: skewX(22deg);
+}
+#dangan-ow-action-menu .dangan-ow-action-item:hover,
+#dangan-ow-action-menu .dangan-ow-action-item:focus-visible {
+    background: var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.18));
+    margin-right: 10px;
+    outline: none;
+    box-shadow: 0 6px 18px -4px var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.4));
+}
+#dangan-ow-action-menu .dangan-ow-action-item.is-active {
+    border-left: 4px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.8));
+}
+@keyframes dangan-ow-action-in {
+    from { opacity: 0; transform: skewX(-22deg) translateX(40px); }
+    to   { opacity: 1; transform: skewX(-22deg) translateX(0); }
+}
+body.dangan-ow-action-menu-open #dangan-overworld .dangan-ow-menu-btn {
+    background: var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.18));
+}
+body.dangan-ui-hidden #dangan-ow-action-menu,
+body.dangan-ow-edit-mode #dangan-ow-action-menu {
+    display: none;
+}
+
+/* With the MENU on, its items leave the minimap: only zoom and Move stay.
+ * Debug only shows once picked from the MENU. Scoped to the overworld scene —
+ * conversations have no MENU, so the diamonds come back there. */
+body.dangan-explore-menu-on.dangan-ow-scene-active .dangan-minimap-flat-toggle-col,
+body.dangan-explore-menu-on.dangan-ow-scene-active .dangan-minimap-ui-toggle-col,
+body.dangan-explore-menu-on.dangan-ow-scene-active .dangan-minimap-action-row,
+body.dangan-explore-menu-on.dangan-ow-scene-active .dangan-minimap-hs-adjust-col,
+body.dangan-explore-menu-on.dangan-ow-scene-active:not(.dangan-explore-debug-shown) #trust-debug-controls {
+    display: none !important;
+}
+
+/* ── Move from the minimap ───────────────────────────────────────────────
+ * Rooms connected to the current one glow in full colour and are clickable. */
+.dangan-minimap-pin.dangan-minimap-pin-reachable {
+    filter: none;
+    cursor: pointer;
+    pointer-events: auto;
+    z-index: 3;
+    box-shadow:
+        0 0 0 2px rgba(255, 140, 216, 0.95),
+        0 0 10px 2px rgba(255, 100, 200, 0.8);
+    animation: dangan-minimap-reach-glow 1.8s ease-in-out infinite;
+}
+.dangan-minimap-pin.dangan-minimap-pin-reachable:hover {
+    transform: translate(-50%, -50%) scale(1.25);
+    animation: none;
+}
+.dangan-minimap-pin.dangan-minimap-pin-reachable::after {
+    content: attr(data-name);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 6px);
+    transform-origin: center bottom;
+    transform: translateX(-50%) scale(calc(1 / var(--minimap-zoom, 1)));
+    padding: 3px 7px;
+    background: rgba(8, 6, 18, 0.92);
+    border: 1px solid rgba(255, 130, 220, 0.6);
+    border-radius: 3px;
+    color: rgba(255, 240, 250, 0.96);
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 120ms;
+}
+.dangan-minimap-pin.dangan-minimap-pin-reachable:hover::after { opacity: 1; }
+@keyframes dangan-minimap-reach-glow {
+    0%, 100% { box-shadow: 0 0 0 2px rgba(255, 140, 216, 0.95), 0 0 6px 1px rgba(255, 100, 200, 0.6); }
+    50%      { box-shadow: 0 0 0 2px rgba(255, 140, 216, 0.95), 0 0 14px 4px rgba(255, 100, 200, 0.9); }
+}
+
+/* ── Stairs and doors ────────────────────────────────────────────────────
+ * Standing on one: the room's own pin shows and goes through on click, and
+ * chips beside the minimap name each floor it leads to. */
+.dangan-minimap-pin.dangan-minimap-pin-current.dangan-minimap-pin-exit {
+    display: flex;
+    filter: none;
+    cursor: pointer;
+    pointer-events: auto;
+    z-index: 3;
+    box-shadow:
+        0 0 0 2px rgba(255, 214, 90, 0.95),
+        0 0 10px 2px rgba(255, 200, 60, 0.8);
+}
+.dangan-minimap-floor-exits {
+    position: absolute;
+    right: calc(100% + 40px);
+    bottom: 18px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    pointer-events: none;
+}
+@media (max-width: 700px) {
+    .dangan-minimap-floor-exits {
+        right: 0;
+        bottom: calc(100% + 56px);
+    }
+}
+.dangan-minimap-floor-exit {
+    pointer-events: auto;
+    max-width: 300px;
+    padding: 6px 12px;
+    border: 1.5px solid rgba(255, 214, 90, 0.85);
+    background: rgba(12, 12, 18, 0.88);
+    color: #fff;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+    transform: skewX(-14deg);
+    box-shadow: 0 0 10px rgba(255, 200, 60, 0.35);
+    transition: background 120ms ease, transform 120ms ease;
+}
+.dangan-minimap-floor-exit:hover,
+.dangan-minimap-floor-exit:focus-visible {
+    background: rgba(255, 214, 90, 0.25);
+    transform: skewX(-14deg) translateY(-2px);
+    outline: none;
+}
+
+/* View conversation: nobody walks off, so the ways out go quiet. */
+body.dangan-ow-conversation-view .dangan-minimap-floor-exits,
+body.dangan-ow-conversation-view .dangan-minimap-move-col,
+body.dangan-ow-conversation-view #dangan-minimap-move-pop,
+body.dangan-ow-conversation-view #dangan-moveto-panel,
+body.dangan-ow-conversation-view .dangan-minimap-pin.dangan-minimap-pin-current.dangan-minimap-pin-exit {
+    display: none !important;
+}
+body.dangan-ow-conversation-view .dangan-minimap-pin.dangan-minimap-pin-reachable {
+    filter: grayscale(1) brightness(0.85);
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+    animation: none;
+    cursor: default;
+    pointer-events: none;
+}
+
+/* Move diamond — one lattice step left of the bottom apex, beside Photo
+ * Mode; it takes the apex itself when the MENU has emptied that row. */
+.dangan-minimap-move-col {
+    position: absolute;
+    bottom: -43px;
+    left: calc(50% - 54px);
+    transform: translateX(-50%);
+    display: flex;
+    pointer-events: auto;
+    z-index: 2;
+}
+body.dangan-explore-menu-on.dangan-ow-scene-active .dangan-minimap-move-col {
+    left: 50%;
+}
+#dangan-minimap-move-pop {
+    position: fixed;
+    right: 58px;
+    bottom: 290px;
+    width: 250px;
+    max-height: 50vh;
+    z-index: 2147483600;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 14px;
+    background: rgba(10, 8, 18, 0.96);
+    border: 2px solid rgba(255, 130, 220, 0.7);
+    border-radius: 8px;
+    box-shadow: 0 0 18px rgba(255, 100, 200, 0.35), inset 0 0 10px rgba(0, 0, 0, 0.5);
+    pointer-events: auto;
+}
+.dangan-minimap-move-pop-title {
+    font-family: "Orbitron", "Rajdhani", sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    color: #ff8cd8;
+    text-shadow: 0 0 6px rgba(255, 80, 200, 0.5);
+}
+.dangan-minimap-move-pop-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    overflow-y: auto;
+    min-height: 0;
+}
+.dangan-minimap-move-pop-set {
+    padding: 6px;
+    background: rgba(40, 10, 30, 0.85);
+    border: 1px solid rgba(255, 100, 200, 0.5);
+    border-radius: 5px;
+    color: rgba(255, 210, 235, 0.95);
+    font-family: "Orbitron", "Rajdhani", sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    cursor: pointer;
+}
+.dangan-minimap-move-pop-set:hover { background: rgba(80, 20, 55, 0.9); }
+body.dangan-ui-hidden #dangan-minimap-move-pop,
+body.dangan-ow-edit-mode #dangan-minimap-move-pop,
+body.dangan-trial-active #dangan-minimap-move-pop {
+    display: none;
+}
+
+/* ── Auto-hide SillyTavern's top bar ─────────────────────────────────────
+ * The bar slides up out of view; hovering the strip along the top edge
+ * (#dangan-stbar-hotzone) brings it back. `transform: none` while shown keeps
+ * the bar from becoming the containing block for its fixed drawers. Trials
+ * restyle the bar themselves and are left alone. */
+#dangan-stbar-hotzone {
+    display: none;
+}
+body.dangan-stbar-autohide:not(.dangan-trial-active) #dangan-stbar-hotzone {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 8px;
+    z-index: 2999;
+}
+body.dangan-stbar-autohide:not(.dangan-trial-active) #top-bar,
+body.dangan-stbar-autohide:not(.dangan-trial-active) #top-settings-holder {
+    transform: translateY(calc(-100% + 4px));
+    transition: transform 220ms ease, opacity 320ms ease;
+}
+body.dangan-stbar-autohide.dangan-stbar-peek:not(.dangan-trial-active) #top-bar,
+body.dangan-stbar-autohide.dangan-stbar-peek:not(.dangan-trial-active) #top-settings-holder {
+    transform: none;
 }
 
 /* While an overworld CG is showing (body.dangan-ow-cg-open, toggled by
@@ -1759,7 +2125,7 @@ body.dangan-ow-edit-mode #dangan-overworld .dangan-ow-room-btn:not(.dangan-ow-ed
     display: none;
 }
 body.dangan-ow-edit-mode #dangan-overworld .dangan-ow-edit-btn {
-    top: 186px;
+    top: 240px;
 }
 /* Fuller Photo Mode: fade out the surrounding HUD + chat chrome too, so the
  * room is a clean canvas with nothing but the character sprites, their edit
@@ -1787,6 +2153,13 @@ body.dangan-ow-edit-mode #top-settings-holder {
 /* #dangan-bgm-display pins its own opacity to 1 via a forwards-fill animation,
  * which beats non-!important author rules — kill the animation and force it
  * (same workaround the body.dangan-ui-hidden rule uses). */
+/* Children that opt back into pointer events (the Phase HUD chip, the room
+ * readout) would otherwise keep catching clicks while invisible — the faded
+ * Phase chip used to swallow clicks on the Save button. */
+body.dangan-ow-edit-mode #dangan-hud-topright *,
+body.dangan-ui-hidden #dangan-hud-topright * {
+    pointer-events: none !important;
+}
 body.dangan-ow-edit-mode #dangan-bgm-display {
     opacity: 0 !important;
     pointer-events: none !important;

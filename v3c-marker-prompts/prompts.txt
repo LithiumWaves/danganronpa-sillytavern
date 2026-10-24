@@ -1,4 +1,4 @@
-Simply include these in your Chat Completion presets if you so wish. These are for automation purposes, they are not obligatory.
+You usually don't need these: turn on AI INSTRUCTIONS in Monopad Settings → Gameplay and the extension sends phase-appropriate versions itself. Only paste these into your Chat Completion preset if you keep that setting off. Don't use both, or the AI gets the rules twice.
 
 - For Truth Bullets:
 
@@ -46,6 +46,21 @@ Rules:
 - Use it sparingly. Only meaningful negative interactions qualify.
 
 This signal is not acknowledged by characters, does not expose numbers, and exists purely as a meta cue.
+
+- For Drastic Trust Drops:
+
+If something drastic badly damages trust (a serious betrayal or cruelty), use this instead of SOCIAL_DOWN, with how many ranks the character loses (2 to 5):
+
+V3C| SOCIAL_DROP: {{char}} | 3
+
+If it destroys their trust in {{user}} outright, turning it into distrust, use this instead, with how deep their distrust now runs (1 to 10):
+
+V3C| SOCIAL_BREAK: {{char}} | 4
+
+Rules:
+- Same placement and naming rules as SOCIAL_DOWN.
+- Only one trust marker per character per response.
+- These are rare. Most negative moments are a plain SOCIAL_DOWN.
 
 - For the Investigation Marker:
 

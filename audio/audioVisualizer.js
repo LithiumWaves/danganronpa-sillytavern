@@ -241,6 +241,22 @@ export function createAudioVisualizerController({ getAudioElement, assetsBasePat
 
     // ── Render loop ────────────────────────────────────────────
 
+    // Settings → Customize can give the song display its own color
+    // (--dangan-hud-song-hex on <body>, see core/ui/hudColors.js). Read it
+    // twice a second rather than every frame.
+    let customBarColor = '';
+    let customBarColorReadAt = 0;
+    function getCustomBarColor() {
+        const now = performance.now();
+        if (now - customBarColorReadAt > 500) {
+            customBarColorReadAt = now;
+            customBarColor = document.body.classList.contains('dangan-hud-color-song')
+                ? getComputedStyle(document.body).getPropertyValue('--dangan-hud-song-hex').trim()
+                : '';
+        }
+        return customBarColor;
+    }
+
     function draw() {
         if (!isVisible) { rafId = null; return; }
         rafId = requestAnimationFrame(draw);
@@ -267,9 +283,10 @@ export function createAudioVisualizerController({ getAudioElement, assetsBasePat
 
         // 6 bars fanning upward from the centre-bottom — crowning like a semicircle
         const { isInvestigation, isNight } = getGameState?.() ?? {};
-        const barColor = isInvestigation        ? 'rgba(255,20,180,0.90)'
+        const barColor = getCustomBarColor()
+                       || (isInvestigation      ? 'rgba(255,20,180,0.90)'
                        : isNight                ? '#93ff2c'
-                       :                          '#4a8aff';
+                       :                          '#4a8aff');
 
         // Origin: bottom-centre, just above the scroller strip
         const originX    = W / 2;

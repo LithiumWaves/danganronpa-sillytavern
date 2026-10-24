@@ -1,0 +1,57 @@
+import { PHASES, createPhaseHistory, derivePhase, getNextStepHint, getPhaseActions, getStatusLine, snapshotPhaseState } from "./phaseState.js";
+
+function assert(cond, msg) {
+    if (!cond) throw new Error(msg);
+}
+
+const ids = (actions) => actions.map((a) => a.id);
+
+function run() {
+    const day = { day: 3, phase: "day", dayActionUsed: false };
+    const night = { day: 3, phase: "night", dayActionUsed: true };
+
+    assert(derivePhase({ timeTracker: day }) === PHASES.DAY, "day");
+    assert(derivePhase({ timeTracker: night }) === PHASES.NIGHT, "night");
+    assert(derivePhase({ timeTracker: night, investigationUnderway: true }) === PHASES.INVESTIGATION, "investigation beats time");
+    assert(derivePhase({ timeTracker: day, investigationUnderway: true, trialActive: true }) === PHASES.TRIAL, "trial beats investigation");
+
+    assert(getStatusLine({ phase: PHASES.INVESTIGATION, day: 4, chapterLabel: "Chapter 2" }) === "CHAPTER 2 · DAY 4 · INVESTIGATION", "status line");
+    assert(getStatusLine({ phase: PHASES.DAY, day: 0 }) === "DAY 1 · DAYTIME", "status line clamps day");
+
+    const inv = getPhaseActions({ phase: PHASES.INVESTIGATION, timeTracker: day });
+    assert(ids(inv).includes("end-investigation"), "investigation can be ended");
+    assert(inv.find((a) => a.id === "end-investigation").confirm, "ending investigation asks first");
+    assert(!ids(inv).includes("pass-time"), "no pass time during investigation");
+
+    const dayActions = getPhaseActions({ phase: PHASES.DAY, timeTracker: { ...day, dayActionUsed: true } });
+    assert(dayActions.find((a) => a.id === "pass-time").disabled, "pass time disabled once used");
+    assert(ids(dayActions).includes("start-investigation"), "investigation can be started by hand");
+
+    const nightActions = getPhaseActions({ phase: PHASES.NIGHT, timeTracker: night, canUndo: true, undoLabel: "Pass time" });
+    assert(ids(nightActions).includes("sleep"), "sleep at night");
+    assert(nightActions.find((a) => a.id === "sleep").confirm.message.includes("Day 4"), "sleep names the next day");
+    assert(nightActions.at(-1).label === "UNDO: Pass time", "undo is labelled");
+    assert(getPhaseActions({ phase: PHASES.TRIAL }).length === 0, "no phase actions during a trial");
+
+    assert(getNextStepHint({ phase: PHASES.DAY, rosterCount: 0 }).includes("NEW GAME"), "empty roster hint");
+    assert(getNextStepHint({ phase: PHASES.INVESTIGATION, rosterCount: 5 }).includes("Search rooms"), "no evidence yet");
+    assert(getNextStepHint({ phase: PHASES.INVESTIGATION, rosterCount: 5, truthBulletCount: 1 }).includes("1 Truth Bullet."), "singular bullet");
+    assert(getNextStepHint({ phase: PHASES.NIGHT, timeTracker: night, rosterCount: 5 }).includes("Day 4"), "night hint names next day");
+
+    const snap = snapshotPhaseState({ timeTracker: day, investigationUnderway: 1 });
+    day.day = 99;
+    assert(snap.timeTracker.day === 3 && snap.investigationUnderway === true, "snapshot is a copy");
+
+    const history = createPhaseHistory({ limit: 2 });
+    history.push({ timeTracker: { day: 1 } }, "a");
+    history.push({ timeTracker: { day: 2 } }, "b");
+    history.push({ timeTracker: { day: 3 } }, "c");
+    assert(history.size === 2, "history is capped");
+    assert(history.peek().label === "c", "peek returns newest");
+    assert(history.pop().snapshot.timeTracker.day === 3, "pop returns newest");
+    assert(history.pop().label === "b" && history.pop() === null, "oldest dropped, empty returns null");
+
+    console.log("phaseState tests passed");
+}
+
+run();

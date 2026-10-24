@@ -1,0 +1,279 @@
+/* =========================
+   Loading Screen (replaces SillyTavern's start-up splash)
+   ========================= */
+
+/* SillyTavern shows the splash in a top-layer <dialog class="popup">. Until
+   our script runs it's plain ink; after that it's see-through so the
+   loading curtain underneath shows, and closing it changes nothing. */
+.popup:has(#loader.splash-screen) {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+}
+
+.popup:has(#loader.splash-screen)::backdrop {
+    background-color: #08050c;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+/* Once the curtain is up the dialog is hidden outright, including while it
+   closes (SillyTavern empties it first, which would un-match the :has()). */
+body.dgn-loading dialog.dgn-splash-dialog {
+    visibility: hidden;
+    animation: none;
+}
+
+body.dgn-loading dialog.dgn-splash-dialog::backdrop {
+    background-color: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    animation: none;
+}
+
+#loader.splash-screen .splash-logo,
+#loader.splash-screen .splash-message,
+#loader.splash-screen #load-spinner {
+    display: none;
+}
+
+/* ── Curtain ───────────────────────────────────────────────────────────── */
+
+#dangan-loading-curtain {
+    --dgn-title-pink: #f0479a;
+    --dgn-title-pink-soft: rgba(240, 71, 154, 0.35);
+    --dgn-title-ink: #0a0610;
+    --dgn-loader-seam-a: 62%;
+    --dgn-loader-seam-b: 38%;
+    position: fixed;
+    /* SillyTavern puts a transform on <html>, which makes it the containing
+       block for fixed elements; size from the viewport so <html> briefly
+       collapsing (fixViewport) can't take this with it. */
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+    color: #fff;
+    pointer-events: auto;
+    user-select: none;
+}
+
+#dangan-loading-curtain.is-leaving {
+    pointer-events: none;
+}
+
+.dgn-loader-half {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: #08050c;
+    transition: transform 0.6s cubic-bezier(0.7, 0, 0.3, 1) 0.2s;
+}
+
+.dgn-loader-half-top {
+    clip-path: polygon(0 0, 100% 0, 100% var(--dgn-loader-seam-b), 0 var(--dgn-loader-seam-a));
+}
+
+.dgn-loader-half-bottom {
+    clip-path: polygon(0 var(--dgn-loader-seam-a), 100% var(--dgn-loader-seam-b), 100% 100%, 0 100%);
+}
+
+#dangan-loading-curtain.is-leaving .dgn-loader-half-top {
+    transform: translate(-12%, -105%);
+}
+
+#dangan-loading-curtain.is-leaving .dgn-loader-half-bottom {
+    transform: translate(12%, 105%);
+}
+
+/* Pink halftone dots, drifting slowly. */
+.dgn-loader-dots-bg {
+    position: absolute;
+    inset: -40px;
+    background-image: radial-gradient(rgba(240, 71, 154, 0.16) 1.6px, transparent 2px);
+    background-size: 18px 18px;
+    animation: dgn-loader-drift 6s linear infinite;
+}
+
+/* A thin pink band along the seam, which the halves split open. */
+.dgn-loader-band {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, rgba(194, 24, 110, 0.28), rgba(240, 71, 154, 0.18) 55%, rgba(255, 127, 190, 0.28));
+    clip-path: polygon(0 calc(var(--dgn-loader-seam-a) - 9%), 100% calc(var(--dgn-loader-seam-b) - 9%), 100% calc(var(--dgn-loader-seam-b) + 9%), 0 calc(var(--dgn-loader-seam-a) + 9%));
+}
+
+/* Bright seam line that flashes as the curtain opens. */
+.dgn-loader-seam {
+    position: absolute;
+    inset: 0;
+    background: #fff;
+    clip-path: polygon(0 calc(var(--dgn-loader-seam-a) - 2px), 100% calc(var(--dgn-loader-seam-b) - 2px), 100% calc(var(--dgn-loader-seam-b) + 2px), 0 calc(var(--dgn-loader-seam-a) + 2px));
+    box-shadow: 0 0 24px var(--dgn-title-pink);
+    opacity: 0;
+    pointer-events: none;
+}
+
+#dangan-loading-curtain.is-leaving .dgn-loader-seam {
+    animation: dgn-loader-seam 0.35s ease-out forwards;
+}
+
+/* ── Chibi + label ─────────────────────────────────────────────────────── */
+
+.dgn-loader-stage {
+    position: relative;
+    z-index: 1;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(18px, 4vh, 40px);
+    padding: 16px;
+    box-sizing: border-box;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+#dangan-loading-curtain.is-leaving .dgn-loader-stage {
+    opacity: 0;
+    transform: scale(0.94);
+}
+
+.dgn-loader-chibi-wrap {
+    --dgn-loader-scale: 3;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    opacity: 0;
+    transform: scale(0.6);
+    transition: opacity 0.25s ease, transform 0.35s steps(4, end);
+}
+
+#dangan-loading-curtain.is-ready .dgn-loader-chibi-wrap {
+    opacity: 1;
+    transform: scale(1);
+}
+
+#dangan-loading-curtain.is-missing .dgn-loader-chibi-wrap {
+    display: none;
+}
+
+.dgn-loader-chibi {
+    display: block;
+    /* Integer upscale keeps the pixel art crisp. */
+    zoom: var(--dgn-loader-scale);
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.55));
+    animation: dgn-loader-hop 0.9s steps(1, end) infinite;
+}
+
+.dgn-loader-shadow {
+    width: calc(26px * var(--dgn-loader-scale));
+    height: calc(5px * var(--dgn-loader-scale));
+    margin-top: calc(-2px * var(--dgn-loader-scale));
+    border-radius: 50%;
+    background: radial-gradient(ellipse, rgba(240, 71, 154, 0.45), transparent 70%);
+    animation: dgn-loader-shadow 0.9s steps(1, end) infinite;
+}
+
+.dgn-loader-label {
+    font-family: "Rajdhani", "Orbitron", sans-serif;
+    font-weight: 600;
+    font-size: clamp(18px, 2.6vw, 28px);
+    letter-spacing: 0.5em;
+    padding-left: 0.5em;
+    color: #fff;
+    text-shadow: 0 0 12px var(--dgn-title-pink), 0 2px 0 rgba(0, 0, 0, 0.7);
+    white-space: nowrap;
+}
+
+.dgn-loader-dots {
+    display: inline-block;
+    width: 1.6em;
+    text-align: left;
+}
+
+.dgn-loader-dots::after {
+    content: "";
+    animation: dgn-loader-dots 1.2s steps(1, end) infinite;
+}
+
+/* ── Keyframes ─────────────────────────────────────────────────────────── */
+
+@keyframes dgn-loader-drift {
+    from { transform: translate3d(0, 0, 0); }
+    to   { transform: translate3d(18px, 18px, 0); }
+}
+
+@keyframes dgn-loader-seam {
+    0%   { opacity: 0; }
+    30%  { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+@keyframes dgn-loader-hop {
+    0%   { transform: translateY(0); }
+    25%  { transform: translateY(-3px); }
+    50%  { transform: translateY(-5px); }
+    75%  { transform: translateY(-3px); }
+}
+
+@keyframes dgn-loader-shadow {
+    0%   { transform: scaleX(1); opacity: 1; }
+    25%  { transform: scaleX(0.85); opacity: 0.8; }
+    50%  { transform: scaleX(0.7); opacity: 0.6; }
+    75%  { transform: scaleX(0.85); opacity: 0.8; }
+}
+
+@keyframes dgn-loader-dots {
+    0%   { content: ""; }
+    25%  { content: "."; }
+    50%  { content: ".."; }
+    75%  { content: "..."; }
+}
+
+/* ── Small screens / reduced motion ────────────────────────────────────── */
+
+@media (max-width: 600px) {
+    .dgn-loader-chibi-wrap {
+        --dgn-loader-scale: 2;
+    }
+
+    .dgn-loader-label {
+        letter-spacing: 0.3em;
+        padding-left: 0.3em;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dgn-loader-dots-bg,
+    .dgn-loader-chibi,
+    .dgn-loader-shadow,
+    .dgn-loader-dots::after {
+        animation: none;
+    }
+
+    .dgn-loader-dots::after {
+        content: "...";
+    }
+
+    /* Fade instead of splitting. */
+    .dgn-loader-half {
+        transition: opacity 0.5s ease 0.2s;
+    }
+
+    #dangan-loading-curtain.is-leaving .dgn-loader-half-top,
+    #dangan-loading-curtain.is-leaving .dgn-loader-half-bottom {
+        transform: none;
+        opacity: 0;
+    }
+
+    #dangan-loading-curtain.is-leaving .dgn-loader-seam {
+        animation: none;
+    }
+}
