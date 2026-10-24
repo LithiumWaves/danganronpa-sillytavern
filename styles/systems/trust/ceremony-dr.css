@@ -1,0 +1,311 @@
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@900&display=swap");
+
+/* Danganronpa look for the trust ceremonies. This file only overrides
+   ceremony.css (the Persona-style base): same pieces, same timings, same
+   palettes, restyled as DR cut-ins: halftone and scanlines instead of speed
+   lines, level striped bands, a glitching sprite panel, stamped outline
+   lettering and an upright rank card with a Monokuma-split rank badge.
+
+   To go back to the Persona look, remove this file's @import from style.css. */
+
+#trust-rankup-overlay,
+#trust-rankup-overlay.distrust {
+    background-image: radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.7) 100%);
+}
+
+/* Halftone dots and scanlines, drifting slowly. */
+#trust-rankup-overlay .tr-speedlines {
+    background:
+        repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 4px),
+        radial-gradient(circle, color-mix(in srgb, var(--tr-accent) 30%, transparent) 1.5px, transparent 2.3px) 0 0 / 14px 14px;
+}
+
+#trust-rankup-overlay.show .tr-speedlines {
+    animation: tr-dr-drift 5s linear infinite;
+}
+
+@keyframes tr-dr-drift {
+    from { transform: translate(0, 0); }
+    to   { transform: translate(-56px, 28px); }
+}
+
+/* Bands: nearly level, the black one striped, the accent one edged in
+   Monokuma black and white. */
+#trust-rankup-overlay .tr-slab-a {
+    background:
+        repeating-linear-gradient(-45deg, color-mix(in srgb, var(--tr-accent) 22%, transparent) 0 3px, transparent 3px 16px),
+        var(--tr-ink);
+    border-top: 3px solid var(--tr-accent);
+    border-bottom: 3px solid var(--tr-accent);
+    box-shadow: 0 0 28px color-mix(in srgb, var(--tr-accent) 35%, transparent);
+    transform: rotate(-2deg) translateX(-110%);
+}
+
+#trust-rankup-overlay .tr-slab-b {
+    border-top: 8px solid;
+    border-image: linear-gradient(90deg, var(--tr-paper) 50%, var(--tr-ink) 50%) 1;
+    transform: rotate(-2deg) translateX(110%);
+}
+
+#trust-rankup-overlay.show .tr-slab-a,
+#trust-rankup-overlay.show .tr-slab-b {
+    transform: rotate(-2deg) translateX(0);
+}
+
+#trust-rankup-overlay.leaving .tr-slab-a { transform: rotate(-2deg) translateX(110%); }
+#trust-rankup-overlay.leaving .tr-slab-b { transform: rotate(-2deg) translateX(-110%); }
+
+/* MAX rays: finer and slower. */
+#trust-rankup-overlay .tr-burst {
+    background: repeating-conic-gradient(var(--tr-accent) 0 3deg, transparent 3deg 12deg);
+}
+
+#trust-rankup-overlay.max.show .tr-burst {
+    opacity: 0.7;
+    animation: tr-spin 18s linear infinite;
+}
+
+/* Sprite panel: upright, wiped in from the left with an RGB-split glitch. */
+#trust-rankup-overlay .tr-cutin {
+    transform: none;
+    clip-path: inset(0 100% 0 0);
+    transition: clip-path 240ms cubic-bezier(0.7, 0, 0.2, 1) 90ms;
+}
+
+#trust-rankup-overlay.show .tr-cutin {
+    transform: none;
+    clip-path: inset(0 0 0 0);
+}
+
+#trust-rankup-overlay.leaving .tr-cutin {
+    transform: none;
+    clip-path: inset(0 0 0 100%);
+    transition-delay: 0ms;
+}
+
+#trust-rankup-overlay .tr-cutin-frame {
+    border: none;
+    border-top: 4px solid var(--tr-accent);
+    border-bottom: 4px solid var(--tr-accent);
+    background:
+        radial-gradient(circle, color-mix(in srgb, var(--tr-accent) 40%, transparent) 1.6px, transparent 2.4px) 0 0 / 10px 10px,
+        radial-gradient(ellipse at 50% 35%, color-mix(in srgb, var(--tr-accent) 55%, var(--tr-ink)) 0%, var(--tr-ink) 75%);
+    box-shadow: 0 0 30px color-mix(in srgb, var(--tr-accent) 40%, transparent);
+}
+
+#trust-rankup-overlay .tr-cutin-img {
+    transform: translateX(-50%);
+    filter: drop-shadow(0 0 10px rgba(0, 0, 0, 0.6));
+}
+
+#trust-rankup-overlay.show .tr-cutin-frame.has-img .tr-cutin-img {
+    animation: tr-dr-glitch 420ms steps(1) 200ms both;
+}
+
+@keyframes tr-dr-glitch {
+    0%   { translate: -8px 0; filter: drop-shadow(-6px 0 0 rgba(255, 30, 120, 0.85)) drop-shadow(6px 0 0 rgba(0, 235, 255, 0.85)); }
+    25%  { translate: 6px 0; filter: drop-shadow(5px 0 0 rgba(255, 30, 120, 0.85)) drop-shadow(-5px 0 0 rgba(0, 235, 255, 0.85)); }
+    50%  { translate: -3px 0; filter: drop-shadow(-3px 0 0 rgba(255, 30, 120, 0.7)) drop-shadow(3px 0 0 rgba(0, 235, 255, 0.7)); }
+    75%  { translate: 0 0; filter: drop-shadow(0 0 10px rgba(0, 0, 0, 0.6)); }
+}
+
+#trust-rankup-overlay .tr-cutin-fallback {
+    font: 900 clamp(26px, 4vw, 48px)/1 "Noto Sans JP", "Barlow Condensed", sans-serif;
+    transform: rotate(-4deg);
+    -webkit-text-stroke: 0.14em var(--tr-ink);
+    paint-order: stroke fill;
+    text-shadow: 0.08em 0.08em 0 var(--tr-accent);
+}
+
+/* Lettering: one heavy face, white with a thick black outline and an accent
+   shadow, each letter stamped down from large. */
+#trust-rankup-overlay .tr-title {
+    gap: 0.05em 0.35em;
+    transform: rotate(-2deg) skewX(-8deg);
+}
+
+#trust-rankup-overlay.down .tr-title {
+    transform: rotate(0deg) skewX(-4deg) translateY(10px);
+}
+
+#trust-rankup-overlay .tr-word {
+    gap: 0;
+}
+
+#trust-rankup-overlay .tr-letter,
+#trust-rankup-overlay .tr-letter.f1,
+#trust-rankup-overlay .tr-letter.f2,
+#trust-rankup-overlay .tr-letter.f3 {
+    min-width: 0;
+    padding: 0;
+    font: 900 1em/1 "Noto Sans JP", "Barlow Condensed", sans-serif;
+    letter-spacing: 0.01em;
+    background: none;
+    color: var(--tr-paper);
+    -webkit-text-stroke: 0.16em var(--tr-ink);
+    paint-order: stroke fill;
+    text-shadow: 0.09em 0.09em 0 var(--tr-accent);
+    box-shadow: none;
+    transform: none;
+    animation: tr-dr-stamp 220ms cubic-bezier(0.3, 1.4, 0.5, 1) var(--delay, 0ms) both;
+}
+
+#trust-rankup-overlay.max .tr-letter,
+#trust-rankup-overlay.max .tr-letter.fill-a {
+    color: #fff3c4;
+}
+
+#trust-rankup-overlay.down .tr-letter {
+    color: #d8d8dc;
+}
+
+@keyframes tr-dr-stamp {
+    0%   { opacity: 0; transform: scale(2.4); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+/* Rank card: upright, thin accent border, inner hairline and corner
+   brackets, a glow instead of the hard shadow. */
+#trust-rankup-overlay .tr-card {
+    transform: translateY(140%);
+}
+
+#trust-rankup-overlay.show .tr-card {
+    transform: translateY(0);
+}
+
+#trust-rankup-overlay.leaving .tr-card {
+    transform: translateY(140%);
+}
+
+#trust-rankup-overlay .tr-card.sag {
+    transform: rotate(1.5deg) translateY(16px);
+}
+
+#trust-rankup-overlay .tr-card.slam {
+    animation: tr-dr-slam 300ms cubic-bezier(0.3, 1.5, 0.5, 1);
+}
+
+@keyframes tr-dr-slam {
+    0%   { transform: scale(1.8); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+#trust-rankup-overlay .tr-card-face {
+    background:
+        radial-gradient(circle, color-mix(in srgb, var(--tr-accent) 14%, transparent) 1.4px, transparent 2px) 0 0 / 8px 8px,
+        var(--tr-ink);
+    border: 2px solid var(--tr-accent);
+    box-shadow: 0 0 26px color-mix(in srgb, var(--tr-accent) 55%, transparent), inset 0 0 18px color-mix(in srgb, var(--tr-accent) 18%, transparent);
+}
+
+#trust-rankup-overlay .tr-card-face::before,
+#trust-rankup-overlay .tr-card-face::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+}
+
+#trust-rankup-overlay .tr-card-face::before {
+    inset: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+#trust-rankup-overlay .tr-card-face::after {
+    --b: var(--tr-paper);
+    inset: -9px;
+    background:
+        linear-gradient(var(--b), var(--b)) left top / 22px 3px,
+        linear-gradient(var(--b), var(--b)) left top / 3px 22px,
+        linear-gradient(var(--b), var(--b)) right top / 22px 3px,
+        linear-gradient(var(--b), var(--b)) right top / 3px 22px,
+        linear-gradient(var(--b), var(--b)) left bottom / 22px 3px,
+        linear-gradient(var(--b), var(--b)) left bottom / 3px 22px,
+        linear-gradient(var(--b), var(--b)) right bottom / 22px 3px,
+        linear-gradient(var(--b), var(--b)) right bottom / 3px 22px;
+    background-repeat: no-repeat;
+}
+
+/* The rank: a Monokuma-split badge, half white, half black. */
+#trust-rankup-overlay .tr-rank {
+    z-index: 1;
+    transform: none;
+}
+
+#trust-rankup-overlay .tr-rank-caption {
+    background: var(--tr-accent);
+    font-family: "Noto Sans JP", "Barlow Condensed", sans-serif;
+    font-weight: 900;
+    font-size: 12px;
+}
+
+#trust-rankup-overlay.max .tr-rank-caption {
+    color: var(--tr-ink);
+}
+
+#trust-rankup-overlay .tr-rank-value {
+    background: linear-gradient(90deg, var(--tr-paper) 50%, var(--tr-ink) 50%);
+    color: var(--tr-paper);
+    font: italic 900 clamp(46px, 6vw, 78px)/1.05 "Noto Sans JP", "Barlow Condensed", sans-serif;
+    -webkit-text-stroke: 0.1em var(--tr-ink);
+    paint-order: stroke fill;
+    text-shadow: 0.05em 0.05em 0 var(--tr-accent);
+    border: 2px solid var(--tr-accent);
+    box-shadow: 0 0 16px color-mix(in srgb, var(--tr-accent) 60%, transparent);
+}
+
+/* Name: a flat nameplate bar. */
+#trust-rankup-overlay .tr-card-name {
+    margin-left: -9px;
+    padding: 4px 18px 4px 12px;
+    background: var(--tr-ink);
+    border-left: 6px solid var(--tr-accent);
+    box-shadow: 0 0 0 1px var(--tr-paper);
+    color: var(--tr-paper);
+    font-family: "Noto Sans JP", "Barlow Condensed", sans-serif;
+    font-weight: 900;
+    transform: none;
+    text-shadow: 2px 2px 0 var(--tr-accent);
+}
+
+/* Shatter flash: a pink/cyan split before the white. */
+#trust-rankup-overlay.flash .tr-flash {
+    animation: tr-dr-flash 220ms steps(1) both;
+}
+
+@keyframes tr-dr-flash {
+    0%   { background: #ff1e78; }
+    30%  { background: #00ebff; }
+    60%  { background: #fff; }
+}
+
+#trust-rankup-overlay.flip-palette .tr-cutin-frame,
+#trust-rankup-overlay.flip-palette .tr-card-face {
+    transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+/* Hint: nameplate style, blinking. */
+#trust-rankup-overlay .tr-hint {
+    transform: translateX(-50%);
+    background: var(--tr-accent);
+    font-family: "Noto Sans JP", "Barlow Condensed", sans-serif;
+    font-weight: 900;
+    box-shadow: 0 0 12px color-mix(in srgb, var(--tr-accent) 60%, transparent);
+}
+
+#trust-rankup-overlay.max .tr-hint {
+    color: var(--tr-ink);
+}
+
+#trust-rankup-overlay.dismissable .tr-hint {
+    animation: tr-dr-blink 1.1s steps(2, jump-none) infinite;
+}
+
+@keyframes tr-dr-blink {
+    0%   { opacity: 0.9; }
+    100% { opacity: 0.35; }
+}
+
+@media (max-width: 700px) {
+    #trust-rankup-overlay .tr-rank-value { font-size: 40px; }
+}
