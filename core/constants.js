@@ -60,6 +60,8 @@ export const defaultSettings = {
     announcementVolume: 65,
     monokumaLanguage: "JP",
     trustCeremonies: true,
+    // Trust ceremony look: "danganronpa" or "persona".
+    trustCeremonyStyle: "danganronpa",
     truthBulletAnimations: true,
     monomonoBgmVolume: 40,
     mapPresencePinsEnabled: true,

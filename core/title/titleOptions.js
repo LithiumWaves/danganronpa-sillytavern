@@ -1,5 +1,6 @@
 import { escapeHtml, isTypingTarget } from "./titleUtils.js";
 import { VN_SKIN_CHOICES } from "../vnSkins.js";
+import { TRUST_CEREMONY_STYLE_CHOICES } from "../../trust/ceremonyStyles.js";
 
 export const OPTION_SECTIONS = Object.freeze([
     {
@@ -28,6 +29,7 @@ export const OPTION_SECTIONS = Object.freeze([
         rows: [
             { key: "vnModeEnabled", label: "VISUAL NOVEL MODE", type: "toggle", fallback: false },
             { key: "vnSkin", label: "TEXT BOX STYLE", type: "choice", fallback: "current", choices: VN_SKIN_CHOICES.map((c) => ({ value: c.value, label: c.label.toUpperCase() })) },
+            { key: "trustCeremonyStyle", label: "TRUST CEREMONY STYLE", type: "choice", fallback: "danganronpa", choices: TRUST_CEREMONY_STYLE_CHOICES.map((c) => ({ value: c.value, label: c.label.toUpperCase() })) },
             { key: "dynamicThemes", label: "DAILY / DEADLY LIFE THEMES", type: "toggle", fallback: true },
         ],
     },

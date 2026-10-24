@@ -570,6 +570,11 @@
     background: #141823;
 }
 
+/* Customize → Trust ceremony style: same cards, 16:9 pictures. */
+.settings-panel .settings-trust-styles .settings-vn-skin img {
+    aspect-ratio: 16 / 9;
+}
+
 .settings-panel .settings-vn-skin:hover,
 .settings-panel .settings-vn-skin:focus-visible {
     border-color: rgba(140, 232, 255, 0.5);

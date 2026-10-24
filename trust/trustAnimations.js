@@ -1,11 +1,13 @@
 import { pushSkippable } from "../core/skip/skipRegistry.js";
 import { buildDecagram, crackShard, shatterShard } from "./trustDecagram.js";
+import { normalizeTrustCeremonyStyle } from "./ceremonyStyles.js";
 
-// Trust ceremonies, Persona-style: two slanted slabs slash across the screen,
+// Trust ceremonies: two slanted slabs slash across the screen,
 // the character's sprite cuts in from the left, hand-cut lettering pops in
 // letter by letter and a slanted rank card (the ten-shard meter and the rank
 // number) flips to the new rank. Markup in monopad.html (#trust-rankup-overlay),
-// look in styles/systems/trust/ceremony.css.
+// look in styles/systems/trust/ceremony.css (Persona-style), restyled by
+// ceremony-dr.css when Settings → Customize picks Danganronpa (ceremonyStyles.js).
 //
 // Palettes (overlay classes): trust (pink), distrust (red), max (gold), and
 // "down" desaturates either one.
@@ -309,6 +311,7 @@ function setupCeremony({ char, level, palette = "trust", down = false, emotion =
     const { overlay, svg } = scene;
     if (overlay.parentElement !== document.body) document.body.appendChild(overlay);
 
+    overlay.dataset.style = normalizeTrustCeremonyStyle(getSetting?.("trustCeremonyStyle"));
     overlay.classList.remove(...MODE_CLASSES, "leaving");
     overlay.classList.toggle("distrust", palette === "distrust");
     overlay.classList.toggle("max", palette === "max");

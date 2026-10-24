@@ -12,6 +12,7 @@ import { SlashCommandEnumValue } from '../../../slash-commands/SlashCommandEnumV
 import { initTruthBullets, handleTruthBullet, setNextTruthBulletSfxVariant, getTruthBulletByLocationId, showTruthBulletByLocationId, showTruthBulletById, getTruthBullets, clearAllTruthBullets, reloadTruthBullets, removeTruthBulletById, migrateTruthBulletImages } from "./truth/truthBullets.js";
 import { configureImageUploads, fetchAsDataUrl, isDataUrl, uploadDataUrlImage, uploadImagesIn } from "./core/media/uploadImage.js";
 import { initTrustAnimations } from "./trust/trustAnimations.js";
+import { TRUST_CEREMONY_STYLE_CHOICES, normalizeTrustCeremonyStyle } from "./trust/ceremonyStyles.js";
 import { increaseTrust, decreaseTrust, breakTrust } from "./trust/trustAPI.js";
 import { clampTrust, nextTrustDown, nextTrustUp, stepTrust, trustDistance } from "./trust/trustState.js";
 import { createItemsPanelController, SKILL_PARAM_MAP, applySkillModifier } from "./items/itemsPanel.js";
@@ -9529,6 +9530,19 @@ function renderVnSkinPicker() {
         </button>`).join("");
 }
 
+// Settings → Customize: a picture card per trust ceremony style, built the
+// same way as the text box picker.
+function renderTrustStylePicker() {
+    const picker = document.getElementById("dangan_trust_style_picker");
+    if (!picker || picker.childElementCount) return;
+    picker.innerHTML = TRUST_CEREMONY_STYLE_CHOICES.map((c) => `
+        <button type="button" class="settings-vn-skin" data-trust-style="${c.value}" role="radio" aria-checked="false">
+            <img src="${extensionFolderPath}/assets/${c.image}" alt="" loading="lazy" draggable="false">
+            <span class="settings-vn-skin-name">${c.label}</span>
+            <span class="settings-vn-skin-game">${c.note}</span>
+        </button>`).join("");
+}
+
 function applySettingsTabUI() {
     const tab = extension_settings[extensionName];
     const activeDifficulty = applyRewardDifficultyProfile(tab.rewardDifficulty || defaultSettings.rewardDifficulty);
@@ -9769,6 +9783,13 @@ function applySettingsTabUI() {
         el.setAttribute("aria-checked", on ? "true" : "false");
     });
     vnModeController?.setSkin?.(vnSkin);
+    const trustStyle = normalizeTrustCeremonyStyle(tab.trustCeremonyStyle);
+    renderTrustStylePicker();
+    document.querySelectorAll("#dangan_trust_style_picker [data-trust-style]").forEach((el) => {
+        const on = el.dataset.trustStyle === trustStyle;
+        el.classList.toggle("is-on", on);
+        el.setAttribute("aria-checked", on ? "true" : "false");
+    });
     applyPlayerInset();
     expressionPickerController?.sync();
     // Buttons that pick one value of a setting (data-choice-setting/-value).
@@ -12484,6 +12505,11 @@ $(".monopad-icon").on("mouseenter", function () {
             setMonopadSetting(this.dataset.choiceSetting, this.dataset.choiceValue);
             applySettingsTabUI();
             applyExploreLayoutSettings();
+        });
+
+        $(document).on("click", "#dangan_trust_style_picker [data-trust-style]", function () {
+            setMonopadSetting("trustCeremonyStyle", normalizeTrustCeremonyStyle(this.dataset.trustStyle));
+            applySettingsTabUI();
         });
 
         $(document).on("click", "#dangan_vn_skin_picker [data-vn-skin]", function () {
