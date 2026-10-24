@@ -4423,6 +4423,57 @@ function triggerInvestigationTimeToggle(on = true) {
     return tryEnableInvestigationToggleViaDom(on);
 }
 
+// Phase banners for the game text box styles (Settings → text box). Classic
+// keeps the original banner; THH / SDR2 / V3 show this one instead, styled in
+// styles/systems/phase/banners.css. `label` is the THH / SDR2 band text; `v3`
+// is the V3 title card, as groups of lines whose letters pop in one by one.
+const GAME_BANNER_KINDS = {
+    investigation: { label: "Investigate", full: "Investigation START!", v3: [["In", "vestiga", "atio"], ["n"], ["START!"]] },
+    freetime: { label: "Free Time", full: "Free Time START!", v3: [["FreeTime"], ["START!"]] },
+    nighttime: { label: "Nighttime", full: "Nighttime START!", v3: [["Night", "time"], ["START!"]] },
+};
+
+// START! is a ransom note: every letter a different size and tilt.
+const GAME_BANNER_START_SCALE = [1.18, 0.82, 1.06, 0.86, 1.24, 1.02];
+const GAME_BANNER_START_TILT = [-9, 7, -4, 11, -7, 13];
+
+function buildGameBannerCards(groups) {
+    let index = 0;
+    return groups.map((lines, g) => {
+        const isStart = lines.length === 1 && lines[0] === "START!";
+        const rows = lines.map((line, l) => {
+            const letters = [...line].map((ch, c) => {
+                const scale = isStart ? GAME_BANNER_START_SCALE[c % GAME_BANNER_START_SCALE.length] : 1;
+                const tilt = isStart ? GAME_BANNER_START_TILT[c % GAME_BANNER_START_TILT.length] : 0;
+                return `<span class="dangan-gb-letter" style="--i:${index++};--s:${scale};--r:${tilt}deg">${ch}</span>`;
+            }).join("");
+            return `<span class="dangan-gb-line-text l${l}">${letters}</span>`;
+        }).join("");
+        return `<span class="dangan-gb-group g${g}${isStart ? " start" : ""}"><span class="dangan-gb-card"></span>${rows}</span>`;
+    }).join("");
+}
+
+function ensureGameBanner(overlay, kind) {
+    if (!overlay || overlay.querySelector(":scope > .dangan-gb")) return;
+    const spec = GAME_BANNER_KINDS[kind];
+    if (!spec) return;
+    const banner = document.createElement("div");
+    banner.className = "dangan-gb";
+    banner.dataset.kind = kind;
+    banner.setAttribute("role", "status");
+    banner.setAttribute("aria-label", spec.full);
+    banner.innerHTML = `
+        <div class="dangan-gb-dim"></div>
+        <div class="dangan-gb-band"><div class="dangan-gb-streaks"></div></div>
+        <div class="dangan-gb-rule top"></div>
+        <div class="dangan-gb-rule bottom"></div>
+        <div class="dangan-gb-diamond"></div>
+        <div class="dangan-gb-label" aria-hidden="true"><span class="dangan-gb-label-text">${spec.label}</span><span class="dangan-gb-label-ghost">${spec.label}</span></div>
+        <div class="dangan-gb-cards" aria-hidden="true">${buildGameBannerCards(spec.v3)}</div>
+    `;
+    overlay.appendChild(banner);
+}
+
 function ensureInvestigationOverlay() {
     let overlay = document.getElementById("dangan-investigation-overlay");
 
@@ -4448,6 +4499,7 @@ function ensureInvestigationOverlay() {
         document.body.appendChild(overlay);
     }
 
+    ensureGameBanner(overlay, "investigation");
     return overlay;
 }
 
@@ -4469,6 +4521,7 @@ function ensureFreeTimeOverlay() {
         `;
         document.body.appendChild(overlay);
     }
+    ensureGameBanner(overlay, "freetime");
     return overlay;
 }
 
@@ -4586,6 +4639,7 @@ function ensureNightTimeOverlay() {
         `;
         document.body.appendChild(overlay);
     }
+    ensureGameBanner(overlay, "nighttime");
     return overlay;
 }
 
