@@ -1,7 +1,7 @@
 // Expression picker, for fun (after the Shinri Trial fangame's): a small
 // tab on the right edge opens a drawer listing everyone on screen plus you,
 // with a grid of their sprites. Picking one puts that sprite on screen until
-// the character's next line changes it. Works in conversations and Class
+// the character's next line changes it. Works in conversations, exploring and Class
 // Trials. Settings → Customize → "Expression picker" hides it entirely; its
 // AUTO switch is the "Automatic expressions" setting.
 //

@@ -1,4 +1,5 @@
 import { createSkipToken, pushSkippable } from "../core/skip/skipRegistry.js";
+import { findBackgroundElement } from "../core/media/findBackground.js";
 
 const MONOKUMA_MARKER_REGEX = /V3C\s*[|｜]\s*(DAY(?:\s*[_\-]?\s*)ANNOUN|NIGHT(?:\s*[_\-]?\s*)ANNOUN|BDA|BODY(?:\s*[_\-]?\s*)DISCOVERY)\b/gi;
 
@@ -731,9 +732,7 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
 
             if (seg.bgFile) {
                 timers.push(setTimeout(() => {
-                    const lower = seg.bgFile.toLowerCase();
-                    const els = Array.from(document.querySelectorAll(".bg_example"));
-                    const match = els.find(el => el.getAttribute("bgfile")?.toLowerCase().includes(lower));
+                    const match = findBackgroundElement(seg.bgFile);
                     if (match instanceof HTMLElement) {
                         // Instantly show black mask so ST's cross-fade frames are hidden
                         bgMaskEl.style.transition = "none";

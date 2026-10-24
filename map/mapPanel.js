@@ -2,6 +2,7 @@ import { DEFAULT_HUB_PIN_IDS, DEFAULT_PINS } from "./defaultPins.js";
 import { DORM_AREA_KEY, DORM_FLOOR_KEY, assignDormSlots, buildDormPins, describeFloorExit, diffDormEdits, findDefaultPinHubs, findPinHubs, findRedundantDefaultHubs, getAutoLinkedPins } from "./mapLinks.js";
 import { getFloorUnlockChapter, isFloorLocked, isStoryPin, listCustomFloors, mergePins, migrateLegacyMapStorage, pinInScope, resolveFloorImageSrc, scopeAreaKeys, scopeAreas, setFloorUnlockChapter, splitPins } from "./mapStorage.js";
 import { buildCustomArea } from "../core/title/titleMapSetup.js";
+import { findBackgroundElement } from "../core/media/findBackground.js";
 
 const MACHINE_ROLL_DURATION_MS = 2000;
 const MACHINE_JINGLE_FRAME = 50;
@@ -2847,12 +2848,10 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
     }
 
     // Switch SillyTavern's chat background by clicking the matching <.bg_example>.
-    // Accepts a partial filename match (case-insensitive), mirroring /bda bg=…
+    // Accepts a loose name (case-insensitive); the closest file wins.
     function switchChatBackground(bg) {
         if (!bg) return false;
-        const bgElements = Array.from(document.querySelectorAll('.bg_example'));
-        const lower = String(bg).toLowerCase();
-        const match = bgElements.find(el => el.getAttribute('bgfile')?.toLowerCase().includes(lower));
+        const match = findBackgroundElement(bg);
         if (match instanceof HTMLElement) { match.click(); return true; }
         return false;
     }

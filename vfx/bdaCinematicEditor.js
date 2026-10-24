@@ -1,3 +1,5 @@
+import { findBackgroundElement } from "../core/media/findBackground.js";
+
 const OVERLAY_ID = "bda-cinematic-editor-overlay";
 const SEGMENT_COLORS = ["#c34455", "#3a8a5a", "#3468aa", "#a07030", "#6444a8", "#8a3030", "#338888", "#884488"];
 
@@ -12,14 +14,12 @@ function genId() { return Math.random().toString(36).slice(2, 10); }
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
 /**
- * Resolve a CSS background-image url() string for a partial background file name.
+ * Resolve a CSS background-image url() string for a loose background file name.
  * Checks .bg_example elements in the DOM, falling back to constructing a path from bgfile.
  */
 function getBgCssUrl(bgFile) {
     if (!bgFile) return null;
-    const lower = bgFile.toLowerCase();
-    const match = Array.from(document.querySelectorAll(".bg_example"))
-        .find(el => el.getAttribute("bgfile")?.toLowerCase().includes(lower));
+    const match = findBackgroundElement(bgFile);
     if (!match) return null;
 
     // jQuery stores the resolved url() in .data('url') — check the HTML data attribute first,

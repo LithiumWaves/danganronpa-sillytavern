@@ -1,7 +1,7 @@
 /* Expression picker (core/ui/expressionPicker.js): a small EXPRESSIONS
    tab on the right edge, above your sprite window, that opens a drawer
    of everyone on screen and a grid of their sprites, after the Shinri
-   Trial fangame's picker. Only during conversations and Class Trials. */
+   Trial fangame's picker. During conversations, exploring and Class Trials. */
 
 #dangan-expr-picker {
     --dex-gold: #e9b949;

@@ -89,6 +89,7 @@ import { KEYBIND_ACTIONS, actionForBinding, bindingFromKeyEvent, bindingFromMous
 import { TITLE_SCREEN_ID } from "./core/title/titleScreen.js";
 import { user_avatar } from "../../../personas.js";
 import { ConnectionManagerRequestService } from "../../shared.js";
+import { findBackgroundElement } from "./core/media/findBackground.js";
 
 window.refreshActiveCharacterUI = function () {
     if (!activeSocialCharacterId || !socialPanelController) return;
@@ -6788,18 +6789,30 @@ ${contextLines || "NONE"}
 }
 
 
-async function generateCharacterNotes(char) {
-const profile = char.social?.profile;
+const PROFILE_FIELDS = ["ultimate", "height", "measurements", "personality", "likes", "dislikes"];
 
-const hasRealData =
-    profile &&
-    Object.values(profile).some(
-        v => v && v !== "unknown"
-    );
-
-if (hasRealData && char.social?.notes) {
-    return char.social.notes;
+// Pull "key: value" lines out of a reply, forgiving the markdown and
+// reasoning models wrap them in ("**Height:** 160 cm", "- likes: tea").
+function parseCharacterProfile(text) {
+    const map = {};
+    const clean = String(text || "")
+        .replace(/<think>[\s\S]*?<\/think>/gi, "")
+        .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "");
+    for (const raw of clean.split("\n")) {
+        const line = raw.replace(/[*_`#>]/g, "").replace(/^\s*[-•\d.)]+\s*/, "").trim();
+        const m = line.match(/^([a-z ]+?)\s*:\s*(.+)$/i);
+        if (!m) continue;
+        const key = m[1].trim().toLowerCase();
+        if (PROFILE_FIELDS.includes(key) && !map[key]) map[key] = m[2].trim();
+    }
+    return map;
 }
+
+async function generateCharacterNotes(char) {
+    const profile = char.social?.profile;
+    const hasRealData = profile && Object.values(profile).some(v => v && v !== "unknown");
+    // Already analyzed, or filled in by hand with EDIT.
+    if (hasRealData) return char.social.notes || "";
 
     const sourceText = getCharacterSourceText(char.name);
 
@@ -6816,57 +6829,24 @@ dislikes: <2-3 items, comma-separated>
 SOURCE:
 ${sourceText.slice(0, 800)}`.trim();
 
-    try {
-        const result = (await generateIsolated(prompt, { maxTokens: 200 })) || "";
-        console.log("[Dangan][Social] Raw generation result:", JSON.stringify(result));
-        const lines = result
-    .split("\n")
-    .map(l => l.trim())
-    .filter(Boolean);
-        
-const map = {};
-
-lines.forEach(line => {
-    const [key, ...rest] = line.split(":");
-    if (!key || !rest.length) return;
-    map[key.trim().toLowerCase()] = rest.join(":").trim();
-});
-
-char.social = {
-    profile: {
-        ultimate: map.ultimate || "unknown",
-        height: map.height || "unknown",
-        measurements: map.measurements || "unknown",
-        personality: map.personality || "unknown",
-        likes: map.likes || "unknown",
-        dislikes: map.dislikes || "unknown"
-    },
-    notes: result,
-    generatedAt: Date.now()
-};
-
-if (char.social.profile.ultimate !== "unknown") {
-    char.ultimate = char.social.profile.ultimate;
-}
-
-saveCharacters();
-return char.social.notes;
-    } catch (err) {
-        console.error("[Dangan][Social] Generation failed:", err);
-        char.social = {
-            profile: {
-                ultimate: "unknown",
-                height: "unknown",
-                measurements: "unknown",
-                personality: "unknown",
-                likes: "unknown",
-                dislikes: "unknown"
-            },
-            notes: "",
-            generatedAt: Date.now()
-        };
-        return "";
+    // Room for models that think before answering.
+    const result = (await generateIsolated(prompt, { maxTokens: 600 })) || "";
+    console.log("[Dangan][Social] Raw generation result:", JSON.stringify(result));
+    const map = parseCharacterProfile(result);
+    if (!PROFILE_FIELDS.some(k => map[k] && map[k].toLowerCase() !== "unknown")) {
+        throw new Error(result.trim() ? "the reply wasn't a profile" : "the AI returned nothing");
     }
+
+    char.social = {
+        profile: Object.fromEntries(PROFILE_FIELDS.map(k => [k, map[k] || "unknown"])),
+        notes: result,
+        generatedAt: Date.now(),
+    };
+    if (char.social.profile.ultimate !== "unknown") {
+        char.ultimate = char.social.profile.ultimate;
+    }
+    saveCharacters();
+    return char.social.notes;
 }
 
 // ── Execution Cinematic Playback ─────────────────────────────────────────────
@@ -11325,6 +11305,7 @@ jQuery(async () => {
                 const body = document.body.classList;
                 if (body.contains("dangan-ui-hidden") || body.contains("dangan-ow-edit-mode")) return false;
                 return body.contains("dangan-trial-active")
+                    || body.contains("dangan-ow-scene-active")
                     || body.contains("dangan-ow-chat-exit-active")
                     || body.contains("dangan-ow-conversation-view");
             },
@@ -15466,10 +15447,21 @@ function getExpressionPickerTargets() {
         });
     };
     const slots = trialManager?.isGcpStageActive?.() ? (trialManager.getGcpSlotsForPicker?.() || []) : [];
+    const owSprites = document.body.classList.contains('dangan-ow-scene-active')
+        ? [...document.querySelectorAll('#dangan-overworld .dangan-ow-sprite')]
+        : [];
     if (slots.length) {
         for (const s of slots) {
             if (s.isPlayer) continue;
             add(s.name, s.img, spriteFolderFromSrc(s.img.getAttribute('src') || '') || null);
+        }
+    } else if (owSprites.length) {
+        // Exploring: whoever is standing in the room.
+        for (const el of owSprites) {
+            const img = el.querySelector('img.dangan-ow-sprite-img');
+            const name = el.dataset.name;
+            if (!img || !name || el.style.display === 'none') continue;
+            add(name, img, spriteFolderFromSrc(img.getAttribute('src') || '') || null);
         }
     } else {
         document.querySelectorAll('#expression-image, #visual-novel-wrapper img.expression').forEach((img) => {
@@ -15521,9 +15513,16 @@ function applyExpressionPickerSprite(target, path, stem) {
         if (!img?.isConnected) continue;
         if (img.closest('.dangan-gcp-slot')) applyMirroredSprite(img, path);
         else img.src = path;
+        // Overworld sprites also mask their hover outline with the sprite.
+        img.closest('.dangan-ow-sprite')?.style.setProperty('--ow-sprite-url', `url("${String(path).replace(/"/g, '%22')}")`);
         try { triggerVfxOnElement(expression, img); } catch { /* ignore */ }
     }
     if (target.isPlayer) playerInsetController?.showUrl(path);
+    else if (document.body.classList.contains('dangan-ow-scene-active')) {
+        overworldSceneController?.setSpriteOverride?.(target.name, path, expression);
+        // The room was redrawn since the drawer listed them.
+        if (!(target.imgs || []).some((img) => img?.isConnected)) overworldSceneController?.render?.();
+    }
 }
 
 // Settings → Customize → Automatic expressions. Off: sprites only change
@@ -16220,9 +16219,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         // Switch the background underneath the static overlay so the transition is hidden
         const switchBackground = () => {
             if (!bgName || cinematic) return;
-            const bgElements = Array.from(document.querySelectorAll('.bg_example'));
-            const lower = bgName.toLowerCase();
-            const match = bgElements.find(el => el.getAttribute('bgfile')?.toLowerCase().includes(lower));
+            const match = findBackgroundElement(bgName);
             if (match instanceof HTMLElement) match.click();
         };
 
@@ -18280,9 +18277,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         const bgArg = String(args.bg || args.BG || '').trim();
         let BG = '';
         if (bgArg) {
-            const lower = bgArg.toLowerCase();
-            const match = Array.from(document.querySelectorAll('.bg_example'))
-                .find(el => el.getAttribute('bgfile')?.toLowerCase().includes(lower));
+            const match = findBackgroundElement(bgArg);
             if (match) {
                 const bgfile   = match.getAttribute('bgfile') || '';
                 const isCustom = match.getAttribute('custom') === 'true';

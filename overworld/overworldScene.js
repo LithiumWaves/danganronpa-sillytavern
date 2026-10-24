@@ -867,6 +867,9 @@ export function createOverworldSceneController({
         return Object.keys(LOCATION_PINPOINTS);
     }
     const ROOT_ID = "dangan-overworld";
+    // Sprites picked in the expression picker while exploring, by character
+    // key. They stay until the next shuffle of locations.
+    const spriteOverrides = new Map();
 
     let renderToken = 0;
     let isFadingOutForChat = false;
@@ -1156,6 +1159,7 @@ export function createOverworldSceneController({
             // Cycle the expression so a fresh shuffle visibly changes poses
             // alongside locations. Render() will pick a new one lazily.
             delete entry.expression;
+            spriteOverrides.delete(key);
         }
         // Partition each occupied room into spawn-groups.
         const byRoom = new Map();
@@ -1437,7 +1441,8 @@ export function createOverworldSceneController({
                         expressionDirty = true;
                     }
                 }
-                const url = await getSpriteUrl(m.char.name, expression || "neutral").catch(() => null);
+                const url = spriteOverrides.get(m.key)
+                    || await getSpriteUrl(m.char.name, expression || "neutral").catch(() => null);
                 return url ? { ...m, spriteUrl: url, expression: expression || "neutral" } : null;
             }));
             return { gid, members: sprites.filter(Boolean) };
@@ -3072,8 +3077,22 @@ export function createOverworldSceneController({
         removeRoot();
     }
 
+    // The expression picker put a sprite on someone in the room: keep it
+    // through re-renders, and carry its expression into their chat.
+    function setSpriteOverride(name, url, expression) {
+        const key = normalizeName(name);
+        if (!key || !url) return;
+        spriteOverrides.set(key, url);
+        const entry = getState().characters[key];
+        if (entry && expression) {
+            entry.expression = expression;
+            saveState();
+        }
+    }
+
     return {
         render: scheduleRender,
+        setSpriteOverride,
         randomizeLocations,
         notifyPlayerMovedTo,
         ensureCharacterLocations,
