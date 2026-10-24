@@ -26,6 +26,7 @@ export function createExpressionPicker({ getTargets, listSprites, applySprite, i
     let targets = [];
     let renderToken = 0;
     let contextKey = null;
+    let pickedPerson = false; // chose someone in the drawer (else follow the list)
     const chosen = new Map(); // target key → path picked in this drawer
 
     function ensureRoot() {
@@ -66,6 +67,7 @@ export function createExpressionPicker({ getTargets, listSprites, applySprite, i
             const chip = e.target.closest?.("[data-key]");
             if (!chip) return;
             selectedKey = chip.dataset.key;
+            pickedPerson = true;
             renderPeople();
             renderGrid();
         });
@@ -122,7 +124,10 @@ export function createExpressionPicker({ getTargets, listSprites, applySprite, i
         const root = ensureRoot();
         root.classList.toggle("open", open);
         root.querySelector(".dangan-expr-tab").setAttribute("aria-expanded", String(open));
-        if (open) refreshTargets();
+        if (open) {
+            pickedPerson = false;
+            refreshTargets();
+        }
     }
 
     function readContextKey() {
@@ -132,7 +137,10 @@ export function createExpressionPicker({ getTargets, listSprites, applySprite, i
     function refreshTargets() {
         contextKey = readContextKey();
         try { targets = getTargets() || []; } catch { targets = []; }
-        if (!targets.some((t) => t.key === selectedKey)) selectedKey = targets[0]?.key ?? null;
+        // Keep who you chose; otherwise the first one listed, so a list that
+        // fills in late (the conversation's stage loads after it appears)
+        // doesn't leave you stuck on yourself.
+        if (!pickedPerson || !targets.some((t) => t.key === selectedKey)) selectedKey = targets[0]?.key ?? null;
         renderPeople();
         renderGrid();
     }

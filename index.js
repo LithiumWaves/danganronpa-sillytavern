@@ -13090,6 +13090,9 @@ debugSTGlobals();
             onLeaveRequest: () => leaveClassTrial(),
             getPickedSprite,
             applyPickedSprite: (img, path) => applyMirroredSprite(img, path),
+            // The stage is added before its characters load; an open
+            // expression picker re-lists once they're in.
+            onPortraitsBuilt: () => expressionPickerController?.sync?.(),
             onTrialStateChange: () => { renderMoveToPanel(); renderMinimap(); overworldSceneController?.render?.(); try { syncMoodScanButton(); } catch { /* ignore */ } try { syncRoomContextPrompt(); } catch { /* ignore */ } },
             // Re-apply the day/night/investigation phase theme. The trial owns
             // the theme while active (applyDynamicTheme bails on dangan-trial-active),

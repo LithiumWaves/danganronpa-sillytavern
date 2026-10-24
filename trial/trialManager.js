@@ -74,6 +74,7 @@ export function createTrialManager(deps) {
         onLeaveRequest, // optional — trial panel "Leave Trial" button
         getPickedSprite, // optional — (name) => { path } picked in the expression picker, or null
         applyPickedSprite, // optional — (img, path) => void; shows a picked sprite (half-sprite aware)
+        onPortraitsBuilt, // optional — () => void; the portrait stage finished filling its slots
     } = deps;
 
     function getAssetUrl(name) {
@@ -8252,6 +8253,7 @@ JUDGMENT RULES:
         }
         // Notify Trial Controls seating list to re-render with the freshly built gcpSlots
         notifyGcpSeatingListRenderers();
+        try { onPortraitsBuilt?.(); } catch (err) { console.warn('[Dangan][GCP] onPortraitsBuilt failed:', err); }
     }
 
     function updateGroupChatSpeaker(speakerName) {
