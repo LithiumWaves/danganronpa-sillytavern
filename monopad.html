@@ -608,6 +608,7 @@
                         <div class="bgm-tracks-subtabs">
                             <button class="bgm-tracks-subtab active" data-subtab="shop">SHOP</button>
                             <button class="bgm-tracks-subtab" data-subtab="monokuma">MONOKUMA</button>
+                            <button class="bgm-tracks-subtab" data-subtab="monokubs">MONOKUBS</button>
                             <button class="bgm-tracks-subtab" data-subtab="trial-preparation">TRIAL PREPARATION</button>
                         </div>
                         <div class="bgm-tracks-subpanel active" data-subtab="shop">
@@ -622,6 +623,14 @@
                             <div class="investigation-tracks-wrap">
                                 <div id="monokuma-tracks-list" class="investigation-tracks-list"></div>
                                 <div id="monokuma-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bgm-tracks-subpanel" data-subtab="monokubs">
+                            <div class="investigation-tracks-wrap">
+                                <div id="monokubs-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="monokubs-selected-list" class="investigation-selected-list">
                                     <div class="investigation-selected-empty">NONE SELECTED</div>
                                 </div>
                             </div>
@@ -1082,7 +1091,7 @@
 
                     <div class="settings-item settings-item-stack settings-announ-row">
                         <span class="settings-label">HOST / MASCOT CARDS</span>
-                        <div class="settings-note">Hosts like Monokuma, Monomi or the Monokubs never wander the rooms. Call one in or make them speak and they pop up from the bottom with the MONOKUMA playlist. Kept per save.</div>
+                        <div class="settings-note">Hosts like Monokuma, Monomi or the Monokubs never wander the rooms. Call one in or make them speak and they pop up from the bottom with the MONOKUMA playlist. Set a ticked host to RISE &amp; SHINE and they come in after the Monokubs' "Rise and Shine, Ursine!" splash instead, with the MONOKUBS playlist. Kept per save.</div>
                         <div class="settings-lang-toggle">
                             <button class="settings-lang-btn active" data-host-mode="auto" type="button">AUTO (MONOKUMA)</button>
                             <button class="settings-lang-btn" data-host-mode="custom" type="button">CHOOSE</button>
@@ -1108,6 +1117,11 @@
                             <div class="settings-note">A called-in host lands with a little squash and bounce, like Monokuma in V3.</div>
                         </div>
                         <button type="button" class="settings-toggle on" data-setting="hostEntranceBounce"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <label class="settings-label" for="dangan-host-splash-text">Rise &amp; Shine text</label>
+                        <input id="dangan-host-splash-text" class="settings-input" type="text" maxlength="60" placeholder="Rise and Shine, Ursine—!" autocomplete="off" />
                     </div>
 
                     <div class="settings-item">

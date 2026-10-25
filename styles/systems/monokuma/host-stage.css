@@ -127,7 +127,7 @@ body.dangan-trial-active #dangan-host-dismiss {
 
 .dangan-host-pick-list {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
     gap: 4px 12px;
     width: 100%;
     max-height: 220px;

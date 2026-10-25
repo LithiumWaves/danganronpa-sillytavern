@@ -1,4 +1,4 @@
-import { isAutoHostSetting, isHostName, readHostSetting, resolveHostNames } from "./hostCards.js";
+import { isAutoHostSetting, isHostName, readHostSetting, resolveHostNames, usesSplashEntrance } from "./hostCards.js";
 
 function assert(cond, msg) {
     if (!cond) throw new Error(msg);
@@ -16,6 +16,9 @@ function run() {
 
     assert(isHostName("monokuma", ["Monokuma"]) && isHostName("Mono  Kid", ["mono kid"]), "names match loosely");
     assert(!isHostName("Makoto", ["Monokuma"]) && !isHostName("", ["Monokuma"]), "other names don't");
+
+    assert(usesSplashEntrance("monotaro", ["Monotaro", "Monosuke"]), "splash hosts match loosely");
+    assert(!usesSplashEntrance("Monokuma", ["Monotaro"]) && !usesSplashEntrance("Monokuma", undefined), "everyone else pops up");
 
     console.log("hostCards tests passed");
 }

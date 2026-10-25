@@ -122,6 +122,8 @@ export const defaultSettings = {
     spriteClickGiftsEnabled: false,
     hostEntranceSfx: true,
     hostEntranceBounce: true,
+    // Catchphrase on the Rise & Shine entrance (host/hostSplash.js).
+    hostSplashText: "Rise and Shine, Ursine—!",
     hudColorSongMode: "phase",
     hudColorChapterMode: "phase",
     hudColorMapMode: "phase",
@@ -175,8 +177,12 @@ export const defaultSettings = {
     hangmansGambitUseDebateHistory: false,
     shopTracks: [],
     monokumaTracks: [],
+    // Played over the Rise & Shine entrance (the Monokubs' splash).
+    monokubsTracks: [],
     // Host / mascot cards for this save (empty = Auto: the card named Monokuma).
     hostCards: [],
+    // Hosts in this save that enter with the Rise & Shine splash instead of popping up.
+    hostSplashCards: [],
     titleTracks: [],
     daytimeTracks: [],
     nighttimeTracks: [],

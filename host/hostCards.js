@@ -46,3 +46,9 @@ export function isHostName(name, hosts = []) {
     const key = normalizeHostName(name);
     return !!key && hosts.some((h) => normalizeHostName(h) === key);
 }
+
+// Whether this host enters with the Rise & Shine splash (hostSplash.js)
+// rather than popping up. `splashSetting` is the save's `hostSplashCards`.
+export function usesSplashEntrance(name, splashSetting) {
+    return isHostName(name, readHostSetting(splashSetting));
+}

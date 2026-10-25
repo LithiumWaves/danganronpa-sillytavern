@@ -4,6 +4,7 @@
 @import url("https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Limelight&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Bruno+Ace&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Gochi+Hand&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;700;800&family=Noto+Sans:wght@400;500;700&family=Barlow+Condensed:wght@600;700&display=swap");
 @import url("./styles/legacy.css");
 @import url("./styles/systems/settings/subtabs.css");
@@ -25,6 +26,7 @@
 @import url("./styles/systems/saves/saves.css");
 @import url("./styles/systems/skip/leave-confirm.css");
 @import url("./styles/systems/monokuma/host-stage.css");
+@import url("./styles/systems/monokuma/host-splash.css");
 @import url("./styles/systems/vn/skins.css");
 @import url("./styles/systems/vn/transcript.css");
 @import url("./styles/systems/vn/player-inset.css");

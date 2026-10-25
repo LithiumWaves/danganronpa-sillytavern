@@ -21,8 +21,9 @@ import { createSocialPanelController } from "./social/socialPanel.js";
 import { extractUltimateFromNotes, isIgnoredCharacter, lookupUltimateFromLorebook, normalizeList, normalizeName } from "./social/characterUtils.js";
 import { createMapPanelController } from "./map/mapPanel.js";
 import { DORM_PLAYER_KEY } from "./map/mapLinks.js";
-import { isHostName, readHostSetting, resolveHostNames } from "./host/hostCards.js";
+import { isHostName, readHostSetting, resolveHostNames, usesSplashEntrance } from "./host/hostCards.js";
 import { createHostStage } from "./host/hostStage.js";
+import { cancelHostSplash, DEFAULT_HOST_SPLASH_TEXT, playHostSplash } from "./host/hostSplash.js";
 import { getLocationPromptReference, resolveLocationIdFromText } from "./map/locationPresence.js";
 import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, TRIAL_START_REGEX, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_DROP_REGEX, SOCIAL_BREAK_REGEX, parseSocialMarkerTarget, SOCIAL_REGEX, SOCIAL_UP_REGEX, TRIAL_CONTEXT_REGEX, defaultSettings, extensionFolderPath, extensionName, getDefaultPromptTemplate } from "./core/constants.js";
 import { VN_SKIN_CHOICES, normalizeVnSkin, PHASE_BANNER_CHOICES, normalizePhaseBannerStyle, resolvePhaseBannerStyle } from "./core/vnSkins.js";
@@ -4949,6 +4950,7 @@ const BGM_TRACK_TABS = [
     { key: "romantic",               settingKey: "romanticTracks",            listId: "romantic-tracks-list",               selectedId: "romantic-selected-list" },
     { key: "shop",                   settingKey: "shopTracks",                listId: "shop-tracks-list",                   selectedId: "shop-selected-list" },
     { key: "monokuma",               settingKey: "monokumaTracks",            listId: "monokuma-tracks-list",               selectedId: "monokuma-selected-list" },
+    { key: "monokubs",               settingKey: "monokubsTracks",            listId: "monokubs-tracks-list",               selectedId: "monokubs-selected-list" },
     { key: "trial-general",          settingKey: "trialGeneralTracks",        listId: "trial-general-tracks-list",          selectedId: "trial-general-selected-list" },
     { key: "trial-preparation",      settingKey: "trialPreparationTracks",    listId: "trial-preparation-tracks-list",      selectedId: "trial-preparation-selected-list" },
     { key: "trial-debates",          settingKey: "trialDebatesTracks",        listId: "trial-debates-tracks-list",          selectedId: "trial-debates-selected-list" },
@@ -5013,6 +5015,7 @@ const BGM_PLAYLIST_LABELS = {
     romanticTracks:          'ROMANTIC',
     shopTracks:              'SHOP',
     monokumaTracks:          'MONOKUMA',
+    monokubsTracks:          'MONOKUBS',
     trialGeneralTracks:      'GENERAL',
     trialPreparationTracks:  'TRIAL PREP',
     trialDebatesTracks:      'NON-STOP DEBATE',
@@ -5043,6 +5046,7 @@ const BGM_PLAYLIST_PARENTS = {
     romanticTracks:          'MOODS',
     shopTracks:              'LOCATIONS',
     monokumaTracks:          'LOCATIONS',
+    monokubsTracks:          'LOCATIONS',
     trialPreparationTracks:  'LOCATIONS',
     trialGeneralTracks:      'TRIAL',
     trialDebatesTracks:      'TRIAL',
@@ -8582,7 +8586,9 @@ function applyGameMasterUI() {
 // ── Host / mascot cards ───────────────────────────────────────────────────────
 // Monokuma & co. never wander the rooms. When one is called in or made to
 // speak, they pop up from the bottom with the MONOKUMA playlist until
-// dismissed (host/hostStage.js). Which cards are hosts is kept per save.
+// dismissed (host/hostStage.js). Hosts set to Rise & Shine come in after the
+// Monokubs' splash (host/hostSplash.js) with the MONOKUBS playlist instead.
+// Which cards are hosts, and which use the splash, is kept per save.
 
 let hostPickerOpen = false;
 
@@ -8624,6 +8630,8 @@ function applyHostCardsUI() {
     });
     const row = document.getElementById('dangan-host-custom-row');
     if (row) row.classList.toggle('is-hidden', !custom);
+    const text = document.getElementById('dangan-host-splash-text');
+    if (text && document.activeElement !== text) text.value = String(getMonopadSetting('hostSplashText') ?? '');
     renderHostCardList();
 }
 
@@ -8632,6 +8640,7 @@ function renderHostCardList() {
     if (!list) return;
     const picked = readHostSetting(getMonopadSetting('hostCards'));
     const pickedKeys = new Set(picked.map(n => n.toLowerCase()));
+    const splashSetting = getMonopadSetting('hostSplashCards');
     const query = String(document.getElementById('dangan-host-search')?.value || '').trim().toLowerCase();
     const names = listCardNames();
     // Keep picks whose card is gone visible so they can be unticked.
@@ -8650,13 +8659,29 @@ function renderHostCardList() {
             span.textContent = n;
             span.title = n;
             label.append(cb, span);
-            return label;
+            if (!cb.checked) return label;
+            // Ticked hosts pick their entrance.
+            const splash = usesSplashEntrance(n, splashSetting);
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'dangan-host-entrance-btn';
+            btn.classList.toggle('is-splash', splash);
+            btn.dataset.hostName = n;
+            btn.textContent = splash ? 'RISE & SHINE' : 'POP UP';
+            btn.title = splash
+                ? `${n} comes in after the "Rise and Shine" splash. Click to pop up instead.`
+                : `${n} pops up from the bottom. Click to use the "Rise and Shine" splash.`;
+            const row = document.createElement('div');
+            row.className = 'dangan-host-pick-row';
+            row.append(label, btn);
+            return row;
         }));
     const status = document.getElementById('dangan-host-status');
     if (status) {
         const hosts = getHostNames();
+        const splashHosts = picked.filter(n => usesSplashEntrance(n, splashSetting));
         status.textContent = picked.length
-            ? `Hosts: ${picked.join(', ')}`
+            ? `Hosts: ${picked.join(', ')}${splashHosts.length ? ` · Rise & Shine: ${splashHosts.join(', ')}` : ''}`
             : (hosts.length ? 'Nothing ticked, so Auto is used: Monokuma.' : 'Nothing ticked, and there is no card named Monokuma.');
     }
 }
@@ -8679,6 +8704,8 @@ function getHostStage() {
     if (hostStage) return hostStage;
     hostStage = createHostStage({
         onFirstEnter: async () => {
+            // Already playing when a Rise & Shine splash started the MONOKUBS playlist.
+            if (hostMusicPlaying) return;
             if (!(getMonopadSetting('monokumaTracks') || []).length) return;
             await fadeOutAndPauseBgm();
             hostMusicPlaying = playLocationTrack('monokumaTracks');
@@ -8748,9 +8775,76 @@ function bringHostOnStage(name) {
     if (trialManager?.isTrialActive?.() || isTrialUiActive()) return false;
     const stage = getHostStage();
     if (stage.isOnStage(name)) return false;
+    if (usesSplashEntrance(name, getMonopadSetting('hostSplashCards'))) return queueHostSplashEntrance(name);
     void stage.enter(name);
     if (getMonopadSetting('hostEntranceSfx') !== false) playSfx(sfx.host_bwomp);
     return true;
+}
+
+// Rise & Shine hosts wait here while their splash plays. Everyone called in
+// the same tick (the Call modal) or during the splash shares it.
+const pendingSplashHosts = new Map();
+let hostSplashBusy = false;
+// Bumped by cancelHostSplashEntrance(); a splash from an older epoch stops.
+let hostSplashEpoch = 0;
+const HOST_SPLASH_STAGGER_MS = 180;
+
+function queueHostSplashEntrance(name) {
+    const key = name.toLowerCase().trim();
+    if (pendingSplashHosts.has(key)) return false;
+    pendingSplashHosts.set(key, name);
+    if (!hostSplashBusy) {
+        hostSplashBusy = true;
+        queueMicrotask(() => void playHostSplashEntrance());
+    }
+    return true;
+}
+
+async function playHostSplashEntrance() {
+    const epoch = hostSplashEpoch;
+    const stage = getHostStage();
+    // The MONOKUBS playlist starts with the splash. Without one, the
+    // MONOKUMA playlist starts as the hosts come in (onFirstEnter).
+    if (!stage.names().length && !hostMusicPlaying && (getMonopadSetting('monokubsTracks') || []).length) {
+        hostMusicPlaying = true;
+        void fadeOutAndPauseBgm().then(() => {
+            if (epoch === hostSplashEpoch) hostMusicPlaying = playLocationTrack('monokubsTracks');
+        });
+    }
+    await playHostSplash({ text: getMonopadSetting('hostSplashText') || DEFAULT_HOST_SPLASH_TEXT });
+    if (epoch !== hostSplashEpoch) return;
+    hostSplashBusy = false;
+    const names = [...pendingSplashHosts.values()];
+    pendingSplashHosts.clear();
+    let entered = 0;
+    for (const name of names) {
+        if (trialManager?.isTrialActive?.() || isTrialUiActive()) break;
+        if (entered) await new Promise(r => setTimeout(r, HOST_SPLASH_STAGGER_MS));
+        if (epoch !== hostSplashEpoch) return;
+        if (stage.isOnStage(name)) continue;
+        // Not awaited: the first entry waits on onFirstEnter's music fade.
+        void stage.enter(name);
+        entered++;
+        if (getMonopadSetting('hostEntranceSfx') !== false) playSfx(sfx.host_bwomp);
+    }
+    // A Class Trial began during the splash: nobody came in, so its music stops.
+    if (!entered && !stage.names().length && hostMusicPlaying) {
+        hostMusicPlaying = false;
+        stopLocationTrack();
+    }
+}
+
+// Drops a splash that is still playing and the hosts waiting on it.
+function cancelHostSplashEntrance() {
+    if (!hostSplashBusy && !pendingSplashHosts.size) return;
+    hostSplashEpoch++;
+    hostSplashBusy = false;
+    pendingSplashHosts.clear();
+    cancelHostSplash();
+    if (!hostStage?.names().length && hostMusicPlaying) {
+        hostMusicPlaying = false;
+        stopLocationTrack();
+    }
 }
 
 // The landing bounce is CSS, switched by a body class.
@@ -12200,6 +12294,20 @@ $(".monopad-icon").on("mouseenter", function () {
             applyHostCardsUI();
         });
         $(document).on("input", "#dangan-host-search", () => renderHostCardList());
+        $(document).on("click", ".dangan-host-entrance-btn", function () {
+            const name = String(this.dataset.hostName || '');
+            const splash = readHostSetting(getMonopadSetting('hostSplashCards'));
+            const next = usesSplashEntrance(name, splash)
+                ? splash.filter(n => n.toLowerCase() !== name.toLowerCase())
+                : [...splash, name];
+            setMonopadSetting('hostSplashCards', readHostSetting(next));
+            saveSettingsDebounced();
+            renderHostCardList();
+        });
+        $(document).on("change", "#dangan-host-splash-text", function () {
+            setMonopadSetting('hostSplashText', String(this.value || '').trim());
+            saveSettingsDebounced();
+        });
         $(document).on("change", ".dangan-host-pick", function () {
             const picked = readHostSetting(getMonopadSetting('hostCards'));
             const name = String(this.value || '');
@@ -14858,6 +14966,7 @@ function reloadStoryStateFromSettings() {
 function switchToSave(id, { announce = true } = {}) {
     if (!saveStore.activate(id)) return false;
     // The new save picks its own music below.
+    cancelHostSplashEntrance();
     if (hostStage?.names().length) { hostMusicPlaying = false; stopLocationTrack(); void hostStage.dismiss({ silent: true }); }
     const save = saveStore.getActive();
     saveSettingsDebounced();
