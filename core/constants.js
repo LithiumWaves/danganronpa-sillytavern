@@ -68,6 +68,9 @@ export const defaultSettings = {
     vnModeEnabled: false,
     // VN text box look: "current", or a recreation of one game's box.
     vnSkin: "current",
+    // Investigation / Free Time / Nighttime banner look: "match" follows the
+    // text box, or one of the vnSkin values.
+    phaseBannerStyle: "match",
     // AI instructions also tell the AI each present character's trust level.
     markerTrustLevelsEnabled: true,
     // VN typewriter speed in percent (25–300); 100 is the original speed.

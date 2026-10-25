@@ -25,7 +25,7 @@ import { isHostName, readHostSetting, resolveHostNames } from "./host/hostCards.
 import { createHostStage } from "./host/hostStage.js";
 import { getLocationPromptReference, resolveLocationIdFromText } from "./map/locationPresence.js";
 import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, TRIAL_START_REGEX, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_DROP_REGEX, SOCIAL_BREAK_REGEX, parseSocialMarkerTarget, SOCIAL_REGEX, SOCIAL_UP_REGEX, TRIAL_CONTEXT_REGEX, defaultSettings, extensionFolderPath, extensionName, getDefaultPromptTemplate } from "./core/constants.js";
-import { VN_SKIN_CHOICES, normalizeVnSkin } from "./core/vnSkins.js";
+import { VN_SKIN_CHOICES, normalizeVnSkin, PHASE_BANNER_CHOICES, normalizePhaseBannerStyle, resolvePhaseBannerStyle } from "./core/vnSkins.js";
 import { HUD_COLOR_DEFAULT, HUD_COLOR_TARGETS, hudColorVars, normalizeHudColorMode, resolveHudColor } from "./core/ui/hudColors.js";
 import { createOpenRouterSettingsManager } from "./core/openrouterSettings.js";
 import { createCardHygieneController } from "./core/cardHygiene.js";
@@ -4423,9 +4423,9 @@ function triggerInvestigationTimeToggle(on = true) {
     return tryEnableInvestigationToggleViaDom(on);
 }
 
-// Phase banners for the game text box styles (Settings → text box). Classic
-// keeps the original banner; THH / SDR2 / V3 show this one instead, styled in
-// styles/systems/phase/banners.css. `label` is the THH / SDR2 band text; `v3`
+// Phase banners for each game (Settings → Customize → Phase banner style,
+// which can follow the text box). Classic keeps the original banner; THH /
+// SDR2 / V3 show this one instead, styled in styles/systems/phase/banners.css. `label` is the THH / SDR2 band text; `v3`
 // is the V3 title card, as groups of lines whose letters pop in one by one.
 const GAME_BANNER_KINDS = {
     investigation: { label: "Investigate", full: "Investigation START!", v3: [["In", "vestiga", "atio"], ["n"], ["START!"]] },
@@ -9578,6 +9578,19 @@ function renderTrustStylePicker() {
         </button>`).join("");
 }
 
+// Settings → Customize: a picture card per phase banner style. The "Match
+// text box" card borrows the picture of whichever banner it resolves to.
+function renderPhaseBannerPicker() {
+    const picker = document.getElementById("dangan_banner_style_picker");
+    if (!picker || picker.childElementCount) return;
+    picker.innerHTML = PHASE_BANNER_CHOICES.map((c) => `
+        <button type="button" class="settings-vn-skin" data-banner-style="${c.value}" role="radio" aria-checked="false">
+            <img src="${c.image ? `${extensionFolderPath}/assets/${c.image}` : ""}" alt="" loading="lazy" draggable="false">
+            <span class="settings-vn-skin-name">${c.label}</span>
+            <span class="settings-vn-skin-game">${c.game}</span>
+        </button>`).join("");
+}
+
 function applySettingsTabUI() {
     const tab = extension_settings[extensionName];
     const activeDifficulty = applyRewardDifficultyProfile(tab.rewardDifficulty || defaultSettings.rewardDifficulty);
@@ -9818,6 +9831,20 @@ function applySettingsTabUI() {
         el.setAttribute("aria-checked", on ? "true" : "false");
     });
     vnModeController?.setSkin?.(vnSkin);
+    const bannerStyle = normalizePhaseBannerStyle(tab.phaseBannerStyle);
+    const bannerResolved = resolvePhaseBannerStyle(bannerStyle, vnSkin);
+    document.body.dataset.danganBannerStyle = bannerResolved;
+    renderPhaseBannerPicker();
+    document.querySelectorAll("#dangan_banner_style_picker [data-banner-style]").forEach((el) => {
+        const on = el.dataset.bannerStyle === bannerStyle;
+        el.classList.toggle("is-on", on);
+        el.setAttribute("aria-checked", on ? "true" : "false");
+        if (el.dataset.bannerStyle === "match") {
+            const image = PHASE_BANNER_CHOICES.find((c) => c.value === bannerResolved)?.image;
+            const img = el.querySelector("img");
+            if (img && image) img.src = `${extensionFolderPath}/assets/${image}`;
+        }
+    });
     const trustStyle = normalizeTrustCeremonyStyle(tab.trustCeremonyStyle);
     renderTrustStylePicker();
     document.querySelectorAll("#dangan_trust_style_picker [data-trust-style]").forEach((el) => {
@@ -12551,6 +12578,11 @@ $(".monopad-icon").on("mouseenter", function () {
 
         $(document).on("click", "#dangan_trust_style_picker [data-trust-style]", function () {
             setMonopadSetting("trustCeremonyStyle", normalizeTrustCeremonyStyle(this.dataset.trustStyle));
+            applySettingsTabUI();
+        });
+
+        $(document).on("click", "#dangan_banner_style_picker [data-banner-style]", function () {
+            setMonopadSetting("phaseBannerStyle", normalizePhaseBannerStyle(this.dataset.bannerStyle));
             applySettingsTabUI();
         });
 

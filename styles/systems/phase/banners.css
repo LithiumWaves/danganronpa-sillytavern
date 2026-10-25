@@ -1,6 +1,7 @@
-/* ── Phase banners per text box style ───────────────────────
-   Investigation / Free Time / Nighttime banners for the game text boxes
-   (<body data-dangan-vn-skin="thh|sdr2|v3">). Classic keeps the original
+/* ── Phase banners per game ─────────────────────────────────
+   Investigation / Free Time / Nighttime banners of each game, picked under
+   Settings → Customize → Phase banner style (or matching the text box):
+   <body data-dangan-banner-style="thh|sdr2|v3">. Classic keeps the original
    banner from legacy.css. The markup comes from ensureGameBanner() in
    index.js: one tree that every skin styles its own way.
 
@@ -20,11 +21,11 @@
     display: none;
 }
 
-body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]) :is(#dangan-investigation-overlay, #dangan-freetime-overlay, #dangan-nighttime-overlay) > :not(.dangan-gb) {
+body:is([data-dangan-banner-style="thh"], [data-dangan-banner-style="sdr2"], [data-dangan-banner-style="v3"]) :is(#dangan-investigation-overlay, #dangan-freetime-overlay, #dangan-nighttime-overlay) > :not(.dangan-gb) {
     display: none;
 }
 
-body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]) .dangan-gb {
+body:is([data-dangan-banner-style="thh"], [data-dangan-banner-style="sdr2"], [data-dangan-banner-style="v3"]) .dangan-gb {
     --gb-h: clamp(52px, 13.5vh, 124px);
     display: block;
     position: absolute;
@@ -121,19 +122,19 @@ body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-
 
 /* ══ Trigger Happy Havoc ═══════════════════════════════════ */
 
-body[data-dangan-vn-skin="thh"] .dangan-gb :is(.dangan-gb-band, .dangan-gb-rule) {
+body[data-dangan-banner-style="thh"] .dangan-gb :is(.dangan-gb-band, .dangan-gb-rule) {
     display: block;
 }
 
-body[data-dangan-vn-skin="thh"] .dangan-gb .dangan-gb-label {
+body[data-dangan-banner-style="thh"] .dangan-gb .dangan-gb-label {
     display: flex;
 }
 
-body[data-dangan-vn-skin="thh"] .dangan-gb-band {
+body[data-dangan-banner-style="thh"] .dangan-gb-band {
     background: var(--gb-thh-dim);
 }
 
-body[data-dangan-vn-skin="thh"] .dangan-gb-band::before {
+body[data-dangan-banner-style="thh"] .dangan-gb-band::before {
     content: "";
     position: absolute;
     inset: 0;
@@ -141,13 +142,13 @@ body[data-dangan-vn-skin="thh"] .dangan-gb-band::before {
     opacity: 0;
 }
 
-body[data-dangan-vn-skin="thh"] .dangan-gb-rule {
+body[data-dangan-banner-style="thh"] .dangan-gb-rule {
     background: rgba(255, 255, 255, 0.95);
     height: 1px;
     box-shadow: 0 0 4px rgba(255, 255, 255, 0.7);
 }
 
-body[data-dangan-vn-skin="thh"] .dangan-gb-label {
+body[data-dangan-banner-style="thh"] .dangan-gb-label {
     font-family: "Noto Sans", "Rajdhani", sans-serif;
     font-weight: 500;
     font-size: calc(var(--gb-h) * 0.4);
@@ -159,23 +160,23 @@ body[data-dangan-vn-skin="thh"] .dangan-gb-label {
         0 0 6px rgba(0, 0, 0, 0.25);
 }
 
-body[data-dangan-vn-skin="thh"] .show > .dangan-gb .dangan-gb-rule.top {
+body[data-dangan-banner-style="thh"] .show > .dangan-gb .dangan-gb-rule.top {
     animation: dangan-gb-thh-rule-top var(--gb-duration) linear both;
 }
 
-body[data-dangan-vn-skin="thh"] .show > .dangan-gb .dangan-gb-rule.bottom {
+body[data-dangan-banner-style="thh"] .show > .dangan-gb .dangan-gb-rule.bottom {
     animation: dangan-gb-thh-rule-bottom var(--gb-duration) linear both;
 }
 
-body[data-dangan-vn-skin="thh"] .show > .dangan-gb .dangan-gb-band {
+body[data-dangan-banner-style="thh"] .show > .dangan-gb .dangan-gb-band {
     animation: dangan-gb-thh-band var(--gb-duration) linear both;
 }
 
-body[data-dangan-vn-skin="thh"] .show > .dangan-gb .dangan-gb-band::before {
+body[data-dangan-banner-style="thh"] .show > .dangan-gb .dangan-gb-band::before {
     animation: dangan-gb-thh-bright var(--gb-duration) linear both;
 }
 
-body[data-dangan-vn-skin="thh"] .show > .dangan-gb .dangan-gb-label {
+body[data-dangan-banner-style="thh"] .show > .dangan-gb .dangan-gb-label {
     animation: dangan-gb-thh-label var(--gb-duration) cubic-bezier(0.2, 0.7, 0.3, 1) both;
 }
 
@@ -219,19 +220,19 @@ body[data-dangan-vn-skin="thh"] .show > .dangan-gb .dangan-gb-label {
 
 /* ══ Goodbye Despair ═══════════════════════════════════════ */
 
-body[data-dangan-vn-skin="sdr2"] .dangan-gb :is(.dangan-gb-band, .dangan-gb-rule, .dangan-gb-dim) {
+body[data-dangan-banner-style="sdr2"] .dangan-gb :is(.dangan-gb-band, .dangan-gb-rule, .dangan-gb-dim) {
     display: block;
 }
 
-body[data-dangan-vn-skin="sdr2"] .dangan-gb .dangan-gb-label {
+body[data-dangan-banner-style="sdr2"] .dangan-gb .dangan-gb-label {
     display: flex;
 }
 
-body[data-dangan-vn-skin="sdr2"] .dangan-gb-dim {
+body[data-dangan-banner-style="sdr2"] .dangan-gb-dim {
     background: #fff;
 }
 
-body[data-dangan-vn-skin="sdr2"] .dangan-gb-band {
+body[data-dangan-banner-style="sdr2"] .dangan-gb-band {
     background:
         radial-gradient(ellipse 22% 120% at 50% 50%, var(--gb-sdr2-lens), transparent 72%),
         linear-gradient(180deg, var(--gb-sdr2-edge) 0%, var(--gb-sdr2-core) 38%, var(--gb-sdr2-core) 62%, var(--gb-sdr2-edge) 100%);
@@ -239,12 +240,12 @@ body[data-dangan-vn-skin="sdr2"] .dangan-gb-band {
     mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.6), #000 26%, #000 74%, rgba(0, 0, 0, 0.6));
 }
 
-body[data-dangan-vn-skin="sdr2"] .dangan-gb-rule {
+body[data-dangan-banner-style="sdr2"] .dangan-gb-rule {
     background: linear-gradient(90deg, rgba(255, 255, 255, 0.55), #fff 30%, #fff 70%, rgba(255, 255, 255, 0.55));
     box-shadow: 0 0 6px rgba(255, 255, 255, 0.85);
 }
 
-body[data-dangan-vn-skin="sdr2"] .dangan-gb-label {
+body[data-dangan-banner-style="sdr2"] .dangan-gb-label {
     font-family: "M PLUS Rounded 1c", "Noto Sans", sans-serif;
     font-weight: 800;
     font-size: calc(var(--gb-h) * 0.56);
@@ -262,45 +263,45 @@ body[data-dangan-vn-skin="sdr2"] .dangan-gb-label {
         2px 3px 4px rgba(0, 0, 0, 0.5);
 }
 
-body[data-dangan-vn-skin="sdr2"] .dangan-gb-label-ghost {
+body[data-dangan-banner-style="sdr2"] .dangan-gb-label-ghost {
     color: rgba(255, 253, 240, 0.55);
     filter: blur(2px);
 }
 
-body[data-dangan-vn-skin="sdr2"] .show > .dangan-gb .dangan-gb-rule.top {
+body[data-dangan-banner-style="sdr2"] .show > .dangan-gb .dangan-gb-rule.top {
     animation: dangan-gb-sdr2-rule-top var(--gb-duration) linear both;
 }
 
-body[data-dangan-vn-skin="sdr2"] .show > .dangan-gb .dangan-gb-rule.bottom {
+body[data-dangan-banner-style="sdr2"] .show > .dangan-gb .dangan-gb-rule.bottom {
     animation: dangan-gb-sdr2-rule-bottom var(--gb-duration) linear both;
 }
 
-body[data-dangan-vn-skin="sdr2"] .show > .dangan-gb .dangan-gb-band {
+body[data-dangan-banner-style="sdr2"] .show > .dangan-gb .dangan-gb-band {
     animation: dangan-gb-sdr2-band var(--gb-duration) linear both;
 }
 
-body[data-dangan-vn-skin="sdr2"] .show > .dangan-gb .dangan-gb-label {
+body[data-dangan-banner-style="sdr2"] .show > .dangan-gb .dangan-gb-label {
     animation: dangan-gb-sdr2-label var(--gb-duration) linear both;
 }
 
-body[data-dangan-vn-skin="sdr2"] .show > .dangan-gb .dangan-gb-label-ghost {
+body[data-dangan-banner-style="sdr2"] .show > .dangan-gb .dangan-gb-label-ghost {
     animation: dangan-gb-sdr2-ghost var(--gb-duration) linear both;
 }
 
 /* Free Time leaves on a soft white crossfade instead of the smear. */
-body[data-dangan-vn-skin="sdr2"] .show > .dangan-gb[data-kind="freetime"] .dangan-gb-dim {
+body[data-dangan-banner-style="sdr2"] .show > .dangan-gb[data-kind="freetime"] .dangan-gb-dim {
     animation: dangan-gb-sdr2-flash var(--gb-duration) linear both;
 }
 
-body[data-dangan-vn-skin="sdr2"] .show > .dangan-gb[data-kind="freetime"] .dangan-gb-band {
+body[data-dangan-banner-style="sdr2"] .show > .dangan-gb[data-kind="freetime"] .dangan-gb-band {
     animation-name: dangan-gb-sdr2-band-fade;
 }
 
-body[data-dangan-vn-skin="sdr2"] .show > .dangan-gb[data-kind="freetime"] .dangan-gb-label {
+body[data-dangan-banner-style="sdr2"] .show > .dangan-gb[data-kind="freetime"] .dangan-gb-label {
     animation-name: dangan-gb-sdr2-label-fade;
 }
 
-body[data-dangan-vn-skin="sdr2"] .show > .dangan-gb[data-kind="freetime"] .dangan-gb-label-ghost {
+body[data-dangan-banner-style="sdr2"] .show > .dangan-gb[data-kind="freetime"] .dangan-gb-label-ghost {
     animation: none;
 }
 
@@ -366,15 +367,15 @@ body[data-dangan-vn-skin="sdr2"] .show > .dangan-gb[data-kind="freetime"] .danga
 
 /* ══ Killing Harmony ═══════════════════════════════════════ */
 
-body[data-dangan-vn-skin="v3"] .dangan-gb :is(.dangan-gb-band, .dangan-gb-diamond, .dangan-gb-dim) {
+body[data-dangan-banner-style="v3"] .dangan-gb :is(.dangan-gb-band, .dangan-gb-diamond, .dangan-gb-dim) {
     display: block;
 }
 
-body[data-dangan-vn-skin="v3"] .dangan-gb .dangan-gb-cards {
+body[data-dangan-banner-style="v3"] .dangan-gb .dangan-gb-cards {
     display: flex;
 }
 
-body[data-dangan-vn-skin="v3"] .dangan-gb-band {
+body[data-dangan-banner-style="v3"] .dangan-gb-band {
     background:
         linear-gradient(180deg, rgba(0, 0, 0, 0.55) 0, transparent 7%, transparent 93%, rgba(0, 0, 0, 0.55) 100%),
         linear-gradient(180deg, var(--gb-v3-deep) 0%, var(--gb-v3-band) 22%, var(--gb-v3-hi) 50%, var(--gb-v3-band) 78%, var(--gb-v3-deep) 100%);
@@ -382,7 +383,7 @@ body[data-dangan-vn-skin="v3"] .dangan-gb-band {
 }
 
 /* Horizontal glitch streaks scrolling across the band. */
-body[data-dangan-vn-skin="v3"] .dangan-gb-streaks {
+body[data-dangan-banner-style="v3"] .dangan-gb-streaks {
     position: absolute;
     inset: 0;
     background:
@@ -392,7 +393,7 @@ body[data-dangan-vn-skin="v3"] .dangan-gb-streaks {
     mix-blend-mode: overlay;
 }
 
-body[data-dangan-vn-skin="v3"] .dangan-gb-diamond {
+body[data-dangan-banner-style="v3"] .dangan-gb-diamond {
     left: calc(50% - var(--gb-h) * 0.11);
     top: calc(50% - var(--gb-h) * 0.11);
     width: calc(var(--gb-h) * 0.22);
@@ -403,7 +404,7 @@ body[data-dangan-vn-skin="v3"] .dangan-gb-diamond {
     opacity: 0;
 }
 
-body[data-dangan-vn-skin="v3"] .dangan-gb-cards {
+body[data-dangan-banner-style="v3"] .dangan-gb-cards {
     --gb-v3-size: clamp(22px, calc(var(--gb-h) * 0.46), 60px);
     left: 50%;
     top: 50%;
@@ -454,66 +455,66 @@ body[data-dangan-vn-skin="v3"] .dangan-gb-cards {
 
 /* Investigation: ragged torn cards, "In / vestiga / atio" stacked, a big
    tumbling "n", then START! */
-body[data-dangan-vn-skin="v3"] .dangan-gb[data-kind="investigation"] .dangan-gb-card {
+body[data-dangan-banner-style="v3"] .dangan-gb[data-kind="investigation"] .dangan-gb-card {
     clip-path: polygon(3% 12%, 18% 0, 30% 9%, 52% 2%, 70% 10%, 92% 0, 100% 22%, 95% 46%, 100% 70%, 90% 100%, 66% 91%, 44% 100%, 24% 90%, 6% 100%, 0 74%, 5% 48%, 0 28%);
 }
 
-body[data-dangan-vn-skin="v3"] .dangan-gb[data-kind="investigation"] .g0 .l0 { font-size: 1.5em; }
-body[data-dangan-vn-skin="v3"] .dangan-gb[data-kind="investigation"] .g0 .l1 { margin-left: 0.5em; }
-body[data-dangan-vn-skin="v3"] .dangan-gb[data-kind="investigation"] .g0 .l2 { margin-left: 1.1em; font-size: 0.82em; }
-body[data-dangan-vn-skin="v3"] .dangan-gb[data-kind="investigation"] .g1 {
+body[data-dangan-banner-style="v3"] .dangan-gb[data-kind="investigation"] .g0 .l0 { font-size: 1.5em; }
+body[data-dangan-banner-style="v3"] .dangan-gb[data-kind="investigation"] .g0 .l1 { margin-left: 0.5em; }
+body[data-dangan-banner-style="v3"] .dangan-gb[data-kind="investigation"] .g0 .l2 { margin-left: 1.1em; font-size: 0.82em; }
+body[data-dangan-banner-style="v3"] .dangan-gb[data-kind="investigation"] .g1 {
     margin-left: -0.5em;
     align-self: flex-end;
     font-size: 1.6em;
     transform: rotate(-80deg) translateX(-0.1em);
 }
-body[data-dangan-vn-skin="v3"] .dangan-gb[data-kind="investigation"] .g1 .dangan-gb-card { display: none; }
+body[data-dangan-banner-style="v3"] .dangan-gb[data-kind="investigation"] .g1 .dangan-gb-card { display: none; }
 
 /* Free Time / Nighttime: a chain of black diamonds behind the words. */
-body[data-dangan-vn-skin="v3"] .dangan-gb:is([data-kind="freetime"], [data-kind="nighttime"]) .dangan-gb-card {
+body[data-dangan-banner-style="v3"] .dangan-gb:is([data-kind="freetime"], [data-kind="nighttime"]) .dangan-gb-card {
     inset: -0.32em -0.22em;
     clip-path: polygon(0 50%, 6% 18%, 13% 46%, 22% 0, 33% 40%, 44% 10%, 55% 42%, 66% 4%, 77% 38%, 88% 12%, 100% 50%, 90% 88%, 79% 60%, 68% 98%, 57% 62%, 46% 92%, 35% 60%, 24% 100%, 13% 58%, 6% 84%);
 }
 
-body[data-dangan-vn-skin="v3"] .dangan-gb[data-kind="freetime"] .g0 { font-size: 1.22em; }
-body[data-dangan-vn-skin="v3"] .dangan-gb[data-kind="nighttime"] .g0 .l0 { font-size: 1.35em; }
-body[data-dangan-vn-skin="v3"] .dangan-gb[data-kind="nighttime"] .g0 .l1 { margin-left: 0.9em; }
+body[data-dangan-banner-style="v3"] .dangan-gb[data-kind="freetime"] .g0 { font-size: 1.22em; }
+body[data-dangan-banner-style="v3"] .dangan-gb[data-kind="nighttime"] .g0 .l0 { font-size: 1.35em; }
+body[data-dangan-banner-style="v3"] .dangan-gb[data-kind="nighttime"] .g0 .l1 { margin-left: 0.9em; }
 
-body[data-dangan-vn-skin="v3"] .dangan-gb .start {
+body[data-dangan-banner-style="v3"] .dangan-gb .start {
     font-size: 1.08em;
     margin-left: 0.1em;
 }
 
-body[data-dangan-vn-skin="v3"] .dangan-gb .start .dangan-gb-line-text {
+body[data-dangan-banner-style="v3"] .dangan-gb .start .dangan-gb-line-text {
     letter-spacing: -0.04em;
 }
 
 /* Timeline */
-body[data-dangan-vn-skin="v3"] .show > .dangan-gb:is([data-kind="investigation"], [data-kind="nighttime"]) .dangan-gb-dim {
+body[data-dangan-banner-style="v3"] .show > .dangan-gb:is([data-kind="investigation"], [data-kind="nighttime"]) .dangan-gb-dim {
     animation: dangan-gb-v3-dim var(--gb-duration) linear both;
 }
 
-body[data-dangan-vn-skin="v3"] .show > .dangan-gb .dangan-gb-band {
+body[data-dangan-banner-style="v3"] .show > .dangan-gb .dangan-gb-band {
     animation: dangan-gb-v3-band var(--gb-duration) cubic-bezier(0.3, 0.7, 0.2, 1) both;
 }
 
-body[data-dangan-vn-skin="v3"] .show > .dangan-gb .dangan-gb-streaks {
+body[data-dangan-banner-style="v3"] .show > .dangan-gb .dangan-gb-streaks {
     animation: dangan-gb-v3-streaks calc(var(--gb-duration) * 0.22) steps(6) infinite;
 }
 
-body[data-dangan-vn-skin="v3"] .show > .dangan-gb .dangan-gb-diamond {
+body[data-dangan-banner-style="v3"] .show > .dangan-gb .dangan-gb-diamond {
     animation: dangan-gb-v3-diamond var(--gb-duration) linear both;
 }
 
-body[data-dangan-vn-skin="v3"] .show > .dangan-gb .dangan-gb-cards {
+body[data-dangan-banner-style="v3"] .show > .dangan-gb .dangan-gb-cards {
     animation: dangan-gb-v3-cards var(--gb-duration) linear both;
 }
 
-body[data-dangan-vn-skin="v3"] .show > .dangan-gb .dangan-gb-card {
+body[data-dangan-banner-style="v3"] .show > .dangan-gb .dangan-gb-card {
     animation: dangan-gb-v3-card calc(var(--gb-duration) * 0.08) cubic-bezier(0.2, 1.4, 0.4, 1) calc(var(--gb-duration) * 0.24) both;
 }
 
-body[data-dangan-vn-skin="v3"] .show > .dangan-gb .dangan-gb-letter {
+body[data-dangan-banner-style="v3"] .show > .dangan-gb .dangan-gb-letter {
     animation: dangan-gb-v3-letter calc(var(--gb-duration) * 0.09) cubic-bezier(0.2, 1.3, 0.4, 1) calc(var(--gb-duration) * (0.26 + var(--i) * 0.014)) both;
 }
 
@@ -562,26 +563,26 @@ body[data-dangan-vn-skin="v3"] .show > .dangan-gb .dangan-gb-letter {
 
 /* ── Phones ─────────────────────────────────────────────── */
 @media (max-width: 520px) {
-    body:is([data-dangan-vn-skin="thh"], [data-dangan-vn-skin="sdr2"], [data-dangan-vn-skin="v3"]) .dangan-gb {
+    body:is([data-dangan-banner-style="thh"], [data-dangan-banner-style="sdr2"], [data-dangan-banner-style="v3"]) .dangan-gb {
         --gb-h: clamp(48px, 13vw, 64px);
     }
 
-    body[data-dangan-vn-skin="thh"] .dangan-gb-label {
+    body[data-dangan-banner-style="thh"] .dangan-gb-label {
         letter-spacing: 0.22em;
     }
 
-    body[data-dangan-vn-skin="v3"] .dangan-gb-cards {
+    body[data-dangan-banner-style="v3"] .dangan-gb-cards {
         --gb-v3-size: clamp(18px, 6vw, 28px);
     }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    body[data-dangan-vn-skin="v3"] .show > .dangan-gb :is(.dangan-gb-letter, .dangan-gb-card) {
+    body[data-dangan-banner-style="v3"] .show > .dangan-gb :is(.dangan-gb-letter, .dangan-gb-card) {
         animation: none;
     }
 
-    body[data-dangan-vn-skin="v3"] .show > .dangan-gb .dangan-gb-streaks,
-    body[data-dangan-vn-skin="sdr2"] .show > .dangan-gb .dangan-gb-label-ghost {
+    body[data-dangan-banner-style="v3"] .show > .dangan-gb .dangan-gb-streaks,
+    body[data-dangan-banner-style="sdr2"] .show > .dangan-gb .dangan-gb-label-ghost {
         animation: none;
     }
 }

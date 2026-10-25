@@ -597,3 +597,39 @@
     font-size: 10px;
     opacity: 0.6;
 }
+
+/* Customize → picture pickers folded away until opened, so the section
+   stays short. The summary reads like the row's label. */
+.settings-panel .settings-fold {
+    width: 100%;
+}
+
+.settings-panel .settings-fold > summary {
+    display: block;
+    color: var(--set-text);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    line-height: 1.25;
+}
+
+.settings-panel .settings-fold > summary::before {
+    color: #9deeff;
+}
+
+.settings-panel .settings-fold[open] > summary {
+    margin-bottom: 4px;
+}
+
+.settings-panel .settings-fold > .settings-vn-skins {
+    margin-top: 8px;
+}
+
+/* Phase banner style: "Match text box" spans the row above the games. */
+.settings-panel .settings-banner-styles [data-banner-style="match"] {
+    grid-column: 1 / -1;
+}
+
+.settings-panel .settings-banner-styles .settings-vn-skin img {
+    aspect-ratio: 768 / 152;
+}
