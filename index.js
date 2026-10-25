@@ -8787,9 +8787,59 @@ function bringHostOnStage(name) {
     const stage = getHostStage();
     if (stage.isOnStage(name)) return false;
     if (usesSplashEntrance(name, getMonopadSetting('hostSplashCards'))) return queueHostSplashEntrance(name);
-    void stage.enter(name);
-    if (getMonopadSetting('hostEntranceSfx') !== false) playSfx(sfx.host_bwomp);
-    return true;
+    return queueHostEntrances([name]) > 0;
+}
+
+// Hosts called together (the Call modal, or everyone after a splash) come in
+// one after another, each with their own bwomp.
+const hostEntranceQueue = [];
+let hostEntranceRunning = false;
+// About the rise plus most of the landing bounce (HOST_ENTER_MS).
+const HOST_ENTRANCE_GAP_MS = 600;
+
+function queueHostEntrances(names) {
+    const stage = getHostStage();
+    let queued = 0;
+    for (const name of names) {
+        const key = String(name || '').toLowerCase().trim();
+        if (!key || stage.isOnStage(name) || hostEntranceQueue.some(n => n.toLowerCase().trim() === key)) continue;
+        hostEntranceQueue.push(name);
+        queued++;
+    }
+    if (queued && !hostEntranceRunning) void runHostEntranceQueue();
+    return queued;
+}
+
+async function runHostEntranceQueue() {
+    hostEntranceRunning = true;
+    const stage = getHostStage();
+    let entered = 0;
+    while (hostEntranceQueue.length) {
+        if (entered) await new Promise(r => setTimeout(r, HOST_ENTRANCE_GAP_MS));
+        if (trialManager?.isTrialActive?.() || isTrialUiActive()) {
+            hostEntranceQueue.length = 0;
+            break;
+        }
+        const name = hostEntranceQueue.shift();
+        if (!name || stage.isOnStage(name)) continue;
+        // Not awaited: the first entry waits on onFirstEnter's music fade.
+        void stage.enter(name);
+        playHostBwomp();
+        entered++;
+    }
+    hostEntranceRunning = false;
+}
+
+// A fresh copy each time, so overlapping bwomps ring out instead of
+// rewinding the one <audio> element as playSfx would.
+function playHostBwomp() {
+    if (getMonopadSetting('hostEntranceSfx') === false) return;
+    const volume = Number(getMonopadSetting('monopadVolume') ?? 50) / 100;
+    const base = sfx?.host_bwomp;
+    if (volume <= 0 || typeof base?.cloneNode !== 'function') return;
+    const audio = base.cloneNode(true);
+    audio.volume = Math.min(1, volume);
+    audio.play().catch(e => console.warn("[Dangan][Host] bwomp failed:", e));
 }
 
 // Rise & Shine hosts wait here while their splash plays. Everyone called in
@@ -8800,7 +8850,6 @@ let hostSplashBusy = false;
 let hostSplashEpoch = 0;
 // The jingle and shout of the splash now playing.
 let hostSplashSounds = null;
-const HOST_SPLASH_STAGGER_MS = 180;
 // How far into the shout the hosts' song starts.
 const HOST_SPLASH_SONG_DELAY_MS = 1000;
 
@@ -8836,20 +8885,13 @@ async function playHostSplashEntrance() {
     hostSplashBusy = false;
     const names = [...pendingSplashHosts.values()];
     pendingSplashHosts.clear();
-    let entered = 0;
-    for (const name of names) {
-        if (trialManager?.isTrialActive?.() || isTrialUiActive()) break;
-        if (entered) await new Promise(r => setTimeout(r, HOST_SPLASH_STAGGER_MS));
-        if (epoch !== hostSplashEpoch) return;
-        if (stage.isOnStage(name)) continue;
-        // Not awaited: the first entry waits on onFirstEnter's music fade.
-        void stage.enter(name);
-        entered++;
-        if (getMonopadSetting('hostEntranceSfx') !== false) playSfx(sfx.host_bwomp);
+    if (!(trialManager?.isTrialActive?.() || isTrialUiActive())) {
+        queueHostEntrances(names);
+        return;
     }
-    // A Class Trial began during the splash: nobody came in, so its sounds
+    // A Class Trial began during the splash: nobody comes in, so its sounds
     // and music stop.
-    if (!entered && !stage.names().length) {
+    if (!stage.names().length) {
         hostSplashEpoch++;
         sounds.stop();
         if (hostMusicPlaying) {
@@ -8871,8 +8913,10 @@ function playHostSplashSounds() {
     return playSplashSounds([`${extensionFolderPath}/${SPLASH_JINGLE_PATH}`, voice], { volume });
 }
 
-// Drops a splash that is still playing and the hosts waiting on it.
+// Drops a splash that is still playing and the hosts waiting on it or in
+// the entrance queue.
 function cancelHostSplashEntrance() {
+    hostEntranceQueue.length = 0;
     if (!hostSplashBusy && !pendingSplashHosts.size) return;
     hostSplashEpoch++;
     hostSplashBusy = false;
