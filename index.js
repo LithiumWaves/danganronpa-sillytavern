@@ -8801,6 +8801,8 @@ let hostSplashEpoch = 0;
 // The jingle and shout of the splash now playing.
 let hostSplashSounds = null;
 const HOST_SPLASH_STAGGER_MS = 180;
+// How far into the shout the hosts' song starts.
+const HOST_SPLASH_SONG_DELAY_MS = 1000;
 
 function queueHostSplashEntrance(name) {
     const key = name.toLowerCase().trim();
@@ -8819,11 +8821,12 @@ async function playHostSplashEntrance() {
     const sounds = playHostSplashSounds();
     hostSplashSounds = sounds;
     // The room goes quiet for the jingle and shout, and the hosts' song (the
-    // MONOKUBS playlist, else MONOKUMA) starts once both have finished.
+    // MONOKUBS playlist, else MONOKUMA) comes in about a second into the shout.
     const musicKey = ['monokubsTracks', 'monokumaTracks'].find(k => (getMonopadSetting(k) || []).length);
     if (musicKey && !stage.names().length && !hostMusicPlaying) {
         hostMusicPlaying = true;
-        void Promise.all([fadeOutAndPauseBgm(), sounds.done]).then(() => {
+        const songCue = sounds.started.then(() => new Promise(r => setTimeout(r, HOST_SPLASH_SONG_DELAY_MS)));
+        void Promise.all([fadeOutAndPauseBgm(), songCue]).then(() => {
             // Not if the hosts were already dismissed (onLastLeave clears the flag).
             if (epoch === hostSplashEpoch && hostMusicPlaying) hostMusicPlaying = playLocationTrack(musicKey);
         });

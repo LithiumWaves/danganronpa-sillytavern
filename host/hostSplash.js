@@ -222,8 +222,9 @@ export function cancelHostSplash() {
     current?.cancel();
 }
 
-// Plays every sound at once. `done` resolves when they have all ended,
-// failed or been blocked; `stop()` cuts them off and resolves it at once.
+// Plays every sound at once. `started` resolves when the first one is
+// audibly playing (or they all failed); `done` when they have all ended,
+// failed or been blocked; `stop()` cuts them off and resolves both at once.
 export function playSplashSounds(urls, { volume = 1 } = {}) {
     const audios = urls.filter(Boolean).map((url) => {
         const audio = new Audio(url);
@@ -232,6 +233,9 @@ export function playSplashSounds(urls, { volume = 1 } = {}) {
     });
     let finish;
     const done = new Promise((resolve) => { finish = resolve; });
+    let markStarted;
+    const started = new Promise((resolve) => { markStarted = resolve; });
+    done.then(() => markStarted());
     let left = audios.length;
     const timer = setTimeout(() => finish(), SOUNDS_TIMEOUT_MS);
     done.then(() => clearTimeout(timer));
@@ -243,11 +247,13 @@ export function playSplashSounds(urls, { volume = 1 } = {}) {
             settled = true;
             if (--left <= 0) finish();
         };
+        audio.addEventListener("playing", () => markStarted(), { once: true });
         audio.addEventListener("ended", settle, { once: true });
         audio.addEventListener("error", settle, { once: true });
         audio.play().catch(settle);
     }
     return {
+        started,
         done,
         stop() {
             for (const audio of audios) audio.pause();
