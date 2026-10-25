@@ -23,7 +23,7 @@ import { createMapPanelController } from "./map/mapPanel.js";
 import { DORM_PLAYER_KEY } from "./map/mapLinks.js";
 import { isHostName, readHostSetting, resolveHostNames, usesSplashEntrance } from "./host/hostCards.js";
 import { createHostStage } from "./host/hostStage.js";
-import { cancelHostSplash, DEFAULT_HOST_SPLASH_TEXT, playHostSplash } from "./host/hostSplash.js";
+import { cancelHostSplash, DEFAULT_HOST_SPLASH_TEXT, DEFAULT_SPLASH_VOICE_PATH, playHostSplash, playSplashSounds, SPLASH_JINGLE_PATH } from "./host/hostSplash.js";
 import { getLocationPromptReference, resolveLocationIdFromText } from "./map/locationPresence.js";
 import { INVESTIGATION_START_REGEX, MONOCOIN_REWARDS, REWARD_DIFFICULTY_LABELS, REWARD_PROFILES, TRIAL_START_REGEX, XP_REWARDS, SOCIAL_DOWN_REGEX, SOCIAL_DROP_REGEX, SOCIAL_BREAK_REGEX, parseSocialMarkerTarget, SOCIAL_REGEX, SOCIAL_UP_REGEX, TRIAL_CONTEXT_REGEX, defaultSettings, extensionFolderPath, extensionName, getDefaultPromptTemplate } from "./core/constants.js";
 import { VN_SKIN_CHOICES, normalizeVnSkin, PHASE_BANNER_CHOICES, normalizePhaseBannerStyle, resolvePhaseBannerStyle } from "./core/vnSkins.js";
@@ -8632,7 +8632,18 @@ function applyHostCardsUI() {
     if (row) row.classList.toggle('is-hidden', !custom);
     const text = document.getElementById('dangan-host-splash-text');
     if (text && document.activeElement !== text) text.value = String(getMonopadSetting('hostSplashText') ?? '');
+    applySplashVoiceUI();
     renderHostCardList();
+}
+
+function applySplashVoiceUI() {
+    const mode = getMonopadSetting('hostSplashVoiceMode') || 'default';
+    document.querySelectorAll('[data-splash-voice]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.splashVoice === mode);
+    });
+    document.getElementById('dangan-splash-voice-row')?.classList.toggle('is-hidden', mode !== 'custom');
+    const nameEl = document.getElementById('dangan-splash-voice-name');
+    if (nameEl) nameEl.textContent = getMonopadSetting('hostSplashVoiceData') ? 'Custom file loaded' : 'No file chosen';
 }
 
 function renderHostCardList() {
@@ -8787,6 +8798,8 @@ const pendingSplashHosts = new Map();
 let hostSplashBusy = false;
 // Bumped by cancelHostSplashEntrance(); a splash from an older epoch stops.
 let hostSplashEpoch = 0;
+// The jingle and shout of the splash now playing.
+let hostSplashSounds = null;
 const HOST_SPLASH_STAGGER_MS = 180;
 
 function queueHostSplashEntrance(name) {
@@ -8803,12 +8816,16 @@ function queueHostSplashEntrance(name) {
 async function playHostSplashEntrance() {
     const epoch = hostSplashEpoch;
     const stage = getHostStage();
-    // The MONOKUBS playlist starts with the splash. Without one, the
-    // MONOKUMA playlist starts as the hosts come in (onFirstEnter).
-    if (!stage.names().length && !hostMusicPlaying && (getMonopadSetting('monokubsTracks') || []).length) {
+    const sounds = playHostSplashSounds();
+    hostSplashSounds = sounds;
+    // The room goes quiet for the jingle and shout, and the hosts' song (the
+    // MONOKUBS playlist, else MONOKUMA) starts once both have finished.
+    const musicKey = ['monokubsTracks', 'monokumaTracks'].find(k => (getMonopadSetting(k) || []).length);
+    if (musicKey && !stage.names().length && !hostMusicPlaying) {
         hostMusicPlaying = true;
-        void fadeOutAndPauseBgm().then(() => {
-            if (epoch === hostSplashEpoch) hostMusicPlaying = playLocationTrack('monokubsTracks');
+        void Promise.all([fadeOutAndPauseBgm(), sounds.done]).then(() => {
+            // Not if the hosts were already dismissed (onLastLeave clears the flag).
+            if (epoch === hostSplashEpoch && hostMusicPlaying) hostMusicPlaying = playLocationTrack(musicKey);
         });
     }
     await playHostSplash({ text: getMonopadSetting('hostSplashText') || DEFAULT_HOST_SPLASH_TEXT });
@@ -8827,11 +8844,28 @@ async function playHostSplashEntrance() {
         entered++;
         if (getMonopadSetting('hostEntranceSfx') !== false) playSfx(sfx.host_bwomp);
     }
-    // A Class Trial began during the splash: nobody came in, so its music stops.
-    if (!entered && !stage.names().length && hostMusicPlaying) {
-        hostMusicPlaying = false;
-        stopLocationTrack();
+    // A Class Trial began during the splash: nobody came in, so its sounds
+    // and music stop.
+    if (!entered && !stage.names().length) {
+        hostSplashEpoch++;
+        sounds.stop();
+        if (hostMusicPlaying) {
+            hostMusicPlaying = false;
+            stopLocationTrack();
+        }
     }
+}
+
+// The splash's jingle plus the hosts' shout (default, the player's own file,
+// or muted), at the sound-effect volume.
+function playHostSplashSounds() {
+    const volume = Number(getMonopadSetting('monopadVolume') ?? 50) / 100;
+    if (volume <= 0) return playSplashSounds([]);
+    const mode = getMonopadSetting('hostSplashVoiceMode') || 'default';
+    const voice = mode === 'mute' ? ''
+        : mode === 'custom' ? getMonopadSetting('hostSplashVoiceData') || ''
+        : `${extensionFolderPath}/${DEFAULT_SPLASH_VOICE_PATH}`;
+    return playSplashSounds([`${extensionFolderPath}/${SPLASH_JINGLE_PATH}`, voice], { volume });
 }
 
 // Drops a splash that is still playing and the hosts waiting on it.
@@ -8841,6 +8875,7 @@ function cancelHostSplashEntrance() {
     hostSplashBusy = false;
     pendingSplashHosts.clear();
     cancelHostSplash();
+    hostSplashSounds?.stop();
     if (!hostStage?.names().length && hostMusicPlaying) {
         hostMusicPlaying = false;
         stopLocationTrack();
@@ -12303,6 +12338,27 @@ $(".monopad-icon").on("mouseenter", function () {
             setMonopadSetting('hostSplashCards', readHostSetting(next));
             saveSettingsDebounced();
             renderHostCardList();
+        });
+        $(document).on("click", "[data-splash-voice]", function () {
+            setMonopadSetting('hostSplashVoiceMode', String(this.dataset.splashVoice || 'default'));
+            saveSettingsDebounced();
+            applySplashVoiceUI();
+        });
+        $(document).on("click", "#dangan-splash-voice-pick", () => {
+            document.getElementById('dangan-splash-voice-file')?.click();
+        });
+        $(document).on("change", "#dangan-splash-voice-file", function () {
+            const file = this.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                setMonopadSetting('hostSplashVoiceData', e.target.result);
+                saveSettingsDebounced();
+                applySplashVoiceUI();
+                const nameEl = document.getElementById('dangan-splash-voice-name');
+                if (nameEl) nameEl.textContent = file.name;
+            };
+            reader.readAsDataURL(file);
         });
         $(document).on("change", "#dangan-host-splash-text", function () {
             setMonopadSetting('hostSplashText', String(this.value || '').trim());

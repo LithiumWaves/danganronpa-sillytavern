@@ -124,6 +124,10 @@ export const defaultSettings = {
     hostEntranceBounce: true,
     // Catchphrase on the Rise & Shine entrance (host/hostSplash.js).
     hostSplashText: "Rise and Shine, Ursine—!",
+    // What the hosts shout as the splash appears: "default", "custom" (the
+    // file in hostSplashVoiceData, a data URL) or "mute".
+    hostSplashVoiceMode: "default",
+    hostSplashVoiceData: "",
     hudColorSongMode: "phase",
     hudColorChapterMode: "phase",
     hudColorMapMode: "phase",

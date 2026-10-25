@@ -6,6 +6,14 @@
 
 export const DEFAULT_HOST_SPLASH_TEXT = "Rise and Shine, Ursine—!";
 
+// Played together as the splash appears, relative to the extension folder:
+// the splash's jingle, and what the hosts shout (swappable or mutable in
+// settings).
+export const SPLASH_JINGLE_PATH = "assets/sfx/monokuma/riseandshine.mp3";
+export const DEFAULT_SPLASH_VOICE_PATH = "assets/sfx/monokuma/ohakuma.mp3";
+// A sound that never reports its end stops holding things up after this.
+const SOUNDS_TIMEOUT_MS = 12000;
+
 // Matches the timeline in host-splash.css: the bubble holds until EXIT_AT,
 // then pops away.
 const EXIT_AT_MS = 2500;
@@ -212,4 +220,38 @@ export function playHostSplash({ text = DEFAULT_HOST_SPLASH_TEXT, document: doc 
 // Pulls the splash off screen at once (a Class Trial starting, a save switch).
 export function cancelHostSplash() {
     current?.cancel();
+}
+
+// Plays every sound at once. `done` resolves when they have all ended,
+// failed or been blocked; `stop()` cuts them off and resolves it at once.
+export function playSplashSounds(urls, { volume = 1 } = {}) {
+    const audios = urls.filter(Boolean).map((url) => {
+        const audio = new Audio(url);
+        audio.volume = Math.max(0, Math.min(1, volume));
+        return audio;
+    });
+    let finish;
+    const done = new Promise((resolve) => { finish = resolve; });
+    let left = audios.length;
+    const timer = setTimeout(() => finish(), SOUNDS_TIMEOUT_MS);
+    done.then(() => clearTimeout(timer));
+    if (!left) finish();
+    for (const audio of audios) {
+        let settled = false;
+        const settle = () => {
+            if (settled) return;
+            settled = true;
+            if (--left <= 0) finish();
+        };
+        audio.addEventListener("ended", settle, { once: true });
+        audio.addEventListener("error", settle, { once: true });
+        audio.play().catch(settle);
+    }
+    return {
+        done,
+        stop() {
+            for (const audio of audios) audio.pause();
+            finish();
+        },
+    };
 }

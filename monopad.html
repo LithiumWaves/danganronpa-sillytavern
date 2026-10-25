@@ -1124,6 +1124,21 @@
                         <input id="dangan-host-splash-text" class="settings-input" type="text" maxlength="60" placeholder="Rise and Shine, Ursine—!" autocomplete="off" />
                     </div>
 
+                    <div class="settings-item settings-item-stack settings-announ-row">
+                        <span class="settings-label">Rise &amp; Shine voice</span>
+                        <div class="settings-note">What the hosts shout as the splash appears, over its jingle. Use your own sound or mute it.</div>
+                        <div class="settings-lang-toggle" role="group" aria-label="Rise &amp; Shine voice">
+                            <button class="settings-lang-btn active" data-splash-voice="default" type="button">DEFAULT</button>
+                            <button class="settings-lang-btn" data-splash-voice="custom" type="button">CUSTOM</button>
+                            <button class="settings-lang-btn" data-splash-voice="mute" type="button">MUTE</button>
+                        </div>
+                        <div class="settings-announ-custom-row is-hidden" id="dangan-splash-voice-row">
+                            <button type="button" class="settings-small-button" id="dangan-splash-voice-pick">CHOOSE FILE</button>
+                            <input type="file" accept="audio/*" id="dangan-splash-voice-file" style="display:none" />
+                            <span class="settings-note" id="dangan-splash-voice-name">No file chosen</span>
+                        </div>
+                    </div>
+
                     <div class="settings-item">
                         <div class="settings-text">
                             <span class="settings-label">Hide Hope's Peak branding</span>
