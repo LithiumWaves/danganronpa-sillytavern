@@ -37,7 +37,7 @@ export function getStatusLine({ phase, day = 1, chapterLabel = "" } = {}) {
 
 // Actions the player can take from the current phase. Each one names the
 // confirmation to show, so the HUD and the Monopad header behave the same.
-export function getPhaseActions({ phase, timeTracker, canUndo = false, undoLabel = "" } = {}) {
+export function getPhaseActions({ phase, timeTracker, canUndo = false, undoLabel = "", caseOpen = false } = {}) {
     const actions = [];
 
     if (phase === PHASES.INVESTIGATION) {
@@ -80,6 +80,19 @@ export function getPhaseActions({ phase, timeTracker, canUndo = false, undoLabel
         });
     }
 
+    // A motive starts the chapter's murder plot; one at a time.
+    if ((phase === PHASES.DAY || phase === PHASES.NIGHT) && !caseOpen) {
+        actions.push({
+            id: "motive",
+            label: "MONOKUMA'S MOTIVE",
+            confirm: {
+                title: "MONOKUMA'S MOTIVE",
+                message: "Have Monokuma announce a motive now? Behind the scenes, someone starts planning a murder.",
+                confirmLabel: "ANNOUNCE",
+            },
+        });
+    }
+
     if (phase === PHASES.DAY || phase === PHASES.NIGHT) {
         actions.push({
             id: "start-investigation",
@@ -100,7 +113,7 @@ export function getPhaseActions({ phase, timeTracker, canUndo = false, undoLabel
 }
 
 // A short hint telling the player what usually comes next.
-export function getNextStepHint({ phase, timeTracker, truthBulletCount = 0, rosterCount = 0 } = {}) {
+export function getNextStepHint({ phase, timeTracker, truthBulletCount = 0, rosterCount = 0, motive = null } = {}) {
     if (phase === PHASES.TRIAL) {
         return "The Class Trial is in session. Use the trial panel to pick a minigame or vote.";
     }
@@ -113,6 +126,13 @@ export function getNextStepHint({ phase, timeTracker, truthBulletCount = 0, rost
         }
         const noun = truthBulletCount === 1 ? "Truth Bullet" : "Truth Bullets";
         return `You have ${truthBulletCount} ${noun}. Keep looking, or start the Class Trial when you're ready.`;
+    }
+    if (motive?.title && (phase === PHASES.DAY || phase === PHASES.NIGHT)) {
+        const day = Math.max(1, Number(timeTracker?.day) || 1);
+        const due = Number(motive.deadlineDay) || day;
+        if (due < day) return `Monokuma's motive: ${motive.title}. Its deadline has passed.`;
+        const when = due === day ? "tonight" : `the night of Day ${due}`;
+        return `Monokuma's motive: ${motive.title}. The deadline is ${when}.`;
     }
     if (phase === PHASES.NIGHT) {
         const next = Math.max(1, Number(timeTracker?.day) || 1) + 1;

@@ -40,6 +40,8 @@ import { releaseLoadingCurtain, showLoadingCurtain, waitForSplashToClose } from 
 import { createPhaseHistory, derivePhase, getNextStepHint, getPhaseActions, getStatusLine } from "./core/phase/phaseState.js";
 import { notify } from "./core/ui/notify.js";
 import { SAVE_MODES, createSaveStore } from "./core/saves/saveStore.js";
+import { pinInScope } from "./map/mapStorage.js";
+import { CASE_STATUS, DEFAULT_MOTIVE_DEADLINE_DAYS, buildCaseGenerationPrompt, buildMotiveChatNote, getMotiveAnnouncementText, isCaseOpen, normalizeCaseFile, parseCaseFileResponse, shouldAutoAnnounceMotive } from "./core/case/caseFile.js";
 import { MARKER_BLOCKS, MARKER_PROMPT_KEY, buildMarkerPrompt, textHasMarkerInstructions } from "./core/prompts/markerPrompts.js";
 import { TRUST_LEVELS_PROMPT_KEY, buildTrustLevelsPrompt } from "./core/prompts/trustLevelsPrompt.js";
 import { createEffectLedger, emptyEffects, hasEffects, messageIdentity } from "./core/ledger/effectLedger.js";
@@ -600,6 +602,7 @@ async function sleepToNextDay({ source = "manual" } = {}) {
     applyDynamicTheme();
     audioVisualizer?.unsuppress?.();
     console.log(`[${extensionName}] Time advanced to DAY ${state.day} (source: ${source}).`);
+    await maybeAutoAnnounceMotive();
     return true;
 }
 
@@ -689,7 +692,9 @@ function setCurrentChapterIndex(idx) {
     let next = Number(idx);
     if (!Number.isFinite(next)) return false;
     next = next >= 10 ? 10 : Math.max(0, Math.min(9, Math.floor(next)));
+    const changed = next !== Number(getMonopadSetting('chapterIndex') ?? 0);
     setMonopadSetting('chapterIndex', next);
+    if (changed) onChapterChangedForCase(next);
     saveSettingsDebounced();
     chaptersActiveIdx = next;
     updateChapterDisplay();
@@ -4780,6 +4785,183 @@ function endInvestigation({ source = "manual" } = {}) {
     return true;
 }
 
+// ── Monokuma's motive and the hidden Case File ───────────────────────────────
+// A motive is announced by the extension (Phase HUD, or automatically on a set
+// day of the chapter), never by a marker, so no standing rule rides along with
+// every reply. The same hidden call plans the chapter's murder.
+
+let motiveInFlight = false;
+
+function getCaseFile() {
+    return normalizeCaseFile(extension_settings[extensionName]?.caseFile);
+}
+
+function setCaseFile(caseFile) {
+    extension_settings[extensionName] ||= {};
+    extension_settings[extensionName].caseFile = caseFile ? normalizeCaseFile(caseFile) : null;
+    saveSettingsDebounced();
+    refreshPhaseHud();
+}
+
+// The day the current chapter started on, for the automatic motive. Recorded
+// the first time a chapter is seen.
+function getChapterStartDay() {
+    const root = extension_settings[extensionName] ||= {};
+    const chapterIndex = Number(getMonopadSetting("chapterIndex") ?? 0);
+    if (!root.motiveSchedule || Number(root.motiveSchedule.chapterIndex) !== chapterIndex) {
+        root.motiveSchedule = { chapterIndex, startDay: ensureTimeTrackerState().day };
+        saveSettingsDebounced();
+    }
+    return Math.max(1, Number(root.motiveSchedule.startDay) || 1);
+}
+
+// A new chapter starts a new schedule, and the last chapter's case is over.
+function onChapterChangedForCase(chapterIndex) {
+    const root = extension_settings[extensionName] ||= {};
+    root.motiveSchedule = { chapterIndex, startDay: ensureTimeTrackerState().day };
+    const caseFile = getCaseFile();
+    if (caseFile && caseFile.chapterIndex < chapterIndex && caseFile.status !== CASE_STATUS.CLOSED) {
+        setCaseFile({ ...caseFile, status: CASE_STATUS.CLOSED });
+    }
+}
+
+function getCasePlayerName() {
+    const ctx = window.SillyTavern?.getContext?.();
+    return String(ctx?.name1 || ctx?.user_name || ctx?.personaName || "").trim();
+}
+
+// Living students who can be the killer, victim or a witness.
+function listCaseCast() {
+    const player = normalizeName(getCasePlayerName());
+    return [...characters.values()]
+        .filter((c) => c?.name && !c.dead && !c.missing && !c.isPlayer && !isHostCharacter(c.name))
+        .filter((c) => normalizeName(c.name) !== player)
+        .map((c) => ({ name: c.name, ultimate: c.ultimate || "" }));
+}
+
+// Rooms on this save's map that are open right now.
+function listCaseRooms() {
+    const scope = extension_settings[extensionName]?.map?.scope;
+    const seen = new Set();
+    return (mapPanelController?.getAllPins?.() || [])
+        .filter((pin) => pin?.type === "room" && pin.locationId && !pin.hidden && pinInScope(pin, scope))
+        .filter((pin) => !mapPanelController?.isPinLocked?.(pin))
+        .filter((pin) => !seen.has(pin.locationId) && seen.add(pin.locationId))
+        .map((pin) => ({ id: pin.locationId, label: pin.label || pin.locationId }));
+}
+
+async function generateCaseFile({ deadlineDays }) {
+    const cast = listCaseCast();
+    if (cast.length < 2) throw new Error("At least two living classmates are needed for a motive.");
+    const rooms = listCaseRooms();
+    if (!rooms.length) throw new Error("This save's map has no open rooms.");
+
+    const day = ensureTimeTrackerState().day;
+    const chapterIndex = Number(getMonopadSetting("chapterIndex") ?? 0);
+    const player = getCasePlayerName();
+    const prompt = buildCaseGenerationPrompt({
+        cast,
+        player,
+        rooms,
+        day,
+        chapterLabel: getChapterLabel(),
+        deadlineDays,
+        recentChat: buildRecentChatContextLines(20),
+    });
+    const parseOpts = { cast, player, rooms, day, chapterIndex, deadlineDays };
+
+    let lastError = "";
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+        const retry = lastError ? `\n\nYour last answer was rejected: ${lastError} Answer again with only the corrected JSON object.` : "";
+        const raw = await generateIsolated(`${prompt}${retry}`, { allowDialogue: true, maxTokens: 1800 });
+        const { caseFile, error } = parseCaseFileResponse(raw, parseOpts);
+        if (caseFile) return caseFile;
+        lastError = error;
+        console.warn(`[${extensionName}] Case File rejected: ${error}`);
+    }
+    throw new Error(lastError || "The plan couldn't be generated.");
+}
+
+// Pipes split slash commands and {{ starts a macro.
+function toSlashSafeText(text) {
+    return String(text || "").replace(/\|/g, "/").replace(/\{\{/g, "{ {").trim();
+}
+
+// Narrator messages are part of the chat the AI reads, so the motive needs no
+// prompt of its own.
+async function postMotiveChatNote(note) {
+    await executeSlashCommandsWithOptions(`/sys ${toSlashSafeText(note)}`, { handleParserErrors: true });
+}
+
+async function removeMotiveChatNote(note) {
+    const ctx = window.SillyTavern?.getContext?.();
+    const last = Array.isArray(ctx?.chat) ? ctx.chat[ctx.chat.length - 1] : null;
+    if (!last || typeof ctx.deleteLastMessage !== "function") return false;
+    if (String(last.mes || "").trim() !== toSlashSafeText(note)) return false;
+    await ctx.deleteLastMessage();
+    return true;
+}
+
+async function announceMotive({ source = "manual" } = {}) {
+    const phase = getCurrentPhase();
+    if (motiveInFlight || (phase !== "DAY" && phase !== "NIGHT")) return false;
+    if (isCaseOpen(getCaseFile())) {
+        notify({ tone: "warn", title: "MOTIVE ALREADY OUT", message: "This chapter already has a motive." });
+        return false;
+    }
+
+    motiveInFlight = true;
+    notify({ title: "PUHUHU...", message: "Monokuma is preparing a motive.", durationMs: 4000 });
+    let caseFile;
+    try {
+        caseFile = await generateCaseFile({ deadlineDays: DEFAULT_MOTIVE_DEADLINE_DAYS });
+    } catch (err) {
+        notify({ tone: "error", title: "NO MOTIVE", message: `Monokuma couldn't come up with a motive: ${err?.message || err}` });
+        return false;
+    } finally {
+        motiveInFlight = false;
+    }
+
+    setCaseFile(caseFile);
+    await monokumaAnnouncementController?.triggerAsync("MOTIVE", { text: getMotiveAnnouncementText(caseFile) });
+    playCurrentPhaseTrack();
+
+    const note = buildMotiveChatNote(caseFile);
+    try {
+        await postMotiveChatNote(note);
+    } catch (err) {
+        console.warn(`[${extensionName}] Couldn't post the motive to the chat:`, err);
+    }
+
+    notify({
+        title: `MOTIVE: ${caseFile.motive.title.toUpperCase()}`,
+        message: caseFile.motive.description,
+        actionLabel: "UNDO",
+        onAction: async () => {
+            setCaseFile(null);
+            const removed = await removeMotiveChatNote(note).catch(() => false);
+            notify({ title: "UNDONE", message: removed ? "The motive is gone." : "The motive is gone. Its message stays in the chat; delete it if you like." });
+        },
+        durationMs: 12000,
+    });
+    console.log(`[${extensionName}] Motive announced (source: ${source}).`);
+    return true;
+}
+
+// Called after the morning announcement.
+async function maybeAutoAnnounceMotive() {
+    const autoDay = Number(getMonopadSetting("motiveAutoDay") || 0);
+    if (!autoDay || isClassTrialActive()) return;
+    const due = shouldAutoAnnounceMotive({
+        autoDay,
+        day: ensureTimeTrackerState().day,
+        chapterStartDay: getChapterStartDay(),
+        chapterIndex: Number(getMonopadSetting("chapterIndex") ?? 0),
+        caseFile: getCaseFile(),
+    });
+    if (due) await announceMotive({ source: "auto" });
+}
+
 // The confirm dialog is part of the Monopad markup, which is hidden while the
 // Monopad is closed. Lift it to <body> so the HUD can use it at any time.
 function confirmOutsideMonopad(options) {
@@ -4811,6 +4993,9 @@ async function runPhaseAction(action) {
             break;
         case "start-investigation":
             investigationStartController.trigger();
+            break;
+        case "motive":
+            await announceMotive({ source: "phase_hud" });
             break;
         case "undo":
             undoLastPhaseChange();
@@ -4865,15 +5050,18 @@ function renderPhaseMenu() {
 
     const phase = getCurrentPhase();
     const timeTracker = ensureTimeTrackerState();
+    const caseFile = getCaseFile();
+    const caseOpen = isCaseOpen(caseFile);
     hud.querySelector(".dangan-phase-hint").textContent = getNextStepHint({
         phase,
         timeTracker,
         truthBulletCount: getTruthBullets().length,
         rosterCount: characters.size,
+        motive: caseOpen && caseFile.status === CASE_STATUS.PLANNED ? caseFile.motive : null,
     });
 
     const last = phaseHistory.peek();
-    const actions = getPhaseActions({ phase, timeTracker, canUndo: Boolean(last), undoLabel: last?.label });
+    const actions = getPhaseActions({ phase, timeTracker, canUndo: Boolean(last), undoLabel: last?.label, caseOpen });
     const list = hud.querySelector(".dangan-phase-actions");
     list.replaceChildren(...actions.map((action) => {
         const btn = document.createElement("button");
@@ -9922,6 +10110,12 @@ function applySettingsTabUI() {
         el.value = savedTemplate;
     });
 
+    const motiveAutoSelect = document.getElementById("dangan_motive_auto_day");
+    if (motiveAutoSelect) {
+        const raw = String(Number(tab.motiveAutoDay) || 0);
+        motiveAutoSelect.value = ["0", "2", "3", "4"].includes(raw) ? raw : "0";
+    }
+
     const hygieneSelect = document.getElementById("dangan_card_hygiene_default");
     if (hygieneSelect) {
         const raw = String(tab.cardHygieneDefault || defaultSettings.cardHygieneDefault || "ask");
@@ -12774,6 +12968,11 @@ $(".monopad-icon").on("mouseenter", function () {
                 try { syncRoomContextPrompt(); } catch { /* ignore */ }
             }
             if (settingKey.startsWith("marker")) syncMarkerPrompts();
+        });
+
+        $("#dangan_motive_auto_day").on("change", function () {
+            const next = Number(this.value) || 0;
+            setMonopadSetting("motiveAutoDay", [2, 3, 4].includes(next) ? next : 0);
         });
 
         $("#dangan_card_hygiene_default").on("change", function () {

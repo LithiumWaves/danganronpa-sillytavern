@@ -242,6 +242,11 @@ export const defaultSettings = {
     // Whether Investigation Mode is currently active — persisted so it survives
     // page refreshes (cleared when time advances to the next phase/day).
     investigationUnderway: false,
+    // The hidden plan for this chapter's murder (core/case/caseFile.js), made
+    // when Monokuma announces a motive. Never shown unless the player asks.
+    caseFile: null,
+    // Day N of a chapter Monokuma announces the motive on by himself; 0 is off.
+    motiveAutoDay: 0,
 };
 
 export const DEFAULT_TRIAL_PROMPT_TEMPLATES = {

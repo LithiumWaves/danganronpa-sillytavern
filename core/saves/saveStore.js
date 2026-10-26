@@ -21,6 +21,8 @@ export const STORY_KEYS = Object.freeze([
     "progression",
     "timeTracker",
     "investigationUnderway",
+    "caseFile",
+    "motiveSchedule",
     "chapterIndex",
     "chapterJournal",
     "chapterJournalByScope",

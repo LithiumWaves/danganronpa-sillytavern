@@ -65,6 +65,7 @@ Each save keeps its own story: classmates and trust, Truth Bullets, chapter, day
 A small readout under the chapter title and level bar at the top right shows where the story is, for example `DAY 4 · INVESTIGATION`. Click it to see what usually comes next and the actions for the current phase:
 - **End Investigation:** go back to daily life without starting a trial. Your Truth Bullets are kept.
 - **Start Class Trial**, **Pass Time**, **Sleep** and **Start Investigation**, each with a confirmation.
+- **Monokuma's Motive:** Monokuma announces a motive (daily life only, one per chapter). See **Motives and the Case File** below.
 - **Undo:** reverses the last phase change, whether you made it or the story did.
 
 When the story starts an investigation on its own, a toast offers **UNDO** for a few seconds. Turn the readout off under Settings → Display → **Phase HUD**.
@@ -72,6 +73,15 @@ When the story starts an investigation on its own, a toast offers **UNDO** for a
 ### Escape
 - **Cutscenes:** Escape ends the one playing now: Monokuma announcements, body discoveries, phase banners, character introductions, the chapter-end roster, vote results, execution cinematics, trust ceremonies, Truth Bullet pop-ups and interjections. Whatever they change still happens (the investigation still starts, the chapter still advances). Queued ones play next.
 - **Minigames:** Escape asks to leave. Leaving puts back everything the game changed: Monocoins, Trust Fragments, XP, and the trial phase and debate history. In Non-Stop Debate, Mass Panic Debate and Scrum Debate, holding Escape still fast-forwards; a quick tap asks to leave.
+
+### Motives and the Case File
+Like in the games, a chapter's murder starts with Monokuma's motive. Start one from the Phase HUD, or have Monokuma announce it by himself on a set day of each chapter (Settings → Gameplay → **Monokuma's motive**; off by default, never in the Prologue).
+
+When the motive drops, one hidden generation call plans the chapter's murder: the killer, the victim, how and when it happens (by the night of the motive's deadline), and the clues it leaves behind. This is the **Case File**. It's kept with the save and never shown, so the mystery stays a mystery. The cast only learns about the motive itself, from a narrator message posted to the chat. The plan's characters and rooms come from your living classmates and the open rooms on this save's map.
+
+The Phase HUD shows the motive and its deadline until the case is over. **UNDO** on the motive's toast throws the plan away (and removes the narrator message while it's still the last one). Moving on to the next chapter closes the case.
+
+The generation uses the AI Generation source in Settings, like the trial minigames. It doesn't stop SillyTavern's prompt inspector or your API logs from showing the plan, so don't look there if you want to be surprised.
 
 ### Character Introductions
 Character Introductions takes a character's `neutral` sprite and renders them on an animated background, grabbing their `name` and `ultimate` values. Commenced through the `/introduce` command.

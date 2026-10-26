@@ -33,6 +33,13 @@ function run() {
     assert(nightActions.at(-1).label === "UNDO: Pass time", "undo is labelled");
     assert(getPhaseActions({ phase: PHASES.TRIAL }).length === 0, "no phase actions during a trial");
 
+    assert(ids(dayActions).includes("motive") && ids(nightActions).includes("motive"), "a motive can be announced in daily life");
+    assert(!ids(getPhaseActions({ phase: PHASES.DAY, timeTracker: day, caseOpen: true })).includes("motive"), "one motive at a time");
+    assert(!ids(inv).includes("motive"), "no motive during an investigation");
+    assert(getNextStepHint({ phase: PHASES.DAY, timeTracker: day, rosterCount: 5, motive: { title: "Videos", deadlineDay: 5 } }).includes("night of Day 5"), "motive deadline hint");
+    assert(getNextStepHint({ phase: PHASES.NIGHT, timeTracker: night, rosterCount: 5, motive: { title: "Videos", deadlineDay: 3 } }).includes("tonight"), "deadline tonight");
+    assert(getNextStepHint({ phase: PHASES.DAY, timeTracker: { ...day, day: 6 }, rosterCount: 5, motive: { title: "Videos", deadlineDay: 5 } }).includes("passed"), "deadline passed");
+
     assert(getNextStepHint({ phase: PHASES.DAY, rosterCount: 0 }).includes("NEW GAME"), "empty roster hint");
     assert(getNextStepHint({ phase: PHASES.INVESTIGATION, rosterCount: 5 }).includes("Search rooms"), "no evidence yet");
     assert(getNextStepHint({ phase: PHASES.INVESTIGATION, rosterCount: 5, truthBulletCount: 1 }).includes("1 Truth Bullet."), "singular bullet");

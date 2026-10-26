@@ -34,6 +34,13 @@ const MARKER_TYPES = {
             JP: "A body has been discovered! Now then, after a certain amount of time has passed, the class trial will begin!",
         },
     },
+    // Played by the extension, never by a marker: the text comes from the
+    // generated motive, and there's no voice line for it.
+    MOTIVE: {
+        chime: "dingdongbingbong.mp3",
+        label: "MOTIVE ANNOUNCEMENT",
+        transcript: "Puhuhu... Seems like you kids are getting way too comfortable. So here's a little motive for you!",
+    },
     BODY_DISCOVERY: {
         voice: "despairnoise.mp3",
         label: "BODY DISCOVERY",
@@ -94,6 +101,7 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
             DAY_ANNOUN_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/dingdongbingbong.mp3`),
             NIGHT_ANNOUN_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/dingdongbingbong.mp3`),
             BDA_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/bda_bell.mp3`),
+            MOTIVE_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/dingdongbingbong.mp3`),
             DAY_ANNOUN_VOICE: [
                 new Audio(`${extensionFolderPath}/assets/monokuma/morn1.wav`),
                 new Audio(`${extensionFolderPath}/assets/monokuma/morn2.wav`),
@@ -121,6 +129,7 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
             DAY_ANNOUN_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/dingdongbingbong.mp3`),
             NIGHT_ANNOUN_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/dingdongbingbong.mp3`),
             BDA_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/bda_bell.mp3`),
+            MOTIVE_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/dingdongbingbong.mp3`),
             DAY_ANNOUN_VOICE: new Audio(`${extensionFolderPath}/assets/monokuma/daytime_announ.mp3`),
             NIGHT_ANNOUN_VOICE: new Audio(`${extensionFolderPath}/assets/monokuma/nighttime_announ.mp3`),
             BDA_VOICE: new Audio(`${extensionFolderPath}/assets/monokuma/bda_announ.mp3`),
@@ -1040,9 +1049,9 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
             }
         }
 
-        const finalTranscript = overrides.text || resolvedTranscript;
+        const finalTranscript = options.text || overrides.text || resolvedTranscript;
 
-        label.textContent = config.label;
+        label.textContent = options.label || config.label;
         sting.classList.remove("active");
         monitor.classList.remove("on");
         screen.classList.remove("turning-on", "ready", "turning-off", "speaking");
