@@ -20,6 +20,13 @@ export const MAX_MOTIVE_DEADLINE_DAYS = 4;
 
 const LIMITS = { clues: 8, foreshadowing: 4, witnesses: 6, timeline: 10, text: 600 };
 
+// The Monokuma File fields a killer's trick can hide.
+export const FILE_FIELDS = Object.freeze(["timeOfDeath", "cause", "injuries"]);
+
+// Times a foreshadowing moment is offered without making it into a reply
+// before it's set aside.
+export const MAX_BEAT_ATTEMPTS = 3;
+
 function text(value, max = LIMITS.text) {
     return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, max);
 }
@@ -90,7 +97,9 @@ Write one JSON object and nothing else, with these fields:
   "murderDay": ${day} to ${lastDay},
   "murderTime": "day" or "night" (when on that day the murder happens),
   "body": { "room": "room id where the body is left", "state": "what the scene looks like when the body is found, 1-2 sentences" },
-  "monokumaFile": { "timeOfDeath": "approximate time", "cause": "cause of death", "injuries": "other wounds or details, or empty" },
+  "murderStyle": "hidden" or "public",
+  "gathering": { "room": "room id", "description": "the event that brings everyone together" } (only for a public murder, otherwise null),
+  "monokumaFile": { "timeOfDeath": "what the file reports", "cause": "what the file reports", "injuries": "other wounds or details, or empty", "concealed": [{ "field": "timeOfDeath, cause or injuries", "truth": "the real fact the file can't state, and why" }] },
   "timeline": ["short events in order, from the killer's preparation to the body being left"],
   "clues": [{ "text": "a fact the investigation can find", "room": "room id", "witness": "student name or empty" }],
   "foreshadowing": [{ "text": "a small, innocent-looking moment during the coming days that later turns out to matter", "characters": ["student names involved"] }],
@@ -101,7 +110,8 @@ Rules:
 - 5 to ${LIMITS.clues} clues. Each clue sits in a room from the list, or comes from a witness. Together they must make the killer deducible, with at least one red herring.
 - 2 to ${LIMITS.foreshadowing} foreshadowing moments that look harmless now.
 - Keep the killer in character: the motive has to plausibly break them.
-- The monokumaFile is the official autopsy handed to everyone: neutral facts only, nothing that names or points straight at the killer.
+- The monokumaFile is the official autopsy handed to everyone: neutral facts only, nothing that names or points straight at the killer. If the killer's trick hides or fakes something, the file reports only what can be established: "Unknown", a broad range, or what it appears to be (e.g. a body kept cold to hide the time of death gets "Unknown"; a staged suicide reports the apparent cause). Put the hidden truth in "concealed". Usually nothing is concealed.
+- Most murders are "hidden": done in secret, the body found later. A "public" murder happens during a gathering with others present, in the dark or in confusion, so nobody sees who did it (like a séance or a blackout at a party); give the gathering, and make one foreshadowing moment someone proposing it. The body room of a public murder is the gathering room.
 - Only use the students and rooms listed above.`;
 }
 
@@ -158,6 +168,8 @@ export function parseCaseFileResponse(raw, {
 
     const bodyRoom = matchRoom(data.body?.room, rooms);
     if (!bodyRoom) return { error: `The body's room "${text(data.body?.room, 60)}" isn't on the map.` };
+    const isPublic = data.murderStyle === "public";
+    const gatheringRoom = isPublic ? (matchRoom(data.gathering?.room, rooms) || bodyRoom) : null;
 
     const caseFile = normalizeCaseFile({
         status: CASE_STATUS.PLANNED,
@@ -177,6 +189,10 @@ export function parseCaseFileResponse(raw, {
         weapon: data.weapon,
         murderDay,
         murderTime: data.murderTime,
+        murderStyle: isPublic ? "public" : "hidden",
+        gathering: gatheringRoom
+            ? { roomId: gatheringRoom.id, roomLabel: gatheringRoom.label, description: data.gathering?.description }
+            : null,
         body: { roomId: bodyRoom.id, roomLabel: bodyRoom.label, state: data.body?.state },
         monokumaFile: data.monokumaFile,
         timeline: data.timeline,
@@ -198,8 +214,18 @@ export function normalizeCaseFile(raw) {
     const status = Object.values(CASE_STATUS).includes(raw.status) ? raw.status : CASE_STATUS.PLANNED;
     const createdDay = Math.max(1, Number(raw.createdDay) || 1);
     const deadlineDay = Math.max(createdDay, Number(raw.motive?.deadlineDay) || createdDay);
+    // Rows keep their ids; new ones (from generation or the editor) get the
+    // next free one.
+    const taken = new Set([...list(raw.clues), ...list(raw.foreshadowing), ...list(raw.emergentClues)]
+        .map((r) => r?.id).filter((v) => typeof v === "string" && v));
     let n = 0;
-    const id = (prefix, value) => (typeof value === "string" && value ? value : `${prefix}${++n}`);
+    const id = (prefix, value) => {
+        if (typeof value === "string" && value) return value;
+        let next;
+        do { next = `${prefix}${++n}`; } while (taken.has(next));
+        taken.add(next);
+        return next;
+    };
     return {
         version: 1,
         status,
@@ -219,6 +245,14 @@ export function normalizeCaseFile(raw) {
         weapon: text(raw.weapon, 120),
         murderDay: Math.min(deadlineDay, Math.max(createdDay, Number(raw.murderDay) || deadlineDay)),
         murderTime: raw.murderTime === "day" ? "day" : "night",
+        murderStyle: raw.murderStyle === "public" && raw.gathering?.roomId ? "public" : "hidden",
+        gathering: raw.murderStyle === "public" && raw.gathering?.roomId
+            ? {
+                roomId: text(raw.gathering.roomId, 120),
+                roomLabel: text(raw.gathering.roomLabel, 120),
+                description: text(raw.gathering.description),
+            }
+            : null,
         // Phase-1 plans had no body room; the first clue's room stands in.
         body: {
             roomId: text(raw.body?.roomId, 120) || firstClueRoom(raw).roomId,
@@ -229,6 +263,10 @@ export function normalizeCaseFile(raw) {
             timeOfDeath: text(raw.monokumaFile?.timeOfDeath, 120),
             cause: text(raw.monokumaFile?.cause, 300),
             injuries: text(raw.monokumaFile?.injuries, 300),
+            concealed: list(raw.monokumaFile?.concealed)
+                .map((c) => ({ field: FILE_FIELDS.includes(c?.field) ? c.field : "", truth: text(c?.truth, 300) }))
+                .filter((c) => c.field && c.truth),
+            revision: Math.max(1, Math.round(Number(raw.monokumaFile?.revision) || 1)),
         },
         committedAt: raw.committedAt && Number(raw.committedAt.day)
             ? { day: Number(raw.committedAt.day), time: raw.committedAt.time === "day" ? "day" : "night" }
@@ -249,6 +287,8 @@ export function normalizeCaseFile(raw) {
             text: text(f?.text),
             characters: list(f?.characters).map((name) => text(name, 80)).filter(Boolean),
             used: Boolean(f?.used),
+            skipped: Boolean(f?.skipped),
+            attempts: Math.max(0, Math.round(Number(f?.attempts) || 0)),
         })).filter((f) => f.text).slice(0, LIMITS.foreshadowing),
         witnesses: list(raw.witnesses).map((w) => ({
             name: text(w?.name, 80),
@@ -340,7 +380,7 @@ export function pickForeshadowingBeat(caseFile, { slot = "", presentNames = [] }
     if (!caseFile || caseFile.status !== CASE_STATUS.PLANNED) return null;
     if (slot && caseFile.lastBeatSlot === slot) return null;
     const present = new Set(presentNames.map(nameKey));
-    return caseFile.foreshadowing.find((beat) => !beat.used
+    return caseFile.foreshadowing.find((beat) => !beat.used && !beat.skipped
         && beat.characters.every((name) => present.has(nameKey(name)))) || null;
 }
 
@@ -403,21 +443,117 @@ export function describeCaseFile(caseFile) {
         `CASE FILE (SPOILERS) — ${cf.status.toUpperCase()}`,
         `Motive: ${cf.motive.title} — ${cf.motive.description} (deadline: night of Day ${cf.motive.deadlineDay})`,
         `Killer: ${cf.killer} · Victim: ${cf.victim}`,
-        `Murder: ${cf.murderTime} of Day ${cf.murderDay}${cf.committedAt ? ` · happened: ${cf.committedAt.time} of Day ${cf.committedAt.day}` : ""}`,
+        `Murder: ${cf.murderStyle}, ${cf.murderTime} of Day ${cf.murderDay}${cf.committedAt ? ` · happened: ${cf.committedAt.time} of Day ${cf.committedAt.day}` : ""}`,
+        ...(cf.gathering ? [`Gathering: ${cf.gathering.description} [${cf.gathering.roomLabel || cf.gathering.roomId}]`] : []),
         `Body: ${cf.body.roomLabel || "?"} (${cf.body.roomId || "?"}) · found: ${yes(cf.discovered)}${cf.pendingNote ? " · discovery note pending" : ""}`,
         `Why: ${cf.motiveLink}`,
         `Method: ${cf.method} Weapon: ${cf.weapon}.`,
-        `Monokuma File: ${cf.monokumaFile.timeOfDeath || "?"} · ${cf.monokumaFile.cause || "?"}${cf.monokumaFile.injuries ? ` · ${cf.monokumaFile.injuries}` : ""}`,
+        `Monokuma File (rev ${cf.monokumaFile.revision}): ${cf.monokumaFile.timeOfDeath || "?"} · ${cf.monokumaFile.cause || "?"}${cf.monokumaFile.injuries ? ` · ${cf.monokumaFile.injuries}` : ""}`,
+        ...cf.monokumaFile.concealed.map((c) => `  conceals ${c.field}: ${c.truth}`),
         "Timeline:",
         ...cf.timeline.map((t, i) => `  ${i + 1}. ${t}`),
         "Clues:",
         ...cf.clues.map((c) => `  - ${c.text} [${c.roomLabel || c.roomId || "witness"}${c.witness ? `, ${c.witness}` : ""}]`),
         `Foreshadowing (last slot: ${cf.lastBeatSlot || "none"}):`,
-        ...cf.foreshadowing.map((f) => `  - [${f.used ? "used" : "unused"}] ${f.text}${f.characters.length ? ` (${f.characters.join(", ")})` : ""}`),
+        ...cf.foreshadowing.map((f) => `  - [${f.used ? "used" : f.skipped ? "set aside" : "unused"}, offered ${f.attempts}x] ${f.text}${f.characters.length ? ` (${f.characters.join(", ")})` : ""}`),
         "Witnesses:",
         ...cf.witnesses.map((w) => `  - ${w.name}: ${w.account}`),
         `Emergent clues (${cf.emergentClues.length}):`,
         ...cf.emergentClues.map((c) => `  - ${c.title}${c.roomId ? ` [${c.roomId}]` : ""}`),
     ];
     return lines.join("\n");
+}
+
+// Content words of a moment that a reply including it would likely echo.
+const STOP_WORDS = new Set("a an the and or but of to in on at for with from by is are was were be been it its this that these those as into about than then their they them his her he she you your our we i not no so if when while who what where which how".split(" "));
+
+function contentWords(value) {
+    return [...new Set(String(value || "").toLowerCase().match(/[a-z0-9']{3,}/g) || [])]
+        .filter((w) => !STOP_WORDS.has(w));
+}
+
+// Share (0–1) of a moment's content words that appear in a reply. The
+// fallback when the hidden check can't run.
+export function beatWordOverlap(beatText, replyText) {
+    const words = contentWords(beatText);
+    if (!words.length) return 0;
+    const reply = new Set(contentWords(replyText));
+    return words.filter((w) => reply.has(w)).length / words.length;
+}
+
+// A moment went out with a reply. `landed` says whether the reply used it.
+// Either way the slot counts as spent; a moment that keeps missing is set
+// aside after MAX_BEAT_ATTEMPTS.
+export function recordBeatAttempt(caseFile, beatId, { landed = false, slot = "" } = {}) {
+    if (!caseFile) return caseFile;
+    return normalizeCaseFile({
+        ...caseFile,
+        foreshadowing: caseFile.foreshadowing.map((beat) => {
+            if (beat.id !== beatId) return beat;
+            const attempts = beat.attempts + 1;
+            return { ...beat, attempts, used: beat.used || landed, skipped: !landed && attempts >= MAX_BEAT_ATTEMPTS };
+        }),
+        lastBeatSlot: landed ? (slot || caseFile.lastBeatSlot) : caseFile.lastBeatSlot,
+    });
+}
+
+// Whether the gathering of a public murder is happening right now: the
+// murder day and time, in the gathering room, with the victim there.
+export function isGatheringNow(caseFile, { day = 1, time = "day", roomId = "", presentNames = [] } = {}) {
+    if (!caseFile || caseFile.status !== CASE_STATUS.PLANNED || caseFile.murderStyle !== "public") return false;
+    if (Number(caseFile.murderDay) !== Number(day) || caseFile.murderTime !== time) return false;
+    if (!roomId || roomId !== caseFile.gathering?.roomId) return false;
+    return presentNames.some((n) => nameKey(n) === nameKey(caseFile.victim));
+}
+
+// The file with a changed field: the next revision.
+export function reviseMonokumaFile(caseFile, monokumaFile) {
+    const before = caseFile.monokumaFile;
+    const changed = FILE_FIELDS.some((f) => (monokumaFile[f] ?? before[f]) !== before[f]);
+    return normalizeCaseFile({
+        ...caseFile,
+        monokumaFile: {
+            ...before,
+            ...monokumaFile,
+            revision: before.revision + (changed && caseFile.discovered ? 1 : 0),
+        },
+    });
+}
+
+export function monokumaFileChanged(before, after) {
+    return FILE_FIELDS.some((f) => (before?.monokumaFile?.[f] || "") !== (after?.monokumaFile?.[f] || ""));
+}
+
+// Checks a hand-edited case against the real cast and map. Returns an error
+// message, or "" when it's fine.
+export function validateCaseFile(caseFile, { cast = [], rooms = [], player = "" } = {}) {
+    const cf = caseFile;
+    if (!cf) return "There's no case.";
+    if (!cf.motive.title) return "The motive needs a title.";
+    const castNames = cast.map((c) => c.name).filter((n) => n && nameKey(n) !== nameKey(player));
+    const inCast = (n) => castNames.some((c) => nameKey(c) === nameKey(n));
+    if (!inCast(cf.killer)) return "Pick a killer from the living classmates.";
+    if (!inCast(cf.victim)) return "Pick a victim from the living classmates.";
+    if (nameKey(cf.killer) === nameKey(cf.victim)) return "The killer and the victim can't be the same student.";
+    const roomIds = new Set(rooms.map((r) => r.id));
+    if (!roomIds.has(cf.body.roomId)) return "Pick the room the body is found in.";
+    if (cf.murderStyle === "public" && !roomIds.has(cf.gathering?.roomId)) return "Pick the gathering's room.";
+    const badClue = cf.clues.find((c) => c.roomId && !roomIds.has(c.roomId));
+    if (badClue) return `The clue "${badClue.text.slice(0, 40)}" is in a room that isn't on the map.`;
+    const badName = [...cf.foreshadowing.flatMap((f) => f.characters), ...cf.witnesses.map((w) => w.name)]
+        .find((n) => !inCast(n) && nameKey(n) !== nameKey(cf.victim));
+    if (badName) return `"${badName}" isn't one of the living classmates.`;
+    return "";
+}
+
+// A blank case for writing one by hand.
+export function createBlankCaseFile({ day = 1, chapterIndex = 0, deadlineDays = DEFAULT_MOTIVE_DEADLINE_DAYS } = {}) {
+    return normalizeCaseFile({
+        status: CASE_STATUS.PLANNED,
+        createdDay: day,
+        chapterIndex,
+        motive: { title: "", deadlineDay: day + Math.max(0, deadlineDays - 1) },
+        murderDay: day + Math.max(0, deadlineDays - 1),
+        murderTime: "night",
+    });
 }

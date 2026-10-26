@@ -9,7 +9,7 @@ import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.j
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../../slash-commands/SlashCommandArgument.js';
 import { SlashCommandEnumValue } from '../../../slash-commands/SlashCommandEnumValue.js';
-import { initTruthBullets, handleTruthBullet, setNextTruthBulletSfxVariant, getTruthBulletByLocationId, showTruthBulletByLocationId, showTruthBulletById, getTruthBullets, clearAllTruthBullets, reloadTruthBullets, removeTruthBulletById, migrateTruthBulletImages } from "./truth/truthBullets.js";
+import { initTruthBullets, handleTruthBullet, setNextTruthBulletSfxVariant, getTruthBulletByLocationId, showTruthBulletByLocationId, showTruthBulletById, getTruthBullets, clearAllTruthBullets, reloadTruthBullets, removeTruthBulletById, migrateTruthBulletImages, updateTruthBulletDescription } from "./truth/truthBullets.js";
 import { configureImageUploads, fetchAsDataUrl, isDataUrl, uploadDataUrlImage, uploadImagesIn } from "./core/media/uploadImage.js";
 import { initTrustAnimations } from "./trust/trustAnimations.js";
 import { TRUST_CEREMONY_STYLE_CHOICES, normalizeTrustCeremonyStyle } from "./trust/ceremonyStyles.js";
@@ -41,9 +41,10 @@ import { createPhaseHistory, derivePhase, getNextStepHint, getPhaseActions, getS
 import { notify } from "./core/ui/notify.js";
 import { SAVE_MODES, createSaveStore } from "./core/saves/saveStore.js";
 import { pinInScope } from "./map/mapStorage.js";
-import { CASE_STATUS, DEFAULT_MOTIVE_DEADLINE_DAYS, addEmergentClue, buildCaseGenerationPrompt, describeCaseFile, buildMonokumaFileBullet, buildMotiveChatNote, commitMurder, getMonokumaFileTitle, getMotiveAnnouncementText, getTimeSlot, isCaseOpen, isMurderSlotOver, markBeatUsed, markDiscovered, normalizeCaseFile, parseCaseFileResponse, removeEmergentClue, shouldAutoAnnounceMotive } from "./core/case/caseFile.js";
+import { CASE_STATUS, DEFAULT_MOTIVE_DEADLINE_DAYS, addEmergentClue, beatWordOverlap, extractJsonObject, buildCaseGenerationPrompt, createBlankCaseFile, describeCaseFile, isGatheringNow, monokumaFileChanged, recordBeatAttempt, reviseMonokumaFile, validateCaseFile, buildMonokumaFileBullet, buildMotiveChatNote, commitMurder, getMonokumaFileTitle, getMotiveAnnouncementText, getTimeSlot, isCaseOpen, isMurderSlotOver, markDiscovered, normalizeCaseFile, parseCaseFileResponse, removeEmergentClue, shouldAutoAnnounceMotive } from "./core/case/caseFile.js";
 import { CASE_PROMPT_KEY, buildCasePrompt } from "./core/case/casePrompts.js";
 import { openMonokumaFile } from "./truth/monokumaFile.js";
+import { openCaseFileEditor } from "./truth/caseFileEditor.js";
 import { MARKER_BLOCKS, MARKER_PROMPT_KEY, buildMarkerPrompt, textHasMarkerInstructions } from "./core/prompts/markerPrompts.js";
 import { TRUST_LEVELS_PROMPT_KEY, buildTrustLevelsPrompt } from "./core/prompts/trustLevelsPrompt.js";
 import { createEffectLedger, emptyEffects, hasEffects, messageIdentity } from "./core/ledger/effectLedger.js";
@@ -564,7 +565,7 @@ async function passTimeToNight({ source = "manual" } = {}) {
     if (state.phase !== TIME_PHASE_DAY || state.dayActionUsed) return false;
 
     rememberPhaseForUndo("Pass time");
-    maybeCommitMurder("day");
+    const murdered = maybeCommitMurder("day");
     state.phase = TIME_PHASE_NIGHT;
     state.dayActionUsed = true;
     setInvestigationUnderway(false); // advancing time ends the investigation
@@ -577,6 +578,7 @@ async function passTimeToNight({ source = "manual" } = {}) {
     await nightTimeStartController.triggerAsync();
     playNighttimeTrack();
     applyDynamicTheme();
+    if (murdered) await discoverBodyIfWitnessed();
     console.log(`[${extensionName}] Time advanced to NIGHT (source: ${source}).`);
     return true;
 }
@@ -586,7 +588,7 @@ async function sleepToNextDay({ source = "manual" } = {}) {
     if (state.phase !== TIME_PHASE_NIGHT) return false;
 
     rememberPhaseForUndo("Sleep");
-    maybeCommitMurder("night");
+    const murdered = maybeCommitMurder("night");
     state.day = Math.max(1, Number(state.day || 1) + 1);
     state.phase = TIME_PHASE_DAY;
     state.dayActionUsed = false;
@@ -606,6 +608,7 @@ async function sleepToNextDay({ source = "manual" } = {}) {
     applyDynamicTheme();
     audioVisualizer?.unsuppress?.();
     console.log(`[${extensionName}] Time advanced to DAY ${state.day} (source: ${source}).`);
+    if (murdered) await discoverBodyIfWitnessed();
     await maybeAutoAnnounceMotive();
     return true;
 }
@@ -4928,6 +4931,14 @@ async function announceMotive({ source = "manual" } = {}) {
     }
 
     setCaseFile(caseFile);
+    await announceCaseMotive(caseFile);
+    console.log(`[${extensionName}] Motive announced (source: ${source}).`);
+    return true;
+}
+
+// Monokuma announces the motive of a case that's already planned (generated
+// or written by hand), and the cast hears about it in the chat.
+async function announceCaseMotive(caseFile) {
     await monokumaAnnouncementController?.triggerAsync("MOTIVE", { text: getMotiveAnnouncementText(caseFile) });
     playCurrentPhaseTrack();
 
@@ -4949,8 +4960,6 @@ async function announceMotive({ source = "manual" } = {}) {
         },
         durationMs: 12000,
     });
-    console.log(`[${extensionName}] Motive announced (source: ${source}).`);
-    return true;
 }
 
 // Called after the morning announcement.
@@ -5049,6 +5058,32 @@ function commitCaseMurder({ day, time }) {
     return true;
 }
 
+// Right after a murder: a public one was seen by everyone, and a hidden one
+// done in the room you're standing in is found on the spot.
+async function discoverBodyIfWitnessed() {
+    const caseFile = getCaseFile();
+    if (!caseFile || caseFile.status !== CASE_STATUS.COMMITTED || caseFile.discovered) return;
+    if (caseFile.murderStyle !== "public" && getCurrentLocationId() !== caseFile.body.roomId) return;
+    caseDiscoveryWalkIn = true;
+    try { await runBodyDiscoverySequence(); } finally { caseDiscoveryWalkIn = false; }
+}
+
+// Whether a body discovery right now would be this case's: the murder has
+// happened and nobody has found the body, or a public murder's gathering is
+// under way.
+function isCaseBodyFindable() {
+    const caseFile = getCaseFile();
+    if (!caseFile) return false;
+    if (caseFile.status === CASE_STATUS.COMMITTED && !caseFile.discovered) return true;
+    const tracker = ensureTimeTrackerState();
+    return isGatheringNow(caseFile, {
+        day: tracker.day,
+        time: tracker.phase === TIME_PHASE_NIGHT ? "night" : "day",
+        roomId: getCurrentLocationId() || "",
+        presentNames: getCurrentRoomOccupantNames(),
+    });
+}
+
 // Walking into the crime scene finds the body.
 function maybeDiscoverBodyOnEntry(locationId) {
     const caseFile = getCaseFile();
@@ -5065,23 +5100,69 @@ let caseDiscoveryWalkIn = false;
 // Every investigation start (the marker, the Phase HUD, /bodydiscovery or
 // walking in) finds the body if the murder has happened.
 function onCaseInvestigationStarted() {
-    const caseFile = getCaseFile();
-    if (!caseFile || caseFile.status !== CASE_STATUS.COMMITTED || caseFile.discovered) return;
-    const found = markDiscovered(caseFile, { walkedIn: caseDiscoveryWalkIn });
+    if (!isCaseBodyFindable()) return;
+    const walkedIn = caseDiscoveryWalkIn;
+    let caseFile = getCaseFile();
+    // A public murder's body turns up during its gathering.
+    if (caseFile.status === CASE_STATUS.PLANNED) {
+        const tracker = ensureTimeTrackerState();
+        commitCaseMurder({ day: tracker.day, time: tracker.phase === TIME_PHASE_NIGHT ? "night" : "day" });
+        caseFile = getCaseFile();
+    }
+    const found = markDiscovered(caseFile, { walkedIn });
     setCaseFile(found);
+    void finishCaseDiscovery(found, { walkedIn });
+}
 
-    const victim = findRosterCharacter(found.victim);
+// Plans from before the Monokuma File had details get them filled in, under
+// the same rules: what a trick hides stays hidden.
+async function fillMissingMonokumaFile(caseFile) {
+    const mf = caseFile.monokumaFile;
+    if (mf.timeOfDeath && mf.cause) return caseFile;
+    let filled = {};
+    try {
+        const raw = await generateIsolated(`A murder in a Danganronpa killing game. Write the official Monokuma File (the autopsy everyone gets) as one JSON object and nothing else:
+{ "timeOfDeath": "approximate time", "cause": "cause of death", "injuries": "other wounds or details, or empty", "concealed": [{ "field": "timeOfDeath, cause or injuries", "truth": "what the file can't state, and why" }] }
+Neutral facts only, nothing that points at the killer. If the killer's trick hides or fakes something, report only what can be established ("Unknown", a broad range, or what it appears to be) and put the truth in "concealed".
+
+VICTIM: ${caseFile.victim}
+WHAT HAPPENED: ${caseFile.method} Weapon: ${caseFile.weapon}.
+TIMELINE: ${caseFile.timeline.join(" → ")}
+MURDER: during the ${caseFile.murderTime} of Day ${caseFile.murderDay}.
+BODY: ${caseFile.body.roomLabel}. ${caseFile.body.state}`, { maxTokens: 400 });
+        filled = extractJsonObject(raw) || {};
+    } catch (err) {
+        console.warn("[Dangan][Case] Couldn't fill in the Monokuma File:", err);
+    }
+    const next = normalizeCaseFile({
+        ...caseFile,
+        monokumaFile: {
+            ...mf,
+            timeOfDeath: mf.timeOfDeath || filled.timeOfDeath || "Unknown",
+            cause: mf.cause || filled.cause || "Unknown",
+            injuries: mf.injuries || filled.injuries || "",
+            concealed: mf.concealed.length ? mf.concealed : filled.concealed,
+        },
+    });
+    setCaseFile(next);
+    caseDebug("FILE FILLED IN", `${next.monokumaFile.timeOfDeath} · ${next.monokumaFile.cause}`);
+    return next;
+}
+
+async function finishCaseDiscovery(caseFile, { walkedIn }) {
+    const victim = findRosterCharacter(caseFile.victim);
     if (victim) {
         victim.dead = true;
         victim.missing = false;
         saveCharacters();
     }
+    const found = await fillMissingMonokumaFile(caseFile);
 
     const file = buildMonokumaFileBullet(found, { victimUltimate: victim?.ultimate || "" });
     // The file screen below stands in for the usual Truth Bullet pop-up.
     handleTruthBullet(file.title, file.description, { grantMonocoins: false, grantXp: false, animate: false });
-    caseDebug("BODY FOUND", `${found.victim} in the ${found.body.roomLabel || "?"}${caseDiscoveryWalkIn ? " (walked in)" : ""}. ${file.title} added.`);
-    void openMonokumaFileForCase(found);
+    caseDebug("BODY FOUND", `${found.victim} in the ${found.body.roomLabel || "?"}${walkedIn ? " (walked in)" : ""}. ${file.title} added.`);
+    await openMonokumaFileForCase(found);
 }
 
 // ── The Monokuma File screen ──────────────────────────────────────────────────
@@ -5126,6 +5207,7 @@ async function buildMonokumaFileScreenData(caseFile) {
     ].filter(Boolean);
     return {
         number: Math.max(1, caseFile.chapterIndex || 1),
+        revision: mf.revision || 1,
         victim: {
             name: caseFile.victim,
             ultimate,
@@ -5159,6 +5241,114 @@ async function openMonokumaFileForCase(caseFile) {
     // Let the investigation banner finish first.
     await new Promise((r) => setTimeout(r, 2600));
     await openMonokumaFile(data, { narrate: true, playSfx: () => playSfx(sfx.click) });
+}
+
+// Saves an edited case. When the Monokuma File everyone already has changes,
+// it becomes a new revision: the bullet and the file screen follow, and
+// everyone hears it was updated.
+async function applyCaseEdit(next) {
+    const before = getCaseFile();
+    let caseFile = normalizeCaseFile(next);
+    const fileChanged = Boolean(before?.discovered && caseFile?.discovered && monokumaFileChanged(before, caseFile));
+    if (fileChanged) caseFile = reviseMonokumaFile({ ...caseFile, monokumaFile: before.monokumaFile }, caseFile.monokumaFile);
+    setCaseFile(caseFile);
+    if (!fileChanged) return caseFile;
+
+    const victim = findRosterCharacter(caseFile.victim);
+    const file = buildMonokumaFileBullet(caseFile, { victimUltimate: victim?.ultimate || "" });
+    updateTruthBulletDescription(file.title, file.description);
+    try {
+        const data = await buildMonokumaFileScreenData(caseFile);
+        const root = extension_settings[extensionName] ||= {};
+        root.monokumaFiles ||= {};
+        root.monokumaFiles[file.title] = data;
+        saveSettingsDebounced();
+    } catch (err) {
+        console.warn("[Dangan][Case] Monokuma File screen refresh failed:", err);
+    }
+    notify({
+        title: `${file.title.toUpperCase()} UPDATED`,
+        message: file.description,
+        actionLabel: "OPEN",
+        onAction: () => { void openStoredMonokumaFile(file.title); },
+        durationMs: 9000,
+    });
+    caseDebug("FILE UPDATED", `Revision ${caseFile.monokumaFile.revision}.`);
+    return caseFile;
+}
+
+// ── The Case File editor (spoilers, behind a gate kept per save) ──────────────
+
+// Fills in room labels from the map for what the editor saved by id.
+function withRoomLabels(caseFile) {
+    const labels = new Map(listCaseRooms().map((r) => [r.id, r.label]));
+    const label = (id, fallback) => labels.get(id) || fallback || "";
+    return {
+        ...caseFile,
+        body: { ...caseFile.body, roomLabel: label(caseFile.body?.roomId, caseFile.body?.roomLabel) },
+        gathering: caseFile.gathering ? { ...caseFile.gathering, roomLabel: label(caseFile.gathering.roomId, caseFile.gathering.roomLabel) } : null,
+        clues: (caseFile.clues || []).map((c) => ({ ...c, roomLabel: c.roomId ? label(c.roomId, c.roomLabel) : "" })),
+    };
+}
+
+function openCaseFileEditorFromMonopad() {
+    const root = () => (extension_settings[extensionName] ||= {});
+    openCaseFileEditor({
+        getCaseFile,
+        isRevealed: () => Boolean(root().caseFileRevealed),
+        setRevealed: (on) => { root().caseFileRevealed = Boolean(on); saveSettingsDebounced(); },
+        getCast: listCaseCast,
+        getRooms: listCaseRooms,
+        confirm: (opts) => confirmOutsideMonopad({ cancelLabel: "CANCEL", ...opts }),
+        createBlank: () => createBlankCaseFile({
+            day: ensureTimeTrackerState().day,
+            chapterIndex: Number(getMonopadSetting("chapterIndex") ?? 0),
+        }),
+        save: async (draft) => {
+            const next = normalizeCaseFile(withRoomLabels(draft));
+            const error = validateCaseFile(next, { cast: listCaseCast(), rooms: listCaseRooms(), player: getCasePlayerName() });
+            if (error) return error;
+            await applyCaseEdit(next);
+            caseDebug("EDITED", "The Case File was saved from the editor.");
+            return "";
+        },
+        regenerate: async () => {
+            const current = getCaseFile();
+            if (!current || current.status !== CASE_STATUS.PLANNED) return "Only a case that hasn't happened yet can be regenerated.";
+            try {
+                const fresh = await generateCaseFile({ deadlineDays: Math.max(1, current.motive.deadlineDay - ensureTimeTrackerState().day + 1) });
+                setCaseFile({ ...fresh, motive: current.motive, createdAt: current.createdAt, createdDay: current.createdDay });
+                caseDebug("REGENERATED", "A new plan replaced the old one.");
+                return "";
+            } catch (err) {
+                return `Couldn't generate: ${err?.message || err}`;
+            }
+        },
+        announce: async () => {
+            const caseFile = getCaseFile();
+            if (caseFile) await announceCaseMotive(caseFile);
+        },
+        announceNew: () => announceMotive({ source: "case_editor" }),
+        clear: async () => {
+            const caseFile = getCaseFile();
+            const victim = caseFile ? findRosterCharacter(caseFile.victim) : null;
+            if (victim?.missing && caseFile?.status === CASE_STATUS.COMMITTED && !caseFile.discovered) {
+                victim.missing = false;
+                saveCharacters();
+            }
+            setCaseFile(null);
+        },
+        commit: async () => {
+            const tracker = ensureTimeTrackerState();
+            if (commitCaseMurder({ day: tracker.day, time: tracker.phase === TIME_PHASE_NIGHT ? "night" : "day" })) {
+                await discoverBodyIfWitnessed();
+            }
+        },
+        discover: async () => {
+            caseDiscoveryWalkIn = true;
+            try { await runBodyDiscoverySequence(); } finally { caseDiscoveryWalkIn = false; }
+        },
+    });
 }
 
 async function openStoredMonokumaFile(title) {
@@ -5205,6 +5395,7 @@ function syncCasePrompt() {
     const result = buildCurrentCasePrompt();
     setPrompt(CASE_PROMPT_KEY, result.text, 0, 0, false, "system");
     caseLastSent = result.text ? { ...result, slot: getTimeSlot(ensureTimeTrackerState().day, ensureTimeTrackerState().phase) } : null;
+    if (result.text.includes("[THE GATHERING]")) caseDebug("GATHERING", "The public murder's scene note was sent.");
     if (result.beatId) caseDebug("BEAT SENT", getCaseFile()?.foreshadowing.find((b) => b.id === result.beatId)?.text || result.beatId);
     if (result.killerNote) caseDebug("KILLER NOTE", `Sent to ${getCaseSpeakerName()}.`);
 }
@@ -5215,14 +5406,38 @@ function onCaseReplyRendered() {
     const sent = caseLastSent;
     caseLastSent = null;
     if (!sent) return;
-    let caseFile = getCaseFile();
+    const caseFile = getCaseFile();
     if (!caseFile) return;
-    if (sent.beatId) {
-        caseFile = markBeatUsed(caseFile, sent.beatId, sent.slot);
-        caseDebug("BEAT USED", sent.beatId);
+    if (caseFile.pendingNote && sent.text.includes("[JUST NOW]")) setCaseFile({ ...caseFile, pendingNote: "" });
+    if (sent.beatId) void settleBeat(sent);
+}
+
+function getLastReplyText() {
+    const chat = window.SillyTavern?.getContext?.()?.chat;
+    const last = Array.isArray(chat) ? chat[chat.length - 1] : null;
+    return last && !last.is_user ? String(last.mes || "") : "";
+}
+
+// Did the reply that carried a foreshadowing moment actually use it? A tiny
+// hidden check answers; word overlap stands in when it can't run.
+async function settleBeat(sent) {
+    const beat = getCaseFile()?.foreshadowing.find((b) => b.id === sent.beatId);
+    const reply = getLastReplyText();
+    if (!beat || !reply) return;
+    let landed;
+    try {
+        const answer = await generateIsolated(`MOMENT: ${beat.text}\n\nREPLY: ${reply.slice(0, 3000)}\n\nDoes the REPLY include the MOMENT, even loosely or in different words? Answer with exactly one word: YES or NO.`, { maxTokens: 5 });
+        landed = /\byes\b/i.test(answer) ? true : /\bno\b/i.test(answer) ? false : undefined;
+    } catch (err) {
+        console.warn("[Dangan][Case] Beat check failed, using word overlap:", err);
     }
-    if (caseFile.pendingNote && sent.text.includes("[JUST NOW]")) caseFile = { ...caseFile, pendingNote: "" };
-    setCaseFile(caseFile);
+    if (landed === undefined) landed = beatWordOverlap(beat.text, reply) >= 0.4;
+    const caseFile = getCaseFile();
+    if (!caseFile) return;
+    const next = recordBeatAttempt(caseFile, sent.beatId, { landed, slot: sent.slot });
+    setCaseFile(next);
+    const after = next.foreshadowing.find((b) => b.id === sent.beatId);
+    caseDebug(landed ? "BEAT USED" : after?.skipped ? "BEAT SET ASIDE" : "BEAT MISSED", `${beat.text} (offered ${after?.attempts ?? "?"}x)`);
 }
 
 // The confirm dialog is part of the Monopad markup, which is hidden while the
@@ -8130,6 +8345,12 @@ for (const match of rawText.matchAll(regex)) {
 
             processedMonokumaAnnouncementSignatures.add(signature);
             markProcessedPersistentMarker("monokumaAnnouncementMarkers", persistentSignature);
+            // The roleplay found this case's body: run the whole discovery
+            // (cutscene, announcement, investigation, Monokuma File).
+            if (marker.type === "BODY_DISCOVERY" && !investigationUnderway && isCaseBodyFindable()) {
+                void runBodyDiscoverySequence();
+                return;
+            }
             monokumaAnnouncementController?.trigger(marker.type);
         });
 
@@ -13714,6 +13935,11 @@ itemsPanelController.renderSkillsItemsPanel();
 
 debugSTGlobals();
         
+    $(document).off("click.caseFileEditor").on("click.caseFileEditor", ".truth-case-file-btn", (e) => {
+        e.stopPropagation();
+        playSfx(sfx.click);
+        openCaseFileEditorFromMonopad();
+    });
     initTruthBullets({
         extension_settings,
         saveSettingsDebounced,
@@ -17187,7 +17413,9 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
                 const tracker = ensureTimeTrackerState();
                 if (!commitCaseMurder({ day: tracker.day, time: tracker.phase === TIME_PHASE_NIGHT ? 'night' : 'day' })) {
                     notify({ tone: 'warn', title: 'NO MURDER', message: 'Only a planned case can be committed.' });
+                    return '';
                 }
+                await discoverBodyIfWitnessed();
                 return '';
             }
             case 'discover': {
@@ -17197,6 +17425,16 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
                 }
                 caseDiscoveryWalkIn = true;
                 try { await runBodyDiscoverySequence(); } finally { caseDiscoveryWalkIn = false; }
+                return '';
+            }
+            case 'file': {
+                const [field, ...words] = rest;
+                const value = words.join(' ').trim();
+                if (!caseFile || !['timeOfDeath', 'cause', 'injuries'].includes(field) || !value) {
+                    notify({ tone: 'warn', title: '/case file', message: 'Use /case file timeOfDeath|cause|injuries <new text>.' });
+                    return '';
+                }
+                await applyCaseEdit({ ...caseFile, monokumaFile: { ...caseFile.monokumaFile, [field]: value } });
                 return '';
             }
             case 'clear': {
@@ -17210,12 +17448,12 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
                 return '';
             }
             default:
-                notify({ tone: 'warn', title: '/case', message: 'Use status, prompt [name], commit, discover or clear.' });
+                notify({ tone: 'warn', title: '/case', message: 'Use status, prompt [name], commit, discover, file or clear.' });
                 return '';
         }
     },
-    helpString: 'Debug tools for the hidden Case File (spoilers!). <code>/case status</code> shows the plan, <code>/case prompt [name]</code> shows what the AI would be told for the next reply (as that speaker), <code>/case commit</code> runs the murder now, <code>/case discover</code> finds the body now, <code>/case clear</code> drops the case.',
-    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'status | prompt [name] | commit | discover | clear', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
+    helpString: 'Debug tools for the hidden Case File (spoilers!). <code>/case status</code> shows the plan, <code>/case prompt [name]</code> shows what the AI would be told for the next reply (as that speaker), <code>/case commit</code> runs the murder now, <code>/case discover</code> finds the body now, <code>/case file timeOfDeath|cause|injuries &lt;text&gt;</code> updates the Monokuma File, <code>/case clear</code> drops the case.',
+    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'status | prompt [name] | commit | discover | file <field> <text> | clear', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({

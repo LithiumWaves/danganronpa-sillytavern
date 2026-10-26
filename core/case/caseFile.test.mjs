@@ -11,6 +11,14 @@ import {
     removeEmergentClue,
     buildCaseGenerationPrompt,
     buildMotiveChatNote,
+    MAX_BEAT_ATTEMPTS,
+    beatWordOverlap,
+    createBlankCaseFile,
+    isGatheringNow,
+    monokumaFileChanged,
+    recordBeatAttempt,
+    reviseMonokumaFile,
+    validateCaseFile,
     describeCaseFile,
     extractJsonObject,
     getMotiveAnnouncementText,
@@ -173,6 +181,57 @@ function run() {
     const dump = describeCaseFile(withClue);
     assert(dump.includes("Killer: Leon Kuwata") && dump.includes("Torn Note") && dump.includes("found: yes"), "debug dump");
     assert(describeCaseFile(null).includes("No case"), "empty dump");
+
+    // Beats that miss are retried, then set aside.
+    assert(beatWordOverlap("Leon asks where the knives are kept", "Leon wandered in, asking where the kitchen knives were kept.") >= 0.4, "overlap when used");
+    assert(beatWordOverlap("Leon asks where the knives are kept", "Everyone ate breakfast quietly.") < 0.4, "no overlap when ignored");
+    const beatId = cf.foreshadowing[0].id;
+    let tries = cf;
+    for (let i = 0; i < MAX_BEAT_ATTEMPTS - 1; i += 1) tries = recordBeatAttempt(tries, beatId, { landed: false, slot: "d2-day" });
+    assert(!tries.foreshadowing[0].skipped && !tries.lastBeatSlot, "a miss doesn't spend the slot");
+    assert(pickForeshadowingBeat(tries, { slot: "d2-day", presentNames: ["Sayaka Maizono", "Leon Kuwata"] }), "missed beat offered again");
+    tries = recordBeatAttempt(tries, beatId, { landed: false });
+    assert(tries.foreshadowing[0].skipped, "set aside after the last attempt");
+    assert(!pickForeshadowingBeat(tries, { slot: "d3-day", presentNames: ["Sayaka Maizono", "Leon Kuwata"] }), "set-aside beats aren't offered");
+    const landed = recordBeatAttempt(cf, beatId, { landed: true, slot: "d2-day" });
+    assert(landed.foreshadowing[0].used && landed.lastBeatSlot === "d2-day", "a landed beat spends the slot");
+
+    // Public murders and concealment.
+    const pub = parseCaseFileResponse(JSON.stringify(plan({
+        murderStyle: "public",
+        gathering: { room: "Gym", description: "A séance in the dark" },
+        body: { room: "Gym", state: "Lying in the circle." },
+        monokumaFile: { timeOfDeath: "Unknown", cause: "a blow to the head", concealed: [{ field: "timeOfDeath", truth: "Killed at 9pm; the lights hid it" }, { field: "nonsense", truth: "x" }] },
+    })), opts).caseFile;
+    assert(pub.murderStyle === "public" && pub.gathering.roomId === "hpa_gym", "public murder with gathering");
+    assert(pub.monokumaFile.concealed.length === 1, "concealed field validated");
+    assert(!buildMonokumaFileBullet(pub).description.includes("9pm"), "the bullet never shows the concealed truth");
+    assert(normalizeCaseFile({ ...pub, gathering: null }).murderStyle === "hidden", "public needs a gathering");
+    const at = { day: 3, time: "night", roomId: "hpa_gym", presentNames: ["Sayaka Maizono"] };
+    assert(isGatheringNow(pub, at), "gathering now");
+    assert(!isGatheringNow(pub, { ...at, time: "day" }), "wrong time");
+    assert(!isGatheringNow(pub, { ...at, roomId: "hpa_kitchen" }), "wrong room");
+    assert(!isGatheringNow(pub, { ...at, presentNames: [] }), "victim must be there");
+    assert(!isGatheringNow(cf, at), "hidden murders have no gathering");
+
+    // File revisions.
+    const foundFile = markDiscovered(commitMurder(cf, { day: 3 }));
+    const revised = reviseMonokumaFile(foundFile, { timeOfDeath: "Unknown" });
+    assert(revised.monokumaFile.revision === 2 && revised.monokumaFile.timeOfDeath === "Unknown", "revised after discovery");
+    assert(monokumaFileChanged(foundFile, revised) && !monokumaFileChanged(revised, revised), "change detected");
+    assert(reviseMonokumaFile(cf, { timeOfDeath: "x" }).monokumaFile.revision === 1, "no revision before anyone has the file");
+
+    // Hand-written cases.
+    const v = { cast, rooms, player: "Makoto Naegi" };
+    assert(validateCaseFile(cf, v) === "", `valid case: ${validateCaseFile(cf, v)}`);
+    assert(validateCaseFile({ ...cf, killer: "Makoto Naegi" }, v).includes("killer"), "player can't be the killer");
+    assert(validateCaseFile({ ...cf, victim: cf.killer }, v).includes("same"), "same student");
+    assert(validateCaseFile({ ...cf, body: { ...cf.body, roomId: "moon" } }, v).includes("body"), "body room");
+    const blank = createBlankCaseFile({ day: 4, chapterIndex: 2, deadlineDays: 2 });
+    assert(blank.murderDay === 5 && blank.motive.deadlineDay === 5 && validateCaseFile(blank, v).includes("title"), "blank case");
+
+    const added = normalizeCaseFile({ ...cf, clues: [...cf.clues, { text: "New clue", roomId: "hpa_gym" }] });
+    assert(new Set(added.clues.map((c) => c.id)).size === added.clues.length, "new rows get unique ids");
 
     console.log("caseFile tests passed");
 }

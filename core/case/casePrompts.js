@@ -3,7 +3,7 @@
 // own character gets their secret, and only while they're the one replying.
 // Most daily life replies get nothing at all.
 
-import { CASE_STATUS, buildMonokumaFileBullet, getTimeSlot, pickForeshadowingBeat } from "./caseFile.js";
+import { CASE_STATUS, buildMonokumaFileBullet, getTimeSlot, isGatheringNow, pickForeshadowingBeat } from "./caseFile.js";
 
 export const CASE_PROMPT_KEY = "dangan_case";
 
@@ -17,9 +17,23 @@ function timeWords(time) {
     return time === "day" ? "the daytime" : "the night";
 }
 
+const FIELD_WORDS = { timeOfDeath: "the time of death", cause: "the cause of death", injuries: "the injuries" };
+
+// What the file can't state, and the truth behind it. Only ever for the killer.
+function concealedNote(cf) {
+    const hidden = cf.monokumaFile.concealed.map((c) => `- ${FIELD_WORDS[c.field]}: ${c.truth}`);
+    return hidden.length ? `\nYour trick keeps the Monokuma File from showing the truth about:\n${hidden.join("\n")}` : "";
+}
+
+function gatheringWords(cf) {
+    return cf.murderStyle === "public" && cf.gathering
+        ? `\nIt happens during a gathering with others present: ${cf.gathering.description} (${cf.gathering.roomLabel || "the gathering room"}). Nobody must see that it was you.`
+        : "";
+}
+
 function killerPlanned(cf) {
     return `[SECRET FOR ${cf.killer.toUpperCase()} ONLY]
-You, ${cf.killer}, have secretly decided to kill ${cf.victim} during ${timeWords(cf.murderTime)} of Day ${cf.murderDay}.
+You, ${cf.killer}, have secretly decided to kill ${cf.victim} during ${timeWords(cf.murderTime)} of Day ${cf.murderDay}.${gatheringWords(cf)}
 Why: ${cf.motiveLink}
 Your plan: ${cf.method}
 Never reveal this, never hint at it out loud, and don't act on it in this reply. Keep acting like yourself, but small cracks can show: distraction, nerves, odd questions.`;
@@ -29,7 +43,7 @@ function killerCommitted(cf) {
     const timeline = cf.timeline.length ? `\nWhat happened: ${cf.timeline.join(" → ")}` : "";
     return `[SECRET FOR ${cf.killer.toUpperCase()} ONLY]
 You, ${cf.killer}, killed ${cf.victim}. ${cf.method}${timeline}
-Weapon: ${cf.weapon}.
+Weapon: ${cf.weapon}.${concealedNote(cf)}
 Protect yourself. Lie if you must, but keep your story consistent, and never confess unless you are cornered at the Class Trial.`;
 }
 
@@ -67,9 +81,17 @@ export function buildCasePrompt({
     const isKiller = same(speakerName, cf.killer);
     const dailyLife = phase === "DAY" || phase === "NIGHT";
 
-    if (cf.status === CASE_STATUS.PLANNED && dailyLife) {
+    const time = phase === "NIGHT" ? "night" : "day";
+    if (cf.status === CASE_STATUS.PLANNED && dailyLife && isGatheringNow(cf, { day, time, roomId, presentNames })) {
+        // A public murder plays out in front of everyone.
+        parts.push(`[THE GATHERING]
+${cf.gathering.description}. Play this gathering out with everyone here. At a fitting moment during it, ${cf.victim} dies: ${cf.method}
+Never show or hint at who did it; in the confusion, nobody sees. When ${cf.victim} is found dead, write this on its own line:
+V3C| BODY_DISCOVERY`);
+        if (isKiller) parts.push(killerPlanned(cf));
+    } else if (cf.status === CASE_STATUS.PLANNED && dailyLife) {
         const beat = pickForeshadowingBeat(cf, {
-            slot: getTimeSlot(day, phase === "NIGHT" ? "night" : "day"),
+            slot: getTimeSlot(day, time),
             presentNames,
         });
         if (beat) {

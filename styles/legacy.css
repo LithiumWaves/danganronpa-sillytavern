@@ -910,6 +910,22 @@ body.dangan-theme-investigation #dangan_monopad_button {
     border-bottom: 1px solid rgba(255, 255, 255, 0.15);
 }
 
+.truth-case-file-btn {
+    float: right;
+    background: transparent;
+    color: #ff7ad9;
+    border: 1px solid rgba(255, 46, 196, 0.55);
+    font: inherit;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    padding: 2px 8px;
+    cursor: pointer;
+}
+
+.truth-case-file-btn:hover {
+    background: rgba(255, 46, 196, 0.18);
+}
+
 .truth-list-items {
     flex: 1;
     padding: 8px;

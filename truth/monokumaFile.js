@@ -44,6 +44,10 @@ const CSS = `
     background: linear-gradient(90deg, #111 50%, #f2f2f2 50%);
     box-shadow: 0 0 0 3px #111;
 }
+#${ROOT_ID} .mkf-updated {
+    display: inline-block; margin-left: 0.4em; padding: 0 0.3em; font-size: 0.55em; vertical-align: middle;
+    background: #ff2ec4; color: #fff; font-style: normal; transform: skewX(-12deg);
+}
 #${ROOT_ID} .mkf-searchbar {
     height: 10px; width: 34%; margin: 8px 18px 0; border-radius: 6px; background: #8a8a8a;
 }
@@ -181,7 +185,7 @@ export function openMonokumaFile(data, { narrate = true, playSfx = null } = {}) 
     root.setAttribute("aria-label", `Monokuma File ${number}`);
     root.innerHTML = `
         <div class="mkf-tablet"><div class="mkf-screen">
-            <div class="mkf-header"><div class="mkf-bear"></div><div>MONOKUMA<br>FILE ${number}</div></div>
+            <div class="mkf-header"><div class="mkf-bear"></div><div>MONOKUMA<br>FILE ${number}${data.revision > 1 ? ` <span class="mkf-updated">UPDATED</span>` : ""}</div></div>
             <div class="mkf-searchbar"></div>
             <div class="mkf-tabs">
                 <button type="button" class="mkf-tab active" data-page="victim">Victim</button>

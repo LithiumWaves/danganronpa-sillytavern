@@ -762,6 +762,19 @@ export function removeTruthBulletById(id) {
     return null;
 }
 
+// Rewrites a bullet's description in place, e.g. when the Monokuma File is
+// updated. Returns whether a bullet with that title was found.
+export function updateTruthBulletDescription(title, description) {
+    const bullet = [...truthBullets, ...archivedTruthBullets].find((tb) => tb.title === title);
+    if (!bullet) return false;
+    processedTruthSignatures.delete(`${bullet.title}||${bullet.description || ""}`);
+    bullet.description = description;
+    saveTruthBullets();
+    $(".truth-details").removeAttr("style").empty();
+    renderTruthBullets();
+    return true;
+}
+
 // Re-reads the lists from settings after a different save was loaded.
 export function reloadTruthBullets() {
     truthBullets.length = 0;

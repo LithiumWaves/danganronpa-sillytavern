@@ -67,6 +67,26 @@ function run() {
     assert(!buildCasePrompt({ caseFile: { ...found, status: CASE_STATUS.CLOSED }, phase: "INVESTIGATION" }).text, "closed gets nothing");
     assert(!buildCasePrompt({ caseFile: null }).text, "no case");
 
+    // A public murder plays out at its gathering.
+    const pub = normalizeCaseFile({
+        ...cf,
+        murderStyle: "public",
+        gathering: { roomId: "gym", roomLabel: "Gym", description: "A séance in the dark" },
+        monokumaFile: { timeOfDeath: "Unknown", cause: "a blow", concealed: [{ field: "timeOfDeath", truth: "9pm, hidden by the dark" }] },
+    });
+    const at = { caseFile: pub, phase: "NIGHT", day: 3, roomId: "gym", presentNames: ["Sayaka Maizono", "Kyoko"] };
+    const gathering = buildCasePrompt({ ...at, speakerName: "Kyoko" });
+    assert(gathering.text.includes("[THE GATHERING]") && gathering.text.includes("V3C| BODY_DISCOVERY"), "gathering scene note");
+    assert(!gathering.text.includes("Leon"), "the gathering never names the killer");
+    assert(!buildCasePrompt({ ...at, day: 2 }).text.includes("GATHERING"), "only on the murder day");
+    assert(buildCasePrompt({ ...at, speakerName: "Leon Kuwata" }).text.includes("Nobody must see that it was you"), "killer knows it's public");
+
+    // Concealed truth only ever reaches the killer.
+    const pubFound = markDiscovered(commitMurder(pub, { day: 3, time: "night" }));
+    const bystander = buildCasePrompt({ caseFile: pubFound, phase: "INVESTIGATION", speakerName: "Kyoko", roomId: "gym" });
+    assert(!bystander.text.includes("9pm") && bystander.text.includes("Unknown"), "bystanders get the reported file only");
+    assert(buildCasePrompt({ caseFile: pubFound, phase: "INVESTIGATION", speakerName: "Leon Kuwata", roomId: "gym" }).text.includes("9pm, hidden by the dark"), "killer knows what's concealed");
+
     console.log("casePrompts tests passed");
 }
 
