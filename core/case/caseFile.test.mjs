@@ -10,7 +10,6 @@ import {
     pickForeshadowingBeat,
     removeEmergentClue,
     buildCaseGenerationPrompt,
-    buildMotiveChatNote,
     MAX_BEAT_ATTEMPTS,
     beatWordOverlap,
     createBlankCaseFile,
@@ -21,6 +20,7 @@ import {
     validateCaseFile,
     describeCaseFile,
     extractJsonObject,
+    parseLooseJson,
     getMotiveAnnouncementText,
     isCaseOpen,
     normalizeCaseFile,
@@ -113,10 +113,6 @@ function run() {
     assert(normalizeCaseFile({ status: "weird" }).status === CASE_STATUS.PLANNED, "unknown status falls back");
 
     assert(getMotiveAnnouncementText(cf) === "Puhuhu! Watch these!", "announcement text");
-    const note = buildMotiveChatNote(cf);
-    assert(note.includes("The Videos") && note.includes("Day 3"), "chat note names motive and deadline");
-    assert(!note.includes("Leon"), "chat note never leaks the killer");
-    assert(buildMotiveChatNote({ ...cf, motive: { ...cf.motive, deadlineDay: 2 } }).includes("until tonight"), "same-day deadline");
 
     assert(isCaseOpen(cf) && !isCaseOpen({ ...cf, status: CASE_STATUS.CLOSED }) && !isCaseOpen(null), "open cases");
 
@@ -232,6 +228,28 @@ function run() {
 
     const added = normalizeCaseFile({ ...cf, clues: [...cf.clues, { text: "New clue", roomId: "hpa_gym" }] });
     assert(new Set(added.clues.map((c) => c.id)).size === added.clues.length, "new rows get unique ids");
+
+    // Loose JSON: whatever shape the model's reply comes back in.
+    assert(parseLooseJson('<think>Let me plan {this}</think>\n{"a":1}').value?.a === 1, "think block skipped");
+    assert(parseLooseJson('<think>still thinking with no end').value === null, "unfinished think has nothing");
+    assert(parseLooseJson('Here you go:\n```json\n{"a": [1, 2,],}\n```\nEnjoy!').value?.a?.length === 2, "fences and trailing commas");
+    assert(parseLooseJson('{\u201Ca\u201D: \u201Cb\u201D}').value?.a === "b", "smart quotes");
+    const cutString = parseLooseJson('{"a": 1, "b": "half a sent');
+    assert(cutString.cutOff && cutString.value.a === 1 && cutString.value.b === "half a sent", "closed mid-string");
+    const cutArray = parseLooseJson('{"a": 1, "list": [{"x": 1}, {"x": 2}, {"x"');
+    assert(cutArray.cutOff && cutArray.value.list.length === 2, "trimmed back to the last whole item");
+    const cutKey = parseLooseJson('{"a": 1, "b":');
+    assert(cutKey.value?.a === 1 && !("b" in cutKey.value), "dangling key dropped");
+    assert(parseLooseJson("I can't help with that.").reason === "no-json", "no JSON at all");
+    assert(parseLooseJson('{"a": nope}').value === null, "invalid stays invalid");
+    assert(parseLooseJson('{"a": "brace } inside", "b": 2}').value?.b === 2, "braces inside strings");
+
+    // A plan cut off after its clues still makes a case.
+    const full = JSON.stringify(plan());
+    const clipped = full.slice(0, full.indexOf('"foreshadowing"') + 25);
+    const fromClipped = parseCaseFileResponse(clipped, opts);
+    assert(!fromClipped.error && fromClipped.caseFile.clues.length === 3, `clipped plan parses: ${fromClipped.error}`);
+    assert(parseCaseFileResponse(full.slice(0, 120), opts).error, "too little survives");
 
     console.log("caseFile tests passed");
 }

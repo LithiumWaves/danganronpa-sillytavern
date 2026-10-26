@@ -29,7 +29,17 @@ const cf = normalizeCaseFile({
 
 function run() {
     // Planned: nothing for a bystander when no beat applies.
-    assert(buildCasePrompt({ caseFile: cf, phase: "DAY", day: 2, speakerName: "Kyoko", presentNames: ["Kyoko"] }).text === "", "quiet by default");
+    // Planned: everyone knows the motive, and nothing else without a beat.
+    const quiet = buildCasePrompt({ caseFile: cf, phase: "DAY", day: 2, speakerName: "Kyoko", presentNames: ["Kyoko"] });
+    assert(quiet.text.includes("[MONOKUMA'S MOTIVE]") && quiet.text.includes("The Videos") && quiet.text.includes("night of Day 3"), "motive note");
+    assert(!quiet.beatId && !quiet.text.includes("SMALL MOMENT") && !quiet.text.includes("SECRET"), "nothing else by default");
+    assert(!quiet.text.includes("just now"), "no 'just now' unless just announced");
+    const heard = buildCasePrompt({ caseFile: { ...cf, motiveJustAnnounced: "monitor" }, phase: "DAY", day: 2, speakerName: "Kyoko" });
+    assert(heard.text.includes("over the monitors just now") && heard.motive === "heard", "monitor announcement reacted to");
+    const speech = { ...cf, pendingMotiveSpeech: true, motiveSpeaker: "Monokuma" };
+    const mono = buildCasePrompt({ caseFile: speech, phase: "DAY", day: 2, speakerName: "Monokuma" });
+    assert(mono.text.includes("[YOUR MOTIVE ANNOUNCEMENT]") && mono.motive === "speech" && !mono.text.includes("Leon"), "Monokuma announces it");
+    assert(!buildCasePrompt({ caseFile: speech, phase: "DAY", day: 2, speakerName: "Kyoko" }).text.includes("YOUR MOTIVE"), "only Monokuma gets the speech");
 
     // The beat goes out when its characters are present, to whoever speaks.
     const beat = buildCasePrompt({ caseFile: cf, phase: "DAY", day: 2, speakerName: "Kyoko", presentNames: ["Kyoko", "Leon Kuwata"] });
@@ -41,7 +51,7 @@ function run() {
     const killer = buildCasePrompt({ caseFile: cf, phase: "NIGHT", day: 2, speakerName: "leon kuwata", presentNames: [] });
     assert(killer.killerNote && killer.text.includes("kill Sayaka Maizono") && killer.text.includes("the night of Day 3"), "killer plan");
     const used = markBeatUsed(cf, cf.foreshadowing[0].id, "d2-day");
-    assert(!buildCasePrompt({ caseFile: used, phase: "DAY", day: 2, speakerName: "Kyoko", presentNames: ["Leon Kuwata"] }).text, "used beats aren't repeated");
+    assert(!buildCasePrompt({ caseFile: used, phase: "DAY", day: 2, speakerName: "Kyoko", presentNames: ["Leon Kuwata"] }).beatId, "used beats aren't repeated");
 
     // After the murder, before the body is found.
     const committed = commitMurder(cf, { day: 3, time: "night" });
@@ -86,6 +96,8 @@ function run() {
     const bystander = buildCasePrompt({ caseFile: pubFound, phase: "INVESTIGATION", speakerName: "Kyoko", roomId: "gym" });
     assert(!bystander.text.includes("9pm") && bystander.text.includes("Unknown"), "bystanders get the reported file only");
     assert(buildCasePrompt({ caseFile: pubFound, phase: "INVESTIGATION", speakerName: "Leon Kuwata", roomId: "gym" }).text.includes("9pm, hidden by the dark"), "killer knows what's concealed");
+
+    assert(!buildCasePrompt({ caseFile: committed, phase: "DAY", day: 4, speakerName: "Kyoko" }).text.includes("MONOKUMA'S MOTIVE"), "the motive note ends with the murder");
 
     console.log("casePrompts tests passed");
 }

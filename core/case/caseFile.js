@@ -86,7 +86,7 @@ ${roomLines || "- (none)"}
 RECENT EVENTS:
 ${recentChat || "(nothing yet)"}
 
-Write one JSON object and nothing else, with these fields:
+Reply with one compact JSON object and nothing else: start your reply with { and end it with }. Keep every text short (under 30 words). The fields:
 {
   "motive": { "title": "short name of the motive", "description": "what Monokuma offers or threatens, 1-2 sentences", "announcement": "Monokuma announcing it, in his voice, 2-4 sentences" },
   "killer": "student name",
@@ -115,17 +115,68 @@ Rules:
 - Only use the students and rooms listed above.`;
 }
 
-// Pulls the JSON object out of a reply that may wrap it in prose or fences.
-export function extractJsonObject(raw) {
-    const s = String(raw ?? "");
+// Reads the JSON object out of a model's reply, however it came back:
+// wrapped in reasoning (<think>…</think>), prose or code fences, with smart
+// quotes or trailing commas, or cut off before the end. A cut-off reply is
+// closed at its last complete value; validation decides if enough survived.
+// Returns { value, cutOff } or { value: null, reason }.
+export function parseLooseJson(raw) {
+    let s = String(raw ?? "")
+        .replace(/<(think|thinking|reasoning)>[\s\S]*?<\/\1>/gi, "")
+        .replace(/<(think|thinking|reasoning)>[\s\S]*$/i, (m) => (m.includes("{") ? m.slice(m.indexOf("{")) : ""))
+        .replace(/```(?:json)?/gi, "");
     const start = s.indexOf("{");
-    const end = s.lastIndexOf("}");
-    if (start < 0 || end <= start) return null;
-    try {
-        return JSON.parse(s.slice(start, end + 1));
-    } catch {
-        return null;
+    if (start < 0) return { value: null, reason: "no-json" };
+    s = s.slice(start).replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'");
+
+    // Walk the text once: where the outermost object ends, and the commas
+    // (outside strings) a cut-off reply can be trimmed back to.
+    const stack = [];
+    const cuts = [];
+    let inString = false;
+    let escaped = false;
+    let end = -1;
+    for (let i = 0; i < s.length; i += 1) {
+        const ch = s[i];
+        if (inString) {
+            if (escaped) escaped = false;
+            else if (ch === "\\") escaped = true;
+            else if (ch === '"') inString = false;
+            continue;
+        }
+        if (ch === '"') inString = true;
+        else if (ch === "{" || ch === "[") stack.push(ch);
+        else if (ch === "}" || ch === "]") {
+            stack.pop();
+            if (!stack.length) { end = i; break; }
+        } else if (ch === ",") cuts.push({ at: i, stack: [...stack] });
     }
+
+    const attempt = (text) => {
+        for (const t of [text, text.replace(/,\s*([}\]])/g, "$1")]) {
+            try { return JSON.parse(t); } catch { /* next */ }
+        }
+        return undefined;
+    };
+    const closers = (open) => open.slice().reverse().map((c) => (c === "{" ? "}" : "]")).join("");
+
+    if (end >= 0) {
+        const value = attempt(s.slice(0, end + 1));
+        return value !== undefined ? { value, cutOff: false } : { value: null, reason: "invalid" };
+    }
+    // Cut off: close what's open, or trim back to an earlier complete value.
+    const whole = attempt(s + (inString ? '"' : "") + closers(stack));
+    if (whole !== undefined) return { value: whole, cutOff: true };
+    for (let k = cuts.length - 1; k >= 0 && k >= cuts.length - 60; k -= 1) {
+        const value = attempt(s.slice(0, cuts[k].at) + closers(cuts[k].stack));
+        if (value !== undefined) return { value, cutOff: true };
+    }
+    return { value: null, reason: "cut-off" };
+}
+
+// The parsed object, or null.
+export function extractJsonObject(raw) {
+    return parseLooseJson(raw).value;
 }
 
 // Validates the model's plan against the actual cast and map. Returns
@@ -139,8 +190,14 @@ export function parseCaseFileResponse(raw, {
     deadlineDays = DEFAULT_MOTIVE_DEADLINE_DAYS,
     now = Date.now(),
 } = {}) {
-    const data = typeof raw === "object" && raw !== null ? raw : extractJsonObject(raw);
-    if (!data) return { error: "The reply wasn't a JSON object." };
+    const parsed = typeof raw === "object" && raw !== null ? { value: raw } : parseLooseJson(raw);
+    const data = parsed.value;
+    if (!data) {
+        return {
+            error: parsed.reason === "cut-off" ? "The reply was cut off before the plan was complete." : "The reply wasn't a JSON object.",
+            reason: parsed.reason,
+        };
+    }
 
     const castNames = cast.map((c) => c.name).filter((n) => n && nameKey(n) !== nameKey(player));
     const killer = matchCastName(data.killer, castNames);
@@ -274,6 +331,12 @@ export function normalizeCaseFile(raw) {
         discovered: Boolean(raw.discovered),
         lastBeatSlot: text(raw.lastBeatSlot, 40),
         pendingNote: raw.pendingNote === "discovered" ? "discovered" : "",
+        // How the motive reaches the cast: Monokuma's own reply announcing it
+        // (pendingMotiveSpeech, by motiveSpeaker), or the monitors, which the
+        // next reply reacts to once (motiveJustAnnounced).
+        pendingMotiveSpeech: Boolean(raw.pendingMotiveSpeech),
+        motiveSpeaker: text(raw.motiveSpeaker, 80),
+        motiveJustAnnounced: raw.motiveJustAnnounced === "monitor" ? "monitor" : "",
         timeline: list(raw.timeline).map((t) => text(t, 240)).filter(Boolean).slice(0, LIMITS.timeline),
         clues: list(raw.clues).map((c) => ({
             id: id("clue", c?.id),
@@ -317,17 +380,6 @@ export function isCaseOpen(caseFile) {
 export function getMotiveAnnouncementText(caseFile) {
     const m = caseFile?.motive || {};
     return m.announcement || [m.title, m.description].filter(Boolean).join(": ");
-}
-
-// The one message added to the chat so the cast knows about the motive. It
-// says nothing about the plan.
-export function buildMotiveChatNote(caseFile) {
-    const m = caseFile?.motive || {};
-    const deadline = m.deadlineDay > caseFile.createdDay
-        ? ` Monokuma gives everyone until the night of Day ${m.deadlineDay}.`
-        : " Monokuma gives everyone until tonight.";
-    const said = m.announcement ? ` "${m.announcement}"` : "";
-    return `[Monokuma's Motive: ${m.title}] ${m.description}${deadline}${said}`.replace(/\s+/g, " ").trim();
 }
 
 // Day N of the chapter that the motive is due on, for the automatic motive.

@@ -41,7 +41,7 @@ import { createPhaseHistory, derivePhase, getNextStepHint, getPhaseActions, getS
 import { notify } from "./core/ui/notify.js";
 import { SAVE_MODES, createSaveStore } from "./core/saves/saveStore.js";
 import { pinInScope } from "./map/mapStorage.js";
-import { CASE_STATUS, DEFAULT_MOTIVE_DEADLINE_DAYS, addEmergentClue, beatWordOverlap, extractJsonObject, buildCaseGenerationPrompt, createBlankCaseFile, describeCaseFile, isGatheringNow, monokumaFileChanged, recordBeatAttempt, reviseMonokumaFile, validateCaseFile, buildMonokumaFileBullet, buildMotiveChatNote, commitMurder, getMonokumaFileTitle, getMotiveAnnouncementText, getTimeSlot, isCaseOpen, isMurderSlotOver, markDiscovered, normalizeCaseFile, parseCaseFileResponse, removeEmergentClue, shouldAutoAnnounceMotive } from "./core/case/caseFile.js";
+import { CASE_STATUS, DEFAULT_MOTIVE_DEADLINE_DAYS, addEmergentClue, beatWordOverlap, extractJsonObject, buildCaseGenerationPrompt, createBlankCaseFile, describeCaseFile, isGatheringNow, monokumaFileChanged, recordBeatAttempt, reviseMonokumaFile, validateCaseFile, buildMonokumaFileBullet, commitMurder, getMonokumaFileTitle, getMotiveAnnouncementText, getTimeSlot, isCaseOpen, isMurderSlotOver, markDiscovered, normalizeCaseFile, parseCaseFileResponse, removeEmergentClue, shouldAutoAnnounceMotive } from "./core/case/caseFile.js";
 import { CASE_PROMPT_KEY, buildCasePrompt } from "./core/case/casePrompts.js";
 import { openMonokumaFile } from "./truth/monokumaFile.js";
 import { openCaseFileEditor } from "./truth/caseFileEditor.js";
@@ -4877,37 +4877,50 @@ async function generateCaseFile({ deadlineDays }) {
         recentChat: buildRecentChatContextLines(20),
     });
     const parseOpts = { cast, player, rooms, day, chapterIndex, deadlineDays };
+    const source = getConfiguredGenerationSource("generationProvider") || "main";
 
     let lastError = "";
+    let lastReason = "";
     for (let attempt = 0; attempt < 2; attempt += 1) {
-        const retry = lastError ? `\n\nYour last answer was rejected: ${lastError} Answer again with only the corrected JSON object.` : "";
-        const raw = await generateIsolated(`${prompt}${retry}`, { allowDialogue: true, maxTokens: 1800 });
-        const { caseFile, error } = parseCaseFileResponse(raw, parseOpts);
+        const retry = !lastError ? ""
+            : lastReason === "cut-off" ? "\n\nYour last reply was cut off before the end. Answer again with a shorter plan: fewer, shorter texts. Only the JSON object."
+            : lastReason === "no-json" || lastReason === "invalid" ? "\n\nYour last reply wasn't valid JSON. Reply with only the JSON object: no other text, no code fences, start with { and end with }."
+            : `\n\nYour last answer was rejected: ${lastError} Answer again with only the corrected JSON object.`;
+        let raw = "";
+        try {
+            raw = await generateIsolated(`${prompt}${retry}`, { allowDialogue: true, maxTokens: 3000 });
+        } catch (err) {
+            lastCaseGeneration = { at: Date.now(), source, raw: "", error: `The AI call failed: ${err?.message || err}` };
+            throw new Error(lastCaseGeneration.error);
+        }
+        const { caseFile, error, reason } = parseCaseFileResponse(raw, parseOpts);
+        lastCaseGeneration = { at: Date.now(), source, raw, error: error || "" };
         if (caseFile) return caseFile;
         lastError = error;
-        console.warn(`[${extensionName}] Case File rejected: ${error}`);
+        lastReason = reason || "";
+        const text = String(raw || "");
+        console.warn(`[Dangan][Case] Plan rejected (attempt ${attempt + 1}, source ${source}, ${text.length} chars): ${error}\n--- start ---\n${text.slice(0, 300)}\n--- end ---\n${text.slice(-300)}`);
     }
     throw new Error(lastError || "The plan couldn't be generated.");
 }
 
-// Pipes split slash commands and {{ starts a macro.
-function toSlashSafeText(text) {
-    return String(text || "").replace(/\|/g, "/").replace(/\{\{/g, "{ {").trim();
-}
+// The last raw plan the AI sent back, for /case lastraw.
+let lastCaseGeneration = null;
 
-// Narrator messages are part of the chat the AI reads, so the motive needs no
-// prompt of its own.
-async function postMotiveChatNote(note) {
-    await executeSlashCommandsWithOptions(`/sys ${toSlashSafeText(note)}`, { handleParserErrors: true });
-}
-
-async function removeMotiveChatNote(note) {
+// The Monokuma who can deliver the motive himself: a host card named like
+// Monokuma who is here, i.e. called into this room in a group chat (or an
+// unmuted member of it), or the character of this one-on-one chat.
+function findMonokumaHere() {
+    const name = getHostNames().find((n) => /monokuma/i.test(String(n || "")));
+    if (!name) return "";
     const ctx = window.SillyTavern?.getContext?.();
-    const last = Array.isArray(ctx?.chat) ? ctx.chat[ctx.chat.length - 1] : null;
-    if (!last || typeof ctx.deleteLastMessage !== "function") return false;
-    if (String(last.mes || "").trim() !== toSlashSafeText(note)) return false;
-    await ctx.deleteLastMessage();
-    return true;
+    if (!ctx) return "";
+    if (!ctx.groupId) return ctx.characters?.[ctx.characterId]?.name === name ? name : "";
+    const avatar = (ctx.characters || []).find((c) => c?.name === name)?.avatar;
+    const group = (ctx.groups || []).find((g) => String(g.id) === String(ctx.groupId));
+    if (!avatar || !group?.members?.includes(avatar)) return "";
+    if (getHostStage().isOnStage(name)) return name;
+    return (group.disabled_members || []).includes(avatar) ? "" : name;
 }
 
 async function announceMotive({ source = "manual" } = {}) {
@@ -4924,7 +4937,13 @@ async function announceMotive({ source = "manual" } = {}) {
     try {
         caseFile = await generateCaseFile({ deadlineDays: DEFAULT_MOTIVE_DEADLINE_DAYS });
     } catch (err) {
-        notify({ tone: "error", title: "NO MOTIVE", message: `Monokuma couldn't come up with a motive: ${err?.message || err}` });
+        const source = lastCaseGeneration?.source || getConfiguredGenerationSource("generationProvider") || "main";
+        notify({
+            tone: "error",
+            title: "NO MOTIVE",
+            message: `Monokuma couldn't come up with a motive (AI source: ${source}): ${err?.message || err} Type /case lastraw to see what the AI sent back.`,
+            durationMs: 12000,
+        });
         return false;
     } finally {
         motiveInFlight = false;
@@ -4937,16 +4956,28 @@ async function announceMotive({ source = "manual" } = {}) {
 }
 
 // Monokuma announces the motive of a case that's already planned (generated
-// or written by hand), and the cast hears about it in the chat.
+// or written by hand): in person if he's here, in his own reply, or else over
+// the monitors like the morning and night announcements. Nothing else is
+// added to the chat; the case prompt tells the cast about it from then on.
 async function announceCaseMotive(caseFile) {
-    await monokumaAnnouncementController?.triggerAsync("MOTIVE", { text: getMotiveAnnouncementText(caseFile) });
-    playCurrentPhaseTrack();
-
-    const note = buildMotiveChatNote(caseFile);
-    try {
-        await postMotiveChatNote(note);
-    } catch (err) {
-        console.warn(`[${extensionName}] Couldn't post the motive to the chat:`, err);
+    const monokuma = findMonokumaHere();
+    let ownMessageIndex = -1;
+    if (monokuma) {
+        setCaseFile({ ...caseFile, pendingMotiveSpeech: true, motiveSpeaker: monokuma, motiveJustAnnounced: "" });
+        caseDebug("MOTIVE", `${monokuma} is here and announces it himself.`);
+        try {
+            await executeSlashCommandsWithOptions(`/trigger await=true "${monokuma}"`, { handleParserErrors: true });
+            const chat = window.SillyTavern?.getContext?.()?.chat || [];
+            const last = chat[chat.length - 1];
+            if (last && !last.is_user && last.name === monokuma) ownMessageIndex = chat.length - 1;
+        } catch (err) {
+            console.warn("[Dangan][Case] Monokuma's motive reply failed:", err);
+        }
+    } else {
+        setCaseFile({ ...caseFile, pendingMotiveSpeech: false, motiveJustAnnounced: "monitor" });
+        await monokumaAnnouncementController?.triggerAsync("MOTIVE", { text: getMotiveAnnouncementText(caseFile) });
+        playCurrentPhaseTrack();
+        caseDebug("MOTIVE", "Announced over the monitors.");
     }
 
     notify({
@@ -4955,8 +4986,14 @@ async function announceCaseMotive(caseFile) {
         actionLabel: "UNDO",
         onAction: async () => {
             setCaseFile(null);
-            const removed = await removeMotiveChatNote(note).catch(() => false);
-            notify({ title: "UNDONE", message: removed ? "The motive is gone." : "The motive is gone. Its message stays in the chat; delete it if you like." });
+            let removed = false;
+            const ctx = window.SillyTavern?.getContext?.();
+            const chat = ctx?.chat || [];
+            if (ownMessageIndex >= 0 && ownMessageIndex === chat.length - 1 && typeof ctx.deleteLastMessage === "function") {
+                await ctx.deleteLastMessage();
+                removed = true;
+            }
+            notify({ title: "UNDONE", message: removed || ownMessageIndex < 0 ? "The motive is gone." : "The motive is gone. Monokuma's message stays in the chat; delete it if you like." });
         },
         durationMs: 12000,
     });
@@ -5408,7 +5445,12 @@ function onCaseReplyRendered() {
     if (!sent) return;
     const caseFile = getCaseFile();
     if (!caseFile) return;
-    if (caseFile.pendingNote && sent.text.includes("[JUST NOW]")) setCaseFile({ ...caseFile, pendingNote: "" });
+    if (caseFile.pendingNote && sent.text.includes("[JUST NOW]")) setCaseFile({ ...getCaseFile(), pendingNote: "" });
+    if (sent.motive === "heard") setCaseFile({ ...getCaseFile(), motiveJustAnnounced: "" });
+    if (sent.motive === "speech") {
+        setCaseFile({ ...getCaseFile(), pendingMotiveSpeech: false });
+        caseDebug("MOTIVE", "Monokuma announced it in the chat.");
+    }
     if (sent.beatId) void settleBeat(sent);
 }
 
@@ -17427,6 +17469,14 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
                 try { await runBodyDiscoverySequence(); } finally { caseDiscoveryWalkIn = false; }
                 return '';
             }
+            case 'lastraw': {
+                const g = lastCaseGeneration;
+                const text = g
+                    ? `Last plan from the AI (source: ${g.source}, ${new Date(g.at).toLocaleTimeString()}, ${g.raw.length} characters)\nResult: ${g.error || 'accepted'}\n\n${g.raw || '(empty reply)'}`
+                    : 'No plan has been generated since the page loaded.';
+                await showCaseDebugText('LAST PLAN FROM THE AI', text);
+                return '';
+            }
             case 'file': {
                 const [field, ...words] = rest;
                 const value = words.join(' ').trim();
@@ -17448,12 +17498,12 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
                 return '';
             }
             default:
-                notify({ tone: 'warn', title: '/case', message: 'Use status, prompt [name], commit, discover, file or clear.' });
+                notify({ tone: 'warn', title: '/case', message: 'Use status, prompt [name], lastraw, commit, discover, file or clear.' });
                 return '';
         }
     },
-    helpString: 'Debug tools for the hidden Case File (spoilers!). <code>/case status</code> shows the plan, <code>/case prompt [name]</code> shows what the AI would be told for the next reply (as that speaker), <code>/case commit</code> runs the murder now, <code>/case discover</code> finds the body now, <code>/case file timeOfDeath|cause|injuries &lt;text&gt;</code> updates the Monokuma File, <code>/case clear</code> drops the case.',
-    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'status | prompt [name] | commit | discover | file <field> <text> | clear', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
+    helpString: 'Debug tools for the hidden Case File (spoilers!). <code>/case status</code> shows the plan, <code>/case prompt [name]</code> shows what the AI would be told for the next reply (as that speaker), <code>/case lastraw</code> shows the last plan the AI sent back (for when a motive fails), <code>/case commit</code> runs the murder now, <code>/case discover</code> finds the body now, <code>/case file timeOfDeath|cause|injuries &lt;text&gt;</code> updates the Monokuma File, <code>/case clear</code> drops the case.',
+    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'status | prompt [name] | lastraw | commit | discover | file <field> <text> | clear', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({

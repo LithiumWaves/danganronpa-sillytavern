@@ -60,7 +60,24 @@ Evidence found so far: ${found}.
 You may invent further evidence and details freely, as long as they fit these facts. Never state or confirm who the killer is.`;
 }
 
-// Returns { text, beatId, killerNote }. `phase` is the game phase (DAY, NIGHT,
+// What everyone knows about the motive while the murder is still to come.
+// Monokuma's own reply announcing it gets his lines instead.
+function motiveNote(cf, { speakerName }) {
+    const m = cf.motive;
+    const deadline = `the night of Day ${m.deadlineDay}`;
+    if (cf.pendingMotiveSpeech && same(speakerName, cf.motiveSpeaker)) {
+        return `[YOUR MOTIVE ANNOUNCEMENT]
+You, ${speakerName}, are announcing a new motive to everyone right now: ${m.title}. ${m.description}
+The deadline is ${deadline}.${m.announcement ? `\nThe gist of it: ${m.announcement}` : ""}
+Announce it fully in character, with flair, in this reply. Never hint at who will give in to it.`;
+    }
+    const heard = cf.motiveJustAnnounced === "monitor"
+        ? "\nHe announced it over the monitors just now; everyone has just heard it."
+        : "";
+    return `[MONOKUMA'S MOTIVE]\nMonokuma has handed out a motive: ${m.title}. ${m.description} The deadline is ${deadline}.${heard}`;
+}
+
+// Returns { text, beatId, killerNote, motive }. `phase` is the game phase (DAY, NIGHT,
 // INVESTIGATION or TRIAL); `slot` comes from getTimeSlot().
 export function buildCasePrompt({
     caseFile,
@@ -72,7 +89,7 @@ export function buildCasePrompt({
     truthBulletTitles = [],
     victimUltimate = "",
 } = {}) {
-    const none = { text: "", beatId: "", killerNote: false };
+    const none = { text: "", beatId: "", killerNote: false, motive: "" };
     const cf = caseFile;
     if (!cf || cf.status === CASE_STATUS.CLOSED || phase === "TRIAL") return none;
 
@@ -82,6 +99,12 @@ export function buildCasePrompt({
     const dailyLife = phase === "DAY" || phase === "NIGHT";
 
     const time = phase === "NIGHT" ? "night" : "day";
+    let motive = "";
+    if (cf.status === CASE_STATUS.PLANNED && dailyLife && cf.motive.title) {
+        const note = motiveNote(cf, { speakerName });
+        motive = note.startsWith("[YOUR") ? "speech" : cf.motiveJustAnnounced ? "heard" : "known";
+        parts.push(note);
+    }
     if (cf.status === CASE_STATUS.PLANNED && dailyLife && isGatheringNow(cf, { day, time, roomId, presentNames })) {
         // A public murder plays out in front of everyone.
         parts.push(`[THE GATHERING]
@@ -112,5 +135,5 @@ V3C| BODY_DISCOVERY`);
     }
 
     if (!parts.length) return none;
-    return { text: [HEADER, ...parts].join("\n\n"), beatId, killerNote: isKiller };
+    return { text: [HEADER, ...parts].join("\n\n"), beatId, killerNote: isKiller && parts.some((p) => p.startsWith("[SECRET")), motive };
 }
