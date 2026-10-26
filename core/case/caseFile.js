@@ -49,12 +49,22 @@ function matchCastName(raw, castNames) {
     return partial.length === 1 ? partial[0] : "";
 }
 
+function roomKey(value) {
+    return text(value).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+// Matches a room the model wrote to one on the map: its id or name, ignoring
+// case, spaces and underscores, then a name contained in the other.
 function matchRoom(raw, rooms) {
-    const key = nameKey(raw);
+    const key = roomKey(raw);
     if (!key) return null;
-    return rooms.find((r) => nameKey(r.id) === key)
-        || rooms.find((r) => nameKey(r.label) === key)
-        || null;
+    const exact = rooms.find((r) => roomKey(r.id) === key || roomKey(r.label) === key);
+    if (exact) return exact;
+    const loose = rooms.filter((r) => {
+        const label = roomKey(r.label);
+        return label && (key.includes(label) || label.includes(key));
+    });
+    return loose.length === 1 ? loose[0] : null;
 }
 
 export function buildCaseGenerationPrompt({
@@ -80,7 +90,7 @@ THE PLAYER: ${player || "the protagonist"}. The player is never the killer or th
 STUDENTS (pick the killer and the victim from these names only):
 ${castLines || "- (none)"}
 
-ROOMS (use these ids for clue locations):
+ROOMS (copy a room's id exactly, the part before the colon; never invent rooms):
 ${roomLines || "- (none)"}
 
 RECENT EVENTS:
@@ -91,17 +101,17 @@ Reply with one compact JSON object and nothing else: start your reply with { and
   "motive": { "title": "short name of the motive", "description": "what Monokuma offers or threatens, 1-2 sentences", "announcement": "Monokuma announcing it, in his voice, 2-4 sentences" },
   "killer": "student name",
   "victim": "student name",
+  "body": { "room": "room id where the body is left", "state": "what the scene looks like when the body is found, 1-2 sentences" },
+  "clues": [{ "text": "a fact the investigation can find", "room": "room id", "witness": "student name or empty" }],
   "motiveLink": "why the motive pushes the killer to kill, 1-2 sentences",
   "method": "how the murder is done and covered up, 2-3 sentences",
   "weapon": "the weapon",
   "murderDay": ${day} to ${lastDay},
   "murderTime": "day" or "night" (when on that day the murder happens),
-  "body": { "room": "room id where the body is left", "state": "what the scene looks like when the body is found, 1-2 sentences" },
   "murderStyle": "hidden" or "public",
   "gathering": { "room": "room id", "description": "the event that brings everyone together" } (only for a public murder, otherwise null),
   "monokumaFile": { "timeOfDeath": "what the file reports", "cause": "what the file reports", "injuries": "other wounds or details, or empty", "concealed": [{ "field": "timeOfDeath, cause or injuries", "truth": "the real fact the file can't state, and why" }] },
   "timeline": ["short events in order, from the killer's preparation to the body being left"],
-  "clues": [{ "text": "a fact the investigation can find", "room": "room id", "witness": "student name or empty" }],
   "foreshadowing": [{ "text": "a small, innocent-looking moment during the coming days that later turns out to matter", "characters": ["student names involved"] }],
   "witnesses": [{ "name": "student name", "account": "what they saw or heard, and when" }]
 }
@@ -212,19 +222,29 @@ export function parseCaseFileResponse(raw, {
     const deadlineDay = day + Math.max(0, Math.min(MAX_MOTIVE_DEADLINE_DAYS, deadlineDays) - 1);
     const murderDay = Math.min(deadlineDay, Math.max(day, Math.round(Number(data.murderDay)) || deadlineDay));
 
+    const bodyRoom = matchRoom(data.body?.room, rooms);
+    if (!bodyRoom) return { error: `The body's room "${text(data.body?.room, 60)}" isn't on the map.` };
+
+    // A clue in a room that isn't on the map (and not from a witness) is
+    // moved to the crime scene rather than lost.
     const clues = list(data.clues).map((c) => {
-        const room = matchRoom(c?.room, rooms);
+        const witness = matchCastName(c?.witness, castNames);
+        const room = matchRoom(c?.room, rooms) || (witness ? null : bodyRoom);
         return {
             text: text(c?.text),
             roomId: room?.id || "",
             roomLabel: room?.label || "",
-            witness: matchCastName(c?.witness, castNames),
+            witness,
         };
     }).filter((c) => c.text && (c.roomId || c.witness)).slice(0, LIMITS.clues);
-    if (clues.length < 3) return { error: "The plan has too few clues placed in real rooms." };
-
-    const bodyRoom = matchRoom(data.body?.room, rooms);
-    if (!bodyRoom) return { error: `The body's room "${text(data.body?.room, 60)}" isn't on the map.` };
+    if (clues.length < 3) {
+        return {
+            error: parsed.cutOff
+                ? "The reply was cut off before enough clues were written."
+                : "The plan has fewer than 3 clues.",
+            reason: parsed.cutOff ? "cut-off" : "",
+        };
+    }
     const isPublic = data.murderStyle === "public";
     const gatheringRoom = isPublic ? (matchRoom(data.gathering?.room, rooms) || bodyRoom) : null;
 

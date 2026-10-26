@@ -4887,19 +4887,28 @@ async function generateCaseFile({ deadlineDays }) {
             : lastReason === "no-json" || lastReason === "invalid" ? "\n\nYour last reply wasn't valid JSON. Reply with only the JSON object: no other text, no code fences, start with { and end with }."
             : `\n\nYour last answer was rejected: ${lastError} Answer again with only the corrected JSON object.`;
         let raw = "";
+        let meta = null;
         try {
-            raw = await generateIsolated(`${prompt}${retry}`, { allowDialogue: true, maxTokens: 3000 });
+            // Thinking models spend reasoning tokens out of max_tokens, which
+            // cut the plan off; keep their thinking short.
+            raw = await generateIsolated(`${prompt}${retry}`, {
+                allowDialogue: true,
+                maxTokens: 6000,
+                reasoning: { effort: "low", exclude: true },
+                onMeta: (m) => { meta = m; },
+            });
         } catch (err) {
             lastCaseGeneration = { at: Date.now(), source, raw: "", error: `The AI call failed: ${err?.message || err}` };
             throw new Error(lastCaseGeneration.error);
         }
         const { caseFile, error, reason } = parseCaseFileResponse(raw, parseOpts);
-        lastCaseGeneration = { at: Date.now(), source, raw, error: error || "" };
+        lastCaseGeneration = { at: Date.now(), source, raw, error: error || "", meta };
         if (caseFile) return caseFile;
         lastError = error;
         lastReason = reason || "";
         const text = String(raw || "");
-        console.warn(`[Dangan][Case] Plan rejected (attempt ${attempt + 1}, source ${source}, ${text.length} chars): ${error}\n--- start ---\n${text.slice(0, 300)}\n--- end ---\n${text.slice(-300)}`);
+        const metaText = meta ? `, model ${meta.model}, finish ${meta.finishReason || "?"}, tokens ${JSON.stringify(meta.usage || {})}` : "";
+        console.warn(`[Dangan][Case] Plan rejected (attempt ${attempt + 1}, source ${source}${metaText}, ${text.length} chars): ${error}\n--- start ---\n${text.slice(0, 300)}\n--- end ---\n${text.slice(-300)}`);
     }
     throw new Error(lastError || "The plan couldn't be generated.");
 }
@@ -5166,7 +5175,7 @@ VICTIM: ${caseFile.victim}
 WHAT HAPPENED: ${caseFile.method} Weapon: ${caseFile.weapon}.
 TIMELINE: ${caseFile.timeline.join(" → ")}
 MURDER: during the ${caseFile.murderTime} of Day ${caseFile.murderDay}.
-BODY: ${caseFile.body.roomLabel}. ${caseFile.body.state}`, { maxTokens: 400 });
+BODY: ${caseFile.body.roomLabel}. ${caseFile.body.state}`, { maxTokens: 1500, reasoning: { effort: "low", exclude: true } });
         filled = extractJsonObject(raw) || {};
     } catch (err) {
         console.warn("[Dangan][Case] Couldn't fill in the Monokuma File:", err);
@@ -5468,7 +5477,7 @@ async function settleBeat(sent) {
     if (!beat || !reply) return;
     let landed;
     try {
-        const answer = await generateIsolated(`MOMENT: ${beat.text}\n\nREPLY: ${reply.slice(0, 3000)}\n\nDoes the REPLY include the MOMENT, even loosely or in different words? Answer with exactly one word: YES or NO.`, { maxTokens: 5 });
+        const answer = await generateIsolated(`MOMENT: ${beat.text}\n\nREPLY: ${reply.slice(0, 3000)}\n\nDoes the REPLY include the MOMENT, even loosely or in different words? Answer with exactly one word: YES or NO.`, { maxTokens: 400, reasoning: { effort: "low", exclude: true } });
         landed = /\byes\b/i.test(answer) ? true : /\bno\b/i.test(answer) ? false : undefined;
     } catch (err) {
         console.warn("[Dangan][Case] Beat check failed, using word overlap:", err);
@@ -7234,7 +7243,7 @@ async function generateTrialDialogueWithProfile(profileId, prompt, { maxTokens =
     });
 }
 
-async function generateIsolated(prompt, { allowDialogue = false, maxTokens = 300 } = {}) {
+async function generateIsolated(prompt, { allowDialogue = false, maxTokens = 300, reasoning = null, onMeta = null } = {}) {
     const fullPrompt = `
 You are an analysis engine.
 You do NOT roleplay.
@@ -7264,7 +7273,9 @@ ${prompt}
             maxTokens,
             temperature: 0.25,
             topP: 0.9,
-            stop: ["USER:", "ASSISTANT:", "###"]
+            stop: ["USER:", "ASSISTANT:", "###"],
+            reasoning,
+            onMeta,
         });
     }
 
@@ -17472,7 +17483,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             case 'lastraw': {
                 const g = lastCaseGeneration;
                 const text = g
-                    ? `Last plan from the AI (source: ${g.source}, ${new Date(g.at).toLocaleTimeString()}, ${g.raw.length} characters)\nResult: ${g.error || 'accepted'}\n\n${g.raw || '(empty reply)'}`
+                    ? `Last plan from the AI (source: ${g.source}${g.meta ? `, model ${g.meta.model}, finish reason ${g.meta.finishReason || '?'}, tokens ${JSON.stringify(g.meta.usage || {})}` : ''}, ${new Date(g.at).toLocaleTimeString()}, ${g.raw.length} characters)\nResult: ${g.error || 'accepted'}\n\n${g.raw || '(empty reply)'}`
                     : 'No plan has been generated since the page loaded.';
                 await showCaseDebugText('LAST PLAN FROM THE AI', text);
                 return '';

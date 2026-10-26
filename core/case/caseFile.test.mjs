@@ -88,7 +88,7 @@ function run() {
     assert(cf.status === CASE_STATUS.PLANNED, "starts planned");
     assert(cf.motive.deadlineDay === 3, "deadline is day + days - 1");
     assert(cf.murderDay === 3, "murder day kept");
-    assert(cf.clues.length === 3, "clue in an unknown room is dropped");
+    assert(cf.clues.length === 4 && cf.clues[3].roomId === "hpa_kitchen", "a clue in an unknown room moves to the crime scene");
     assert(cf.clues[1].roomId === "hpa_gym" && cf.clues[1].roomLabel === "Gym", "room resolves by label");
     assert(cf.clues[2].witness === "Kyoko Kirigiri", "witness clue kept");
     assert(cf.clues.every((c) => c.id), "clues get ids");
@@ -248,8 +248,18 @@ function run() {
     const full = JSON.stringify(plan());
     const clipped = full.slice(0, full.indexOf('"foreshadowing"') + 25);
     const fromClipped = parseCaseFileResponse(clipped, opts);
-    assert(!fromClipped.error && fromClipped.caseFile.clues.length === 3, `clipped plan parses: ${fromClipped.error}`);
+    assert(!fromClipped.error && fromClipped.caseFile.clues.length === 4, `clipped plan parses: ${fromClipped.error}`);
     assert(parseCaseFileResponse(full.slice(0, 120), opts).error, "too little survives");
+
+    // Rooms the model writes loosely still land on the map.
+    const loose = parseCaseFileResponse(JSON.stringify(plan({
+        body: { room: "HPA-Gym", state: "x" },
+        clues: [{ text: "a", room: "the gym" }, { text: "b", room: "Dorm_Hallway" }, { text: "c", room: "hpa kitchen" }],
+    })), opts).caseFile;
+    assert(loose.body.roomId === "hpa_gym", "body room by loose id");
+    assert(loose.clues.map((c) => c.roomId).join() === "hpa_gym,hpa_dorm_hall,hpa_kitchen", "clue rooms by loose name or id");
+    const cutClues = parseCaseFileResponse('{"killer":"Leon","victim":"Sayaka","motive":{"title":"T"},"body":{"room":"Gym"},"clues":[{"text":"a","room":"Gym"},{"text":"b","ro', opts);
+    assert(cutClues.error?.includes("cut off") && cutClues.reason === "cut-off", "cut off before enough clues says so");
 
     console.log("caseFile tests passed");
 }
