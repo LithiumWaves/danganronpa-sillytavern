@@ -81,6 +81,15 @@ When the motive drops, one hidden generation call plans the chapter's murder: th
 
 The Phase HUD shows the motive and its deadline until the case is over. **UNDO** on the motive's toast throws the plan away (and removes the narrator message while it's still the last one). Moving on to the next chapter closes the case.
 
+**How the case plays out:**
+- **Before the murder**, the plan has a few small foreshadowing moments. When the characters a moment involves are in the scene, the AI is asked to slip it in, at most one per daytime or nighttime. The killer's own character is told their secret only while they are the one replying; nobody else's prompt ever names the killer.
+- **The murder** happens during the daytime or the night of the planned day: when you Pass Time out of a daytime murder, or Sleep through a nighttime one. A murder whose time you've already passed happens at the next Pass Time or Sleep, so it can't be skipped. The victim goes missing: out of the overworld and muted, like a student who doesn't show up to breakfast. **Undo** in the Phase HUD takes the murder back with the time change.
+- **The body is found** when you walk into the crime scene (the body discovery cutscene and the announcement play, then the investigation starts), or earlier if the roleplay finds it (the investigation-start marker, /bodydiscovery or the Phase HUD).
+- **The Monokuma File** opens right away, Killing Harmony-style: a Victim page and a Situation page, read out line by line (click, Enter or Space to go on; Escape to close). It's added to your Truth Bullets, and **OPEN FILE** on that bullet shows it again.
+- **During the investigation**, the AI knows what can be found in the room you're in, what the Monokuma File says and which Truth Bullets you already have. It can invent more evidence as long as it fits the case; new Truth Bullets found that way are kept with the case, so the rest of the story stays consistent with them.
+
+**Checking it works (spoilers):** `/case status` shows the whole plan, `/case prompt` shows what the AI would be told for the next reply (`/case prompt Leon Kuwata` shows it as that character), `/case commit` runs the murder now, `/case discover` finds the body now and `/case clear` drops the case. Settings → Gameplay → **Case debug toasts** shows a toast each time the case does something.
+
 The generation uses the AI Generation source in Settings, like the trial minigames. It doesn't stop SillyTavern's prompt inspector or your API logs from showing the plan, so don't look there if you want to be surprised.
 
 ### Character Introductions

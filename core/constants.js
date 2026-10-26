@@ -247,6 +247,9 @@ export const defaultSettings = {
     caseFile: null,
     // Day N of a chapter Monokuma announces the motive on by himself; 0 is off.
     motiveAutoDay: 0,
+    // Toasts for each Case File event (beats, the killer's note, the murder,
+    // the body being found), for checking the case plays out.
+    caseDebugToasts: false,
 };
 
 export const DEFAULT_TRIAL_PROMPT_TEMPLATES = {

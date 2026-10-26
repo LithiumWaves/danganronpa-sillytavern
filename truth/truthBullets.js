@@ -272,7 +272,7 @@ function isKnownTitle(title) {
     return truthBullets.some(matches) || archivedTruthBullets.some(matches);
 }
 
-function addTruthBullet(title, description = "", { grantMonocoins = true, grantXp = true, image, manual = false } = {}) {
+function addTruthBullet(title, description = "", { grantMonocoins = true, grantXp = true, image, manual = false, animate = true } = {}) {
     if (!title) return false;
     if (isKnownTitle(title)) return false;
     const dismissed = getDismissedTitles();
@@ -292,7 +292,7 @@ function addTruthBullet(title, description = "", { grantMonocoins = true, grantX
 
     truthBullets.push(bullet);
     renderTruthBullets();
-    queueTruthBulletAnimation(title);
+    if (animate) queueTruthBulletAnimation(title);
     saveTruthBullets();
 
     const truthReward = Number(monocoinRewards?.truthBullet ?? DEFAULT_MONOCOIN_REWARD.truthBullet);
@@ -377,14 +377,19 @@ function showTruthBulletDetails(bullet, isArchived) {
         : hasPin
             ? `<button class="truth-show-on-map-button">SHOW ON MAP</button>`
             : `<button class="truth-place-on-map-button">PLACE ON MAP</button>`;
+    const fileBtn = deps.hasMonokumaFile?.(bullet.title)
+        ? `<button class="truth-open-file-button">OPEN FILE</button>`
+        : "";
     const actionButton = isArchived
         ? `<div class="truth-archived-actions">
+               ${fileBtn}
                <button class="truth-reload-button">RELOAD TRUTH BULLET</button>
                <button class="truth-edit-button">EDIT</button>
                <button class="truth-remove-button truth-delete-button">DELETE TRUTH BULLET</button>
                ${mapBtn}
            </div>`
         : `<div class="truth-active-actions">
+               ${fileBtn}
                <button class="truth-remove-button">ARCHIVE TRUTH BULLET</button>
                <button class="truth-edit-button">EDIT</button>
                ${mapBtn}
@@ -416,6 +421,10 @@ function showTruthBulletDetails(bullet, isArchived) {
             </div>
         </div>
     `);
+
+    $details.find(".truth-open-file-button").on("click", () => {
+        deps.openMonokumaFile?.(bullet.title);
+    });
 
     if (isArchived) {
         $details.find(".truth-reload-button").on("click", () => {

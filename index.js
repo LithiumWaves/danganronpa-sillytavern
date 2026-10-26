@@ -41,7 +41,9 @@ import { createPhaseHistory, derivePhase, getNextStepHint, getPhaseActions, getS
 import { notify } from "./core/ui/notify.js";
 import { SAVE_MODES, createSaveStore } from "./core/saves/saveStore.js";
 import { pinInScope } from "./map/mapStorage.js";
-import { CASE_STATUS, DEFAULT_MOTIVE_DEADLINE_DAYS, buildCaseGenerationPrompt, buildMotiveChatNote, getMotiveAnnouncementText, isCaseOpen, normalizeCaseFile, parseCaseFileResponse, shouldAutoAnnounceMotive } from "./core/case/caseFile.js";
+import { CASE_STATUS, DEFAULT_MOTIVE_DEADLINE_DAYS, addEmergentClue, buildCaseGenerationPrompt, describeCaseFile, buildMonokumaFileBullet, buildMotiveChatNote, commitMurder, getMonokumaFileTitle, getMotiveAnnouncementText, getTimeSlot, isCaseOpen, isMurderSlotOver, markBeatUsed, markDiscovered, normalizeCaseFile, parseCaseFileResponse, removeEmergentClue, shouldAutoAnnounceMotive } from "./core/case/caseFile.js";
+import { CASE_PROMPT_KEY, buildCasePrompt } from "./core/case/casePrompts.js";
+import { openMonokumaFile } from "./truth/monokumaFile.js";
 import { MARKER_BLOCKS, MARKER_PROMPT_KEY, buildMarkerPrompt, textHasMarkerInstructions } from "./core/prompts/markerPrompts.js";
 import { TRUST_LEVELS_PROMPT_KEY, buildTrustLevelsPrompt } from "./core/prompts/trustLevelsPrompt.js";
 import { createEffectLedger, emptyEffects, hasEffects, messageIdentity } from "./core/ledger/effectLedger.js";
@@ -562,6 +564,7 @@ async function passTimeToNight({ source = "manual" } = {}) {
     if (state.phase !== TIME_PHASE_DAY || state.dayActionUsed) return false;
 
     rememberPhaseForUndo("Pass time");
+    maybeCommitMurder("day");
     state.phase = TIME_PHASE_NIGHT;
     state.dayActionUsed = true;
     setInvestigationUnderway(false); // advancing time ends the investigation
@@ -583,6 +586,7 @@ async function sleepToNextDay({ source = "manual" } = {}) {
     if (state.phase !== TIME_PHASE_NIGHT) return false;
 
     rememberPhaseForUndo("Sleep");
+    maybeCommitMurder("night");
     state.day = Math.max(1, Number(state.day || 1) + 1);
     state.phase = TIME_PHASE_DAY;
     state.dayActionUsed = false;
@@ -4735,8 +4739,8 @@ function getCurrentStatusLine() {
 
 // Reads the tracker without ensureTimeTrackerState(), which swaps in a new
 // object: callers like passTimeToNight hold the current one and mutate it.
-function rememberPhaseForUndo(label) {
-    phaseHistory.push({ timeTracker: extension_settings[extensionName]?.timeTracker, investigationUnderway }, label);
+function rememberPhaseForUndo(label, extra = captureCaseUndo()) {
+    phaseHistory.push({ timeTracker: extension_settings[extensionName]?.timeTracker, investigationUnderway }, label, extra);
 }
 
 function playCurrentPhaseTrack() {
@@ -4758,6 +4762,7 @@ function undoLastPhaseChange() {
     if (!entry) return false;
 
     const wasInvestigating = investigationUnderway;
+    if (entry.extra) restoreCaseUndo(entry.extra);
     Object.assign(ensureTimeTrackerState(), entry.snapshot.timeTracker);
     setInvestigationUnderway(entry.snapshot.investigationUnderway);
     if (wasInvestigating !== investigationUnderway) {
@@ -4960,6 +4965,264 @@ async function maybeAutoAnnounceMotive() {
         caseFile: getCaseFile(),
     });
     if (due) await announceMotive({ source: "auto" });
+}
+
+// ── The murder, the body and what the AI is told ─────────────────────────────
+
+// Who's about to reply: the group member SillyTavern drafted, or the
+// character of a one-on-one chat. Only the killer's own replies get their
+// secret.
+let caseDraftedSpeaker = "";
+// What the last case prompt carried, settled once the reply renders.
+let caseLastSent = null;
+
+function caseDebug(title, message) {
+    console.log(`[Dangan][Case] ${title}: ${message}`);
+    if (getMonopadSetting("caseDebugToasts")) notify({ title: `CASE · ${title}`, message, durationMs: 6000 });
+}
+
+function getCaseSpeakerName() {
+    if (caseDraftedSpeaker) return caseDraftedSpeaker;
+    const ctx = window.SillyTavern?.getContext?.();
+    if (!ctx || ctx.groupId || ctx.characterId == null) return "";
+    return String(ctx.characters?.[ctx.characterId]?.name || "");
+}
+
+function findRosterCharacter(name) {
+    return characters.get(normalizeName(name)) || null;
+}
+
+// What a phase change or an investigation start may change, so Undo can put
+// it back.
+function captureCaseUndo() {
+    const raw = extension_settings[extensionName]?.caseFile;
+    if (!raw) return null;
+    const victim = findRosterCharacter(raw.victim);
+    return {
+        caseFile: JSON.parse(JSON.stringify(raw)),
+        victim: victim ? { name: victim.name, dead: Boolean(victim.dead), missing: Boolean(victim.missing) } : null,
+    };
+}
+
+function restoreCaseUndo(extra) {
+    const before = getCaseFile();
+    setCaseFile(extra.caseFile);
+    if (extra.victim) {
+        const victim = findRosterCharacter(extra.victim.name);
+        if (victim) {
+            victim.dead = extra.victim.dead;
+            victim.missing = extra.victim.missing;
+            saveCharacters();
+        }
+    }
+    // The Monokuma File came with the discovery being undone.
+    const after = getCaseFile();
+    if (before?.discovered && !after?.discovered) {
+        const title = getMonokumaFileTitle(after);
+        const bullet = getTruthBullets().find((tb) => tb.title === title);
+        if (bullet) removeTruthBulletById(bullet.id);
+    }
+}
+
+// Called as the clock leaves `from` ("day" on Pass Time, "night" on Sleep),
+// after the phase change was remembered for Undo.
+function maybeCommitMurder(from) {
+    const caseFile = getCaseFile();
+    const day = ensureTimeTrackerState().day;
+    if (!isMurderSlotOver(caseFile, { day, from })) return false;
+    commitCaseMurder({ day, time: from });
+    return true;
+}
+
+function commitCaseMurder({ day, time }) {
+    const caseFile = getCaseFile();
+    if (!caseFile || caseFile.status !== CASE_STATUS.PLANNED) return false;
+    setCaseFile(commitMurder(caseFile, { day, time }));
+    // Missing, like a student who doesn't show up to breakfast: out of the
+    // overworld and muted, until the body is found.
+    const victim = findRosterCharacter(caseFile.victim);
+    if (victim) {
+        victim.missing = true;
+        saveCharacters();
+    }
+    caseDebug("MURDER", `${caseFile.victim} was killed during the ${time} of Day ${day}.`);
+    return true;
+}
+
+// Walking into the crime scene finds the body.
+function maybeDiscoverBodyOnEntry(locationId) {
+    const caseFile = getCaseFile();
+    if (!caseFile || caseFile.status !== CASE_STATUS.COMMITTED || caseFile.discovered) return;
+    if (!locationId || locationId !== caseFile.body.roomId) return;
+    const phase = getCurrentPhase();
+    if (phase !== "DAY" && phase !== "NIGHT") return;
+    caseDiscoveryWalkIn = true;
+    void runBodyDiscoverySequence().finally(() => { caseDiscoveryWalkIn = false; });
+}
+
+let caseDiscoveryWalkIn = false;
+
+// Every investigation start (the marker, the Phase HUD, /bodydiscovery or
+// walking in) finds the body if the murder has happened.
+function onCaseInvestigationStarted() {
+    const caseFile = getCaseFile();
+    if (!caseFile || caseFile.status !== CASE_STATUS.COMMITTED || caseFile.discovered) return;
+    const found = markDiscovered(caseFile, { walkedIn: caseDiscoveryWalkIn });
+    setCaseFile(found);
+
+    const victim = findRosterCharacter(found.victim);
+    if (victim) {
+        victim.dead = true;
+        victim.missing = false;
+        saveCharacters();
+    }
+
+    const file = buildMonokumaFileBullet(found, { victimUltimate: victim?.ultimate || "" });
+    // The file screen below stands in for the usual Truth Bullet pop-up.
+    handleTruthBullet(file.title, file.description, { grantMonocoins: false, grantXp: false, animate: false });
+    caseDebug("BODY FOUND", `${found.victim} in the ${found.body.roomLabel || "?"}${caseDiscoveryWalkIn ? " (walked in)" : ""}. ${file.title} added.`);
+    void openMonokumaFileForCase(found);
+}
+
+// ── The Monokuma File screen ──────────────────────────────────────────────────
+// What the screen shows is stored per save under the file's title, so the
+// Truth tab can open it again after the case is long closed.
+
+function getBackgroundUrlByName(name) {
+    const match = name ? findBackgroundElement(name) : null;
+    if (match instanceof HTMLElement) {
+        const file = match.getAttribute("bgfile") || "";
+        if (file) return match.getAttribute("custom") === "true" ? encodeURI(file) : `backgrounds/${encodeURIComponent(file)}`;
+    }
+    return "";
+}
+
+function getCurrentChatBackgroundUrl() {
+    const bg = document.getElementById("bg1") || document.getElementById("bg_custom");
+    const m = bg ? /url\(["']?(.*?)["']?\)/.exec(getComputedStyle(bg).backgroundImage || "") : null;
+    return m?.[1] || "";
+}
+
+async function buildMonokumaFileScreenData(caseFile) {
+    const victim = findRosterCharacter(caseFile.victim);
+    const profile = victim?.social?.profile || {};
+    const known = (v) => (v && String(v).toLowerCase() !== "unknown" ? String(v) : "");
+    const ultimate = known(victim?.ultimate || profile.ultimate);
+    const mf = caseFile.monokumaFile || {};
+    const room = caseFile.body.roomLabel;
+    const pin = caseFile.body.roomId ? mapPanelController?.getPinByLocationId?.(caseFile.body.roomId) : null;
+    const portraitUrl = await getSpriteUrl(caseFile.victim, "neutral").catch(() => null);
+    const situation = [
+        room ? `The victim's body was discovered in the ${room}.` : "",
+        mf.timeOfDeath ? `The time of death is approximately ${mf.timeOfDeath.replace(/\.$/, "")}.` : "",
+        mf.cause ? `The victim died of ${mf.cause.replace(/\.$/, "")}.` : "",
+        mf.injuries || "",
+    ].filter(Boolean);
+    const lines = [
+        `The victim is ${caseFile.victim}${ultimate ? `, the **Ultimate ${ultimate}**...` : "."}`,
+        room ? `The body was found in the **${room}**.` : "",
+        mf.timeOfDeath ? `The time of death is approximately ${mf.timeOfDeath.replace(/\.$/, "")}.` : "",
+        mf.cause ? `The cause of death is ${mf.cause.replace(/\.$/, "")}.${mf.injuries ? ` ${mf.injuries}` : ""}` : "",
+    ].filter(Boolean);
+    return {
+        number: Math.max(1, caseFile.chapterIndex || 1),
+        victim: {
+            name: caseFile.victim,
+            ultimate,
+            portraitUrl: portraitUrl || "",
+            bodyUrl: portraitUrl || "",
+            info: [
+                ["Ultimate", ultimate],
+                ["Height", known(profile.height)],
+                ["Measurements", known(profile.measurements)],
+                ["Likes", known(profile.likes)],
+            ],
+        },
+        sceneUrl: getBackgroundUrlByName(pin?.bg) || getCurrentChatBackgroundUrl(),
+        situation,
+        lines,
+    };
+}
+
+async function openMonokumaFileForCase(caseFile) {
+    let data;
+    try {
+        data = await buildMonokumaFileScreenData(caseFile);
+    } catch (err) {
+        console.warn("[Dangan][Case] Monokuma File screen data failed:", err);
+        return;
+    }
+    const root = extension_settings[extensionName] ||= {};
+    root.monokumaFiles ||= {};
+    root.monokumaFiles[getMonokumaFileTitle(caseFile)] = data;
+    saveSettingsDebounced();
+    // Let the investigation banner finish first.
+    await new Promise((r) => setTimeout(r, 2600));
+    await openMonokumaFile(data, { narrate: true, playSfx: () => playSfx(sfx.click) });
+}
+
+async function openStoredMonokumaFile(title) {
+    const data = extension_settings[extensionName]?.monokumaFiles?.[title];
+    if (!data) return;
+    await openMonokumaFile(data, { narrate: false, playSfx: () => playSfx(sfx.click) });
+}
+
+function recordEmergentClue(bullet) {
+    const caseFile = getCaseFile();
+    if (!caseFile?.discovered || caseFile.status === CASE_STATUS.CLOSED) return;
+    if (bullet.title === getMonokumaFileTitle(caseFile)) return;
+    const next = addEmergentClue(caseFile, { id: bullet.id, title: bullet.title, text: bullet.description, roomId: getCurrentLocationId() || "" });
+    if (next === caseFile) return;
+    setCaseFile(next);
+    caseDebug("EMERGENT CLUE", bullet.title);
+}
+
+function forgetEmergentClue(bullet) {
+    const caseFile = getCaseFile();
+    if (!caseFile?.emergentClues?.length) return;
+    setCaseFile(removeEmergentClue(caseFile, { id: bullet.id, title: bullet.title }));
+}
+
+function buildCurrentCasePrompt({ speakerName = getCaseSpeakerName() } = {}) {
+    const caseFile = getCaseFile();
+    const victim = caseFile ? findRosterCharacter(caseFile.victim) : null;
+    const presentNames = [...new Set([...getCurrentRoomOccupantNames(), ...getTrustPromptEntries().map((e) => e.name)])];
+    return buildCasePrompt({
+        caseFile,
+        phase: getCurrentPhase(),
+        day: ensureTimeTrackerState().day,
+        speakerName,
+        roomId: getCurrentLocationId() || "",
+        presentNames,
+        truthBulletTitles: getTruthBullets().map((tb) => tb.title),
+        victimUltimate: victim?.ultimate || "",
+    });
+}
+
+function syncCasePrompt() {
+    const setPrompt = window.SillyTavern?.getContext?.()?.setExtensionPrompt || window.setExtensionPrompt;
+    if (typeof setPrompt !== "function") return;
+    const result = buildCurrentCasePrompt();
+    setPrompt(CASE_PROMPT_KEY, result.text, 0, 0, false, "system");
+    caseLastSent = result.text ? { ...result, slot: getTimeSlot(ensureTimeTrackerState().day, ensureTimeTrackerState().phase) } : null;
+    if (result.beatId) caseDebug("BEAT SENT", getCaseFile()?.foreshadowing.find((b) => b.id === result.beatId)?.text || result.beatId);
+    if (result.killerNote) caseDebug("KILLER NOTE", `Sent to ${getCaseSpeakerName()}.`);
+}
+
+// A reply went out with the case prompt: a beat it carried counts as used,
+// and the one-time discovery note is spent.
+function onCaseReplyRendered() {
+    const sent = caseLastSent;
+    caseLastSent = null;
+    if (!sent) return;
+    let caseFile = getCaseFile();
+    if (!caseFile) return;
+    if (sent.beatId) {
+        caseFile = markBeatUsed(caseFile, sent.beatId, sent.slot);
+        caseDebug("BEAT USED", sent.beatId);
+    }
+    if (caseFile.pendingNote && sent.text.includes("[JUST NOW]")) caseFile = { ...caseFile, pendingNote: "" };
+    setCaseFile(caseFile);
 }
 
 // The confirm dialog is part of the Monopad markup, which is hidden while the
@@ -5827,7 +6090,8 @@ const investigationStartController = {
     },
 
     trigger() {
-        if (!investigationUnderway) rememberPhaseForUndo("Start investigation");
+        const starting = !investigationUnderway;
+        if (starting) rememberPhaseForUndo("Start investigation");
         const sfxResult = this.playSfx();
         const displayDuration = Math.max(1400, (sfxResult?.durationMs || 2200) + 120);
         const bannerShown = this.showBanner(displayDuration);
@@ -5850,6 +6114,7 @@ const investigationStartController = {
         setInvestigationUnderway(true);
         renderTimeTrackerUi();
         applyDynamicTheme();
+        if (starting) onCaseInvestigationStarted();
 
         const didAnything = Boolean(bannerShown || sfxResult?.played || toggled);
         if (!didAnything) {
@@ -7600,6 +7865,7 @@ function revertMessageEffects(entry) {
         processedTruthSignatures.delete(item.sig);
         const bullet = removeTruthBulletById(item.id);
         if (bullet) undone.push(`Truth Bullet "${bullet.title}"`);
+        if (bullet) forgetEmergentClue(bullet);
     }
     for (const item of [...entry.trust].reverse()) {
         const char = characters.get(item.key);
@@ -7720,6 +7986,7 @@ function processAllMessages() {
             if (handleTruthBullet(title, description)) {
                 const bullet = getTruthBullets().find((tb) => tb.title === title);
                 if (bullet) fx.truth.push({ id: bullet.id, title, sig: signature });
+                if (bullet) recordEmergentClue(bullet);
             }
         }
 
@@ -13469,6 +13736,8 @@ debugSTGlobals();
             mapPanelController?.highlightPinByLocationId?.(locationId);
         },
         hasMapPin: (locationId) => mapPanelController?.hasPinForLocationId?.(locationId) ?? false,
+        hasMonokumaFile: (title) => Boolean(extension_settings[extensionName]?.monokumaFiles?.[title]),
+        openMonokumaFile: (title) => { void openStoredMonokumaFile(title); },
         placeOnMap: (label, locationId) => {
             setActiveMonopadTab("map");
             mapPanelController?.openPinCreatorWithPrefill?.(label, locationId);
@@ -14333,6 +14602,9 @@ STATEMENT: <third statement>`;
             // Right before the prompt is built, so trials starting or ending
             // are always reflected.
             try { syncMarkerPrompts(); } catch (e) { console.warn("[Dangan][Markers] sync failed:", e); }
+            if (!dryRun && type !== "quiet") {
+                try { syncCasePrompt(); } catch (e) { console.warn("[Dangan][Case] prompt sync failed:", e); }
+            }
         });
         for (const done of [event_types.GENERATION_ENDED, event_types.GENERATION_STOPPED, event_types.CHARACTER_MESSAGE_RENDERED]) {
             if (done) eventSource.on(done, () => onGenerationFinished());
@@ -14357,6 +14629,10 @@ STATEMENT: <third statement>`;
             try { cardHygiene?.enforceCleanGreetings?.(ctx); } catch {}
         };
         eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, handleCharacterMessage);
+        eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, () => {
+            try { onCaseReplyRendered(); } catch (e) { console.warn("[Dangan][Case] reply bookkeeping failed:", e); }
+        });
+        if (event_types.GENERATION_ENDED) eventSource.on(event_types.GENERATION_ENDED, () => { caseDraftedSpeaker = ""; });
 
         // Host entrance: a host drafted to speak in a group (force-talk or
         // /trigger — in One Main Chat hosts are muted until called), or
@@ -14365,6 +14641,7 @@ STATEMENT: <third statement>`;
             eventSource.on(event_types.GROUP_MEMBER_DRAFTED, (chId) => {
                 const ctx = window.SillyTavern?.getContext?.();
                 const name = ctx?.characters?.[chId]?.name;
+                caseDraftedSpeaker = name || "";
                 if (name) bringHostOnStage(name);
             });
         }
@@ -16777,47 +17054,50 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     ],
 }));
 
+// The body discovery vignette, the BDA, then the investigation. Used by
+// /bodydiscovery and by walking into the crime scene.
+async function runBodyDiscoverySequence({ bgName = '', cinematicName = '' } = {}) {
+    // Look up named cinematic (if requested), or default to the first configured cinematic.
+    // If bg= is explicitly provided without cinematic=, skip auto-selection so the bg switch runs.
+    const allCinematics = getMonopadSetting('bdaCinematics') || [];
+    const cinematic = cinematicName
+        ? allCinematics.find(c => c.name?.toLowerCase() === cinematicName.toLowerCase()) ?? null
+        : bgName ? null : (allCinematics[0] ?? null);
+
+    // Switch the background underneath the static overlay so the transition is hidden
+    const switchBackground = () => {
+        if (!bgName || cinematic) return;
+        const match = findBackgroundElement(bgName);
+        if (match instanceof HTMLElement) match.click();
+    };
+
+    // 1. Static + vignette overlay (despair noise) — swap BG at peak while hidden
+    //    If a named cinematic is given, pass it so the controller uses custom playback.
+    const overlayPromise = monokumaAnnouncementController?.triggerAsync('BODY_DISCOVERY', { cinematic });
+    if (!cinematic) setTimeout(switchBackground, 220);
+    await overlayPromise;
+
+    // 2. Body Discovery Announcement (BDA)
+    await monokumaAnnouncementController?.triggerAsync('BDA');
+
+    // 3. Investigation banner + SFX + dynamic theme
+    investigationStartController.trigger();
+    applyDynamicTheme();
+
+    // 4. Reveal the crime-scene background in CG Mode. The underlying ST
+    //    background was already switched under the static (switchBackground),
+    //    so dismissing the CG drops the user straight into investigation with
+    //    the correct scene. Skipped for cinematic BDAs (they own their visuals).
+    if (bgName && !cinematic) {
+        try { showCgByBgName(bgName); }
+        catch (e) { console.warn('[Dangan][BDA] CG Mode reveal failed:', e); }
+    }
+}
+
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'bodydiscovery',
     callback: async (args) => {
-        const bgName = String(args.bg || '').trim();
-        const cinematicName = String(args.cinematic || '').trim();
-
-        // Look up named cinematic (if requested), or default to the first configured cinematic.
-        // If bg= is explicitly provided without cinematic=, skip auto-selection so the bg switch runs.
-        const allCinematics = getMonopadSetting('bdaCinematics') || [];
-        const cinematic = cinematicName
-            ? allCinematics.find(c => c.name?.toLowerCase() === cinematicName.toLowerCase()) ?? null
-            : bgName ? null : (allCinematics[0] ?? null);
-
-        // Switch the background underneath the static overlay so the transition is hidden
-        const switchBackground = () => {
-            if (!bgName || cinematic) return;
-            const match = findBackgroundElement(bgName);
-            if (match instanceof HTMLElement) match.click();
-        };
-
-        // 1. Static + vignette overlay (despair noise) — swap BG at peak while hidden
-        //    If a named cinematic is given, pass it so the controller uses custom playback.
-        const overlayPromise = monokumaAnnouncementController?.triggerAsync('BODY_DISCOVERY', { cinematic });
-        if (!cinematic) setTimeout(switchBackground, 220);
-        await overlayPromise;
-
-        // 2. Body Discovery Announcement (BDA)
-        await monokumaAnnouncementController?.triggerAsync('BDA');
-
-        // 3. Investigation banner + SFX + dynamic theme
-        investigationStartController.trigger();
-        applyDynamicTheme();
-
-        // 4. Reveal the crime-scene background in CG Mode. The underlying ST
-        //    background was already switched under the static (switchBackground),
-        //    so dismissing the CG drops the user straight into investigation with
-        //    the correct scene. Skipped for cinematic BDAs (they own their visuals).
-        if (bgName && !cinematic) {
-            try { showCgByBgName(bgName); }
-            catch (e) { console.warn('[Dangan][BDA] CG Mode reveal failed:', e); }
-        }
+        await runBodyDiscoverySequence({ bgName: String(args.bg || '').trim(), cinematicName: String(args.cinematic || '').trim() });
         return '';
     },
     helpString: 'Plays the body discovery vignette, then the BDA, then triggers Investigation. Optional: bg=&lt;name&gt; to switch background under static; cinematic=&lt;name&gt; to use a configured BDA cinematic.',
@@ -16867,6 +17147,75 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             isRequired: true,
         }),
     ],
+}));
+
+// /case — debug tools for the hidden Case File. Every subcommand spoils it.
+async function showCaseDebugText(title, text) {
+    const ctx = window.SillyTavern?.getContext?.();
+    console.log(`[Dangan][Case] ${title}\n${text}`);
+    if (typeof ctx?.callGenericPopup === "function") {
+        const pre = document.createElement("pre");
+        pre.style.cssText = "white-space:pre-wrap;text-align:left;max-height:70vh;overflow:auto;font-size:0.85em;";
+        pre.textContent = text;
+        await ctx.callGenericPopup(pre, ctx.POPUP_TYPE?.TEXT ?? 1, "", { wide: true, large: true });
+    } else {
+        notify({ title, message: "Printed to the browser console (F12).", durationMs: 6000 });
+    }
+}
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'case',
+    callback: async (args, value) => {
+        const [sub = 'status', ...rest] = String(value || '').trim().split(/\s+/).filter(Boolean);
+        const caseFile = getCaseFile();
+        switch (sub.toLowerCase()) {
+            case 'status': {
+                const text = describeCaseFile(caseFile);
+                await showCaseDebugText('CASE STATUS', text);
+                return text;
+            }
+            case 'prompt': {
+                const speakerName = rest.join(' ');
+                const result = buildCurrentCasePrompt({ speakerName });
+                const text = result.text
+                    ? `As ${speakerName || 'any bystander'} (phase ${getCurrentPhase()}, room ${getCurrentLocationId() || 'none'}):\n\n${result.text}`
+                    : `Nothing would be sent as ${speakerName || 'a bystander'} right now (phase ${getCurrentPhase()}, room ${getCurrentLocationId() || 'none'}).`;
+                await showCaseDebugText('CASE PROMPT', text);
+                return text;
+            }
+            case 'commit': {
+                const tracker = ensureTimeTrackerState();
+                if (!commitCaseMurder({ day: tracker.day, time: tracker.phase === TIME_PHASE_NIGHT ? 'night' : 'day' })) {
+                    notify({ tone: 'warn', title: 'NO MURDER', message: 'Only a planned case can be committed.' });
+                }
+                return '';
+            }
+            case 'discover': {
+                if (caseFile?.status !== CASE_STATUS.COMMITTED || caseFile.discovered) {
+                    notify({ tone: 'warn', title: 'NOTHING TO FIND', message: 'The murder has to have happened, and the body not be found yet. Try /case commit first.' });
+                    return '';
+                }
+                caseDiscoveryWalkIn = true;
+                try { await runBodyDiscoverySequence(); } finally { caseDiscoveryWalkIn = false; }
+                return '';
+            }
+            case 'clear': {
+                const victim = caseFile ? findRosterCharacter(caseFile.victim) : null;
+                if (victim?.missing && caseFile?.status === CASE_STATUS.COMMITTED && !caseFile.discovered) {
+                    victim.missing = false;
+                    saveCharacters();
+                }
+                setCaseFile(null);
+                notify({ title: 'CASE CLEARED', message: 'The Case File is gone.' });
+                return '';
+            }
+            default:
+                notify({ tone: 'warn', title: '/case', message: 'Use status, prompt [name], commit, discover or clear.' });
+                return '';
+        }
+    },
+    helpString: 'Debug tools for the hidden Case File (spoilers!). <code>/case status</code> shows the plan, <code>/case prompt [name]</code> shows what the AI would be told for the next reply (as that speaker), <code>/case commit</code> runs the murder now, <code>/case discover</code> finds the body now, <code>/case clear</code> drops the case.',
+    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'status | prompt [name] | commit | discover | clear', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
@@ -17059,6 +17408,7 @@ function setCurrentLocationId(locationId) {
     }
     updateCurrentRoomDisplay();
     try { syncRoomContextPrompt(); } catch (e) { console.warn("[Dangan][RoomContext] location sync failed:", e); }
+    if (prev !== root.map.currentLocationId) maybeDiscoverBodyOnEntry(root.map.currentLocationId);
 }
 
 // Slim transparent slab under the level bar that displays the player's current

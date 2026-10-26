@@ -160,8 +160,10 @@ export function createPhaseHistory({ limit = 10 } = {}) {
     const entries = [];
 
     return {
-        push(snapshot, label = "") {
-            entries.push({ snapshot: snapshotPhaseState(snapshot), label: String(label || "") });
+        // `extra` holds anything else the change touched (e.g. the case
+        // file a murder updated), handed back as-is on undo.
+        push(snapshot, label = "", extra = null) {
+            entries.push({ snapshot: snapshotPhaseState(snapshot), label: String(label || ""), extra });
             while (entries.length > limit) entries.shift();
         },
         pop() {

@@ -58,6 +58,9 @@ function run() {
     assert(history.pop().snapshot.timeTracker.day === 3, "pop returns newest");
     assert(history.pop().label === "b" && history.pop() === null, "oldest dropped, empty returns null");
 
+    const withExtra = createPhaseHistory();
+    withExtra.push({ timeTracker: day }, "Sleep", { caseFile: { status: "planned" } });
+    assert(withExtra.pop().extra.caseFile.status === "planned", "extra comes back on undo");
     console.log("phaseState tests passed");
 }
 

@@ -1,7 +1,17 @@
 import {
     CASE_STATUS,
+    addEmergentClue,
+    buildMonokumaFileBullet,
+    commitMurder,
+    getTimeSlot,
+    isMurderSlotOver,
+    markBeatUsed,
+    markDiscovered,
+    pickForeshadowingBeat,
+    removeEmergentClue,
     buildCaseGenerationPrompt,
     buildMotiveChatNote,
+    describeCaseFile,
     extractJsonObject,
     getMotiveAnnouncementText,
     isCaseOpen,
@@ -35,6 +45,9 @@ function plan(overrides = {}) {
         method: "Stabbed in the shower room.",
         weapon: "Kitchen knife",
         murderDay: 3,
+        murderTime: "night",
+        body: { room: "Kitchen", state: "Slumped against the counter." },
+        monokumaFile: { timeOfDeath: "1:30 a.m.", cause: "a stab wound to the stomach.", injuries: "A bruise on the wrist" },
         timeline: ["Sayaka swaps rooms", "Leon is ambushed"],
         clues: [
             { text: "A knife is missing", room: "hpa_kitchen" },
@@ -105,6 +118,61 @@ function run() {
     assert(!shouldAutoAnnounceMotive({ ...auto, day: 7, caseFile: cf }), "not while a case is open");
     assert(!shouldAutoAnnounceMotive({ ...auto, day: 7, chapterIndex: 0 }), "never in the prologue");
     assert(!shouldAutoAnnounceMotive({ ...auto, autoDay: 0, day: 9 }), "off");
+
+    // Body and Monokuma File.
+    assert(cf.body.roomId === "hpa_kitchen" && cf.body.state, "body room resolves");
+    assert(cf.murderTime === "night", "murder time");
+    assert(parseCaseFileResponse(JSON.stringify(plan({ body: { room: "moon" } })), opts).error, "body must be in a real room");
+    assert(parseCaseFileResponse(JSON.stringify(plan({ murderTime: "noon" })), opts).caseFile.murderTime === "night", "unknown time is night");
+    const legacy = normalizeCaseFile({ ...cf, body: undefined, murderTime: undefined });
+    assert(legacy.body.roomId === "hpa_kitchen" && legacy.murderTime === "night", "phase-1 plans fall back");
+
+    const mf = buildMonokumaFileBullet(cf, { victimUltimate: "Pop Sensation" });
+    assert(mf.title === "Monokuma File #1", "file title");
+    assert(mf.description.includes("the Ultimate Pop Sensation") && mf.description.includes("in the Kitchen"), "file names victim and room");
+    assert(mf.description.includes("1:30 a.m.") && mf.description.includes("stomach.") && !mf.description.includes(".."), "file text");
+    assert(mf.description.includes("wrist."), "injuries get a full stop");
+    assert(!mf.description.includes("Leon"), "file never names the killer");
+
+    // When the murder happens. Planned for the night of Day 3.
+    assert(!isMurderSlotOver(cf, { day: 2, from: "night" }), "not before the murder day");
+    assert(!isMurderSlotOver(cf, { day: 3, from: "day" }), "a night murder waits for the night");
+    assert(isMurderSlotOver(cf, { day: 3, from: "night" }), "sleeping through the murder night");
+    const dayMurder = { ...cf, murderTime: "day" };
+    assert(isMurderSlotOver(dayMurder, { day: 3, from: "day" }), "a day murder happens by nightfall");
+    assert(isMurderSlotOver(cf, { day: 4, from: "day" }), "a missed slot happens at the next transition");
+    const committed = commitMurder(cf, { day: 3, time: "night" });
+    assert(committed.status === CASE_STATUS.COMMITTED && committed.committedAt.day === 3 && !committed.discovered, "committed");
+    assert(!isMurderSlotOver(committed, { day: 5, from: "night" }), "only once");
+
+    const found = markDiscovered(committed, { walkedIn: true });
+    assert(found.discovered && found.pendingNote === "discovered", "walking in leaves a note");
+    assert(markDiscovered(cf).status === CASE_STATUS.COMMITTED, "finding the body early commits the murder");
+    assert(!markDiscovered(committed).pendingNote, "no note when the roleplay found it");
+
+    // Foreshadowing beats.
+    assert(pickForeshadowingBeat(cf, { slot: "d2-day", presentNames: ["Kyoko"] }) === null, "beat waits for its characters");
+    const beat = pickForeshadowingBeat(cf, { slot: "d2-day", presentNames: ["Sayaka Maizono", "Leon Kuwata"] });
+    assert(beat?.id, "beat picked when present");
+    const used = markBeatUsed(cf, beat.id, "d2-day");
+    assert(used.foreshadowing[0].used && used.lastBeatSlot === "d2-day", "beat marked");
+    const twoBeats = normalizeCaseFile({ ...cf, foreshadowing: [{ text: "a", characters: [] }, { text: "b", characters: [] }] });
+    const once = markBeatUsed(twoBeats, twoBeats.foreshadowing[0].id, "d2-day");
+    assert(pickForeshadowingBeat(once, { slot: "d2-day" }) === null, "one beat per slot");
+    assert(pickForeshadowingBeat(once, { slot: "d2-night" })?.text === "b", "next slot gets the next beat");
+    assert(pickForeshadowingBeat(committed, { slot: "d9-day" }) === null, "no beats after the murder");
+    assert(getTimeSlot(3, "night") === "d3-night", "slot");
+
+    // Emergent clues.
+    assert(addEmergentClue(committed, { title: "X" }).emergentClues.length === 0, "only once the body is found");
+    const withClue = addEmergentClue(found, { id: "tb_1", title: "Torn Note", text: "Found under a table", roomId: "hpa_gym" });
+    assert(withClue.emergentClues.length === 1 && withClue.emergentClues[0].roomId === "hpa_gym", "emergent clue kept");
+    assert(addEmergentClue(withClue, { id: "tb_1", title: "Torn Note" }).emergentClues.length === 1, "no duplicates");
+    assert(removeEmergentClue(withClue, { id: "tb_1" }).emergentClues.length === 0, "removed on rollback");
+
+    const dump = describeCaseFile(withClue);
+    assert(dump.includes("Killer: Leon Kuwata") && dump.includes("Torn Note") && dump.includes("found: yes"), "debug dump");
+    assert(describeCaseFile(null).includes("No case"), "empty dump");
 
     console.log("caseFile tests passed");
 }
