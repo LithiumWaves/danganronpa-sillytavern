@@ -59,6 +59,32 @@ function getLiveChats(ctx) {
     return lists;
 }
 
+// A message SillyTavern inserted as a card's greeting, as opposed to anything
+// generated since. Replies always carry generation info and are never
+// touched, even if their text repeats a greeting. A greeting's text can't
+// always be matched (macros like {{user}} are filled in), so any message that
+// was never generated counts.
+export function isGreetingMessage(m) {
+    if (!m || m.is_user || m.is_system) return false;
+    if (m.extra?.type === "narrator") return false;
+    return !(m.gen_started || m.gen_finished || m.extra?.api || m.extra?.model || m.extra?.gen_id);
+}
+
+// Removes the greetings before the first message the player sent. Returns
+// how many were removed.
+export function stripLeadingGreetings(chat) {
+    if (!Array.isArray(chat) || !chat.length) return 0;
+    const firstUser = chat.findIndex(m => m?.is_user);
+    const end = firstUser === -1 ? chat.length : firstUser;
+    let removed = 0;
+    for (let i = end - 1; i >= 0; i--) {
+        if (!isGreetingMessage(chat[i])) continue;
+        chat.splice(i, 1);
+        removed++;
+    }
+    return removed;
+}
+
 function characterKey(char) {
     return String(char?.avatar || char?.name || "").trim();
 }
@@ -161,48 +187,6 @@ export function createCardHygieneController({
         }
     }
 
-    function collectGreetingTexts(flagged) {
-        const texts = new Set();
-        for (const entry of flagged || []) {
-            const char = entry?.char;
-            if (!char) continue;
-            const first = fieldText(char, "first_mes");
-            if (first) texts.add(normalizeMes(first));
-            for (const g of [
-                ...asList(char.alternate_greetings),
-                ...asList(char.data?.alternate_greetings),
-                ...asList(char.group_only_greetings),
-                ...asList(char.data?.group_only_greetings),
-            ]) {
-                texts.add(normalizeMes(g));
-            }
-        }
-        texts.delete("");
-        return texts;
-    }
-
-    function isLeadingGreeting(m, greetingTexts) {
-        if (!m || m.is_user) return false;
-        const text = normalizeMes(m.mes);
-        if (text && greetingTexts.has(text)) return true;
-        if (m.is_system) return false;
-        return true;
-    }
-
-    function stripLeadingGreetings(chat, flagged) {
-        if (!Array.isArray(chat) || !chat.length) return 0;
-        const greetingTexts = collectGreetingTexts(flagged);
-        const firstUser = chat.findIndex(m => m?.is_user);
-        const end = firstUser === -1 ? chat.length : firstUser;
-        let removed = 0;
-        for (let i = end - 1; i >= 0; i--) {
-            if (!isLeadingGreeting(chat[i], greetingTexts)) continue;
-            chat.splice(i, 1);
-            removed++;
-        }
-        return removed;
-    }
-
     function syncChatDom(chat) {
         const printer = getContext()?.printMessages || window.printMessages;
         if (typeof printer === "function") {
@@ -234,10 +218,9 @@ export function createCardHygieneController({
         if (!ctx || readDecision(ctx) !== "clean") return 0;
         enforcingClean = true;
         try {
-            const flagged = getFlaggedParticipants(ctx);
             let removed = 0;
             for (const chat of getLiveChats(ctx)) {
-                removed += stripLeadingGreetings(chat, flagged);
+                removed += stripLeadingGreetings(chat);
             }
             if (!removed) return 0;
             console.log(`[${extensionName}] Card hygiene removed ${removed} greeting message(s).`);
