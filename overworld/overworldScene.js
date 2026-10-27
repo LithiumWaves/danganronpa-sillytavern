@@ -1,6 +1,7 @@
 import { LOCATION_PINPOINTS } from "../map/locationPresence.js";
 import { normalizeName } from "../social/characterUtils.js";
 import { clearPickedSprite, getPickedSprite } from "../core/ui/pickedSprites.js";
+import { applyRoutines } from "./routines.js";
 import {
     computeRoomDisabledMembers,
     disabledMembersEqual,
@@ -137,6 +138,8 @@ export function createOverworldSceneController({
     getHostEntranceElapsed, // optional — (name) => ms into this host's slide-up, or null
     isInvestigating, // optional — () => true during an investigation ("Tag Along" reads "Investigate With")
     getExamineAction, // optional — () => { label, onSelect } while the room can be examined, else null
+    getRoutines, // optional — () => { [name]: { day: [roomId], night: [roomId] } }; weights the shuffle
+    getTimeOfDay, // optional — () => "day" | "night"
 }) {
     function playOwSfx(key) {
         if (!playSfx) return;
@@ -1146,6 +1149,18 @@ export function createOverworldSceneController({
                 : pickRandom(activeRooms);
             newRoomByKey.set(key, room);
         });
+
+        // Characters with routines mostly turn up where they usually are.
+        let placed = newRoomByKey;
+        try {
+            placed = applyRoutines(newRoomByKey, {
+                routines: getRoutines?.(),
+                time: getTimeOfDay?.() || "day",
+                spawnableRooms: rooms,
+                followers: getFollowerKeys(),
+            });
+        } catch (e) { console.warn("[Dangan][Overworld] routines failed:", e); }
+        placed.forEach((room, key) => newRoomByKey.set(key, room));
 
         // Students tagging along stay with the player.
         if (isRoomLocationId(playerRoom)) {

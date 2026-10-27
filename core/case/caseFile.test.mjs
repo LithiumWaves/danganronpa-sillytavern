@@ -77,6 +77,9 @@ function run() {
     assert(prompt.includes("Leon Kuwata (Ultimate Baseball Star)"), "prompt lists cast");
     assert(prompt.includes("hpa_gym: Gym"), "prompt lists rooms");
     assert(prompt.includes("2 to 3"), "prompt bounds the murder day");
+    assert(!prompt.includes("WHERE PEOPLE USUALLY ARE") && !prompt.includes("SCHOOL REGULATIONS"), "no routines or rules unless given");
+    const withRoutines = buildCaseGenerationPrompt({ cast, rooms, routines: ["- Leon Kuwata: daytime Gym"], rules: "1. No leaving." });
+    assert(withRoutines.includes("WHERE PEOPLE USUALLY ARE") && withRoutines.includes("daytime Gym") && withRoutines.includes("1. No leaving."), "routines and rules in the plan");
 
     assert(extractJsonObject("Sure!\n```json\n{\"a\":1}\n```")?.a === 1, "extracts fenced JSON");
     assert(extractJsonObject("no json") === null, "no JSON");

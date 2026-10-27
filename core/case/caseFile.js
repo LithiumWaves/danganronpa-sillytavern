@@ -77,6 +77,8 @@ export function buildCaseGenerationPrompt({
     chapterLabel = "",
     deadlineDays = DEFAULT_MOTIVE_DEADLINE_DAYS,
     recentChat = "",
+    routines = [],
+    rules = "",
 } = {}) {
     const castLines = cast
         .map((c) => `- ${c.name}${c.ultimate ? ` (Ultimate ${c.ultimate})` : ""}`)
@@ -95,7 +97,7 @@ ${castLines || "- (none)"}
 ROOMS (copy a room's id exactly, the part before the colon; never invent rooms):
 ${roomLines || "- (none)"}
 
-RECENT EVENTS:
+${routines.length ? `WHERE PEOPLE USUALLY ARE (base alibis, witnesses and the timeline on these):\n${routines.join("\n")}\n\n` : ""}${rules ? `SCHOOL REGULATIONS (the plan may exploit them, never openly break one Monokuma would punish):\n${rules}\n\n` : ""}RECENT EVENTS:
 ${recentChat || "(nothing yet)"}
 
 Reply with one compact JSON object and nothing else: start your reply with { and end it with }. Keep every text short (under 30 words). The fields:

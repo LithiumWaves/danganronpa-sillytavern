@@ -1,4 +1,5 @@
 import { DEFAULT_EXAMINE_NARRATION_TEMPLATE } from "./case/examine.js";
+import { DEFAULT_RULES_PROMPT_TEMPLATE } from "./rules/schoolRules.js";
 export const extensionName = "danganronpa-extension";
 
 function normalizeWebExtensionPath(pathname = "") {
@@ -248,6 +249,14 @@ export const defaultSettings = {
     caseFile: null,
     // Day N of a chapter Monokuma announces the motive on by himself; 0 is off.
     motiveAutoDay: 0,
+    // The School Regulations (core/rules/schoolRules.js); null means the
+    // defaults, which a save gets the first time they're read.
+    schoolRules: null,
+    // Tell the AI the School Regulations (outside Class Trials).
+    shareSchoolRules: true,
+    // Where each character usually is (overworld/routines.js):
+    // { [name]: { day: [roomId], night: [roomId] } }.
+    characterRoutines: {},
     // Toasts for each Case File event (beats, the killer's note, the murder,
     // the body being found), for checking the case plays out.
     caseDebugToasts: false,
@@ -352,6 +361,8 @@ Don't use it at any other time.`,
     // What the player notices when examining something (core/case/examine.js
     // fills the placeholders; {{findings}} says whether there's evidence).
     examineNarration: DEFAULT_EXAMINE_NARRATION_TEMPLATE,
+    // The School Regulations ({{rules}} is the numbered list).
+    schoolRules: DEFAULT_RULES_PROMPT_TEMPLATE,
     markerAnnouncements: `[ANNOUNCEMENT MARKERS]
 When Monokuma makes an announcement in the story, add the matching marker on its own line:
 V3C| DAY_ANNOUN for the morning announcement

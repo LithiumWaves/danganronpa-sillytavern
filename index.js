@@ -45,6 +45,10 @@ import { CASE_STATUS, DEFAULT_MOTIVE_DEADLINE_DAYS, addEmergentClue, beatWordOve
 import { CASE_PROMPT_KEY, buildCasePrompt } from "./core/case/casePrompts.js";
 import { openMonokumaFile } from "./truth/monokumaFile.js";
 import { openCaseFileEditor } from "./truth/caseFileEditor.js";
+import { RULES_PROMPT_KEY, RULE_SOURCES, addRule, buildRulesPrompt, createDefaultRules, formatRulesList, normalizeRules, parseRuleMarkers } from "./core/rules/schoolRules.js";
+import { openSchoolRulesView } from "./truth/schoolRulesView.js";
+import { buildRoutineSuggestionPrompt, describeRoutines, mergeSuggestedRoutines, normalizeRoutines, parseRoutineSuggestion } from "./overworld/routines.js";
+import { openRoutinesView } from "./social/routinesView.js";
 import { installChatWatch } from "./core/debug/chatWatch.js";
 import { buildExamineNarrationPrompt, buildHotspotPrompt, parseExamineNarration, parseHotspots, placeHotspots } from "./core/case/examine.js";
 import { createExamineMode } from "./overworld/examineMode.js";
@@ -1698,6 +1702,7 @@ const processedInvestigationSignatures = new Set();
 const INVESTIGATION_START_PARSE_REGEX = /V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/gi;
 const processedMonokumaAnnouncementSignatures = new Set();
 const processedTrialStartSignatures = new Set();
+const processedRuleSignatures = new Set();
 const PERSISTENT_MARKER_MAX_ENTRIES = 2400;
 
 function normalizeTextToken(value) {
@@ -4956,6 +4961,8 @@ async function generateCaseFile({ deadlineDays }) {
         chapterLabel: getChapterLabel(),
         deadlineDays,
         recentChat: buildRecentChatContextLines(20),
+        routines: describeRoutinesForCase(cast),
+        rules: formatRulesList(getSchoolRules()),
     });
     const parseOpts = { cast, player, rooms, day, chapterIndex, deadlineDays };
     const source = getConfiguredGenerationSource("generationProvider") || "main";
@@ -8259,6 +8266,7 @@ function stripV3CMarkersFromText(value) {
         if (canonical.includes("V3C|PASSTIME")) return false;
         if (canonical.includes("V3C|SLEEP")) return false;
         if (canonical.includes("V3C|TRIALSTART")) return false;
+        if (canonical.startsWith("V3C|RULE_ADD:") || canonical.startsWith("V3C|RULE_BREAK:")) return false;
         return true;
     });
 
@@ -8275,6 +8283,7 @@ function stripV3CMarkersFromText(value) {
         .replace(/V3C\s*[|｜]\s*PASS(?:\s*[_\-]?\s*)TIME\b/gi, "")
         .replace(/V3C\s*[|｜]\s*SLEEP\b/gi, "")
         .replace(/V3C\s*[|｜]\s*TRIAL(?:\s*[_\-]?\s*)START\b/gi, "")
+        .replace(/V3C\s*[|｜]\s*RULE_(?:ADD|BREAK)\s*:[^\n\r]*/gi, "")
         .replace(/^[ \t]+/gm, "")
         .trimStart();
 }
@@ -8372,6 +8381,125 @@ function getTrustPromptEntries() {
     return out;
 }
 
+// ── School Regulations ────────────────────────────────────────────────────────
+// The Monopad's rules list, per save (core/rules/schoolRules.js). The AI is
+// told them with the marker prompts; Monokuma can add rules in the story
+// (V3C| RULE_ADD), and breaking one (V3C| RULE_BREAK) brings him in.
+
+function getSchoolRules() {
+    const root = (extension_settings[extensionName] ||= {});
+    if (!Array.isArray(root.schoolRules)) {
+        root.schoolRules = createDefaultRules();
+        saveSettingsDebounced();
+    }
+    return normalizeRules(root.schoolRules);
+}
+
+function setSchoolRules(rules) {
+    extension_settings[extensionName] ||= {};
+    extension_settings[extensionName].schoolRules = normalizeRules(rules);
+    saveSettingsDebounced();
+    try { syncMarkerPrompts(); } catch (e) { console.warn("[Dangan][Rules] sync failed:", e); }
+}
+
+function getSchoolRulesTemplate() {
+    const edited = getMonopadSetting("schoolRulesPromptTemplate");
+    return typeof edited === "string" && edited.length ? edited : getDefaultPromptTemplate("schoolRules");
+}
+
+function openSchoolRulesFromMonopad() {
+    openSchoolRulesView({
+        getRules: getSchoolRules,
+        setRules: setSchoolRules,
+        getChapter: () => Number(getMonopadSetting("chapterIndex") ?? 0),
+        confirm: (opts) => confirmOutsideMonopad({ cancelLabel: "CANCEL", ...opts }),
+    });
+}
+
+function onSchoolRuleAdded(text) {
+    const before = getSchoolRules();
+    const next = addRule(before, text, { source: RULE_SOURCES.MONOKUMA, chapter: Number(getMonopadSetting("chapterIndex") ?? 0) });
+    if (next.length === before.length) return false;
+    setSchoolRules(next);
+    notify({ title: "NEW SCHOOL REGULATION", message: `${next.length}. ${next[next.length - 1].text}`, actionLabel: "VIEW", onAction: openSchoolRulesFromMonopad, durationMs: 9000 });
+    return true;
+}
+
+function onSchoolRuleBroken(name) {
+    notify({ tone: "warn", title: "SCHOOL REGULATION VIOLATION", message: `${name} broke a school regulation.`, durationMs: 8000 });
+    // Monokuma steps in, when he's a host card here.
+    const monokuma = getHostNames().find((n) => /monokuma/i.test(String(n || "")));
+    if (monokuma) bringHostOnStage(monokuma);
+}
+
+// ── Character routines ────────────────────────────────────────────────────────
+// Where each classmate usually is, day and night (overworld/routines.js). The
+// overworld shuffle mostly follows them; the case plan builds alibis on them.
+
+function getCharacterRoutines() {
+    return normalizeRoutines(extension_settings[extensionName]?.characterRoutines);
+}
+
+function setCharacterRoutines(routines) {
+    extension_settings[extensionName] ||= {};
+    extension_settings[extensionName].characterRoutines = normalizeRoutines(routines);
+    saveSettingsDebounced();
+}
+
+function getRoutineTimeOfDay() {
+    return ensureTimeTrackerState().phase === TIME_PHASE_NIGHT ? "night" : "day";
+}
+
+// Open rooms people can be shuffled into (no dorm rooms).
+function listRoutineRooms() {
+    const generated = new Set((mapPanelController?.getAllPins?.() || []).filter((p) => p?._generated).map((p) => p.locationId));
+    return listCaseRooms().filter((r) => !generated.has(r.id));
+}
+
+// The routines as lines for the case plan, for the living cast.
+function describeRoutinesForCase(cast) {
+    const labels = new Map(listCaseRooms().map((r) => [r.id, r.label]));
+    return describeRoutines(getCharacterRoutines(), { roomLabel: (id) => labels.get(id) || id, names: cast.map((c) => c.name) });
+}
+
+// SUGGEST FROM CARDS: one hidden call fills the classmates without a routine.
+async function suggestRoutinesFromCards() {
+    const current = getCharacterRoutines();
+    const ctx = window.SillyTavern?.getContext?.();
+    const cast = listCaseCast()
+        .filter((c) => !current[normalizeName(c.name)])
+        .map((c) => {
+            const card = (ctx?.characters || []).find((ch) => ch?.name === c.name);
+            return { ...c, description: card?.personality || card?.description || "" };
+        });
+    if (!cast.length) return { added: 0 };
+    const rooms = listRoutineRooms();
+    if (!rooms.length) return { added: 0, error: "This save's map has no open rooms." };
+    const raw = await generateIsolated(buildRoutineSuggestionPrompt({ cast, rooms }), {
+        allowDialogue: true,
+        maxTokens: 3000,
+        reasoning: { effort: "low", exclude: true },
+    });
+    const parsed = parseRoutineSuggestion(extractJsonObject(raw), { cast, rooms });
+    const added = Object.keys(parsed).filter((k) => !current[k]).length;
+    if (!added) {
+        console.warn("[Dangan][Routines] No usable suggestion:", String(raw || "").slice(0, 400));
+        return { added: 0, error: "The AI's answer had no usable routines. Try again." };
+    }
+    setCharacterRoutines(mergeSuggestedRoutines(getCharacterRoutines(), parsed));
+    return { added };
+}
+
+function openRoutinesFromMonopad() {
+    openRoutinesView({
+        getCast: listCaseCast,
+        getRooms: listRoutineRooms,
+        getRoutines: getCharacterRoutines,
+        setRoutines: setCharacterRoutines,
+        suggest: suggestRoutinesFromCards,
+    });
+}
+
 function syncMarkerPrompts() {
     const setPrompt = window.SillyTavern?.getContext?.()?.setExtensionPrompt || window.setExtensionPrompt;
     if (typeof setPrompt !== "function") return;
@@ -8385,6 +8513,10 @@ function syncMarkerPrompts() {
         ? buildTrustLevelsPrompt({ template: getMarkerTemplate("trustLevels"), entries: getTrustPromptEntries() })
         : "";
     setPrompt(TRUST_LEVELS_PROMPT_KEY, trustText, 0, 0, false, "system");
+
+    // The School Regulations, on their own setting.
+    const shareRules = getMonopadSetting("shareSchoolRules") !== false && getCurrentPhase() !== "TRIAL";
+    setPrompt(RULES_PROMPT_KEY, shareRules ? buildRulesPrompt(getSchoolRules(), getSchoolRulesTemplate()) : "", 0, 0, false, "system");
 
     if (enabled && !markerPresetWarningShown && presetHasMarkerInstructions()) {
         markerPresetWarningShown = true;
@@ -8560,8 +8692,13 @@ function reconcileMessageEffects() {
     }
 }
 
+// Set by the V3C observer: scans every message again (all of it is de-duplicated).
+let rescanV3CMessages = null;
+
 function onGenerationFinished() {
     generationInProgress = false;
+    // Markers held back while the message streamed (School Regulations) apply now.
+    setTimeout(() => { try { rescanV3CMessages?.(); } catch (e) { console.warn("[Dangan] rescan failed:", e); } }, 0);
     const ctx = window.SillyTavern?.getContext?.();
     const chatId = String(ctx?.getCurrentChatId?.() ?? ctx?.chatId ?? "");
     if (!chatId || !Array.isArray(ctx?.chat)) return;
@@ -8792,6 +8929,20 @@ for (const match of rawText.matchAll(regex)) {
             monokumaAnnouncementController?.trigger(marker.type);
         });
 
+        // ---- School Regulations ----
+        // Only once the message is finished, so a half-written rule isn't added.
+        if (!ledgerRef?.pending && !isUserMessage) {
+            parseRuleMarkers(rawText).forEach((marker, idx) => {
+                const signature = `RULE_${marker.type}||${messageSignature}||${marker.index}||${idx}`;
+                const persistentSignature = buildGenericPersistentMarkerSignature(msgEl, `RULE_${marker.type}`, marker.index, idx, rawText);
+                if (processedRuleSignatures.has(signature) || hasProcessedPersistentMarker("schoolRuleMarkers", persistentSignature)) return;
+                processedRuleSignatures.add(signature);
+                markProcessedPersistentMarker("schoolRuleMarkers", persistentSignature);
+                if (marker.type === "ADD") onSchoolRuleAdded(marker.text);
+                else onSchoolRuleBroken(marker.text);
+            });
+        }
+
         // ---- Trial Context ----
         for (const match of rawText.matchAll(TRIAL_CONTEXT_REGEX)) {
             const topic    = match[1]?.trim() || '';
@@ -8837,6 +8988,8 @@ for (const match of rawText.matchAll(regex)) {
         childList: true,
         subtree: true
     });
+
+    rescanV3CMessages = processAllMessages;
 
     // 🟢 Initial pass (important for reloads & history)
     processAllMessages();
@@ -12956,6 +13109,8 @@ jQuery(async () => {
                     getOnStageHosts: () => getOnStageHosts(),
                     getHostEntranceElapsed: (name) => getHostEntranceElapsed(name, 'overworld'),
                     isInvestigating: () => investigationUnderway,
+                    getRoutines: getCharacterRoutines,
+                    getTimeOfDay: getRoutineTimeOfDay,
                     getExamineAction: () => (canExamineHere() ? { label: "Examine", onSelect: () => { void openExamineMode(); } } : null),
                     onPresenceSynced: () => {
                         try { trialManager?.refreshGroupChatPortraits?.(); }
@@ -13350,6 +13505,7 @@ $(".monopad-icon").on("mouseenter", function () {
             if (key === "exploreHideComposer" || key === "exploreActionMenu" || key === "moveToOnMinimap" || key === "autoHideStTopBar") {
                 applyExploreLayoutSettings();
             }
+            if (key === "shareSchoolRules") syncMarkerPrompts();
             if (key === "markerPromptsEnabled") {
                 // Warn again the next time it's turned on.
                 if (!next) markerPresetWarningShown = false;
@@ -13889,7 +14045,7 @@ $(".monopad-icon").on("mouseenter", function () {
             if (settingKey === "roomContextPromptTemplate") {
                 try { syncRoomContextPrompt(); } catch { /* ignore */ }
             }
-            if (settingKey.startsWith("marker")) syncMarkerPrompts();
+            if (settingKey.startsWith("marker") || settingKey === "schoolRulesPromptTemplate") syncMarkerPrompts();
         });
 
         $(document).on("click", ".settings-prompt-reset", function () {
@@ -13904,7 +14060,7 @@ $(".monopad-icon").on("mouseenter", function () {
             if (settingKey === "roomContextPromptTemplate") {
                 try { syncRoomContextPrompt(); } catch { /* ignore */ }
             }
-            if (settingKey.startsWith("marker")) syncMarkerPrompts();
+            if (settingKey.startsWith("marker") || settingKey === "schoolRulesPromptTemplate") syncMarkerPrompts();
         });
 
         $("#dangan_examine_partner_reaction_style").on("change", function () {
@@ -14393,7 +14549,17 @@ itemsPanelController.renderSkillsItemsPanel();
 
 debugSTGlobals();
         
-    $(document).off("click.caseFileEditor").on("click.caseFileEditor", ".truth-case-file-btn", (e) => {
+    $(document).off("click.schoolRules").on("click.schoolRules", ".truth-rules-btn", (e) => {
+        e.stopPropagation();
+        playSfx(sfx.click);
+        openSchoolRulesFromMonopad();
+    });
+    $(document).off("click.routines").on("click.routines", ".social-routines-btn", (e) => {
+        e.stopPropagation();
+        playSfx(sfx.click);
+        openRoutinesFromMonopad();
+    });
+    $(document).off("click.caseFileEditor").on("click.caseFileEditor", ".truth-case-file-btn:not(.truth-rules-btn)", (e) => {
         e.stopPropagation();
         playSfx(sfx.click);
         openCaseFileEditorFromMonopad();
@@ -17938,6 +18104,59 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     },
     helpString: 'Debug tools for the hidden Case File (spoilers!). <code>/case status</code> shows the plan, <code>/case prompt [name]</code> shows what the AI would be told for the next reply (as that speaker), <code>/case lastraw</code> shows the last plan the AI sent back (for when a motive fails), <code>/case cancel</code> takes the motive back (before the murder), <code>/case commit</code> runs the murder now, <code>/case discover</code> finds the body now, <code>/case file timeOfDeath|cause|injuries &lt;text&gt;</code> updates the Monokuma File, <code>/case clear</code> drops the case.',
     unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'status | prompt [name] | lastraw | cancel | commit | discover | file <field> <text> | clear', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'rules',
+    callback: async (_args, value) => {
+        const [sub = 'list', ...rest] = String(value || '').trim().split(/\s+/).filter(Boolean);
+        const arg = rest.join(' ');
+        switch (sub.toLowerCase()) {
+            case 'list':
+                openSchoolRulesFromMonopad();
+                return formatRulesList(getSchoolRules());
+            case 'prompt': {
+                const shared = getMonopadSetting('shareSchoolRules') !== false;
+                const text = !shared ? 'Share school regulations is off: nothing is sent.'
+                    : getCurrentPhase() === 'TRIAL' ? 'Nothing is sent during a Class Trial.'
+                    : buildRulesPrompt(getSchoolRules(), getSchoolRulesTemplate()) || 'There are no regulations: nothing is sent.';
+                await showCaseDebugText('RULES PROMPT', text);
+                return text;
+            }
+            case 'add':
+                if (!arg || !onSchoolRuleAdded(arg)) notify({ tone: 'warn', title: '/rules add', message: arg ? 'That rule is already on the list.' : 'Give the rule\'s text.' });
+                return '';
+            case 'break':
+                onSchoolRuleBroken(arg || 'Someone');
+                return '';
+            case 'reset':
+                setSchoolRules(createDefaultRules());
+                notify({ title: 'SCHOOL REGULATIONS', message: 'Back to the default rules.' });
+                return '';
+            default:
+                notify({ tone: 'warn', title: '/rules', message: 'Use list, prompt, add <text>, break <name> or reset.' });
+                return '';
+        }
+    },
+    helpString: 'School Regulations: <code>/rules</code> opens the list, <code>/rules prompt</code> shows what the AI is told, <code>/rules add &lt;text&gt;</code> adds a rule as Monokuma would, <code>/rules break &lt;name&gt;</code> plays a violation, <code>/rules reset</code> restores the defaults.',
+    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'list | prompt | add <text> | break <name> | reset', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'routines',
+    callback: async (_args, value) => {
+        const sub = String(value || '').trim().toLowerCase();
+        if (sub === 'status') {
+            const lines = describeRoutinesForCase(listCaseCast());
+            const text = `Time of day: ${getRoutineTimeOfDay()}. Shuffle rooms here: ${listRoutineRooms().map((r) => r.id).join(', ') || 'none'}.\n\n${lines.join('\n') || 'Nobody has a routine yet.'}`;
+            await showCaseDebugText('ROUTINES', text);
+            return text;
+        }
+        openRoutinesFromMonopad();
+        return '';
+    },
+    helpString: 'Character routines: <code>/routines</code> opens the editor, <code>/routines status</code> lists everyone\'s routine rooms and the time of day the shuffle uses.',
+    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'status (optional)', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({

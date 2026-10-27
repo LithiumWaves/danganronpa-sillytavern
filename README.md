@@ -117,6 +117,16 @@ While examine mode is open, the room's buttons step aside and the right-hand col
 
 The generation uses the AI Generation source in Settings, like the trial minigames. It doesn't stop SillyTavern's prompt inspector or your API logs from showing the plan, so don't look there if you want to be surprised.
 
+### School Regulations
+**Truth → RULES** (next to CASE FILE) opens the School Regulations, starting with rules close to Hope's Peak's (no leaving the school, nighttime is 10 p.m. to 7 a.m., sleep only in your own room, no violence against Monokuma or the cameras, the blackened graduates unless found out). Add, edit, delete or reset them; they're kept per save. With Settings → Gameplay → **Share school regulations** on, the AI is told them outside Class Trials, so characters follow them and Monokuma enforces them. When Monokuma adds a rule in the story (`V3C| RULE_ADD: <rule>`) it joins the list, marked as his, with a **NEW SCHOOL REGULATION** toast; when someone breaks one (`V3C| RULE_BREAK: <name>`) a **SCHOOL REGULATION VIOLATION** toast shows and Monokuma is brought in if he's a host card. These markers only apply once the reply is finished; swiping the reply away doesn't take an added rule back (delete it from the list). New motive plans see the rules too. Edit the prompt under **EDIT AI INSTRUCTIONS** → SCHOOL REGULATIONS (`{{rules}}` is the numbered list).
+
+**Checking it works:** `/rules prompt` shows exactly what the AI is told, `/rules add <text>` and `/rules break <name>` play the markers' effects, `/rules reset` restores the defaults, and `/rules` opens the list.
+
+### Character Routines
+**Social → ROUTINES** (in the CLASS ROSTER header) sets where each living classmate usually is during the **daytime** and at **night**: add rooms with **+ room**, remove them with ×, or **CLEAR** a row. **SUGGEST FROM CARDS** asks the AI once (hidden) to fill everyone who has no routine yet from their cards and Ultimates; routines you set by hand are never overwritten. When time passes (Pass Time, Go to Sleep, Reshuffle), each classmate with a routine for that time of day turns up in one of their rooms most of the time (about 70%); otherwise, or when their rooms aren't on the current floor, the random shuffle stands. People tagging along stay with you, and dorm rooms never take visitors. A new motive's murder plan builds its alibis, witnesses and timeline on the routines.
+
+**Checking it works:** `/routines status` lists everyone's routine rooms, the time of day the shuffle uses and which rooms it can use right now.
+
 ### Character Introductions
 Character Introductions takes a character's `neutral` sprite and renders them on an animated background, grabbing their `name` and `ultimate` values. Commenced through the `/introduce` command.
 
@@ -167,6 +177,8 @@ The extension scans assistant messages for these patterns.
 - `V3C| TRIAL_START` (opens the Class Trial menu, which asks before the trial begins)
 - `V3C| BODY_DISCOVERY` (plays a separate static/shake body discovery cutscene using `assets/sfx/etc/despairnoise.mp3`)
 - `V3C| DAY_ANNOUN`, `V3C| NIGHT_ANNOUN`, `V3C| BDA` (play Monokuma's daytime, nighttime or body discovery announcement; they don't change the day or phase)
+- `V3C| RULE_ADD: <rule>` (Monokuma adds a School Regulation)
+- `V3C| RULE_BREAK: <name>` (someone broke a School Regulation; Monokuma is brought in)
 
 ### Swipes, deletes and edits
 What a message did is remembered per save: Truth Bullets, trust changes, gift reactions, the Monocoins, Trust Fragments and XP that came with them, and an investigation it started. Swiping that message away, deleting it, or editing its markers out takes all of that back, and a toast lists what was undone. Swiping back to it applies it again. Edits that keep the markers change nothing. If the message held a gift reaction, the gift goes back to waiting and the next reply reacts to it instead.
@@ -240,6 +252,7 @@ V3C| BODY_DISCOVERY
 |---|---|---|---|
 | **Sprite Click Gifts** | Toggle | Off | Overworld sprite clicks open a gift picker for that character instead of starting a 1-on-1 or cluster chat. The gift waits until that character next speaks in your main chat. Talk to the Room / Grab Group Members still open chats when Single-Chat Overworld is off. |
 | **Single-Chat Overworld** | Toggle | Off | Explore the overworld without leaving your open group chat. Sprites cover the chat UI; the VN talk box and send box stay usable. Who is standing in the current room is unmuted (present) via SillyTavern group mute; everyone else is muted so they will not hear or auto-reply. Requires the [Presence](https://github.com/leandrojofre/SillyTavern-Presence) extension for per-character memory. View conversation and the minimap only show who is in the current room. Explore brings the overlay back. Call Student warps selected students into the room. Sprite clicks do not open new chats (Sprite Click Gifts still queues a gift). Class trials are unchanged. |
+| **Share school regulations** | Toggle | On | Tell the AI the School Regulations (Truth → RULES) outside Class Trials, with the RULE_ADD and RULE_BREAK markers. Edit the prompt under EDIT AI INSTRUCTIONS → SCHOOL REGULATIONS. |
 | **Room Context Prompt** | Toggle + editor | Off | When on, chat completions receive a short system prompt with the current room (`{{room}}`) and living occupants (`{{characters}}`, or `none`). Cleared during class trials and when no location is set. Edit or reset the template from the same row. |
 ---
 
