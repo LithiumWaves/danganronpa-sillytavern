@@ -3461,6 +3461,7 @@ function createVnModeController() {
     function endAside() {
         const done = aside;
         aside = null;
+        document.body.classList.remove('dangan-vn-aside');
         renderCurrent();
         done?.resolve();
     }
@@ -4285,8 +4286,14 @@ function createVnModeController() {
             aside?.resolve();
             return new Promise((resolve) => {
                 aside = { name: name || '', chunks, index: 0, resolve };
+                // Exploration hides the box; an aside brings it back (style.css).
+                document.body.classList.add('dangan-vn-aside');
                 renderCurrent();
             });
+        },
+        // Ends an aside line early (Escape in examine mode).
+        dismissAside() {
+            if (aside) endAside();
         },
         setSkin(skin) {
             const next = normalizeVnSkin(skin);
@@ -5483,7 +5490,7 @@ async function examineLook(look) {
         console.warn("[Dangan][Case] Examine narration failed:", err);
     }
     const { text, bullets } = parseExamineNarration(raw);
-    const narration = text || "Nothing stands out.";
+    const narration = text || (raw ? "Nothing stands out." : "I couldn't make anything of it. (The AI didn't answer; try again.)");
 
     const found = [];
     for (const b of bullets) {
@@ -5497,6 +5504,7 @@ async function examineLook(look) {
     caseDebug("EXAMINED", `${look.label}${found.length ? ` → ${found.join(", ")}` : ""}`);
 
     const name = getCharacterDisplayName?.(player) || player || "";
+    examineController?.doneThinking?.();
     const shown = vnModeController?.showAside?.({ name, text: narration })
         || (examineController?.isOpen?.() ? examineController.showNarration({ name, text: narration }) : null);
     if (shown) await shown;
@@ -5548,6 +5556,8 @@ function moveExamineSpot(spot, x, y) {
     saveSettingsDebounced();
 }
 
+let examineHintShown = false;
+
 async function openExamineMode({ ask = false } = {}) {
     if (!canExamineHere()) {
         notify({ tone: "warn", title: "NOTHING TO EXAMINE", message: "Examine works during an investigation, in a room on this save's map." });
@@ -5559,8 +5569,21 @@ async function openExamineMode({ ask = false } = {}) {
         onFreeText: examineFreeText,
         onMove: moveExamineSpot,
         playSfx: () => playSfx(sfx.click),
+        onChange: () => { try { refreshPhaseHud(); } catch { /* ignore */ } },
+        // Escape or right-click while a line is up ends it.
+        onDismiss: () => {
+            vnModeController?.dismissAside?.();
+            examineController?.dismissNarration?.();
+        },
     });
-    await examineController.open({ ask });
+    if (!examineHintShown) {
+        examineHintShown = true;
+        notify({ title: "EXAMINE", message: "Look around the room with the cursor and click what you want to examine. Right-click or Esc to stop.", durationMs: 7000 });
+    }
+    const result = await examineController.open({ ask });
+    if (result && !result.ok && result.error) {
+        notify({ tone: "error", title: "COULDN'T LOOK AROUND", message: result.error });
+    }
     return true;
 }
 
@@ -5806,6 +5829,12 @@ function ensurePhaseHud() {
         <button type="button" class="dangan-phase-chip dangan-examine-chip" hidden title="Look closely at things in this room">
             <span class="dangan-phase-chip-label">🔍 EXAMINE</span>
         </button>
+        <button type="button" class="dangan-phase-chip dangan-examine-chip dangan-examine-look" hidden title="Examine anything you name">
+            <span class="dangan-phase-chip-label">LOOK AT…</span>
+        </button>
+        <button type="button" class="dangan-phase-chip dangan-examine-chip dangan-examine-arrange" hidden title="Show the examinable spots and drag them onto the room's picture">
+            <span class="dangan-phase-chip-label">ARRANGE</span>
+        </button>
         <div class="dangan-phase-menu" id="dangan-phase-menu" hidden>
             <div class="dangan-phase-hint"></div>
             <div class="dangan-phase-actions"></div>
@@ -5816,7 +5845,18 @@ function ensurePhaseHud() {
     hud.querySelector(".dangan-examine-chip").addEventListener("click", (event) => {
         event.stopPropagation();
         playSfx(sfx.click);
-        void openExamineMode();
+        if (examineController?.isOpen?.()) examineController.close();
+        else void openExamineMode();
+    });
+    hud.querySelector(".dangan-examine-look").addEventListener("click", (event) => {
+        event.stopPropagation();
+        playSfx(sfx.click);
+        examineController?.openAsk?.();
+    });
+    hud.querySelector(".dangan-examine-arrange").addEventListener("click", (event) => {
+        event.stopPropagation();
+        playSfx(sfx.click);
+        examineController?.toggleArrange?.();
     });
     hud.querySelector(".dangan-phase-chip").addEventListener("click", (event) => {
         event.stopPropagation();
@@ -5886,7 +5926,17 @@ function refreshPhaseHud() {
         ? getStatusLine({ phase: getCurrentPhase(), day: ensureTimeTrackerState().day })
         : getCurrentStatusLine();
     if (!hud.querySelector(".dangan-phase-menu").hidden) renderPhaseMenu();
-    hud.querySelector(".dangan-examine-chip").hidden = !canExamineHere();
+    // Examine mode's controls: the main chip toggles it; LOOK AT… and
+    // ARRANGE only show while it's open.
+    const examineOpen = Boolean(examineController?.isOpen?.());
+    const examineChip = hud.querySelector(".dangan-examine-chip");
+    examineChip.hidden = !examineOpen && !canExamineHere();
+    examineChip.classList.toggle("is-active", examineOpen);
+    examineChip.querySelector(".dangan-phase-chip-label").textContent = examineOpen ? "🔍 EXAMINING" : "🔍 EXAMINE";
+    hud.querySelector(".dangan-examine-look").hidden = !examineOpen;
+    const arrangeChip = hud.querySelector(".dangan-examine-arrange");
+    arrangeChip.hidden = !examineOpen;
+    arrangeChip.classList.toggle("is-active", Boolean(examineController?.isArranging?.()));
     // The EXPRESSIONS tab hangs under this row.
     expressionPickerController?.place?.();
 }

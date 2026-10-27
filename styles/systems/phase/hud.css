@@ -257,3 +257,14 @@ body.dangan-trial-active #dangan-phase-hud {
 .dangan-examine-chip[hidden] {
     display: none;
 }
+
+html body #dangan-phase-hud .dangan-examine-chip.is-active,
+html body #dangan-hud-topright > #dangan-phase-hud .dangan-examine-chip.is-active {
+    background: rgba(246, 210, 31, 0.92);
+    border-left-color: #fff3a8;
+}
+
+html body #dangan-phase-hud .dangan-examine-chip.is-active .dangan-phase-chip-label,
+html body #dangan-hud-topright > #dangan-phase-hud .dangan-examine-chip.is-active .dangan-phase-chip-label {
+    color: #2a2100;
+}

@@ -3,7 +3,8 @@
 // magnifying glass over something you can examine, and the thing's name shows
 // in the yellow bar at the bottom. Clicking examines it. ARRANGE shows where
 // the spots are so they can be dragged onto the room's picture.
-// index.js supplies the spots and does the examining.
+// index.js supplies the spots, does the examining and shows the controls
+// (LOOK AT…, ARRANGE) in the phase readout.
 
 const STYLE_ID = "dangan-examine-style";
 const ROOT_ID = "dangan-examine";
@@ -44,35 +45,27 @@ const CSS = `
 }
 #${ROOT_ID} .dex-plate::before { left: 10px; }
 #${ROOT_ID} .dex-plate::after { right: 10px; }
-#${ROOT_ID}.dex-busy .dex-plate { opacity: 0; }
+#${ROOT_ID}.dex-busy .dex-plate:not(.thinking) { opacity: 0; }
 #${ROOT_ID} .dex-plate.dim { filter: saturate(0.35) brightness(0.75); opacity: 0.55; }
 #${ROOT_ID} .dex-plate.gone { opacity: 0; }
 #${ROOT_ID} .dex-plate.examined > span::after { content: " ✓"; }
-#${ROOT_ID} .dex-tools {
-    position: absolute; top: 10px; left: 10px; display: flex; gap: 6px; flex-wrap: wrap; cursor: default;
-}
-#${ROOT_ID} .dex-tools button {
-    background: rgba(0,0,0,0.6); color: ${GOLD}; border: 1px solid rgba(246,210,31,0.7); border-radius: 3px;
-    font: 700 11px/1.4 Arial, sans-serif; letter-spacing: 0.08em; padding: 4px 9px; cursor: pointer;
-}
-#${ROOT_ID} .dex-tools button.on { background: ${GOLD}; color: #2a2100; }
-#${ROOT_ID} .dex-hint { color: #fff; font: 11px/1.4 Arial, sans-serif; text-shadow: 0 1px 2px #000; align-self: center; }
 #${ROOT_ID} .dex-mark {
     position: absolute; width: 30px; height: 30px; transform: translate(-50%, -50%) rotate(45deg);
     border: 2px solid ${GOLD}; background: rgba(20,16,0,0.55); cursor: grab; touch-action: none; display: none;
 }
 #${ROOT_ID}.dex-arrange .dex-mark { display: block; }
 #${ROOT_ID} .dex-mark.dragging { cursor: grabbing; background: rgba(246,210,31,0.45); }
-#${ROOT_ID} .dex-ask {
-    position: absolute; top: 46px; left: 10px; display: flex; gap: 6px;
-    width: min(420px, calc(100vw - 20px)); box-sizing: border-box; cursor: default;
+#${ROOT_ID} .dex-plate.thinking > span::after { content: ""; animation: dex-dots 1.2s steps(4) infinite; }
+@keyframes dex-dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
+#${ROOT_ID} form.dex-plate { pointer-events: auto; cursor: default; padding: 5px 40px; display: flex; gap: 10px; align-items: center; }
+#${ROOT_ID} form.dex-plate > * { transform: skewX(18deg); }
+#${ROOT_ID} form.dex-plate input {
+    flex: 1; min-width: 0; background: transparent; border: 0; border-bottom: 2px solid rgba(42,33,0,0.5);
+    color: #2a2100; font: inherit; padding: 2px 4px; outline: none;
 }
-#${ROOT_ID} .dex-ask input {
-    flex: 1; min-width: 0; background: rgba(0,0,0,0.7); color: #fff; border: 1px solid rgba(246,210,31,0.7);
-    border-radius: 3px; padding: 6px 8px; font: 14px Arial, sans-serif;
-}
-#${ROOT_ID} .dex-ask button {
-    background: ${GOLD}; color: #2a2100; border: 0; border-radius: 3px; font: 700 12px Arial, sans-serif; padding: 0 12px; cursor: pointer;
+#${ROOT_ID} form.dex-plate input::placeholder { color: rgba(42,33,0,0.55); }
+#${ROOT_ID} form.dex-plate button {
+    background: #2a2100; color: ${GOLD}; border: 0; font: 700 0.75em Arial, sans-serif; letter-spacing: 0.08em; padding: 4px 10px; cursor: pointer;
 }
 #${ROOT_ID} .dex-text {
     position: absolute; left: 0; right: 0; bottom: 3vh; min-height: 11vh; padding: 2vh 18vw; box-sizing: border-box;
@@ -98,7 +91,9 @@ function splitSentences(text) {
 // deps: {
 //   loadSpots(): Promise<{ roomLabel, spots: [{ id, label, x, y, examined }] }>,
 //   onExamine(spot): Promise, onFreeText(text): Promise,
-//   onMove(spot, x, y), playSfx?(), onClose?()
+//   onMove(spot, x, y), playSfx?(), onClose?(),
+//   onChange?() — open / arrange state changed (the HUD redraws its chips),
+//   onDismiss?() — Escape while a line is being read (ends it)
 // }
 export function createExamineMode(deps) {
     let root = null;
@@ -106,6 +101,8 @@ export function createExamineMode(deps) {
     let hovered = null;
     let busy = false;
     let plateTimer = null;
+    let arranging = false;
+    let endNarration = null;
 
     const isOpen = () => Boolean(root && root.isConnected);
 
@@ -114,17 +111,19 @@ export function createExamineMode(deps) {
         root.remove();
         root = null;
         hovered = null;
+        arranging = false;
         clearTimeout(plateTimer);
         document.removeEventListener("keydown", onKey, true);
         deps.onClose?.();
+        deps.onChange?.();
     }
 
     function onKey(e) {
-        if (e.key !== "Escape" || !isOpen() || busy) return;
+        if (e.key !== "Escape" || !isOpen()) return;
         e.preventDefault();
         e.stopPropagation();
-        const ask = root.querySelector(".dex-ask");
-        if (ask) ask.remove();
+        if (busy) { deps.onDismiss?.(); return; }
+        if (root.querySelector("form.dex-plate")) closeAsk();
         else close();
     }
 
@@ -141,12 +140,12 @@ export function createExamineMode(deps) {
     }
 
     function showPlate(spot) {
-        const plate = root?.querySelector(".dex-plate");
+        const plate = root?.querySelector("div.dex-plate");
         if (!plate) return;
         clearTimeout(plateTimer);
         if (spot) {
             plate.querySelector("span").textContent = spot.label;
-            plate.classList.remove("dim", "gone");
+            plate.classList.remove("dim", "gone", "thinking");
             plate.classList.toggle("examined", Boolean(spot.examined));
         } else if (!plate.classList.contains("gone")) {
             // Fades like the game's bar once the cursor moves off.
@@ -155,8 +154,23 @@ export function createExamineMode(deps) {
         }
     }
 
+    // "Examining the globe…" while the narration is written.
+    function setThinking(label) {
+        const plate = root?.querySelector("div.dex-plate");
+        if (!plate) return;
+        clearTimeout(plateTimer);
+        if (label) {
+            plate.querySelector("span").textContent = `Examining ${label}`;
+            plate.classList.remove("dim", "gone", "examined");
+            plate.classList.add("thinking");
+        } else {
+            plate.classList.remove("thinking");
+            plate.classList.add("gone");
+        }
+    }
+
     function onPointerMove(e) {
-        if (busy || root.classList.contains("dex-arrange")) return;
+        if (busy || arranging) return;
         const spot = spotAt(e.clientX, e.clientY);
         if (spot === hovered) return;
         hovered = spot;
@@ -165,20 +179,21 @@ export function createExamineMode(deps) {
     }
 
     async function onClick(e) {
-        if (busy || e.button !== 0 || root.classList.contains("dex-arrange")) return;
-        if (e.target.closest(".dex-tools, .dex-ask, .dex-text")) return;
+        if (busy || e.button !== 0 || arranging) return;
+        if (e.target.closest("form.dex-plate, .dex-text")) return;
         const spot = spotAt(e.clientX, e.clientY);
         if (!spot) return;
         deps.playSfx?.();
-        await run(() => deps.onExamine(spot));
+        await run(() => deps.onExamine(spot), spot.label.toLowerCase());
         spot.examined = true;
     }
 
     // While an examination plays out the room is inert.
-    async function run(fn) {
+    async function run(fn, label = "") {
         busy = true;
         root?.classList.add("dex-busy");
         root?.classList.remove("dex-hot");
+        setThinking(label);
         try { await fn(); } finally {
             busy = false;
             hovered = null;
@@ -229,21 +244,42 @@ export function createExamineMode(deps) {
         mark.addEventListener("pointercancel", up);
     }
 
+    // LOOK AT…: the name bar turns into a text field.
     function openAsk() {
-        if (!isOpen() || busy || root.querySelector(".dex-ask")) return;
+        if (!isOpen() || busy || root.querySelector("form.dex-plate")) return;
+        if (arranging) toggleArrange();
         const form = document.createElement("form");
-        form.className = "dex-ask";
-        form.innerHTML = `<input type="text" maxlength="120" placeholder="What do you look at? (e.g. the window latch)" aria-label="What to examine"><button type="submit">EXAMINE</button>`;
+        form.className = "dex-plate";
+        form.innerHTML = `<input type="text" maxlength="120" placeholder="What do you look at?" aria-label="What to examine"><button type="submit">EXAMINE</button>`;
+        form.addEventListener("pointerdown", (e) => e.stopPropagation());
+        form.addEventListener("click", (e) => e.stopPropagation());
         form.addEventListener("submit", async (e) => {
             e.preventDefault();
             const value = form.querySelector("input").value.trim();
             if (!value || busy) return;
-            form.remove();
+            closeAsk();
             deps.playSfx?.();
-            await run(() => deps.onFreeText(value));
+            await run(() => deps.onFreeText(value), value);
         });
+        root.querySelector("div.dex-plate")?.classList.add("gone");
         root.appendChild(form);
         form.querySelector("input").focus();
+    }
+
+    function closeAsk() {
+        root?.querySelector("form.dex-plate")?.remove();
+    }
+
+    function toggleArrange() {
+        if (!isOpen() || busy) return false;
+        closeAsk();
+        arranging = !arranging;
+        root.classList.toggle("dex-arrange", arranging);
+        root.classList.remove("dex-hot");
+        hovered = null;
+        showPlate(null);
+        deps.onChange?.();
+        return arranging;
     }
 
     // A text box of its own, for when the VN box isn't on. Click, Enter or
@@ -257,16 +293,21 @@ export function createExamineMode(deps) {
             box.className = "dex-text";
             let i = 0;
             const render = () => { box.innerHTML = `${name ? `<b></b>` : ""}<span></span>`; if (name) box.querySelector("b").textContent = name; box.querySelector("span").textContent = parts[i]; };
+            const finish = () => {
+                endNarration = null;
+                box.remove();
+                document.removeEventListener("keydown", next, true);
+                resolve();
+            };
             const next = (e) => {
                 if (e?.type === "keydown" && !["Enter", " "].includes(e.key)) return;
                 e?.preventDefault?.();
                 e?.stopPropagation?.();
                 i += 1;
                 if (i < parts.length) { render(); return; }
-                box.remove();
-                document.removeEventListener("keydown", next, true);
-                resolve();
+                finish();
             };
+            endNarration = finish;
             render();
             box.addEventListener("click", next);
             document.addEventListener("keydown", next, true);
@@ -281,46 +322,50 @@ export function createExamineMode(deps) {
         root.id = ROOT_ID;
         root.setAttribute("role", "application");
         root.setAttribute("aria-label", "Examine the room");
-        root.innerHTML = `
-            <div class="dex-tools">
-                <button type="button" data-act="ask">EXAMINE…</button>
-                <button type="button" data-act="arrange" title="Show where the examinable spots are and drag them onto the room's picture">ARRANGE</button>
-                <button type="button" data-act="close">DONE</button>
-                <span class="dex-hint">Looking around…</span>
-            </div>
-            <div class="dex-plate gone"><span></span></div>`;
-        const tools = root.querySelector(".dex-tools");
-        tools.addEventListener("pointerdown", (e) => e.stopPropagation());
-        tools.querySelector('[data-act="ask"]').addEventListener("click", (e) => { e.stopPropagation(); openAsk(); });
-        tools.querySelector('[data-act="close"]').addEventListener("click", (e) => { e.stopPropagation(); if (!busy) close(); });
-        tools.querySelector('[data-act="arrange"]').addEventListener("click", (e) => {
-            e.stopPropagation();
-            const on = root.classList.toggle("dex-arrange");
-            e.currentTarget.classList.toggle("on", on);
-            root.classList.remove("dex-hot");
-            showPlate(null);
-        });
+        root.innerHTML = `<div class="dex-plate gone"><span></span></div>`;
         root.addEventListener("pointermove", onPointerMove);
         root.addEventListener("click", (e) => { void onClick(e); });
-        root.addEventListener("contextmenu", (e) => { e.preventDefault(); if (!busy) close(); });
+        root.addEventListener("contextmenu", (e) => {
+            e.preventDefault();
+            if (busy) deps.onDismiss?.();
+            else close();
+        });
         document.body.appendChild(root);
         document.addEventListener("keydown", onKey, true);
+        deps.onChange?.();
         if (ask) openAsk();
 
         const opened = root;
+        const plate = root.querySelector("div.dex-plate");
+        plate.querySelector("span").textContent = "Looking around";
+        plate.classList.remove("gone");
+        plate.classList.add("thinking");
         try {
             const loaded = await deps.loadSpots();
-            if (root !== opened) return;
+            if (root !== opened) return { ok: false };
+            plate.classList.remove("thinking");
+            plate.classList.add("gone");
             spots = loaded.spots.map((s) => ({ ...s }));
             renderMarks();
-            root.querySelector(".dex-hint").textContent = spots.length
-                ? `${loaded.roomLabel || ""} — look around with the cursor. Right-click or Esc to stop.`
-                : "Nothing to examine here.";
+            return { ok: true, count: spots.length };
         } catch (err) {
-            if (root !== opened) return;
-            root.querySelector(".dex-hint").textContent = `Couldn't look around: ${err?.message || err}`;
+            if (root !== opened) return { ok: false };
+            close();
+            return { ok: false, error: err?.message || String(err) };
         }
     }
 
-    return { open, close, isOpen, showNarration };
+    return {
+        open,
+        close,
+        isOpen,
+        isArranging: () => arranging,
+        openAsk,
+        toggleArrange,
+        showNarration,
+        // Clears "Examining…" once the line is ready to show.
+        doneThinking: () => setThinking(null),
+        // Ends examine mode's own text box early.
+        dismissNarration: () => endNarration?.(),
+    };
 }

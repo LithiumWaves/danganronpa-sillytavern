@@ -1765,6 +1765,14 @@ body.dangan-ow-scene-active:not(.dangan-legacy-explore-composer) #send_form {
     pointer-events: none !important;
 }
 
+/* An aside line (what the player notices while examining) shows the box
+ * over the room, without the composer. */
+body.dangan-ow-scene-active.dangan-vn-aside #dangan-vn-overlay {
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+}
+
 /* Keep Prome / ST group sprites hidden for the whole single-chat session.
  * View conversation uses GCP built from overworld occupants; Prome still
  * mounts a holder for every group member and would otherwise stack the cast. */
