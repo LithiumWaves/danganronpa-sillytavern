@@ -41,12 +41,13 @@ import { createPhaseHistory, derivePhase, getNextStepHint, getPhaseActions, getS
 import { notify } from "./core/ui/notify.js";
 import { SAVE_MODES, createSaveStore } from "./core/saves/saveStore.js";
 import { pinInScope } from "./map/mapStorage.js";
-import { CASE_STATUS, DEFAULT_MOTIVE_DEADLINE_DAYS, addEmergentClue, beatWordOverlap, markWitnessTold, extractJsonObject, buildCaseGenerationPrompt, createBlankCaseFile, describeCaseFile, isGatheringNow, monokumaFileChanged, recordBeatAttempt, reviseMonokumaFile, validateCaseFile, buildMonokumaFileBullet, commitMurder, getMonokumaFileTitle, getMotiveAnnouncementText, getTimeSlot, isCaseOpen, isMurderSlotOver, markDiscovered, normalizeCaseFile, parseCaseFileResponse, removeEmergentClue, shouldAutoAnnounceMotive } from "./core/case/caseFile.js";
+import { CASE_STATUS, DEFAULT_MOTIVE_DEADLINE_DAYS, addEmergentClue, editMotive, beatWordOverlap, markWitnessTold, extractJsonObject, buildCaseGenerationPrompt, createBlankCaseFile, describeCaseFile, isGatheringNow, monokumaFileChanged, recordBeatAttempt, reviseMonokumaFile, validateCaseFile, buildMonokumaFileBullet, commitMurder, getMonokumaFileTitle, getMotiveAnnouncementText, getTimeSlot, isCaseOpen, isMurderSlotOver, markDiscovered, normalizeCaseFile, parseCaseFileResponse, removeEmergentClue, shouldAutoAnnounceMotive } from "./core/case/caseFile.js";
 import { CASE_PROMPT_KEY, buildCasePrompt } from "./core/case/casePrompts.js";
 import { openMonokumaFile } from "./truth/monokumaFile.js";
 import { openCaseFileEditor } from "./truth/caseFileEditor.js";
 import { RULES_PROMPT_KEY, RULE_SOURCES, addRule, buildRulesPrompt, createDefaultRules, formatRulesList, normalizeRules, parseRuleMarkers } from "./core/rules/schoolRules.js";
 import { openSchoolRulesView } from "./truth/schoolRulesView.js";
+import { openMotiveEditor } from "./truth/motiveEditor.js";
 import { buildRoutineSuggestionPrompt, describeRoutines, mergeSuggestedRoutines, normalizeRoutines, parseRoutineSuggestion } from "./overworld/routines.js";
 import { openRoutinesView } from "./social/routinesView.js";
 import { installChatWatch } from "./core/debug/chatWatch.js";
@@ -5077,6 +5078,7 @@ async function announceCaseMotive(caseFile) {
         caseDebug("MOTIVE", "Announced over the monitors.");
     }
     playMotiveMood();
+    void showMotiveDespair();
 
     notify({
         title: `MOTIVE: ${caseFile.motive.title.toUpperCase()}`,
@@ -5085,6 +5087,78 @@ async function announceCaseMotive(caseFile) {
         onAction: () => { void cancelMotive(); },
         durationMs: 12000,
     });
+}
+
+// The motive, without spoilers: its title, what it offers and the deadline.
+// Before the murder only; the hidden murder day moves with the deadline.
+function openMotiveEditorFromAnywhere() {
+    const caseFile = getCaseFile();
+    if (!caseFile || caseFile.status !== CASE_STATUS.PLANNED) {
+        notify({ tone: "warn", title: "NO MOTIVE TO EDIT", message: "There's no motive out, or the murder has already happened." });
+        return;
+    }
+    const today = ensureTimeTrackerState().day;
+    openMotiveEditor({
+        getMotive: () => getCaseFile()?.motive || caseFile.motive,
+        today,
+        save: async (values) => {
+            const current = getCaseFile();
+            if (!current || current.status !== CASE_STATUS.PLANNED) return "The murder has already happened; the motive can't change now.";
+            const next = editMotive(current, values, { today: ensureTimeTrackerState().day });
+            setCaseFile(next);
+            const moved = next.motive.deadlineDay !== current.motive.deadlineDay;
+            notify({
+                title: "MOTIVE UPDATED",
+                message: moved ? `${next.motive.title}: the deadline is now the night of Day ${next.motive.deadlineDay}.` : next.motive.title,
+            });
+            caseDebug("MOTIVE EDITED", `${next.motive.title}, deadline Day ${next.motive.deadlineDay}, murder now Day ${next.murderDay} (${next.murderTime}).`);
+            return "";
+        },
+    });
+}
+
+// Expressions a motive leaves on people's faces, as sprite emotions.
+// SillyTavern's labels first, then names custom sprite sets often use.
+const MOTIVE_DESPAIR_EMOTIONS = [
+    "fear", "nervousness", "sadness", "disgust", "anger", "disapproval", "disappointment", "grief", "annoyance", "remorse", "surprise", "confusion",
+    "scared", "afraid", "shock", "shocked", "horrified", "sad", "angry", "worried", "nervous", "upset", "despair", "panic", "crying",
+];
+
+// Everyone in the room with the player (not hosts, not the player).
+function listPeopleHere() {
+    const names = new Set();
+    const room = getCurrentLocationId();
+    try {
+        for (const c of overworldSceneController?.getCharactersInRoom?.(room) || []) if (c?.name) names.add(c.name);
+    } catch { /* no overworld */ }
+    for (const t of getExpressionPickerTargets()) if (!t.isPlayer && t.name) names.add(t.name);
+    const player = normalizeName(getCasePlayerName() || "");
+    return [...names].filter((name) => {
+        const char = characters.get(normalizeName(name));
+        return !isHostCharacter(name) && normalizeName(name) !== player && !char?.dead && !char?.missing;
+    });
+}
+
+// After the motive is delivered, everyone here shows a negative sprite
+// (picked like the expression picker does, so it lasts until their next line).
+async function showMotiveDespair() {
+    const people = listPeopleHere();
+    let shown = 0;
+    await Promise.all(people.map(async (name) => {
+        try {
+            const target = { name, folder: spriteFolderForName(name) };
+            const sprites = await listExpressionPickerSprites(target);
+            const bad = sprites.filter((s) => MOTIVE_DESPAIR_EMOTIONS.includes(s.group));
+            if (!bad.length) return;
+            const sprite = bad[Math.floor(Math.random() * bad.length)];
+            applyExpressionPickerSprite(target, sprite.path, sprite.stem);
+            shown += 1;
+        } catch (err) {
+            console.warn(`[Dangan][Case] No motive sprite for ${name}:`, err);
+        }
+    }));
+    caseDebug("MOTIVE FACES", people.length ? `${shown} of ${people.length} here took it badly (${people.join(", ")}).` : "Nobody else is here.");
+    return { people, shown };
 }
 
 // After a motive the music turns tense or dramatic, whichever has tracks
@@ -5693,6 +5767,8 @@ function openCaseFileEditorFromMonopad() {
             if (caseFile) await announceCaseMotive(caseFile);
         },
         announceNew: () => announceMotive({ source: "case_editor" }),
+        canEditMotive: () => getCaseFile()?.status === CASE_STATUS.PLANNED,
+        editMotive: openMotiveEditorFromAnywhere,
         clear: async () => {
             const caseFile = getCaseFile();
             const victim = caseFile ? findRosterCharacter(caseFile.victim) : null;
@@ -5864,6 +5940,9 @@ async function runPhaseAction(action) {
             break;
         case "cancel-motive":
             await cancelMotive();
+            break;
+        case "edit-motive":
+            openMotiveEditorFromAnywhere();
             break;
         case "undo":
             undoLastPhaseChange();
@@ -18047,6 +18126,13 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
                 await showCaseDebugText('CASE PROMPT', text);
                 return text;
             }
+            case 'motive':
+                openMotiveEditorFromAnywhere();
+                return '';
+            case 'faces': {
+                const { people, shown } = await showMotiveDespair();
+                return `${shown}/${people.length}`;
+            }
             case 'commit': {
                 const tracker = ensureTimeTrackerState();
                 if (!commitCaseMurder({ day: tracker.day, time: tracker.phase === TIME_PHASE_NIGHT ? 'night' : 'day' })) {
@@ -18098,12 +18184,12 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
                 return '';
             }
             default:
-                notify({ tone: 'warn', title: '/case', message: 'Use status, prompt [name], lastraw, cancel, commit, discover, file or clear.' });
+                notify({ tone: 'warn', title: '/case', message: 'Use status, prompt [name], lastraw, motive, faces, cancel, commit, discover, file or clear.' });
                 return '';
         }
     },
-    helpString: 'Debug tools for the hidden Case File (spoilers!). <code>/case status</code> shows the plan, <code>/case prompt [name]</code> shows what the AI would be told for the next reply (as that speaker), <code>/case lastraw</code> shows the last plan the AI sent back (for when a motive fails), <code>/case cancel</code> takes the motive back (before the murder), <code>/case commit</code> runs the murder now, <code>/case discover</code> finds the body now, <code>/case file timeOfDeath|cause|injuries &lt;text&gt;</code> updates the Monokuma File, <code>/case clear</code> drops the case.',
-    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'status | prompt [name] | lastraw | cancel | commit | discover | file <field> <text> | clear', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
+    helpString: 'Debug tools for the hidden Case File (spoilers!). <code>/case status</code> shows the plan, <code>/case prompt [name]</code> shows what the AI would be told for the next reply (as that speaker), <code>/case lastraw</code> shows the last plan the AI sent back (for when a motive fails), <code>/case motive</code> edits the motive and its deadline without spoilers, <code>/case faces</code> gives everyone here a negative sprite like a motive does, <code>/case cancel</code> takes the motive back (before the murder), <code>/case commit</code> runs the murder now, <code>/case discover</code> finds the body now, <code>/case file timeOfDeath|cause|injuries &lt;text&gt;</code> updates the Monokuma File, <code>/case clear</code> drops the case.',
+    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'status | prompt [name] | lastraw | motive | faces | cancel | commit | discover | file <field> <text> | clear', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({

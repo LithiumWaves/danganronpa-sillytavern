@@ -454,6 +454,29 @@ export function isMurderSlotOver(caseFile, { day = 1, from = "night" } = {}) {
     return from === "night" || caseFile.murderTime === "day";
 }
 
+// The motive as the player may change it without seeing the plan: its title,
+// what it offers and its deadline (never before today). The murder moves with
+// the deadline, keeping its distance from it, and never falls after it.
+// Only before the murder; returns the case unchanged otherwise.
+export function editMotive(caseFile, { title, description, deadlineDay } = {}, { today = 1 } = {}) {
+    if (!caseFile || caseFile.status !== CASE_STATUS.PLANNED) return caseFile;
+    const oldDeadline = Number(caseFile.motive.deadlineDay) || today;
+    const newDeadline = Math.max(today, Math.round(Number(deadlineDay)) || oldDeadline);
+    const shifted = (Number(caseFile.murderDay) || oldDeadline) + (newDeadline - oldDeadline);
+    return normalizeCaseFile({
+        ...caseFile,
+        // A deadline before the plan's first day moves that day back too.
+        createdDay: Math.min(caseFile.createdDay, newDeadline),
+        motive: {
+            ...caseFile.motive,
+            title: title === undefined ? caseFile.motive.title : String(title).trim() || caseFile.motive.title,
+            description: description === undefined ? caseFile.motive.description : String(description).trim(),
+            deadlineDay: newDeadline,
+        },
+        murderDay: Math.min(newDeadline, Math.max(today, shifted)),
+    });
+}
+
 export function commitMurder(caseFile, { day = 1, time = "night" } = {}) {
     return normalizeCaseFile({
         ...caseFile,

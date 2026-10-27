@@ -66,6 +66,7 @@ A small readout under the chapter title and level bar at the top right shows whe
 - **End Investigation:** go back to daily life without starting a trial. Your Truth Bullets are kept.
 - **Start Class Trial**, **Pass Time**, **Sleep** and **Start Investigation**, each with a confirmation.
 - **Monokuma's Motive:** Monokuma announces a motive (daily life only, one per chapter). See **Motives and the Case File** below.
+- **Edit Motive:** change the motive's name, what Monokuma offers and its deadline without seeing anything about the planned murder (no spoiler gate). Moving the deadline moves the hidden murder with it. Available until the murder happens; also from the Case File's spoiler screen (**EDIT MOTIVE (NO SPOILERS)**) and `/case motive`.
 - **Cancel Motive:** Monokuma takes the motive back and the planned murder is cancelled. Available until the murder happens; `/case cancel` does the same.
 - **Undo:** reverses the last phase change, whether you made it or the story did.
 
@@ -112,6 +113,8 @@ While examine mode is open, the room's buttons step aside and the right-hand col
 - **Older plans.** A case planned before the Monokuma File had details gets them filled in when the body is found.
 
 **The Case File editor (spoilers):** **CASE FILE** at the top of the Truth tab. It asks before showing anything, and remembers your answer per save (**HIDE AGAIN** puts the gate back). Every part of the case can be edited: the motive, the killer and victim, when and how (hidden or public, with the gathering), the method and timeline, the body's room and scene, the Monokuma File and what it hides, the clues, the foreshadowing, the witnesses and the evidence found during the investigation. Changes apply from the next reply. **REGENERATE** has Monokuma plan the murder again while keeping the motive (before the murder only). **WRITE BY HAND** starts from a blank case, and offers to announce its motive when you save. **CLEAR** throws the case away, and **COMMIT MURDER** / **FIND BODY** move it along for testing.
+
+**Faces:** when a motive is delivered (by Monokuma in person or over the monitors), everyone in the room with you switches to a negative sprite (fear, nervousness, sadness, disgust, anger…, or custom names like `scared`, `shocked`, `sad`), picked from the sprites they have. It lasts until their next line, like a pick from the expression picker. `/case faces` does it on demand to check it.
 
 **Checking it works (spoilers):** `/case status` shows the whole plan, `/case lastraw` shows exactly what the AI sent back for the last plan (handy if a motive fails), `/case prompt` shows what the AI would be told for the next reply (`/case prompt Leon Kuwata` shows it as that character), `/case commit` runs the murder now, `/case discover` finds the body now, `/case file timeOfDeath Unknown` (or `cause`, `injuries`) updates the Monokuma File, and `/case clear` drops the case. Settings → Gameplay → **Case debug toasts** shows a toast each time the case does something.
 

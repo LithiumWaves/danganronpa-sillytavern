@@ -10,6 +10,7 @@ import {
     pickForeshadowingBeat,
     removeEmergentClue,
     buildCaseGenerationPrompt,
+    editMotive,
     MAX_BEAT_ATTEMPTS,
     beatWordOverlap,
     createBlankCaseFile,
@@ -80,6 +81,20 @@ function run() {
     assert(!prompt.includes("WHERE PEOPLE USUALLY ARE") && !prompt.includes("SCHOOL REGULATIONS"), "no routines or rules unless given");
     const withRoutines = buildCaseGenerationPrompt({ cast, rooms, routines: ["- Leon Kuwata: daytime Gym"], rules: "1. No leaving." });
     assert(withRoutines.includes("WHERE PEOPLE USUALLY ARE") && withRoutines.includes("daytime Gym") && withRoutines.includes("1. No leaving."), "routines and rules in the plan");
+
+    {
+        const base = normalizeCaseFile({ status: "planned", createdDay: 2, motive: { title: "Videos", description: "x", deadlineDay: 4 }, killer: "A", victim: "B", murderDay: 3 });
+        const later = editMotive(base, { deadlineDay: 6 }, { today: 2 });
+        assert(later.motive.deadlineDay === 6 && later.murderDay === 5 && later.motive.title === "Videos", "a later deadline moves the murder with it");
+        const sooner = editMotive(base, { deadlineDay: 2, title: "Money", description: "Cash" }, { today: 2 });
+        assert(sooner.motive.deadlineDay === 2 && sooner.murderDay === 2 && sooner.motive.title === "Money" && sooner.motive.description === "Cash", "a sooner deadline pulls the murder in");
+        assert(editMotive(base, { deadlineDay: 1 }, { today: 3 }).motive.deadlineDay === 3, "never before today");
+        assert(editMotive(base, { title: "  " }, { today: 2 }).motive.title === "Videos", "a blank title keeps the old one");
+        const late = editMotive(base, { deadlineDay: 5 }, { today: 5 });
+        assert(late.createdDay === 2 && late.murderDay === 5, "pushed past an old murder day, it lands on today at the earliest");
+        const done = { ...base, status: "committed" };
+        assert(editMotive(done, { deadlineDay: 9 }) === done, "not after the murder");
+    }
 
     assert(extractJsonObject("Sure!\n```json\n{\"a\":1}\n```")?.a === 1, "extracts fenced JSON");
     assert(extractJsonObject("no json") === null, "no JSON");

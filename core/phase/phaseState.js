@@ -93,8 +93,9 @@ export function getPhaseActions({ phase, timeTracker, canUndo = false, undoLabel
         });
     }
 
-    // Monokuma can take the motive back until the murder happens.
+    // Until the murder, the motive can be edited (no spoilers) or taken back.
     if ((phase === PHASES.DAY || phase === PHASES.NIGHT) && caseCancellable) {
+        actions.push({ id: "edit-motive", label: "EDIT MOTIVE" });
         actions.push({
             id: "cancel-motive",
             label: "CANCEL MOTIVE",

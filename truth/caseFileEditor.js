@@ -164,12 +164,17 @@ export function openCaseFileEditor(api) {
             <p><strong>Spoilers ahead.</strong> The Case File holds the whole truth of this chapter's murder: who, how, when, and every planted clue.</p>
             <p>Reveal it only if you'd rather run the mystery than solve it. You can hide it again later.</p>
         </div>`;
-        foot.replaceChildren(button("REVEAL CASE DETAILS", "cfe-primary", async () => {
+        const reveal = button("REVEAL CASE DETAILS", "cfe-primary", async () => {
             const ok = await api.confirm({ title: "REVEAL THE CASE?", message: "This spoils the mystery for this save.", confirmLabel: "REVEAL" });
             if (!ok) return;
             api.setRevealed(true);
             render();
-        }));
+        });
+        // The motive and its deadline can be changed without seeing the plan.
+        const motive = api.canEditMotive?.()
+            ? button("EDIT MOTIVE (NO SPOILERS)", "", async () => { close(); api.editMotive(); })
+            : null;
+        foot.replaceChildren(...[motive, reveal].filter(Boolean));
     }
 
     function renderEmpty() {
