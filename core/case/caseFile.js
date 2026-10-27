@@ -400,6 +400,8 @@ export function normalizeCaseFile(raw) {
         })).filter((w) => w.name && w.account).slice(0, LIMITS.witnesses),
         // Monokuma has called the end of the investigation.
         trialCalled: Boolean(raw.trialCalled),
+        // How the vote went: "correct", "wrong", or "" before it.
+        verdict: raw.verdict === "correct" || raw.verdict === "wrong" ? raw.verdict : "",
         emergentClues: list(raw.emergentClues).map((c) => ({
             id: id("found", c?.id),
             title: text(c?.title, 120),
@@ -535,7 +537,7 @@ export function describeCaseFile(caseFile) {
     const cf = caseFile;
     const yes = (b) => (b ? "yes" : "no");
     const lines = [
-        `CASE FILE (SPOILERS) — ${cf.status.toUpperCase()}`,
+        `CASE FILE (SPOILERS) — ${cf.status.toUpperCase()}${cf.verdict ? ` · vote ${cf.verdict}` : ""}`,
         `Motive: ${cf.motive.title} — ${cf.motive.description} (deadline: night of Day ${cf.motive.deadlineDay})`,
         `Killer: ${cf.killer} · Victim: ${cf.victim}`,
         `Murder: ${cf.murderStyle}, ${cf.murderTime} of Day ${cf.murderDay}${cf.committedAt ? ` · happened: ${cf.committedAt.time} of Day ${cf.committedAt.day}` : ""}`,

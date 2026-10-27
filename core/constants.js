@@ -251,6 +251,9 @@ export const defaultSettings = {
     // Toasts for each Case File event (beats, the killer's note, the murder,
     // the body being found), for checking the case plays out.
     caseDebugToasts: false,
+    // Trial minigames with a right answer (not the debates) and the vote use
+    // the hidden Case File.
+    trialUseCaseTruth: true,
     // When an investigation partner reacts to what you examine: "clues",
     // "always" or "off".
     examinePartnerReactions: "clues",

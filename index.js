@@ -48,6 +48,7 @@ import { openCaseFileEditor } from "./truth/caseFileEditor.js";
 import { installChatWatch } from "./core/debug/chatWatch.js";
 import { buildExamineNarrationPrompt, buildHotspotPrompt, parseExamineNarration, parseHotspots, placeHotspots } from "./core/case/examine.js";
 import { createExamineMode } from "./overworld/examineMode.js";
+import { buildTrialTruthBlock, getCaseBlackened } from "./core/case/trialTruth.js";
 import { MARKER_BLOCKS, MARKER_PROMPT_KEY, buildMarkerPrompt, textHasMarkerInstructions } from "./core/prompts/markerPrompts.js";
 import { TRUST_LEVELS_PROMPT_KEY, buildTrustLevelsPrompt } from "./core/prompts/trustLevelsPrompt.js";
 import { createEffectLedger, emptyEffects, hasEffects, messageIdentity } from "./core/ledger/effectLedger.js";
@@ -6723,6 +6724,23 @@ const investigationStartController = {
 };
 
 
+
+// The case truth for a trial minigame's prompt (core/case/trialTruth.js),
+// unless the player turned it off.
+function caseTruthFor(purpose, opts = {}) {
+    if (getMonopadSetting('trialUseCaseTruth') === false) return '';
+    const block = buildTrialTruthBlock(getCaseFile(), { purpose, ...opts });
+    return block ? `\n\n${block}` : '';
+}
+
+// The vote is cast: the case is over, and remembers how it went.
+function closeCaseAfterVote(guess) {
+    const caseFile = getCaseFile();
+    if (!caseFile || caseFile.status === CASE_STATUS.CLOSED) return;
+    const correct = normalizeName(String(guess || '')) === normalizeName(caseFile.killer);
+    setCaseFile({ ...caseFile, status: CASE_STATUS.CLOSED, verdict: guess ? (correct ? 'correct' : 'wrong') : '' });
+    caseDebug('VERDICT', `${guess || 'nobody'} — ${correct ? 'correct' : 'wrong'}. The case is closed.`);
+}
 
 // Before the Class Trial of a case whose body was found, Monokuma calls the
 // end of the investigation (once per case).
@@ -14590,7 +14608,7 @@ debugSTGlobals();
 TRIAL CONTEXT
 Topic: ${topic}
 Goal: ${goal}
-Suspects: ${suspects}
+Suspects: ${suspects}${caseTruthFor('hangman')}
 
 Generate ONE puzzle: a short question relevant to this trial, with a single-word answer.
 
@@ -14682,7 +14700,7 @@ TRIAL CONTEXT
 Topic: ${topic}
 Goal: ${goal}
 Suspects: ${suspects}
-Accused (AA opponent): ${enemy}
+Accused (AA opponent): ${enemy}${caseTruthFor('argumentArmament', { opponent: enemy })}
 
 The minigame works like this:
 1. ${enemy} shouts defensive STATEMENTS while the player attacks. The player breaks each statement in turn.
@@ -14783,7 +14801,9 @@ QUOTE: <climactic accusation>`;
             },
             onStartVotingTime: async () => {
                 const topSuspect = trialManager?.getTrialContext?.()?.suspects?.[0]?.name ?? '';
-                const correctBlackened = await promptForBlackened(topSuspect);
+                // With a case, the real killer is the right answer; otherwise ask.
+                const caseKiller = getMonopadSetting('trialUseCaseTruth') === false ? '' : getCaseBlackened(getCaseFile());
+                const correctBlackened = caseKiller || await promptForBlackened(topSuspect);
                 const result = await votingScreenController?.run() ?? {};
                 if (result.error) {
                     trialManager?.resumeAfterActivity?.();
@@ -14803,6 +14823,7 @@ QUOTE: <climactic accusation>`;
                 }
 
                 await voteResultsController?.run({ guess, result: correctBlackened });
+                if (caseKiller) closeCaseAfterVote(guess);
                 trialManager?.resumeAfterActivity?.();
             },
             onStartQuestionTime: async () => {
@@ -14850,7 +14871,7 @@ QUOTE: <climactic accusation>`;
 TRIAL CONTEXT
 Topic: ${topic}
 Goal: ${goal}
-Suspects: ${suspects}
+Suspects: ${suspects}${caseTruthFor('questionTime')}
 
 Generate ONE multiple-choice question about a SPECIFIC DETAIL of the case, with EXACTLY four answers. One answer must be correct.
 
@@ -14944,7 +14965,7 @@ ANSWER: <answer>${qtimeExtraContextBlocks}`;
 
 The player has collected these Truth Bullets — each has a TITLE and a DESCRIPTION:
 
-${bulletList}
+${bulletList}${caseTruthFor('questionTruth')}
 
 Generate ONE multiple-truth question whose correct answer is the EXACT TITLE of one of the Truth Bullets above.
 
@@ -15156,7 +15177,7 @@ TIME: <whole-second integer, minimum 60, maximum 180>${qtruthExtraContextBlocks}
 TRIAL CONTEXT
 Topic: ${topic}
 Goal: ${goal}
-Suspects: ${suspectsList}${bulletsBlock}
+Suspects: ${suspectsList}${bulletsBlock}${caseTruthFor('mindMine')}
 
 Produce THREE distinct, plausible STATEMENTS about the case. Each statement must:
 - Be a complete, declarative sentence — NOT a question and NOT prefixed with a label.
