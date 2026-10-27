@@ -362,14 +362,16 @@ export function normalizeCaseFile(raw) {
         // Where Monokuma's in-person announcement sits in the chat, so
         // cancelling the motive can remove it; -1 when there is none.
         motiveMessageIndex: Number.isInteger(raw.motiveMessageIndex) ? raw.motiveMessageIndex : -1,
-        // Examine mode: each room's spots, and the look the next reply narrates.
+        // Examine mode: each room's spots, and the partner who reacts next to
+        // what the player just examined (a one-time note for their reply).
         examine: normalizeExamine(raw.examine),
-        pendingExamine: raw.pendingExamine?.label
+        pendingReaction: raw.pendingReaction?.speaker
             ? {
-                label: text(raw.pendingExamine.label, 120),
-                clueId: text(raw.pendingExamine.clueId, 40),
-                roomId: text(raw.pendingExamine.roomId, 120),
-                freeText: Boolean(raw.pendingExamine.freeText),
+                speaker: text(raw.pendingReaction.speaker, 80),
+                player: text(raw.pendingReaction.player, 80),
+                label: text(raw.pendingReaction.label, 120),
+                narration: text(raw.pendingReaction.narration, 600),
+                found: text(raw.pendingReaction.found, 200),
             }
             : null,
         timeline: list(raw.timeline).map((t) => text(t, 240)).filter(Boolean).slice(0, LIMITS.timeline),

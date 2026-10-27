@@ -4,7 +4,7 @@
 // Most daily life replies get nothing at all.
 
 import { CASE_STATUS, buildMonokumaFileBullet, getTimeSlot, isGatheringNow, pickForeshadowingBeat } from "./caseFile.js";
-import { buildExamineNote } from "./examine.js";
+import { buildPartnerReactionNote } from "./examine.js";
 
 export const CASE_PROMPT_KEY = "dangan_case";
 
@@ -132,10 +132,10 @@ V3C| BODY_DISCOVERY`);
             parts.push(`[JUST NOW]\nThe player has just walked in and found ${cf.victim}'s body here. Describe the scene and everyone's shock. ${cf.body.state}`);
         }
         parts.push(investigationFacts(cf, { roomId, truthBulletTitles, victimUltimate }));
-        if (cf.pendingExamine) parts.push(buildExamineNote(cf, cf.pendingExamine));
+        if (cf.pendingReaction && same(speakerName, cf.pendingReaction.speaker)) parts.push(buildPartnerReactionNote(cf.pendingReaction));
         if (isKiller) parts.push(killerCommitted(cf));
     }
 
     if (!parts.length) return none;
-    return { text: [HEADER, ...parts].join("\n\n"), beatId, killerNote: isKiller && parts.some((p) => p.startsWith("[SECRET")), motive, examine: Boolean(cf.pendingExamine && phase === "INVESTIGATION") };
+    return { text: [HEADER, ...parts].join("\n\n"), beatId, killerNote: isKiller && parts.some((p) => p.startsWith("[SECRET")), motive, reaction: parts.some((p) => p.startsWith("[INVESTIGATING TOGETHER]")) };
 }

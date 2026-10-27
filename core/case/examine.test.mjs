@@ -1,6 +1,6 @@
 import { CASE_STATUS, normalizeCaseFile } from "./caseFile.js";
 import { buildCasePrompt } from "./casePrompts.js";
-import { MAX_SPOTS, MIN_SPOTS, buildExamineNote, buildHotspotPrompt, cluesInRoom, layoutHotspots, normalizeExamine, parseHotspots, placeHotspots } from "./examine.js";
+import { MAX_SPOTS, MIN_SPOTS, buildExamineNarrationPrompt, buildHotspotPrompt, buildPartnerReactionNote, cluesInRoom, layoutHotspots, normalizeExamine, parseExamineNarration, parseHotspots, placeHotspots } from "./examine.js";
 
 function assert(cond, msg) {
     if (!cond) throw new Error(msg);
@@ -50,19 +50,27 @@ function run() {
     assert(normalized.kitchen.spots.length === 1 && normalized.kitchen.spots[0].x === 98 && normalized.kitchen.spots[0].examined, "normalize clamps and drops empties");
     assert(!normalized.empty, "rooms without spots are dropped");
 
-    // What the next reply is told.
-    const clueNote = buildExamineNote(cf, { label: "Knife rack", clueId: "clue1" });
-    assert(clueNote.includes("A knife is missing") && clueNote.includes("V3C| TB:"), "a clue spot hands over its clue");
-    const plain = buildExamineNote(cf, { label: "Stove" });
+    // The hidden narration: a clue spot hands over its clue, others don't.
+    const opts = { player: "Shuichi", roomLabel: "Kitchen", caseFacts: "facts", present: ["Kaede"] };
+    const clueAsk = buildExamineNarrationPrompt(cf, { label: "Knife rack", clueId: "clue1" }, opts);
+    assert(clueAsk.includes("A knife is missing") && clueAsk.includes("V3C| TB:") && clueAsk.includes("Shuichi") && clueAsk.includes("Kaede"), "clue spot narration prompt");
+    const plain = buildExamineNarrationPrompt(cf, { label: "Stove" }, opts);
     assert(!plain.includes("knife") && plain.includes("Nothing decisive"), "an ordinary spot gives nothing away");
-    const free = buildExamineNote(cf, { label: "the floor drain", freeText: true, roomId: "kitchen" });
+    const free = buildExamineNarrationPrompt(cf, { label: "the floor drain", freeText: true, roomId: "kitchen" }, opts);
     assert(free.includes("Blood under the sink") && !free.includes("Scuffed"), "free text can turn up this room's clues");
 
-    // The look goes out once, during the investigation only.
-    const pending = normalizeCaseFile({ ...cf, pendingExamine: { label: "Knife rack", clueId: "clue1", roomId: "kitchen" } });
-    const sent = buildCasePrompt({ caseFile: pending, phase: "INVESTIGATION", roomId: "kitchen", speakerName: "Kyoko" });
-    assert(sent.examine && sent.text.includes("[EXAMINING]"), "the examine note goes out");
-    assert(!buildCasePrompt({ caseFile: cf, phase: "INVESTIGATION", roomId: "kitchen" }).text.includes("[EXAMINING]"), "not without a pending look");
+    const parsed = parseExamineNarration('<think>hm</think>"The rack has an empty slot. Someone took a knife."\nV3C| TB: Missing Knife || One knife is gone from the kitchen rack.');
+    assert(parsed.text === "The rack has an empty slot. Someone took a knife.", `narration text: ${parsed.text}`);
+    assert(parsed.bullets.length === 1 && parsed.bullets[0].title === "Missing Knife", "bullet parsed out");
+    assert(parseExamineNarration("Just dust.").bullets.length === 0, "no bullet");
+
+    // The partner's reaction note goes only to that partner, once.
+    const note = buildPartnerReactionNote({ player: "Shuichi", label: "the knife rack", narration: "An empty slot.", found: "Missing Knife" });
+    assert(note.includes("Shuichi") && note.includes("Missing Knife"), "reaction note");
+    const pending = normalizeCaseFile({ ...cf, pendingReaction: { speaker: "Kaede Akamatsu", player: "Shuichi", label: "the knife rack", narration: "An empty slot." } });
+    const toPartner = buildCasePrompt({ caseFile: pending, phase: "INVESTIGATION", roomId: "kitchen", speakerName: "Kaede Akamatsu" });
+    assert(toPartner.reaction && toPartner.text.includes("[INVESTIGATING TOGETHER]"), "partner gets the note");
+    assert(!buildCasePrompt({ caseFile: pending, phase: "INVESTIGATION", roomId: "kitchen", speakerName: "Kyoko" }).text.includes("INVESTIGATING TOGETHER"), "others don't");
 
     console.log("examine tests passed");
 }

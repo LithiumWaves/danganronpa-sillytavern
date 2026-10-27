@@ -135,6 +135,7 @@ export function createOverworldSceneController({
     onHostCalled, // optional — (name) => void; a host was called in
     getOnStageHosts, // optional — () => { name, expression }[]; called-in hosts, who stand in the player's room
     getHostEntranceElapsed, // optional — (name) => ms into this host's slide-up, or null
+    isInvestigating, // optional — () => true during an investigation ("Tag Along" reads "Investigate With")
 }) {
     function playOwSfx(key) {
         if (!playSfx) return;
@@ -888,6 +889,11 @@ export function createOverworldSceneController({
     }
 
     // Followers still on the roster (not dead, missing or removed).
+    // During an investigation the people tagging along are your partners.
+    function tagAlongWord() {
+        return isInvestigating?.() ? "Investigate With" : "Tag Along";
+    }
+
     function getFollowerKeys() {
         const active = new Set(getActiveRosterKeys());
         return getState().followers.filter((k) => active.has(k));
@@ -1788,7 +1794,7 @@ export function createOverworldSceneController({
         if (total >= 1 || following) {
             items.push({
                 id: "tag-along",
-                label: following ? `Tag Along (${following})` : "Tag Along",
+                label: following ? `${tagAlongWord()} (${following})` : tagAlongWord(),
                 active: following > 0,
                 onSelect: () => showTagAlongModal(),
             });
@@ -2018,7 +2024,7 @@ export function createOverworldSceneController({
         const label = document.createElement("span");
         label.className = "dangan-ow-room-btn-label";
         const following = getFollowerKeys().length;
-        label.textContent = following ? `Tag Along (${following})` : "Tag Along";
+        label.textContent = following ? `${tagAlongWord()} (${following})` : tagAlongWord();
         btn.appendChild(label);
         btn.addEventListener("click", (e) => {
             e.stopPropagation();
@@ -2060,7 +2066,7 @@ export function createOverworldSceneController({
         const header = document.createElement("div");
         header.className = "dangan-grab-header";
         const title = document.createElement("span");
-        title.textContent = "Tag Along";
+        title.textContent = tagAlongWord();
         const closeBtn = document.createElement("button");
         closeBtn.type = "button";
         closeBtn.className = "dangan-grab-close";
@@ -2116,7 +2122,7 @@ export function createOverworldSceneController({
         const checkboxes = () => [...modal.querySelectorAll('input[type="checkbox"]')];
         const refreshConfirm = () => {
             const n = checkboxes().filter((cb) => cb.checked).length;
-            confirmBtn.textContent = n ? "Tag Along" : (followers.length ? "Go Alone" : "Tag Along");
+            confirmBtn.textContent = n ? tagAlongWord() : (followers.length ? "Go Alone" : tagAlongWord());
             confirmBtn.disabled = !n && !followers.length;
         };
         for (const cb of checkboxes()) cb.addEventListener("change", refreshConfirm);
@@ -3091,6 +3097,8 @@ export function createOverworldSceneController({
         notifyPlayerMovedTo,
         ensureCharacterLocations,
         getCharactersInRoom,
+        // Names of the classmates tagging along (your investigation partners).
+        getFollowerNames: () => getFollowerKeys().map((k) => characters.get(k)?.name).filter(Boolean),
         playHostExit,
         isRoomFlat,
         setRoomFlat,

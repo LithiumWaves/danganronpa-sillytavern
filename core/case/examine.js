@@ -115,20 +115,53 @@ export function normalizeExamine(raw) {
     return out;
 }
 
-// The pending look the next reply narrates.
-export function buildExamineNote(caseFile, { label, clueId = "", freeText = false, roomId = "" } = {}) {
+// What the player is looking at, and whether it's one of the case's clues.
+function lookFacts(caseFile, { label, clueId = "", freeText = false, roomId = "" } = {}) {
     const clue = clueId ? caseFile.clues.find((c) => c.id === clueId) : null;
-    const lines = [`[EXAMINING]`, `The player is examining ${freeText ? "" : "the "}${label} up close right now. Narrate what they find, through their inner thoughts and the reactions of anyone here, in this reply.`];
-    if (clue) {
-        lines.push(`They find this, and it matters: ${clue.text}`);
-        lines.push("Record it as a Truth Bullet on its own line: V3C| TB: Short Title || One-sentence description");
-    } else if (freeText) {
+    if (clue) return `They find this, and it matters: ${clue.text}\nEnd with a line recording it as a Truth Bullet: V3C| TB: Short Title || One-sentence description`;
+    if (freeText) {
         const here = cluesInRoom(caseFile, roomId).filter((c) => !c.found);
-        lines.push(here.length
-            ? `If what they examine fits one of these, they find it and it becomes a Truth Bullet (V3C| TB: Short Title || One-sentence description): ${here.map((c) => c.text).join(" / ")}. Otherwise give a small detail that fits the case, or nothing of note.`
-            : "Give a small detail that fits the case facts, or nothing of note. Only something truly new and important becomes a Truth Bullet.");
-    } else {
-        lines.push("Nothing decisive is here: give a small, believable detail that fits the case facts, and no Truth Bullet unless something truly important turns up.");
+        return here.length
+            ? `If what they examine fits one of these, they find it, and you end with a Truth Bullet line (V3C| TB: Short Title || One-sentence description): ${here.map((c) => c.text).join(" / ")}. Otherwise a small detail that fits the case, or nothing of note.`
+            : "A small detail that fits the case facts, or nothing of note. Only something truly new and important gets a Truth Bullet line.";
     }
-    return lines.join("\n");
+    return `Nothing decisive is here: a small, believable detail that fits the case facts, and no Truth Bullet.`;
+}
+
+// The hidden call that writes what the player notices, Danganronpa style:
+// their inner monologue, shown in the VN box and never posted to the chat.
+export function buildExamineNarrationPrompt(caseFile, look, { player = "", roomLabel = "", caseFacts = "", recentChat = "", present = [] } = {}) {
+    const who = player || "the protagonist";
+    return `A Danganronpa investigation. ${who} examines ${look.freeText ? "" : "the "}${look.label} in the ${roomLabel || "room"}.
+${present.length ? `Also here: ${present.join(", ")}.\n` : ""}
+CASE FACTS (hidden; never name the killer):
+${caseFacts}
+
+RECENT EVENTS:
+${recentChat || "(none)"}
+
+Write ${who}'s inner monologue as they look closely: 1-3 short sentences, first person, present tense, in the style of a Danganronpa examination. No quotes from other people, no speaker labels.
+${lookFacts(caseFile, look)}`;
+}
+
+// Splits the narration into the text to show and the Truth Bullets it found.
+export function parseExamineNarration(raw) {
+    const bullets = [];
+    const text = String(raw ?? "")
+        .replace(/<(think|thinking|reasoning)>[\s\S]*?<\/\1>/gi, "")
+        .replace(/V3C\s*[|｜]\s*TB\s*:\s*([^\n|]+?)\s*\|\|\s*([^\n]*)/gi, (_, title, description) => {
+            bullets.push({ title: title.trim(), description: description.trim() });
+            return "";
+        })
+        .replace(/^\s*["“]|["”]\s*$/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    return { text, bullets };
+}
+
+// One-time note for the partner who reacts to what the player just found.
+export function buildPartnerReactionNote({ player = "", label = "", narration = "", found = "" } = {}) {
+    return `[INVESTIGATING TOGETHER]
+You are investigating alongside ${player || "the player"}. They just examined ${label} and noticed: ${narration}${found ? `\nThey found evidence: ${found}.` : ""}
+React to it in character in this reply: what you think it means, or what it reminds you of. Keep it short.`;
 }

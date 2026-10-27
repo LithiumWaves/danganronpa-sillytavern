@@ -46,7 +46,7 @@ import { CASE_PROMPT_KEY, buildCasePrompt } from "./core/case/casePrompts.js";
 import { openMonokumaFile } from "./truth/monokumaFile.js";
 import { openCaseFileEditor } from "./truth/caseFileEditor.js";
 import { installChatWatch } from "./core/debug/chatWatch.js";
-import { buildHotspotPrompt, parseHotspots, placeHotspots } from "./core/case/examine.js";
+import { buildExamineNarrationPrompt, buildHotspotPrompt, parseExamineNarration, parseHotspots, placeHotspots } from "./core/case/examine.js";
 import { createExamineMode } from "./overworld/examineMode.js";
 import { MARKER_BLOCKS, MARKER_PROMPT_KEY, buildMarkerPrompt, textHasMarkerInstructions } from "./core/prompts/markerPrompts.js";
 import { TRUST_LEVELS_PROMPT_KEY, buildTrustLevelsPrompt } from "./core/prompts/trustLevelsPrompt.js";
@@ -2097,6 +2097,9 @@ function createVnModeController() {
     let chunkIndex = 0;
     // Name and text of the line on screen (see followShownEntry).
     let shownEntryIdentity = '';
+    // A line shown in the box without being a chat message (e.g. what the
+    // player finds when examining something): { name, chunks, index, resolve }.
+    let aside = null;
     let messageIndex = 0;
     let monopadOpen = false;
     let moveUnlocked = false;
@@ -2543,9 +2546,10 @@ function createVnModeController() {
             return canAdvanceWithinCurrent || canAdvanceToNext;
         })();
 
-        if (prevBtnEl) prevBtnEl.disabled = !hasPrevious;
+        if (prevBtnEl) prevBtnEl.disabled = aside ? aside.index === 0 : !hasPrevious;
         if (extraActionsBtnEl) extraActionsBtnEl.disabled = !total;
-        if (nextBtnEl) nextBtnEl.disabled = !hasNext;
+        // An aside line always leads somewhere: back to the chat.
+        if (nextBtnEl) nextBtnEl.disabled = aside ? false : !hasNext;
         if (latestBtnEl) {
             const unreadCount = Math.max(0, total - (messageIndex + 1));
             latestBtnEl.disabled = total < 2 || unreadCount === 0;
@@ -3413,6 +3417,13 @@ function createVnModeController() {
 
     function renderCurrent() {
         const messages = getMessageEntries();
+        if (aside) {
+            nameEl.textContent = aside.name;
+            const changed = renderDialogueText(aside.chunks[aside.index]);
+            updateNavigationState(messages);
+            if (changed) pulseText();
+            return;
+        }
         if (!messages.length) {
             nameEl.textContent = 'SYSTEM';
             renderDialogueText('No character replies available yet. Send a message and wait for a character response.');
@@ -3447,8 +3458,21 @@ function createVnModeController() {
         if (changed) pulseText();
     }
 
+    function endAside() {
+        const done = aside;
+        aside = null;
+        renderCurrent();
+        done?.resolve();
+    }
+
     // Returns true when it moved to another bit.
     function advance() {
+        if (aside) {
+            if (aside.index + 1 < aside.chunks.length) aside.index += 1;
+            else endAside();
+            renderCurrent();
+            return true;
+        }
         const messages = getMessageEntries();
         if (!messages.length) {
             renderCurrent();
@@ -3479,6 +3503,12 @@ function createVnModeController() {
 
     // Returns true when it moved to another bit.
     function retreat() {
+        if (aside) {
+            if (aside.index === 0) return false;
+            aside.index -= 1;
+            renderCurrent();
+            return true;
+        }
         const messages = getMessageEntries();
         if (!messages.length) {
             renderCurrent();
@@ -4246,6 +4276,18 @@ function createVnModeController() {
     }
 
     return {
+        // Shows `text` as `name`'s line without adding it to the chat. Resolves
+        // once the player reads past it; null when the VN box isn't showing.
+        showAside({ name = '', text = '' } = {}) {
+            if (!vnEnabled || !host.classList.contains('active')) return null;
+            const chunks = splitIntoChunks(String(text).replace(/\s+/g, ' ').trim());
+            if (!chunks.length) return Promise.resolve();
+            aside?.resolve();
+            return new Promise((resolve) => {
+                aside = { name: name || '', chunks, index: 0, resolve };
+                renderCurrent();
+            });
+        },
         setSkin(skin) {
             const next = normalizeVnSkin(skin);
             // On <body> so the docked typing bar (outside the overlay) can match.
@@ -5418,19 +5460,66 @@ async function loadExamineSpots() {
     return { roomLabel, spots: placeHotspots(spots, getSpotPositions(roomId)) };
 }
 
-function slashSafe(text) {
-    return String(text || "").replace(/\|/g, "/").replace(/\{\{/g, "{ {").trim();
+// What the player notices is written by a hidden call and shown in the VN
+// box (or examine mode's own text box) as their inner monologue; nothing is
+// posted to the chat. Evidence found becomes a Truth Bullet directly, and an
+// investigation partner may react with a real message.
+async function examineLook(look) {
+    const roomId = getCurrentLocationId();
+    let caseFile = getCaseFile();
+    if (!caseFile || !roomId) return;
+    const player = getActivePersonaName() || getCasePlayerName();
+    const prompt = buildExamineNarrationPrompt(caseFile, { ...look, roomId }, {
+        player,
+        roomLabel: getCurrentRoomLabel() || roomId,
+        caseFacts: buildCurrentCasePrompt({ speakerName: "" }).text,
+        recentChat: buildRecentChatContextLines(8),
+        present: getCurrentRoomOccupantNames(),
+    });
+    let raw = "";
+    try {
+        raw = await generateIsolated(prompt, { allowDialogue: true, maxTokens: 900, reasoning: { effort: "low", exclude: true } });
+    } catch (err) {
+        console.warn("[Dangan][Case] Examine narration failed:", err);
+    }
+    const { text, bullets } = parseExamineNarration(raw);
+    const narration = text || "Nothing stands out.";
+
+    const found = [];
+    for (const b of bullets) {
+        if (!b.title || !handleTruthBullet(b.title, b.description)) continue;
+        const bullet = getTruthBullets().find((tb) => tb.title === b.title);
+        if (!bullet) continue;
+        recordEmergentClue(bullet);
+        pinBulletToRoom(bullet);
+        found.push(bullet.title);
+    }
+    caseDebug("EXAMINED", `${look.label}${found.length ? ` → ${found.join(", ")}` : ""}`);
+
+    const name = getCharacterDisplayName?.(player) || player || "";
+    const shown = vnModeController?.showAside?.({ name, text: narration })
+        || (examineController?.isOpen?.() ? examineController.showNarration({ name, text: narration }) : null);
+    if (shown) await shown;
+    else notify({ title: name || "EXAMINE", message: narration, durationMs: 10000 });
+
+    maybePartnerReaction({ label: look.label, narration, found: found.join(", "), isClue: Boolean(look.clueId || found.length), player });
 }
 
-// The player's look goes into the chat, and the next reply narrates it.
-async function sendExamineAction(actionText, pendingExamine) {
-    setCaseFile({ ...getCaseFile(), pendingExamine });
-    try {
-        await executeSlashCommandsWithOptions(`/send ${slashSafe(actionText)} | /trigger`, { handleParserErrors: true });
-    } catch (err) {
-        console.warn("[Dangan][Case] Examine action failed:", err);
-        setCaseFile({ ...getCaseFile(), pendingExamine: null });
-    }
+// "Investigate With": a partner in the room reacts to what you examined, as
+// set in Gameplay (evidence only, anything, or never).
+function maybePartnerReaction({ label, narration, found, isClue, player }) {
+    const mode = String(getMonopadSetting("examinePartnerReactions") || "clues");
+    if (mode === "off" || (mode === "clues" && !isClue)) return;
+    const here = new Set(getCurrentRoomOccupantNames().map(normalizeName));
+    const partners = (overworldSceneController?.getFollowerNames?.() || []).filter((n) => here.has(normalizeName(n)));
+    if (!partners.length) return;
+    const speaker = partners[Math.floor(Math.random() * partners.length)];
+    setCaseFile({ ...getCaseFile(), pendingReaction: { speaker, player, label, narration, found } });
+    caseDebug("PARTNER", `${speaker} reacts to ${label}.`);
+    executeSlashCommandsWithOptions(`/trigger await=false "${speaker}"`, { handleParserErrors: true }).catch((err) => {
+        console.warn("[Dangan][Case] Partner reaction failed:", err);
+        setCaseFile({ ...getCaseFile(), pendingReaction: null });
+    });
 }
 
 async function examineSpot(spot) {
@@ -5443,15 +5532,11 @@ async function examineSpot(spot) {
         examine: room ? { ...caseFile.examine, [roomId]: { spots: room.spots.map((sp) => (sp.id === spot.id ? { ...sp, examined: true } : sp)) } } : caseFile.examine,
         clues: spot.clueId ? caseFile.clues.map((c) => (c.id === spot.clueId ? { ...c, found: true } : c)) : caseFile.clues,
     });
-    caseDebug("EXAMINE", `${spot.label}${spot.clueId ? " (hides a clue)" : ""}`);
-    await sendExamineAction(`*examines the ${spot.label.toLowerCase()} closely*`, { label: spot.label, clueId: spot.clueId || "", roomId, freeText: false });
+    await examineLook({ label: spot.label, clueId: spot.clueId || "", freeText: false });
 }
 
 async function examineFreeText(what) {
-    const roomId = getCurrentLocationId();
-    if (!getCaseFile() || !roomId) return;
-    caseDebug("EXAMINE", `Free look: ${what}`);
-    await sendExamineAction(`*examines ${what} closely*`, { label: what, clueId: "", roomId, freeText: true });
+    await examineLook({ label: what, clueId: "", freeText: true });
 }
 
 function moveExamineSpot(spot, x, y) {
@@ -5625,7 +5710,7 @@ function onCaseReplyRendered() {
     if (!caseFile) return;
     if (caseFile.pendingNote && sent.text.includes("[JUST NOW]")) setCaseFile({ ...getCaseFile(), pendingNote: "" });
     if (sent.motive === "heard") setCaseFile({ ...getCaseFile(), motiveJustAnnounced: "" });
-    if (sent.examine) setCaseFile({ ...getCaseFile(), pendingExamine: null });
+    if (sent.reaction) setCaseFile({ ...getCaseFile(), pendingReaction: null });
     if (sent.motive === "speech") playMotiveMood();
     if (sent.motive === "speech") {
         setCaseFile({ ...getCaseFile(), pendingMotiveSpeech: false });
@@ -10835,6 +10920,12 @@ function applySettingsTabUI() {
         el.value = savedTemplate;
     });
 
+    const partnerSelect = document.getElementById("dangan_examine_partner_reactions");
+    if (partnerSelect) {
+        const raw = String(tab.examinePartnerReactions || "clues");
+        partnerSelect.value = ["clues", "always", "off"].includes(raw) ? raw : "clues";
+    }
+
     const motiveAutoSelect = document.getElementById("dangan_motive_auto_day");
     if (motiveAutoSelect) {
         const raw = String(Number(tab.motiveAutoDay) || 0);
@@ -12745,6 +12836,7 @@ jQuery(async () => {
                     onHostCalled: (name) => bringHostOnStage(name),
                     getOnStageHosts: () => getOnStageHosts(),
                     getHostEntranceElapsed: (name) => getHostEntranceElapsed(name, 'overworld'),
+                    isInvestigating: () => investigationUnderway,
                     onPresenceSynced: () => {
                         try { trialManager?.refreshGroupChatPortraits?.(); }
                         catch (e) { console.warn("[Dangan][Overworld] GCP refresh after presence sync failed:", e); }
@@ -13693,6 +13785,11 @@ $(".monopad-icon").on("mouseenter", function () {
                 try { syncRoomContextPrompt(); } catch { /* ignore */ }
             }
             if (settingKey.startsWith("marker")) syncMarkerPrompts();
+        });
+
+        $("#dangan_examine_partner_reactions").on("change", function () {
+            const next = String(this.value || "clues");
+            setMonopadSetting("examinePartnerReactions", ["clues", "always", "off"].includes(next) ? next : "clues");
         });
 
         $("#dangan_motive_auto_day").on("change", function () {
