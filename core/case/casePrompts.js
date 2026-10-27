@@ -3,7 +3,7 @@
 // own character gets their secret, and only while they're the one replying.
 // Most daily life replies get nothing at all.
 
-import { CASE_STATUS, buildMonokumaFileBullet, getTimeSlot, isGatheringNow, pickForeshadowingBeat } from "./caseFile.js";
+import { CASE_STATUS, accountTitle, buildMonokumaFileBullet, getTimeSlot, isGatheringNow, listWitnessTestimony, pickForeshadowingBeat } from "./caseFile.js";
 import { buildPartnerReactionNote } from "./examine.js";
 
 export const CASE_PROMPT_KEY = "dangan_case";
@@ -48,6 +48,22 @@ Weapon: ${cf.weapon}.${concealedNote(cf)}
 Protect yourself. Lie if you must, but keep your story consistent, and never confess unless you are cornered at the Class Trial.`;
 }
 
+// Who has already told the player what they saw (never what the others know).
+function toldLine(cf) {
+    const told = listWitnessTestimony(cf).filter((w) => w.told).map((w) => w.name);
+    return told.length ? `\nAlready told the player what they saw: ${told.join(", ")}.` : "";
+}
+
+// A witness's private note: what they saw, and how it goes on record.
+function witnessNote(cf, speakerName) {
+    const me = listWitnessTestimony(cf).find((w) => same(w.name, speakerName));
+    if (!me) return "";
+    const facts = me.facts.map((f) => `- ${f}`).join("\n");
+    return me.told
+        ? `[WHAT YOU SAW]\nYou, ${me.name}, already told the player this:\n${facts}\nYou can repeat it or add details if asked, without a new Truth Bullet line.`
+        : `[WHAT YOU SAW]\nYou, ${me.name}, saw or heard this around the time of the murder:\n${facts}\nShare it when the player asks about it, or when it's naturally relevant. You don't have to say everything at once, and you don't know what it proves.\nThe first time you tell it, put this on its own line: V3C| TB: ${accountTitle(me.name)} || One-sentence summary of what you told`;
+}
+
 function investigationFacts(cf, { roomId, truthBulletTitles, victimUltimate }) {
     const file = buildMonokumaFileBullet(cf, { victimUltimate });
     const here = cf.clues.filter((c) => c.roomId && c.roomId === roomId).map((c) => `- ${c.text}`);
@@ -57,7 +73,7 @@ An investigation into ${cf.victim}'s murder is underway.
 ${file.title}: ${file.description}
 Crime scene: ${cf.body.roomLabel || "unknown"}. ${cf.body.state}
 ${here.length ? `Evidence that can be found in this room if someone looks:\n${here.join("\n")}` : "No key evidence was planned for this room, though smaller details can still turn up."}
-Evidence found so far: ${found}.
+Evidence found so far: ${found}.${toldLine(cf)}
 You may invent further evidence and details freely, as long as they fit these facts. Never state or confirm who the killer is.`;
 }
 
@@ -133,6 +149,10 @@ V3C| BODY_DISCOVERY`);
         }
         parts.push(investigationFacts(cf, { roomId, truthBulletTitles, victimUltimate }));
         if (cf.pendingReaction && same(speakerName, cf.pendingReaction.speaker)) parts.push(buildPartnerReactionNote(cf.pendingReaction));
+        if (!isKiller) {
+            const note = witnessNote(cf, speakerName);
+            if (note) parts.push(note);
+        }
         if (isKiller) parts.push(killerCommitted(cf));
     }
 

@@ -95,6 +95,10 @@ While examine mode is open, the room's buttons step aside and the right-hand col
 
 **Investigate With:** during an investigation the explore menu's **Tag Along** becomes **Investigate With**. When you examine something with a partner in the room, one of them reacts to it in the chat. Settings → Gameplay → **Investigation partners react** chooses when: when you find evidence (default), to anything you examine, or never. **Partner reactions show as** chooses how: a normal chat message (default), or **only in the VN box**, generated the same way (the partner's card and the chat) but shown like what you notice and never added to the chat.
 
+**Witnesses:** the plan has people who saw or heard something. During the investigation each one privately knows what they saw, and tells it when you ask them about it (or when it comes up naturally); the first time, it becomes a **"<Name>'s Account"** Truth Bullet. Nobody else knows what a witness hasn't said yet, and the killer never gets a witness note about themselves. `/case status` shows who has told.
+
+**The end of the investigation:** whenever you head into the Class Trial (Phase HUD, the Trial Grounds pin, the trial marker or `/startclasstrial`), Monokuma first announces that the investigation is over and everyone should gather at the red door, then the Trial Preparation music plays (if that playlist has tracks). It plays once per case. There's no requirement to have found everything first.
+
 **Evidence on the map:** during an investigation every new Truth Bullet is pinned on the map next to the room you found it in, and the Monokuma File next to the crime scene. Deleting the bullet or swiping its message away removes the pin.
 
 **Complicated cases:**

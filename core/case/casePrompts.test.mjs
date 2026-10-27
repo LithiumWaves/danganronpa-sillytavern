@@ -1,4 +1,4 @@
-import { CASE_STATUS, commitMurder, markBeatUsed, markDiscovered, normalizeCaseFile } from "./caseFile.js";
+import { CASE_STATUS, accountTitle, commitMurder, listWitnessTestimony, markBeatUsed, markDiscovered, markWitnessTold, normalizeCaseFile } from "./caseFile.js";
 import { buildCasePrompt } from "./casePrompts.js";
 
 function assert(cond, msg) {
@@ -98,6 +98,29 @@ function run() {
     assert(buildCasePrompt({ caseFile: pubFound, phase: "INVESTIGATION", speakerName: "Leon Kuwata", roomId: "gym" }).text.includes("9pm, hidden by the dark"), "killer knows what's concealed");
 
     assert(!buildCasePrompt({ caseFile: committed, phase: "DAY", day: 4, speakerName: "Kyoko" }).text.includes("MONOKUMA'S MOTIVE"), "the motive note ends with the murder");
+
+    // Testimony: the witness knows what they saw, the killer never gets it.
+    const withWitnesses = markDiscovered(commitMurder(normalizeCaseFile({
+        ...cf,
+        witnesses: [{ name: "Kyoko Kirigiri", account: "Heard a scream at 1am." }, { name: "Leon Kuwata", account: "Says he slept." }],
+        clues: [...cf.clues, { text: "Saw someone in the hall", witness: "Aoi Asahina" }],
+    }), { day: 3 }));
+    const testimony = listWitnessTestimony(withWitnesses);
+    assert(testimony.map((w) => w.name).sort().join() === "Aoi Asahina,Kyoko Kirigiri", "witnesses from both lists, never the killer");
+    const kyoko = buildCasePrompt({ caseFile: withWitnesses, phase: "INVESTIGATION", speakerName: "Kyoko Kirigiri", roomId: "gym" });
+    assert(kyoko.text.includes("[WHAT YOU SAW]") && kyoko.text.includes("Heard a scream") && kyoko.text.includes("V3C| TB: Kyoko Kirigiri's Account"), "witness note");
+    const other = buildCasePrompt({ caseFile: withWitnesses, phase: "INVESTIGATION", speakerName: "Aoi Asahina", roomId: "gym" });
+    assert(other.text.includes("Saw someone in the hall") && !other.text.includes("Heard a scream"), "each witness only knows their own account");
+    assert(!buildCasePrompt({ caseFile: withWitnesses, phase: "INVESTIGATION", speakerName: "Leon Kuwata", roomId: "gym" }).text.includes("[WHAT YOU SAW]"), "the killer gets no witness note");
+    assert(!buildCasePrompt({ caseFile: withWitnesses, phase: "INVESTIGATION", speakerName: "Makoto", roomId: "gym" }).text.includes("Heard a scream"), "bystanders don't hear it");
+
+    const told = markWitnessTold(withWitnesses, accountTitle("Kyoko Kirigiri"));
+    assert(told.witnesses.find((w) => w.name === "Kyoko Kirigiri").told, "told once the bullet is found");
+    assert(buildCasePrompt({ caseFile: told, phase: "INVESTIGATION", speakerName: "Kyoko Kirigiri", roomId: "gym" }).text.includes("already told"), "no second bullet");
+    assert(buildCasePrompt({ caseFile: told, phase: "INVESTIGATION", speakerName: "Makoto", roomId: "gym" }).text.includes("Already told the player what they saw: Kyoko Kirigiri"), "bystanders know who told");
+    const aoiTold = markWitnessTold(withWitnesses, "aoi asahina's account");
+    assert(aoiTold.clues.find((c) => c.witness === "Aoi Asahina").found, "a clue witness's clue is found when they tell it");
+    assert(markWitnessTold(withWitnesses, "Random Bullet") === withWitnesses, "other bullets change nothing");
 
     console.log("casePrompts tests passed");
 }

@@ -216,7 +216,7 @@ export function openCaseFileEditor(api) {
             </div><button type="button" class="cfe-danger" data-remove>REMOVE</button></div>`;
         const witnessRow = (w = {}) => `<div class="cfe-row" data-row="witness">
             <div class="cfe-row-fields">
-                <label>Witness<select data-f="name">${options(cast, w.name || "", { blank: "— pick —" })}</select></label>
+                <label>Witness${w.told ? " ✓ told" : ""}<select data-f="name">${options(cast, w.name || "", { blank: "— pick —" })}</select></label>
                 <label class="cfe-wide">What they saw or heard<textarea data-f="account" rows="2">${esc(w.account)}</textarea></label>
             </div><button type="button" class="cfe-danger" data-remove>REMOVE</button></div>`;
         const concealedRow = (c = {}) => `<div class="cfe-row" data-row="concealed">
@@ -384,7 +384,8 @@ export function openCaseFileEditor(api) {
             skipped: field(r, "skipped").checked,
             attempts: Number(r.dataset.attempts) || 0,
         }));
-        next.witnesses = rows("witness").map((r) => ({ name: field(r, "name").value, account: field(r, "account").value }));
+        const toldNames = new Set(draft.witnesses.filter((w) => w.told).map((w) => w.name));
+        next.witnesses = rows("witness").map((r) => ({ name: field(r, "name").value, account: field(r, "account").value, told: toldNames.has(field(r, "name").value) }));
         next.monokumaFile.concealed = rows("concealed").map((r) => ({ field: field(r, "field").value, truth: field(r, "truth").value }));
         next.emergentClues = rows("emergent").map((r) => JSON.parse(r.dataset.json));
         return next;

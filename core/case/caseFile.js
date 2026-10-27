@@ -395,7 +395,11 @@ export function normalizeCaseFile(raw) {
         witnesses: list(raw.witnesses).map((w) => ({
             name: text(w?.name, 80),
             account: text(w?.account),
+            // Has told the player (their "<Name>'s Account" bullet was found).
+            told: Boolean(w?.told),
         })).filter((w) => w.name && w.account).slice(0, LIMITS.witnesses),
+        // Monokuma has called the end of the investigation.
+        trialCalled: Boolean(raw.trialCalled),
         emergentClues: list(raw.emergentClues).map((c) => ({
             id: id("found", c?.id),
             title: text(c?.title, 120),
@@ -549,7 +553,7 @@ export function describeCaseFile(caseFile) {
         `Foreshadowing (last slot: ${cf.lastBeatSlot || "none"}):`,
         ...cf.foreshadowing.map((f) => `  - [${f.used ? "used" : f.skipped ? "set aside" : "unused"}, offered ${f.attempts}x] ${f.text}${f.characters.length ? ` (${f.characters.join(", ")})` : ""}`),
         "Witnesses:",
-        ...cf.witnesses.map((w) => `  - ${w.name}: ${w.account}`),
+        ...cf.witnesses.map((w) => `  - ${w.told ? "[told] " : ""}${w.name}: ${w.account}`),
         `Emergent clues (${cf.emergentClues.length}):`,
         ...cf.emergentClues.map((c) => `  - ${c.title}${c.roomId ? ` [${c.roomId}]` : ""}`),
     ];
@@ -647,5 +651,42 @@ export function createBlankCaseFile({ day = 1, chapterIndex = 0, deadlineDays = 
         motive: { title: "", deadlineDay: day + Math.max(0, deadlineDays - 1) },
         murderDay: day + Math.max(0, deadlineDays - 1),
         murderTime: "night",
+    });
+}
+
+// The Truth Bullet title a witness's testimony is recorded under.
+export function accountTitle(name) {
+    return `${String(name || "").trim()}'s Account`;
+}
+
+// Everyone with something to tell: listed witnesses and the witnesses named
+// on clues, with what they know. The killer is never among them.
+export function listWitnessTestimony(caseFile) {
+    if (!caseFile) return [];
+    const byName = new Map();
+    const key = (n) => String(n || "").trim().toLowerCase();
+    const add = (name, text, told = false) => {
+        if (!name || !text || key(name) === key(caseFile.killer) || key(name) === key(caseFile.victim)) return;
+        const entry = byName.get(key(name)) || { name, facts: [], told: false };
+        if (!entry.facts.includes(text)) entry.facts.push(text);
+        entry.told = entry.told || told;
+        byName.set(key(name), entry);
+    };
+    for (const w of caseFile.witnesses) add(w.name, w.account, w.told);
+    for (const c of caseFile.clues) if (c.witness) add(c.witness, c.text, c.found);
+    return [...byName.values()];
+}
+
+// A witness's account bullet was found: they've told it, and their clues
+// are found.
+export function markWitnessTold(caseFile, bulletTitle) {
+    if (!caseFile) return caseFile;
+    const key = (n) => String(n || "").trim().toLowerCase();
+    const who = listWitnessTestimony(caseFile).find((w) => key(accountTitle(w.name)) === key(bulletTitle));
+    if (!who) return caseFile;
+    return normalizeCaseFile({
+        ...caseFile,
+        witnesses: caseFile.witnesses.map((w) => (key(w.name) === key(who.name) ? { ...w, told: true } : w)),
+        clues: caseFile.clues.map((c) => (key(c.witness) === key(who.name) ? { ...c, found: true } : c)),
     });
 }

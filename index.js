@@ -41,7 +41,7 @@ import { createPhaseHistory, derivePhase, getNextStepHint, getPhaseActions, getS
 import { notify } from "./core/ui/notify.js";
 import { SAVE_MODES, createSaveStore } from "./core/saves/saveStore.js";
 import { pinInScope } from "./map/mapStorage.js";
-import { CASE_STATUS, DEFAULT_MOTIVE_DEADLINE_DAYS, addEmergentClue, beatWordOverlap, extractJsonObject, buildCaseGenerationPrompt, createBlankCaseFile, describeCaseFile, isGatheringNow, monokumaFileChanged, recordBeatAttempt, reviseMonokumaFile, validateCaseFile, buildMonokumaFileBullet, commitMurder, getMonokumaFileTitle, getMotiveAnnouncementText, getTimeSlot, isCaseOpen, isMurderSlotOver, markDiscovered, normalizeCaseFile, parseCaseFileResponse, removeEmergentClue, shouldAutoAnnounceMotive } from "./core/case/caseFile.js";
+import { CASE_STATUS, DEFAULT_MOTIVE_DEADLINE_DAYS, addEmergentClue, beatWordOverlap, markWitnessTold, extractJsonObject, buildCaseGenerationPrompt, createBlankCaseFile, describeCaseFile, isGatheringNow, monokumaFileChanged, recordBeatAttempt, reviseMonokumaFile, validateCaseFile, buildMonokumaFileBullet, commitMurder, getMonokumaFileTitle, getMotiveAnnouncementText, getTimeSlot, isCaseOpen, isMurderSlotOver, markDiscovered, normalizeCaseFile, parseCaseFileResponse, removeEmergentClue, shouldAutoAnnounceMotive } from "./core/case/caseFile.js";
 import { CASE_PROMPT_KEY, buildCasePrompt } from "./core/case/casePrompts.js";
 import { openMonokumaFile } from "./truth/monokumaFile.js";
 import { openCaseFileEditor } from "./truth/caseFileEditor.js";
@@ -5717,7 +5717,10 @@ function recordEmergentClue(bullet) {
     const caseFile = getCaseFile();
     if (!caseFile?.discovered || caseFile.status === CASE_STATUS.CLOSED) return;
     if (bullet.title === getMonokumaFileTitle(caseFile)) return;
-    const next = addEmergentClue(caseFile, { id: bullet.id, title: bullet.title, text: bullet.description, roomId: getCurrentLocationId() || "" });
+    // A witness's "<Name>'s Account" puts their testimony on record.
+    const told = markWitnessTold(caseFile, bullet.title);
+    if (told !== caseFile) caseDebug("TESTIMONY", bullet.title);
+    const next = addEmergentClue(told, { id: bullet.id, title: bullet.title, text: bullet.description, roomId: getCurrentLocationId() || "" });
     if (next === caseFile) return;
     setCaseFile(next);
     caseDebug("EMERGENT CLUE", bullet.title);
@@ -6721,7 +6724,20 @@ const investigationStartController = {
 
 
 
+// Before the Class Trial of a case whose body was found, Monokuma calls the
+// end of the investigation (once per case).
+async function announceInvestigationOver() {
+    const caseFile = getCaseFile();
+    if (!investigationUnderway || !caseFile?.discovered || caseFile.trialCalled) return;
+    setCaseFile({ ...caseFile, trialCalled: true });
+    caseDebug("INVESTIGATION OVER", "Monokuma calls everyone to the trial.");
+    await monokumaAnnouncementController?.triggerAsync("INVESTIGATION_END");
+    if ((getMonopadSetting("trialPreparationTracks") || []).length) playTrackFromSetting("trialPreparationTracks");
+    else playCurrentPhaseTrack();
+}
+
 async function triggerTrialStartFromMapPin() {
+    await announceInvestigationOver();
     const suspended = getTrialSession();
     if (suspended?.suspended) {
         const resume = await confirmOutsideMonopad({

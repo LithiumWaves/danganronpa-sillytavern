@@ -41,6 +41,12 @@ const MARKER_TYPES = {
         label: "MOTIVE ANNOUNCEMENT",
         transcript: "Puhuhu... Seems like you kids are getting way too comfortable. So here's a little motive for you!",
     },
+    // Before the Class Trial (played by the extension, no voice line).
+    INVESTIGATION_END: {
+        chime: "dingdongbingbong.mp3",
+        label: "INVESTIGATION OVER",
+        transcript: "Ahem! I'm getting tired of waiting, so let's wrap this up! The investigation is over! Everyone, please gather in front of the red door... it's time for the Class Trial! Puhuhu!",
+    },
     BODY_DISCOVERY: {
         voice: "despairnoise.mp3",
         label: "BODY DISCOVERY",
@@ -102,6 +108,7 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
             NIGHT_ANNOUN_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/dingdongbingbong.mp3`),
             BDA_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/bda_bell.mp3`),
             MOTIVE_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/dingdongbingbong.mp3`),
+            INVESTIGATION_END_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/dingdongbingbong.mp3`),
             DAY_ANNOUN_VOICE: [
                 new Audio(`${extensionFolderPath}/assets/monokuma/morn1.wav`),
                 new Audio(`${extensionFolderPath}/assets/monokuma/morn2.wav`),
@@ -130,6 +137,7 @@ export function createMonokumaAnnouncementController({ extensionFolderPath, shou
             NIGHT_ANNOUN_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/dingdongbingbong.mp3`),
             BDA_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/bda_bell.mp3`),
             MOTIVE_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/dingdongbingbong.mp3`),
+            INVESTIGATION_END_CHIME: new Audio(`${extensionFolderPath}/assets/monokuma/dingdongbingbong.mp3`),
             DAY_ANNOUN_VOICE: new Audio(`${extensionFolderPath}/assets/monokuma/daytime_announ.mp3`),
             NIGHT_ANNOUN_VOICE: new Audio(`${extensionFolderPath}/assets/monokuma/nighttime_announ.mp3`),
             BDA_VOICE: new Audio(`${extensionFolderPath}/assets/monokuma/bda_announ.mp3`),
