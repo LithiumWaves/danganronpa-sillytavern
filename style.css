@@ -1830,6 +1830,21 @@ body.dangan-ow-single-chat #expression-wrapper {
 #dangan-overworld .dangan-ow-tag-btn > .dangan-ow-room-btn-label {
     transform: skewX(22deg);
 }
+/* "Examine" (investigations) — right column, under MENU; without the MENU,
+ * under Tag Along. */
+#dangan-overworld .dangan-ow-examine-btn {
+    top: 360px;
+}
+body.dangan-explore-menu-on #dangan-overworld .dangan-ow-examine-btn {
+    top: 280px;
+}
+/* While examining, the room's buttons step aside; examine mode shows its
+ * own in the same slots (overworld/examineMode.js). */
+body.dangan-examining #dangan-overworld .dangan-ow-room-btn,
+body.dangan-examining #dangan-ow-action-menu {
+    display: none !important;
+}
+
 /* "Edit Character Positions" — right column, second slot. */
 #dangan-overworld .dangan-ow-edit-btn {
     top: 280px;

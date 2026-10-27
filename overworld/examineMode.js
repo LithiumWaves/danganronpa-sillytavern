@@ -3,8 +3,9 @@
 // magnifying glass over something you can examine, and the thing's name shows
 // in the yellow bar at the bottom. Clicking examines it. ARRANGE shows where
 // the spots are so they can be dragged onto the room's picture.
-// index.js supplies the spots, does the examining and shows the controls
-// (LOOK AT…, ARRANGE) in the phase readout.
+// index.js supplies the spots and does the examining. While it's open the
+// overworld's right-hand buttons step aside and EXAMINING / LOOK AT… /
+// ARRANGE take their slots, in the same style.
 
 const STYLE_ID = "dangan-examine-style";
 const ROOT_ID = "dangan-examine";
@@ -49,6 +50,19 @@ const CSS = `
 #${ROOT_ID} .dex-plate.dim { filter: saturate(0.35) brightness(0.75); opacity: 0.55; }
 #${ROOT_ID} .dex-plate.gone { opacity: 0; }
 #${ROOT_ID} .dex-plate.examined > span::after { content: " ✓"; }
+#${ROOT_ID} .dex-btns { position: absolute; top: 240px; right: -10px; display: flex; flex-direction: column; gap: 10px; align-items: flex-end; }
+#${ROOT_ID} .dex-btn {
+    width: 256px; padding: 8px 14px; box-sizing: border-box; text-align: left; cursor: pointer;
+    background: rgba(12, 12, 18, 0.82); color: #fff;
+    font-family: 'Orbitron', sans-serif; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;
+    border: 1.5px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.35)); border-radius: 4px;
+    box-shadow: 0 0 10px -2px var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.25));
+    transform: skewX(-22deg); transition: background 140ms ease, transform 120ms ease;
+}
+#${ROOT_ID} .dex-btn > span { display: inline-block; transform: skewX(22deg); }
+#${ROOT_ID} .dex-btn:hover { background: var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.18)); transform: skewX(-22deg) translateY(-2px); }
+#${ROOT_ID} .dex-btn.on { background: ${GOLD}; color: #2a2100; border-color: #fff3a8; }
+#${ROOT_ID}.dex-busy .dex-btns { opacity: 0.4; pointer-events: none; }
 #${ROOT_ID} .dex-mark {
     position: absolute; width: 30px; height: 30px; transform: translate(-50%, -50%) rotate(45deg);
     border: 2px solid ${GOLD}; background: rgba(20,16,0,0.55); cursor: grab; touch-action: none; display: none;
@@ -108,6 +122,7 @@ export function createExamineMode(deps) {
 
     function close() {
         if (!root) return;
+        document.body.classList.remove("dangan-examining");
         root.remove();
         root = null;
         hovered = null;
@@ -275,6 +290,7 @@ export function createExamineMode(deps) {
         closeAsk();
         arranging = !arranging;
         root.classList.toggle("dex-arrange", arranging);
+        root.querySelector('[data-act="arrange"]')?.classList.toggle("on", arranging);
         root.classList.remove("dex-hot");
         hovered = null;
         showPlate(null);
@@ -322,7 +338,28 @@ export function createExamineMode(deps) {
         root.id = ROOT_ID;
         root.setAttribute("role", "application");
         root.setAttribute("aria-label", "Examine the room");
-        root.innerHTML = `<div class="dex-plate gone"><span></span></div>`;
+        root.innerHTML = `
+            <div class="dex-btns">
+                <button type="button" class="dex-btn on" data-act="close" title="Stop examining (right-click or Esc)"><span>Examining</span></button>
+                <button type="button" class="dex-btn" data-act="ask" title="Examine anything you name"><span>Look at…</span></button>
+                <button type="button" class="dex-btn" data-act="arrange" title="Show the examinable spots and drag them onto the room's picture"><span>Arrange</span></button>
+            </div>
+            <div class="dex-plate gone"><span></span></div>`;
+        const btns = root.querySelector(".dex-btns");
+        btns.addEventListener("pointerdown", (e) => e.stopPropagation());
+        btns.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const act = e.target.closest("[data-act]")?.dataset.act;
+            if (!act || busy) return;
+            deps.playSfx?.();
+            if (act === "close") close();
+            else if (act === "ask") openAsk();
+            else if (act === "arrange") toggleArrange();
+        });
+        btns.addEventListener("pointermove", (e) => {
+            e.stopPropagation();
+            if (hovered) { hovered = null; root.classList.remove("dex-hot"); showPlate(null); }
+        });
         root.addEventListener("pointermove", onPointerMove);
         root.addEventListener("click", (e) => { void onClick(e); });
         root.addEventListener("contextmenu", (e) => {
@@ -331,6 +368,7 @@ export function createExamineMode(deps) {
             else close();
         });
         document.body.appendChild(root);
+        document.body.classList.add("dangan-examining");
         document.addEventListener("keydown", onKey, true);
         deps.onChange?.();
         if (ask) openAsk();

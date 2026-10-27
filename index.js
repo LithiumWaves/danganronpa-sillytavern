@@ -4788,6 +4788,7 @@ function setInvestigationUnderway(on) {
     saveSettingsDebounced();
     if (!investigationUnderway) examineController?.close?.();
     try { refreshPhaseHud(); } catch { /* the HUD may not exist yet */ }
+    try { overworldSceneController?.render?.(); } catch { /* not built yet */ }
 }
 
 // ── Phase changes, undo and the Phase HUD ─────────────────────────────────────
@@ -4879,10 +4880,15 @@ function getCaseFile() {
 }
 
 function setCaseFile(caseFile) {
+    const wasExaminable = Boolean(getCaseFile()?.discovered);
     extension_settings[extensionName] ||= {};
     extension_settings[extensionName].caseFile = caseFile ? normalizeCaseFile(caseFile) : null;
     saveSettingsDebounced();
     refreshPhaseHud();
+    // The overworld's EXAMINE button comes and goes with the found body.
+    if (wasExaminable !== Boolean(caseFile?.discovered)) {
+        try { overworldSceneController?.render?.(); } catch { /* not built yet */ }
+    }
 }
 
 // The day the current chapter started on, for the automatic motive. Recorded
@@ -5570,7 +5576,7 @@ async function openExamineMode({ ask = false } = {}) {
         onFreeText: examineFreeText,
         onMove: moveExamineSpot,
         playSfx: () => playSfx(sfx.click),
-        onChange: () => { try { refreshPhaseHud(); } catch { /* ignore */ } },
+        onChange: () => {},
         // Escape or right-click while a line is up ends it.
         onDismiss: () => {
             vnModeController?.dismissAside?.();
@@ -5827,15 +5833,6 @@ function ensurePhaseHud() {
             <span class="dangan-phase-chip-dot" aria-hidden="true"></span>
             <span class="dangan-phase-chip-label"></span>
         </button>
-        <button type="button" class="dangan-phase-chip dangan-examine-chip" hidden title="Look closely at things in this room">
-            <span class="dangan-phase-chip-label">🔍 EXAMINE</span>
-        </button>
-        <button type="button" class="dangan-phase-chip dangan-examine-chip dangan-examine-look" hidden title="Examine anything you name">
-            <span class="dangan-phase-chip-label">LOOK AT…</span>
-        </button>
-        <button type="button" class="dangan-phase-chip dangan-examine-chip dangan-examine-arrange" hidden title="Show the examinable spots and drag them onto the room's picture">
-            <span class="dangan-phase-chip-label">ARRANGE</span>
-        </button>
         <div class="dangan-phase-menu" id="dangan-phase-menu" hidden>
             <div class="dangan-phase-hint"></div>
             <div class="dangan-phase-actions"></div>
@@ -5843,22 +5840,6 @@ function ensurePhaseHud() {
     `;
     document.body.appendChild(hud);
 
-    hud.querySelector(".dangan-examine-chip").addEventListener("click", (event) => {
-        event.stopPropagation();
-        playSfx(sfx.click);
-        if (examineController?.isOpen?.()) examineController.close();
-        else void openExamineMode();
-    });
-    hud.querySelector(".dangan-examine-look").addEventListener("click", (event) => {
-        event.stopPropagation();
-        playSfx(sfx.click);
-        examineController?.openAsk?.();
-    });
-    hud.querySelector(".dangan-examine-arrange").addEventListener("click", (event) => {
-        event.stopPropagation();
-        playSfx(sfx.click);
-        examineController?.toggleArrange?.();
-    });
     hud.querySelector(".dangan-phase-chip").addEventListener("click", (event) => {
         event.stopPropagation();
         setPhaseMenuOpen(hud.querySelector(".dangan-phase-menu").hidden);
@@ -5927,17 +5908,6 @@ function refreshPhaseHud() {
         ? getStatusLine({ phase: getCurrentPhase(), day: ensureTimeTrackerState().day })
         : getCurrentStatusLine();
     if (!hud.querySelector(".dangan-phase-menu").hidden) renderPhaseMenu();
-    // Examine mode's controls: the main chip toggles it; LOOK AT… and
-    // ARRANGE only show while it's open.
-    const examineOpen = Boolean(examineController?.isOpen?.());
-    const examineChip = hud.querySelector(".dangan-examine-chip");
-    examineChip.hidden = !examineOpen && !canExamineHere();
-    examineChip.classList.toggle("is-active", examineOpen);
-    examineChip.querySelector(".dangan-phase-chip-label").textContent = examineOpen ? "🔍 EXAMINING" : "🔍 EXAMINE";
-    hud.querySelector(".dangan-examine-look").hidden = !examineOpen;
-    const arrangeChip = hud.querySelector(".dangan-examine-arrange");
-    arrangeChip.hidden = !examineOpen;
-    arrangeChip.classList.toggle("is-active", Boolean(examineController?.isArranging?.()));
     // The EXPRESSIONS tab hangs under this row.
     expressionPickerController?.place?.();
 }
@@ -12890,6 +12860,7 @@ jQuery(async () => {
                     getOnStageHosts: () => getOnStageHosts(),
                     getHostEntranceElapsed: (name) => getHostEntranceElapsed(name, 'overworld'),
                     isInvestigating: () => investigationUnderway,
+                    getExamineAction: () => (canExamineHere() ? { label: "Examine", onSelect: () => { void openExamineMode(); } } : null),
                     onPresenceSynced: () => {
                         try { trialManager?.refreshGroupChatPortraits?.(); }
                         catch (e) { console.warn("[Dangan][Overworld] GCP refresh after presence sync failed:", e); }
@@ -18298,12 +18269,6 @@ function getExploreMenuActions() {
     ];
     if (halfOn) {
         items.push({ id: 'half-sprite-adjust', label: 'Adjust Half-Sprites', onSelect: () => openHalfSpriteAdjustPanel() });
-    }
-    if (canExamineHere()) {
-        items.unshift(
-            { id: 'examine', label: 'Examine', onSelect: () => { void openExamineMode(); } },
-            { id: 'examine-ask', label: 'Examine…', onSelect: () => { void openExamineMode({ ask: true }); } },
-        );
     }
     if (playerRoomId) {
         const isFlat = !!overworldSceneController?.isRoomFlat?.(playerRoomId);

@@ -136,6 +136,7 @@ export function createOverworldSceneController({
     getOnStageHosts, // optional — () => { name, expression }[]; called-in hosts, who stand in the player's room
     getHostEntranceElapsed, // optional — (name) => ms into this host's slide-up, or null
     isInvestigating, // optional — () => true during an investigation ("Tag Along" reads "Investigate With")
+    getExamineAction, // optional — () => { label, onSelect } while the room can be examined, else null
 }) {
     function playOwSfx(key) {
         if (!playSfx) return;
@@ -1633,6 +1634,7 @@ export function createOverworldSceneController({
                 if (total >= 1 || getFollowerKeys().length) root.appendChild(buildTagAlongBtn());
                 if (total >= 1) root.appendChild(buildEditPositionsBtn());
             }
+            if (!editMode) appendExamineBtn(root);
         } else {
             if (total >= 2) {
                 const btn = document.createElement("button");
@@ -1660,6 +1662,7 @@ export function createOverworldSceneController({
                     root.appendChild(buildEditPositionsBtn());
                 }
             }
+            if (!editMode) appendExamineBtn(root);
         }
 
         const liveRoot = getDomRoot();
@@ -1867,6 +1870,28 @@ export function createOverworldSceneController({
             else openActionMenu(total);
         });
         return btn;
+    }
+
+    // EXAMINE: right column, under MENU (or under the last button without it),
+    // only while the room can be examined during an investigation.
+    function appendExamineBtn(root) {
+        let action = null;
+        try { action = getExamineAction?.(); } catch { action = null; }
+        if (!action) return;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "dangan-ow-room-btn dangan-ow-call-btn dangan-ow-examine-btn";
+        const label = document.createElement("span");
+        label.className = "dangan-ow-room-btn-label";
+        label.textContent = action.label || "Examine";
+        btn.appendChild(label);
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            playOwSfx("click");
+            closeActionMenu();
+            action.onSelect?.();
+        });
+        root.appendChild(btn);
     }
 
     function buildExploreBtn() {
