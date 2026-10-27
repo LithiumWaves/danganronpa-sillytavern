@@ -254,6 +254,9 @@ export const defaultSettings = {
     // When an investigation partner reacts to what you examine: "clues",
     // "always" or "off".
     examinePartnerReactions: "clues",
+    // How a partner's reaction shows: "message" (a chat message) or "aside"
+    // (only in the VN box, never added to the chat).
+    examinePartnerReactionStyle: "message",
 };
 
 export const DEFAULT_TRIAL_PROMPT_TEMPLATES = {

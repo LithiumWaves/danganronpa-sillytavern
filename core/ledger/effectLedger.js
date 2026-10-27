@@ -162,5 +162,32 @@ export function createEffectLedger({ getStore, now = () => Date.now() } = {}) {
         return { revert, moved, rekeyed };
     }
 
-    return { record, finalize, reconcile };
+    // The recorded entry for a finished message, if its effects were already
+    // applied: by identity, or else by position, speaker, swipe and markers
+    // (the text changed since it was recorded, e.g. it was read mid-stream).
+    // A position match is re-keyed to the current identity; `oldIdentity` is
+    // set then, so stored signatures can follow.
+    function findApplied(chatId, mesId, message) {
+        if (!chatId || !message) return null;
+        const store = entries();
+        const identity = messageIdentity(message);
+        const direct = store[keyFor(chatId, identity)];
+        if (direct && !direct.pending) return { entry: direct, oldIdentity: "" };
+        const speaker = `${message.is_user ? "u" : "c"}|${message.name ?? ""}`;
+        const swipeId = Number(message.swipe_id ?? 0);
+        const markers = markerSummary(message.mes);
+        if (!markers) return null;
+        for (const [key, entry] of Object.entries(store)) {
+            if (entry.chatId !== chatId || entry.pending || entry.mesId !== mesId) continue;
+            if (entry.speaker !== speaker || entry.swipeId !== swipeId || entry.markers !== markers) continue;
+            delete store[key];
+            const oldIdentity = entry.identity;
+            entry.identity = identity;
+            store[keyFor(chatId, identity)] = entry;
+            return { entry, oldIdentity };
+        }
+        return null;
+    }
+
+    return { record, finalize, reconcile, findApplied };
 }

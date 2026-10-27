@@ -80,6 +80,21 @@ function run() {
     assert(Object.keys(store).length === 600, "ledger is capped");
     assert(!Object.values(store).some((e) => e.mesId < 50), "oldest dropped");
 
+    // A finished message already applied is found again, even if its text
+    // changed since it was recorded (it was read mid-stream).
+    store = {};
+    const m = msg("Kaede", "Thanks. V3C| SOCIAL: Shuichi");
+    ledger.record({ chatId: "c3", mesId: 4, message: m, effects: effects({ trust: [{ key: "shuichi" }] }) });
+    assert(ledger.findApplied("c3", 4, m)?.entry && !ledger.findApplied("c3", 4, m).oldIdentity, "found by identity");
+    const changed = { ...m, mes: "Thanks, really. V3C| SOCIAL: Shuichi" };
+    const hit = ledger.findApplied("c3", 4, changed);
+    assert(hit?.oldIdentity && hit.entry.trust.length === 1, "found by position and markers, re-keyed");
+    assert(ledger.findApplied("c3", 4, changed) && !ledger.findApplied("c3", 4, changed).oldIdentity, "next lookup is by identity");
+    assert(!ledger.findApplied("c3", 4, { ...m, mes: "Hmph. V3C| SOCIAL_DOWN: Shuichi" }), "different markers: not applied");
+    assert(!ledger.findApplied("c3", 4, { ...changed, mes: "Other text V3C| SOCIAL: Shuichi", swipe_id: 1 }), "another swipe: not applied");
+    assert(!ledger.findApplied("c3", 5, { ...changed, mes: "x V3C| SOCIAL: Shuichi" }), "another position: not applied");
+    assert(!ledger.findApplied("c3", 4, { ...changed, mes: "Another V3C| SOCIAL: Shuichi", name: "Kokichi" }), "another speaker: not applied");
+
     console.log("effectLedger tests passed");
 }
 

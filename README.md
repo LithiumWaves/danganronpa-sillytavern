@@ -93,7 +93,7 @@ The Phase HUD shows the motive and its deadline until the case is over. After th
 
 While examine mode is open, the room's buttons step aside and the right-hand column shows **EXAMINING** (click to stop), **LOOK AT…** (type anything to examine, in the yellow bar; `/examine the window latch` does the same) and **ARRANGE** (the AI can't see the room's picture, so this shows where the spots are and lets you drag them onto the right objects; remembered for the room). Right-click or Escape stops, or ends a line you're reading.
 
-**Investigate With:** during an investigation the explore menu's **Tag Along** becomes **Investigate With**. When you examine something with a partner in the room, one of them reacts to it in the chat. Settings → Gameplay → **Investigation partners react** chooses when: when you find evidence (default), to anything you examine, or never.
+**Investigate With:** during an investigation the explore menu's **Tag Along** becomes **Investigate With**. When you examine something with a partner in the room, one of them reacts to it in the chat. Settings → Gameplay → **Investigation partners react** chooses when: when you find evidence (default), to anything you examine, or never. **Partner reactions show as** chooses how: a normal chat message (default), or **only in the VN box**, generated the same way (the partner's card and the chat) but shown like what you notice and never added to the chat.
 
 **Evidence on the map:** during an investigation every new Truth Bullet is pinned on the map next to the room you found it in, and the Monokuma File next to the crime scene. Deleting the bullet or swiping its message away removes the pin.
 

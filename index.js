@@ -5517,12 +5517,12 @@ async function examineLook(look) {
     if (shown) await shown;
     else notify({ title: name || "EXAMINE", message: narration, durationMs: 10000 });
 
-    maybePartnerReaction({ label: look.label, narration, found: found.join(", "), isClue: Boolean(look.clueId || found.length), player });
+    await maybePartnerReaction({ label: look.label, narration, found: found.join(", "), isClue: Boolean(look.clueId || found.length), player });
 }
 
 // "Investigate With": a partner in the room reacts to what you examined, as
 // set in Gameplay (evidence only, anything, or never).
-function maybePartnerReaction({ label, narration, found, isClue, player }) {
+async function maybePartnerReaction({ label, narration, found, isClue, player }) {
     const mode = String(getMonopadSetting("examinePartnerReactions") || "clues");
     if (mode === "off" || (mode === "clues" && !isClue)) return;
     const here = new Set(getCurrentRoomOccupantNames().map(normalizeName));
@@ -5531,10 +5531,49 @@ function maybePartnerReaction({ label, narration, found, isClue, player }) {
     const speaker = partners[Math.floor(Math.random() * partners.length)];
     setCaseFile({ ...getCaseFile(), pendingReaction: { speaker, player, label, narration, found } });
     caseDebug("PARTNER", `${speaker} reacts to ${label}.`);
+    if (getMonopadSetting("examinePartnerReactionStyle") === "aside") {
+        await showTemporaryPartnerReaction(speaker);
+        return;
+    }
     executeSlashCommandsWithOptions(`/trigger await=false "${speaker}"`, { handleParserErrors: true }).catch((err) => {
         console.warn("[Dangan][Case] Partner reaction failed:", err);
         setCaseFile({ ...getCaseFile(), pendingReaction: null });
     });
+}
+
+// "Only in the VN box": the partner's reaction is generated the normal way
+// (their card, the chat and the extension prompts, with their private
+// reaction note) as a quiet generation, and shown like the narration;
+// nothing is added to the chat and no markers in it are applied.
+async function showTemporaryPartnerReaction(speaker) {
+    const ctx = window.SillyTavern?.getContext?.();
+    const chId = (ctx?.characters || []).findIndex((c) => c?.name === speaker);
+    let text = "";
+    caseDraftedSpeaker = speaker;
+    try {
+        syncCasePrompt();
+        if (typeof ctx?.generateQuietPrompt !== "function" || chId < 0) throw new Error("quiet generation unavailable");
+        text = await ctx.generateQuietPrompt({
+            quietPrompt: `[Write ${speaker}'s next line only: a short, in-character reaction to what the player just examined, as the [INVESTIGATING TOGETHER] note describes. No narration of other characters, no name prefix.]`,
+            forceChId: chId,
+            removeReasoning: true,
+        });
+    } catch (err) {
+        console.warn("[Dangan][Case] Temporary partner reaction failed:", err);
+    } finally {
+        caseDraftedSpeaker = "";
+        setCaseFile({ ...getCaseFile(), pendingReaction: null });
+        try { syncCasePrompt(); } catch { /* ignore */ }
+    }
+    const clean = stripV3CMarkersFromText(String(text || ""))
+        .replace(new RegExp(`^\\s*${speaker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*:\\s*`, "i"), "")
+        .trim();
+    if (!clean) return;
+    const name = getCharacterDisplayName?.(speaker) || speaker;
+    const shown = vnModeController?.showAside?.({ name, text: clean })
+        || (examineController?.isOpen?.() ? examineController.showNarration({ name, text: clean }) : null);
+    if (shown) await shown;
+    else notify({ title: name, message: clean, durationMs: 10000 });
 }
 
 async function examineSpot(spot) {
@@ -8529,6 +8568,23 @@ function processAllMessages() {
         // What this message does gets recorded, so a swipe, delete or edit
         // can take it back.
         const ledgerRef = getLedgerRefForElement(msgEl);
+        // A finished message whose effects were already recorded (e.g. the
+        // chat was reloaded, or its text changed since it was read
+        // mid-stream) never applies its trust markers again.
+        const applied = ledgerRef && !ledgerRef.pending
+            ? effectLedger.findApplied(ledgerRef.chatId, ledgerRef.mesId, ledgerRef.message)
+            : null;
+        if (applied?.oldIdentity) {
+            rekeyTrustSignatures(applied.entry);
+            saveCharacters();
+            saveSettingsDebounced();
+        }
+        const alreadyApplied = new Set((applied?.entry?.trust || []).map((t) => `${t.kind || (t.dir > 0 ? "UP" : "DOWN")}|${t.key}`));
+        const skipApplied = (kind, key) => {
+            if (!alreadyApplied.has(`${kind}|${key}`)) return false;
+            console.debug(`[Dangan][Ledger] ${kind} for ${key} already applied by message #${ledgerRef.mesId}; not again.`);
+            return true;
+        };
         const fx = emptyEffects();
         const totalsBefore = rewards?.getRewardTotals?.();
 
@@ -8559,6 +8615,7 @@ for (const match of rawText.matchAll(regex)) {
     const key = normalizeName(name);
     const char = characters.get(key);
     if (!char) continue;
+    if (skipApplied("UP", key)) continue;
 
     const legacySignature = `UP||${key}||${rawText}`;
     const signature = ledgerRef ? trustSignature("UP", key, ledgerRef) : legacySignature;
@@ -8584,6 +8641,7 @@ for (const match of rawText.matchAll(SOCIAL_DOWN_REGEX)) {
     const char = characters.get(key);
     if (!char) continue;
 
+    if (skipApplied("DOWN", key)) continue;
     const legacySignature = `DOWN||${key}||${rawText}`;
     const signature = ledgerRef ? trustSignature("DOWN", key, ledgerRef) : legacySignature;
 
@@ -8607,6 +8665,7 @@ for (const match of rawText.matchAll(regex)) {
     const char = characters.get(key);
     if (!char) continue;
 
+    if (skipApplied(kind, key)) continue;
     const legacySignature = `${kind}||${key}||${rawText}`;
     const signature = ledgerRef ? trustSignature(kind, key, ledgerRef) : legacySignature;
     if (char.trustHistory.has(legacySignature) || char.trustHistory.has(signature)) continue;
@@ -10942,6 +11001,9 @@ function applySettingsTabUI() {
             : fallbackTemplate;
         el.value = savedTemplate;
     });
+
+    const partnerStyleSelect = document.getElementById("dangan_examine_partner_reaction_style");
+    if (partnerStyleSelect) partnerStyleSelect.value = tab.examinePartnerReactionStyle === "aside" ? "aside" : "message";
 
     const partnerSelect = document.getElementById("dangan_examine_partner_reactions");
     if (partnerSelect) {
@@ -13809,6 +13871,10 @@ $(".monopad-icon").on("mouseenter", function () {
                 try { syncRoomContextPrompt(); } catch { /* ignore */ }
             }
             if (settingKey.startsWith("marker")) syncMarkerPrompts();
+        });
+
+        $("#dangan_examine_partner_reaction_style").on("change", function () {
+            setMonopadSetting("examinePartnerReactionStyle", this.value === "aside" ? "aside" : "message");
         });
 
         $("#dangan_examine_partner_reactions").on("change", function () {
