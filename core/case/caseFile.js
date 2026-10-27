@@ -524,14 +524,34 @@ function sentence(value) {
     return /[.!?]$/.test(t) ? t : `${t}.`;
 }
 
+// A field's value in the middle of a sentence: "Blunt force trauma" reads
+// "blunt force trauma" (acronyms and names like "PM" stay as they are).
+function midSentence(value) {
+    const t = String(value || "").trim();
+    return /^[A-Z][a-z]/.test(t) ? t[0].toLowerCase() + t.slice(1) : t;
+}
+
+function isUnknown(value) {
+    return /^(unknown|unclear|undetermined|n\/?a)\.?$/i.test(String(value || "").trim());
+}
+
+// "approximately Approximately 11 PM" never happens: a value that already
+// says how sure it is keeps its own word.
+function timeOfDeathSentence(value) {
+    const t = String(value || "").trim();
+    if (isUnknown(t)) return "The time of death is unknown.";
+    const hedged = /^(approx(imately|\.)?|around|about|roughly|circa|some ?time|between|sometime|~)\b/i.test(t) || t.startsWith("~");
+    return sentence(`The time of death is ${hedged ? midSentence(t) : `approximately ${t}`}`);
+}
+
 // The autopsy as Truth Bullet text: only what Monokuma hands everyone.
 export function buildMonokumaFileBullet(caseFile, { victimUltimate = "" } = {}) {
     const mf = caseFile.monokumaFile || {};
     const lines = [
         `The victim is ${caseFile.victim}${victimUltimate ? `, the Ultimate ${victimUltimate}` : ""}.`,
         caseFile.body?.roomLabel ? `The body was found in the ${caseFile.body.roomLabel}.` : "",
-        mf.timeOfDeath ? sentence(`The time of death is approximately ${mf.timeOfDeath}`) : "",
-        mf.cause ? sentence(`The cause of death is ${mf.cause}`) : "",
+        mf.timeOfDeath ? timeOfDeathSentence(mf.timeOfDeath) : "",
+        mf.cause ? (isUnknown(mf.cause) ? "The cause of death is unknown." : sentence(`The cause of death is ${midSentence(mf.cause)}`)) : "",
         mf.injuries ? sentence(mf.injuries) : "",
     ].filter(Boolean);
     return { title: getMonokumaFileTitle(caseFile), description: lines.join(" ") };

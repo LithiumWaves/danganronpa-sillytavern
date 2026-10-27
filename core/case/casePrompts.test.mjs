@@ -94,7 +94,7 @@ function run() {
     // Concealed truth only ever reaches the killer.
     const pubFound = markDiscovered(commitMurder(pub, { day: 3, time: "night" }));
     const bystander = buildCasePrompt({ caseFile: pubFound, phase: "INVESTIGATION", speakerName: "Kyoko", roomId: "gym" });
-    assert(!bystander.text.includes("9pm") && bystander.text.includes("Unknown"), "bystanders get the reported file only");
+    assert(!bystander.text.includes("9pm") && bystander.text.includes("The time of death is unknown."), "bystanders get the reported file only");
     assert(buildCasePrompt({ caseFile: pubFound, phase: "INVESTIGATION", speakerName: "Leon Kuwata", roomId: "gym" }).text.includes("9pm, hidden by the dark"), "killer knows what's concealed");
 
     assert(!buildCasePrompt({ caseFile: committed, phase: "DAY", day: 4, speakerName: "Kyoko" }).text.includes("MONOKUMA'S MOTIVE"), "the motive note ends with the murder");

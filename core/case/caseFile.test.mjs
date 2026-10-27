@@ -96,6 +96,17 @@ function run() {
         assert(editMotive(done, { deadlineDay: 9 }) === done, "not after the murder");
     }
 
+    {
+        const file = (mf) => buildMonokumaFileBullet(normalizeCaseFile({ status: "committed", createdDay: 1, victim: "Yasuhiro", killer: "A", monokumaFile: mf }), {}).description;
+        const once = file({ timeOfDeath: "Approximately 11:15 PM on Day 4", cause: "Blunt force trauma to the head" });
+        assert(once.includes("The time of death is approximately 11:15 PM on Day 4.") && !/approximately approximately/i.test(once), "no doubled 'approximately'");
+        assert(once.includes("The cause of death is blunt force trauma to the head."), "the cause reads mid-sentence");
+        assert(file({ timeOfDeath: "11 PM" }).includes("approximately 11 PM."), "a bare time gets 'approximately'");
+        assert(file({ timeOfDeath: "around midnight" }).includes("is around midnight."), "hedged times keep their word");
+        assert(file({ timeOfDeath: "Unknown", cause: "Unknown" }).includes("The time of death is unknown. The cause of death is unknown."), "unknown fields");
+        assert(file({ cause: "CO poisoning" }).includes("is CO poisoning."), "acronyms kept");
+    }
+
     assert(extractJsonObject("Sure!\n```json\n{\"a\":1}\n```")?.a === 1, "extracts fenced JSON");
     assert(extractJsonObject("no json") === null, "no JSON");
 

@@ -428,3 +428,45 @@
 .truth-edit-button {
     margin-top: 10px;
 }
+
+/* Every action under a Truth Bullet shares one look; only the color differs. */
+.truth-active-actions > button,
+.truth-archived-actions > button {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+    background: transparent;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: normal;
+    letter-spacing: 0.08em;
+    line-height: normal;
+    padding: 6px 10px;
+    border-radius: 0;
+    box-shadow: none;
+    text-shadow: none;
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.truth-active-actions > button:focus,
+.truth-archived-actions > button:focus {
+    outline: none;
+}
+
+/* The Monokuma File screen. */
+.truth-open-file-button {
+    border: 1px solid rgba(255, 46, 196, 0.6);
+    color: #ff7ad9;
+}
+
+.truth-open-file-button:hover {
+    color: #ffffff;
+    background-color: rgba(255, 46, 196, 0.15);
+    border-color: #ff2ec4;
+}
+
+.truth-open-file-button:active {
+    background-color: rgba(255, 46, 196, 0.25);
+}
