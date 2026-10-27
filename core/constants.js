@@ -1,3 +1,4 @@
+import { DEFAULT_EXAMINE_NARRATION_TEMPLATE } from "./case/examine.js";
 export const extensionName = "danganronpa-extension";
 
 function normalizeWebExtensionPath(pathname = "") {
@@ -342,6 +343,9 @@ How each character here currently feels about the player. Let it color how they 
 If a body is discovered and the story moves into the investigation, put this on its own line at the start of that reply:
 V3C| INVESTIGATION_START
 Don't use it at any other time.`,
+    // What the player notices when examining something (core/case/examine.js
+    // fills the placeholders; {{findings}} says whether there's evidence).
+    examineNarration: DEFAULT_EXAMINE_NARRATION_TEMPLATE,
     markerAnnouncements: `[ANNOUNCEMENT MARKERS]
 When Monokuma makes an announcement in the story, add the matching marker on its own line:
 V3C| DAY_ANNOUN for the morning announcement

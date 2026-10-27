@@ -115,44 +115,70 @@ export function normalizeExamine(raw) {
     return out;
 }
 
-// What the player is looking at, and whether it's one of the case's clues.
-function lookFacts(caseFile, { label, clueId = "", freeText = false, roomId = "" } = {}) {
+const TB_LINE = "end with this on its own line: V3C| TB: Short Title || One-sentence description";
+
+// What the narration may turn up: a clue spot hands over its clue; anything
+// else is evidence only if it's clearly important to the case.
+function lookFacts(caseFile, { clueId = "", freeText = false, roomId = "" } = {}) {
     const clue = clueId ? caseFile.clues.find((c) => c.id === clueId) : null;
-    if (clue) return `They find this, and it matters: ${clue.text}\nEnd with a line recording it as a Truth Bullet: V3C| TB: Short Title || One-sentence description`;
-    if (freeText) {
-        const here = cluesInRoom(caseFile, roomId).filter((c) => !c.found);
-        return here.length
-            ? `If what they examine fits one of these, they find it, and you end with a Truth Bullet line (V3C| TB: Short Title || One-sentence description): ${here.map((c) => c.text).join(" / ")}. Otherwise a small detail that fits the case, or nothing of note.`
-            : "A small detail that fits the case facts, or nothing of note. Only something truly new and important gets a Truth Bullet line.";
+    if (clue) return `They find this, and it matters: ${clue.text}\nIt's evidence: ${TB_LINE}`;
+    const important = `If it's clearly important to the case (the murder weapon${caseFile.weapon ? `, ${caseFile.weapon}` : ""}, the body, a wound, blood, something out of place), it's evidence: ${TB_LINE}`;
+    const here = cluesInRoom(caseFile, roomId).filter((c) => !c.found);
+    if (freeText && here.length) {
+        return `If what they examine fits one of these, they find it: ${here.map((c) => c.text).join(" / ")}.\n${important}\nOtherwise give a small detail that fits the case, and no Truth Bullet.`;
     }
-    return `Nothing decisive is here: a small, believable detail that fits the case facts, and no Truth Bullet.`;
+    return `${important}\nOtherwise give a small, believable detail that fits the case, and no Truth Bullet.`;
 }
+
+const DEFAULT_TEMPLATE = `A Danganronpa investigation. {{player}} examines {{thing}} in the {{room}}.
+Also here: {{present}}
+
+CASE FACTS (hidden; never name the killer):
+{{caseFacts}}
+
+RECENT EVENTS:
+{{recentChat}}
+
+Write only what {{player}} notices, as their inner monologue: 1-3 short sentences, first person, present tense, like a Danganronpa examination. Plain prose only: no headings, labels, reports, lists, bold text or quotes.
+{{findings}}`;
 
 // The hidden call that writes what the player notices, Danganronpa style:
 // their inner monologue, shown in the VN box and never posted to the chat.
-export function buildExamineNarrationPrompt(caseFile, look, { player = "", roomLabel = "", caseFacts = "", recentChat = "", present = [] } = {}) {
-    const who = player || "the protagonist";
-    return `A Danganronpa investigation. ${who} examines ${look.freeText ? "" : "the "}${look.label} in the ${roomLabel || "room"}.
-${present.length ? `Also here: ${present.join(", ")}.\n` : ""}
-CASE FACTS (hidden; never name the killer):
-${caseFacts}
-
-RECENT EVENTS:
-${recentChat || "(none)"}
-
-Write ${who}'s inner monologue as they look closely: 1-3 short sentences, first person, present tense, in the style of a Danganronpa examination. No quotes from other people, no speaker labels.
-${lookFacts(caseFile, look)}`;
+// `template` is the player's edited prompt (AI instructions), or the default.
+export function buildExamineNarrationPrompt(caseFile, look, { player = "", roomLabel = "", caseFacts = "", recentChat = "", present = [], template = "" } = {}) {
+    const values = {
+        player: player || "the protagonist",
+        thing: `${look.freeText ? "" : "the "}${look.label}`,
+        room: roomLabel || "room",
+        present: present.length ? present.join(", ") : "nobody else",
+        caseFacts: caseFacts || "(none)",
+        recentChat: recentChat || "(none)",
+        findings: lookFacts(caseFile, look),
+    };
+    const text = typeof template === "string" && template.trim() ? template : DEFAULT_TEMPLATE;
+    const filled = text.replace(/\{\{(\w+)\}\}/g, (m, key) => (key in values ? values[key] : m));
+    // An edited prompt that dropped {{findings}} still has to know what's found.
+    return text.includes("{{findings}}") ? filled : `${filled}\n${values.findings}`;
 }
 
+export const DEFAULT_EXAMINE_NARRATION_TEMPLATE = DEFAULT_TEMPLATE;
+
 // Splits the narration into the text to show and the Truth Bullets it found.
+// Lenient about how the bullet line is written (with or without "V3C|",
+// bold, "Truth Bullet:"), and strips report-style formatting.
 export function parseExamineNarration(raw) {
     const bullets = [];
+    const take = (title, description) => {
+        const t = String(title || "").replace(/[*_"]/g, "").trim();
+        if (t) bullets.push({ title: t, description: String(description || "").replace(/[*_]/g, "").trim() });
+        return "";
+    };
     const text = String(raw ?? "")
         .replace(/<(think|thinking|reasoning)>[\s\S]*?<\/\1>/gi, "")
-        .replace(/V3C\s*[|｜]\s*TB\s*:\s*([^\n|]+?)\s*\|\|\s*([^\n]*)/gi, (_, title, description) => {
-            bullets.push({ title: title.trim(), description: description.trim() });
-            return "";
-        })
+        .replace(/^[*_\s]*(?:V3C\s*[|｜]\s*)?(?:TB|Truth Bullet)\s*[:：][*_\s]*([^\n|]+?)\s*(?:\|\||—|–| - )\s*([^\n]*)$/gim, (_, title, description) => take(title, description))
+        .replace(/V3C\s*[|｜]\s*TB\s*:\s*([^\n|]+?)\s*\|\|\s*([^\n]*)/gi, (_, title, description) => take(title, description))
+        .replace(/^#+\s.*$/gm, "")
+        .replace(/[*_]{1,3}([^*_\n]+)[*_]{1,3}/g, "$1")
         .replace(/^\s*["“]|["”]\s*$/g, "")
         .replace(/\s+/g, " ")
         .trim();

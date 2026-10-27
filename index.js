@@ -5482,10 +5482,11 @@ async function examineLook(look) {
         caseFacts: buildCurrentCasePrompt({ speakerName: "" }).text,
         recentChat: buildRecentChatContextLines(8),
         present: getCurrentRoomOccupantNames(),
+        template: getMonopadSetting("examineNarrationPromptTemplate") || "",
     });
     let raw = "";
     try {
-        raw = await generateIsolated(prompt, { allowDialogue: true, maxTokens: 900, reasoning: { effort: "low", exclude: true } });
+        raw = await generateIsolated(prompt, { raw: true, maxTokens: 900, reasoning: { effort: "low", exclude: true } });
     } catch (err) {
         console.warn("[Dangan][Case] Examine narration failed:", err);
     }
@@ -7561,8 +7562,10 @@ async function generateTrialDialogueWithProfile(profileId, prompt, { maxTokens =
     });
 }
 
-async function generateIsolated(prompt, { allowDialogue = false, maxTokens = 300, reasoning = null, onMeta = null } = {}) {
-    const fullPrompt = `
+// `raw` sends the prompt as is, without the analysis-engine preamble (for
+// prose like the examine narration, which the preamble turns into reports).
+async function generateIsolated(prompt, { allowDialogue = false, maxTokens = 300, reasoning = null, onMeta = null, raw = false } = {}) {
+    const fullPrompt = raw ? String(prompt || "").trim() : `
 You are an analysis engine.
 You do NOT roleplay.
 ${allowDialogue ? "You may include extremely short quoted dialogue only when explicitly requested." : "You do NOT write dialogue."}

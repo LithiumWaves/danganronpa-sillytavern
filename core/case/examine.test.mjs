@@ -55,7 +55,12 @@ function run() {
     const clueAsk = buildExamineNarrationPrompt(cf, { label: "Knife rack", clueId: "clue1" }, opts);
     assert(clueAsk.includes("A knife is missing") && clueAsk.includes("V3C| TB:") && clueAsk.includes("Shuichi") && clueAsk.includes("Kaede"), "clue spot narration prompt");
     const plain = buildExamineNarrationPrompt(cf, { label: "Stove" }, opts);
-    assert(!plain.includes("knife") && plain.includes("Nothing decisive"), "an ordinary spot gives nothing away");
+    assert(!plain.includes("A knife is missing") && plain.includes("clearly important") && plain.includes("V3C| TB:"), "an ordinary spot gives no planted clue away, but real evidence still counts");
+    const withWeapon = buildExamineNarrationPrompt({ ...cf, weapon: "Heavy gold trophy" }, { label: "Trophy" }, opts);
+    assert(withWeapon.includes("Heavy gold trophy"), "the weapon is named so examining it finds evidence");
+    assert(plain.includes("Plain prose only") && !plain.includes("{{"), "default template filled, narration only");
+    const custom = buildExamineNarrationPrompt(cf, { label: "Stove" }, { ...opts, template: "Narrate {{player}} looking at {{thing}}." });
+    assert(custom.startsWith("Narrate Shuichi looking at the Stove.") && custom.includes("clearly important"), "an edited prompt still gets the findings rule");
     const free = buildExamineNarrationPrompt(cf, { label: "the floor drain", freeText: true, roomId: "kitchen" }, opts);
     assert(free.includes("Blood under the sink") && !free.includes("Scuffed"), "free text can turn up this room's clues");
 
@@ -63,6 +68,9 @@ function run() {
     assert(parsed.text === "The rack has an empty slot. Someone took a knife.", `narration text: ${parsed.text}`);
     assert(parsed.bullets.length === 1 && parsed.bullets[0].title === "Missing Knife", "bullet parsed out");
     assert(parseExamineNarration("Just dust.").bullets.length === 0, "no bullet");
+    const loose = parseExamineNarration("**Heavy, solid gold.** It could kill someone.\n**Truth Bullet:** Gold Trophy — A heavy solid gold trophy lies by the body.");
+    assert(loose.bullets[0]?.title === "Gold Trophy" && !loose.text.includes("**") && !loose.text.includes("Truth Bullet"), `lenient bullet line: ${JSON.stringify(loose)}`);
+    assert(parseExamineNarration("TB: Blood Smear || A smear on the floor.").bullets[0]?.title === "Blood Smear", "bare TB line");
 
     // The partner's reaction note goes only to that partner, once.
     const note = buildPartnerReactionNote({ player: "Shuichi", label: "the knife rack", narration: "An empty slot.", found: "Missing Knife" });
