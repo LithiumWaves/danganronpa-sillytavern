@@ -5550,23 +5550,33 @@ function getRoomOwnerInfo(roomId) {
     return { name: char.name, ultimate: char.ultimate || "", dead: Boolean(char.dead), card: text };
 }
 
-async function loadExamineSpots() {
+// Makes a room's spots. Evidence already found stays ticked off. When the
+// spots are made again (`previous` labels) and the AI doesn't answer, this
+// throws so the room keeps the spots it had.
+async function makeExamineSpots(caseFile, roomId, roomLabel, previous = []) {
+    let raw = "";
+    try {
+        raw = await generateIsolated(buildHotspotPrompt({ caseFile, roomId, roomLabel, owner: getRoomOwnerInfo(roomId), previous }), { maxTokens: 1200, reasoning: { effort: "low", exclude: true } });
+    } catch (err) {
+        console.warn("[Dangan][Case] Examine spots generation failed; using plain spots:", err);
+    }
+    if (previous.length && !raw) throw new Error("The AI didn't answer, so the room keeps its spots. Try again.");
+    const found = new Set(caseFile.clues.filter((c) => c.found).map((c) => c.id));
+    return parseHotspots(raw, { caseFile, roomId, isScene: caseFile.body.roomId === roomId })
+        .map((sp) => (sp.clueId && found.has(sp.clueId) ? { ...sp, examined: true } : sp));
+}
+
+async function loadExamineSpots({ again = false } = {}) {
     const roomId = getCurrentLocationId();
     const roomLabel = getCurrentRoomLabel() || roomId;
     let caseFile = getCaseFile();
     if (!caseFile || !roomId) return { roomLabel, spots: [] };
     let spots = caseFile.examine[roomId]?.spots;
-    if (!spots?.length) {
-        let raw = "";
-        try {
-            raw = await generateIsolated(buildHotspotPrompt({ caseFile, roomId, roomLabel, owner: getRoomOwnerInfo(roomId) }), { maxTokens: 1200, reasoning: { effort: "low", exclude: true } });
-        } catch (err) {
-            console.warn("[Dangan][Case] Examine spots generation failed; using plain spots:", err);
-        }
-        spots = parseHotspots(raw, { caseFile, roomId, isScene: caseFile.body.roomId === roomId });
+    if (again || !spots?.length) {
+        spots = await makeExamineSpots(caseFile, roomId, roomLabel, again ? (spots || []).map((sp) => sp.label) : []);
         caseFile = getCaseFile();
         setCaseFile({ ...caseFile, examine: { ...caseFile.examine, [roomId]: { spots } } });
-        caseDebug("EXAMINE", `${spots.length} spots in ${roomLabel}: ${spots.map((sp) => sp.label).join(", ")}`);
+        caseDebug("EXAMINE", `${again ? "Made again: " : ""}${spots.length} spots in ${roomLabel}: ${spots.map((sp) => sp.label).join(", ")}`);
     }
     return { roomLabel, spots: placeHotspots(spots, getSpotPositions(roomId)) };
 }
@@ -5710,6 +5720,8 @@ async function openExamineMode({ ask = false } = {}) {
     }
     examineController ||= createExamineMode({
         loadSpots: loadExamineSpots,
+        regenerateSpots: () => loadExamineSpots({ again: true }),
+        onError: (message) => notify({ tone: "error", title: "COULDN'T LOOK AROUND", message }),
         onExamine: examineSpot,
         onFreeText: examineFreeText,
         onMove: moveExamineSpot,
@@ -18304,6 +18316,15 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             notify({ title: 'EXAMINE RESET', message: `This room's spots are made again next time you examine it${owner ? `, from ${owner.name}'s card` : ''}.` });
             return '';
         }
+        if (what.toLowerCase() === 'regenerate') {
+            // Spots this room never had are simply made when it opens.
+            const hadSpots = Boolean(getCaseFile()?.examine?.[getCurrentLocationId()]?.spots?.length);
+            if (!examineController?.isOpen?.()) {
+                if (!(await openExamineMode()) || !hadSpots) return '';
+            }
+            await examineController?.regenerate?.();
+            return '';
+        }
         if (!what) {
             await openExamineMode();
             return '';
@@ -18315,7 +18336,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         await examineFreeText(what);
         return '';
     },
-    helpString: 'During an investigation: <code>/examine</code> opens examine mode for this room; <code>/examine the window latch</code> looks at something specific; <code>/examine reset</code> forgets this room\'s spots so they\'re made again (a classmate\'s room uses their card).',
+    helpString: 'During an investigation: <code>/examine</code> opens examine mode for this room; <code>/examine the window latch</code> looks at something specific; <code>/examine regenerate</code> makes this room\'s spots again now (evidence you found stays found); <code>/examine reset</code> forgets this room\'s spots so they\'re made again (a classmate\'s room uses their card).',
     unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'what to examine (optional)', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
 }));
 

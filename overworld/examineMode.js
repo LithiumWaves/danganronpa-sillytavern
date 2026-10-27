@@ -5,7 +5,7 @@
 // the spots are so they can be dragged onto the room's picture.
 // index.js supplies the spots and does the examining. While it's open the
 // overworld's right-hand buttons step aside and EXAMINING / LOOK AT… /
-// ARRANGE take their slots, in the same style.
+// ARRANGE / REGENERATE take their slots, in the same style.
 
 const STYLE_ID = "dangan-examine-style";
 const ROOT_ID = "dangan-examine";
@@ -104,6 +104,8 @@ function splitSentences(text) {
 
 // deps: {
 //   loadSpots(): Promise<{ roomLabel, spots: [{ id, label, x, y, examined }] }>,
+//   regenerateSpots?(): the same, with the room's spots made again,
+//   onError?(message) — making the spots again failed,
 //   onExamine(spot): Promise, onFreeText(text): Promise,
 //   onMove(spot, x, y), playSfx?(), onClose?(),
 //   onChange?() — open / arrange state changed (the HUD redraws its chips),
@@ -259,6 +261,38 @@ export function createExamineMode(deps) {
         mark.addEventListener("pointercancel", up);
     }
 
+    // REGENERATE: the room's spots are made again. If that fails the old
+    // ones stay.
+    async function regenerate() {
+        if (!isOpen() || busy || !deps.regenerateSpots) return;
+        closeAsk();
+        const opened = root;
+        const plate = root.querySelector("div.dex-plate");
+        busy = true;
+        root.classList.add("dex-busy");
+        root.classList.remove("dex-hot");
+        clearTimeout(plateTimer);
+        plate.querySelector("span").textContent = "Looking around again";
+        plate.classList.remove("dim", "gone", "examined");
+        plate.classList.add("thinking");
+        try {
+            const loaded = await deps.regenerateSpots();
+            if (root !== opened) return;
+            spots = loaded.spots.map((s) => ({ ...s }));
+            renderMarks();
+        } catch (err) {
+            if (root === opened) deps.onError?.(err?.message || String(err));
+        } finally {
+            if (root === opened) {
+                busy = false;
+                hovered = null;
+                root.classList.remove("dex-busy");
+                plate.classList.remove("thinking");
+                plate.classList.add("gone");
+            }
+        }
+    }
+
     // LOOK AT…: the name bar turns into a text field.
     function openAsk() {
         if (!isOpen() || busy || root.querySelector("form.dex-plate")) return;
@@ -343,6 +377,7 @@ export function createExamineMode(deps) {
                 <button type="button" class="dex-btn on" data-act="close" title="Stop examining (right-click or Esc)"><span>Examining</span></button>
                 <button type="button" class="dex-btn" data-act="ask" title="Examine anything you name"><span>Look at…</span></button>
                 <button type="button" class="dex-btn" data-act="arrange" title="Show the examinable spots and drag them onto the room's picture"><span>Arrange</span></button>
+                ${deps.regenerateSpots ? `<button type="button" class="dex-btn" data-act="regenerate" title="Make this room's examinable spots again (evidence you found stays found)"><span>Regenerate</span></button>` : ""}
             </div>
             <div class="dex-plate gone"><span></span></div>`;
         const btns = root.querySelector(".dex-btns");
@@ -355,6 +390,7 @@ export function createExamineMode(deps) {
             if (act === "close") close();
             else if (act === "ask") openAsk();
             else if (act === "arrange") toggleArrange();
+            else if (act === "regenerate") void regenerate();
         });
         btns.addEventListener("pointermove", (e) => {
             e.stopPropagation();
@@ -400,6 +436,7 @@ export function createExamineMode(deps) {
         isArranging: () => arranging,
         openAsk,
         toggleArrange,
+        regenerate,
         showNarration,
         // Clears "Examining…" once the line is ready to show.
         doneThinking: () => setThinking(null),

@@ -29,6 +29,9 @@ function run() {
     const prompt = buildHotspotPrompt({ caseFile: cf, roomId: "kitchen", roomLabel: "Kitchen" });
     assert(prompt.includes("1. A knife is missing") && prompt.includes("crime scene") && !prompt.includes("Scuffed"), "hotspot prompt lists only this room's evidence");
 
+    const again = buildHotspotPrompt({ caseFile: cf, roomId: "kitchen", roomLabel: "Kitchen", previous: ["Knife rack", "Stove"] });
+    assert(again.includes("Knife rack, Stove") && again.includes("fresh set") && !prompt.includes("fresh set"), "made again: the old spots are named so new ones are picked");
+
     // Clues map to spots; a forgotten clue still gets one; the body is there.
     const spots = parseHotspots('{"spots":[{"label":"Knife rack","clue":1},{"label":"Stove","clue":null},{"label":"Fridge","clue":7},{"label":"Stove","clue":null}]}', { caseFile: cf, roomId: "kitchen", isScene: true });
     assert(spots.find((s) => s.label === "Knife rack").clueId === "clue1", "clue spot");

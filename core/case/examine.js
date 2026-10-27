@@ -25,10 +25,13 @@ export function describeRoomOwner(owner) {
     return `WHOSE ROOM: this is ${who}'s private room${owner.dead ? ` (${owner.name} is dead)` : ""}.${card ? `\nAbout them: ${card}` : ""}`;
 }
 
-export function buildHotspotPrompt({ caseFile, roomId, roomLabel, owner = null }) {
+// `previous`: the labels the room had before, when its spots are made again,
+// so the new set looks at different things.
+export function buildHotspotPrompt({ caseFile, roomId, roomLabel, owner = null, previous = [] }) {
     const clues = cluesInRoom(caseFile, roomId);
     const isScene = caseFile?.body?.roomId === roomId;
     const clueLines = clues.map((c, i) => `${i + 1}. ${c.text}`).join("\n");
+    const before = previous.map((l) => text(l, 40)).filter(Boolean);
     return `A Danganronpa investigation. List the things in a room the player can examine up close.
 
 ROOM: ${roomLabel || roomId}
@@ -41,7 +44,7 @@ Reply with one JSON object and nothing else:
 Rules:
 - ${MIN_SPOTS} to ${MAX_SPOTS} spots: ordinary furniture and objects of this room${isScene ? ", including the body" : ""}.
 - Every piece of evidence above is hidden in exactly one spot. The spot's label must not give it away.
-- The other spots hide nothing.${owner?.name ? `\n- Fill the room with belongings and details that fit ${owner.name}: their talent, hobbies and personality. They're only things to look at: never add evidence beyond the list above.` : ""}`;
+- The other spots hide nothing.${owner?.name ? `\n- Fill the room with belongings and details that fit ${owner.name}: their talent, hobbies and personality. They're only things to look at: never add evidence beyond the list above.` : ""}${before.length ? `\n- This room was already looked at with these spots: ${before.join(", ")}. Pick a fresh set: other objects and places${isScene ? " (the body stays)" : ""}. The evidence still goes in a spot that fits it.` : ""}`;
 }
 
 // Turns the model's reply into spots. Every anchor clue gets a spot even if
