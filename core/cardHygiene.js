@@ -48,10 +48,6 @@ function hasUserMessage(chat) {
     return Array.isArray(chat) && chat.some(m => m?.is_user);
 }
 
-function normalizeMes(text) {
-    return String(text || "").replace(/\s+/g, " ").trim();
-}
-
 function getLiveChats(ctx) {
     const lists = [];
     if (Array.isArray(window.chat)) lists.push(window.chat);
