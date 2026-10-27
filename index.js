@@ -2093,6 +2093,8 @@ function createVnModeController() {
     const VN_SIZE_KEY = `${extensionName}-vn-box-size`;
     const VN_CHROME_HIDDEN_KEY = `${extensionName}-vn-chrome-hidden`;
     let chunkIndex = 0;
+    // Name and text of the line on screen (see followShownEntry).
+    let shownEntryIdentity = '';
     let messageIndex = 0;
     let monopadOpen = false;
     let moveUnlocked = false;
@@ -3419,6 +3421,7 @@ function createVnModeController() {
         messageIndex = Math.max(0, Math.min(messageIndex, messages.length - 1));
 
         const entry = messages[messageIndex];
+        shownEntryIdentity = `${entry?.name || ''}::${entry?.text || ''}`;
         if (entry?.name) trialManager?.updateGroupChatSpeaker?.(entry.name);
         const clean = stripV3CMarkersFromText(entry.text).replace(/\s+/g, ' ').trim();
         const chunks = splitIntoChunks(clean);
@@ -3508,6 +3511,19 @@ function createVnModeController() {
 
     function stepBack() {
         if (retreat()) playSfx(sfx.message_move);
+    }
+
+    // Finds the line on screen again after earlier messages were removed
+    // (e.g. card greetings), so the box doesn't move to another line.
+    function followShownEntry(messages) {
+        if (!shownEntryIdentity) return;
+        const identity = (m) => `${m?.name || ''}::${m?.text || ''}`;
+        for (let i = Math.min(messageIndex, messages.length - 1); i >= 0; i--) {
+            if (identity(messages[i]) === shownEntryIdentity) {
+                messageIndex = i;
+                return;
+            }
+        }
     }
 
     function jumpToLatest() {
@@ -4179,7 +4195,9 @@ function createVnModeController() {
                 renderCurrent();
             } else {
                 // Streaming text or unrelated chat changes: stay on the same bit.
-                // The box skips re-typing a line it already shows.
+                // The box skips re-typing a line it already shows. When earlier
+                // messages were removed, follow the line being read.
+                if (hadMessageCountChange && messages.length < previousCount) followShownEntry(messages);
                 renderCurrent();
             }
         });
@@ -14912,7 +14930,12 @@ STATEMENT: <third statement>`;
                 trialManager?.updateGroupChatSpeaker?.(msg.name);
             }
             updateSuspectsFromChat();
-            try { cardHygiene?.enforceCleanGreetings?.(ctx); } catch {}
+            // After SillyTavern has finished saving the reply (it reads the
+            // chat back after this event), and without re-rendering the chat,
+            // which would throw the VN box off the line being read.
+            setTimeout(() => {
+                try { cardHygiene?.enforceCleanGreetings?.(window.SillyTavern?.getContext?.(), { reprint: false }); } catch {}
+            }, 0);
         };
         eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, handleCharacterMessage);
         eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, () => {

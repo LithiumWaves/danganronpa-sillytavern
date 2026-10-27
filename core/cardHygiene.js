@@ -67,8 +67,8 @@ export function isGreetingMessage(m) {
 }
 
 // Removes the greetings before the first message the player sent. Returns
-// how many were removed.
-export function stripLeadingGreetings(chat) {
+// how many were removed; `onRemove(index)` hears each one, last first.
+export function stripLeadingGreetings(chat, onRemove = null) {
     if (!Array.isArray(chat) || !chat.length) return 0;
     const firstUser = chat.findIndex(m => m?.is_user);
     const end = firstUser === -1 ? chat.length : firstUser;
@@ -76,6 +76,7 @@ export function stripLeadingGreetings(chat) {
     for (let i = end - 1; i >= 0; i--) {
         if (!isGreetingMessage(chat[i])) continue;
         chat.splice(i, 1);
+        onRemove?.(i);
         removed++;
     }
     return removed;
@@ -183,6 +184,22 @@ export function createCardHygieneController({
         }
     }
 
+    // Takes removed messages off the screen without re-rendering the chat:
+    // drops their elements and shifts the ids of the ones after them.
+    // `indexes` are in removal order (last first), as stripLeadingGreetings
+    // reports them.
+    function removeMessageElements(indexes) {
+        const container = document.getElementById("chat");
+        if (!container) return;
+        for (const index of indexes) {
+            for (const el of [...container.querySelectorAll(".mes[mesid]")]) {
+                const id = Number(el.getAttribute("mesid"));
+                if (id === index) el.remove();
+                else if (id > index) el.setAttribute("mesid", String(id - 1));
+            }
+        }
+    }
+
     function syncChatDom(chat) {
         const printer = getContext()?.printMessages || window.printMessages;
         if (typeof printer === "function") {
@@ -209,20 +226,23 @@ export function createCardHygieneController({
         }
     }
 
-    async function enforceCleanGreetings(ctx = getContext()) {
+    // `reprint: false` removes the greetings' message elements in place
+    // instead of re-rendering the whole chat, for when a reply was just shown.
+    async function enforceCleanGreetings(ctx = getContext(), { reprint = true } = {}) {
         if (enforcingClean) return 0;
         if (!ctx || readDecision(ctx) !== "clean") return 0;
         enforcingClean = true;
         try {
             let removed = 0;
-            for (const chat of getLiveChats(ctx)) {
-                removed += stripLeadingGreetings(chat);
-            }
+            const removedIndexes = [];
+            getLiveChats(ctx).forEach((chat, n) => {
+                removed += stripLeadingGreetings(chat, n === 0 ? (i) => removedIndexes.push(i) : null);
+            });
             if (!removed) return 0;
             console.log(`[${extensionName}] Card hygiene removed ${removed} greeting message(s).`);
             await saveChatNoReload(ctx);
-            const live = getLiveChats(ctx)[0] || ctx.chat || [];
-            syncChatDom(live);
+            if (reprint) syncChatDom(getLiveChats(ctx)[0] || ctx.chat || []);
+            else removeMessageElements(removedIndexes);
             return removed;
         } finally {
             enforcingClean = false;

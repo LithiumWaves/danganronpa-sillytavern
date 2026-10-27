@@ -26,6 +26,11 @@ function run() {
 
     assert(stripLeadingGreetings([]) === 0, "empty chat");
 
+    const seen = [];
+    const two = [greeting("a"), greeting("b"), user("hi")];
+    stripLeadingGreetings(two, (i) => seen.push(i));
+    assert(seen.join() === "1,0", "removed indexes reported last first");
+
     console.log("cardHygiene tests passed");
 }
 
