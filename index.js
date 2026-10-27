@@ -45,6 +45,7 @@ import { CASE_STATUS, DEFAULT_MOTIVE_DEADLINE_DAYS, addEmergentClue, beatWordOve
 import { CASE_PROMPT_KEY, buildCasePrompt } from "./core/case/casePrompts.js";
 import { openMonokumaFile } from "./truth/monokumaFile.js";
 import { openCaseFileEditor } from "./truth/caseFileEditor.js";
+import { installChatWatch } from "./core/debug/chatWatch.js";
 import { MARKER_BLOCKS, MARKER_PROMPT_KEY, buildMarkerPrompt, textHasMarkerInstructions } from "./core/prompts/markerPrompts.js";
 import { TRUST_LEVELS_PROMPT_KEY, buildTrustLevelsPrompt } from "./core/prompts/trustLevelsPrompt.js";
 import { createEffectLedger, emptyEffects, hasEffects, messageIdentity } from "./core/ledger/effectLedger.js";
@@ -14872,6 +14873,12 @@ STATEMENT: <third statement>`;
         eventSource.on(event_types.MESSAGE_SENT, handleMessage);
         eventSource.on(event_types.USER_MESSAGE_RENDERED, handleMessage);
 
+        // /dgwatch: traces anything that empties or reloads the chat while a
+        // reply is being generated.
+        try {
+            installChatWatch({ eventSource, event_types, isEnabled: () => Boolean(extension_settings[extensionName]?.chatWatchEnabled) });
+        } catch (e) { console.warn("[Dangan][Watch] install failed:", e); }
+
         // Message effects: track generations, and take back what a swiped,
         // deleted or edited message did.
         eventSource.on(event_types.GENERATION_STARTED, (type, _options, dryRun) => {
@@ -17515,6 +17522,27 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     },
     helpString: 'Debug tools for the hidden Case File (spoilers!). <code>/case status</code> shows the plan, <code>/case prompt [name]</code> shows what the AI would be told for the next reply (as that speaker), <code>/case lastraw</code> shows the last plan the AI sent back (for when a motive fails), <code>/case commit</code> runs the murder now, <code>/case discover</code> finds the body now, <code>/case file timeOfDeath|cause|injuries &lt;text&gt;</code> updates the Monokuma File, <code>/case clear</code> drops the case.',
     unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'status | prompt [name] | lastraw | commit | discover | file <field> <text> | clear', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'dgwatch',
+    callback: async (_args, value) => {
+        const arg = String(value || '').trim().toLowerCase();
+        const root = extension_settings[extensionName] ||= {};
+        const next = arg === 'on' ? true : arg === 'off' ? false : !root.chatWatchEnabled;
+        root.chatWatchEnabled = next;
+        saveSettingsDebounced();
+        notify({
+            title: next ? 'CHAT WATCH ON' : 'CHAT WATCH OFF',
+            message: next
+                ? 'Send a message, then copy every [Dangan][Watch] line from the browser console (F12), opening the collapsed ones to include their stacks.'
+                : 'Chat watch stopped.',
+            durationMs: 9000,
+        });
+        return '';
+    },
+    helpString: 'Debugging: <code>/dgwatch on</code> logs (with call stacks) anything that clears, reloads or switches the chat while a reply is being generated. <code>/dgwatch off</code> stops it.',
+    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'on | off', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
