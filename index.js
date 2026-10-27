@@ -5534,6 +5534,22 @@ function getSpotPositions(roomId) {
     return root.examineSpotPositions[roomId] || {};
 }
 
+// Whose dorm room this is, with their card, for examining it; null for any
+// other room. Dead classmates count: the victim's room is worth searching.
+function getRoomOwnerInfo(roomId) {
+    const pin = mapPanelController?.getPinByLocationId?.(roomId);
+    if (!pin?._generated || !pin._dormKey) return null;
+    if (pin._dormKey === DORM_PLAYER_KEY) {
+        const name = getActivePersonaName() || getCasePlayerName();
+        return name ? { name, isPlayer: true, card: String(power_user?.persona_description || "") } : null;
+    }
+    const char = characters.get(pin._dormKey);
+    if (!char?.name) return null;
+    const card = (window.SillyTavern?.getContext?.()?.characters || []).find((c) => c?.name === char.name);
+    const text = [card?.description || card?.data?.description, card?.personality || card?.data?.personality].filter(Boolean).join(" ");
+    return { name: char.name, ultimate: char.ultimate || "", dead: Boolean(char.dead), card: text };
+}
+
 async function loadExamineSpots() {
     const roomId = getCurrentLocationId();
     const roomLabel = getCurrentRoomLabel() || roomId;
@@ -5543,7 +5559,7 @@ async function loadExamineSpots() {
     if (!spots?.length) {
         let raw = "";
         try {
-            raw = await generateIsolated(buildHotspotPrompt({ caseFile, roomId, roomLabel }), { maxTokens: 1200, reasoning: { effort: "low", exclude: true } });
+            raw = await generateIsolated(buildHotspotPrompt({ caseFile, roomId, roomLabel, owner: getRoomOwnerInfo(roomId) }), { maxTokens: 1200, reasoning: { effort: "low", exclude: true } });
         } catch (err) {
             console.warn("[Dangan][Case] Examine spots generation failed; using plain spots:", err);
         }
@@ -5571,6 +5587,7 @@ async function examineLook(look) {
         recentChat: buildRecentChatContextLines(8),
         present: getCurrentRoomOccupantNames(),
         template: getMonopadSetting("examineNarrationPromptTemplate") || "",
+        owner: getRoomOwnerInfo(roomId),
     });
     let raw = "";
     try {
@@ -18270,6 +18287,23 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'examine',
     callback: async (_args, value) => {
         const what = String(value || '').trim();
+        if (what.toLowerCase() === 'reset') {
+            const roomId = getCurrentLocationId();
+            const caseFile = getCaseFile();
+            if (!caseFile || !roomId) {
+                notify({ tone: 'warn', title: '/examine reset', message: 'No case, or you are not in a room.' });
+                return '';
+            }
+            const examine = { ...caseFile.examine };
+            delete examine[roomId];
+            setCaseFile({ ...caseFile, examine });
+            const root = extension_settings[extensionName] ||= {};
+            if (root.examineSpotPositions) delete root.examineSpotPositions[roomId];
+            saveSettingsDebounced();
+            const owner = getRoomOwnerInfo(roomId);
+            notify({ title: 'EXAMINE RESET', message: `This room's spots are made again next time you examine it${owner ? `, from ${owner.name}'s card` : ''}.` });
+            return '';
+        }
         if (!what) {
             await openExamineMode();
             return '';
@@ -18281,7 +18315,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         await examineFreeText(what);
         return '';
     },
-    helpString: 'During an investigation: <code>/examine</code> opens examine mode for this room; <code>/examine the window latch</code> looks at something specific.',
+    helpString: 'During an investigation: <code>/examine</code> opens examine mode for this room; <code>/examine the window latch</code> looks at something specific; <code>/examine reset</code> forgets this room\'s spots so they\'re made again (a classmate\'s room uses their card).',
     unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'what to examine (optional)', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
 }));
 

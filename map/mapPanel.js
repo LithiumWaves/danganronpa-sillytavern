@@ -1,5 +1,5 @@
 import { DEFAULT_HUB_PIN_IDS, DEFAULT_PINS } from "./defaultPins.js";
-import { DORM_AREA_KEY, DORM_FLOOR_KEY, assignDormSlots, buildDormPins, describeFloorExit, diffDormEdits, findDefaultPinHubs, findPinHubs, findRedundantDefaultHubs, getAutoLinkedPins } from "./mapLinks.js";
+import { DORM_AREA_KEY, DORM_FLOOR_KEY, DORM_HUB_ID, assignDormSlots, findDormCorridor, buildDormPins, describeFloorExit, diffDormEdits, findDefaultPinHubs, findPinHubs, findRedundantDefaultHubs, getAutoLinkedPins } from "./mapLinks.js";
 import { getFloorUnlockChapter, isFloorLocked, isStoryPin, listCustomFloors, mergePins, migrateLegacyMapStorage, pinInScope, resolveFloorImageSrc, scopeAreaKeys, scopeAreas, setFloorUnlockChapter, splitPins } from "./mapStorage.js";
 import { buildCustomArea } from "../core/title/titleMapSetup.js";
 import { findBackgroundElement } from "../core/media/findBackground.js";
@@ -202,7 +202,15 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         });
         redundantDefaultHubIds = findRedundantDefaultHubs(merged, DEFAULT_HUB_PIN_IDS);
         const pins = merged.filter(p => !redundantDefaultHubIds.has(p.id));
-        return [...pins, ...buildDormPinsForSave()];
+        const dormPins = buildDormPinsForSave();
+        // The dorm rooms are only entered from their corridor: while they
+        // exist, the built-in Dorm Corridor comes back if the floor has none
+        // (even if it was deleted).
+        if (dormPins.length && !findDormCorridor(pins)) {
+            const def = DEFAULT_PINS.find(p => p.areaKey === DORM_AREA_KEY && p.floorKey === DORM_FLOOR_KEY && p.locationId === DORM_HUB_ID);
+            if (def) pins.push({ ...clone(def), _default: true });
+        }
+        return [...pins, ...dormPins];
     }
 
     // ── Inn dorm rooms ──

@@ -91,14 +91,32 @@ export function findDefaultPinHubs(pin, pins = []) {
 }
 
 // The rooms this pin hangs off: its own `hubId` (one id or a list) where
-// those pins exist on the floor, else findDefaultPinHubs.
+// those pins exist on the floor, else findDefaultPinHubs. A dorm room whose
+// corridor has another id still goes through a corridor on its floor, never
+// straight from the floor's main hub.
 export function findPinHubs(pin, pins = []) {
     if (!isLinkable(pin)) return [];
     if (pin.hubId) {
         const own = viaPins(pin, pins, pin.hubId);
         if (own.length) return own;
     }
+    if (isDormPin(pin)) {
+        const corridor = findDormCorridor(pins, pin.areaKey, pin.floorKey);
+        if (corridor) return [corridor];
+    }
     return findDefaultPinHubs(pin, pins);
+}
+
+// The corridor the dorm rooms open onto: a pin with one of DORM_HUB_IDS,
+// else one named like a corridor or hallway (not the floor's built-in hub).
+export function findDormCorridor(pins = [], areaKey = DORM_AREA_KEY, floorKey = DORM_FLOOR_KEY) {
+    const floorPins = pins.filter((p) => isLinkable(p) && !p._generated && onFloor(p, areaKey, floorKey));
+    for (const id of DORM_HUB_IDS) {
+        const hit = floorPins.find((p) => p.locationId === id);
+        if (hit) return hit;
+    }
+    const builtinHub = BUILTIN_FLOOR_HUBS[`${areaKey}/${floorKey}`];
+    return floorPins.find((p) => !p.hubId && p.locationId !== builtinHub && looksLikeHub(p)) || null;
 }
 
 // The first of findPinHubs, or null.
@@ -182,6 +200,9 @@ export function findRedundantDefaultHubs(pins = [], defaultHubIds = new Set()) {
 export const DORM_AREA_KEY = "hopes_peak";
 export const DORM_FLOOR_KEY = "inn_floor_1";
 export const DORM_HUB_ID = "dorm_hallway";
+// The ids the dorm rooms' corridor may have, in order: a hand-made
+// "dorm_corridor", then the built-in one.
+export const DORM_HUB_IDS = Object.freeze(["dorm_corridor", DORM_HUB_ID]);
 export const DORM_PLAYER_KEY = "__player";
 
 // The 15 empty rooms on the Inn Floor 1 picture, on the 480×272 map grid:
@@ -243,7 +264,7 @@ function dormBasePin(resident, slot) {
         floorKey: DORM_FLOOR_KEY,
         x: pos.x,
         y: pos.y,
-        hubId: DORM_HUB_ID,
+        hubId: [...DORM_HUB_IDS],
     };
 }
 

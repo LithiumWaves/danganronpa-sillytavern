@@ -1,6 +1,6 @@
 import { CASE_STATUS, normalizeCaseFile } from "./caseFile.js";
 import { buildCasePrompt } from "./casePrompts.js";
-import { MAX_SPOTS, MIN_SPOTS, buildExamineNarrationPrompt, buildHotspotPrompt, buildPartnerReactionNote, cluesInRoom, layoutHotspots, normalizeExamine, parseExamineNarration, parseHotspots, placeHotspots } from "./examine.js";
+import { MAX_SPOTS, MIN_SPOTS, describeRoomOwner, buildExamineNarrationPrompt, buildHotspotPrompt, buildPartnerReactionNote, cluesInRoom, layoutHotspots, normalizeExamine, parseExamineNarration, parseHotspots, placeHotspots } from "./examine.js";
 
 function assert(cond, msg) {
     if (!cond) throw new Error(msg);
@@ -63,6 +63,16 @@ function run() {
     assert(custom.startsWith("Narrate Shuichi looking at the Stove.") && custom.includes("clearly important"), "an edited prompt still gets the findings rule");
     const free = buildExamineNarrationPrompt(cf, { label: "the floor drain", freeText: true, roomId: "kitchen" }, opts);
     assert(free.includes("Blood under the sink") && !free.includes("Scuffed"), "free text can turn up this room's clues");
+
+    // A classmate's room: the spots and what you notice fit them.
+    const owner = { name: "Leon Kuwata", ultimate: "Baseball Star", card: "Wants to be a musician. Hates practice." };
+    const ownSpots = buildHotspotPrompt({ caseFile: cf, roomId: "dorm_leon", roomLabel: "Leon's Room", owner });
+    assert(ownSpots.includes("WHOSE ROOM") && ownSpots.includes("Ultimate Baseball Star") && ownSpots.includes("Wants to be a musician") && ownSpots.includes("fit Leon Kuwata"), "spots prompt gets the owner's card");
+    assert(!prompt.includes("WHOSE ROOM") && !plain.includes("WHOSE ROOM") && !plain.includes("{{owner}}"), "no owner, nothing added");
+    const ownLook = buildExamineNarrationPrompt(cf, { label: "Guitar" }, { ...opts, owner });
+    assert(ownLook.includes("Wants to be a musician") && ownLook.includes("fits the person who lives here"), "narration gets the owner");
+    assert(buildExamineNarrationPrompt(cf, { label: "Guitar" }, { ...opts, owner, template: "Narrate {{thing}}." }).includes("WHOSE ROOM"), "an edited prompt without {{owner}} still gets it");
+    assert(describeRoomOwner({ name: "Sayaka", dead: true }).includes("Sayaka is dead") && describeRoomOwner({ name: "Makoto", isPlayer: true }).includes("(the player)") && describeRoomOwner(null) === "", "owner wording");
 
     const parsed = parseExamineNarration('<think>hm</think>"The rack has an empty slot. Someone took a knife."\nV3C| TB: Missing Knife || One knife is gone from the kitchen rack.');
     assert(parsed.text === "The rack has an empty slot. Someone took a knife.", `narration text: ${parsed.text}`);

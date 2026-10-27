@@ -89,7 +89,7 @@ export const DEFAULT_PINS = [
     {"id":"default_hub_corridor_f3","icon":"rec-room.svg","type":"room","label":"Corridor F3","locationId":"corridor_f3","areaKey":"hopes_peak","floorKey":"floor_3","x":250,"y":150},
     {"id":"default_hub_corridor_f4","icon":"rec-room.svg","type":"room","label":"Corridor F4","locationId":"corridor_f4","areaKey":"hopes_peak","floorKey":"floor_4","x":230,"y":150},
     {"id":"default_hub_corridor_f5","icon":"rec-room.svg","type":"room","label":"Corridor F5","locationId":"corridor_f5","areaKey":"hopes_peak","floorKey":"floor_5","x":295,"y":128},
-    {"id":"default_hub_dorm_hallway","icon":"rec-room.svg","type":"room","label":"Dorm Hallway","locationId":"dorm_hallway","areaKey":"hopes_peak","floorKey":"inn_floor_1","x":300,"y":137},
+    {"id":"default_hub_dorm_hallway","icon":"rec-room.svg","type":"room","label":"Dorm Corridor","locationId":"dorm_hallway","areaKey":"hopes_peak","floorKey":"inn_floor_1","x":300,"y":137},
     {"id":"default_hub_hotel_corridor_f1","icon":"rec-room.svg","type":"room","label":"Hotel Corridor","locationId":"hotel_corridor_f1","areaKey":"hotel_despair","floorKey":"floor_1","x":210,"y":140},
     {"id":"default_hub_hidden_floor_corridor","icon":"rec-room.svg","type":"room","label":"Hidden Floor Corridor","locationId":"hidden_floor_corridor","areaKey":"hotel_despair","floorKey":"hidden_floor","x":207,"y":140}
 ];

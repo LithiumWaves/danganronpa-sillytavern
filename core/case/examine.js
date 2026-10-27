@@ -16,14 +16,23 @@ export function cluesInRoom(caseFile, roomId) {
     return (caseFile?.clues || []).filter((c) => c.roomId && c.roomId === roomId);
 }
 
-export function buildHotspotPrompt({ caseFile, roomId, roomLabel }) {
+// Whose room this is, from their card (dorm rooms): `owner` is
+// { name, isPlayer, ultimate, card, dead } or null.
+export function describeRoomOwner(owner) {
+    if (!owner?.name) return "";
+    const who = owner.isPlayer ? `${owner.name} (the player)` : `${owner.name}${owner.ultimate ? `, the Ultimate ${owner.ultimate}` : ""}`;
+    const card = String(owner.card || "").replace(/\s+/g, " ").trim().slice(0, 1200);
+    return `WHOSE ROOM: this is ${who}'s private room${owner.dead ? ` (${owner.name} is dead)` : ""}.${card ? `\nAbout them: ${card}` : ""}`;
+}
+
+export function buildHotspotPrompt({ caseFile, roomId, roomLabel, owner = null }) {
     const clues = cluesInRoom(caseFile, roomId);
     const isScene = caseFile?.body?.roomId === roomId;
     const clueLines = clues.map((c, i) => `${i + 1}. ${c.text}`).join("\n");
     return `A Danganronpa investigation. List the things in a room the player can examine up close.
 
 ROOM: ${roomLabel || roomId}
-${isScene ? `This is the crime scene: ${caseFile.victim}'s body is here. ${caseFile.body.state}\n` : ""}EVIDENCE HIDDEN IN THIS ROOM:
+${owner?.name ? `${describeRoomOwner(owner)}\n` : ""}${isScene ? `This is the crime scene: ${caseFile.victim}'s body is here. ${caseFile.body.state}\n` : ""}EVIDENCE HIDDEN IN THIS ROOM:
 ${clueLines || "(none)"}
 
 Reply with one JSON object and nothing else:
@@ -32,7 +41,7 @@ Reply with one JSON object and nothing else:
 Rules:
 - ${MIN_SPOTS} to ${MAX_SPOTS} spots: ordinary furniture and objects of this room${isScene ? ", including the body" : ""}.
 - Every piece of evidence above is hidden in exactly one spot. The spot's label must not give it away.
-- The other spots hide nothing.`;
+- The other spots hide nothing.${owner?.name ? `\n- Fill the room with belongings and details that fit ${owner.name}: their talent, hobbies and personality. They're only things to look at: never add evidence beyond the list above.` : ""}`;
 }
 
 // Turns the model's reply into spots. Every anchor clue gets a spot even if
@@ -132,6 +141,7 @@ function lookFacts(caseFile, { clueId = "", freeText = false, roomId = "" } = {}
 
 const DEFAULT_TEMPLATE = `A Danganronpa investigation. {{player}} examines {{thing}} in the {{room}}.
 Also here: {{present}}
+{{owner}}
 
 CASE FACTS (hidden; never name the killer):
 {{caseFacts}}
@@ -145,7 +155,7 @@ Write only what {{player}} notices, as their inner monologue: 1-3 short sentence
 // The hidden call that writes what the player notices, Danganronpa style:
 // their inner monologue, shown in the VN box and never posted to the chat.
 // `template` is the player's edited prompt (AI instructions), or the default.
-export function buildExamineNarrationPrompt(caseFile, look, { player = "", roomLabel = "", caseFacts = "", recentChat = "", present = [], template = "" } = {}) {
+export function buildExamineNarrationPrompt(caseFile, look, { player = "", roomLabel = "", caseFacts = "", recentChat = "", present = [], template = "", owner = null } = {}) {
     const values = {
         player: player || "the protagonist",
         thing: `${look.freeText ? "" : "the "}${look.label}`,
@@ -154,11 +164,14 @@ export function buildExamineNarrationPrompt(caseFile, look, { player = "", roomL
         caseFacts: caseFacts || "(none)",
         recentChat: recentChat || "(none)",
         findings: lookFacts(caseFile, look),
+        owner: owner?.name ? `${describeRoomOwner(owner)}\nWhat ${player || "the player"} notices fits the person who lives here.` : "",
     };
     const text = typeof template === "string" && template.trim() ? template : DEFAULT_TEMPLATE;
     const filled = text.replace(/\{\{(\w+)\}\}/g, (m, key) => (key in values ? values[key] : m));
-    // An edited prompt that dropped {{findings}} still has to know what's found.
-    return text.includes("{{findings}}") ? filled : `${filled}\n${values.findings}`;
+    // An edited prompt that dropped {{findings}} still has to know what's found,
+    // and one without {{owner}} still learns whose room it is.
+    const withOwner = values.owner && !text.includes("{{owner}}") ? `${filled}\n${values.owner}` : filled;
+    return text.includes("{{findings}}") ? withOwner : `${withOwner}\n${values.findings}`;
 }
 
 export const DEFAULT_EXAMINE_NARRATION_TEMPLATE = DEFAULT_TEMPLATE;

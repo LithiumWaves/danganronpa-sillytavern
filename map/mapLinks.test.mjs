@@ -1,5 +1,5 @@
 import { DEFAULT_HUB_PIN_IDS, DEFAULT_PINS } from "./defaultPins.js";
-import { INN_DORM_SLOTS, assignDormSlots, buildDormPins, describeFloorExit, diffDormEdits, findFloorHub, findRedundantDefaultHubs, getAutoLinkedPins } from "./mapLinks.js";
+import { INN_DORM_SLOTS, assignDormSlots, findDormCorridor, buildDormPins, describeFloorExit, diffDormEdits, findFloorHub, findRedundantDefaultHubs, getAutoLinkedPins } from "./mapLinks.js";
 import { mergePins, splitPins } from "./mapStorage.js";
 
 function assert(cond, msg) {
@@ -83,6 +83,20 @@ function run() {
     const fromHall = getAutoLinkedPins(hallway, inn).map((p) => p.locationId);
     assert(fromHall.includes("door_to_hopes_peak_academy") && dormPins.every((p) => fromHall.includes(p.locationId)), "the Dorm Hallway links to the Door and every dorm room");
     assert(!getAutoLinkedPins(door, inn).some((p) => p._generated), "dorm rooms hang off the hallway, not the Door");
+
+    // A hand-made Dorm Corridor (the built-in one steps aside for it).
+    const handMade = { id: "c1", type: "room", label: "Dorm Corridor", locationId: "dorm_corridor", areaKey: "hopes_peak", floorKey: "inn_floor_1", x: 300, y: 137 };
+    const withHandMade = [...pins.filter((p) => p !== hallway), handMade, ...dormPins];
+    assert(findRedundantDefaultHubs([...pins, handMade], DEFAULT_HUB_PIN_IDS).has("default_hub_dorm_hallway"), "the built-in corridor steps aside for a hand-made one");
+    assert(ids(getAutoLinkedPins(dormPins[1], withHandMade)) === "dorm_corridor", "dorm rooms open onto a hand-made dorm_corridor");
+    const fromHandMade = getAutoLinkedPins(handMade, withHandMade).map((p) => p.locationId);
+    assert(fromHandMade.includes("door_to_hopes_peak_academy") && dormPins.every((p) => fromHandMade.includes(p.locationId)), "the corridor links to the Door and every dorm room");
+    assert(!getAutoLinkedPins(door, withHandMade).some((p) => p._generated), "the Door never opens straight onto a dorm room");
+    const wing = { ...handMade, label: "Dorm Wing Hallway", locationId: "wing" };
+    assert(ids(getAutoLinkedPins(dormPins[1], [...pins.filter((p) => p !== hallway), wing, ...dormPins])) === "wing", "a corridor with another name still works");
+    assert(findDormCorridor(pins.filter((p) => p !== hallway)) === null, "no corridor left on the floor");
+    const redirected = { ...dormPins[1], hubId: "laundry_room" };
+    assert(ids(getAutoLinkedPins(redirected, [...inn.filter((p) => p !== dormPins[1]), redirected])) === "laundry_room", "a hubId edit still wins");
 
     const edits = diffDormEdits({ ...dormPins[1], label: "Detective's Room", x: 5 }, residents[1], 1);
     assert(edits.label === "Detective's Room" && edits.x === 5 && Object.keys(edits).length === 2, "only changed fields are kept");
