@@ -61,6 +61,9 @@ function run() {
     const withExtra = createPhaseHistory();
     withExtra.push({ timeTracker: day }, "Sleep", { caseFile: { status: "planned" } });
     assert(withExtra.pop().extra.caseFile.status === "planned", "extra comes back on undo");
+    assert(ids(getPhaseActions({ phase: PHASES.NIGHT, timeTracker: night, caseOpen: true, caseCancellable: true })).includes("cancel-motive"), "a planned motive can be cancelled");
+    assert(!ids(getPhaseActions({ phase: PHASES.DAY, timeTracker: day, caseOpen: true })).includes("cancel-motive"), "not after the murder");
+    assert(!ids(getPhaseActions({ phase: PHASES.INVESTIGATION, timeTracker: day, caseCancellable: true })).includes("cancel-motive"), "not during an investigation");
     console.log("phaseState tests passed");
 }
 

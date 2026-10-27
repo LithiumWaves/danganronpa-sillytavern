@@ -2322,6 +2322,33 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         return locationId ? state.customPins.some(p => p.locationId === locationId && !p.hidden) : false;
     }
 
+    // Pins a piece of evidence next to the room it was found in: same area
+    // and floor, around the room's pin so several don't stack. Does nothing
+    // if that evidence already has a pin, or the room isn't on the map.
+    function addEvidencePin({ label, locationId, roomLocationId, type = "truth-bullet" } = {}) {
+        if (!locationId || !roomLocationId || hasPinForLocationId(locationId)) return false;
+        const room = getPinByLocationId(roomLocationId);
+        if (!room || !Number.isFinite(room.x) || !Number.isFinite(room.y)) return false;
+        const nearby = state.customPins.filter(p => isStoryPin(p) && p.areaKey === room.areaKey && p.floorKey === room.floorKey
+            && Math.hypot(p.x - room.x, p.y - room.y) < 30).length;
+        const angle = (nearby * 72 - 90) * (Math.PI / 180);
+        const radius = 14 + Math.floor(nearby / 5) * 8;
+        state.customPins.push({
+            id: `custom_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+            icon: TYPE_DEFAULT_ICONS[type] || TYPE_DEFAULT_ICONS["truth-bullet"],
+            type,
+            label: String(label || locationId),
+            locationId,
+            areaKey: room.areaKey,
+            floorKey: room.floorKey,
+            x: Math.max(0, Math.min(MAP_POINT_WIDTH, room.x + Math.cos(angle) * radius)),
+            y: Math.max(0, Math.min(MAP_POINT_HEIGHT, room.y + Math.sin(angle) * radius)),
+        });
+        saveCustomPins();
+        renderMapPanel();
+        return true;
+    }
+
     function openPinCreatorWithPrefill(label, locationId) {
         const $panel = $(selectors.panel);
         if (!$panel.length) return;
@@ -2875,6 +2902,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         highlightPinByLocationId,
         hasPinForLocationId,
         openPinCreatorWithPrefill,
+        addEvidencePin,
         removePinByLocationId,
         setPinHidden,
         getAllPins,

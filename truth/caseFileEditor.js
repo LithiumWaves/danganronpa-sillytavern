@@ -374,7 +374,8 @@ export function openCaseFileEditor(api) {
         if (next.murderStyle !== "public") next.gathering = null;
         const rows = (kind) => [...body.querySelectorAll(`[data-row="${kind}"]`)];
         const field = (row, f) => row.querySelector(`[data-f="${f}"]`);
-        next.clues = rows("clue").map((r) => ({ id: r.dataset.id || undefined, text: field(r, "text").value, roomId: field(r, "roomId").value, witness: field(r, "witness").value }));
+        const foundIds = new Set(draft.clues.filter((c) => c.found).map((c) => c.id));
+        next.clues = rows("clue").map((r) => ({ id: r.dataset.id || undefined, text: field(r, "text").value, roomId: field(r, "roomId").value, witness: field(r, "witness").value, found: foundIds.has(r.dataset.id) }));
         next.foreshadowing = rows("beat").map((r) => ({
             id: r.dataset.id || undefined,
             text: field(r, "text").value,

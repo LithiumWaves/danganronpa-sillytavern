@@ -37,7 +37,7 @@ export function getStatusLine({ phase, day = 1, chapterLabel = "" } = {}) {
 
 // Actions the player can take from the current phase. Each one names the
 // confirmation to show, so the HUD and the Monopad header behave the same.
-export function getPhaseActions({ phase, timeTracker, canUndo = false, undoLabel = "", caseOpen = false } = {}) {
+export function getPhaseActions({ phase, timeTracker, canUndo = false, undoLabel = "", caseOpen = false, caseCancellable = false } = {}) {
     const actions = [];
 
     if (phase === PHASES.INVESTIGATION) {
@@ -89,6 +89,19 @@ export function getPhaseActions({ phase, timeTracker, canUndo = false, undoLabel
                 title: "MONOKUMA'S MOTIVE",
                 message: "Have Monokuma announce a motive now? Behind the scenes, someone starts planning a murder.",
                 confirmLabel: "ANNOUNCE",
+            },
+        });
+    }
+
+    // Monokuma can take the motive back until the murder happens.
+    if ((phase === PHASES.DAY || phase === PHASES.NIGHT) && caseCancellable) {
+        actions.push({
+            id: "cancel-motive",
+            label: "CANCEL MOTIVE",
+            confirm: {
+                title: "CANCEL MOTIVE",
+                message: "Have Monokuma take the motive back? The planned murder is cancelled.",
+                confirmLabel: "CANCEL IT",
             },
         });
     }

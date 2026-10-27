@@ -7,6 +7,8 @@
 // full list: Truth Bullets still come from the chat, and new ones found there
 // are added as emergent clues.
 
+import { normalizeExamine } from "./examine.js";
+
 export const CASE_STATUS = Object.freeze({
     PLANNED: "planned",     // motive announced, murder not yet happened
     COMMITTED: "committed", // the murder night has passed
@@ -357,6 +359,19 @@ export function normalizeCaseFile(raw) {
         pendingMotiveSpeech: Boolean(raw.pendingMotiveSpeech),
         motiveSpeaker: text(raw.motiveSpeaker, 80),
         motiveJustAnnounced: raw.motiveJustAnnounced === "monitor" ? "monitor" : "",
+        // Where Monokuma's in-person announcement sits in the chat, so
+        // cancelling the motive can remove it; -1 when there is none.
+        motiveMessageIndex: Number.isInteger(raw.motiveMessageIndex) ? raw.motiveMessageIndex : -1,
+        // Examine mode: each room's spots, and the look the next reply narrates.
+        examine: normalizeExamine(raw.examine),
+        pendingExamine: raw.pendingExamine?.label
+            ? {
+                label: text(raw.pendingExamine.label, 120),
+                clueId: text(raw.pendingExamine.clueId, 40),
+                roomId: text(raw.pendingExamine.roomId, 120),
+                freeText: Boolean(raw.pendingExamine.freeText),
+            }
+            : null,
         timeline: list(raw.timeline).map((t) => text(t, 240)).filter(Boolean).slice(0, LIMITS.timeline),
         clues: list(raw.clues).map((c) => ({
             id: id("clue", c?.id),
@@ -364,6 +379,8 @@ export function normalizeCaseFile(raw) {
             roomId: text(c?.roomId, 120),
             roomLabel: text(c?.roomLabel, 120),
             witness: text(c?.witness, 80),
+            // Turned up by examining its spot; informational only.
+            found: Boolean(c?.found),
         })).filter((c) => c.text),
         foreshadowing: list(raw.foreshadowing).map((f) => ({
             id: id("beat", f?.id),
@@ -525,7 +542,8 @@ export function describeCaseFile(caseFile) {
         "Timeline:",
         ...cf.timeline.map((t, i) => `  ${i + 1}. ${t}`),
         "Clues:",
-        ...cf.clues.map((c) => `  - ${c.text} [${c.roomLabel || c.roomId || "witness"}${c.witness ? `, ${c.witness}` : ""}]`),
+        ...cf.clues.map((c) => `  - ${c.found ? "[found] " : ""}${c.text} [${c.roomLabel || c.roomId || "witness"}${c.witness ? `, ${c.witness}` : ""}]`),
+        ...Object.entries(cf.examine).map(([room, r]) => `Examine spots in ${room}: ${r.spots.map((sp) => `${sp.examined ? "✓" : "·"}${sp.label}${sp.clueId ? "*" : ""}`).join(", ")}`),
         `Foreshadowing (last slot: ${cf.lastBeatSlot || "none"}):`,
         ...cf.foreshadowing.map((f) => `  - [${f.used ? "used" : f.skipped ? "set aside" : "unused"}, offered ${f.attempts}x] ${f.text}${f.characters.length ? ` (${f.characters.join(", ")})` : ""}`),
         "Witnesses:",

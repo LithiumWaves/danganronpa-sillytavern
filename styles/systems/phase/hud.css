@@ -248,3 +248,12 @@ body.dangan-trial-active #dangan-phase-hud {
         max-width: none;
     }
 }
+
+/* Examine mode button, under the phase chip during an investigation. */
+.dangan-examine-chip {
+    margin-top: 3px;
+}
+
+.dangan-examine-chip[hidden] {
+    display: none;
+}

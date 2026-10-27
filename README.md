@@ -66,6 +66,7 @@ A small readout under the chapter title and level bar at the top right shows whe
 - **End Investigation:** go back to daily life without starting a trial. Your Truth Bullets are kept.
 - **Start Class Trial**, **Pass Time**, **Sleep** and **Start Investigation**, each with a confirmation.
 - **Monokuma's Motive:** Monokuma announces a motive (daily life only, one per chapter). See **Motives and the Case File** below.
+- **Cancel Motive:** Monokuma takes the motive back and the planned murder is cancelled. Available until the murder happens; `/case cancel` does the same.
 - **Undo:** reverses the last phase change, whether you made it or the story did.
 
 When the story starts an investigation on its own, a toast offers **UNDO** for a few seconds. Turn the readout off under Settings → Display → **Phase HUD**.
@@ -79,7 +80,7 @@ Like in the games, a chapter's murder starts with Monokuma's motive. Start one f
 
 When the motive drops, one hidden generation call plans the chapter's murder: the killer, the victim, how and when it happens (by the night of the motive's deadline), and the clues it leaves behind. This is the **Case File**. It's kept with the save and never shown, so the mystery stays a mystery. The cast only learns about the motive itself. If Monokuma is here (called into your room, or the character of a one-on-one chat), he announces it himself in his own reply. Otherwise he announces it over the monitors, like the morning and night announcements, and the next reply reacts to it. Nothing else is posted to the chat: until the murder, the AI is reminded of the motive and its deadline in a short hidden note. The plan's characters and rooms come from your living classmates and the open rooms on this save's map.
 
-The Phase HUD shows the motive and its deadline until the case is over. **UNDO** on the motive's toast throws the plan away (and removes Monokuma's announcement while it's still the last message). Moving on to the next chapter closes the case.
+The Phase HUD shows the motive and its deadline until the case is over. After the announcement the music switches to a **Tense** or **Dramatic** track (whichever playlist has tracks; otherwise the phase music comes back). **UNDO** on the motive's toast, or **Cancel Motive** in the Phase HUD any time before the murder, throws the plan away (and removes Monokuma's announcement while it's still the last message). Moving on to the next chapter closes the case.
 
 **How the case plays out:**
 - **Before the murder**, the plan has a few small foreshadowing moments. When the characters a moment involves are in the scene, the AI is asked to slip it in, at most one per daytime or nighttime. The killer's own character is told their secret only while they are the one replying; nobody else's prompt ever names the killer.
@@ -87,6 +88,10 @@ The Phase HUD shows the motive and its deadline until the case is over. **UNDO**
 - **The body is found** when you walk into the crime scene (the body discovery cutscene and the announcement play, then the investigation starts), or earlier if the roleplay finds it (the investigation-start marker, /bodydiscovery or the Phase HUD).
 - **The Monokuma File** opens right away, Killing Harmony-style: a Victim page and a Situation page, read out line by line (click, Enter or Space to go on; Escape to close). It's added to your Truth Bullets, and **OPEN FILE** on that bullet shows it again.
 - **During the investigation**, the AI knows what can be found in the room you're in, what the Monokuma File says and which Truth Bullets you already have. It can invent more evidence as long as it fits the case; new Truth Bullets found that way are kept with the case, so the rest of the story stays consistent with them.
+
+**Examine mode:** during an investigation, **🔍 EXAMINE** under the phase readout (or **Examine** in the explore menu, or `/examine`) puts a magnifier over the room with markers on the things you can look at up close. Some hide evidence from the case, the rest are ordinary; nothing tells you which. Click one to examine it: your action is posted to the chat and the reply narrates what you find, with a Truth Bullet when it's evidence. Examined markers get a check mark. The AI can't see the room's picture, so drag a marker onto the right spot; it's remembered for that room. **EXAMINE…** (or `/examine the window latch`) lets you look at anything else.
+
+**Evidence on the map:** during an investigation every new Truth Bullet is pinned on the map next to the room you found it in, and the Monokuma File next to the crime scene. Deleting the bullet or swiping its message away removes the pin.
 
 **Complicated cases:**
 - **Public murders.** Some plans have the victim die during a gathering with others present (a séance, a party, a blackout), where nobody sees who did it. A foreshadowing moment sets the gathering up. On the murder day, while you're at the gathering with the victim, the AI is asked to play the gathering out and the death during it, and the body is found right there. If the murder's time passes without it, it still happens, and the body is found at once since everyone was there.

@@ -46,6 +46,8 @@ import { CASE_PROMPT_KEY, buildCasePrompt } from "./core/case/casePrompts.js";
 import { openMonokumaFile } from "./truth/monokumaFile.js";
 import { openCaseFileEditor } from "./truth/caseFileEditor.js";
 import { installChatWatch } from "./core/debug/chatWatch.js";
+import { buildHotspotPrompt, parseHotspots, placeHotspots } from "./core/case/examine.js";
+import { createExamineMode } from "./overworld/examineMode.js";
 import { MARKER_BLOCKS, MARKER_PROMPT_KEY, buildMarkerPrompt, textHasMarkerInstructions } from "./core/prompts/markerPrompts.js";
 import { TRUST_LEVELS_PROMPT_KEY, buildTrustLevelsPrompt } from "./core/prompts/trustLevelsPrompt.js";
 import { createEffectLedger, emptyEffects, hasEffects, messageIdentity } from "./core/ledger/effectLedger.js";
@@ -4723,6 +4725,8 @@ const nightTimeStartController = {
 
 let investigationTrackAudio = null;
 let investigationUnderway = false;
+// Examine mode's overlay (overworld/examineMode.js), made on first use.
+let examineController = null;
 let shopTrackAudio = null;
 
 // Investigation Mode is part of the persistent game state (like the day/phase
@@ -4733,6 +4737,8 @@ function setInvestigationUnderway(on) {
     extension_settings[extensionName] ||= {};
     extension_settings[extensionName].investigationUnderway = investigationUnderway;
     saveSettingsDebounced();
+    if (!investigationUnderway) examineController?.close?.();
+    try { refreshPhaseHud(); } catch { /* the HUD may not exist yet */ }
 }
 
 // ── Phase changes, undo and the Phase HUD ─────────────────────────────────────
@@ -4989,42 +4995,69 @@ async function announceMotive({ source = "manual" } = {}) {
 // added to the chat; the case prompt tells the cast about it from then on.
 async function announceCaseMotive(caseFile) {
     const monokuma = findMonokumaHere();
-    let ownMessageIndex = -1;
     if (monokuma) {
-        setCaseFile({ ...caseFile, pendingMotiveSpeech: true, motiveSpeaker: monokuma, motiveJustAnnounced: "" });
+        setCaseFile({ ...caseFile, pendingMotiveSpeech: true, motiveSpeaker: monokuma, motiveJustAnnounced: "", motiveMessageIndex: -1 });
         caseDebug("MOTIVE", `${monokuma} is here and announces it himself.`);
         try {
             await executeSlashCommandsWithOptions(`/trigger await=true "${monokuma}"`, { handleParserErrors: true });
             const chat = window.SillyTavern?.getContext?.()?.chat || [];
             const last = chat[chat.length - 1];
-            if (last && !last.is_user && last.name === monokuma) ownMessageIndex = chat.length - 1;
+            if (last && !last.is_user && last.name === monokuma) {
+                setCaseFile({ ...getCaseFile(), motiveMessageIndex: chat.length - 1 });
+            }
         } catch (err) {
             console.warn("[Dangan][Case] Monokuma's motive reply failed:", err);
         }
     } else {
-        setCaseFile({ ...caseFile, pendingMotiveSpeech: false, motiveJustAnnounced: "monitor" });
+        setCaseFile({ ...caseFile, pendingMotiveSpeech: false, motiveJustAnnounced: "monitor", motiveMessageIndex: -1 });
         await monokumaAnnouncementController?.triggerAsync("MOTIVE", { text: getMotiveAnnouncementText(caseFile) });
-        playCurrentPhaseTrack();
         caseDebug("MOTIVE", "Announced over the monitors.");
     }
+    playMotiveMood();
 
     notify({
         title: `MOTIVE: ${caseFile.motive.title.toUpperCase()}`,
-        message: caseFile.motive.description,
+        message: `${caseFile.motive.description} (Cancel it any time before the murder from the phase readout.)`,
         actionLabel: "UNDO",
-        onAction: async () => {
-            setCaseFile(null);
-            let removed = false;
-            const ctx = window.SillyTavern?.getContext?.();
-            const chat = ctx?.chat || [];
-            if (ownMessageIndex >= 0 && ownMessageIndex === chat.length - 1 && typeof ctx.deleteLastMessage === "function") {
-                await ctx.deleteLastMessage();
-                removed = true;
-            }
-            notify({ title: "UNDONE", message: removed || ownMessageIndex < 0 ? "The motive is gone." : "The motive is gone. Monokuma's message stays in the chat; delete it if you like." });
-        },
+        onAction: () => { void cancelMotive(); },
         durationMs: 12000,
     });
+}
+
+// After a motive the music turns tense or dramatic, whichever has tracks
+// (the announcement paused the BGM and hid the player). Dynamic Songs is held
+// so it doesn't switch straight back.
+function playMotiveMood() {
+    const moods = ["tenseTracks", "dramaticTracks"].filter((key) => (getMonopadSetting(key) || []).length);
+    if (!moods.length) {
+        playCurrentPhaseTrack();
+        return;
+    }
+    playTrackFromSetting(moods[Math.floor(Math.random() * moods.length)]);
+    try { dynamicSongsController?.holdManual?.(); } catch { /* ignore */ }
+}
+
+// Monokuma takes the motive back: the case is thrown away (only before the
+// murder), with his announcement message if it's still the last one.
+async function cancelMotive() {
+    const caseFile = getCaseFile();
+    if (!caseFile || caseFile.status !== CASE_STATUS.PLANNED) {
+        notify({ tone: "warn", title: "NOTHING TO CANCEL", message: "There's no motive out, or the murder has already happened." });
+        return false;
+    }
+    setCaseFile(null);
+    let kept = false;
+    const ctx = window.SillyTavern?.getContext?.();
+    const chat = ctx?.chat || [];
+    const index = Number(caseFile.motiveMessageIndex);
+    if (index >= 0) {
+        if (index === chat.length - 1 && typeof ctx.deleteLastMessage === "function") await ctx.deleteLastMessage();
+        else kept = true;
+    }
+    playCurrentPhaseTrack();
+    notify({ title: "MOTIVE CANCELLED", message: kept ? "The motive is gone. Monokuma's message stays in the chat; delete it if you like." : "The motive is gone." });
+    caseDebug("MOTIVE", "Cancelled.");
+    return true;
 }
 
 // Called after the morning announcement.
@@ -5226,6 +5259,7 @@ async function finishCaseDiscovery(caseFile, { walkedIn }) {
     const file = buildMonokumaFileBullet(found, { victimUltimate: victim?.ultimate || "" });
     // The file screen below stands in for the usual Truth Bullet pop-up.
     handleTruthBullet(file.title, file.description, { grantMonocoins: false, grantXp: false, animate: false });
+    pinBulletToRoom(getTruthBullets().find((tb) => tb.title === file.title), found.body.roomId);
     caseDebug("BODY FOUND", `${found.victim} in the ${found.body.roomLabel || "?"}${walkedIn ? " (walked in)" : ""}. ${file.title} added.`);
     await openMonokumaFileForCase(found);
 }
@@ -5342,6 +5376,109 @@ async function applyCaseEdit(next) {
     return caseFile;
 }
 
+// ── Examine mode (investigations) ─────────────────────────────────────────────
+// A magnifier over the room: spots to look at up close, some hiding the
+// case's anchor clues. Examining posts the player's action and has the next
+// reply narrate what they find.
+
+function canExamineHere() {
+    const caseFile = getCaseFile();
+    return getCurrentPhase() === "INVESTIGATION"
+        && Boolean(caseFile?.discovered)
+        && caseFile.status !== CASE_STATUS.CLOSED
+        && listCaseRooms().some((r) => r.id === getCurrentLocationId());
+}
+
+// Where the player dragged each spot, per room and spot name. Rooms are
+// shared by every save, so this is too.
+function getSpotPositions(roomId) {
+    const root = extension_settings[extensionName] ||= {};
+    root.examineSpotPositions ||= {};
+    return root.examineSpotPositions[roomId] || {};
+}
+
+async function loadExamineSpots() {
+    const roomId = getCurrentLocationId();
+    const roomLabel = getCurrentRoomLabel() || roomId;
+    let caseFile = getCaseFile();
+    if (!caseFile || !roomId) return { roomLabel, spots: [] };
+    let spots = caseFile.examine[roomId]?.spots;
+    if (!spots?.length) {
+        let raw = "";
+        try {
+            raw = await generateIsolated(buildHotspotPrompt({ caseFile, roomId, roomLabel }), { maxTokens: 1200, reasoning: { effort: "low", exclude: true } });
+        } catch (err) {
+            console.warn("[Dangan][Case] Examine spots generation failed; using plain spots:", err);
+        }
+        spots = parseHotspots(raw, { caseFile, roomId, isScene: caseFile.body.roomId === roomId });
+        caseFile = getCaseFile();
+        setCaseFile({ ...caseFile, examine: { ...caseFile.examine, [roomId]: { spots } } });
+        caseDebug("EXAMINE", `${spots.length} spots in ${roomLabel}: ${spots.map((sp) => sp.label).join(", ")}`);
+    }
+    return { roomLabel, spots: placeHotspots(spots, getSpotPositions(roomId)) };
+}
+
+function slashSafe(text) {
+    return String(text || "").replace(/\|/g, "/").replace(/\{\{/g, "{ {").trim();
+}
+
+// The player's look goes into the chat, and the next reply narrates it.
+async function sendExamineAction(actionText, pendingExamine) {
+    setCaseFile({ ...getCaseFile(), pendingExamine });
+    try {
+        await executeSlashCommandsWithOptions(`/send ${slashSafe(actionText)} | /trigger`, { handleParserErrors: true });
+    } catch (err) {
+        console.warn("[Dangan][Case] Examine action failed:", err);
+        setCaseFile({ ...getCaseFile(), pendingExamine: null });
+    }
+}
+
+async function examineSpot(spot) {
+    const roomId = getCurrentLocationId();
+    const caseFile = getCaseFile();
+    if (!caseFile || !roomId) return;
+    const room = caseFile.examine[roomId];
+    setCaseFile({
+        ...caseFile,
+        examine: room ? { ...caseFile.examine, [roomId]: { spots: room.spots.map((sp) => (sp.id === spot.id ? { ...sp, examined: true } : sp)) } } : caseFile.examine,
+        clues: spot.clueId ? caseFile.clues.map((c) => (c.id === spot.clueId ? { ...c, found: true } : c)) : caseFile.clues,
+    });
+    caseDebug("EXAMINE", `${spot.label}${spot.clueId ? " (hides a clue)" : ""}`);
+    await sendExamineAction(`*examines the ${spot.label.toLowerCase()} closely*`, { label: spot.label, clueId: spot.clueId || "", roomId, freeText: false });
+}
+
+async function examineFreeText(what) {
+    const roomId = getCurrentLocationId();
+    if (!getCaseFile() || !roomId) return;
+    caseDebug("EXAMINE", `Free look: ${what}`);
+    await sendExamineAction(`*examines ${what} closely*`, { label: what, clueId: "", roomId, freeText: true });
+}
+
+function moveExamineSpot(spot, x, y) {
+    const roomId = getCurrentLocationId();
+    if (!roomId) return;
+    const root = extension_settings[extensionName] ||= {};
+    root.examineSpotPositions ||= {};
+    root.examineSpotPositions[roomId] = { ...(root.examineSpotPositions[roomId] || {}), [spot.label.toLowerCase()]: { x, y } };
+    saveSettingsDebounced();
+}
+
+async function openExamineMode({ ask = false } = {}) {
+    if (!canExamineHere()) {
+        notify({ tone: "warn", title: "NOTHING TO EXAMINE", message: "Examine works during an investigation, in a room on this save's map." });
+        return false;
+    }
+    examineController ||= createExamineMode({
+        loadSpots: loadExamineSpots,
+        onExamine: examineSpot,
+        onFreeText: examineFreeText,
+        onMove: moveExamineSpot,
+        playSfx: () => playSfx(sfx.click),
+    });
+    await examineController.open({ ask });
+    return true;
+}
+
 // ── The Case File editor (spoilers, behind a gate kept per save) ──────────────
 
 // Fills in room labels from the map for what the editor saved by id.
@@ -5432,6 +5569,19 @@ function recordEmergentClue(bullet) {
     caseDebug("EMERGENT CLUE", bullet.title);
 }
 
+// During an investigation a new Truth Bullet is pinned on the map next to
+// the room it was found in (the delete / swipe rollback removes the pin).
+function pinBulletToRoom(bullet, roomLocationId = getCurrentLocationId()) {
+    if (!investigationUnderway || !bullet?.locationId || !roomLocationId) return;
+    try {
+        if (mapPanelController?.addEvidencePin?.({ label: bullet.title, locationId: bullet.locationId, roomLocationId })) {
+            caseDebug("PINNED", `${bullet.title} → ${roomLocationId}`);
+        }
+    } catch (err) {
+        console.warn("[Dangan][Case] Pinning a Truth Bullet failed:", err);
+    }
+}
+
 function forgetEmergentClue(bullet) {
     const caseFile = getCaseFile();
     if (!caseFile?.emergentClues?.length) return;
@@ -5475,6 +5625,8 @@ function onCaseReplyRendered() {
     if (!caseFile) return;
     if (caseFile.pendingNote && sent.text.includes("[JUST NOW]")) setCaseFile({ ...getCaseFile(), pendingNote: "" });
     if (sent.motive === "heard") setCaseFile({ ...getCaseFile(), motiveJustAnnounced: "" });
+    if (sent.examine) setCaseFile({ ...getCaseFile(), pendingExamine: null });
+    if (sent.motive === "speech") playMotiveMood();
     if (sent.motive === "speech") {
         setCaseFile({ ...getCaseFile(), pendingMotiveSpeech: false });
         caseDebug("MOTIVE", "Monokuma announced it in the chat.");
@@ -5545,6 +5697,9 @@ async function runPhaseAction(action) {
         case "motive":
             await announceMotive({ source: "phase_hud" });
             break;
+        case "cancel-motive":
+            await cancelMotive();
+            break;
         case "undo":
             undoLastPhaseChange();
             break;
@@ -5563,6 +5718,9 @@ function ensurePhaseHud() {
             <span class="dangan-phase-chip-dot" aria-hidden="true"></span>
             <span class="dangan-phase-chip-label"></span>
         </button>
+        <button type="button" class="dangan-phase-chip dangan-examine-chip" hidden title="Look closely at things in this room">
+            <span class="dangan-phase-chip-label">🔍 EXAMINE</span>
+        </button>
         <div class="dangan-phase-menu" id="dangan-phase-menu" hidden>
             <div class="dangan-phase-hint"></div>
             <div class="dangan-phase-actions"></div>
@@ -5570,6 +5728,11 @@ function ensurePhaseHud() {
     `;
     document.body.appendChild(hud);
 
+    hud.querySelector(".dangan-examine-chip").addEventListener("click", (event) => {
+        event.stopPropagation();
+        playSfx(sfx.click);
+        void openExamineMode();
+    });
     hud.querySelector(".dangan-phase-chip").addEventListener("click", (event) => {
         event.stopPropagation();
         setPhaseMenuOpen(hud.querySelector(".dangan-phase-menu").hidden);
@@ -5609,7 +5772,7 @@ function renderPhaseMenu() {
     });
 
     const last = phaseHistory.peek();
-    const actions = getPhaseActions({ phase, timeTracker, canUndo: Boolean(last), undoLabel: last?.label, caseOpen });
+    const actions = getPhaseActions({ phase, timeTracker, canUndo: Boolean(last), undoLabel: last?.label, caseOpen, caseCancellable: caseFile?.status === CASE_STATUS.PLANNED });
     const list = hud.querySelector(".dangan-phase-actions");
     list.replaceChildren(...actions.map((action) => {
         const btn = document.createElement("button");
@@ -5638,6 +5801,7 @@ function refreshPhaseHud() {
         ? getStatusLine({ phase: getCurrentPhase(), day: ensureTimeTrackerState().day })
         : getCurrentStatusLine();
     if (!hud.querySelector(".dangan-phase-menu").hidden) renderPhaseMenu();
+    hud.querySelector(".dangan-examine-chip").hidden = !canExamineHere();
     // The EXPRESSIONS tab hangs under this row.
     expressionPickerController?.place?.();
 }
@@ -8274,6 +8438,7 @@ function processAllMessages() {
                 const bullet = getTruthBullets().find((tb) => tb.title === title);
                 if (bullet) fx.truth.push({ id: bullet.id, title, sig: signature });
                 if (bullet) recordEmergentClue(bullet);
+                if (bullet) pinBulletToRoom(bullet);
             }
         }
 
@@ -17528,6 +17693,10 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
                 await applyCaseEdit({ ...caseFile, monokumaFile: { ...caseFile.monokumaFile, [field]: value } });
                 return '';
             }
+            case 'cancel': {
+                await cancelMotive();
+                return '';
+            }
             case 'clear': {
                 const victim = caseFile ? findRosterCharacter(caseFile.victim) : null;
                 if (victim?.missing && caseFile?.status === CASE_STATUS.COMMITTED && !caseFile.discovered) {
@@ -17539,12 +17708,12 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
                 return '';
             }
             default:
-                notify({ tone: 'warn', title: '/case', message: 'Use status, prompt [name], lastraw, commit, discover, file or clear.' });
+                notify({ tone: 'warn', title: '/case', message: 'Use status, prompt [name], lastraw, cancel, commit, discover, file or clear.' });
                 return '';
         }
     },
-    helpString: 'Debug tools for the hidden Case File (spoilers!). <code>/case status</code> shows the plan, <code>/case prompt [name]</code> shows what the AI would be told for the next reply (as that speaker), <code>/case lastraw</code> shows the last plan the AI sent back (for when a motive fails), <code>/case commit</code> runs the murder now, <code>/case discover</code> finds the body now, <code>/case file timeOfDeath|cause|injuries &lt;text&gt;</code> updates the Monokuma File, <code>/case clear</code> drops the case.',
-    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'status | prompt [name] | lastraw | commit | discover | file <field> <text> | clear', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
+    helpString: 'Debug tools for the hidden Case File (spoilers!). <code>/case status</code> shows the plan, <code>/case prompt [name]</code> shows what the AI would be told for the next reply (as that speaker), <code>/case lastraw</code> shows the last plan the AI sent back (for when a motive fails), <code>/case cancel</code> takes the motive back (before the murder), <code>/case commit</code> runs the murder now, <code>/case discover</code> finds the body now, <code>/case file timeOfDeath|cause|injuries &lt;text&gt;</code> updates the Monokuma File, <code>/case clear</code> drops the case.',
+    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'status | prompt [name] | lastraw | cancel | commit | discover | file <field> <text> | clear', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
@@ -17566,6 +17735,25 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     },
     helpString: 'Debugging: <code>/dgwatch on</code> logs (with call stacks) anything that clears, reloads or switches the chat while a reply is being generated. <code>/dgwatch off</code> stops it.',
     unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'on | off', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'examine',
+    callback: async (_args, value) => {
+        const what = String(value || '').trim();
+        if (!what) {
+            await openExamineMode();
+            return '';
+        }
+        if (!canExamineHere()) {
+            notify({ tone: 'warn', title: 'NOTHING TO EXAMINE', message: 'Examine works during an investigation, in a room on this save\'s map.' });
+            return '';
+        }
+        await examineFreeText(what);
+        return '';
+    },
+    helpString: 'During an investigation: <code>/examine</code> opens examine mode for this room; <code>/examine the window latch</code> looks at something specific.',
+    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'what to examine (optional)', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
@@ -17758,7 +17946,11 @@ function setCurrentLocationId(locationId) {
     }
     updateCurrentRoomDisplay();
     try { syncRoomContextPrompt(); } catch (e) { console.warn("[Dangan][RoomContext] location sync failed:", e); }
-    if (prev !== root.map.currentLocationId) maybeDiscoverBodyOnEntry(root.map.currentLocationId);
+    if (prev !== root.map.currentLocationId) {
+        maybeDiscoverBodyOnEntry(root.map.currentLocationId);
+        examineController?.close?.();
+        try { refreshPhaseHud(); } catch { /* ignore */ }
+    }
 }
 
 // Slim transparent slab under the level bar that displays the player's current
@@ -17956,6 +18148,12 @@ function getExploreMenuActions() {
     ];
     if (halfOn) {
         items.push({ id: 'half-sprite-adjust', label: 'Adjust Half-Sprites', onSelect: () => openHalfSpriteAdjustPanel() });
+    }
+    if (canExamineHere()) {
+        items.unshift(
+            { id: 'examine', label: 'Examine', onSelect: () => { void openExamineMode(); } },
+            { id: 'examine-ask', label: 'Examine…', onSelect: () => { void openExamineMode({ ask: true }); } },
+        );
     }
     if (playerRoomId) {
         const isFlat = !!overworldSceneController?.isRoomFlat?.(playerRoomId);
