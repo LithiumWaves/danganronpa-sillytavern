@@ -23,7 +23,7 @@ function same(a, b) {
 // `opponent` is Argument Armament's accused.
 export function buildTrialTruthBlock(caseFile, { purpose = "", opponent = "" } = {}) {
     const cf = caseFile;
-    if (!cf || !cf.discovered || cf.status === CASE_STATUS.CLOSED) return "";
+    if (!cf || !cf.discovered || cf.status === CASE_STATUS.CLOSED || cf.status === CASE_STATUS.AVERTED) return "";
     const lines = [
         "CASE TRUTH (hidden from the players: use it so the round is accurate, never reveal it outright)",
         `Victim: ${cf.victim}. Killer: ${cf.killer}. The blackened (the vote's answer): ${caseBlackened(cf)}.`,
@@ -62,5 +62,5 @@ export function buildTrialTruthBlock(caseFile, { purpose = "", opponent = "" } =
 
 // Who really did it, for the vote; "" when there's no found case.
 export function getCaseBlackened(caseFile) {
-    return caseFile?.discovered && caseFile.status !== CASE_STATUS.CLOSED ? caseBlackened(caseFile) : "";
+    return caseFile?.discovered && caseFile.status !== CASE_STATUS.CLOSED && caseFile.status !== CASE_STATUS.AVERTED ? caseBlackened(caseFile) : "";
 }

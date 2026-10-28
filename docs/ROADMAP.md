@@ -2,7 +2,8 @@
 
 ## Context
 The user approved a roadmap (A–L) to close the gap with DR1, DR2 and V3. A (case twists),
-B (the three-witness rule) and C (daily examine) are built and pushed to `title-screen`.
+B (the three-witness rule), C (daily examine) and D (motive kinds and foiled murders) are
+built and pushed to `title-screen`.
 This file keeps the full detail of the rest, so it survives a `/clear`.
 
 
@@ -37,7 +38,15 @@ This file keeps the full detail of the rest, so it survives a `/clear`.
 
 ---
 
-## Phase D: Motives as objects, conditions and foiled murders (#3)
+## Phase D: Motives as objects, conditions and foiled murders (#3) — built
+Built as planned, with these differences: the motive stays inside `caseFile.motive`; the
+player's motive item isn't stored in the inventory but shown in Key Items through
+`getExtraKeyItems` while the case is open; the planner's motive kind comes from
+Settings > Gameplay > Motive kinds; `/case kind <kind>` replans with a new motive. Helpers:
+`nextMurderSlot`, `shouldFoil`, `foilAttempt`, `isDeadlinePassed`, `avertCase`,
+`getMotiveItem`, `isAfflicted`, `isCaseOver` (`core/case/caseFile.js`); index.js
+`foilCaseAttempt`, `handleMotiveDeadline`, `deliverMotiveItem`.
+
 **Motive kind**:
 - `motive.kind` is `announcement | object | condition`. `motive.penalty` is what Monokuma
   does if the deadline passes with no murder.

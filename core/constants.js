@@ -1,6 +1,7 @@
 import { DEFAULT_EXAMINE_NARRATION_TEMPLATE } from "./case/examine.js";
 import { DEFAULT_DAILY_NARRATION_TEMPLATE } from "./case/dailyExamine.js";
 import { DEFAULT_RULES_PROMPT_TEMPLATE } from "./rules/schoolRules.js";
+import { DEFAULT_PENALTY_NOTE_TEMPLATE, DEFAULT_RELENT_NOTE_TEMPLATE } from "./case/casePrompts.js";
 export const extensionName = "danganronpa-extension";
 
 function normalizeWebExtensionPath(pathname = "") {
@@ -253,6 +254,9 @@ export const defaultSettings = {
     // How often a murder plan is a twist (core/case/caseFile.js CASE_SHAPES):
     // "off", "sometimes" or "often".
     caseTwists: "sometimes",
+    // What kind of motives Monokuma hands out: "announcement" only, or
+    // "mixed" (announcements, personal items and conditions).
+    motiveKinds: "mixed",
     // The last case's shape, so the same twist doesn't come twice in a row.
     caseHistory: null,
     // The body discovery announcement waits until three people besides the
@@ -379,6 +383,10 @@ Don't use it at any other time.`,
     examineDailyNarration: DEFAULT_DAILY_NARRATION_TEMPLATE,
     // The School Regulations ({{rules}} is the numbered list).
     schoolRules: DEFAULT_RULES_PROMPT_TEMPLATE,
+    // What everyone is told once when a motive's deadline passes with no
+    // murder (core/case/casePrompts.js): the penalty, or Monokuma relenting.
+    motivePenalty: DEFAULT_PENALTY_NOTE_TEMPLATE,
+    motiveRelent: DEFAULT_RELENT_NOTE_TEMPLATE,
     markerAnnouncements: `[ANNOUNCEMENT MARKERS]
 When Monokuma makes an announcement in the story, add the matching marker on its own line:
 V3C| DAY_ANNOUN for the morning announcement

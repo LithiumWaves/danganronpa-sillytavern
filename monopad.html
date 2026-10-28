@@ -1426,6 +1426,17 @@
 
                     <div class="settings-item">
                         <div class="settings-text">
+                            <label class="settings-label" for="dangan_motive_kinds">Motive kinds</label>
+                            <div class="settings-note">Mixed: besides announcements, Monokuma sometimes hands everyone a personal item with hidden contents (DVDs, secrets, motive videos; yours goes in Key Items), or afflicts a few students with a condition until the case closes. Every motive has a penalty if nobody kills by the deadline, and a murder can be foiled by staying with the killer or the victim.</div>
+                        </div>
+                        <select id="dangan_motive_kinds" class="settings-select">
+                            <option value="announcement">Announcements only</option>
+                            <option value="mixed">Mixed</option>
+                        </select>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
                             <span class="settings-label">Examine during daily life</span>
                             <div class="settings-note">The overworld's EXAMINE works outside investigations too: look around any room for what you notice, Monocoins tucked into a few spots, and one hidden Monokuma per floor. Fresh each chapter. Never evidence.</div>
                         </div>
@@ -1564,6 +1575,16 @@
                                 <textarea class="settings-prompt-textarea" data-setting="markerAnnouncementsPromptTemplate" data-template-key="markerAnnouncements" rows="6" spellcheck="false"></textarea>
                                 <div class="settings-prompt-actions">
                                     <button type="button" class="settings-small-button settings-prompt-reset" data-setting="markerAnnouncementsPromptTemplate" data-template-key="markerAnnouncements">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">MONOKUMA'S PENALTY (sent once when a motive's deadline passes with no murder). Placeholders: <code>{{title}}</code> (the motive), <code>{{penalty}}</code></div>
+                                <textarea class="settings-prompt-textarea" data-setting="motivePenaltyPromptTemplate" data-template-key="motivePenalty" rows="4" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="motivePenaltyPromptTemplate" data-template-key="motivePenalty">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">MONOKUMA RELENTS (sent once when you have him call off a time limit). Placeholders: <code>{{title}}</code></div>
+                                <textarea class="settings-prompt-textarea" data-setting="motiveRelentPromptTemplate" data-template-key="motiveRelent" rows="3" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="motiveRelentPromptTemplate" data-template-key="motiveRelent">RESET TO DEFAULT</button>
                                 </div>
                             </div>
                         </details>

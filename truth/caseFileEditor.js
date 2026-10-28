@@ -3,7 +3,7 @@
 // remembered per save. index.js supplies the data and does the saving.
 
 import { pushSkippable } from "../core/skip/skipRegistry.js";
-import { CASE_SHAPES } from "../core/case/caseFile.js";
+import { CASE_SHAPES, MOTIVE_KINDS } from "../core/case/caseFile.js";
 
 const STYLE_ID = "dangan-cfe-style";
 const ROOT_ID = "dangan-cfe";
@@ -104,6 +104,7 @@ function options(list, selected, { blank = "" } = {}) {
 function statusLine(cf) {
     if (!cf) return "NO CASE";
     if (cf.status === "closed") return "CLOSED";
+    if (cf.status === "averted") return "AVERTED · NOBODY KILLED BY THE DEADLINE";
     if (cf.discovered) return "BODY FOUND · INVESTIGATION";
     if (cf.status === "committed") return `MURDER DONE (${cf.committedAt?.time || "?"} OF DAY ${cf.committedAt?.day || "?"}) · BODY NOT FOUND`;
     return `PLANNED · MURDER ON THE ${cf.murderTime.toUpperCase()} OF DAY ${cf.murderDay}`;
@@ -242,6 +243,13 @@ export function openCaseFileEditor(api) {
             <label>Deadline (night of day)<input type="number" min="1" data-k="motive.deadlineDay" value="${cf.motive.deadlineDay}"></label>
             <label class="cfe-wide">Description<textarea data-k="motive.description" rows="2">${esc(cf.motive.description)}</textarea></label>
             <label class="cfe-wide">Monokuma's announcement<textarea data-k="motive.announcement" rows="2">${esc(cf.motive.announcement)}</textarea></label>
+            <label>Kind<select data-k="motive.kind">${options(Object.entries(MOTIVE_KINDS).map(([value, k]) => ({ value, label: k.label })), cf.motive.kind || "announcement", { blank: null })}</select></label>
+            <label class="cfe-check"><input type="checkbox" data-motive-timelimit${cf.motive.timeLimit ? " checked" : ""}> Time limit (everyone dies if nobody kills)</label>
+            <label class="cfe-wide">Penalty if nobody kills by the deadline<textarea data-k="motive.penalty" rows="2">${esc(cf.motive.penalty)}</textarea></label>
+            <label class="cfe-wide" data-motive-kinds="object">Personal items (one per line: Owner | Item | What it shows | evidence)<textarea data-motive-items rows="4">${esc(Object.entries(cf.motive.items || {}).map(([owner, it]) => [owner, it.title, it.contents, it.evidence ? "evidence" : ""].filter(Boolean).join(" | ")).join("\n"))}</textarea></label>
+            <div class="cfe-wide" data-motive-kinds="condition"><label>Afflicted</label><div class="cfe-chips">${cast.map((c) => `<label class="cfe-check"><input type="checkbox" data-afflicted value="${esc(c.value)}"${(cf.motive.afflicted || []).includes(c.value) ? " checked" : ""}> ${esc(c.value)}</label>`).join("")}</div></div>
+            <label class="cfe-wide" data-motive-kinds="condition">What the condition does<textarea data-k="motive.effect" rows="2">${esc(cf.motive.effect)}</textarea></label>
+            ${cf.attempts ? `<p class="cfe-note cfe-wide" style="margin:0">Foiled attempts so far: ${cf.attempts}.</p>` : ""}
         </div></fieldset>
 
         <fieldset><legend>THE MURDER</legend><div class="cfe-grid">
@@ -327,6 +335,10 @@ export function openCaseFileEditor(api) {
         const syncStyle = () => body.querySelectorAll(".cfe-public-only").forEach((el) => { el.hidden = styleSelect.value !== "public"; });
         styleSelect.addEventListener("change", syncStyle);
         syncStyle();
+        const kindSelect = body.querySelector('[data-k="motive.kind"]');
+        const syncKind = () => body.querySelectorAll("[data-motive-kinds]").forEach((el) => { el.hidden = el.dataset.motiveKinds !== kindSelect.value; });
+        kindSelect.addEventListener("change", syncKind);
+        syncKind();
         // Each twist shows only the fields it uses.
         const shapeSelect = body.querySelector('[data-k="shape"]');
         const killerSelect = body.querySelector('[data-k="killer"]');
@@ -415,6 +427,13 @@ export function openCaseFileEditor(api) {
         if (next.murderStyle !== "public") next.gathering = null;
         if (next.shape === "suicide") next.killer = next.victim;
         next.accomplices = [...body.querySelectorAll("[data-accomplice]:checked")].map((el) => el.value);
+        next.motive.timeLimit = Boolean(body.querySelector("[data-motive-timelimit]")?.checked);
+        next.motive.afflicted = [...body.querySelectorAll("[data-afflicted]:checked")].map((el) => el.value);
+        next.motive.items = {};
+        for (const line of (body.querySelector("[data-motive-items]")?.value || "").split("\n")) {
+            const [owner, title, contents, flag] = line.split("|").map((p) => p.trim());
+            if (owner && contents) next.motive.items[owner] = { title: title || "Motive", contents, evidence: /^evidence$/i.test(flag || "") };
+        }
         const rows = (kind) => [...body.querySelectorAll(`[data-row="${kind}"]`)];
         const field = (row, f) => row.querySelector(`[data-f="${f}"]`);
         const foundIds = new Set(draft.clues.filter((c) => c.found).map((c) => c.id));

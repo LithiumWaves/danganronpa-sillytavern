@@ -668,7 +668,7 @@ const DEFAULT_SKILLS = [
 // they cannot be deleted and don't show the "CUSTOM" tag. Identified by id prefix.
 const isBaseSkill = (id) => typeof id === "string" && id.startsWith("custom_skill_def_");
 
-export function createItemsPanelController({ extensionName, extension_settings, saveSettingsDebounced, playSfx, getSfx, onGiftUseRequest }) {
+export function createItemsPanelController({ extensionName, extension_settings, saveSettingsDebounced, playSfx, getSfx, onGiftUseRequest, getExtraKeyItems = () => [] }) {
     let activeItemsFilter = "all";
     let activeItemsSort = "recent";
     let selectedItemId = null;
@@ -818,6 +818,23 @@ export function createItemsPanelController({ extensionName, extension_settings, 
             catalogIndex: -1,
             custom: true,
         }));
+
+        // Key items the story hands out (a motive's personal item): shown
+        // while they last, never removable or stored in the inventory.
+        const escapeText = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        let extraKeyItems = [];
+        try { extraKeyItems = (getExtraKeyItems() || []).filter((it) => it?.id && it?.name); } catch { /* none */ }
+        customKeyItems.push(...extraKeyItems.map((it) => ({
+            id: it.id,
+            name: escapeText(it.name),
+            description: escapeText(it.description),
+            category: "key",
+            rarity: "KEY",
+            effect: "",
+            quantity: 1,
+            catalogIndex: -1,
+            readonly: true,
+        })));
 
         const customGifts = Object.entries(inv.customGifts || {})
             .map(([id, data]) => ({
@@ -1260,7 +1277,9 @@ export function createItemsPanelController({ extensionName, extension_settings, 
             <div class="items-detail-actions">
                 ${isSkill
                     ? `<div class="items-detail-actions-row"><button class="items-detail-action" data-action="equip-skill" ${equipped || canEquip ? '' : 'disabled'}>${equipped ? 'UNEQUIP' : 'EQUIP'}</button><button class="items-detail-action discard" data-action="forget-skill">FORGET</button></div>`
-                    : isCustomKey
+                    : item.readonly
+                        ? ""
+                        : isCustomKey
                         ? `<div class="items-detail-actions-row"><button class="items-detail-action discard" data-action="remove-key-item">REMOVE</button></div>`
                         : `<div class="items-detail-actions-row"><button class="items-detail-action" data-action="use-item" ${showDiscardGift ? '' : 'disabled'}>USE</button><button class="items-detail-action" disabled>INSPECT</button></div>`}
                 ${showDiscardGift ? `<div class="items-detail-actions-row"><button class="items-detail-action discard" data-action="discard-gift">DISCARD GIFT</button><button class="items-detail-action discard" data-action="discard-rarity">MASS DISCARD ${item.rarity}</button></div>` : ""}

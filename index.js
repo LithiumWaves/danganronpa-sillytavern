@@ -41,7 +41,7 @@ import { createPhaseHistory, derivePhase, getNextStepHint, getPhaseActions, getS
 import { notify } from "./core/ui/notify.js";
 import { SAVE_MODES, createSaveStore } from "./core/saves/saveStore.js";
 import { pinInScope } from "./map/mapStorage.js";
-import { CASE_STATUS, DEFAULT_MOTIVE_DEADLINE_DAYS, SHAPE_IDS, BODY_WITNESSES_NEEDED, addEmergentClue, buildBodyAnnouncementBullet, caseBlackened, countedWitnesses, countsAsWitness, editMotive, getBodySeenBy, getCaseBody, getSecondVictim, isBodyAnnounced, isBodyFound, noteBodySeen, pickCaseShape, beatWordOverlap, markWitnessTold, extractJsonObject, buildCaseGenerationPrompt, createBlankCaseFile, describeCaseFile, isGatheringNow, monokumaFileChanged, recordBeatAttempt, reviseMonokumaFile, validateCaseFile, buildMonokumaFileBullet, commitMurder, getMonokumaFileTitle, getMotiveAnnouncementText, getTimeSlot, isCaseOpen, isMurderSlotOver, markDiscovered, normalizeCaseFile, parseCaseFileResponse, removeEmergentClue, shouldAutoAnnounceMotive } from "./core/case/caseFile.js";
+import { CASE_STATUS, DEFAULT_MOTIVE_DEADLINE_DAYS, SHAPE_IDS, BODY_WITNESSES_NEEDED, addEmergentClue, buildBodyAnnouncementBullet, caseBlackened, countedWitnesses, countsAsWitness, editMotive, getBodySeenBy, getCaseBody, getSecondVictim, isBodyAnnounced, isBodyFound, noteBodySeen, pickCaseShape, beatWordOverlap, markWitnessTold, extractJsonObject, buildCaseGenerationPrompt, createBlankCaseFile, describeCaseFile, isGatheringNow, monokumaFileChanged, recordBeatAttempt, reviseMonokumaFile, validateCaseFile, buildMonokumaFileBullet, commitMurder, getMonokumaFileTitle, getMotiveAnnouncementText, getTimeSlot, isCaseOpen, isMurderSlotOver, markDiscovered, normalizeCaseFile, parseCaseFileResponse, removeEmergentClue, shouldAutoAnnounceMotive, avertCase, foilAttempt, getMotiveItem, MOTIVE_KIND_IDS, isCaseOver, isDeadlinePassed, pickMotiveKind, shouldFoil } from "./core/case/caseFile.js";
 import { CASE_PROMPT_KEY, buildCasePrompt } from "./core/case/casePrompts.js";
 import { openMonokumaFile } from "./truth/monokumaFile.js";
 import { openCaseFileEditor } from "./truth/caseFileEditor.js";
@@ -589,6 +589,7 @@ async function passTimeToNight({ source = "manual" } = {}) {
     playNighttimeTrack();
     applyDynamicTheme();
     if (murdered) await discoverBodyIfWitnessed();
+    if (motiveDeadlineDue) await handleMotiveDeadline();
     console.log(`[${extensionName}] Time advanced to NIGHT (source: ${source}).`);
     return true;
 }
@@ -619,7 +620,10 @@ async function sleepToNextDay({ source = "manual" } = {}) {
     audioVisualizer?.unsuppress?.();
     console.log(`[${extensionName}] Time advanced to DAY ${state.day} (source: ${source}).`);
     if (murdered) await discoverBodyIfWitnessed();
-    await maybeAutoAnnounceMotive();
+    // A morning that brings Monokuma's penalty doesn't also bring a new
+    // motive; that waits for the next one.
+    if (motiveDeadlineDue) await handleMotiveDeadline();
+    else await maybeAutoAnnounceMotive();
     return true;
 }
 
@@ -4922,7 +4926,7 @@ function onChapterChangedForCase(chapterIndex) {
     const root = extension_settings[extensionName] ||= {};
     root.motiveSchedule = { chapterIndex, startDay: ensureTimeTrackerState().day };
     const caseFile = getCaseFile();
-    if (caseFile && caseFile.chapterIndex < chapterIndex && caseFile.status !== CASE_STATUS.CLOSED) {
+    if (caseFile && caseFile.chapterIndex < chapterIndex && !isCaseOver(caseFile)) {
         setCaseFile({ ...caseFile, status: CASE_STATUS.CLOSED });
     }
 }
@@ -4967,7 +4971,7 @@ function rememberCaseShape(shape) {
     saveSettingsDebounced();
 }
 
-async function generateCaseFile({ deadlineDays, shape = pickNextCaseShape() }) {
+async function generateCaseFile({ deadlineDays, shape = pickNextCaseShape(), motiveKind = pickMotiveKind({ setting: getMonopadSetting("motiveKinds") || "mixed" }) }) {
     const cast = listCaseCast();
     if (cast.length < 2) throw new Error("At least two living classmates are needed for a motive.");
     const rooms = listCaseRooms();
@@ -4987,8 +4991,9 @@ async function generateCaseFile({ deadlineDays, shape = pickNextCaseShape() }) {
         routines: describeRoutinesForCase(cast),
         rules: formatRulesList(getSchoolRules()),
         shape,
+        motiveKind,
     });
-    const parseOpts = { cast, player, rooms, day, chapterIndex, deadlineDays, shape };
+    const parseOpts = { cast, player, rooms, day, chapterIndex, deadlineDays, shape, motiveKind };
     const source = getConfiguredGenerationSource("generationProvider") || "main";
 
     let lastError = "";
@@ -5106,6 +5111,7 @@ async function announceCaseMotive(caseFile) {
     }
     playMotiveMood();
     void showMotiveDespair();
+    await deliverMotiveItem(getCaseFile() || caseFile);
 
     notify({
         title: `MOTIVE: ${caseFile.motive.title.toUpperCase()}`,
@@ -5114,6 +5120,26 @@ async function announceCaseMotive(caseFile) {
         onAction: () => { void cancelMotive(); },
         durationMs: 12000,
     });
+}
+
+// An object motive: the player's own item is handed over (a VN aside, or a
+// toast without the VN box) and shows in Key Items.
+async function deliverMotiveItem(caseFile) {
+    const item = getMotiveItem(caseFile, getCasePlayerName());
+    if (!item) return;
+    itemsPanelController?.renderSkillsItemsPanel?.();
+    const text = `A package addressed to you: ${item.title}. You can look at it in your Key Items.`;
+    const shown = vnModeController?.showAside?.({ name: "", text });
+    if (shown) await shown;
+    else notify({ title: "KEY ITEM", message: text, durationMs: 8000 });
+}
+
+// The player's motive item, for Key Items, while the case is open.
+function getMotiveKeyItems() {
+    const caseFile = getCaseFile();
+    if (!isCaseOpen(caseFile)) return [];
+    const item = getMotiveItem(caseFile, getCasePlayerName());
+    return item ? [{ id: "motive_item", name: item.title, description: item.contents }] : [];
 }
 
 // The motive, without spoilers: its title, what it offers and the deadline.
@@ -5127,11 +5153,13 @@ function openMotiveEditorFromAnywhere() {
     const today = ensureTimeTrackerState().day;
     openMotiveEditor({
         getMotive: () => getCaseFile()?.motive || caseFile.motive,
+        getPlayerItem: () => getMotiveItem(getCaseFile() || caseFile, getCasePlayerName()),
         today,
         save: async (values) => {
             const current = getCaseFile();
             if (!current || current.status !== CASE_STATUS.PLANNED) return "The murder has already happened; the motive can't change now.";
-            const next = editMotive(current, values, { today: ensureTimeTrackerState().day });
+            const next = editMotive(current, values, { today: ensureTimeTrackerState().day, player: getCasePlayerName() });
+            itemsPanelController?.renderSkillsItemsPanel?.();
             setCaseFile(next);
             const moved = next.motive.deadlineDay !== current.motive.deadlineDay;
             notify({
@@ -5316,11 +5344,66 @@ function restoreCaseUndo(extra) {
 
 // Called as the clock leaves `from` ("day" on Pass Time, "night" on Sleep),
 // after the phase change was remembered for Undo.
+// The killer or the victim being with the player (following them, or in
+// their room) foils the attempt: it moves to the next slot, or, with none
+// left before the deadline, the deadline flow runs once the clock has moved.
 function maybeCommitMurder(from) {
+    motiveDeadlineDue = false;
     const caseFile = getCaseFile();
     const day = ensureTimeTrackerState().day;
-    if (!isMurderSlotOver(caseFile, { day, from })) return false;
+    if (!isMurderSlotOver(caseFile, { day, from })) {
+        motiveDeadlineDue = isDeadlinePassed(caseFile, { day, from });
+        return false;
+    }
+    if (shouldFoil(caseFile, { followers: overworldSceneController?.getFollowerNames?.() || [], playerRoomNames: namesInRoom(getCurrentLocationId()) })) {
+        foilCaseAttempt({ day, from });
+        return false;
+    }
     commitCaseMurder({ day, time: from });
+    return true;
+}
+
+// Set by maybeCommitMurder when the clock is leaving the deadline with no
+// murder; handled after the announcements.
+let motiveDeadlineDue = false;
+
+function foilCaseAttempt({ day, from } = {}) {
+    const caseFile = getCaseFile();
+    if (!caseFile || caseFile.status !== CASE_STATUS.PLANNED) return false;
+    const { moved, cf } = foilAttempt(caseFile);
+    setCaseFile(cf);
+    const left = moved && !isDeadlinePassed(cf, { day: day ?? ensureTimeTrackerState().day, from: from || "day" });
+    if (!left) motiveDeadlineDue = true;
+    caseDebug("FOILED", `${caseFile.killer}'s attempt on ${caseFile.victim} failed (attempt ${cf.attempts}). ${left ? `Next try: the ${cf.murderTime} of Day ${cf.murderDay}.` : "No time is left before the deadline."}`);
+    return true;
+}
+
+// Nobody killed by the deadline: Monokuma's penalty over the monitors, and
+// the case is over (averted), so a new motive can come. A V3-style time limit
+// ("everyone dies") asks the player first; there are no mass deaths without
+// consent, and nobody is marked dead by this.
+async function handleMotiveDeadline() {
+    motiveDeadlineDue = false;
+    const caseFile = getCaseFile();
+    if (!caseFile || caseFile.status !== CASE_STATUS.PLANNED) return false;
+    const m = caseFile.motive;
+    let relented = false;
+    if (m.timeLimit) {
+        relented = !(await confirmOutsideMonopad({
+            title: "MONOKUMA'S TIME LIMIT",
+            message: `Nobody killed before the deadline of "${m.title}". The time limit: ${m.penalty || "everyone is punished."}\n\nPlay it out as written (the roleplay narrates it), or have Monokuma relent and bring a new motive?`,
+            confirmLabel: "PLAY IT OUT",
+            cancelLabel: "MONOKUMA RELENTS",
+        }));
+    }
+    const text = relented
+        ? "Ugh, you're all so boring! Fine, fine, I'll let it slide... this time. But don't think I won't come up with something even better!"
+        : (m.penalty || "Nobody did anything? How boring! Time for a penalty!");
+    setCaseFile(avertCase(caseFile, { relented }));
+    await monokumaAnnouncementController?.triggerAsync("MOTIVE", { text, label: relented ? "MONOKUMA RELENTS" : "MONOKUMA'S PENALTY" });
+    itemsPanelController?.renderSkillsItemsPanel?.();
+    playCurrentPhaseTrack();
+    caseDebug("DEADLINE", `${m.title}: nobody killed in time${relented ? "; Monokuma relented" : "; the penalty"}. The case is averted.`);
     return true;
 }
 
@@ -5574,6 +5657,18 @@ BODY: ${b.body.roomLabel}. ${b.body.state}`, { maxTokens: 1500, reasoning: { eff
     return next;
 }
 
+// An object motive's item the planner made evidence becomes a Truth Bullet
+// once the body is found ("Leon's DVD was in the trash").
+function addMotiveEvidenceBullet(caseFile) {
+    if (caseFile?.motive?.kind !== "object") return;
+    const entry = Object.entries(caseFile.motive.items).find(([, it]) => it.evidence);
+    if (!entry) return;
+    const [owner, item] = entry;
+    if (getTruthBullets().some((tb) => tb.title === item.title)) return;
+    handleTruthBullet(item.title, `${owner}'s motive item from Monokuma. ${item.contents}`, { grantMonocoins: false, grantXp: false });
+    caseDebug("MOTIVE EVIDENCE", `${item.title} is now a Truth Bullet.`);
+}
+
 async function finishCaseDiscovery(caseFile, { walkedIn, index = 0 }) {
     const victim = findRosterCharacter(getCaseBody(caseFile, index).victim);
     if (victim) {
@@ -5589,6 +5684,7 @@ async function finishCaseDiscovery(caseFile, { walkedIn, index = 0 }) {
     handleTruthBullet(file.title, file.description, { grantMonocoins: false, grantXp: false, animate: false });
     pinBulletToRoom(getTruthBullets().find((tb) => tb.title === file.title), body.body.roomId);
     caseDebug("BODY FOUND", `${body.victim} in the ${body.body.roomLabel || "?"}${walkedIn ? " (walked in)" : ""}. ${file.title} added.`);
+    if (index === 0) addMotiveEvidenceBullet(found);
     await openMonokumaFileForCase(found, index);
 }
 
@@ -6180,6 +6276,8 @@ function buildCurrentCasePrompt({ speakerName = getCaseSpeakerName() } = {}) {
         presentNames,
         truthBulletTitles: getTruthBullets().map((tb) => tb.title),
         victimUltimate: victim?.ultimate || "",
+        penaltyTemplate: getMonopadSetting("motivePenaltyPromptTemplate") || "",
+        relentTemplate: getMonopadSetting("motiveRelentPromptTemplate") || "",
     });
 }
 
@@ -6192,6 +6290,7 @@ function syncCasePrompt() {
     if (result.text.includes("[THE GATHERING]")) caseDebug("GATHERING", "The public murder's scene note was sent.");
     if (result.beatId) caseDebug("BEAT SENT", getCaseFile()?.foreshadowing.find((b) => b.id === result.beatId)?.text || result.beatId);
     if (result.killerNote) caseDebug("KILLER NOTE", `Sent to ${getCaseSpeakerName()}.`);
+    if (result.penalty) caseDebug("PENALTY NOTE", "Monokuma's penalty note was sent.");
 }
 
 // A reply went out with the case prompt: a beat it carried counts as used,
@@ -6211,6 +6310,8 @@ function onCaseReplyRendered() {
     if (caseFile.pendingNote && sent.text.includes("[JUST NOW]")) setCaseFile({ ...getCaseFile(), pendingNote: "" });
     if (sent.motive === "heard") setCaseFile({ ...getCaseFile(), motiveJustAnnounced: "" });
     if (sent.reaction) setCaseFile({ ...getCaseFile(), pendingReaction: null });
+    if (sent.foiled) setCaseFile({ ...getCaseFile(), foiledNote: false });
+    if (sent.penalty) setCaseFile({ ...getCaseFile(), penaltyNote: false });
     if (sent.motive === "speech") playMotiveMood();
     if (sent.motive === "speech") {
         setCaseFile({ ...getCaseFile(), pendingMotiveSpeech: false });
@@ -7166,7 +7267,7 @@ function caseTruthFor(purpose, opts = {}) {
 // The vote is cast: the case is over, and remembers how it went.
 function closeCaseAfterVote(guess) {
     const caseFile = getCaseFile();
-    if (!caseFile || caseFile.status === CASE_STATUS.CLOSED) return;
+    if (!caseFile || isCaseOver(caseFile)) return;
     const correct = normalizeName(String(guess || '')) === normalizeName(caseBlackened(caseFile));
     setCaseFile({ ...caseFile, status: CASE_STATUS.CLOSED, verdict: guess ? (correct ? 'correct' : 'wrong') : '' });
     caseDebug('VERDICT', `${guess || 'nobody'} — ${correct ? 'correct' : 'wrong'}. The case is closed.`);
@@ -11621,6 +11722,8 @@ function applySettingsTabUI() {
         const raw = String(tab.caseTwists || "sometimes");
         twistsSelect.value = ["off", "sometimes", "often"].includes(raw) ? raw : "sometimes";
     }
+    const motiveKindsSelect = document.getElementById("dangan_motive_kinds");
+    if (motiveKindsSelect) motiveKindsSelect.value = tab.motiveKinds === "announcement" ? "announcement" : "mixed";
 
     const partnerSelect = document.getElementById("dangan_examine_partner_reactions");
     if (partnerSelect) {
@@ -13424,6 +13527,7 @@ jQuery(async () => {
             playSfx,
             getSfx: () => sfx,
             onGiftUseRequest: queueGiftForNextReply,
+            getExtraKeyItems: getMotiveKeyItems,
         });
         itemsPanelController.bindWindowApi();
 
@@ -14503,6 +14607,10 @@ $(".monopad-icon").on("mouseenter", function () {
         $("#dangan_case_twists").on("change", function () {
             const next = String(this.value || "sometimes");
             setMonopadSetting("caseTwists", ["off", "sometimes", "often"].includes(next) ? next : "sometimes");
+        });
+
+        $("#dangan_motive_kinds").on("change", function () {
+            setMonopadSetting("motiveKinds", this.value === "announcement" ? "announcement" : "mixed");
         });
 
         $("#dangan_examine_partner_reactions").on("change", function () {
@@ -18530,13 +18638,52 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
                 }
                 notify({ title: 'REPLANNING', message: `Planning a "${shape}" case for the same motive…`, durationMs: 4000 });
                 try {
-                    const fresh = await generateCaseFile({ deadlineDays: Math.max(1, caseFile.motive.deadlineDay - ensureTimeTrackerState().day + 1), shape });
+                    const fresh = await generateCaseFile({ deadlineDays: Math.max(1, caseFile.motive.deadlineDay - ensureTimeTrackerState().day + 1), shape, motiveKind: caseFile.motive.kind });
                     setCaseFile({ ...fresh, motive: caseFile.motive, createdAt: caseFile.createdAt, createdDay: caseFile.createdDay });
                     const got = getCaseFile().shape;
                     notify({ title: 'CASE REPLANNED', message: got === shape ? `The case is now "${shape}". /case status shows it (spoilers).` : `The AI's "${shape}" plan didn't hold up, so it's "${got}". Try again.` });
                 } catch (err) {
                     notify({ tone: 'error', title: '/case shape', message: String(err?.message || err) });
                 }
+                return '';
+            }
+            case 'kind': {
+                const kind = String(rest[0] || '').toLowerCase();
+                if (!MOTIVE_KIND_IDS.includes(kind)) {
+                    notify({ tone: 'warn', title: '/case kind', message: `Use one of: ${MOTIVE_KIND_IDS.join(', ')}.` });
+                    return '';
+                }
+                if (!caseFile || caseFile.status !== CASE_STATUS.PLANNED) {
+                    notify({ tone: 'warn', title: '/case kind', message: 'Only a planned case (before the murder) can be regenerated. Announce a motive first.' });
+                    return '';
+                }
+                notify({ title: 'REPLANNING', message: `Planning a new "${kind}" motive…`, durationMs: 4000 });
+                try {
+                    const fresh = await generateCaseFile({ deadlineDays: Math.max(1, caseFile.motive.deadlineDay - ensureTimeTrackerState().day + 1), shape: caseFile.shape, motiveKind: kind });
+                    setCaseFile({ ...fresh, createdAt: caseFile.createdAt, createdDay: caseFile.createdDay });
+                    await deliverMotiveItem(getCaseFile());
+                    const got = getCaseFile().motive.kind;
+                    notify({ title: 'MOTIVE REPLANNED', message: got === kind ? `The motive is now "${getCaseFile().motive.title}" (${kind}). It isn't announced again.` : `The AI's "${kind}" motive didn't hold up, so it's "${got}". Try again.` });
+                } catch (err) {
+                    notify({ tone: 'error', title: '/case kind', message: String(err?.message || err) });
+                }
+                return '';
+            }
+            case 'foil': {
+                if (caseFile?.status !== CASE_STATUS.PLANNED) {
+                    notify({ tone: 'warn', title: '/case foil', message: 'Only a planned murder can be foiled.' });
+                    return '';
+                }
+                foilCaseAttempt();
+                if (motiveDeadlineDue) await handleMotiveDeadline();
+                return '';
+            }
+            case 'deadline': {
+                if (caseFile?.status !== CASE_STATUS.PLANNED) {
+                    notify({ tone: 'warn', title: '/case deadline', message: 'Only a planned case (before the murder) has a deadline to pass.' });
+                    return '';
+                }
+                await handleMotiveDeadline();
                 return '';
             }
             case 'faces': {
@@ -18590,12 +18737,12 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
                 return '';
             }
             default:
-                notify({ tone: 'warn', title: '/case', message: 'Use status, prompt [name], lastraw, witnesses, shape, motive, faces, cancel, commit, discover, file or clear.' });
+                notify({ tone: 'warn', title: '/case', message: 'Use status, prompt [name], lastraw, witnesses, shape, kind, motive, faces, foil, deadline, cancel, commit, discover, file or clear.' });
                 return '';
         }
     },
-    helpString: 'Debug tools for the hidden Case File (spoilers!). <code>/case status</code> shows the plan, <code>/case prompt [name]</code> shows what the AI would be told for the next reply (as that speaker), <code>/case lastraw</code> shows the last plan the AI sent back (for when a motive fails), <code>/case witnesses</code> lists who has seen each body (<code>/case witnesses add &lt;name&gt;</code> adds someone), <code>/case shape standard|wrong_victim|attacker_victim|double|suicide|accomplice|decoy</code> replans the case (before the murder) with that twist, <code>/case motive</code> edits the motive and its deadline without spoilers, <code>/case faces</code> gives everyone here a negative sprite like a motive does, <code>/case cancel</code> takes the motive back (before the murder), <code>/case commit</code> runs the murder now, <code>/case discover</code> finds the body now, <code>/case file timeOfDeath|cause|injuries &lt;text&gt;</code> updates the Monokuma File, <code>/case clear</code> drops the case.',
-    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'status | prompt [name] | lastraw | witnesses [add <name>] | shape <shape> | motive | faces | cancel | commit | discover | file <field> <text> | clear', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
+    helpString: 'Debug tools for the hidden Case File (spoilers!). <code>/case status</code> shows the plan, <code>/case prompt [name]</code> shows what the AI would be told for the next reply (as that speaker), <code>/case lastraw</code> shows the last plan the AI sent back (for when a motive fails), <code>/case witnesses</code> lists who has seen each body (<code>/case witnesses add &lt;name&gt;</code> adds someone), <code>/case shape standard|wrong_victim|attacker_victim|double|suicide|accomplice|decoy</code> replans the case (before the murder) with that twist, <code>/case kind announcement|object|condition</code> replans it with a new motive of that kind, <code>/case foil</code> foils the planned murder now (it moves to the next slot, or the deadline passes), <code>/case deadline</code> lets the deadline pass now (Monokuma's penalty), <code>/case motive</code> edits the motive and its deadline without spoilers, <code>/case faces</code> gives everyone here a negative sprite like a motive does, <code>/case cancel</code> takes the motive back (before the murder), <code>/case commit</code> runs the murder now, <code>/case discover</code> finds the body now, <code>/case file timeOfDeath|cause|injuries &lt;text&gt;</code> updates the Monokuma File, <code>/case clear</code> drops the case.',
+    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'status | prompt [name] | lastraw | witnesses [add <name>] | shape <shape> | kind <kind> | motive | faces | foil | deadline | cancel | commit | discover | file <field> <text> | clear', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({

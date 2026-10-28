@@ -1,4 +1,4 @@
-import { CASE_STATUS, accountTitle, commitMurder, listWitnessTestimony, markBeatUsed, markDiscovered, markWitnessTold, normalizeCaseFile, noteBodySeen } from "./caseFile.js";
+import { CASE_STATUS, accountTitle, avertCase, foilAttempt, commitMurder, listWitnessTestimony, markBeatUsed, markDiscovered, markWitnessTold, normalizeCaseFile, noteBodySeen } from "./caseFile.js";
 import { buildCasePrompt } from "./casePrompts.js";
 
 function assert(cond, msg) {
@@ -153,6 +153,28 @@ function run() {
         const away = buildCasePrompt({ caseFile: seen, phase: "DAY", day: 4, speakerName: "Kyoko", roomId: "gym" });
         assert(away.text.includes("SOMEONE IS MISSING") && !away.text.includes("JUST FOUND"), "elsewhere it's still a missing person");
         assert(buildCasePrompt({ caseFile: seen, phase: "DAY", day: 4, speakerName: "Leon Kuwata", roomId: "gym" }).text.includes("you could use that"), "the killer knows who has seen it");
+    }
+
+
+    // Phase D: object and condition motives, foiled attempts, the penalty.
+    {
+        const obj = normalizeCaseFile({ ...cf, motive: { ...cf.motive, kind: "object", items: { "Leon Kuwata": { title: "Leon's DVD", contents: "His family, gone." }, "Kyoko Kirigiri": { title: "Kyoko's DVD", contents: "Her father." } } } });
+        const leon = buildCasePrompt({ caseFile: obj, phase: "DAY", day: 2, speakerName: "Leon Kuwata" }).text;
+        assert(leon.includes("His family, gone.") && !leon.includes("Her father."), "only the speaker's own item");
+        const cond = normalizeCaseFile({ ...cf, motive: { ...cf.motive, kind: "condition", afflicted: ["Kyoko Kirigiri"], effect: "Can't stop lying." } });
+        assert(buildCasePrompt({ caseFile: cond, phase: "DAY", day: 2, speakerName: "Kyoko Kirigiri" }).text.includes("[AFFLICTED]"), "afflicted note");
+        const other = buildCasePrompt({ caseFile: cond, phase: "DAY", day: 2, speakerName: "Leon Kuwata" }).text;
+        assert(other.includes("[THE AFFLICTED]") && !other.includes("[AFFLICTED]\n"), "everyone else gets a general note");
+        assert(!buildCasePrompt({ caseFile: { ...cond, status: CASE_STATUS.CLOSED }, phase: "DAY", day: 5, speakerName: "Kyoko Kirigiri" }).text, "lifts when the case closes");
+        const foiled = foilAttempt(normalizeCaseFile({ ...cf, murderDay: 2 })).cf;
+        const k = buildCasePrompt({ caseFile: foiled, phase: "DAY", day: 2, speakerName: "Leon Kuwata" });
+        assert(k.foiled && k.text.includes("Your last attempt failed"), "the killer hears the attempt failed");
+        assert(!buildCasePrompt({ caseFile: foiled, phase: "DAY", day: 2, speakerName: "Kyoko" }).text.includes("attempt failed"), "only the killer");
+        const av = avertCase(normalizeCaseFile({ ...cf, motive: { ...cf.motive, penalty: "Detention for all." } }));
+        const pen = buildCasePrompt({ caseFile: av, phase: "DAY", day: 4, speakerName: "Kyoko" });
+        assert(pen.penalty && pen.text.includes("[MONOKUMA'S PENALTY]") && pen.text.includes("Detention for all."), "penalty note");
+        assert(!buildCasePrompt({ caseFile: { ...av, penaltyNote: false }, phase: "DAY", day: 4 }).text, "once only");
+        assert(buildCasePrompt({ caseFile: avertCase(cf, { relented: true }), phase: "DAY", day: 4 }).text.includes("RELENTS"), "relent note");
     }
 
     console.log("casePrompts tests passed");

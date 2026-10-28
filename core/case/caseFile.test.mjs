@@ -41,6 +41,15 @@ import {
     isAnnounceable,
     isBodyFound,
     noteBodySeen,
+    avertCase,
+    foilAttempt,
+    getMotiveItem,
+    isAfflicted,
+    isCaseOver,
+    isDeadlinePassed,
+    nextMurderSlot,
+    pickMotiveKind,
+    shouldFoil,
 } from "./caseFile.js";
 
 function assert(cond, msg) {
@@ -382,6 +391,51 @@ function run() {
     assert(loose.clues.map((c) => c.roomId).join() === "hpa_gym,hpa_dorm_hall,hpa_kitchen", "clue rooms by loose name or id");
     const cutClues = parseCaseFileResponse('{"killer":"Leon","victim":"Sayaka","motive":{"title":"T"},"body":{"room":"Gym"},"clues":[{"text":"a","room":"Gym"},{"text":"b","ro', opts);
     assert(cutClues.error?.includes("cut off") && cutClues.reason === "cut-off", "cut off before enough clues says so");
+
+
+    // Phase D: motive kinds.
+    {
+        const obj = parseCaseFileResponse(JSON.stringify(plan({
+            motive: { title: "DVDs", description: "d", penalty: "Everyone gets a detention.", timeLimit: false },
+            items: [
+                { owner: "Leon", title: "Leon's DVD", contents: "His family, gone.", evidence: true },
+                { owner: "Makoto Naegi", title: "Makoto's DVD", contents: "His sister." },
+                { owner: "Nobody", title: "x", contents: "y" },
+                { owner: "Sayaka", title: "Sayaka's DVD", contents: "Her band.", evidence: true },
+            ],
+        })), { ...opts, motiveKind: "object" }).caseFile;
+        assert(obj.motive.kind === "object" && Object.keys(obj.motive.items).length === 3, "items per owner, the player included");
+        assert(obj.motive.items["Leon Kuwata"].evidence && !obj.motive.items["Sayaka Maizono"].evidence, "only one evidence item");
+        assert(getMotiveItem(obj, "makoto naegi")?.contents === "His sister.", "the player's item");
+        assert(obj.motive.penalty === "Everyone gets a detention." && !obj.motive.timeLimit, "penalty");
+        const noItems = parseCaseFileResponse(JSON.stringify(plan()), { ...opts, motiveKind: "object" }).caseFile;
+        assert(noItems.motive.kind === "announcement", "an object motive without items falls back");
+        const cond = parseCaseFileResponse(JSON.stringify(plan({ afflicted: ["Kyoko", "Nobody"], effect: "Can't stop lying." })), { ...opts, motiveKind: "condition" }).caseFile;
+        assert(cond.motive.kind === "condition" && isAfflicted(cond, "Kyoko Kirigiri") && !isAfflicted(cond, "Leon Kuwata"), "afflicted");
+        assert(normalizeCaseFile({ ...plan(), motive: { title: "Old" } }).motive.kind === "announcement", "old saves read as announcements");
+        assert(pickMotiveKind({ setting: "announcement", rng: () => 0.9 }) === "announcement" && pickMotiveKind({ rng: () => 0.5 }) === "object" && pickMotiveKind({ rng: () => 0.9 }) === "condition", "pickMotiveKind");
+        assert(buildCaseGenerationPrompt({ cast, motiveKind: "condition" }).includes('"afflicted"'), "the planner is told the kind");
+        const edited = editMotive(obj, { playerItem: { title: "My DVD", contents: "Mine." }, penalty: "New", kind: "object" }, { today: 2, player: "Makoto Naegi" });
+        assert(edited.motive.items["Makoto Naegi"].contents === "Mine." && edited.motive.penalty === "New" && edited.motive.items["Leon Kuwata"], "edit the player's item and the penalty");
+    }
+
+    // Phase D: foiling and the deadline.
+    {
+        const cf = parseCaseFileResponse(JSON.stringify(plan({ murderDay: 2, murderTime: "day" })), opts).caseFile;
+        assert(cf.motive.deadlineDay === 3, "deadline");
+        assert(shouldFoil(cf, { followers: ["Leon Kuwata"] }) && shouldFoil(cf, { playerRoomNames: ["sayaka maizono"] }) && !shouldFoil(cf, { followers: ["Kyoko"] }), "shouldFoil");
+        assert(JSON.stringify(nextMurderSlot(cf)) === '{"day":2,"time":"night"}', "day → night");
+        let r = foilAttempt(cf);
+        assert(r.moved && r.cf.murderTime === "night" && r.cf.murderDay === 2 && r.cf.attempts === 1 && r.cf.foiledNote, "foil moves to the night");
+        r = foilAttempt(r.cf);
+        assert(r.moved && r.cf.murderDay === 3 && r.cf.murderTime === "day", "night → next day");
+        r = foilAttempt(foilAttempt(r.cf).cf);
+        assert(!r.moved && r.cf.attempts === 4, "no slot after the deadline night");
+        assert(!isDeadlinePassed(cf, { day: 3, from: "day" }) && isDeadlinePassed(cf, { day: 3, from: "night" }) && isDeadlinePassed(cf, { day: 4, from: "day" }), "isDeadlinePassed");
+        const av = avertCase(cf);
+        assert(av.status === CASE_STATUS.AVERTED && av.penaltyNote && isCaseOver(av) && !isCaseOpen(av), "averted");
+        assert(describeCaseFile(av).includes("AVERTED"), "describe");
+    }
 
     console.log("caseFile tests passed");
 }

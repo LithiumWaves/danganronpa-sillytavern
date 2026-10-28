@@ -3,7 +3,7 @@
 // own character gets their secret, and only while they're the one replying.
 // Most daily life replies get nothing at all.
 
-import { BODY_WITNESSES_NEEDED, CASE_STATUS, accountTitle, buildMonokumaFileBullet, getBodySeenBy, getCaseBody, getSecondVictim, isBodyAnnounced, isBodyFound, getTimeSlot, isGatheringNow, listWitnessTestimony, pickForeshadowingBeat, secretRolesOf } from "./caseFile.js";
+import { BODY_WITNESSES_NEEDED, CASE_STATUS, accountTitle, buildMonokumaFileBullet, getBodySeenBy, getCaseBody, getMotiveItem, getSecondVictim, isAfflicted, isBodyAnnounced, isBodyFound, getTimeSlot, isGatheringNow, listWitnessTestimony, pickForeshadowingBeat, secretRolesOf } from "./caseFile.js";
 import { buildPartnerReactionNote } from "./examine.js";
 
 export const CASE_PROMPT_KEY = "dangan_case";
@@ -186,7 +186,45 @@ Announce it fully in character, with flair, in this reply. Never hint at who wil
     return `[MONOKUMA'S MOTIVE]\nMonokuma has handed out a motive: ${m.title}. ${m.description} The deadline is ${deadline}.${heard}`;
 }
 
-// Returns { text, beatId, killerNote, motive }. `phase` is the game phase (DAY, NIGHT,
+// What an object or condition motive means for the one replying: their own
+// item's contents (nobody else's), or the affliction.
+function motiveKindNotes(cf, speakerName) {
+    const m = cf.motive;
+    const out = [];
+    if (m.kind === "object") {
+        const item = getMotiveItem(cf, speakerName);
+        const owners = Object.keys(m.items).filter((n) => !same(n, speakerName));
+        if (item) out.push(`[YOUR MOTIVE ITEM — ${String(speakerName).toUpperCase()} ONLY]\nMonokuma gave you, ${speakerName}, your own ${item.title}. What it shows: ${item.contents}\nIt is personal. Share it only if you'd really choose to.`);
+        if (owners.length) out.push(`Everyone got their own item from Monokuma (${owners.join(", ")}). Nobody knows what's in anyone else's unless they're told.`);
+    } else if (m.kind === "condition" && m.afflicted.length) {
+        if (isAfflicted(cf, speakerName)) out.push(`[AFFLICTED]\nYou, ${speakerName}, are afflicted by Monokuma's motive: ${m.effect} Play it out until it lifts.`);
+        const others = m.afflicted.filter((n) => !same(n, speakerName));
+        if (others.length) out.push(`[THE AFFLICTED]\n${others.join(", ")} ${others.length === 1 ? "is" : "are"} afflicted by Monokuma's motive: ${m.effect}`);
+    }
+    return out;
+}
+
+function foiledNote(cf) {
+    return `${secretHeader(cf.killer)}\nYour last attempt failed: someone was there, and you couldn't go through with it. ${cf.murderDay ? `You'll try again during ${when(cf)}.` : ""} Nobody must suspect what you nearly did.`;
+}
+
+// Monokuma's penalty, once, after the deadline passed with no murder. Both
+// are editable in EDIT AI INSTRUCTIONS ({{title}}, {{penalty}}).
+export const DEFAULT_PENALTY_NOTE_TEMPLATE = `[MONOKUMA'S PENALTY]
+Nobody killed before the deadline of "{{title}}", so Monokuma has carried out his penalty: {{penalty}}
+React to it now. The motive is over.`;
+export const DEFAULT_RELENT_NOTE_TEMPLATE = `[MONOKUMA RELENTS]
+Nobody killed before the deadline of "{{title}}". Monokuma grumbled and called off his time limit, for now. Everyone is shaken but alive; a new motive will come.`;
+
+function penaltyNote(cf, { penaltyTemplate = "", relentTemplate = "" } = {}) {
+    const m = cf.motive;
+    const template = cf.relented ? (relentTemplate || DEFAULT_RELENT_NOTE_TEMPLATE) : (penaltyTemplate || DEFAULT_PENALTY_NOTE_TEMPLATE);
+    return template
+        .replace(/\{\{title\}\}/g, m.title || "the motive")
+        .replace(/\{\{penalty\}\}/g, m.penalty || "a punishment for everyone's lack of despair.");
+}
+
+// Returns { text, beatId, killerNote, motive, penalty, foiled }. `phase` is the game phase (DAY, NIGHT,
 // INVESTIGATION or TRIAL); `slot` comes from getTimeSlot().
 export function buildCasePrompt({
     caseFile,
@@ -197,10 +235,17 @@ export function buildCasePrompt({
     presentNames = [],
     truthBulletTitles = [],
     victimUltimate = "",
+    penaltyTemplate = "",
+    relentTemplate = "",
 } = {}) {
     const none = { text: "", beatId: "", killerNote: false, motive: "" };
     const cf = caseFile;
     if (!cf || cf.status === CASE_STATUS.CLOSED || phase === "TRIAL") return none;
+    if (cf.status === CASE_STATUS.AVERTED) {
+        return cf.penaltyNote && (phase === "DAY" || phase === "NIGHT")
+            ? { ...none, text: [HEADER, penaltyNote(cf, { penaltyTemplate, relentTemplate })].join("\n\n"), penalty: true }
+            : none;
+    }
 
     const parts = [];
     let beatId = "";
@@ -214,7 +259,10 @@ export function buildCasePrompt({
         const note = motiveNote(cf, { speakerName });
         motive = note.startsWith("[YOUR") ? "speech" : cf.motiveJustAnnounced ? "heard" : "known";
         parts.push(note);
+        parts.push(...motiveKindNotes(cf, speakerName));
     }
+    const foiled = cf.status === CASE_STATUS.PLANNED && dailyLife && isKiller && cf.foiledNote;
+    if (foiled) parts.push(foiledNote(cf));
     if (cf.status === CASE_STATUS.PLANNED && dailyLife && isGatheringNow(cf, { day, time, roomId, presentNames })) {
         // A public murder plays out in front of everyone.
         parts.push(`[THE GATHERING]
@@ -261,5 +309,5 @@ V3C| BODY_DISCOVERY`);
     if (!parts.length) return none;
     const filled = parts.filter(Boolean);
     if (!filled.length) return none;
-    return { text: [HEADER, ...filled].join("\n\n"), beatId, killerNote: filled.some((p) => p.startsWith("[SECRET")), motive, reaction: filled.some((p) => p.startsWith("[INVESTIGATING TOGETHER]")) };
+    return { text: [HEADER, ...filled].join("\n\n"), beatId, killerNote: filled.some((p) => p.startsWith("[SECRET")), motive, foiled, reaction: filled.some((p) => p.startsWith("[INVESTIGATING TOGETHER]")) };
 }

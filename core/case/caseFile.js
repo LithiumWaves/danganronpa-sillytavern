@@ -13,7 +13,37 @@ export const CASE_STATUS = Object.freeze({
     PLANNED: "planned",     // motive announced, murder not yet happened
     COMMITTED: "committed", // the murder night has passed
     CLOSED: "closed",       // the trial is over
+    AVERTED: "averted",     // the deadline passed with no murder; Monokuma's penalty instead
 });
+
+// How a motive works. An announcement is Monokuma's offer or threat; an
+// object is a personal item each student gets (DR1's DVDs, V3's motive
+// videos); a condition afflicts some of the cast (Despair Disease).
+export const MOTIVE_KINDS = Object.freeze({
+    announcement: {
+        label: "Announcement",
+        line: "an announcement: Monokuma's offer or threat, the same for everyone.",
+        fields: "",
+    },
+    object: {
+        label: "Personal items",
+        line: "personal items: every student (the player too) gets their own item with hidden contents, like DR1's DVDs or V3's motive videos. Only its owner knows what's inside.",
+        fields: '"items": [{ "owner": "student name (one per student, the player included)", "title": "what the item is, e.g. \'Leon\'s DVD\'", "contents": "what it shows or says, 1-2 sentences, personal to its owner", "evidence": true only for at most one item that ends up as evidence of the murder }],',
+    },
+    condition: {
+        label: "Condition",
+        line: "a condition: some students are afflicted by something (like DR2's Despair Disease, or hunger) until the case is closed.",
+        fields: '"afflicted": ["student names who are afflicted (1-3, never the killer\'s victim alone)"], "effect": "how the affliction changes how they act, 1 sentence",',
+    },
+});
+export const MOTIVE_KIND_IDS = Object.freeze(Object.keys(MOTIVE_KINDS));
+
+// The kind of the next motive, per the "Motive kinds" setting.
+export function pickMotiveKind({ setting = "mixed", rng = Math.random } = {}) {
+    if (setting !== "mixed") return "announcement";
+    const r = rng();
+    return r < 0.4 ? "announcement" : r < 0.8 ? "object" : "condition";
+}
 
 // Days the cast has between the motive and the murder, counting the day it's
 // announced. The murder happens on the night of the deadline day at the latest.
@@ -140,8 +170,12 @@ export function buildCaseGenerationPrompt({
     routines = [],
     rules = "",
     shape = "standard",
+    motiveKind = "announcement",
+    closedAtNight = [],
+    events = [],
 } = {}) {
     const caseShape = CASE_SHAPES[shape] || CASE_SHAPES.standard;
+    const kind = MOTIVE_KINDS[motiveKind] || MOTIVE_KINDS.announcement;
     const castLines = cast
         .map((c) => `- ${c.name}${c.ultimate ? ` (Ultimate ${c.ultimate})` : ""}`)
         .join("\n");
@@ -164,9 +198,12 @@ ${recentChat || "(nothing yet)"}
 
 CASE SHAPE: ${caseShape.line}
 
+MOTIVE KIND: ${kind.line}
+
 Reply with one compact JSON object and nothing else: start your reply with { and end it with }. Keep every text short (under 30 words). The fields:
 {
-  "motive": { "title": "short name of the motive", "description": "what Monokuma offers or threatens, 1-2 sentences", "announcement": "Monokuma announcing it, in his voice, 2-4 sentences" },
+  "motive": { "title": "short name of the motive", "description": "what Monokuma offers or threatens, 1-2 sentences", "announcement": "Monokuma announcing it, in his voice, 2-4 sentences", "penalty": "what Monokuma does if the deadline passes and nobody has killed, in his voice, 1-2 sentences", "timeLimit": true only if the penalty is that everyone dies (V3's time limit), otherwise false },
+  ${kind.fields ? `${kind.fields}\n  ` : ""}
   "killer": "student name",
   "victim": "student name",
   "body": { "room": "room id where the body is left", "state": "what the scene looks like when the body is found, 1-2 sentences" },
@@ -190,6 +227,7 @@ Rules:
 - Keep the killer in character: the motive has to plausibly break them.
 - The monokumaFile is the official autopsy handed to everyone: neutral facts only, nothing that names or points straight at the killer. If the killer's trick hides or fakes something, the file reports only what can be established: "Unknown", a broad range, or what it appears to be (e.g. a body kept cold to hide the time of death gets "Unknown"; a staged suicide reports the apparent cause). Put the hidden truth in "concealed". Usually nothing is concealed.
 - Most murders are "hidden": done in secret, the body found later. A "public" murder happens during a gathering with others present, in the dark or in confusion, so nobody sees who did it (like a séance or a blackout at a party); give the gathering, and make one foreshadowing moment someone proposing it. The body room of a public murder is the gathering room.
+- The murder may be foiled if someone is with the killer or the victim; the penalty is what happens if it never happens at all.
 - Only use the students and rooms listed above.`;
 }
 
@@ -268,6 +306,7 @@ export function parseCaseFileResponse(raw, {
     deadlineDays = DEFAULT_MOTIVE_DEADLINE_DAYS,
     now = Date.now(),
     shape: wantedShape = "",
+    motiveKind = "announcement",
 } = {}) {
     const parsed = typeof raw === "object" && raw !== null ? { value: raw } : parseLooseJson(raw);
     const data = parsed.value;
@@ -279,6 +318,7 @@ export function parseCaseFileResponse(raw, {
     }
 
     const castNames = cast.map((c) => c.name).filter((n) => n && nameKey(n) !== nameKey(player));
+    const ownerNames = player ? [...castNames, player] : castNames;
     let shape = SHAPE_IDS.includes(wantedShape) ? wantedShape : SHAPE_IDS.includes(data.shape) ? data.shape : "standard";
     const victim = matchCastName(data.victim, castNames);
     // A suicide's "killer" is the victim, whatever the model wrote.
@@ -326,6 +366,8 @@ export function parseCaseFileResponse(raw, {
         extras = {};
     }
 
+    const motiveExtras = parseMotiveExtras(motiveKind, data, { ownerNames, castNames });
+
     const isPublic = data.murderStyle === "public";
     const gatheringRoom = isPublic ? (matchRoom(data.gathering?.room, rooms) || bodyRoom) : null;
 
@@ -341,6 +383,9 @@ export function parseCaseFileResponse(raw, {
             description: motive.description,
             announcement: motive.announcement,
             deadlineDay,
+            penalty: motive.penalty,
+            timeLimit: motive.timeLimit === true,
+            ...motiveExtras,
         },
         killer,
         victim,
@@ -366,6 +411,29 @@ export function parseCaseFileResponse(raw, {
             .filter((w) => w.name && w.name !== victim),
     });
     return warning ? { caseFile, warning } : { caseFile };
+}
+
+// The motive kind's own fields. A kind whose details are missing falls back
+// to a plain announcement.
+function parseMotiveExtras(kind, data, { ownerNames, castNames }) {
+    if (kind === "object") {
+        const items = {};
+        let evidence = false;
+        for (const it of list(data.items || data.motive?.items)) {
+            const owner = matchCastName(it?.owner, ownerNames);
+            if (!owner || items[owner] || !text(it?.contents)) continue;
+            const isEvidence = it?.evidence === true && !evidence;
+            evidence = evidence || isEvidence;
+            items[owner] = { title: it?.title, contents: it?.contents, evidence: isEvidence };
+        }
+        return Object.keys(items).length ? { kind, items } : { kind: "announcement" };
+    }
+    if (kind === "condition") {
+        const afflicted = [...new Set(list(data.afflicted || data.motive?.afflicted).map((n) => matchCastName(n, castNames)).filter(Boolean))];
+        const effect = data.effect || data.motive?.effect;
+        return afflicted.length && text(effect) ? { kind, afflicted, effect } : { kind: "announcement" };
+    }
+    return { kind: "announcement" };
 }
 
 // The twist's own fields from the model's plan, checked against the cast and
@@ -439,7 +507,21 @@ export function normalizeCaseFile(raw) {
             description: text(raw.motive?.description),
             announcement: text(raw.motive?.announcement, 900),
             deadlineDay,
+            // Phase D: what kind of motive, and what happens if nobody kills.
+            kind: MOTIVE_KIND_IDS.includes(raw.motive?.kind) ? raw.motive.kind : "announcement",
+            penalty: text(raw.motive?.penalty),
+            timeLimit: raw.motive?.timeLimit === true,
+            items: normalizeMotiveItems(raw.motive?.items),
+            afflicted: [...new Set(list(raw.motive?.afflicted).map((n) => text(n, 80)).filter(Boolean))].slice(0, 6),
+            effect: text(raw.motive?.effect, 300),
         },
+        // Murder attempts that were foiled, and the one-time notes about it:
+        // the killer hears their attempt failed; everyone hears the penalty.
+        attempts: Math.max(0, Math.round(Number(raw.attempts) || 0)),
+        foiledNote: Boolean(raw.foiledNote),
+        penaltyNote: Boolean(raw.penaltyNote),
+        // The player chose to let Monokuma relent instead of a time limit.
+        relented: Boolean(raw.relented),
         shape: SHAPE_IDS.includes(raw.shape) ? raw.shape : "standard",
         killer: text(raw.killer, 80),
         victim: text(raw.victim, 80),
@@ -537,6 +619,18 @@ export function normalizeCaseFile(raw) {
     };
 }
 
+function normalizeMotiveItems(items) {
+    const out = {};
+    if (!items || typeof items !== "object" || Array.isArray(items)) return out;
+    for (const [owner, it] of Object.entries(items).slice(0, 24)) {
+        const name = text(owner, 80);
+        const contents = text(it?.contents);
+        if (!name || !contents) continue;
+        out[name] = { title: text(it?.title, 120) || "Motive", contents, evidence: Boolean(it?.evidence) };
+    }
+    return out;
+}
+
 function normalizeMonokumaFile(mf) {
     return {
         timeOfDeath: text(mf?.timeOfDeath, 120),
@@ -619,7 +713,69 @@ function firstClueRoom(raw) {
 
 // A case is in play until its trial ends.
 export function isCaseOpen(caseFile) {
-    return Boolean(caseFile) && caseFile.status !== CASE_STATUS.CLOSED;
+    return Boolean(caseFile) && !isCaseOver(caseFile);
+}
+
+// Closed by a trial, or averted when the deadline passed with no murder.
+export function isCaseOver(caseFile) {
+    return caseFile?.status === CASE_STATUS.CLOSED || caseFile?.status === CASE_STATUS.AVERTED;
+}
+
+// ── Motive items and conditions ──
+// The item a student got from an object motive, or null.
+export function getMotiveItem(caseFile, name) {
+    if (caseFile?.motive?.kind !== "object") return null;
+    const key = nameKey(name);
+    const owner = Object.keys(caseFile.motive.items).find((n) => nameKey(n) === key);
+    return owner ? { owner, ...caseFile.motive.items[owner] } : null;
+}
+
+export function isAfflicted(caseFile, name) {
+    return caseFile?.motive?.kind === "condition" && caseFile.motive.afflicted.some((n) => nameKey(n) === nameKey(name));
+}
+
+// ── Foiled murders and the deadline ──
+// The slot after the planned one, or null when that's past the deadline
+// (the night of the deadline day).
+export function nextMurderSlot(caseFile) {
+    if (!caseFile) return null;
+    const day = Number(caseFile.murderDay) || 1;
+    const next = caseFile.murderTime === "day" ? { day, time: "night" } : { day: day + 1, time: "day" };
+    return next.day > (Number(caseFile.motive.deadlineDay) || day) ? null : next;
+}
+
+// The attempt is foiled when the killer or the victim is with the player:
+// following them, or in the room they're in.
+export function shouldFoil(caseFile, { followers = [], playerRoomNames = [] } = {}) {
+    if (!caseFile || caseFile.status !== CASE_STATUS.PLANNED || caseFile.shape === "suicide") return false;
+    const near = new Set([...followers, ...playerRoomNames].map(nameKey));
+    return near.has(nameKey(caseFile.killer)) || near.has(nameKey(caseFile.victim));
+}
+
+// One more failed attempt. The murder moves to the next slot when there is
+// one before the deadline; `moved` is false when there isn't.
+export function foilAttempt(caseFile) {
+    const next = nextMurderSlot(caseFile);
+    const cf = normalizeCaseFile({
+        ...caseFile,
+        attempts: (caseFile.attempts || 0) + 1,
+        foiledNote: true,
+        ...(next ? { murderDay: next.day, murderTime: next.time } : {}),
+    });
+    return { moved: Boolean(next), cf };
+}
+
+// Whether leaving the current slot means the deadline has gone by with no
+// murder: past the night of the deadline day.
+export function isDeadlinePassed(caseFile, { day = 1, from = "night" } = {}) {
+    if (!caseFile || caseFile.status !== CASE_STATUS.PLANNED) return false;
+    const deadline = Number(caseFile.motive.deadlineDay) || 0;
+    return day > deadline || (day === deadline && from === "night");
+}
+
+// Nobody killed in time: Monokuma's penalty, and the case is over.
+export function avertCase(caseFile, { relented = false } = {}) {
+    return normalizeCaseFile({ ...caseFile, status: CASE_STATUS.AVERTED, penaltyNote: true, foiledNote: false, relented });
 }
 
 // What Monokuma says on screen.
@@ -657,7 +813,7 @@ export function isMurderSlotOver(caseFile, { day = 1, from = "night" } = {}) {
 // what it offers and its deadline (never before today). The murder moves with
 // the deadline, keeping its distance from it, and never falls after it.
 // Only before the murder; returns the case unchanged otherwise.
-export function editMotive(caseFile, { title, description, deadlineDay } = {}, { today = 1 } = {}) {
+export function editMotive(caseFile, { title, description, deadlineDay, kind, penalty, timeLimit, effect, playerItem } = {}, { today = 1, player = "" } = {}) {
     if (!caseFile || caseFile.status !== CASE_STATUS.PLANNED) return caseFile;
     const oldDeadline = Number(caseFile.motive.deadlineDay) || today;
     const newDeadline = Math.max(today, Math.round(Number(deadlineDay)) || oldDeadline);
@@ -671,9 +827,22 @@ export function editMotive(caseFile, { title, description, deadlineDay } = {}, {
             title: title === undefined ? caseFile.motive.title : String(title).trim() || caseFile.motive.title,
             description: description === undefined ? caseFile.motive.description : String(description).trim(),
             deadlineDay: newDeadline,
+            kind: kind === undefined ? caseFile.motive.kind : kind,
+            penalty: penalty === undefined ? caseFile.motive.penalty : String(penalty).trim(),
+            timeLimit: timeLimit === undefined ? caseFile.motive.timeLimit : Boolean(timeLimit),
+            effect: effect === undefined ? caseFile.motive.effect : String(effect).trim(),
+            items: playerItem === undefined || !player ? caseFile.motive.items : withPlayerItem(caseFile.motive.items, player, playerItem),
         },
         murderDay: Math.min(newDeadline, Math.max(today, shifted)),
     });
+}
+
+// The player's own motive item, edited (an empty one removes it).
+function withPlayerItem(items, player, item) {
+    const out = Object.fromEntries(Object.entries(items || {}).filter(([n]) => nameKey(n) !== nameKey(player)));
+    const contents = String(item?.contents || "").trim();
+    if (contents) out[player] = { title: String(item?.title || "").trim() || "Motive", contents, evidence: Boolean(items?.[player]?.evidence) };
+    return out;
 }
 
 export function commitMurder(caseFile, { day = 1, time = "night" } = {}) {
@@ -856,6 +1025,9 @@ export function describeCaseFile(caseFile) {
     const lines = [
         `CASE FILE (SPOILERS) — ${cf.status.toUpperCase()}${cf.verdict ? ` · vote ${cf.verdict}` : ""}`,
         `Motive: ${cf.motive.title} — ${cf.motive.description} (deadline: night of Day ${cf.motive.deadlineDay})`,
+        `Motive kind: ${MOTIVE_KINDS[cf.motive.kind]?.label || cf.motive.kind}${cf.motive.penalty ? ` · penalty${cf.motive.timeLimit ? " (time limit: everyone dies)" : ""}: ${cf.motive.penalty}` : ""}${cf.attempts ? ` · foiled attempts: ${cf.attempts}` : ""}${cf.relented ? " · Monokuma relented" : ""}`,
+        ...Object.entries(cf.motive.kind === "object" ? cf.motive.items : {}).map(([owner, it]) => `  Item for ${owner}: ${it.title} — ${it.contents}${it.evidence ? " (evidence)" : ""}`),
+        ...(cf.motive.kind === "condition" ? [`  Afflicted: ${cf.motive.afflicted.join(", ")} — ${cf.motive.effect}`] : []),
         `Shape: ${CASE_SHAPES[cf.shape]?.label || cf.shape} · blackened (the vote's answer): ${caseBlackened(cf)}`,
         `Killer: ${cf.killer} · Victim: ${cf.victim}`,
         ...(cf.shape === "wrong_victim" ? [`Meant to kill: ${cf.intendedVictim}`] : []),
