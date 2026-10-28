@@ -108,6 +108,7 @@ export function getPhaseActions({ phase, timeTracker, canUndo = false, undoLabel
     }
 
     if (phase === PHASES.DAY || phase === PHASES.NIGHT) {
+        actions.push({ id: "plan-event", label: "PLAN EVENT" });
         actions.push({
             id: "start-investigation",
             label: "START INVESTIGATION",

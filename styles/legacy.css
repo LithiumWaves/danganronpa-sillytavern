@@ -930,7 +930,8 @@ body.dangan-theme-investigation #dangan_monopad_button {
     margin-right: 6px;
 }
 
-.social-routines-btn {
+.social-routines-btn,
+.social-events-btn {
     float: right;
     background: transparent;
     color: #ff7ad9;
@@ -943,8 +944,13 @@ body.dangan-theme-investigation #dangan_monopad_button {
     cursor: pointer;
 }
 
-.social-routines-btn:hover {
+.social-routines-btn:hover,
+.social-events-btn:hover {
     background: rgba(255, 46, 196, 0.18);
+}
+
+.social-events-btn {
+    margin-right: 6px;
 }
 
 .truth-list-items {

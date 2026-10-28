@@ -437,6 +437,16 @@ function run() {
         assert(describeCaseFile(av).includes("AVERTED"), "describe");
     }
 
+    // Phase F: a public murder's gathering can be an upcoming group event.
+    {
+        const events = [{ id: "ev_party", title: "Party", roomId: "hpa_gym", roomLabel: "Gym", day: 3, time: "night" }];
+        assert(buildCaseGenerationPrompt({ cast, events: ["- ev_party: Party"], closedAtNight: ["Kitchen"] }).includes("UPCOMING GROUP EVENTS") , "the planner is told the events");
+        const pub = parseCaseFileResponse(JSON.stringify(plan({ murderStyle: "public", murderDay: 2, murderTime: "day", gathering: { room: "Kitchen", description: "", eventId: "ev_party" } })), { ...opts, events }).caseFile;
+        assert(pub.gathering.roomId === "hpa_gym" && pub.gathering.eventId === "ev_party" && pub.murderDay === 3 && pub.murderTime === "night", "the gathering takes the event's room and slot");
+        const off = parseCaseFileResponse(JSON.stringify(plan({ murderStyle: "public", gathering: { room: "Kitchen", eventId: "nope" } })), { ...opts, events }).caseFile;
+        assert(off.gathering.roomId === "hpa_kitchen" && !off.gathering.eventId, "an unknown event id is ignored");
+    }
+
     console.log("caseFile tests passed");
 }
 

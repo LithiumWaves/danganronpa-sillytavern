@@ -2,6 +2,7 @@ import { DEFAULT_EXAMINE_NARRATION_TEMPLATE } from "./case/examine.js";
 import { DEFAULT_DAILY_NARRATION_TEMPLATE } from "./case/dailyExamine.js";
 import { DEFAULT_RULES_PROMPT_TEMPLATE } from "./rules/schoolRules.js";
 import { DEFAULT_PENALTY_NOTE_TEMPLATE, DEFAULT_RELENT_NOTE_TEMPLATE } from "./case/casePrompts.js";
+import { DEFAULT_EVENT_MARKER_TEMPLATE, DEFAULT_EVENT_PROPOSAL_TEMPLATE } from "./events/groupEvents.js";
 export const extensionName = "danganronpa-extension";
 
 function normalizeWebExtensionPath(pathname = "") {
@@ -267,6 +268,11 @@ export const defaultSettings = {
     // This chapter's daily examine spots, coins and hidden Monokumas
     // (core/case/dailyExamine.js).
     dailyExamine: null,
+    // Group events in daily life (core/events/groupEvents.js), per save.
+    groupEvents: [],
+    // A hidden call some mornings has a classmate propose an event: "off" or
+    // "sometimes".
+    classmatesPlanEvents: "off",
     // The School Regulations (core/rules/schoolRules.js); null means the
     // defaults, which a save gets the first time they're read.
     schoolRules: null,
@@ -387,6 +393,10 @@ Don't use it at any other time.`,
     // murder (core/case/casePrompts.js): the penalty, or Monokuma relenting.
     motivePenalty: DEFAULT_PENALTY_NOTE_TEMPLATE,
     motiveRelent: DEFAULT_RELENT_NOTE_TEMPLATE,
+    // How classmates propose a group event in a reply, and the morning call
+    // that sometimes has one propose an event (core/events/groupEvents.js).
+    markerEvents: DEFAULT_EVENT_MARKER_TEMPLATE,
+    eventProposal: DEFAULT_EVENT_PROPOSAL_TEMPLATE,
     markerAnnouncements: `[ANNOUNCEMENT MARKERS]
 When Monokuma makes an announcement in the story, add the matching marker on its own line:
 V3C| DAY_ANNOUN for the morning announcement

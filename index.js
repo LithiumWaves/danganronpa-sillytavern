@@ -41,6 +41,7 @@ import { createPhaseHistory, derivePhase, getNextStepHint, getPhaseActions, getS
 import { notify } from "./core/ui/notify.js";
 import { SAVE_MODES, createSaveStore } from "./core/saves/saveStore.js";
 import { pinInScope } from "./map/mapStorage.js";
+import { isClosedAtNight } from "./map/defaultPins.js";
 import { CASE_STATUS, DEFAULT_MOTIVE_DEADLINE_DAYS, SHAPE_IDS, BODY_WITNESSES_NEEDED, addEmergentClue, buildBodyAnnouncementBullet, caseBlackened, countedWitnesses, countsAsWitness, editMotive, getBodySeenBy, getCaseBody, getSecondVictim, isBodyAnnounced, isBodyFound, noteBodySeen, pickCaseShape, beatWordOverlap, markWitnessTold, extractJsonObject, buildCaseGenerationPrompt, createBlankCaseFile, describeCaseFile, isGatheringNow, monokumaFileChanged, recordBeatAttempt, reviseMonokumaFile, validateCaseFile, buildMonokumaFileBullet, commitMurder, getMonokumaFileTitle, getMotiveAnnouncementText, getTimeSlot, isCaseOpen, isMurderSlotOver, markDiscovered, normalizeCaseFile, parseCaseFileResponse, removeEmergentClue, shouldAutoAnnounceMotive, avertCase, foilAttempt, getMotiveItem, MOTIVE_KIND_IDS, isCaseOver, isDeadlinePassed, pickMotiveKind, shouldFoil } from "./core/case/caseFile.js";
 import { CASE_PROMPT_KEY, buildCasePrompt } from "./core/case/casePrompts.js";
 import { openMonokumaFile } from "./truth/monokumaFile.js";
@@ -50,6 +51,8 @@ import { openSchoolRulesView } from "./truth/schoolRulesView.js";
 import { openMotiveEditor } from "./truth/motiveEditor.js";
 import { buildRoutineSuggestionPrompt, describeRoutines, mergeSuggestedRoutines, normalizeRoutines, parseRoutineSuggestion } from "./overworld/routines.js";
 import { openRoutinesView } from "./social/routinesView.js";
+import { openEventsView, openPlanEventDialog } from "./social/eventsView.js";
+import { EVENT_STATUS, addGroupEvent, buildEventProposalPrompt, buildEventTodayNote, describeEventsForCase, describeGroupEvents, describeWhen, eventAttendees, eventFromMarker, eventsForSlot, finishPastEvents, isAtSlot, normalizeGroupEvents, parseEventMarkers, updateGroupEvent, upcomingEvents } from "./core/events/groupEvents.js";
 import { installChatWatch } from "./core/debug/chatWatch.js";
 import { MAX_SPOTS, MIN_SPOTS, buildExamineNarrationPrompt, buildHotspotPrompt, parseExamineNarration, parseHotspots, placeHotspots } from "./core/case/examine.js";
 import { ALL_MONOKUMAS_BONUS, HIDDEN_MONOKUMA_COINS, buildDailyHotspotPrompt, buildDailyNarrationPrompt, claimSpot, clearDailyRoom, describeDailyExamine, normalizeDailyExamine, planHiddenMonokumas, setDailySpots, untakenCoins } from "./core/case/dailyExamine.js";
@@ -590,6 +593,7 @@ async function passTimeToNight({ source = "manual" } = {}) {
     applyDynamicTheme();
     refreshChapterLockedFloors();
     await leaveRoomClosedAtNight();
+    gatherGroupEventsForSlot();
     if (murdered) await discoverBodyIfWitnessed();
     if (motiveDeadlineDue) await handleMotiveDeadline();
     console.log(`[${extensionName}] Time advanced to NIGHT (source: ${source}).`);
@@ -612,6 +616,184 @@ async function leaveRoomClosedAtNight() {
     else notify({ title: "CLOSED AT NIGHT", message: `The ${room} is closed at night. You head out to the ${hub.label || "hallway"}.`, durationMs: 6000 });
     performPinArrivalWithFade(hub);
     return true;
+}
+
+// ── Group events ─────────────────────────────────────────────────────────────
+// Get-togethers in daily life (core/events/groupEvents.js), per save.
+
+function getGroupEvents() {
+    return normalizeGroupEvents(extension_settings[extensionName]?.groupEvents);
+}
+
+function setGroupEvents(list) {
+    extension_settings[extensionName] ||= {};
+    extension_settings[extensionName].groupEvents = normalizeGroupEvents(list);
+    saveSettingsDebounced();
+    try { syncGroupEventsPrompt(); } catch { /* not ready */ }
+}
+
+function getCurrentSlot() {
+    const t = ensureTimeTrackerState();
+    return { day: t.day, time: t.phase === TIME_PHASE_NIGHT ? "night" : "day" };
+}
+
+// A room closed at night can't hold a night event.
+function eventRoomError(event) {
+    const pin = mapPanelController?.getPinByLocationId?.(event.roomId);
+    return event.time === "night" && pin && isClosedAtNight(pin) ? `The ${event.roomLabel} is closed at night.` : "";
+}
+
+// Adds an event from a marker, the morning call or the planner. Returns the
+// event, or null (with the reason in the console).
+function addGroupEventFrom(marker, source, { playerAttending = false } = {}) {
+    const { day, time } = getCurrentSlot();
+    const { event, error } = eventFromMarker(marker, { rooms: listCaseRooms(), day, time, source });
+    const blocked = event ? eventRoomError(event) : "";
+    if (!event || blocked) {
+        console.warn(`[Dangan][Events] ${source} event dropped: ${error || blocked}`);
+        return null;
+    }
+    const { list, event: ev, added } = addGroupEvent(getGroupEvents(), { ...event, playerAttending });
+    if (!added) return null;
+    setGroupEvents(list);
+    notify({
+        title: "EVENT PLANNED",
+        message: `${ev.title}: ${ev.roomLabel}, ${describeWhen(ev)}${ev.host ? `, hosted by ${ev.host}` : ""}. Social → EVENTS to attend.`,
+        actionLabel: ev.playerAttending ? undefined : "ATTEND",
+        onAction: ev.playerAttending ? undefined : () => setEventAttending(ev.id, true),
+        durationMs: 9000,
+    });
+    // One planned for right now gathers at once.
+    if (isAtSlot(ev, day, time)) gatherGroupEventsForSlot();
+    return ev;
+}
+
+function setEventAttending(id, going) {
+    setGroupEvents(updateGroupEvent(getGroupEvents(), id, { playerAttending: Boolean(going) }));
+}
+
+function cancelGroupEvent(id) {
+    setGroupEvents(updateGroupEvent(getGroupEvents(), id, { status: EVENT_STATUS.CANCELLED }));
+}
+
+// The player walks over to an event (from the toast's GO).
+function goToEventRoom(event) {
+    const pin = mapPanelController?.getPinByLocationId?.(event.roomId);
+    if (!pin || isMovementBlocked() || getCurrentLocationId() === event.roomId) return;
+    performPinArrivalWithFade(pin);
+}
+
+// At the start of a slot: past events are over, and this slot's attendees
+// gather in their room (after the shuffle). Someone attending is offered GO.
+function gatherGroupEventsForSlot() {
+    const { day, time } = getCurrentSlot();
+    let list = finishPastEvents(getGroupEvents(), day, time);
+    const alive = listCaseCast().map((c) => c.name);
+    for (const ev of eventsForSlot(list, day, time).filter((e) => !e.gathered)) {
+        const names = eventAttendees(ev, alive);
+        overworldSceneController?.moveCharactersTo?.(names, ev.roomId);
+        list = updateGroupEvent(list, ev.id, { gathered: true });
+        console.log(`[Dangan][Events] ${ev.title}: ${names.join(", ") || "nobody"} gathered in ${ev.roomLabel}.`);
+        if (ev.playerAttending && getCurrentLocationId() !== ev.roomId) {
+            notify({
+                title: `EVENT: ${ev.title.toUpperCase()}`,
+                message: `Everyone's gathering in the ${ev.roomLabel}.`,
+                actionLabel: "GO",
+                onAction: () => goToEventRoom(ev),
+                durationMs: 15000,
+            });
+        }
+    }
+    setGroupEvents(list);
+}
+
+// Some mornings a classmate proposes an event (Settings → Gameplay →
+// Classmates plan events), through one hidden call.
+let eventProposalInFlight = false;
+async function maybeProposeGroupEvent({ force = false } = {}) {
+    if (!force && getMonopadSetting("classmatesPlanEvents") !== "sometimes") return false;
+    if (eventProposalInFlight || isClassTrialActive()) return false;
+    const { day, time } = getCurrentSlot();
+    if (!force && (upcomingEvents(getGroupEvents(), day, time).length || Math.random() > 1 / 3)) return false;
+    const cast = listCaseCast();
+    const rooms = listCaseRooms();
+    if (cast.length < 2 || !rooms.length) return false;
+    eventProposalInFlight = true;
+    try {
+        const prompt = buildEventProposalPrompt({
+            cast,
+            rooms,
+            day,
+            recentChat: buildRecentChatContextLines(12),
+            template: getMonopadSetting("eventProposalPromptTemplate") || "",
+        });
+        const raw = await generateIsolated(prompt, { raw: true, maxTokens: 600, reasoning: { effort: "low", exclude: true } });
+        const marker = parseEventMarkers(raw)[0];
+        if (!marker) {
+            console.log("[Dangan][Events] Nobody proposed an event this morning.");
+            return false;
+        }
+        return Boolean(addGroupEventFrom(marker, "proposal"));
+    } catch (err) {
+        console.warn("[Dangan][Events] The event proposal failed:", err);
+        return false;
+    } finally {
+        eventProposalInFlight = false;
+    }
+}
+
+// PLAN EVENT, from the Phase HUD or the Events list.
+async function planGroupEventFromPlayer() {
+    const rooms = listCaseRooms();
+    if (!rooms.length) {
+        notify({ tone: "warn", title: "NO ROOMS", message: "This save's map has no open rooms." });
+        return false;
+    }
+    const player = getCasePlayerName();
+    return openPlanEventDialog({
+        getRooms: () => rooms,
+        getCast: () => listCaseCast().map((c) => c.name),
+        getNow: getCurrentSlot,
+        host: player,
+        save: async (values) => {
+            const room = rooms.find((r) => r.id === values.roomId);
+            const draft = { ...values, roomLabel: room?.label || values.roomId };
+            const blocked = eventRoomError(draft);
+            if (blocked) return blocked;
+            const ev = addGroupEventFrom({
+                title: values.title,
+                room: values.roomId,
+                when: `Day ${values.day} ${values.time}`,
+                host: values.host,
+                attendees: values.attendees,
+            }, "player", { playerAttending: true });
+            return ev ? "" : "That event is already planned, or its time has passed.";
+        },
+    });
+}
+
+function openEventsFromMonopad() {
+    openEventsView({
+        getEvents: getGroupEvents,
+        getNow: getCurrentSlot,
+        setAttending: setEventAttending,
+        cancel: cancelGroupEvent,
+        plan: planGroupEventFromPlayer,
+    });
+}
+
+// The event happening here and the ones everyone knows are planned, for
+// every daily life reply.
+const GROUP_EVENTS_PROMPT_KEY = "dangan_group_events";
+function syncGroupEventsPrompt() {
+    const setPrompt = window.SillyTavern?.getContext?.()?.setExtensionPrompt || window.setExtensionPrompt;
+    if (typeof setPrompt !== "function") return;
+    const phase = getCurrentPhase();
+    const { day, time } = getCurrentSlot();
+    const text = phase === "DAY" || phase === "NIGHT"
+        ? buildEventTodayNote(getGroupEvents(), { roomId: getCurrentLocationId() || "", day, time })
+        : "";
+    setPrompt(GROUP_EVENTS_PROMPT_KEY, text, 0, 1, false, "system");
 }
 
 // Labels of this save's rooms that close at night.
@@ -647,12 +829,14 @@ async function sleepToNextDay({ source = "manual" } = {}) {
     applyDynamicTheme();
     audioVisualizer?.unsuppress?.();
     refreshChapterLockedFloors();
+    gatherGroupEventsForSlot();
     console.log(`[${extensionName}] Time advanced to DAY ${state.day} (source: ${source}).`);
     if (murdered) await discoverBodyIfWitnessed();
     // A morning that brings Monokuma's penalty doesn't also bring a new
     // motive; that waits for the next one.
     if (motiveDeadlineDue) await handleMotiveDeadline();
     else await maybeAutoAnnounceMotive();
+    await maybeProposeGroupEvent();
     return true;
 }
 
@@ -1738,6 +1922,7 @@ const INVESTIGATION_START_PARSE_REGEX = /V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]
 const processedMonokumaAnnouncementSignatures = new Set();
 const processedTrialStartSignatures = new Set();
 const processedRuleSignatures = new Set();
+const processedEventSignatures = new Set();
 const PERSISTENT_MARKER_MAX_ENTRIES = 2400;
 
 function normalizeTextToken(value) {
@@ -5022,8 +5207,9 @@ async function generateCaseFile({ deadlineDays, shape = pickNextCaseShape(), mot
         shape,
         motiveKind,
         closedAtNight: listNightClosedRoomLabels(),
+        events: describeEventsForCase(getGroupEvents(), day, getCurrentSlot().time),
     });
-    const parseOpts = { cast, player, rooms, day, chapterIndex, deadlineDays, shape, motiveKind };
+    const parseOpts = { cast, player, rooms, day, chapterIndex, deadlineDays, shape, motiveKind, events: upcomingEvents(getGroupEvents(), day, getCurrentSlot().time) };
     const source = getConfiguredGenerationSource("generationProvider") || "main";
 
     let lastError = "";
@@ -6418,6 +6604,9 @@ async function runPhaseAction(action) {
             break;
         case "edit-motive":
             openMotiveEditorFromAnywhere();
+            break;
+        case "plan-event":
+            await planGroupEventFromPlayer();
             break;
         case "undo":
             undoLastPhaseChange();
@@ -8821,6 +9010,7 @@ function stripV3CMarkersFromText(value) {
         if (canonical.includes("V3C|SLEEP")) return false;
         if (canonical.includes("V3C|TRIALSTART")) return false;
         if (canonical.startsWith("V3C|RULE_ADD:") || canonical.startsWith("V3C|RULE_BREAK:")) return false;
+        if (canonical.startsWith("V3C|EVENT:")) return false;
         return true;
     });
 
@@ -9079,6 +9269,7 @@ function syncMarkerPrompts() {
     // The School Regulations, on their own setting.
     const shareRules = getMonopadSetting("shareSchoolRules") !== false && getCurrentPhase() !== "TRIAL";
     setPrompt(RULES_PROMPT_KEY, shareRules ? buildRulesPromptWithClosedRooms() : "", 0, 0, false, "system");
+    syncGroupEventsPrompt();
 
     if (enabled && !markerPresetWarningShown && presetHasMarkerInstructions()) {
         markerPresetWarningShown = true;
@@ -9503,6 +9694,16 @@ for (const match of rawText.matchAll(regex)) {
                 markProcessedPersistentMarker("schoolRuleMarkers", persistentSignature);
                 if (marker.type === "ADD") onSchoolRuleAdded(marker.text);
                 else onSchoolRuleBroken(marker.text);
+            });
+
+            // ---- Group events ----
+            parseEventMarkers(rawText).forEach((marker, idx) => {
+                const signature = `EVENT||${messageSignature}||${marker.index}||${idx}`;
+                const persistentSignature = buildGenericPersistentMarkerSignature(msgEl, "EVENT", marker.index, idx, rawText);
+                if (processedEventSignatures.has(signature) || hasProcessedPersistentMarker("groupEventMarkers", persistentSignature)) return;
+                processedEventSignatures.add(signature);
+                markProcessedPersistentMarker("groupEventMarkers", persistentSignature);
+                addGroupEventFrom(marker, "marker");
             });
         }
 
@@ -11762,6 +11963,8 @@ function applySettingsTabUI() {
     }
     const motiveKindsSelect = document.getElementById("dangan_motive_kinds");
     if (motiveKindsSelect) motiveKindsSelect.value = tab.motiveKinds === "announcement" ? "announcement" : "mixed";
+    const planEventsSelect = document.getElementById("dangan_classmates_plan_events");
+    if (planEventsSelect) planEventsSelect.value = tab.classmatesPlanEvents === "sometimes" ? "sometimes" : "off";
 
     const partnerSelect = document.getElementById("dangan_examine_partner_reactions");
     if (partnerSelect) {
@@ -14652,6 +14855,10 @@ $(".monopad-icon").on("mouseenter", function () {
             setMonopadSetting("motiveKinds", this.value === "announcement" ? "announcement" : "mixed");
         });
 
+        $("#dangan_classmates_plan_events").on("change", function () {
+            setMonopadSetting("classmatesPlanEvents", this.value === "sometimes" ? "sometimes" : "off");
+        });
+
         $("#dangan_examine_partner_reactions").on("change", function () {
             const next = String(this.value || "clues");
             setMonopadSetting("examinePartnerReactions", ["clues", "always", "off"].includes(next) ? next : "clues");
@@ -15143,6 +15350,11 @@ debugSTGlobals();
         e.stopPropagation();
         playSfx(sfx.click);
         openRoutinesFromMonopad();
+    });
+    $(document).off("click.groupEvents").on("click.groupEvents", ".social-events-btn", (e) => {
+        e.stopPropagation();
+        playSfx(sfx.click);
+        openEventsFromMonopad();
     });
     $(document).off("click.caseFileEditor").on("click.caseFileEditor", ".truth-case-file-btn:not(.truth-rules-btn)", (e) => {
         e.stopPropagation();
@@ -18835,6 +19047,67 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     },
     helpString: 'Character routines: <code>/routines</code> opens the editor, <code>/routines status</code> lists everyone\'s routine rooms and the time of day the shuffle uses.',
     unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'status (optional)', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'events',
+    callback: async (_args, value) => {
+        const raw = String(value || '').trim();
+        const [sub = 'list', ...rest] = raw.split(/\s+/);
+        const tail = raw.slice(sub.length).trim();
+        switch (sub.toLowerCase()) {
+            case 'list': {
+                const { day, time } = getCurrentSlot();
+                const text = `Now: Day ${day} ${time}.\n\n${describeGroupEvents(getGroupEvents())}\n\nWhat the AI is told here:\n${buildEventTodayNote(getGroupEvents(), { roomId: getCurrentLocationId() || '', day, time }) || '(nothing)'}`;
+                await showCaseDebugText('GROUP EVENTS', text);
+                return text;
+            }
+            case 'add': {
+                const marker = parseEventMarkers(`V3C| EVENT: ${tail}`)[0];
+                if (!marker) {
+                    notify({ tone: 'warn', title: '/events add', message: 'Use /events add Title | room | Day N day|night | Host [| invitee, invitee].' });
+                    return '';
+                }
+                const ev = addGroupEventFrom(marker, 'debug');
+                if (!ev) notify({ tone: 'warn', title: '/events add', message: 'Not added: the room isn\'t on the map (or is closed at night), the time has passed, or it\'s already planned. The console says which.' });
+                return ev?.id || '';
+            }
+            case 'propose': {
+                notify({ title: 'EVENTS', message: 'Asking whether someone proposes an event…', durationMs: 4000 });
+                const added = await maybeProposeGroupEvent({ force: true });
+                if (!added) notify({ title: 'EVENTS', message: 'Nobody proposed one this time.' });
+                return added ? 'proposed' : '';
+            }
+            case 'gather': {
+                setGroupEvents(updateGroupEvent(getGroupEvents(), rest[0] || '', { gathered: false }));
+                gatherGroupEventsForSlot();
+                return '';
+            }
+            case 'attend':
+            case 'cancel': {
+                const ev = getGroupEvents().find((e) => e.id === rest[0]);
+                if (!ev) {
+                    notify({ tone: 'warn', title: `/events ${sub}`, message: 'Give an event id from /events.' });
+                    return '';
+                }
+                if (sub.toLowerCase() === 'attend') setEventAttending(ev.id, !ev.playerAttending);
+                else cancelGroupEvent(ev.id);
+                return ev.id;
+            }
+            case 'open':
+                openEventsFromMonopad();
+                return '';
+            case 'clear':
+                setGroupEvents([]);
+                notify({ title: 'EVENTS CLEARED', message: 'Every group event is gone.' });
+                return '';
+            default:
+                notify({ tone: 'warn', title: '/events', message: 'Use list, add, propose, gather [id], attend <id>, cancel <id>, open or clear.' });
+                return '';
+        }
+    },
+    helpString: 'Group events: <code>/events</code> lists them and what the AI is told here, <code>/events add Title | room | Day N day|night | Host [| invitees]</code> adds one, <code>/events propose</code> runs the morning call now, <code>/events gather [id]</code> gathers this slot\'s attendees again, <code>/events attend &lt;id&gt;</code> toggles going, <code>/events cancel &lt;id&gt;</code> calls one off, <code>/events open</code> opens the list, <code>/events clear</code> removes them all.',
+    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'list | add … | propose | gather [id] | attend <id> | cancel <id> | open | clear', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({

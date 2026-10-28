@@ -255,7 +255,7 @@
                 <div class="social-container">
 
                     <div class="social-list">
-                        <div class="social-list-header">CLASS ROSTER<button type="button" class="social-routines-btn" title="Where each classmate usually spends their time">ROUTINES</button></div>
+                        <div class="social-list-header">CLASS ROSTER<button type="button" class="social-routines-btn" title="Where each classmate usually spends their time">ROUTINES</button><button type="button" class="social-events-btn" title="Get-togethers planned in daily life">EVENTS</button></div>
                         <div class="social-list-items">
                             <div class="social-empty">NO STUDENTS FOUND</div>
                         </div>
@@ -1437,6 +1437,17 @@
 
                     <div class="settings-item">
                         <div class="settings-text">
+                            <label class="settings-label" for="dangan_classmates_plan_events">Classmates plan events</label>
+                            <div class="settings-note">Some mornings, a classmate proposes a get-together (a party, a study session, a séance) through one hidden AI call. Classmates can always propose one in the roleplay, and you can plan one with PLAN EVENT. When its time comes, everyone invited gathers in its room.</div>
+                        </div>
+                        <select id="dangan_classmates_plan_events" class="settings-select">
+                            <option value="off">Off</option>
+                            <option value="sometimes">Sometimes</option>
+                        </select>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
                             <span class="settings-label">Examine during daily life</span>
                             <div class="settings-note">The overworld's EXAMINE works outside investigations too: look around any room for what you notice, Monocoins tucked into a few spots, and one hidden Monokuma per floor. Fresh each chapter. Never evidence.</div>
                         </div>
@@ -1575,6 +1586,16 @@
                                 <textarea class="settings-prompt-textarea" data-setting="markerAnnouncementsPromptTemplate" data-template-key="markerAnnouncements" rows="6" spellcheck="false"></textarea>
                                 <div class="settings-prompt-actions">
                                     <button type="button" class="settings-small-button settings-prompt-reset" data-setting="markerAnnouncementsPromptTemplate" data-template-key="markerAnnouncements">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">GROUP EVENTS (how classmates propose a get-together in a reply; sent during daily life)</div>
+                                <textarea class="settings-prompt-textarea" data-setting="markerEventsPromptTemplate" data-template-key="markerEvents" rows="6" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="markerEventsPromptTemplate" data-template-key="markerEvents">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">CLASSMATES PLAN EVENTS (the hidden morning call; it must answer with a V3C| EVENT line or NONE). Placeholders: <code>{{day}}</code>, <code>{{cast}}</code>, <code>{{rooms}}</code>, <code>{{recentChat}}</code></div>
+                                <textarea class="settings-prompt-textarea" data-setting="eventProposalPromptTemplate" data-template-key="eventProposal" rows="10" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="eventProposalPromptTemplate" data-template-key="eventProposal">RESET TO DEFAULT</button>
                                 </div>
                                 <div class="settings-prompt-help">MONOKUMA'S PENALTY (sent once when a motive's deadline passes with no murder). Placeholders: <code>{{title}}</code> (the motive), <code>{{penalty}}</code></div>
                                 <textarea class="settings-prompt-textarea" data-setting="motivePenaltyPromptTemplate" data-template-key="motivePenalty" rows="4" spellcheck="false"></textarea>

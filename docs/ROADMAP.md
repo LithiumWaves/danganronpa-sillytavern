@@ -2,8 +2,8 @@
 
 ## Context
 The user approved a roadmap (A–L) to close the gap with DR1, DR2 and V3. A (case twists),
-B (the three-witness rule), C (daily examine), D (motive kinds and foiled murders) and E (rooms closed at
-night) are built and pushed to `title-screen`.
+B (the three-witness rule), C (daily examine), D (motive kinds and foiled murders), E (rooms closed at night) and
+F (group events) are built and pushed to `title-screen`.
 This file keeps the full detail of the rest, so it survives a `/clear`.
 
 
@@ -105,7 +105,15 @@ overworld for Phase F.
 - The case planner gets "Rooms locked at night: …" for alibis. The rules prompt names them.
 - **Debug:** `/rooms closed`.
 
-## Phase F: Group events in daily life (#7)
+## Phase F: Group events in daily life (#7) — built
+Built with these differences: `core/events/groupEvents.js` holds the pure helpers
+(`parseEventMarkers`, `eventFromMarker`, `addGroupEvent`, `eventsForSlot`, `finishPastEvents`,
+`eventAttendees`, `buildEventTodayNote`, `describeEventsForCase`); the note goes out on its own
+prompt key (`dangan_group_events`, synced with the marker prompts) rather than inside the
+room context prompt, and also tells everyone what's planned. The marker takes an optional
+fifth part, the invitees (default everyone). A public murder's gathering names `eventId` and
+takes the event's room and slot. Extra debug: `/events propose|gather|attend|cancel|open|clear`.
+
 - New story key: `groupEvents: [{ id, title, host, roomId, day, time, attendees, status }]`.
 - **How events start:**
   - A classmate proposes one in the roleplay with `V3C| EVENT: Title | room | Day N

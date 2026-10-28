@@ -147,7 +147,7 @@ function roomKey(value) {
 
 // Matches a room the model wrote to one on the map: its id or name, ignoring
 // case, spaces and underscores, then a name contained in the other.
-function matchRoom(raw, rooms) {
+export function matchRoom(raw, rooms) {
     const key = roomKey(raw);
     if (!key) return null;
     const exact = rooms.find((r) => roomKey(r.id) === key || roomKey(r.label) === key);
@@ -193,7 +193,7 @@ ${castLines || "- (none)"}
 ROOMS (copy a room's id exactly, the part before the colon; never invent rooms):
 ${roomLines || "- (none)"}
 
-${closedAtNight.length ? `ROOMS LOCKED AT NIGHT (nobody can be in them at night; use it for alibis and the timeline): ${closedAtNight.join(", ")}\n\n` : ""}${routines.length ? `WHERE PEOPLE USUALLY ARE (base alibis, witnesses and the timeline on these):\n${routines.join("\n")}\n\n` : ""}${rules ? `SCHOOL REGULATIONS (the plan may exploit them, never openly break one Monokuma would punish):\n${rules}\n\n` : ""}RECENT EVENTS:
+${events.length ? `UPCOMING GROUP EVENTS (a public murder's gathering can be one of these; give its id as the gathering's "eventId"):\n${events.join("\n")}\n\n` : ""}${closedAtNight.length ? `ROOMS LOCKED AT NIGHT (nobody can be in them at night; use it for alibis and the timeline): ${closedAtNight.join(", ")}\n\n` : ""}${routines.length ? `WHERE PEOPLE USUALLY ARE (base alibis, witnesses and the timeline on these):\n${routines.join("\n")}\n\n` : ""}${rules ? `SCHOOL REGULATIONS (the plan may exploit them, never openly break one Monokuma would punish):\n${rules}\n\n` : ""}RECENT EVENTS:
 ${recentChat || "(nothing yet)"}
 
 CASE SHAPE: ${caseShape.line}
@@ -214,7 +214,7 @@ Reply with one compact JSON object and nothing else: start your reply with { and
   "murderDay": ${day} to ${lastDay},
   "murderTime": "day" or "night" (when on that day the murder happens),
   "murderStyle": "hidden" or "public",
-  "gathering": { "room": "room id", "description": "the event that brings everyone together" } (only for a public murder, otherwise null),
+  "gathering": { "room": "room id", "description": "the event that brings everyone together", "eventId": "the id of the upcoming group event it is, or empty" } (only for a public murder, otherwise null),
   "monokumaFile": { "timeOfDeath": "what the file reports", "cause": "what the file reports", "injuries": "other wounds or details, or empty", "concealed": [{ "field": "timeOfDeath, cause or injuries", "truth": "the real fact the file can't state, and why" }] },
   "timeline": ["short events in order, from the killer's preparation to the body being left"],
   "foreshadowing": [{ "text": "a small, innocent-looking moment during the coming days that later turns out to matter", "characters": ["student names involved"] }],
@@ -307,6 +307,7 @@ export function parseCaseFileResponse(raw, {
     now = Date.now(),
     shape: wantedShape = "",
     motiveKind = "announcement",
+    events = [],
 } = {}) {
     const parsed = typeof raw === "object" && raw !== null ? { value: raw } : parseLooseJson(raw);
     const data = parsed.value;
@@ -369,7 +370,13 @@ export function parseCaseFileResponse(raw, {
     const motiveExtras = parseMotiveExtras(motiveKind, data, { ownerNames, castNames });
 
     const isPublic = data.murderStyle === "public";
-    const gatheringRoom = isPublic ? (matchRoom(data.gathering?.room, rooms) || bodyRoom) : null;
+    // A gathering that is one of the upcoming group events takes its room
+    // and time slot.
+    const event = isPublic && data.gathering?.eventId
+        ? events.find((e) => e.id === text(data.gathering.eventId, 60) && e.day <= deadlineDay)
+        : null;
+    const eventRoom = event ? rooms.find((r) => r.id === event.roomId) || { id: event.roomId, label: event.roomLabel || event.roomId } : null;
+    const gatheringRoom = isPublic ? (eventRoom || matchRoom(data.gathering?.room, rooms) || bodyRoom) : null;
 
     const caseFile = normalizeCaseFile({
         ...extras,
@@ -392,11 +399,11 @@ export function parseCaseFileResponse(raw, {
         motiveLink: data.motiveLink,
         method: data.method,
         weapon: data.weapon,
-        murderDay,
-        murderTime: data.murderTime,
+        murderDay: event ? Math.max(day, event.day) : murderDay,
+        murderTime: event ? event.time : data.murderTime,
         murderStyle: isPublic ? "public" : "hidden",
         gathering: gatheringRoom
-            ? { roomId: gatheringRoom.id, roomLabel: gatheringRoom.label, description: data.gathering?.description }
+            ? { roomId: gatheringRoom.id, roomLabel: gatheringRoom.label, description: data.gathering?.description || event?.title, eventId: event?.id || "" }
             : null,
         body: { roomId: bodyRoom.id, roomLabel: bodyRoom.label, state: data.body?.state },
         monokumaFile: data.monokumaFile,
@@ -542,6 +549,7 @@ export function normalizeCaseFile(raw) {
                 roomId: text(raw.gathering.roomId, 120),
                 roomLabel: text(raw.gathering.roomLabel, 120),
                 description: text(raw.gathering.description),
+                eventId: text(raw.gathering.eventId, 60),
             }
             : null,
         // Phase-1 plans had no body room; the first clue's room stands in.
