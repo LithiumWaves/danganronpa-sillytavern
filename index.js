@@ -588,10 +588,38 @@ async function passTimeToNight({ source = "manual" } = {}) {
     await nightTimeStartController.triggerAsync();
     playNighttimeTrack();
     applyDynamicTheme();
+    refreshChapterLockedFloors();
+    await leaveRoomClosedAtNight();
     if (murdered) await discoverBodyIfWitnessed();
     if (motiveDeadlineDue) await handleMotiveDeadline();
     console.log(`[${extensionName}] Time advanced to NIGHT (source: ${source}).`);
     return true;
+}
+
+// At the night announcement, a player still in a room that closes at night
+// is sent out to the floor's hub with whoever is following them. Classmates
+// were already moved out by the night shuffle.
+async function leaveRoomClosedAtNight() {
+    const id = getCurrentLocationId();
+    const pin = id ? mapPanelController?.getPinByLocationId?.(id) : null;
+    if (!pin || !mapPanelController?.isPinClosedNow?.(pin)) return false;
+    const hub = mapPanelController.getFloorHubFor?.(pin);
+    if (!hub) return false;
+    const room = pin.label || "this room";
+    const text = `"Ahem! The ${room} is off-limits at night! Out you go!" Monokuma's voice crackles from the monitor, and you step out into the ${hub.label || "hallway"}.`;
+    const shown = vnModeController?.showAside?.({ name: "", text });
+    if (shown) await shown;
+    else notify({ title: "CLOSED AT NIGHT", message: `The ${room} is closed at night. You head out to the ${hub.label || "hallway"}.`, durationMs: 6000 });
+    performPinArrivalWithFade(hub);
+    return true;
+}
+
+// Labels of this save's rooms that close at night.
+function listNightClosedRoomLabels() {
+    const scope = extension_settings[extensionName]?.map?.scope;
+    return [...new Set((mapPanelController?.listNightClosedPins?.() || [])
+        .filter((pin) => pinInScope(pin, scope) && !mapPanelController?.isPinLocked?.(pin))
+        .map((pin) => pin.label || pin.locationId))];
 }
 
 async function sleepToNextDay({ source = "manual" } = {}) {
@@ -618,6 +646,7 @@ async function sleepToNextDay({ source = "manual" } = {}) {
     playDaytimeTrack();
     applyDynamicTheme();
     audioVisualizer?.unsuppress?.();
+    refreshChapterLockedFloors();
     console.log(`[${extensionName}] Time advanced to DAY ${state.day} (source: ${source}).`);
     if (murdered) await discoverBodyIfWitnessed();
     // A morning that brings Monokuma's penalty doesn't also bring a new
@@ -4992,6 +5021,7 @@ async function generateCaseFile({ deadlineDays, shape = pickNextCaseShape(), mot
         rules: formatRulesList(getSchoolRules()),
         shape,
         motiveKind,
+        closedAtNight: listNightClosedRoomLabels(),
     });
     const parseOpts = { cast, player, rooms, day, chapterIndex, deadlineDays, shape, motiveKind };
     const source = getConfiguredGenerationSource("generationProvider") || "main";
@@ -8931,6 +8961,14 @@ function getSchoolRulesTemplate() {
     return typeof edited === "string" && edited.length ? edited : getDefaultPromptTemplate("schoolRules");
 }
 
+// The regulations as the AI is told them, naming this map's rooms that are
+// locked at night.
+function buildRulesPromptWithClosedRooms() {
+    const text = buildRulesPrompt(getSchoolRules(), getSchoolRulesTemplate());
+    const closed = listNightClosedRoomLabels();
+    return text && closed.length ? `${text}\nLocked at night: ${closed.join(", ")}.` : text;
+}
+
 function openSchoolRulesFromMonopad() {
     openSchoolRulesView({
         getRules: getSchoolRules,
@@ -9040,7 +9078,7 @@ function syncMarkerPrompts() {
 
     // The School Regulations, on their own setting.
     const shareRules = getMonopadSetting("shareSchoolRules") !== false && getCurrentPhase() !== "TRIAL";
-    setPrompt(RULES_PROMPT_KEY, shareRules ? buildRulesPrompt(getSchoolRules(), getSchoolRulesTemplate()) : "", 0, 0, false, "system");
+    setPrompt(RULES_PROMPT_KEY, shareRules ? buildRulesPromptWithClosedRooms() : "", 0, 0, false, "system");
 
     if (enabled && !markerPresetWarningShown && presetHasMarkerInstructions()) {
         markerPresetWarningShown = true;
@@ -13596,6 +13634,7 @@ jQuery(async () => {
                 getSettingsRoot: () => (extension_settings[extensionName] ??= {}),
                 saveSettings: saveSettingsDebounced,
                 getDormResidents,
+                isNight: () => ensureTimeTrackerState().phase === TIME_PHASE_NIGHT,
                 uploadImage: async (dataUrl, options) => {
                     await sillyTavernReady;
                     return uploadDataUrlImage(dataUrl, options);
@@ -18758,7 +18797,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
                 const shared = getMonopadSetting('shareSchoolRules') !== false;
                 const text = !shared ? 'Share school regulations is off: nothing is sent.'
                     : getCurrentPhase() === 'TRIAL' ? 'Nothing is sent during a Class Trial.'
-                    : buildRulesPrompt(getSchoolRules(), getSchoolRulesTemplate()) || 'There are no regulations: nothing is sent.';
+                    : buildRulesPromptWithClosedRooms() || 'There are no regulations: nothing is sent.';
                 await showCaseDebugText('RULES PROMPT', text);
                 return text;
             }
@@ -18796,6 +18835,29 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     },
     helpString: 'Character routines: <code>/routines</code> opens the editor, <code>/routines status</code> lists everyone\'s routine rooms and the time of day the shuffle uses.',
     unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'status (optional)', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'rooms',
+    callback: async (_args, value) => {
+        const sub = String(value || 'closed').trim().toLowerCase();
+        if (sub !== 'closed') {
+            notify({ tone: 'warn', title: '/rooms', message: 'Use /rooms closed.' });
+            return '';
+        }
+        const night = ensureTimeTrackerState().phase === TIME_PHASE_NIGHT;
+        const scope = extension_settings[extensionName]?.map?.scope;
+        const pins = (mapPanelController?.listNightClosedPins?.() || []).filter((pin) => pinInScope(pin, scope));
+        const lines = pins.map((pin) => {
+            const hub = mapPanelController?.getFloorHubFor?.(pin);
+            return `- ${pin.label || pin.locationId} (${pin.areaKey || '?'} / ${pin.floorKey || '?'})${night ? ' · CLOSED NOW' : ' · open (daytime)'}${hub ? ` · sends people to ${hub.label || hub.locationId}` : ' · no floor hub to send people to'}`;
+        });
+        const text = `It's ${night ? 'night' : 'daytime'}.\n\nRooms closed at night:\n${lines.join('\n') || '- none (tick CLOSED AT NIGHT in a pin\'s editor)'}`;
+        await showCaseDebugText('ROOMS CLOSED AT NIGHT', text);
+        return text;
+    },
+    helpString: 'Rooms that close at night: <code>/rooms closed</code> lists them, whether they\'re closed right now, and the floor hub anyone inside is sent to at the night announcement.',
+    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'closed', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
@@ -19193,7 +19255,12 @@ function moveToDestination(raw) {
     const dest = conns.find(c => c.label?.toLowerCase() === lcRaw)
               || conns.find(c => c.ref?.toLowerCase() === lcRaw)
               || conns.find(c => c.value?.toLowerCase() === lcRaw);
-    if (!dest) return false;
+    if (!dest) {
+        const closed = (mapPanelController.getConnectionsForLocationId?.(currentId, { includeClosed: true }) ?? [])
+            .find(c => c.closed && [c.label, c.ref, c.value].some(v => v?.toLowerCase() === lcRaw));
+        if (closed) notify({ tone: 'warn', title: 'CLOSED AT NIGHT', message: `The ${closed.label} is closed at night.` });
+        return false;
+    }
 
     if (dest.kind === 'pin') {
         const pin = mapPanelController.getPinByLocationId?.(dest.value);
@@ -19342,6 +19409,12 @@ function toggleMinimapMovePopover() {
         btn.type = 'button';
         btn.className = `dangan-moveto-btn dangan-moveto-kind-${c.kind}`;
         btn.textContent = c.label;
+        if (c.closed) {
+            btn.disabled = true;
+            btn.title = c.closed;
+            btn.classList.add('dangan-moveto-closed');
+            btn.textContent = `${c.label} · ${c.closed}`;
+        }
         btn.addEventListener('click', () => { closeMinimapMovePopover(); moveToDestination(c.label); });
         list.appendChild(btn);
     }
@@ -19597,7 +19670,7 @@ function renderMinimap() {
         return list.map(c => `${c.name}/${c.groupId || ''}`).join(',');
     })();
     const moveToOnMinimap = !!getMonopadSetting('moveToOnMinimap');
-    const reachSig = moveToOnMinimap ? [...getReachablePinLabels().keys()].join(',') : 'off';
+    const reachSig = moveToOnMinimap ? `${[...getReachablePinLabels().keys()].join(',')}|${ensureTimeTrackerState().phase}` : 'off';
     const floorExits = getCurrentFloorExits();
     const exitSig = floorExits.map(x => `${x.direction}:${x.moveLabel}:${x.text}`).join(',');
     const sig = `${data.areaKey}/${data.floorKey}|${data.imageSrc}|${pinSig}|cur:${getCurrentLocationId() || ''}|spk:${lastSpeaker || ''}|grp:${groupSig}|ow:${owSig}|mv:${reachSig}|ex:${exitSig}`;
@@ -19633,6 +19706,9 @@ function renderMinimap() {
         : null;
     // Rooms connected to the current one glow and move the player on click.
     const reachable = moveToOnMinimap ? getReachablePinLabels() : new Map();
+    const closedNow = new Set(moveToOnMinimap && currentId
+        ? (mapPanelController?.getConnectionsForLocationId?.(currentId, { includeClosed: true }) ?? []).filter(c => c.closed).map(c => c.value)
+        : []);
     for (const p of data.pins) {
         const isCurrent = currentPin && p.id === currentPin.id;
         const reachLabel = !isCurrent && p.locationId ? reachable.get(p.locationId) : null;
@@ -19647,6 +19723,10 @@ function renderMinimap() {
                 e.stopPropagation();
                 goThroughFloorExits(floorExits);
             });
+        }
+        if (!reachLabel && p.locationId && closedNow.has(p.locationId)) {
+            pin.classList.add('dangan-minimap-pin-closed');
+            pin.title = `${p.label || p.locationId}: Closed at night`;
         }
         if (reachLabel) {
             pin.dataset.name = reachLabel;
@@ -20326,7 +20406,7 @@ function isTrialUiActive() {
 function getCurrentConnections() {
     const currentId = getCurrentLocationId();
     const rawConns = currentId
-        ? (mapPanelController?.getConnectionsForLocationId?.(currentId) ?? [])
+        ? (mapPanelController?.getConnectionsForLocationId?.(currentId, { includeClosed: true }) ?? [])
         : [];
     const conns = [];
     const seenConnKeys = new Set();
@@ -20370,7 +20450,7 @@ function renderMoveToPanel() {
     // Dirty-check signature — short-circuit when nothing observable has changed.
     // The poll calls this every 2s; without this guard each call would rebuild
     // the DOM and trigger a visible flicker.
-    const sig = `${currentId || ''}|${conns.map(c => `${c.kind}:${c.value}:${c.label}`).join(';')}`;
+    const sig = `${currentId || ''}|${conns.map(c => `${c.kind}:${c.value}:${c.label}:${c.closed || ''}`).join(';')}`;
     if (existing && sig === _moveToPanelSig) return;
     _moveToPanelSig = sig;
 
@@ -20415,9 +20495,14 @@ function renderMoveToPanel() {
             btn.type = 'button';
             btn.className = `dangan-moveto-btn dangan-moveto-kind-${c.kind}`;
             btn.textContent = c.label;
-            btn.title = c.kind === 'pin' ? `Pin (${c.value})`
+            btn.title = c.closed || (c.kind === 'pin' ? `Pin (${c.value})`
                       : c.kind === 'area' ? `Area (${c.value})`
-                      : `Sub-area (${c.value})`;
+                      : `Sub-area (${c.value})`);
+            if (c.closed) {
+                btn.disabled = true;
+                btn.classList.add('dangan-moveto-closed');
+                btn.textContent = `${c.label} · ${c.closed}`;
+            }
             btn.addEventListener('click', () => moveToDestination(c.label));
             list.appendChild(btn);
         }

@@ -193,7 +193,7 @@ ${castLines || "- (none)"}
 ROOMS (copy a room's id exactly, the part before the colon; never invent rooms):
 ${roomLines || "- (none)"}
 
-${routines.length ? `WHERE PEOPLE USUALLY ARE (base alibis, witnesses and the timeline on these):\n${routines.join("\n")}\n\n` : ""}${rules ? `SCHOOL REGULATIONS (the plan may exploit them, never openly break one Monokuma would punish):\n${rules}\n\n` : ""}RECENT EVENTS:
+${closedAtNight.length ? `ROOMS LOCKED AT NIGHT (nobody can be in them at night; use it for alibis and the timeline): ${closedAtNight.join(", ")}\n\n` : ""}${routines.length ? `WHERE PEOPLE USUALLY ARE (base alibis, witnesses and the timeline on these):\n${routines.join("\n")}\n\n` : ""}${rules ? `SCHOOL REGULATIONS (the plan may exploit them, never openly break one Monokuma would punish):\n${rules}\n\n` : ""}RECENT EVENTS:
 ${recentChat || "(nothing yet)"}
 
 CASE SHAPE: ${caseShape.line}

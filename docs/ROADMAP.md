@@ -2,8 +2,8 @@
 
 ## Context
 The user approved a roadmap (A–L) to close the gap with DR1, DR2 and V3. A (case twists),
-B (the three-witness rule), C (daily examine) and D (motive kinds and foiled murders) are
-built and pushed to `title-screen`.
+B (the three-witness rule), C (daily examine), D (motive kinds and foiled murders) and E (rooms closed at
+night) are built and pushed to `title-screen`.
 This file keeps the full detail of the rest, so it survives a `/clear`.
 
 
@@ -84,7 +84,16 @@ Settings > Gameplay > Motive kinds; `/case kind <kind>` replans with a new motiv
 
 **Debug:** `/case foil`, `/case deadline`.
 
-## Phase E: Rooms that close at night (#6)
+## Phase E: Rooms that close at night (#6) — built
+Built with these differences: the night lock is separate from `isPinLocked` (that stays the
+chapter lock, so the case planner still lists the rooms): `isPinClosedNow`,
+`listNightClosedPins`, `getFloorHubFor` on the map controller, and
+`getConnectionsForLocationId(id, { includeClosed })` flags closed connections with `closed`.
+`isClosedAtNight(pin)` (`map/defaultPins.js`) applies the Hope's Peak defaults by pin id.
+Only the player needs moving out at the night announcement (`leaveRoomClosedAtNight`); the
+night shuffle already skips closed rooms. `moveCharactersTo(names, roomId)` was added to the
+overworld for Phase F.
+
 - Pins get `closedAtNight`:
   - a CLOSED AT NIGHT toggle in the pin editor (`map/mapPanel.js`);
   - Hope's Peak defaults: the dining hall/cafeteria and kitchen.

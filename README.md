@@ -147,6 +147,8 @@ The generation uses the AI Generation source in Settings, like the trial minigam
 ### Character Routines
 **Social → ROUTINES** (in the CLASS ROSTER header) sets where each living classmate usually is during the **daytime** and at **night**: add rooms with **+ room**, remove them with ×, or **CLEAR** a row. **SUGGEST FROM CARDS** asks the AI once (hidden) to fill everyone who has no routine yet from their cards and Ultimates; routines you set by hand are never overwritten. When time passes (Pass Time, Go to Sleep, Reshuffle), each classmate with a routine for that time of day turns up in one of their rooms most of the time (about 70%); otherwise, or when their rooms aren't on the current floor, the random shuffle stands. People tagging along stay with you, and dorm rooms never take visitors. A new motive's murder plan builds its alibis, witnesses and timeline on the routines.
 
+**Rooms closed at night:** some rooms lock at night, like the dining hall in the games. Hope's Peak's **Cafeteria** and **Kitchen** do by default; tick or untick **Closed at night** in any pin's editor (dorm rooms too). At night they stay in Move To and on the minimap, greyed out and marked "Closed at night", and nobody is shuffled or routed into them. If you're still inside at the night announcement, Monokuma shoos you (and whoever's following you) out to the floor's hub, shown in the VN box. The murder planner is told which rooms are locked at night for its alibis, and the School Regulations prompt names them. `/rooms closed` lists them and whether they're closed right now.
+
 **Checking it works:** `/routines status` lists everyone's routine rooms, the time of day the shuffle uses and which rooms it can use right now.
 
 ### Character Introductions

@@ -1941,6 +1941,16 @@ body.dangan-theme-night         #dangan-minimap .dangan-minimap-square { border-
     box-shadow: 0 0 10px rgba(255, 100, 200, 0.55);
 }
 .dangan-moveto-btn:active { transform: translateY(1px); }
+/* A room closed at night: shown, but not enterable. */
+.dangan-moveto-btn.dangan-moveto-closed,
+.dangan-moveto-btn.dangan-moveto-closed:hover {
+    cursor: not-allowed;
+    opacity: 0.5;
+    background: rgba(20, 8, 30, 0.65);
+    border-color: rgba(255, 100, 200, 0.25);
+    box-shadow: none;
+}
+.dangan-minimap-pin.dangan-minimap-pin-closed { opacity: 0.45; filter: grayscale(0.7); }
 .dangan-moveto-kind-area    { border-left: 3px solid #b4ff7a; }
 .dangan-moveto-kind-subarea { border-left: 3px solid #ffd66a; }
 .dangan-moveto-kind-pin     { border-left: 3px solid rgba(255, 140, 216, 0.85); }

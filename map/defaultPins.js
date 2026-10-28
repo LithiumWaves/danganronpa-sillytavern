@@ -97,6 +97,17 @@ export const DEFAULT_PINS = [
 // Stable id set used by the merge logic to recognise which pins are defaults.
 export const DEFAULT_PIN_IDS = new Set(DEFAULT_PINS.map(p => p.id));
 
+// Rooms that close at night unless a pin says otherwise (closedAtNight):
+// Hope's Peak's cafeteria and kitchen, by pin id, so the island's kitchen
+// (same locationId) stays open.
+export const DEFAULT_NIGHT_CLOSED_PIN_IDS = new Set(["custom_1774462926901_avgmd", "custom_1774462936143_mkrk3"]);
+
+export function isClosedAtNight(pin) {
+    if (!pin) return false;
+    if (typeof pin.closedAtNight === "boolean") return pin.closedAtNight;
+    return DEFAULT_NIGHT_CLOSED_PIN_IDS.has(pin.id);
+}
+
 // Default corridor/hallway pins. One steps aside when the player already has
 // their own hub on that floor (see findRedundantDefaultHubs in mapLinks.js).
 export const DEFAULT_HUB_PIN_IDS = new Set(DEFAULT_PINS.filter(p => p.id.startsWith("default_hub_")).map(p => p.id));

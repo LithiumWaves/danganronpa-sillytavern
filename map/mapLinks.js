@@ -250,7 +250,7 @@ export function isDormPin(pin) {
 }
 
 // The fields a player can change on a dorm pin, kept in its save record.
-export const DORM_EDITABLE_FIELDS = Object.freeze(["label", "icon", "bg", "bgm", "outfitPrefix", "x", "y", "connectedTo", "autoConnect", "locked", "hubId"]);
+export const DORM_EDITABLE_FIELDS = Object.freeze(["label", "icon", "bg", "bgm", "outfitPrefix", "x", "y", "connectedTo", "autoConnect", "locked", "hubId", "closedAtNight"]);
 
 function dormBasePin(resident, slot) {
     const pos = INN_DORM_SLOTS[slot];

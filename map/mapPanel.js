@@ -1,5 +1,5 @@
-import { DEFAULT_HUB_PIN_IDS, DEFAULT_PINS } from "./defaultPins.js";
-import { DORM_AREA_KEY, DORM_FLOOR_KEY, DORM_HUB_ID, assignDormSlots, findDormCorridor, buildDormPins, describeFloorExit, diffDormEdits, findDefaultPinHubs, findPinHubs, findRedundantDefaultHubs, getAutoLinkedPins } from "./mapLinks.js";
+import { DEFAULT_HUB_PIN_IDS, DEFAULT_PINS, isClosedAtNight } from "./defaultPins.js";
+import { DORM_AREA_KEY, DORM_FLOOR_KEY, DORM_HUB_ID, assignDormSlots, findDormCorridor, findFloorHub, buildDormPins, describeFloorExit, diffDormEdits, findDefaultPinHubs, findPinHubs, findRedundantDefaultHubs, getAutoLinkedPins } from "./mapLinks.js";
 import { getFloorUnlockChapter, isFloorLocked, isStoryPin, listCustomFloors, mergePins, migrateLegacyMapStorage, pinInScope, resolveFloorImageSrc, scopeAreaKeys, scopeAreas, setFloorUnlockChapter, splitPins } from "./mapStorage.js";
 import { buildCustomArea } from "../core/title/titleMapSetup.js";
 import { findBackgroundElement } from "../core/media/findBackground.js";
@@ -70,7 +70,7 @@ function getFloorByKey(areaKey, floorKey) {
     return area.floors.find(floor => floor.key === floorKey) || null;
 }
 
-export function createMapPanelController({ extensionFolderPath, getItemsPanelController, playSfx, getSfx, getSetting, onWalkStep, onTrialStartRequest, getTruthBulletByLocationId, navigateToTruth, onMachineOpen, onMachineClose, onReshuffleCharacters, playShopTrack, stopShopTrack, fetchBgmPaths, playBgmPath, getSettingsRoot, saveSettings, uploadImage, getDormResidents }) {
+export function createMapPanelController({ extensionFolderPath, getItemsPanelController, playSfx, getSfx, getSetting, onWalkStep, onTrialStartRequest, getTruthBulletByLocationId, navigateToTruth, onMachineOpen, onMachineClose, onReshuffleCharacters, playShopTrack, stopShopTrack, fetchBgmPaths, playBgmPath, getSettingsRoot, saveSettings, uploadImage, getDormResidents, isNight }) {
     const state = {
         area: "hopes_peak",
         floor: "floor_1",
@@ -440,6 +440,25 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
 
     function isPinLocked(pin) {
         return !!pin?.areaKey && !!pin?.floorKey && isFloorLockedNow(pin.areaKey, pin.floorKey);
+    }
+
+    // Rooms that close at night (closedAtNight, or the Hope's Peak defaults)
+    // while it's night. Separate from the chapter lock: the case planner
+    // still sees them, and Move To shows them as closed instead of hiding them.
+    function isPinClosedNow(pin) {
+        return !!pin && !!isNight?.() && isClosedAtNight(pin);
+    }
+
+    function listNightClosedPins() {
+        return getAllPins().filter(p => p?.type === 'room' && p.locationId && !p.hidden && isClosedAtNight(p));
+    }
+
+    // The floor hub a pin's room belongs to (where people are moved to when
+    // it closes), or null.
+    function getFloorHubFor(pin) {
+        if (!pin?.areaKey || !pin?.floorKey) return null;
+        const hub = findFloorHub(getAllPins(), pin.areaKey, pin.floorKey);
+        return hub && hub.id !== pin.id ? hub : null;
     }
 
     function isAreaLocked(areaKey) {
@@ -2008,6 +2027,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                             <div class="map-pin-edit-hint map-pin-edit-auto">${autoLinkedHtml}</div>
                             <label class="map-pin-edit-conn-row"><input type="checkbox" class="map-pin-edit-autoconnect"${pin.autoConnect === false ? '' : ' checked'}> Auto-connect (to this floor's corridor, and stairs to their other end)</label>
                             <label class="map-pin-edit-conn-row"><input type="checkbox" class="map-pin-edit-hub"${pin.hub === true ? ' checked' : ''}> Floor hub (every room on this floor connects here)</label>
+                            <label class="map-pin-edit-conn-row"><input type="checkbox" class="map-pin-edit-closed-night"${isClosedAtNight(pin) ? ' checked' : ''}> Closed at night (nobody can go in at night; anyone inside is sent out at the night announcement)</label>
                         </div>
                         ${viaOptions ? `
                         <div class="map-pin-edit-field">
@@ -2121,6 +2141,12 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
                 else pin.autoConnect = false;
                 if ($modal.find(".map-pin-edit-hub").is(":checked")) pin.hub = true;
                 else delete pin.hub;
+                {
+                    // Stored only when it differs from the default for this pin.
+                    const closed = $modal.find(".map-pin-edit-closed-night").is(":checked");
+                    delete pin.closedAtNight;
+                    if (closed !== isClosedAtNight(pin)) pin.closedAtNight = closed;
+                }
                 if (viaOptions) {
                     // Only kept when it differs from what the map works out.
                     const via = $modal.find(".map-pin-edit-via:checked").map(function () { return this.value; }).get();
@@ -2816,7 +2842,9 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         return null;
     }
 
-    function getConnectionsForLocationId(locationId) {
+    // `includeClosed` keeps rooms closed at night, flagged with `closed`, so
+    // Move To can show them disabled; everything else leaves them out.
+    function getConnectionsForLocationId(locationId, { includeClosed = false } = {}) {
         const pin = getPinByLocationId(locationId);
         if (!pin) return [];
         const manual = (Array.isArray(pin.connectedTo) ? pin.connectedTo : []).map(describeConnectionRef);
@@ -2830,7 +2858,8 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
             if (seen.has(key)) return false;
             seen.add(key);
             return true;
-        });
+        }).map(c => (c.kind === 'pin' && isPinClosedNow(getPinByLocationId(c.value)) ? { ...c, closed: 'Closed at night' } : c))
+            .filter(c => includeClosed || !c.closed);
     }
 
     // The ways off this floor from a room (stairs, doors to other areas), named
@@ -2922,6 +2951,9 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         getFloorExitsForLocationId,
         refreshDormRooms,
         isPinLocked,
+        isPinClosedNow,
+        listNightClosedPins,
+        getFloorHubFor,
         isFloorLocked: isFloorLockedNow,
         applyNewGameMap,
         switchChatBackground,

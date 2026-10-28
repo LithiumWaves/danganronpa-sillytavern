@@ -850,8 +850,9 @@ export function createOverworldSceneController({
         const pins = mp?.getAllPins?.() || [];
         // Dorm rooms are private: nobody gets shuffled into someone's bedroom.
         const roomPins = pins.filter(p => SPAWNABLE_PIN_TYPES.has(p.type) && !p.hidden && !p._generated);
-        // Floors locked until a later chapter never take characters.
-        let filtered = roomPins.filter(p => !mp?.isPinLocked?.(p));
+        // Floors locked until a later chapter never take characters, nor do
+        // rooms closed at night while it's night.
+        let filtered = roomPins.filter(p => !mp?.isPinLocked?.(p) && !mp?.isPinClosedNow?.(p));
         if (roomPins.length > 0 && filtered.length === 0) return [];
 
         if (filtered.length > 0) {
@@ -937,6 +938,33 @@ export function createOverworldSceneController({
             delete entry.depthScale;
         }
         return true;
+    }
+
+    // Moves the named characters into `locationId` as one group (a group
+    // event, a room closing at night). Returns the names that moved.
+    function moveCharactersTo(names, locationId) {
+        if (!isRoomLocationId(locationId)) return [];
+        const state = getState();
+        const active = new Set(getActiveRosterKeys());
+        const keys = [...new Set((names || []).map((n) => normalizeName(n || "")))]
+            .filter((k) => k && active.has(k) && state.characters[k]?.locationId !== locationId);
+        if (!keys.length) return [];
+        const gid = keys.length > 1 ? makeGroupId() : null;
+        const offsetVh = randomVerticalOffsetVh();
+        for (const key of keys) {
+            const entry = state.characters[key] ??= { locationId: null, groupId: null };
+            entry.locationId = locationId;
+            entry.groupId = gid;
+            entry.verticalOffsetVh = offsetVh;
+            entry.customX = null;
+            entry.customScale = null;
+            delete entry.depthScale;
+        }
+        saveState();
+        scheduleRender();
+        notifySceneChanged();
+        schedulePresenceSync();
+        return keys.map((k) => characters.get(k)?.name || k);
     }
 
     function isRoomFlat(locationId) {
@@ -3137,6 +3165,7 @@ export function createOverworldSceneController({
         notifyPlayerMovedTo,
         ensureCharacterLocations,
         getCharactersInRoom,
+        moveCharactersTo,
         // Names of the classmates tagging along (your investigation partners).
         getFollowerNames: () => getFollowerKeys().map((k) => characters.get(k)?.name).filter(Boolean),
         playHostExit,
