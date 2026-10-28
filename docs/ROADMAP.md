@@ -17,7 +17,7 @@ survives a `/clear`.
 | G | Mysteries through the whole game (Flashback Lights optional) | ⬜ To do |
 | H | Exploring a newly unlocked floor | ✅ Done |
 | I | Intermissions: Monokuma Theater, mastermind cutaways | ⬜ To do |
-| J | Rules with real punishment | ⬜ To do |
+| J | Rules with real punishment | ✅ Done |
 | K | A scripted prologue | ⬜ To do |
 | L | Evidence readout | ✅ Done |
 
@@ -192,7 +192,12 @@ over the monitors, label "A NEW AREA IS OPEN"), and the hint in the Phase HUD me
 - **Optional:** a short theater piece at each Night Time announcement (off by default).
 - **Debug:** `/theater`.
 
-## Phase J: Rules with real punishment
+## Phase J: Rules with real punishment — ✅ done
+Built as planned: `RULE_SEVERITY`, `setRuleSeverity`, `ruleByNumber`, `buildRuleBreakNote`
+(`core/rules/schoolRules.js`; old saves read `default-5` as grave), `vfx/bloodSplash.js`, and
+`onSchoolRuleBroken(name, ruleNumber)` in index.js. The one-time note is kept per save
+(`ruleBreakNote`) on its own prompt key and spent once a reply carrying it renders. A grave
+punishment turned down at the confirm becomes a final warning.
 - Rules get `severity: light | grave`:
   - a toggle in the RULES view (`truth/schoolRulesView.js`);
   - the defaults: violence against Monokuma or the cameras is grave;

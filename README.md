@@ -144,6 +144,8 @@ The generation uses the AI Generation source in Settings, like the trial minigam
 ### School Regulations
 **Truth → RULES** (next to CASE FILE) opens the School Regulations, starting with rules close to Hope's Peak's (no leaving the school, nighttime is 10 p.m. to 7 a.m., sleep only in your own room, no violence against Monokuma or the cameras, the blackened graduates unless found out). Add, edit, delete or reset them; they're kept per save. With Settings → Gameplay → **Share school regulations** on, the AI is told them outside Class Trials, so characters follow them and Monokuma enforces them. When Monokuma adds a rule in the story (`V3C| RULE_ADD: <rule>`) it joins the list, marked as his, with a **NEW SCHOOL REGULATION** toast; when someone breaks one (`V3C| RULE_BREAK: <name>`) a **SCHOOL REGULATION VIOLATION** toast shows and Monokuma is brought in if he's a host card. These markers only apply once the reply is finished; swiping the reply away doesn't take an added rule back (delete it from the list). New motive plans see the rules too. Edit the prompt under **EDIT AI INSTRUCTIONS** → SCHOOL REGULATIONS (`{{rules}}` is the numbered list).
 
+**Light and grave rules:** each regulation in RULES is **LIGHT** or **GRAVE** (click to switch). Violence against Monokuma or the cameras is grave by default; rules Monokuma adds are light unless he says breaking them means death (`V3C| RULE_ADD: <rule> | grave`). Breaking a light rule brings Monokuma in to scold and threaten, with a one-time note for the next reply. Breaking a grave one is punished like Mukuro in the first game: with Settings → Gameplay → **Confirm grave punishments** on (the default) you're asked first, then a full-screen pink blood splash plays, the student is marked dead, and the next reply narrates it. Saying no gives a final warning instead. **You're never killed:** if you break a grave rule, Monokuma gives you a final warning. The three notes (RULE BROKEN, PUNISHMENT, FINAL WARNING) are under **EDIT AI INSTRUCTIONS**. `/rules break <name> 5` plays a violation of rule 5.
+
 **Checking it works:** `/rules prompt` shows exactly what the AI is told, `/rules add <text>` and `/rules break <name>` play the markers' effects, `/rules reset` restores the defaults, and `/rules` opens the list.
 
 ### Character Routines
@@ -208,7 +210,7 @@ The extension scans assistant messages for these patterns.
 - `V3C| BODY_DISCOVERY` (plays a separate static/shake body discovery cutscene using `assets/sfx/etc/despairnoise.mp3`)
 - `V3C| DAY_ANNOUN`, `V3C| NIGHT_ANNOUN`, `V3C| BDA` (play Monokuma's daytime, nighttime or body discovery announcement; they don't change the day or phase)
 - `V3C| RULE_ADD: <rule>` (Monokuma adds a School Regulation)
-- `V3C| RULE_BREAK: <name>` (someone broke a School Regulation; Monokuma is brought in)
+- `V3C| RULE_BREAK: <name> | <rule number>` (someone broke a School Regulation; Monokuma is brought in, and a grave rule is punished by death)
 
 ### Swipes, deletes and edits
 What a message did is remembered per save: Truth Bullets, trust changes, gift reactions, the Monocoins, Trust Fragments and XP that came with them, and an investigation it started. Swiping that message away, deleting it, or editing its markers out takes all of that back, and a toast lists what was undone. Swiping back to it applies it again. Edits that keep the markers change nothing. If the message held a gift reaction, the gift goes back to waiting and the next reply reacts to it instead.

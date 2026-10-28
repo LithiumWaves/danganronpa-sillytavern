@@ -1,4 +1,4 @@
-import { DEFAULT_SCHOOL_RULES, addRule, buildRulesPrompt, createDefaultRules, editRule, normalizeRules, parseRuleMarkers, removeRule, stripRuleMarkers } from "./schoolRules.js";
+import { DEFAULT_SCHOOL_RULES, RULE_SEVERITY, addRule, buildRuleBreakNote, formatRulesList, ruleByNumber, setRuleSeverity, buildRulesPrompt, createDefaultRules, editRule, normalizeRules, parseRuleMarkers, removeRule, stripRuleMarkers } from "./schoolRules.js";
 
 function assert(cond, msg) {
     if (!cond) throw new Error(msg);
@@ -26,6 +26,28 @@ function run() {
     const markers = parseRuleMarkers("He grins.\nV3C| RULE_ADD: **No sleeping in class.**\nV3C｜RULE_BREAK: Kokichi Ouma\n");
     assert(markers.length === 2 && markers[0].type === "ADD" && markers[0].text === "No sleeping in class." && markers[1].type === "BREAK" && markers[1].text === "Kokichi Ouma", "markers parsed");
     assert(stripRuleMarkers("A\nV3C| RULE_ADD: x\nB") === "A\nB", "markers stripped");
+
+    // Phase J: severity.
+    {
+        const rules = createDefaultRules();
+        assert(rules[4].severity === "grave" && rules.filter((r) => r.severity === "grave").length === 1, "violence against Monokuma is grave");
+        assert(normalizeRules([{ id: "default-5", text: "Violence…", source: "default" }])[0].severity === "grave", "old saves: the default is grave");
+        assert(normalizeRules([{ id: "default-5", text: "x", source: "custom" }])[0].severity === "light", "only the default one");
+        assert(formatRulesList(rules).includes("5. Violence") && formatRulesList(rules).includes("punishes breaking this one by death"), "the prompt marks grave rules");
+        const changed = setRuleSeverity(rules, "default-1", RULE_SEVERITY.GRAVE);
+        assert(changed[0].severity === "grave" && setRuleSeverity(changed, "default-1", "light")[0].severity === "light", "toggle");
+        assert(addRule(rules, "No fighting", { severity: "grave" }).at(-1).severity === "grave" && addRule(rules, "No yelling").at(-1).severity === "light", "added rules are light unless grave");
+        assert(ruleByNumber(rules, 5).id === "default-5" && ruleByNumber(rules, 5).number === 5 && ruleByNumber(rules, 99) === null, "by number");
+
+        const m = parseRuleMarkers("V3C| RULE_ADD: No fighting | grave\nV3C| RULE_ADD: No a|b rule\nV3C| RULE_BREAK: Mondo Owada | 5\nV3C| RULE_BREAK: Hifumi");
+        assert(m[0].text === "No fighting" && m[0].severity === "grave", "RULE_ADD | grave");
+        assert(m[1].text === "No a|b rule" && m[1].severity === "light", "a bar that isn't a severity stays");
+        assert(m[2].text === "Mondo Owada" && m[2].ruleNumber === 5 && m[3].ruleNumber === 0, "RULE_BREAK with a number");
+
+        const note = buildRuleBreakNote({ name: "Mondo", rule: ruleByNumber(rules, 5), outcome: "grave" });
+        assert(note.startsWith("[PUNISHMENT]") && note.includes("Regulation 5") && note.includes("Mondo is dead"), "grave note");
+        assert(buildRuleBreakNote({ name: "Me", outcome: "warning" }).startsWith("[FINAL WARNING]") && buildRuleBreakNote({ name: "X" }).includes("Regulation ?"), "warning and light notes");
+    }
 
     console.log("schoolRules tests passed");
 }

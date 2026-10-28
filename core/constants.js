@@ -1,6 +1,6 @@
 import { DEFAULT_EXAMINE_NARRATION_TEMPLATE } from "./case/examine.js";
 import { DEFAULT_DAILY_NARRATION_TEMPLATE } from "./case/dailyExamine.js";
-import { DEFAULT_RULES_PROMPT_TEMPLATE } from "./rules/schoolRules.js";
+import { DEFAULT_RULES_PROMPT_TEMPLATE, DEFAULT_RULE_BREAK_GRAVE_TEMPLATE, DEFAULT_RULE_BREAK_LIGHT_TEMPLATE, DEFAULT_RULE_BREAK_WARNING_TEMPLATE } from "./rules/schoolRules.js";
 import { DEFAULT_PENALTY_NOTE_TEMPLATE, DEFAULT_RELENT_NOTE_TEMPLATE } from "./case/casePrompts.js";
 import { DEFAULT_EVENT_MARKER_TEMPLATE, DEFAULT_EVENT_PROPOSAL_TEMPLATE } from "./events/groupEvents.js";
 export const extensionName = "danganronpa-extension";
@@ -266,6 +266,10 @@ export const defaultSettings = {
     // During an investigation the phase readout shows how many of the case's
     // planned clues were found ("EVIDENCE 2/6").
     showKeyEvidenceFound: false,
+    // A grave regulation's punishment (death) asks first.
+    confirmGravePunishments: true,
+    // A violation's one-time note still waiting for the next reply.
+    ruleBreakNote: null,
     // Examine mode in daily life too (flavour, Monocoins, hidden Monokumas).
     dailyExamineEnabled: true,
     // This chapter's daily examine spots, coins and hidden Monokumas
@@ -395,6 +399,12 @@ Don't use it at any other time.`,
     examineDailyNarration: DEFAULT_DAILY_NARRATION_TEMPLATE,
     // The School Regulations ({{rules}} is the numbered list).
     schoolRules: DEFAULT_RULES_PROMPT_TEMPLATE,
+    // The one-time note after someone breaks a regulation
+    // (core/rules/schoolRules.js): light, grave (punished by death), and the
+    // final warning (the player, or a punishment turned down).
+    ruleBreakLight: DEFAULT_RULE_BREAK_LIGHT_TEMPLATE,
+    ruleBreakGrave: DEFAULT_RULE_BREAK_GRAVE_TEMPLATE,
+    ruleBreakWarning: DEFAULT_RULE_BREAK_WARNING_TEMPLATE,
     // What everyone is told once when a motive's deadline passes with no
     // murder (core/case/casePrompts.js): the penalty, or Monokuma relenting.
     motivePenalty: DEFAULT_PENALTY_NOTE_TEMPLATE,

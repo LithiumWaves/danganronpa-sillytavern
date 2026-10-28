@@ -3,7 +3,7 @@
 // rules per save and tells the AI about them.
 
 import { pushSkippable } from "../core/skip/skipRegistry.js";
-import { addRule, createDefaultRules, editRule, normalizeRules, removeRule } from "../core/rules/schoolRules.js";
+import { RULE_SEVERITY, addRule, createDefaultRules, editRule, normalizeRules, removeRule, setRuleSeverity } from "../core/rules/schoolRules.js";
 
 const STYLE_ID = "dangan-srv-style";
 const ROOT_ID = "dangan-srv";
@@ -32,6 +32,7 @@ const CSS = `
 #${ROOT_ID} .srv-num { color: #ff2ec4; font-weight: 700; padding-top: 5px; text-align: right; }
 #${ROOT_ID} .srv-tag { display: inline-block; margin-top: 4px; font-size: 0.68rem; letter-spacing: 0.1em; color: #ffd23f; }
 #${ROOT_ID} .srv-actions { display: flex; gap: 6px; }
+#${ROOT_ID} button.srv-grave { border-color: #ff1f8e; color: #fff; background: rgba(255, 31, 142, 0.35); }
 #${ROOT_ID} .srv-empty { text-align: center; padding: 18px; color: #bfa9cc; }
 #${ROOT_ID} .srv-add { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 10px; }
 #${ROOT_ID} .srv-foot { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px; justify-content: flex-end; border-top: 1px solid rgba(255, 46, 196, 0.35); }
@@ -76,7 +77,7 @@ export function openSchoolRulesView(api) {
     root.innerHTML = `<div class="srv-window">
         <div class="srv-head"><div class="srv-title">SCHOOL REGULATIONS</div><button type="button" class="srv-close">CLOSE</button></div>
         <div class="srv-body">
-            <p class="srv-note">The AI knows these rules: characters follow them and Monokuma enforces them. He can add new ones in the story, and breaking one brings him in.</p>
+            <p class="srv-note">The AI knows these rules: characters follow them and Monokuma enforces them. He can add new ones in the story, and breaking one brings him in. LIGHT rules get a scolding; GRAVE ones are punished by death (you're asked first, and you yourself only get a final warning).</p>
             <ol class="srv-list"></ol>
             <div class="srv-add"><textarea class="srv-new" rows="1" placeholder="A new regulation…"></textarea><button type="button" class="srv-primary srv-add-btn">ADD</button></div>
         </div>
@@ -132,6 +133,14 @@ export function openSchoolRulesView(api) {
             }
             const actions = document.createElement("div");
             actions.className = "srv-actions";
+            const sev = document.createElement("button");
+            sev.type = "button";
+            const grave = rule.severity === RULE_SEVERITY.GRAVE;
+            sev.className = grave ? "srv-grave" : "";
+            sev.textContent = grave ? "GRAVE" : "LIGHT";
+            sev.title = grave ? "Breaking it is punished by death. Click to make it light." : "Breaking it gets a scolding. Click to make it grave (punished by death).";
+            sev.addEventListener("click", () => save(setRuleSeverity(api.getRules(), rule.id, grave ? RULE_SEVERITY.LIGHT : RULE_SEVERITY.GRAVE)));
+            actions.appendChild(sev);
             const del = document.createElement("button");
             del.type = "button";
             del.className = "srv-danger";

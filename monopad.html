@@ -1472,6 +1472,14 @@
 
                     <div class="settings-item">
                         <div class="settings-text">
+                            <span class="settings-label">Confirm grave punishments</span>
+                            <div class="settings-note">Some School Regulations are grave (mark them in RULES): breaking one is punished by death, like Mukuro in the first game, with a pink blood splash and the student marked dead. On: you're asked first, and saying no gives a final warning instead. You're never punished yourself, only warned.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="confirmGravePunishments"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
                             <label class="settings-label" for="dangan_examine_partner_reactions">Investigation partners react</label>
                             <div class="settings-note">When you examine something with classmates you're investigating with ("Investigate With" in the explore menu), one of them reacts in the chat.</div>
                         </div>
@@ -1594,6 +1602,21 @@
                                 <textarea class="settings-prompt-textarea" data-setting="markerAnnouncementsPromptTemplate" data-template-key="markerAnnouncements" rows="6" spellcheck="false"></textarea>
                                 <div class="settings-prompt-actions">
                                     <button type="button" class="settings-small-button settings-prompt-reset" data-setting="markerAnnouncementsPromptTemplate" data-template-key="markerAnnouncements">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">RULE BROKEN (sent once after a light violation). Placeholders: <code>{{name}}</code>, <code>{{number}}</code>, <code>{{rule}}</code></div>
+                                <textarea class="settings-prompt-textarea" data-setting="ruleBreakLightPromptTemplate" data-template-key="ruleBreakLight" rows="4" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="ruleBreakLightPromptTemplate" data-template-key="ruleBreakLight">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">PUNISHMENT (sent once after a grave violation is punished by death). Placeholders: <code>{{name}}</code>, <code>{{number}}</code>, <code>{{rule}}</code></div>
+                                <textarea class="settings-prompt-textarea" data-setting="ruleBreakGravePromptTemplate" data-template-key="ruleBreakGrave" rows="4" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="ruleBreakGravePromptTemplate" data-template-key="ruleBreakGrave">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">FINAL WARNING (sent once when the player breaks a grave rule, or a punishment is turned down). Placeholders: <code>{{name}}</code>, <code>{{number}}</code>, <code>{{rule}}</code></div>
+                                <textarea class="settings-prompt-textarea" data-setting="ruleBreakWarningPromptTemplate" data-template-key="ruleBreakWarning" rows="4" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="ruleBreakWarningPromptTemplate" data-template-key="ruleBreakWarning">RESET TO DEFAULT</button>
                                 </div>
                                 <div class="settings-prompt-help">GROUP EVENTS (how classmates propose a get-together in a reply; sent during daily life)</div>
                                 <textarea class="settings-prompt-textarea" data-setting="markerEventsPromptTemplate" data-template-key="markerEvents" rows="6" spellcheck="false"></textarea>

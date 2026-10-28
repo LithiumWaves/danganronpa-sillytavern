@@ -47,7 +47,8 @@ import { CASE_STATUS, DEFAULT_MOTIVE_DEADLINE_DAYS, SHAPE_IDS, BODY_WITNESSES_NE
 import { CASE_PROMPT_KEY, buildCasePrompt } from "./core/case/casePrompts.js";
 import { openMonokumaFile } from "./truth/monokumaFile.js";
 import { openCaseFileEditor } from "./truth/caseFileEditor.js";
-import { RULES_PROMPT_KEY, RULE_SOURCES, addRule, buildRulesPrompt, createDefaultRules, formatRulesList, normalizeRules, parseRuleMarkers } from "./core/rules/schoolRules.js";
+import { RULES_PROMPT_KEY, RULE_SOURCES, RULE_SEVERITY, addRule, buildRuleBreakNote, buildRulesPrompt, createDefaultRules, formatRulesList, normalizeRules, parseRuleMarkers, ruleByNumber } from "./core/rules/schoolRules.js";
+import { playBloodSplash } from "./vfx/bloodSplash.js";
 import { openSchoolRulesView } from "./truth/schoolRulesView.js";
 import { openMotiveEditor } from "./truth/motiveEditor.js";
 import { buildRoutineSuggestionPrompt, describeRoutines, mergeSuggestedRoutines, normalizeRoutines, parseRoutineSuggestion } from "./overworld/routines.js";
@@ -9215,20 +9216,102 @@ function openSchoolRulesFromMonopad() {
     });
 }
 
-function onSchoolRuleAdded(text) {
+function onSchoolRuleAdded(text, { severity = RULE_SEVERITY.LIGHT } = {}) {
     const before = getSchoolRules();
-    const next = addRule(before, text, { source: RULE_SOURCES.MONOKUMA, chapter: Number(getMonopadSetting("chapterIndex") ?? 0) });
+    const next = addRule(before, text, { source: RULE_SOURCES.MONOKUMA, chapter: Number(getMonopadSetting("chapterIndex") ?? 0), severity });
     if (next.length === before.length) return false;
     setSchoolRules(next);
     notify({ title: "NEW SCHOOL REGULATION", message: `${next.length}. ${next[next.length - 1].text}`, actionLabel: "VIEW", onAction: openSchoolRulesFromMonopad, durationMs: 9000 });
     return true;
 }
 
-function onSchoolRuleBroken(name) {
-    notify({ tone: "warn", title: "SCHOOL REGULATION VIOLATION", message: `${name} broke a school regulation.`, durationMs: 8000 });
-    // Monokuma steps in, when he's a host card here.
-    const monokuma = getHostNames().find((n) => /monokuma/i.test(String(n || "")));
-    if (monokuma) bringHostOnStage(monokuma);
+// Someone broke regulation `ruleNumber` (0: not named). A light rule brings
+// Monokuma in to scold and threaten. A grave one, after a confirm (Settings
+// → Gameplay → Confirm grave punishments), is punished by death: a pink blood
+// splash, the student marked dead, and the next reply narrates it. The
+// player is never killed: a grave rule they break gets a final warning, as
+// does a grave punishment the confirm turns down.
+let ruleBreakInFlight = false;
+async function onSchoolRuleBroken(name, ruleNumber = 0) {
+    if (ruleBreakInFlight) return "";
+    ruleBreakInFlight = true;
+    try {
+        const who = String(name || "").trim() || "Someone";
+        const rule = ruleByNumber(getSchoolRules(), ruleNumber);
+        const char = findRosterCharacter(who);
+        const isPlayer = normalizeName(who) === normalizeName(getCasePlayerName() || "");
+        let outcome = "light";
+        if (rule?.severity === RULE_SEVERITY.GRAVE) {
+            if (isPlayer || !char || char.dead || isHostCharacter(who)) outcome = "warning";
+            else if (getMonopadSetting("confirmGravePunishments") === false) outcome = "grave";
+            else {
+                const ok = await confirmOutsideMonopad({
+                    title: "A GRAVE VIOLATION",
+                    message: `${char.name} broke School Regulation ${rule.number}: "${rule.text}". Monokuma punishes this by death.\n\nCarry out the punishment? ${char.name} will be killed and marked dead. Otherwise Monokuma gives a final warning.`,
+                    confirmLabel: "PUNISH",
+                    cancelLabel: "FINAL WARNING",
+                });
+                outcome = ok ? "grave" : "warning";
+            }
+        }
+        const display = char?.name || who;
+        if (outcome === "grave") {
+            await playBloodSplash({ name: display, playSound: () => playSfx(sfx.trust_shatter || sfx.hit) });
+            char.dead = true;
+            char.missing = false;
+            saveCharacters();
+            try { await trialManager?.markCharacterExecuted?.(char.name); } catch { /* no trial roster */ }
+            try { overworldSceneController?.render?.(); } catch { /* no overworld */ }
+            notify({ tone: "error", title: "PUNISHED", message: `${display} broke regulation ${rule.number} and was punished by Monokuma.`, durationMs: 9000 });
+        } else {
+            notify({ tone: "warn", title: outcome === "warning" ? "FINAL WARNING" : "SCHOOL REGULATION VIOLATION", message: `${display} broke ${rule ? `regulation ${rule.number}` : "a school regulation"}.`, durationMs: 8000 });
+        }
+        setRuleBreakNote({ name: display, rule, outcome });
+        // Monokuma steps in, when he's a host card here.
+        const monokuma = getHostNames().find((n) => /monokuma/i.test(String(n || "")));
+        if (monokuma) bringHostOnStage(monokuma);
+        console.log(`[Dangan][Rules] ${display} broke ${rule ? `rule ${rule.number} (${rule.severity})` : "a rule"}: ${outcome}.`);
+        return outcome;
+    } finally {
+        ruleBreakInFlight = false;
+    }
+}
+
+// The one-time note for the next reply after a violation, kept per save.
+const RULE_BREAK_PROMPT_KEY = "dangan_rule_break";
+let ruleBreakNoteSent = false;
+
+function setRuleBreakNote(entry) {
+    extension_settings[extensionName] ||= {};
+    extension_settings[extensionName].ruleBreakNote = entry
+        ? { name: entry.name, outcome: entry.outcome, number: entry.rule?.number || 0, text: entry.rule?.text || "" }
+        : null;
+    saveSettingsDebounced();
+    try { syncRuleBreakPrompt(); } catch { /* not ready */ }
+}
+
+function syncRuleBreakPrompt() {
+    const setPrompt = window.SillyTavern?.getContext?.()?.setExtensionPrompt || window.setExtensionPrompt;
+    if (typeof setPrompt !== "function") return;
+    const pending = extension_settings[extensionName]?.ruleBreakNote;
+    const templateKey = { light: "ruleBreakLight", grave: "ruleBreakGrave", warning: "ruleBreakWarning" }[pending?.outcome] || "ruleBreakLight";
+    const text = pending && getCurrentPhase() !== "TRIAL"
+        ? buildRuleBreakNote({
+            name: pending.name,
+            rule: pending.number ? { number: pending.number, text: pending.text } : null,
+            outcome: pending.outcome,
+            template: getMonopadSetting(`${templateKey}PromptTemplate`) || "",
+        })
+        : "";
+    setPrompt(RULE_BREAK_PROMPT_KEY, text, 0, 0, false, "system");
+    return Boolean(text);
+}
+
+// A reply went out with the note: it's spent.
+function onRuleBreakReplyRendered() {
+    if (!ruleBreakNoteSent || !extension_settings[extensionName]?.ruleBreakNote) return;
+    ruleBreakNoteSent = false;
+    setRuleBreakNote(null);
 }
 
 // ── Character routines ────────────────────────────────────────────────────────
@@ -9317,6 +9400,7 @@ function syncMarkerPrompts() {
     const shareRules = getMonopadSetting("shareSchoolRules") !== false && getCurrentPhase() !== "TRIAL";
     setPrompt(RULES_PROMPT_KEY, shareRules ? buildRulesPromptWithClosedRooms() : "", 0, 0, false, "system");
     syncGroupEventsPrompt();
+    syncRuleBreakPrompt();
 
     if (enabled && !markerPresetWarningShown && presetHasMarkerInstructions()) {
         markerPresetWarningShown = true;
@@ -9739,8 +9823,8 @@ for (const match of rawText.matchAll(regex)) {
                 if (processedRuleSignatures.has(signature) || hasProcessedPersistentMarker("schoolRuleMarkers", persistentSignature)) return;
                 processedRuleSignatures.add(signature);
                 markProcessedPersistentMarker("schoolRuleMarkers", persistentSignature);
-                if (marker.type === "ADD") onSchoolRuleAdded(marker.text);
-                else onSchoolRuleBroken(marker.text);
+                if (marker.type === "ADD") onSchoolRuleAdded(marker.text, { severity: marker.severity });
+                else void onSchoolRuleBroken(marker.text, marker.ruleNumber);
             });
 
             // ---- Group events ----
@@ -16308,6 +16392,8 @@ STATEMENT: <third statement>`;
             try { syncMarkerPrompts(); } catch (e) { console.warn("[Dangan][Markers] sync failed:", e); }
             if (!dryRun && type !== "quiet") {
                 try { syncCasePrompt(); } catch (e) { console.warn("[Dangan][Case] prompt sync failed:", e); }
+                // The rule-break note goes out with this reply; it's spent once it renders.
+                ruleBreakNoteSent = Boolean(extension_settings[extensionName]?.ruleBreakNote) && getCurrentPhase() !== "TRIAL";
             }
         });
         for (const done of [event_types.GENERATION_ENDED, event_types.GENERATION_STOPPED, event_types.CHARACTER_MESSAGE_RENDERED]) {
@@ -16340,6 +16426,7 @@ STATEMENT: <third statement>`;
         eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, handleCharacterMessage);
         eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, () => {
             try { onCaseReplyRendered(); } catch (e) { console.warn("[Dangan][Case] reply bookkeeping failed:", e); }
+            try { onRuleBreakReplyRendered(); } catch (e) { console.warn("[Dangan][Rules] note bookkeeping failed:", e); }
         });
         if (event_types.GENERATION_ENDED) eventSource.on(event_types.GENERATION_ENDED, () => { caseDraftedSpeaker = ""; });
 
@@ -19064,20 +19151,23 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             case 'add':
                 if (!arg || !onSchoolRuleAdded(arg)) notify({ tone: 'warn', title: '/rules add', message: arg ? 'That rule is already on the list.' : 'Give the rule\'s text.' });
                 return '';
-            case 'break':
-                onSchoolRuleBroken(arg || 'Someone');
-                return '';
+            case 'break': {
+                // /rules break <name> [n]: the last word is the rule's number when it's one.
+                const words = rest.slice();
+                const n = /^\d+$/.test(words[words.length - 1] || '') ? Number(words.pop()) : 0;
+                return await onSchoolRuleBroken(words.join(' ') || 'Someone', n);
+            }
             case 'reset':
                 setSchoolRules(createDefaultRules());
                 notify({ title: 'SCHOOL REGULATIONS', message: 'Back to the default rules.' });
                 return '';
             default:
-                notify({ tone: 'warn', title: '/rules', message: 'Use list, prompt, add <text>, break <name> or reset.' });
+                notify({ tone: 'warn', title: '/rules', message: 'Use list, prompt, add <text>, break <name> [n] or reset.' });
                 return '';
         }
     },
-    helpString: 'School Regulations: <code>/rules</code> opens the list, <code>/rules prompt</code> shows what the AI is told, <code>/rules add &lt;text&gt;</code> adds a rule as Monokuma would, <code>/rules break &lt;name&gt;</code> plays a violation, <code>/rules reset</code> restores the defaults.',
-    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'list | prompt | add <text> | break <name> | reset', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
+    helpString: 'School Regulations: <code>/rules</code> opens the list, <code>/rules prompt</code> shows what the AI is told, <code>/rules add &lt;text&gt;</code> adds a rule as Monokuma would, <code>/rules break &lt;name&gt; [n]</code> plays a violation of rule n (a grave rule asks, then punishes by death; the player only gets a final warning), <code>/rules reset</code> restores the defaults.',
+    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'list | prompt | add <text> | break <name> [n] | reset', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
