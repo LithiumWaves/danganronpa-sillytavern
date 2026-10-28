@@ -8,68 +8,20 @@ import { CASE_SHAPES, MOTIVE_KINDS } from "../core/case/caseFile.js";
 const STYLE_ID = "dangan-cfe-style";
 const ROOT_ID = "dangan-cfe";
 
+// The look comes from styles/systems/dossier/dossier.css; this is layout only.
 const CSS = `
-#${ROOT_ID} {
-    position: fixed; inset: 0; z-index: 100040;
-    display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;
-    background: rgba(6, 2, 12, 0.78);
-    font-family: inherit; color: #f1e6f7;
-}
-#${ROOT_ID} .cfe-window {
-    width: min(980px, 100%); max-height: calc(100vh - 32px); display: flex; flex-direction: column;
-    background: radial-gradient(ellipse at 50% 0%, rgba(46, 12, 58, 0.98), rgba(10, 4, 16, 0.99));
-    border: 1px solid rgba(255, 46, 196, 0.5); border-radius: 10px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 18px rgba(255, 46, 196, 0.15);
-}
-#${ROOT_ID} .cfe-head {
-    display: flex; align-items: center; gap: 12px; padding: 12px 16px;
-    border-bottom: 1px solid rgba(255, 46, 196, 0.35);
-}
-#${ROOT_ID} .cfe-title { font-size: 1.15rem; letter-spacing: 0.12em; color: #ff2ec4; flex: 1; }
-#${ROOT_ID} .cfe-status { font-size: 0.78rem; letter-spacing: 0.08em; color: #ffd23f; }
-#${ROOT_ID} .cfe-body { overflow: auto; padding: 14px 16px; }
-#${ROOT_ID} .cfe-foot {
-    display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px; justify-content: flex-end;
-    border-top: 1px solid rgba(255, 46, 196, 0.35);
-}
-#${ROOT_ID} .cfe-error { color: #ff6b6b; font-size: 0.85rem; flex-basis: 100%; text-align: right; }
-#${ROOT_ID} .cfe-error:empty { display: none; }
-#${ROOT_ID} button {
-    background: transparent; color: #f1e6f7; border: 1px solid rgba(255, 182, 222, 0.6);
-    font: inherit; font-size: 0.8rem; letter-spacing: 0.08em; padding: 6px 12px; cursor: pointer; border-radius: 4px;
-}
-#${ROOT_ID} button:hover { background: rgba(255, 46, 196, 0.18); }
-#${ROOT_ID} button.cfe-primary { border-color: #ff2ec4; color: #fff; background: rgba(255, 46, 196, 0.32); }
-#${ROOT_ID} button.cfe-danger { border-color: rgba(255, 80, 80, 0.7); color: #ff8a8a; }
-#${ROOT_ID} button.cfe-debug { border-style: dashed; color: #ffd23f; border-color: rgba(255, 210, 63, 0.6); }
-#${ROOT_ID} fieldset {
-    border: 1px solid rgba(255, 182, 222, 0.25); border-radius: 6px; margin: 0 0 12px; padding: 10px 12px;
-}
-#${ROOT_ID} legend { color: #ff2ec4; letter-spacing: 0.1em; font-size: 0.85rem; padding: 0 6px; }
-#${ROOT_ID} .cfe-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px 12px; }
-#${ROOT_ID} label { display: flex; flex-direction: column; gap: 3px; font-size: 0.75rem; letter-spacing: 0.06em; color: #d9c4e6; }
+#${ROOT_ID} .cfe-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 14px; }
 #${ROOT_ID} .cfe-wide { grid-column: 1 / -1; }
-#${ROOT_ID} label.cfe-check { flex-direction: row; align-items: center; gap: 6px; }
-#${ROOT_ID} input, #${ROOT_ID} select, #${ROOT_ID} textarea {
-    background: rgba(0, 0, 0, 0.45); color: #fff; border: 1px solid rgba(255, 182, 222, 0.35); border-radius: 4px;
-    font: inherit; font-size: 0.88rem; padding: 5px 7px; min-width: 0; box-sizing: border-box; width: 100%;
-}
-#${ROOT_ID} input[type="checkbox"] { width: auto; }
-#${ROOT_ID} textarea { resize: vertical; min-height: 2.6em; }
-#${ROOT_ID} .cfe-row {
-    display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: start;
-    padding: 8px; margin-bottom: 6px; background: rgba(255, 255, 255, 0.03); border-radius: 4px;
-}
-#${ROOT_ID} .cfe-row-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 6px 10px; }
-#${ROOT_ID} .cfe-note { font-size: 0.8rem; color: #bfa9cc; margin: 0 0 8px; }
-#${ROOT_ID} .cfe-gate { text-align: center; padding: 32px 16px; }
-#${ROOT_ID} .cfe-gate p { max-width: 460px; margin: 0 auto 16px; line-height: 1.5; }
-#${ROOT_ID} .cfe-public-only[hidden], #${ROOT_ID} [data-shapes][hidden], #${ROOT_ID} [data-hide-shapes][hidden] { display: none; }
-#${ROOT_ID} .cfe-chips { display: flex; flex-wrap: wrap; gap: 4px 10px; }
-#${ROOT_ID} .cfe-blackened { font-size: 0.8rem; color: #ffd23f; letter-spacing: 0.06em; align-self: end; padding-bottom: 6px; }
+#${ROOT_ID} fieldset { display: flex; flex-direction: column; gap: 10px; }
+#${ROOT_ID} fieldset > button[data-add] { align-self: flex-start; }
+#${ROOT_ID} [data-list] { display: flex; flex-direction: column; gap: 8px; }
+#${ROOT_ID} [data-list]:empty { display: none; }
+#${ROOT_ID} .cfe-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: start; }
+#${ROOT_ID} .cfe-row-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px 12px; }
+#${ROOT_ID} .cfe-public-only[hidden], #${ROOT_ID} [data-shapes][hidden], #${ROOT_ID} [data-hide-shapes][hidden], #${ROOT_ID} [data-motive-kinds][hidden] { display: none; }
+#${ROOT_ID} .cfe-blackened { align-self: end; padding-bottom: 9px; font: 600 13px "Rajdhani", sans-serif; letter-spacing: 0.16em; color: var(--dgn-gold); }
+#${ROOT_ID} .cfe-blackened:not(:empty)::before { content: "▶ "; color: var(--dgn-pink); }
 @media (max-width: 600px) {
-    #${ROOT_ID} { padding: 0; }
-    #${ROOT_ID} .cfe-window { max-height: 100vh; height: 100vh; border-radius: 0; }
     #${ROOT_ID} .cfe-row { grid-template-columns: 1fr; }
 }
 `;
@@ -119,18 +71,25 @@ export function openCaseFileEditor(api) {
 
     const root = document.createElement("div");
     root.id = ROOT_ID;
+    root.className = "dgn-sheet";
     root.setAttribute("role", "dialog");
     root.setAttribute("aria-label", "Case File");
-    root.innerHTML = `<div class="cfe-window">
-        <div class="cfe-head"><div class="cfe-title">CASE FILE</div><div class="cfe-status"></div><button type="button" class="cfe-close" aria-label="Close">CLOSE</button></div>
-        <div class="cfe-body"></div>
-        <div class="cfe-foot"></div>
+    root.innerHTML = `<div class="dgn-sheet-stripes"></div><div class="cfe-window dgn-sheet-window">
+        <div class="cfe-head dgn-sheet-head"><div class="cfe-title dgn-sheet-title">CASE FILE</div><div class="cfe-status dgn-sheet-tag"></div><button type="button" class="cfe-close dgn-sheet-close" aria-label="Close">CLOSE</button></div>
+        <div class="cfe-body dgn-sheet-body"></div>
+        <div class="cfe-foot dgn-sheet-foot"></div>
     </div>`;
     document.body.appendChild(root);
 
     const body = root.querySelector(".cfe-body");
     const foot = root.querySelector(".cfe-foot");
     const statusEl = root.querySelector(".cfe-status");
+    // The header tag, coloured by where the case is.
+    const setStatus = (text, cf = null) => {
+        statusEl.textContent = text;
+        const kind = !cf ? "" : cf.status === "closed" ? "is-closed" : cf.status === "averted" ? "is-averted" : cf.discovered || cf.status === "committed" ? "is-found" : "is-planned";
+        statusEl.className = `cfe-status dgn-sheet-tag ${kind}`.trim();
+    };
     let draft = null; // the case being edited (a copy)
     let dirty = false;
     let busy = false;
@@ -163,8 +122,11 @@ export function openCaseFileEditor(api) {
     };
 
     function renderGate() {
-        statusEl.textContent = "";
-        body.innerHTML = `<div class="cfe-gate">
+        setStatus("CLASSIFIED");
+        body.innerHTML = `<div class="cfe-gate dgn-dossier">
+            <div class="dgn-dossier-label">HOPE'S PEAK · CONFIDENTIAL</div>
+            <div class="dgn-dossier-title">CASE FILE</div>
+            <span class="dgn-stamp">TOP SECRET</span>
             <p><strong>Spoilers ahead.</strong> The Case File holds the whole truth of this chapter's murder: who, how, when, and every planted clue.</p>
             <p>Reveal it only if you'd rather run the mystery than solve it. You can hide it again later.</p>
         </div>`;
@@ -182,8 +144,12 @@ export function openCaseFileEditor(api) {
     }
 
     function renderEmpty() {
-        statusEl.textContent = "NO CASE";
-        body.innerHTML = `<div class="cfe-gate"><p>No case yet. Monokuma plans one when he announces a motive, or you can write one yourself.</p></div>`;
+        setStatus("NO CASE");
+        body.innerHTML = `<div class="cfe-gate dgn-dossier">
+            <div class="dgn-dossier-label">HOPE'S PEAK · CONFIDENTIAL</div>
+            <div class="dgn-dossier-title">NO CASE YET</div>
+            <p>Monokuma plans one when he announces a motive, or you can write one yourself.</p>
+        </div>`;
         foot.replaceChildren(
             button("HIDE AGAIN", "", async () => { api.setRevealed(false); render(); }),
             button("ANNOUNCE MOTIVE", "", async () => { close(); await api.announceNew(); }),
@@ -208,34 +174,34 @@ export function openCaseFileEditor(api) {
         const cf = draft;
         const cast = api.getCast().map((c) => ({ value: c.name, label: c.ultimate ? `${c.name} (${c.ultimate})` : c.name }));
         const rooms = api.getRooms().map((r) => ({ value: r.id, label: r.label }));
-        statusEl.textContent = isNew ? "NEW CASE" : statusLine(cf);
+        setStatus(isNew ? "NEW CASE" : statusLine(cf), isNew ? null : cf);
 
-        const clueRow = (c = {}) => `<div class="cfe-row" data-row="clue" data-id="${esc(c.id || "")}">
+        const clueRow = (c = {}) => `<div class="cfe-row dgn-row" data-row="clue" data-id="${esc(c.id || "")}">
             <div class="cfe-row-fields">
                 <label class="cfe-wide">Clue<textarea data-f="text" rows="2">${esc(c.text)}</textarea></label>
                 <label>Room<select data-f="roomId">${options(rooms, c.roomId || "", { blank: "— none —" })}</select></label>
                 <label>Witness<select data-f="witness">${options(cast, c.witness || "", { blank: "— none —" })}</select></label>
-            </div><button type="button" class="cfe-danger" data-remove>REMOVE</button></div>`;
-        const beatRow = (b = {}) => `<div class="cfe-row" data-row="beat" data-id="${esc(b.id || "")}" data-attempts="${Number(b.attempts) || 0}">
+            </div><button type="button" class="cfe-danger is-small" data-remove>REMOVE</button></div>`;
+        const beatRow = (b = {}) => `<div class="cfe-row dgn-row" data-row="beat" data-id="${esc(b.id || "")}" data-attempts="${Number(b.attempts) || 0}">
             <div class="cfe-row-fields">
                 <label class="cfe-wide">Moment<textarea data-f="text" rows="2">${esc(b.text)}</textarea></label>
                 <label>Characters (comma-separated)<input data-f="characters" value="${esc((b.characters || []).join(", "))}"></label>
                 <label class="cfe-check"><input type="checkbox" data-f="used"${b.used ? " checked" : ""}> Used</label>
                 <label class="cfe-check"><input type="checkbox" data-f="skipped"${b.skipped ? " checked" : ""}> Set aside (offered ${Number(b.attempts) || 0}x)</label>
-            </div><button type="button" class="cfe-danger" data-remove>REMOVE</button></div>`;
-        const witnessRow = (w = {}) => `<div class="cfe-row" data-row="witness">
+            </div><button type="button" class="cfe-danger is-small" data-remove>REMOVE</button></div>`;
+        const witnessRow = (w = {}) => `<div class="cfe-row dgn-row" data-row="witness">
             <div class="cfe-row-fields">
                 <label>Witness${w.told ? " ✓ told" : ""}<select data-f="name">${options(cast, w.name || "", { blank: "— pick —" })}</select></label>
                 <label class="cfe-wide">What they saw or heard<textarea data-f="account" rows="2">${esc(w.account)}</textarea></label>
-            </div><button type="button" class="cfe-danger" data-remove>REMOVE</button></div>`;
-        const concealedRow = (c = {}) => `<div class="cfe-row" data-row="concealed">
+            </div><button type="button" class="cfe-danger is-small" data-remove>REMOVE</button></div>`;
+        const concealedRow = (c = {}) => `<div class="cfe-row dgn-row" data-row="concealed">
             <div class="cfe-row-fields">
                 <label>Hidden field<select data-f="field">${options(Object.entries(FILE_FIELD_LABELS).map(([value, label]) => ({ value, label })), c.field || "timeOfDeath", { blank: null })}</select></label>
                 <label class="cfe-wide">The truth the file can't state<textarea data-f="truth" rows="2">${esc(c.truth)}</textarea></label>
-            </div><button type="button" class="cfe-danger" data-remove>REMOVE</button></div>`;
-        const emergentRow = (c) => `<div class="cfe-row" data-row="emergent" data-id="${esc(c.id)}" data-json="${esc(JSON.stringify(c))}">
-            <div class="cfe-note"><strong>${esc(c.title)}</strong>${c.roomId ? ` · ${esc(c.roomId)}` : ""}<br>${esc(c.text)}</div>
-            <button type="button" class="cfe-danger" data-remove>REMOVE</button></div>`;
+            </div><button type="button" class="cfe-danger is-small" data-remove>REMOVE</button></div>`;
+        const emergentRow = (c) => `<div class="cfe-row dgn-row" data-row="emergent" data-id="${esc(c.id)}" data-json="${esc(JSON.stringify(c))}">
+            <div class="cfe-note dgn-note"><strong>${esc(c.title)}</strong>${c.roomId ? ` · ${esc(c.roomId)}` : ""}<br>${esc(c.text)}</div>
+            <button type="button" class="cfe-danger is-small" data-remove>REMOVE</button></div>`;
 
         body.innerHTML = `
         <fieldset><legend>MOTIVE</legend><div class="cfe-grid">
@@ -247,20 +213,20 @@ export function openCaseFileEditor(api) {
             <label class="cfe-check"><input type="checkbox" data-motive-timelimit${cf.motive.timeLimit ? " checked" : ""}> Time limit (everyone dies if nobody kills)</label>
             <label class="cfe-wide">Penalty if nobody kills by the deadline<textarea data-k="motive.penalty" rows="2">${esc(cf.motive.penalty)}</textarea></label>
             <label class="cfe-wide" data-motive-kinds="object">Personal items (one per line: Owner | Item | What it shows | evidence)<textarea data-motive-items rows="4">${esc(Object.entries(cf.motive.items || {}).map(([owner, it]) => [owner, it.title, it.contents, it.evidence ? "evidence" : ""].filter(Boolean).join(" | ")).join("\n"))}</textarea></label>
-            <div class="cfe-wide" data-motive-kinds="condition"><label>Afflicted</label><div class="cfe-chips">${cast.map((c) => `<label class="cfe-check"><input type="checkbox" data-afflicted value="${esc(c.value)}"${(cf.motive.afflicted || []).includes(c.value) ? " checked" : ""}> ${esc(c.value)}</label>`).join("")}</div></div>
+            <div class="cfe-wide" data-motive-kinds="condition"><label>Afflicted</label><div class="cfe-chips dgn-pills">${cast.map((c) => `<label class="cfe-check"><input type="checkbox" data-afflicted value="${esc(c.value)}"${(cf.motive.afflicted || []).includes(c.value) ? " checked" : ""}> ${esc(c.value)}</label>`).join("")}</div></div>
             <label class="cfe-wide" data-motive-kinds="condition">What the condition does<textarea data-k="motive.effect" rows="2">${esc(cf.motive.effect)}</textarea></label>
-            ${cf.attempts ? `<p class="cfe-note cfe-wide" style="margin:0">Foiled attempts so far: ${cf.attempts}.</p>` : ""}
+            ${cf.attempts ? `<p class="cfe-note dgn-note cfe-wide" style="margin:0">Foiled attempts so far: ${cf.attempts}.</p>` : ""}
         </div></fieldset>
 
         <fieldset><legend>THE MURDER</legend><div class="cfe-grid">
             <label class="cfe-wide">Case shape<select data-k="shape">${options(Object.entries(CASE_SHAPES).map(([value, sh]) => ({ value, label: sh.label })), cf.shape || "standard", { blank: null })}</select></label>
-            <p class="cfe-note cfe-wide cfe-shape-line" style="margin:0"></p>
+            <p class="cfe-note dgn-note cfe-wide cfe-shape-line" style="margin:0"></p>
             <label data-hide-shapes="suicide">Killer<select data-k="killer">${options(cast, cf.killer, { blank: "— pick —" })}</select></label>
             <label>Victim<select data-k="victim">${options(cast, cf.victim, { blank: "— pick —" })}</select></label>
             <div class="cfe-blackened"></div>
             <label data-shapes="wrong_victim">Meant to kill<select data-k="intendedVictim">${options(cast, cf.intendedVictim || "", { blank: "— pick —" })}</select></label>
             <label data-shapes="decoy">Decoy (believes they did it)<select data-k="decoy">${options(cast, cf.decoy || "", { blank: "— pick —" })}</select></label>
-            <div class="cfe-wide" data-shapes="accomplice"><label>Accomplices (not the blackened)</label><div class="cfe-chips">${cast.map((c) => `<label class="cfe-check"><input type="checkbox" data-accomplice value="${esc(c.value)}"${(cf.accomplices || []).includes(c.value) ? " checked" : ""}> ${esc(c.value)}</label>`).join("")}</div></div>
+            <div class="cfe-wide" data-shapes="accomplice"><label>Accomplices (not the blackened)</label><div class="cfe-chips dgn-pills">${cast.map((c) => `<label class="cfe-check"><input type="checkbox" data-accomplice value="${esc(c.value)}"${(cf.accomplices || []).includes(c.value) ? " checked" : ""}> ${esc(c.value)}</label>`).join("")}</div></div>
             <label>Day<input type="number" min="1" data-k="murderDay" value="${cf.murderDay}"></label>
             <label>Time<select data-k="murderTime">${options([{ value: "day", label: "Daytime" }, { value: "night", label: "Nighttime" }], cf.murderTime, { blank: null })}</select></label>
             <label>Style<select data-k="murderStyle">${options([{ value: "hidden", label: "Hidden (found later)" }, { value: "public", label: "Public (during a gathering)" }], cf.murderStyle, { blank: null })}</select></label>
@@ -273,7 +239,7 @@ export function openCaseFileEditor(api) {
         </div></fieldset>
 
         <fieldset><legend>THE BODY &amp; MONOKUMA FILE</legend>
-            <p class="cfe-note">The file shows what Monokuma reports. If the killer's trick hides something, report "Unknown" or what it appears to be, and put the truth under Hidden truths: only the killer's character is ever told.</p>
+            <p class="cfe-note dgn-note">The file shows what Monokuma reports. If the killer's trick hides something, report "Unknown" or what it appears to be, and put the truth under Hidden truths: only the killer's character is ever told.</p>
             <div class="cfe-grid">
             <label>Body found in<select data-k="body.roomId">${options(rooms, cf.body.roomId, { blank: "— pick —" })}</select></label>
             <label class="cfe-wide">The scene<textarea data-k="body.state" rows="2">${esc(cf.body.state)}</textarea></label>
@@ -286,7 +252,7 @@ export function openCaseFileEditor(api) {
         </fieldset>
 
         <fieldset data-shapes="double"><legend>THE SECOND BODY</legend>
-            <p class="cfe-note">Found during the investigation of the first, with its own Monokuma File. The Class Trial is about the first victim.${cf.secondVictim?.discovered ? " Already found." : ""}</p>
+            <p class="cfe-note dgn-note">Found during the investigation of the first, with its own Monokuma File. The Class Trial is about the first victim.${cf.secondVictim?.discovered ? " Already found." : ""}</p>
             <div class="cfe-grid">
             <label>Second victim<select data-k="secondVictim.name">${options(cast, cf.secondVictim?.name || "", { blank: "— pick —" })}</select></label>
             <label>Killed by<select data-k="secondVictim.killer">${options(cast, cf.secondVictim?.killer || "", { blank: "— pick —" })}</select></label>
@@ -299,7 +265,7 @@ export function openCaseFileEditor(api) {
         </fieldset>
 
         <fieldset><legend>CLUES (ANCHORS)</legend>
-            <p class="cfe-note">Facts the story must make findable. More can turn up through the roleplay.</p>
+            <p class="cfe-note dgn-note">Facts the story must make findable. More can turn up through the roleplay.</p>
             <div data-list="clue">${cf.clues.map(clueRow).join("")}</div>
             <button type="button" data-add="clue">+ CLUE</button>
         </fieldset>
@@ -350,6 +316,10 @@ export function openCaseFileEditor(api) {
             body.querySelector(".cfe-shape-line").textContent = CASE_SHAPES[shape]?.about || "";
             const blackened = shape === "suicide" ? victimSelect.value : killerSelect.value;
             body.querySelector(".cfe-blackened").textContent = blackened ? `THE VOTE'S ANSWER: ${blackened.toUpperCase()}` : "";
+            // The sections are numbered like the New Game steps, skipping hidden ones.
+            [...body.querySelectorAll("fieldset")].filter((f) => !f.hidden).forEach((f, i) => {
+                f.querySelector(":scope > legend")?.setAttribute("data-n", String(i + 1).padStart(2, "0"));
+            });
         };
         [shapeSelect, killerSelect, victimSelect].forEach((el) => el.addEventListener("change", syncShape));
         syncShape();

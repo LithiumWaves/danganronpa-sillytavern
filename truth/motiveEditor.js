@@ -12,41 +12,17 @@ const ROOT_ID = "dangan-mte";
 // How many days past today the deadline can be set.
 const DEADLINE_RANGE = 7;
 
+// The look comes from styles/systems/dossier/dossier.css; this is layout only.
 const CSS = `
-#${ROOT_ID} {
-    position: fixed; inset: 0; z-index: 100041;
-    display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;
-    background: rgba(6, 2, 12, 0.78); font-family: inherit; color: #f1e6f7;
-}
-#${ROOT_ID} .mte-window {
-    width: min(560px, 100%); max-height: calc(100vh - 32px); display: flex; flex-direction: column;
-    background: radial-gradient(ellipse at 50% 0%, rgba(46, 12, 58, 0.98), rgba(10, 4, 16, 0.99));
-    border: 1px solid rgba(255, 46, 196, 0.5); border-radius: 10px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 18px rgba(255, 46, 196, 0.15);
-}
-#${ROOT_ID} .mte-head { padding: 12px 16px; border-bottom: 1px solid rgba(255, 46, 196, 0.35); font-size: 1.15rem; letter-spacing: 0.12em; color: #ff2ec4; }
-#${ROOT_ID} .mte-body { overflow: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
-#${ROOT_ID} .mte-note { font-size: 0.8rem; color: #bfa9cc; margin: 0; line-height: 1.45; }
-#${ROOT_ID} label { display: flex; flex-direction: column; gap: 3px; font-size: 0.75rem; letter-spacing: 0.06em; color: #d9c4e6; }
-#${ROOT_ID} input, #${ROOT_ID} select, #${ROOT_ID} textarea {
-    background: rgba(0, 0, 0, 0.45); color: #fff; border: 1px solid rgba(255, 182, 222, 0.35); border-radius: 4px;
-    font: inherit; font-size: 0.9rem; padding: 6px 8px; width: 100%; box-sizing: border-box;
-}
-#${ROOT_ID} textarea { resize: vertical; min-height: 5em; }
-#${ROOT_ID} label.mte-check { flex-direction: row; align-items: center; gap: 8px; }
-#${ROOT_ID} label.mte-check input { width: auto; }
+#${ROOT_ID} { z-index: 100041; }
+#${ROOT_ID} .mte-kind { display: none; }
+#${ROOT_ID} .mte-kinds { display: flex; flex-wrap: wrap; }
+#${ROOT_ID} .mte-kind-about { margin-top: 6px; font: 500 14px "Rajdhani", sans-serif; letter-spacing: 0.02em; text-transform: none; color: var(--dgn-muted); }
 #${ROOT_ID} .mte-hidden { display: none; }
-#${ROOT_ID} .mte-foot { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px; justify-content: flex-end; align-items: center; border-top: 1px solid rgba(255, 46, 196, 0.35); }
-#${ROOT_ID} .mte-error { flex: 1; color: #ff8a8a; font-size: 0.82rem; }
-#${ROOT_ID} button {
-    background: transparent; color: #f1e6f7; border: 1px solid rgba(255, 182, 222, 0.6);
-    font: inherit; font-size: 0.8rem; letter-spacing: 0.08em; padding: 6px 12px; cursor: pointer; border-radius: 4px;
-}
-#${ROOT_ID} button:hover { background: rgba(255, 46, 196, 0.18); }
-#${ROOT_ID} button.mte-primary { border-color: #ff2ec4; color: #fff; background: rgba(255, 46, 196, 0.32); }
+#${ROOT_ID} .mte-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+#${ROOT_ID} .mte-penalty-box { padding: 12px; background: rgba(179, 0, 63, 0.12); border-left: 3px solid #b3003f; display: flex; flex-direction: column; gap: 10px; }
 @media (max-width: 600px) {
-    #${ROOT_ID} { padding: 0; }
-    #${ROOT_ID} .mte-window { max-height: 100vh; height: 100vh; border-radius: 0; }
+    #${ROOT_ID} .mte-pair { grid-template-columns: 1fr; }
 }
 `;
 
@@ -70,27 +46,32 @@ export function openMotiveEditor(api) {
 
     const root = document.createElement("div");
     root.id = ROOT_ID;
+    root.className = "dgn-sheet";
     root.setAttribute("role", "dialog");
     root.setAttribute("aria-label", "Edit motive");
-    root.innerHTML = `<div class="mte-window">
-        <div class="mte-head">EDIT MOTIVE</div>
-        <div class="mte-body">
-            <p class="mte-note">Only the motive itself is shown here, so nothing about the planned murder is spoiled. Moving the deadline moves the murder with it.</p>
-            <label>MOTIVE<input class="mte-title" maxlength="80"></label>
-            <label>WHAT MONOKUMA OFFERS OR THREATENS<textarea class="mte-desc" rows="4"></textarea></label>
-            <label>DEADLINE<select class="mte-deadline"></select></label>
-            <label>KIND<select class="mte-kind">
+    root.innerHTML = `<div class="dgn-sheet-stripes"></div><div class="mte-window dgn-sheet-window is-narrow">
+        <div class="mte-head dgn-sheet-head"><div class="dgn-sheet-title">EDIT MOTIVE</div><span class="dgn-sheet-tag">NO SPOILERS</span></div>
+        <div class="mte-body dgn-sheet-body">
+            <p class="mte-note dgn-note">Only the motive itself is shown here, so nothing about the planned murder is spoiled. Moving the deadline moves the murder with it.</p>
+            <div class="mte-pair">
+                <label>MOTIVE<input class="mte-title" maxlength="80"></label>
+                <label>DEADLINE<select class="mte-deadline"></select></label>
+            </div>
+            <label>WHAT MONOKUMA OFFERS OR THREATENS<textarea class="mte-desc" rows="3"></textarea></label>
+            <div class="dgn-field"><span class="dgn-label">KIND</span><div class="mte-kinds dgn-switch"></div><span class="mte-kind-about"></span><select class="mte-kind">
                 <option value="announcement">Announcement (the same for everyone)</option>
                 <option value="object">Personal items (DVDs, secrets, motive videos)</option>
                 <option value="condition">Condition (an affliction, like Despair Disease)</option>
-            </select></label>
+            </select></div>
             <label class="mte-item-title-row">YOUR ITEM<input class="mte-item-title" maxlength="120" placeholder="e.g. Your DVD"></label>
             <label class="mte-item-row">WHAT YOUR ITEM SHOWS<textarea class="mte-item" rows="3"></textarea></label>
             <label class="mte-effect-row">WHAT THE CONDITION DOES<textarea class="mte-effect" rows="2"></textarea></label>
-            <label>IF NOBODY KILLS BY THE DEADLINE (MONOKUMA'S PENALTY)<textarea class="mte-penalty" rows="3"></textarea></label>
-            <label class="mte-check"><input type="checkbox" class="mte-timelimit">A time limit: everyone dies if nobody kills (you'll be asked before it plays out)</label>
+            <div class="mte-penalty-box">
+                <label>IF NOBODY KILLS BY THE DEADLINE (MONOKUMA'S PENALTY)<textarea class="mte-penalty" rows="2"></textarea></label>
+                <label class="mte-check"><input type="checkbox" class="mte-timelimit">A time limit: everyone dies if nobody kills (you'll be asked before it plays out)</label>
+            </div>
         </div>
-        <div class="mte-foot"><span class="mte-error"></span><button type="button" class="mte-cancel">CANCEL</button><button type="button" class="mte-primary mte-save">SAVE</button></div>
+        <div class="mte-foot dgn-sheet-foot"><span class="mte-error"></span><button type="button" class="mte-cancel">CANCEL</button><button type="button" class="mte-primary mte-save">SAVE</button></div>
     </div>`;
     document.body.appendChild(root);
 
@@ -118,6 +99,31 @@ export function openMotiveEditor(api) {
         root.querySelector(".mte-effect-row").classList.toggle("mte-hidden", kind.value !== "condition");
     };
     kind.addEventListener("change", showKindRows);
+    // KIND as three slanted tabs over the (hidden) select.
+    const KIND_TABS = { announcement: ["ANNOUNCEMENT", "The same offer or threat for everyone."], object: ["PERSONAL ITEMS", "Everyone gets their own item with hidden contents: DVDs, secrets, motive videos."], condition: ["CONDITION", "Some students are afflicted until the case closes, like the Despair Disease."] };
+    const tabs = root.querySelector(".mte-kinds");
+    const about = root.querySelector(".mte-kind-about");
+    const syncTabs = () => {
+        tabs.querySelectorAll("button").forEach((b) => {
+            const on = b.dataset.kind === kind.value;
+            b.classList.toggle("is-on", on);
+            b.setAttribute("aria-pressed", String(on));
+        });
+        about.textContent = KIND_TABS[kind.value]?.[1] || "";
+    };
+    for (const [value, [label]] of Object.entries(KIND_TABS)) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.dataset.kind = value;
+        b.textContent = label;
+        b.addEventListener("click", () => {
+            kind.value = value;
+            kind.dispatchEvent(new Event("change"));
+            syncTabs();
+        });
+        tabs.appendChild(b);
+    }
+    syncTabs();
     showKindRows();
     const current = Number(motive.deadlineDay) || today;
     const last = Math.max(current, today + DEADLINE_RANGE - 1);

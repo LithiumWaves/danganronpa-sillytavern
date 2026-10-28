@@ -8,54 +8,26 @@ import { clearRoutine, getRoutine, normalizeRoutines, setRoutine } from "../over
 const STYLE_ID = "dangan-rtv-style";
 const ROOT_ID = "dangan-rtv";
 
+// The look comes from styles/systems/dossier/dossier.css; this is layout only.
 const CSS = `
-#${ROOT_ID} {
-    position: fixed; inset: 0; z-index: 100040;
-    display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;
-    background: rgba(6, 2, 12, 0.78); font-family: inherit; color: #f1e6f7;
-}
-#${ROOT_ID} .rtv-window {
-    width: min(900px, 100%); max-height: calc(100vh - 32px); display: flex; flex-direction: column;
-    background: radial-gradient(ellipse at 50% 0%, rgba(46, 12, 58, 0.98), rgba(10, 4, 16, 0.99));
-    border: 1px solid rgba(255, 46, 196, 0.5); border-radius: 10px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 18px rgba(255, 46, 196, 0.15);
-}
-#${ROOT_ID} .rtv-head { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid rgba(255, 46, 196, 0.35); }
-#${ROOT_ID} .rtv-title { font-size: 1.15rem; letter-spacing: 0.12em; color: #ff2ec4; flex: 1; }
-#${ROOT_ID} .rtv-body { overflow: auto; padding: 14px 16px; }
-#${ROOT_ID} .rtv-note { font-size: 0.8rem; color: #bfa9cc; margin: 0 0 10px; line-height: 1.45; }
-#${ROOT_ID} .rtv-row {
-    display: grid; grid-template-columns: minmax(140px, 0.8fr) 1fr 1fr auto; gap: 10px; align-items: start;
-    padding: 8px; margin-bottom: 6px; background: rgba(255, 255, 255, 0.03); border-radius: 4px;
-}
-#${ROOT_ID} .rtv-name { font-weight: 700; padding-top: 4px; }
-#${ROOT_ID} .rtv-ult { display: block; font-size: 0.72rem; color: #bfa9cc; font-weight: 400; }
-#${ROOT_ID} .rtv-slot-label { font-size: 0.68rem; letter-spacing: 0.1em; color: #ffd23f; margin-bottom: 4px; }
-#${ROOT_ID} .rtv-chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+#${ROOT_ID} .rtv-list { display: flex; flex-direction: column; gap: 8px; }
+#${ROOT_ID} .rtv-row { display: grid; grid-template-columns: minmax(150px, 0.8fr) 1fr 1fr auto; gap: 12px; align-items: start; }
+#${ROOT_ID} .rtv-name { font: 400 15px "Bruno Ace", "Orbitron", sans-serif; letter-spacing: 0.04em; color: #fff; padding-top: 2px; }
+#${ROOT_ID} .rtv-ult { display: block; margin-top: 2px; font: 500 13px "Rajdhani", sans-serif; letter-spacing: 0.04em; color: var(--dgn-muted); }
+#${ROOT_ID} .rtv-slot-label { margin-bottom: 6px; font: 600 11px "Orbitron", sans-serif; letter-spacing: 0.16em; color: var(--dgn-gold); }
+#${ROOT_ID} .rtv-slot-label.is-night { color: #9fb6ff; }
+#${ROOT_ID} .rtv-chips { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
 #${ROOT_ID} .rtv-chip {
-    display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 8px; font-size: 0.78rem;
-    border: 1px solid rgba(255, 46, 196, 0.6); border-radius: 999px; background: rgba(255, 46, 196, 0.16);
+    display: inline-flex; align-items: center; gap: 2px; padding: 3px 4px 3px 10px;
+    background: rgba(240, 71, 154, 0.2); border: 1px solid var(--dgn-pink-soft);
+    font: 500 14px "Rajdhani", sans-serif; clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
 }
-#${ROOT_ID} .rtv-chip button { border: 0; padding: 0 4px; font-size: 0.85rem; line-height: 1; }
-#${ROOT_ID} select {
-    background: rgba(0, 0, 0, 0.45); color: #fff; border: 1px solid rgba(255, 182, 222, 0.35); border-radius: 999px;
-    font: inherit; font-size: 0.76rem; padding: 2px 6px; max-width: 150px;
-}
-#${ROOT_ID} .rtv-empty { text-align: center; padding: 18px; color: #bfa9cc; }
-#${ROOT_ID} .rtv-foot { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px; justify-content: flex-end; align-items: center; border-top: 1px solid rgba(255, 46, 196, 0.35); }
-#${ROOT_ID} .rtv-status { flex: 1; font-size: 0.8rem; color: #ffd23f; }
-#${ROOT_ID} .rtv-status.rtv-error { color: #ff8a8a; }
-#${ROOT_ID} button {
-    background: transparent; color: #f1e6f7; border: 1px solid rgba(255, 182, 222, 0.6);
-    font: inherit; font-size: 0.8rem; letter-spacing: 0.08em; padding: 6px 12px; cursor: pointer; border-radius: 4px;
-}
-#${ROOT_ID} button:hover { background: rgba(255, 46, 196, 0.18); }
-#${ROOT_ID} button:disabled { opacity: 0.5; cursor: wait; }
-#${ROOT_ID} button.rtv-primary { border-color: #ff2ec4; color: #fff; background: rgba(255, 46, 196, 0.32); }
-#${ROOT_ID} button.rtv-danger { border-color: rgba(255, 80, 80, 0.7); color: #ff8a8a; }
+#${ROOT_ID} .rtv-chip button { padding: 0 8px; border: 0; background: transparent; clip-path: none; font-size: 15px; line-height: 1; color: var(--dgn-muted); }
+#${ROOT_ID} .rtv-chip button:hover { background: transparent; color: #fff; }
+#${ROOT_ID} .rtv-chips select { width: auto; max-width: 160px; padding: 3px 8px; font-size: 13px; }
+#${ROOT_ID} .rtv-status { flex: 1; font-size: 14px; color: var(--dgn-gold); }
+#${ROOT_ID} .rtv-status.rtv-error { color: var(--dgn-red); flex: 1; text-align: left; }
 @media (max-width: 700px) {
-    #${ROOT_ID} { padding: 0; }
-    #${ROOT_ID} .rtv-window { max-height: 100vh; height: 100vh; border-radius: 0; }
     #${ROOT_ID} .rtv-row { grid-template-columns: 1fr; }
 }
 `;
@@ -77,15 +49,16 @@ export function openRoutinesView(api) {
 
     const root = document.createElement("div");
     root.id = ROOT_ID;
+    root.className = "dgn-sheet";
     root.setAttribute("role", "dialog");
     root.setAttribute("aria-label", "Routines");
-    root.innerHTML = `<div class="rtv-window">
-        <div class="rtv-head"><div class="rtv-title">ROUTINES</div><button type="button" class="rtv-close">CLOSE</button></div>
-        <div class="rtv-body">
-            <p class="rtv-note">Where each classmate usually spends their time. When time passes, people mostly turn up in one of their rooms (dorm rooms never take visitors), and a new murder plan builds its alibis on these. Anyone can still be anywhere.</p>
+    root.innerHTML = `<div class="dgn-sheet-stripes"></div><div class="rtv-window dgn-sheet-window">
+        <div class="rtv-head dgn-sheet-head"><div class="rtv-title dgn-sheet-title">ROUTINES</div><button type="button" class="rtv-close dgn-sheet-close">CLOSE</button></div>
+        <div class="rtv-body dgn-sheet-body">
+            <p class="rtv-note dgn-note">Where each classmate usually spends their time. When time passes, people mostly turn up in one of their rooms (dorm rooms never take visitors), and a new murder plan builds its alibis on these. Anyone can still be anywhere.</p>
             <div class="rtv-list"></div>
         </div>
-        <div class="rtv-foot"><span class="rtv-status"></span><button type="button" class="rtv-primary rtv-suggest">SUGGEST FROM CARDS</button></div>
+        <div class="rtv-foot dgn-sheet-foot"><span class="rtv-status"></span><button type="button" class="rtv-primary rtv-suggest">SUGGEST FROM CARDS</button></div>
     </div>`;
     document.body.appendChild(root);
 
@@ -105,7 +78,7 @@ export function openRoutinesView(api) {
     function slot(name, which, label, rooms, routine) {
         const wrap = document.createElement("div");
         const head = document.createElement("div");
-        head.className = "rtv-slot-label";
+        head.className = `rtv-slot-label${which === "night" ? " is-night" : ""}`;
         head.textContent = label;
         const chips = document.createElement("div");
         chips.className = "rtv-chips";
@@ -148,7 +121,7 @@ export function openRoutinesView(api) {
         list.replaceChildren();
         if (!cast.length) {
             const empty = document.createElement("div");
-            empty.className = "rtv-empty";
+            empty.className = "rtv-empty dgn-empty";
             empty.textContent = "No living classmates on the roster.";
             list.appendChild(empty);
             return;
@@ -156,7 +129,7 @@ export function openRoutinesView(api) {
         for (const c of cast) {
             const routine = getRoutine(routines, c.name);
             const row = document.createElement("div");
-            row.className = "rtv-row";
+            row.className = "rtv-row dgn-row";
             const name = document.createElement("div");
             name.className = "rtv-name";
             name.textContent = c.name;
@@ -168,7 +141,7 @@ export function openRoutinesView(api) {
             }
             const clear = document.createElement("button");
             clear.type = "button";
-            clear.className = "rtv-danger";
+            clear.className = "rtv-danger is-small";
             clear.textContent = "CLEAR";
             clear.disabled = !routine.day.length && !routine.night.length;
             clear.addEventListener("click", () => update((r) => clearRoutine(r, c.name)));

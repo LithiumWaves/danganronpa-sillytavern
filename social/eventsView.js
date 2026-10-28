@@ -10,56 +10,32 @@ const STYLE_ID = "dangan-evv-style";
 const ROOT_ID = "dangan-evv";
 const PLAN_ID = "dangan-evp";
 
+// The look comes from styles/systems/dossier/dossier.css; this is layout only.
 const CSS = `
-#${ROOT_ID}, #${PLAN_ID} {
-    position: fixed; inset: 0; z-index: 100040;
-    display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;
-    background: rgba(6, 2, 12, 0.78); font-family: inherit; color: #f1e6f7;
-}
 #${PLAN_ID} { z-index: 100042; }
-#${ROOT_ID} .evv-window, #${PLAN_ID} .evv-window {
-    width: min(720px, 100%); max-height: calc(100vh - 32px); display: flex; flex-direction: column;
-    background: radial-gradient(ellipse at 50% 0%, rgba(46, 12, 58, 0.98), rgba(10, 4, 16, 0.99));
-    border: 1px solid rgba(255, 46, 196, 0.5); border-radius: 10px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 18px rgba(255, 46, 196, 0.15);
+.evv-list { display: flex; flex-direction: column; gap: 8px; }
+.evv-section { display: flex; align-items: center; gap: 10px; margin-top: 6px; font: 600 12px "Orbitron", sans-serif; letter-spacing: 0.18em; color: #fff; }
+.evv-section::after { content: ""; flex: 1; height: 1px; background: var(--dgn-line); }
+.evv-row { display: grid; grid-template-columns: 92px 1fr auto; gap: 12px; align-items: center; }
+.evv-when {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px 4px;
+    background: var(--dgn-ink); clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+    font: 600 11px "Rajdhani", sans-serif; letter-spacing: 0.16em; color: var(--dgn-muted);
 }
-#${PLAN_ID} .evv-window { width: min(520px, 100%); }
-.evv-head { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid rgba(255, 46, 196, 0.35); }
-.evv-title { font-size: 1.15rem; letter-spacing: 0.12em; color: #ff2ec4; flex: 1; }
-.evv-body { overflow: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
-.evv-note { font-size: 0.8rem; color: #bfa9cc; margin: 0; line-height: 1.45; }
-.evv-section { font-size: 0.7rem; letter-spacing: 0.12em; color: #ffd23f; margin-top: 6px; }
-.evv-row {
-    display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center;
-    padding: 8px 10px; background: rgba(255, 255, 255, 0.03); border-radius: 4px;
-}
-.evv-row.evv-past { opacity: 0.55; }
-.evv-info { flex: 1; min-width: 200px; }
-.evv-name { font-weight: 700; }
-.evv-meta { display: block; font-size: 0.75rem; color: #bfa9cc; margin-top: 2px; }
-.evv-going { color: #7dffb0; }
-.evv-empty { text-align: center; padding: 18px; color: #bfa9cc; }
-.evv-foot { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px; justify-content: flex-end; align-items: center; border-top: 1px solid rgba(255, 46, 196, 0.35); }
-.evv-error { flex: 1; color: #ff8a8a; font-size: 0.82rem; }
-#${PLAN_ID} label { display: flex; flex-direction: column; gap: 3px; font-size: 0.75rem; letter-spacing: 0.06em; color: #d9c4e6; }
-#${PLAN_ID} input, #${PLAN_ID} select {
-    background: rgba(0, 0, 0, 0.45); color: #fff; border: 1px solid rgba(255, 182, 222, 0.35); border-radius: 4px;
-    font: inherit; font-size: 0.9rem; padding: 6px 8px; width: 100%; box-sizing: border-box;
-}
-#${PLAN_ID} .evv-chips { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+.evv-when b { font: 400 22px/1.1 "Bruno Ace", sans-serif; letter-spacing: 0.04em; color: var(--dgn-pink); }
+.evv-when.is-night b { color: #9fb6ff; }
+.evv-name { font: 400 16px "Bruno Ace", "Orbitron", sans-serif; letter-spacing: 0.05em; color: #fff; }
+.evv-meta { display: block; margin-top: 3px; color: var(--dgn-muted); font-size: 14px; }
+.evv-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.evv-tags:empty { display: none; }
+.evv-actions { display: flex; flex-direction: column; gap: 6px; }
+.evv-past .dgn-stamp { justify-self: end; }
 #${PLAN_ID} .evv-chips[hidden] { display: none; }
-#${PLAN_ID} label.evv-check { flex-direction: row; align-items: center; gap: 6px; font-size: 0.82rem; letter-spacing: 0; }
-#${PLAN_ID} label.evv-check input { width: auto; }
-#${ROOT_ID} button, #${PLAN_ID} button {
-    background: transparent; color: #f1e6f7; border: 1px solid rgba(255, 182, 222, 0.6);
-    font: inherit; font-size: 0.8rem; letter-spacing: 0.08em; padding: 6px 12px; cursor: pointer; border-radius: 4px;
-}
-#${ROOT_ID} button:hover, #${PLAN_ID} button:hover { background: rgba(255, 46, 196, 0.18); }
-#${ROOT_ID} button.evv-primary, #${PLAN_ID} button.evv-primary { border-color: #ff2ec4; color: #fff; background: rgba(255, 46, 196, 0.32); }
-#${ROOT_ID} button.evv-danger { border-color: rgba(255, 80, 80, 0.7); color: #ff8a8a; }
-@media (max-width: 700px) {
-    #${ROOT_ID}, #${PLAN_ID} { padding: 0; }
-    #${ROOT_ID} .evv-window, #${PLAN_ID} .evv-window { max-height: 100vh; height: 100vh; border-radius: 0; }
+#${PLAN_ID} .evp-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+@media (max-width: 600px) {
+    .evv-row { grid-template-columns: 74px 1fr; }
+    .evv-actions, .evv-past .dgn-stamp { grid-column: 1 / -1; flex-direction: row; justify-self: start; }
+    #${PLAN_ID} .evp-pair { grid-template-columns: 1fr; }
 }
 `;
 
@@ -86,15 +62,16 @@ export function openEventsView(api) {
 
     const root = el("div");
     root.id = ROOT_ID;
+    root.className = "dgn-sheet";
     root.setAttribute("role", "dialog");
     root.setAttribute("aria-label", "Events");
-    root.innerHTML = `<div class="evv-window">
-        <div class="evv-head"><div class="evv-title">EVENTS</div><button type="button" class="evv-close">CLOSE</button></div>
-        <div class="evv-body">
-            <p class="evv-note">Get-togethers your classmates planned in the story, or that you planned. When one starts, everyone invited gathers in its room; if you're attending, you're offered a way there.</p>
+    root.innerHTML = `<div class="dgn-sheet-stripes"></div><div class="evv-window dgn-sheet-window is-medium">
+        <div class="evv-head dgn-sheet-head"><div class="evv-title dgn-sheet-title">EVENTS</div><span class="evv-count dgn-sheet-tag"></span><button type="button" class="evv-close dgn-sheet-close">CLOSE</button></div>
+        <div class="evv-body dgn-sheet-body">
+            <p class="evv-note dgn-note">Get-togethers your classmates planned in the story, or that you planned. When one starts, everyone invited gathers in its room; if you're attending, you're offered a way there.</p>
             <div class="evv-list"></div>
         </div>
-        <div class="evv-foot"><button type="button" class="evv-primary evv-plan">PLAN EVENT</button></div>
+        <div class="evv-foot dgn-sheet-foot"><button type="button" class="evv-primary evv-plan">PLAN EVENT</button></div>
     </div>`;
     document.body.appendChild(root);
 
@@ -106,21 +83,30 @@ export function openEventsView(api) {
     const release = pushSkippable({ kind: "minigame", skip: () => close() });
 
     function row(ev, { past }) {
-        const item = el("div", `evv-row${past ? " evv-past" : ""}`);
+        const item = el("div", `evv-row dgn-row${past ? " evv-past is-dim" : ""}`);
+        // The day and time as a block on the left.
+        const when = el("div", `evv-when${ev.time === "night" ? " is-night" : ""}`);
+        when.append(el("span", "", "DAY"), el("b", "", String(ev.day)), el("span", "", ev.time === "night" ? "NIGHT" : "DAYTIME"));
         const info = el("div", "evv-info");
         info.appendChild(el("div", "evv-name", ev.title));
-        const meta = el("span", "evv-meta", `${ev.roomLabel} · ${describeWhen(ev)}${ev.host ? ` · hosted by ${ev.host}` : ""} · ${ev.attendees.length ? `invited: ${ev.attendees.join(", ")}` : "everyone invited"}${past ? ` · ${ev.status === EVENT_STATUS.CANCELLED ? "cancelled" : "over"}` : ""}`);
-        info.appendChild(meta);
-        if (!past && ev.playerAttending) info.appendChild(el("span", "evv-meta evv-going", "You're going."));
-        item.appendChild(info);
-        if (!past) {
-            const attend = el("button", ev.playerAttending ? "" : "evv-primary", ev.playerAttending ? "NOT GOING" : "ATTEND");
+        info.appendChild(el("span", "evv-meta", `${ev.roomLabel}${ev.host ? ` · hosted by ${ev.host}` : ""}`));
+        const tags = el("div", "evv-tags");
+        tags.appendChild(el("span", "dgn-chip is-muted", ev.attendees.length ? `INVITED: ${ev.attendees.join(", ")}` : "EVERYONE INVITED"));
+        if (!past && ev.playerAttending) tags.appendChild(el("span", "dgn-chip is-green", "✔ YOU'RE GOING"));
+        info.appendChild(tags);
+        item.append(when, info);
+        if (past) {
+            item.appendChild(el("span", "dgn-stamp is-small", ev.status === EVENT_STATUS.CANCELLED ? "CANCELLED" : "OVER"));
+        } else {
+            const actions = el("div", "evv-actions");
+            const attend = el("button", ev.playerAttending ? "is-small" : "evv-primary is-small", ev.playerAttending ? "NOT GOING" : "ATTEND");
             attend.type = "button";
             attend.addEventListener("click", () => { api.setAttending(ev.id, !ev.playerAttending); render(); });
-            const cancel = el("button", "evv-danger", "CANCEL");
+            const cancel = el("button", "evv-danger is-small", "CANCEL");
             cancel.type = "button";
             cancel.addEventListener("click", () => { api.cancel(ev.id); render(); });
-            item.append(attend, cancel);
+            actions.append(attend, cancel);
+            item.appendChild(actions);
         }
         return item;
     }
@@ -133,8 +119,9 @@ export function openEventsView(api) {
             .sort((a, b) => slotRank(a.day, a.time) - slotRank(b.day, b.time));
         const past = events.filter((e) => !upcoming.includes(e)).slice(-10).reverse();
         list.replaceChildren();
+        root.querySelector(".evv-count").textContent = upcoming.length ? `${upcoming.length} COMING UP` : "";
         list.appendChild(el("div", "evv-section", "COMING UP"));
-        if (!upcoming.length) list.appendChild(el("div", "evv-empty", "Nothing planned."));
+        if (!upcoming.length) list.appendChild(el("div", "evv-empty dgn-empty", "Nothing planned."));
         upcoming.forEach((ev) => list.appendChild(row(ev, { past: false })));
         if (past.length) {
             list.appendChild(el("div", "evv-section", "EARLIER"));
@@ -163,17 +150,20 @@ export function openPlanEventDialog(api) {
         root.id = PLAN_ID;
         root.setAttribute("role", "dialog");
         root.setAttribute("aria-label", "Plan event");
-        root.innerHTML = `<div class="evv-window">
-            <div class="evv-head"><div class="evv-title">PLAN EVENT</div></div>
-            <div class="evv-body">
-                <p class="evv-note">Invite your classmates to a get-together. They'll gather in the room when its time comes, and the story will know about it.</p>
+        root.className = "dgn-sheet";
+        root.innerHTML = `<div class="dgn-sheet-stripes"></div><div class="evv-window dgn-sheet-window is-narrow">
+            <div class="evv-head dgn-sheet-head"><div class="evv-title dgn-sheet-title">PLAN EVENT</div></div>
+            <div class="evv-body dgn-sheet-body">
+                <p class="evv-note dgn-note">Invite your classmates to a get-together. They'll gather in the room when its time comes, and the story will know about it.</p>
                 <label>WHAT<input class="evp-title" maxlength="120" placeholder="e.g. Movie night"></label>
-                <label>WHERE<select class="evp-room"></select></label>
-                <label>WHEN<select class="evp-when"></select></label>
+                <div class="evp-pair">
+                    <label>WHERE<select class="evp-room"></select></label>
+                    <label>WHEN<select class="evp-when"></select></label>
+                </div>
                 <label class="evv-check"><input type="checkbox" class="evp-everyone" checked> Invite everyone</label>
-                <div class="evv-chips evp-people"></div>
+                <div class="evv-chips evp-people dgn-pills"></div>
             </div>
-            <div class="evv-foot"><span class="evv-error"></span><button type="button" class="evp-cancel">CANCEL</button><button type="button" class="evv-primary evp-save">PLAN</button></div>
+            <div class="evv-foot dgn-sheet-foot"><span class="evv-error"></span><button type="button" class="evp-cancel">CANCEL</button><button type="button" class="evv-primary evp-save">PLAN</button></div>
         </div>`;
         document.body.appendChild(root);
 
