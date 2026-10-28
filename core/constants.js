@@ -263,6 +263,9 @@ export const defaultSettings = {
     // The body discovery announcement waits until three people besides the
     // killer have seen the body, as in the games.
     bodyDiscoveryWitnesses: true,
+    // During an investigation the phase readout shows how many of the case's
+    // planned clues were found ("EVIDENCE 2/6").
+    showKeyEvidenceFound: false,
     // Examine mode in daily life too (flavour, Monocoins, hidden Monokumas).
     dailyExamineEnabled: true,
     // This chapter's daily examine spots, coins and hidden Monokumas

@@ -43,7 +43,7 @@ import { SAVE_MODES, createSaveStore } from "./core/saves/saveStore.js";
 import { pinInScope } from "./map/mapStorage.js";
 import { isClosedAtNight } from "./map/defaultPins.js";
 import { buildFloorOpenAnnouncement, describeExploreHint, floorsUnlockedBetween, markRoomVisited, normalizeFloorExplore, startExploring } from "./core/explore/floorExplore.js";
-import { CASE_STATUS, DEFAULT_MOTIVE_DEADLINE_DAYS, SHAPE_IDS, BODY_WITNESSES_NEEDED, addEmergentClue, buildBodyAnnouncementBullet, caseBlackened, countedWitnesses, countsAsWitness, editMotive, getBodySeenBy, getCaseBody, getSecondVictim, isBodyAnnounced, isBodyFound, noteBodySeen, pickCaseShape, beatWordOverlap, markWitnessTold, extractJsonObject, buildCaseGenerationPrompt, createBlankCaseFile, describeCaseFile, isGatheringNow, monokumaFileChanged, recordBeatAttempt, reviseMonokumaFile, validateCaseFile, buildMonokumaFileBullet, commitMurder, getMonokumaFileTitle, getMotiveAnnouncementText, getTimeSlot, isCaseOpen, isMurderSlotOver, markDiscovered, normalizeCaseFile, parseCaseFileResponse, removeEmergentClue, shouldAutoAnnounceMotive, avertCase, foilAttempt, getMotiveItem, MOTIVE_KIND_IDS, isCaseOver, isDeadlinePassed, pickMotiveKind, shouldFoil } from "./core/case/caseFile.js";
+import { CASE_STATUS, DEFAULT_MOTIVE_DEADLINE_DAYS, SHAPE_IDS, BODY_WITNESSES_NEEDED, addEmergentClue, buildBodyAnnouncementBullet, caseBlackened, countedWitnesses, countsAsWitness, editMotive, getBodySeenBy, getCaseBody, getSecondVictim, isBodyAnnounced, isBodyFound, noteBodySeen, pickCaseShape, beatWordOverlap, markWitnessTold, extractJsonObject, buildCaseGenerationPrompt, createBlankCaseFile, describeCaseFile, isGatheringNow, monokumaFileChanged, recordBeatAttempt, reviseMonokumaFile, validateCaseFile, buildMonokumaFileBullet, commitMurder, getMonokumaFileTitle, getMotiveAnnouncementText, getTimeSlot, isCaseOpen, isMurderSlotOver, markDiscovered, normalizeCaseFile, parseCaseFileResponse, removeEmergentClue, shouldAutoAnnounceMotive, avertCase, foilAttempt, getMotiveItem, MOTIVE_KIND_IDS, countFoundClues, isCaseOver, isDeadlinePassed, pickMotiveKind, shouldFoil } from "./core/case/caseFile.js";
 import { CASE_PROMPT_KEY, buildCasePrompt } from "./core/case/casePrompts.js";
 import { openMonokumaFile } from "./truth/monokumaFile.js";
 import { openCaseFileEditor } from "./truth/caseFileEditor.js";
@@ -5079,9 +5079,16 @@ function getCurrentStatusLine() {
 }
 
 // Everyone with the player already knows a body was found.
+// With Show key evidence found on, an investigation also shows how many of
+// the case's planned clues have turned up.
 function bodyFoundSuffix() {
     const caseFile = getCaseFile();
-    return caseFile?.status === CASE_STATUS.COMMITTED && caseFile.bodyFound && !caseFile.discovered ? " · BODY FOUND" : "";
+    if (caseFile?.status === CASE_STATUS.COMMITTED && caseFile.bodyFound && !caseFile.discovered) return " · BODY FOUND";
+    if (getMonopadSetting("showKeyEvidenceFound") && caseFile?.discovered && isCaseOpen(caseFile) && getCurrentPhase() === "INVESTIGATION") {
+        const { found, total } = countFoundClues(caseFile);
+        if (total) return ` · EVIDENCE ${found}/${total}`;
+    }
+    return "";
 }
 
 // Reads the tracker without ensureTimeTrackerState(), which swaps in a new
@@ -14307,6 +14314,7 @@ $(".monopad-icon").on("mouseenter", function () {
         $("#monopad-investigation-underway").on("click", () => runHeaderPhaseAction("end-investigation"));
 
         applyToggleSettingSideEffects = (key, next) => {
+            if (key === "showKeyEvidenceFound") { try { refreshPhaseHud(); } catch { /* ignore */ } }
             if (key === "vnModeEnabled" && next) {
                 trySetSillyTavernVisualNovelMode(true);
             }

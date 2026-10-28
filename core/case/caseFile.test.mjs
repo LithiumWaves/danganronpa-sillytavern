@@ -50,6 +50,7 @@ import {
     nextMurderSlot,
     pickMotiveKind,
     shouldFoil,
+    countFoundClues,
 } from "./caseFile.js";
 
 function assert(cond, msg) {
@@ -445,6 +446,13 @@ function run() {
         assert(pub.gathering.roomId === "hpa_gym" && pub.gathering.eventId === "ev_party" && pub.murderDay === 3 && pub.murderTime === "night", "the gathering takes the event's room and slot");
         const off = parseCaseFileResponse(JSON.stringify(plan({ murderStyle: "public", gathering: { room: "Kitchen", eventId: "nope" } })), { ...opts, events }).caseFile;
         assert(off.gathering.roomId === "hpa_kitchen" && !off.gathering.eventId, "an unknown event id is ignored");
+    }
+
+    // Phase L: the evidence readout counts the plan's clues that were found.
+    {
+        const cf = parseCaseFileResponse(JSON.stringify(plan()), opts).caseFile;
+        const c = countFoundClues({ ...cf, clues: cf.clues.map((cl, i) => ({ ...cl, found: i === 0 })) });
+        assert(c.found === 1 && c.total === cf.clues.length && countFoundClues(null).total === 0, "countFoundClues");
     }
 
     console.log("caseFile tests passed");

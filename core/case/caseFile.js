@@ -1025,6 +1025,12 @@ export function removeEmergentClue(caseFile, { id = "", title = "" } = {}) {
     });
 }
 
+// How many of the plan's clues have been found (emergent clues don't count).
+export function countFoundClues(caseFile) {
+    const clues = caseFile?.clues || [];
+    return { found: clues.filter((c) => c.found).length, total: clues.length };
+}
+
 // Plain-text dump for the /case debug command. Full spoilers.
 export function describeCaseFile(caseFile) {
     if (!caseFile) return "No case. Start a motive from the Phase HUD.";

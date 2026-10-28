@@ -19,7 +19,7 @@ survives a `/clear`.
 | I | Intermissions: Monokuma Theater, mastermind cutaways | ⬜ To do |
 | J | Rules with real punishment | ⬜ To do |
 | K | A scripted prologue | ⬜ To do |
-| L | Evidence readout | ⬜ To do |
+| L | Evidence readout | ✅ Done |
 
 ### Decisions from the user
 - Planned murders can be foiled. If the deadline passes, the motive's penalty happens.
@@ -220,7 +220,9 @@ over the monitors, label "A NEW AREA IS OPEN"), and the hint in the Phase HUD me
      Chapter 1.
 - **Debug:** `/prologue step <n>`, `/prologue skip`.
 
-## Phase L: Evidence readout (optional)
+## Phase L: Evidence readout (optional) — ✅ done
+Built as planned: `countFoundClues` (`core/case/caseFile.js`), shown by `bodyFoundSuffix` in
+the phase readout.
 - A Gameplay setting, **Show key evidence found** (off).
 - During an investigation, the Phase HUD adds "EVIDENCE x/y" (the plan's clues that are
   found; emergent clues aren't counted).

@@ -121,6 +121,8 @@ A planned murder can be **foiled**: if the killer or the victim is following you
 
 **The Class Trial:** the minigames that have a right answer are built from what really happened: **Hangman's Gambit** (the answer is a key word of the truth, never the killer's name), **Question Time** (the correct answer is true, the others false), **Question Truth** (prefers the bullets that matter), **Mind Mine** (true statements leading toward the truth) and **Argument Armament** (against the real killer, their excuses are lies and the final argument exposes what they did). The **vote**'s right answer is the real killer, so it no longer asks you who it is; after the vote the case is closed and remembers whether you got it right. **Non-Stop Debate, Mass Panic Debate, Scrum Debate and Rebuttal Showdown are left alone on purpose**, so a debate can still go the wrong way. Turn it all off with Settings → Gameplay → **Trial minigames use the case**.
 
+**Evidence readout:** Settings → Gameplay → **Show key evidence found** (off by default) adds "EVIDENCE x/y" to the phase readout during an investigation: how many of the clues the case's plan hid have been found, by examining or a witness telling you. Evidence that turns up in the roleplay on its own isn't counted.
+
 **Evidence on the map:** during an investigation every new Truth Bullet is pinned on the map next to the room you found it in, and the Monokuma File next to the crime scene. Deleting the bullet or swiping its message away removes the pin.
 
 **Complicated cases:**
