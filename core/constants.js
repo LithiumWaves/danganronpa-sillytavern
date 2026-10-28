@@ -1,4 +1,5 @@
 import { DEFAULT_EXAMINE_NARRATION_TEMPLATE } from "./case/examine.js";
+import { DEFAULT_DAILY_NARRATION_TEMPLATE } from "./case/dailyExamine.js";
 import { DEFAULT_RULES_PROMPT_TEMPLATE } from "./rules/schoolRules.js";
 export const extensionName = "danganronpa-extension";
 
@@ -257,6 +258,11 @@ export const defaultSettings = {
     // The body discovery announcement waits until three people besides the
     // killer have seen the body, as in the games.
     bodyDiscoveryWitnesses: true,
+    // Examine mode in daily life too (flavour, Monocoins, hidden Monokumas).
+    dailyExamineEnabled: true,
+    // This chapter's daily examine spots, coins and hidden Monokumas
+    // (core/case/dailyExamine.js).
+    dailyExamine: null,
     // The School Regulations (core/rules/schoolRules.js); null means the
     // defaults, which a save gets the first time they're read.
     schoolRules: null,
@@ -369,6 +375,8 @@ Don't use it at any other time.`,
     // What the player notices when examining something (core/case/examine.js
     // fills the placeholders; {{findings}} says whether there's evidence).
     examineNarration: DEFAULT_EXAMINE_NARRATION_TEMPLATE,
+    // What the player notices when examining something in daily life.
+    examineDailyNarration: DEFAULT_DAILY_NARRATION_TEMPLATE,
     // The School Regulations ({{rules}} is the numbered list).
     schoolRules: DEFAULT_RULES_PROMPT_TEMPLATE,
     markerAnnouncements: `[ANNOUNCEMENT MARKERS]

@@ -51,7 +51,8 @@ import { openMotiveEditor } from "./truth/motiveEditor.js";
 import { buildRoutineSuggestionPrompt, describeRoutines, mergeSuggestedRoutines, normalizeRoutines, parseRoutineSuggestion } from "./overworld/routines.js";
 import { openRoutinesView } from "./social/routinesView.js";
 import { installChatWatch } from "./core/debug/chatWatch.js";
-import { buildExamineNarrationPrompt, buildHotspotPrompt, parseExamineNarration, parseHotspots, placeHotspots } from "./core/case/examine.js";
+import { MAX_SPOTS, MIN_SPOTS, buildExamineNarrationPrompt, buildHotspotPrompt, parseExamineNarration, parseHotspots, placeHotspots } from "./core/case/examine.js";
+import { ALL_MONOKUMAS_BONUS, HIDDEN_MONOKUMA_COINS, buildDailyHotspotPrompt, buildDailyNarrationPrompt, claimSpot, clearDailyRoom, describeDailyExamine, normalizeDailyExamine, planHiddenMonokumas, setDailySpots, untakenCoins } from "./core/case/dailyExamine.js";
 import { createExamineMode } from "./overworld/examineMode.js";
 import { buildTrialTruthBlock, getCaseBlackened } from "./core/case/trialTruth.js";
 import { MARKER_BLOCKS, MARKER_PROMPT_KEY, buildMarkerPrompt, textHasMarkerInstructions } from "./core/prompts/markerPrompts.js";
@@ -5710,11 +5711,126 @@ async function applyCaseEdit(next) {
 // reply narrate what they find.
 
 function canExamineHere() {
-    const caseFile = getCaseFile();
-    return getCurrentPhase() === "INVESTIGATION"
-        && Boolean(caseFile?.discovered)
-        && caseFile.status !== CASE_STATUS.CLOSED
-        && listCaseRooms().some((r) => r.id === getCurrentLocationId());
+    if (!listCaseRooms().some((r) => r.id === getCurrentLocationId())) return false;
+    const phase = getCurrentPhase();
+    if (phase === "INVESTIGATION") {
+        const caseFile = getCaseFile();
+        return Boolean(caseFile?.discovered) && caseFile.status !== CASE_STATUS.CLOSED;
+    }
+    return (phase === "DAY" || phase === "NIGHT") && getMonopadSetting("dailyExamineEnabled") !== false;
+}
+
+// ── Examine during daily life ─────────────────────────────────────────────────
+// Ordinary spots, Monocoins in a few of them and one hidden Monokuma per
+// floor (core/case/dailyExamine.js). Kept per save, fresh each chapter.
+
+function isDailyExamine() {
+    const phase = getCurrentPhase();
+    return phase === "DAY" || phase === "NIGHT";
+}
+
+function getDailyExamine() {
+    return normalizeDailyExamine(extension_settings[extensionName]?.dailyExamine, Number(getMonopadSetting("chapterIndex") ?? 0));
+}
+
+function setDailyExamine(record) {
+    extension_settings[extensionName] ||= {};
+    extension_settings[extensionName].dailyExamine = record;
+    saveSettingsDebounced();
+}
+
+// This save's open rooms, by floor ("area/floor").
+function listExamineFloors() {
+    const byFloor = new Map();
+    for (const room of listCaseRooms()) {
+        const pin = mapPanelController?.getPinByLocationId?.(room.id);
+        if (!pin?.floorKey) continue;
+        const key = `${pin.areaKey || "area"}/${pin.floorKey}`;
+        if (!byFloor.has(key)) byFloor.set(key, []);
+        byFloor.get(key).push(room.id);
+    }
+    return [...byFloor.entries()].map(([key, roomIds]) => ({ key, roomIds }));
+}
+
+// Coins left in a room that /examine reset cleared, for its next spots.
+const pendingDailyCoins = new Map();
+
+async function loadDailySpots({ again = false } = {}) {
+    const roomId = getCurrentLocationId();
+    const roomLabel = getCurrentRoomLabel() || roomId;
+    if (!roomId) return { roomLabel, spots: [] };
+    let record = planHiddenMonokumas(getDailyExamine(), listExamineFloors());
+    const before = record.rooms[roomId]?.spots;
+    if (again || !before?.length) {
+        const previous = again ? (before || []).map((sp) => sp.label) : [];
+        let raw = "";
+        try {
+            raw = await generateIsolated(buildDailyHotspotPrompt({ roomLabel, owner: getRoomOwnerInfo(roomId), previous, min: MIN_SPOTS, max: MAX_SPOTS }), { maxTokens: 1200, reasoning: { effort: "low", exclude: true } });
+        } catch (err) {
+            console.warn("[Dangan][Examine] Daily spots generation failed; using plain spots:", err);
+        }
+        if (previous.length && !raw) throw new Error("The AI didn't answer, so the room keeps its spots. Try again.");
+        const made = parseHotspots(raw, { caseFile: null, roomId });
+        // Making a room again never hides new coins: only the ones nobody took.
+        const coins = before?.length ? untakenCoins(record, roomId) : pendingDailyCoins.get(roomId) ?? null;
+        pendingDailyCoins.delete(roomId);
+        record = setDailySpots(clearDailyRoom(record, roomId), roomId, made, { coins });
+        caseDebug("EXAMINE", `${again ? "Made again: " : ""}${made.length} daily spots in ${roomLabel}.`);
+    }
+    setDailyExamine(record);
+    return { roomLabel, spots: placeHotspots(record.rooms[roomId]?.spots || [], getSpotPositions(roomId)) };
+}
+
+async function examineSpotDaily(spot) {
+    const roomId = getCurrentLocationId();
+    if (!roomId) return;
+    const claim = claimSpot(getDailyExamine(), roomId, spot.id);
+    setDailyExamine(claim.record);
+    await examineLookDaily({ label: spot.label, freeText: false }, claim);
+}
+
+// What the player notices in daily life: flavour, never evidence. Coins and
+// a hidden Monokuma come from the spot, and the narration mentions them.
+async function examineLookDaily(look, claim = {}) {
+    const roomId = getCurrentLocationId();
+    if (!roomId) return;
+    const player = getActivePersonaName() || getCasePlayerName();
+    const prompt = buildDailyNarrationPrompt(look, {
+        player,
+        roomLabel: getCurrentRoomLabel() || roomId,
+        present: getCurrentRoomOccupantNames(),
+        recentChat: buildRecentChatContextLines(8),
+        owner: getRoomOwnerInfo(roomId),
+        found: { coins: claim.coins || 0, monokuma: Boolean(claim.monokuma) },
+        template: getMonopadSetting("examineDailyNarrationPromptTemplate") || "",
+    });
+    let raw = "";
+    try {
+        raw = await generateIsolated(prompt, { raw: true, maxTokens: 900, reasoning: { effort: "low", exclude: true } });
+    } catch (err) {
+        console.warn("[Dangan][Examine] Daily narration failed:", err);
+    }
+    // Any evidence line that slips through is dropped: this isn't an investigation.
+    const { text } = parseExamineNarration(raw);
+    const narration = text || (raw ? "Nothing special about it." : "I couldn't make anything of it. (The AI didn't answer; try again.)");
+
+    if (claim.coins) awardMonocoins(claim.coins, "Found while examining");
+    if (claim.monokuma) {
+        awardMonocoins(HIDDEN_MONOKUMA_COINS, "Hidden Monokuma");
+        notify({ title: "HIDDEN MONOKUMA FOUND", message: `${claim.monokumasFound} of ${claim.monokumasTotal} found this chapter.`, durationMs: 7000 });
+        if (claim.allFound) {
+            awardMonocoins(ALL_MONOKUMAS_BONUS, "Every hidden Monokuma");
+            notify({ title: "ALL HIDDEN MONOKUMAS FOUND", message: `Every hidden Monokuma this chapter! +${ALL_MONOKUMAS_BONUS} Monocoins.`, durationMs: 9000 });
+        }
+    }
+    caseDebug("EXAMINED", `${look.label}${claim.coins ? ` → ${claim.coins} coins` : ""}${claim.monokuma ? " → hidden Monokuma" : ""}`);
+
+    const name = getCharacterDisplayName?.(player) || player || "";
+    examineController?.doneThinking?.();
+    const shown = vnModeController?.showAside?.({ name, text: narration })
+        || (examineController?.isOpen?.() ? examineController.showNarration({ name, text: narration }) : null);
+    if (shown) await shown;
+    else notify({ title: name || "EXAMINE", message: narration, durationMs: 10000 });
 }
 
 // Where the player dragged each spot, per room and spot name. Rooms are
@@ -5758,6 +5874,7 @@ async function makeExamineSpots(caseFile, roomId, roomLabel, previous = []) {
 }
 
 async function loadExamineSpots({ again = false } = {}) {
+    if (isDailyExamine()) return loadDailySpots({ again });
     const roomId = getCurrentLocationId();
     const roomLabel = getCurrentRoomLabel() || roomId;
     let caseFile = getCaseFile();
@@ -5877,6 +5994,7 @@ async function showTemporaryPartnerReaction(speaker) {
 }
 
 async function examineSpot(spot) {
+    if (isDailyExamine()) return examineSpotDaily(spot);
     const roomId = getCurrentLocationId();
     const caseFile = getCaseFile();
     if (!caseFile || !roomId) return;
@@ -5890,6 +6008,7 @@ async function examineSpot(spot) {
 }
 
 async function examineFreeText(what) {
+    if (isDailyExamine()) return examineLookDaily({ label: what, freeText: true });
     await examineLook({ label: what, clueId: "", freeText: true });
 }
 
@@ -5906,7 +6025,7 @@ let examineHintShown = false;
 
 async function openExamineMode({ ask = false } = {}) {
     if (!canExamineHere()) {
-        notify({ tone: "warn", title: "NOTHING TO EXAMINE", message: "Examine works during an investigation, in a room on this save's map." });
+        notify({ tone: "warn", title: "NOTHING TO EXAMINE", message: "Examine works in a room on this save's map: during an investigation, or in daily life (Settings → Gameplay → Examine during daily life)." });
         return false;
     }
     examineController ||= createExamineMode({
@@ -13818,6 +13937,8 @@ $(".monopad-icon").on("mouseenter", function () {
                 applyExploreLayoutSettings();
             }
             if (key === "shareSchoolRules") syncMarkerPrompts();
+            // The overworld's EXAMINE button comes and goes with it.
+            if (key === "dailyExamineEnabled") { try { overworldSceneController?.render?.(); } catch { /* not built yet */ } }
             if (key === "markerPromptsEnabled") {
                 // Warn again the next time it's turned on.
                 if (!next) markerPresetWarningShown = false;
@@ -18555,16 +18676,30 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'examine',
     callback: async (_args, value) => {
         const what = String(value || '').trim();
+        if (what.toLowerCase() === 'coins') {
+            const labels = new Map(listCaseRooms().map((r) => [r.id, r.label]));
+            const text = describeDailyExamine(planHiddenMonokumas(getDailyExamine(), listExamineFloors()), { roomLabel: (id) => labels.get(id) || id });
+            await showCaseDebugText('DAILY EXAMINE (SPOILERS)', text);
+            return text;
+        }
         if (what.toLowerCase() === 'reset') {
             const roomId = getCurrentLocationId();
             const caseFile = getCaseFile();
-            if (!caseFile || !roomId) {
-                notify({ tone: 'warn', title: '/examine reset', message: 'No case, or you are not in a room.' });
+            if (!roomId) {
+                notify({ tone: 'warn', title: '/examine reset', message: 'You are not in a room.' });
                 return '';
             }
-            const examine = { ...caseFile.examine };
-            delete examine[roomId];
-            setCaseFile({ ...caseFile, examine });
+            if (isDailyExamine() || !caseFile) {
+                // Coins nobody took stay hidden in the new spots.
+                const record = getDailyExamine();
+                const coins = untakenCoins(record, roomId);
+                setDailyExamine(clearDailyRoom(record, roomId));
+                pendingDailyCoins.set(roomId, coins);
+            } else {
+                const examine = { ...caseFile.examine };
+                delete examine[roomId];
+                setCaseFile({ ...caseFile, examine });
+            }
             const root = extension_settings[extensionName] ||= {};
             if (root.examineSpotPositions) delete root.examineSpotPositions[roomId];
             saveSettingsDebounced();
@@ -18574,7 +18709,9 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         }
         if (what.toLowerCase() === 'regenerate') {
             // Spots this room never had are simply made when it opens.
-            const hadSpots = Boolean(getCaseFile()?.examine?.[getCurrentLocationId()]?.spots?.length);
+            const hadSpots = isDailyExamine()
+                ? Boolean(getDailyExamine().rooms[getCurrentLocationId()]?.spots?.length)
+                : Boolean(getCaseFile()?.examine?.[getCurrentLocationId()]?.spots?.length);
             if (!examineController?.isOpen?.()) {
                 if (!(await openExamineMode()) || !hadSpots) return '';
             }
@@ -18586,13 +18723,13 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             return '';
         }
         if (!canExamineHere()) {
-            notify({ tone: 'warn', title: 'NOTHING TO EXAMINE', message: 'Examine works during an investigation, in a room on this save\'s map.' });
+            notify({ tone: 'warn', title: 'NOTHING TO EXAMINE', message: 'Examine works in a room on this save\'s map: during an investigation, or in daily life (Settings → Gameplay).' });
             return '';
         }
         await examineFreeText(what);
         return '';
     },
-    helpString: 'During an investigation: <code>/examine</code> opens examine mode for this room; <code>/examine the window latch</code> looks at something specific; <code>/examine regenerate</code> makes this room\'s spots again now (evidence you found stays found); <code>/examine reset</code> forgets this room\'s spots so they\'re made again (a classmate\'s room uses their card).',
+    helpString: 'During an investigation: <code>/examine</code> opens examine mode for this room; <code>/examine the window latch</code> looks at something specific; <code>/examine regenerate</code> makes this room\'s spots again now (evidence you found stays found); <code>/examine reset</code> forgets this room\'s spots so they\'re made again (a classmate\'s room uses their card); <code>/examine coins</code> lists where this chapter\'s Monocoins and hidden Monokumas are (spoilers). In daily life the same commands use the daily spots.',
     unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'what to examine (optional)', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
 }));
 
