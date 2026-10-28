@@ -34,6 +34,13 @@ import {
     getSecondVictim,
     listWitnessTestimony,
     pickCaseShape,
+    buildBodyAnnouncementBullet,
+    countedWitnesses,
+    countsAsWitness,
+    getBodySeenBy,
+    isAnnounceable,
+    isBodyFound,
+    noteBodySeen,
 } from "./caseFile.js";
 
 function assert(cond, msg) {
@@ -170,6 +177,29 @@ function run() {
         assert(Object.keys(CASE_SHAPES).length === 7, "seven shapes");
     }
 
+    // The three-witness rule.
+    {
+        const base = normalizeCaseFile({ status: "committed", shape: "accomplice", killer: "Leon Kuwata", victim: "Sayaka Maizono", accomplices: ["Peko Pekoyama"], decoy: "Mondo Owada",
+            body: { roomId: "kitchen", roomLabel: "Kitchen" }, secondVictim: { name: "Hifumi Yamada", killer: "Kyoko Kirigiri", body: { roomId: "art" } } });
+        assert(!isBodyFound(base) && getBodySeenBy(base).length === 0, "nobody has seen it yet");
+        let cf = noteBodySeen(base, ["Makoto Naegi", "Leon Kuwata"]);
+        assert(isBodyFound(cf) && getBodySeenBy(cf).join() === "Makoto Naegi,Leon Kuwata" && !isAnnounceable(cf), "the killer doesn't count");
+        cf = noteBodySeen(cf, ["Peko Pekoyama", "makoto naegi", "Aoi Asahina"]);
+        assert(countedWitnesses(cf).join() === "Makoto Naegi,Aoi Asahina" && !isAnnounceable(cf), "accomplices don't count; no duplicates");
+        assert(!countsAsWitness(cf, "Peko Pekoyama") && countsAsWitness(cf, "Aoi Asahina"), "countsAsWitness");
+        cf = noteBodySeen(cf, ["Yasuhiro Hagakure", "Toko Fukawa"]);
+        assert(isAnnounceable(cf), "three counted witnesses");
+        const bullet = buildBodyAnnouncementBullet(cf, { day: 4, time: "day" });
+        assert(bullet.title === "Body Discovery Announcement" && bullet.description.includes("played when Yasuhiro Hagakure saw the body (Day 4, daytime)") && bullet.description.includes("Makoto Naegi, Leon Kuwata, Peko Pekoyama, Aoi Asahina, Yasuhiro Hagakure.") && !bullet.description.includes("Toko"), "the announcement bullet lists everyone up to the third, in order");
+        const dec = normalizeCaseFile({ ...base, shape: "decoy" });
+        assert(countsAsWitness(dec, "Mondo Owada"), "a decoy counts");
+        assert(noteBodySeen(base, ["A"], { index: 1 }) === base, "no second body outside a double");
+        const dbl = normalizeCaseFile({ ...base, shape: "double" });
+        const second = noteBodySeen(dbl, ["Kyoko Kirigiri", "Makoto Naegi"], { index: 1 });
+        assert(isBodyFound(second, 1) && !isBodyFound(second, 0) && countedWitnesses(second, 1).join() === "Makoto Naegi", "the second body counts separately, its killer excluded");
+        assert(buildBodyAnnouncementBullet(second, { index: 1 }).title === "Second Body Discovery Announcement", "second bullet");
+    }
+
     assert(extractJsonObject("Sure!\n```json\n{\"a\":1}\n```")?.a === 1, "extracts fenced JSON");
     assert(extractJsonObject("no json") === null, "no JSON");
 
@@ -267,7 +297,7 @@ function run() {
     assert(removeEmergentClue(withClue, { id: "tb_1" }).emergentClues.length === 0, "removed on rollback");
 
     const dump = describeCaseFile(withClue);
-    assert(dump.includes("Killer: Leon Kuwata") && dump.includes("Torn Note") && dump.includes("found: yes"), "debug dump");
+    assert(dump.includes("Killer: Leon Kuwata") && dump.includes("Torn Note") && dump.includes("announced: yes"), "debug dump");
     assert(describeCaseFile(null).includes("No case"), "empty dump");
 
     // Beats that miss are retried, then set aside.

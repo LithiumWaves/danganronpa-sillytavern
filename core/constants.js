@@ -254,6 +254,9 @@ export const defaultSettings = {
     caseTwists: "sometimes",
     // The last case's shape, so the same twist doesn't come twice in a row.
     caseHistory: null,
+    // The body discovery announcement waits until three people besides the
+    // killer have seen the body, as in the games.
+    bodyDiscoveryWitnesses: true,
     // The School Regulations (core/rules/schoolRules.js); null means the
     // defaults, which a save gets the first time they're read.
     schoolRules: null,

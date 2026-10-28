@@ -473,6 +473,10 @@ export function normalizeCaseFile(raw) {
             ? { day: Number(raw.committedAt.day), time: raw.committedAt.time === "day" ? "day" : "night" }
             : null,
         discovered: Boolean(raw.discovered),
+        // The three-witness rule: the body has been seen (by the player) but
+        // not announced yet, and who has seen it, in order.
+        bodyFound: Boolean(raw.bodyFound),
+        bodySeenBy: seenList(raw.bodySeenBy),
         lastBeatSlot: text(raw.lastBeatSlot, 40),
         pendingNote: raw.pendingNote === "discovered" ? "discovered" : "",
         // How the motive reaches the cast: Monokuma's own reply announcing it
@@ -559,7 +563,18 @@ function normalizeSecondVictim(sv) {
         },
         monokumaFile: normalizeMonokumaFile(sv.monokumaFile),
         discovered: Boolean(sv.discovered),
+        found: Boolean(sv.found),
+        seenBy: seenList(sv.seenBy),
     };
+}
+
+function seenList(value) {
+    const out = [];
+    for (const n of list(value)) {
+        const name = text(n, 80);
+        if (name && !out.some((o) => nameKey(o) === nameKey(name))) out.push(name);
+    }
+    return out.slice(0, 40);
 }
 
 // Who the vote must name: the killer, or a suicide's victim.
@@ -698,6 +713,67 @@ export function markBeatUsed(caseFile, beatId, slot = "") {
     });
 }
 
+// ── The three-witness rule ──
+// The body discovery announcement plays once three people who aren't the
+// killer (or an accomplice) have seen the body, as in the games.
+export const BODY_WITNESSES_NEEDED = 3;
+const NOT_WITNESS_ROLES = new Set(["killer", "accomplice", "second_killer", "suicide"]);
+
+export function countsAsWitness(caseFile, name) {
+    return Boolean(name) && !secretRolesOf(caseFile, name).some((r) => NOT_WITNESS_ROLES.has(r));
+}
+
+export function getBodySeenBy(caseFile, index = 0) {
+    if (!caseFile) return [];
+    return index === 1 ? (getSecondVictim(caseFile)?.seenBy || []) : caseFile.bodySeenBy || [];
+}
+
+export function isBodyFound(caseFile, index = 0) {
+    if (!caseFile) return false;
+    return index === 1 ? Boolean(getSecondVictim(caseFile)?.found) : Boolean(caseFile.bodyFound);
+}
+
+export function isBodyAnnounced(caseFile, index = 0) {
+    if (!caseFile) return false;
+    return index === 1 ? Boolean(getSecondVictim(caseFile)?.discovered) : Boolean(caseFile.discovered);
+}
+
+// The body has been seen: marks it found and adds `names` in order.
+export function noteBodySeen(caseFile, names = [], { index = 0 } = {}) {
+    if (!caseFile || (index === 1 && !getSecondVictim(caseFile))) return caseFile;
+    const seenBy = seenList([...getBodySeenBy(caseFile, index), ...names]);
+    return normalizeCaseFile(index === 1
+        ? { ...caseFile, secondVictim: { ...caseFile.secondVictim, found: true, seenBy } }
+        : { ...caseFile, bodyFound: true, bodySeenBy: seenBy });
+}
+
+export function countedWitnesses(caseFile, index = 0) {
+    return getBodySeenBy(caseFile, index).filter((n) => countsAsWitness(caseFile, n));
+}
+
+export function isAnnounceable(caseFile, { index = 0, required = BODY_WITNESSES_NEEDED } = {}) {
+    return countedWitnesses(caseFile, index).length >= required;
+}
+
+// The evidence the announcement leaves: who had seen the body when it
+// played, in order, including people who don't count (the killer).
+export function buildBodyAnnouncementBullet(caseFile, { index = 0, day = 1, time = "night", required = BODY_WITNESSES_NEEDED } = {}) {
+    const seen = getBodySeenBy(caseFile, index);
+    let counted = 0;
+    let upTo = seen.length;
+    for (let i = 0; i < seen.length; i += 1) {
+        if (countsAsWitness(caseFile, seen[i])) counted += 1;
+        if (counted >= required) { upTo = i + 1; break; }
+    }
+    const before = seen.slice(0, upTo);
+    const last = before[before.length - 1] || "someone";
+    const victim = getCaseBody(caseFile, index)?.victim || "the victim";
+    return {
+        title: index === 1 ? "Second Body Discovery Announcement" : "Body Discovery Announcement",
+        description: `The body discovery announcement for ${victim} played when ${last} saw the body (Day ${day}, ${time === "day" ? "daytime" : "nighttime"}). Seen before it played, in order: ${before.join(", ") || "nobody"}. It plays once three people besides the killer have seen a body.`,
+    };
+}
+
 // The second body's file is "#N-2".
 export function getMonokumaFileTitle(caseFile, index = 0) {
     const base = `Monokuma File #${Math.max(1, Number(caseFile?.chapterIndex) || 1)}`;
@@ -785,10 +861,11 @@ export function describeCaseFile(caseFile) {
         ...(cf.shape === "wrong_victim" ? [`Meant to kill: ${cf.intendedVictim}`] : []),
         ...(cf.shape === "accomplice" ? [`Accomplices: ${cf.accomplices.join(", ")}`] : []),
         ...(cf.shape === "decoy" ? [`Decoy (believes they did it): ${cf.decoy}`] : []),
-        ...(getSecondVictim(cf) ? [`Second body: ${cf.secondVictim.name}, killed by ${cf.secondVictim.killer}, in ${cf.secondVictim.body.roomLabel || cf.secondVictim.body.roomId} · found: ${yes(cf.secondVictim.discovered)} · file: ${cf.secondVictim.monokumaFile.timeOfDeath || "?"} · ${cf.secondVictim.monokumaFile.cause || "?"}`] : []),
+        ...(getSecondVictim(cf) ? [`Second body: ${cf.secondVictim.name}, killed by ${cf.secondVictim.killer}, in ${cf.secondVictim.body.roomLabel || cf.secondVictim.body.roomId} · seen: ${yes(cf.secondVictim.found || cf.secondVictim.discovered)}${cf.secondVictim.seenBy.length ? ` (${cf.secondVictim.seenBy.join(", ")})` : ""} · announced: ${yes(cf.secondVictim.discovered)} · file: ${cf.secondVictim.monokumaFile.timeOfDeath || "?"} · ${cf.secondVictim.monokumaFile.cause || "?"}`] : []),
         `Murder: ${cf.murderStyle}, ${cf.murderTime} of Day ${cf.murderDay}${cf.committedAt ? ` · happened: ${cf.committedAt.time} of Day ${cf.committedAt.day}` : ""}`,
         ...(cf.gathering ? [`Gathering: ${cf.gathering.description} [${cf.gathering.roomLabel || cf.gathering.roomId}]`] : []),
-        `Body: ${cf.body.roomLabel || "?"} (${cf.body.roomId || "?"}) · found: ${yes(cf.discovered)}${cf.pendingNote ? " · discovery note pending" : ""}`,
+        `Body: ${cf.body.roomLabel || "?"} (${cf.body.roomId || "?"}) · seen: ${yes(cf.bodyFound || cf.discovered)} · announced: ${yes(cf.discovered)}${cf.pendingNote ? " · discovery note pending" : ""}`,
+        ...(cf.bodySeenBy.length ? [`  Seen by (in order): ${cf.bodySeenBy.map((n) => (countsAsWitness(cf, n) ? n : `${n} (doesn't count)`)).join(", ")}`] : []),
         `Why: ${cf.motiveLink}`,
         `Method: ${cf.method} Weapon: ${cf.weapon}.`,
         `Monokuma File (rev ${cf.monokumaFile.revision}): ${cf.monokumaFile.timeOfDeath || "?"} · ${cf.monokumaFile.cause || "?"}${cf.monokumaFile.injuries ? ` · ${cf.monokumaFile.injuries}` : ""}`,

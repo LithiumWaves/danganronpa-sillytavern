@@ -1,4 +1,4 @@
-import { CASE_STATUS, accountTitle, commitMurder, listWitnessTestimony, markBeatUsed, markDiscovered, markWitnessTold, normalizeCaseFile } from "./caseFile.js";
+import { CASE_STATUS, accountTitle, commitMurder, listWitnessTestimony, markBeatUsed, markDiscovered, markWitnessTold, normalizeCaseFile, noteBodySeen } from "./caseFile.js";
 import { buildCasePrompt } from "./casePrompts.js";
 
 function assert(cond, msg) {
@@ -143,6 +143,16 @@ function run() {
         const dbl = normalizeCaseFile({ ...cf, shape: "double", secondVictim: { name: "Hifumi Yamada", killer: "Kyoko Kirigiri", body: { roomId: "gym", roomLabel: "Gym" } } });
         assert(as(dbl, "Kyoko Kirigiri").includes("decided to kill Hifumi Yamada"), "the second killer");
         assert(buildCasePrompt({ caseFile: commitMurder(dbl, { day: 3 }), phase: "DAY", day: 4, speakerName: "Makoto" }).text.includes("Sayaka Maizono or Hifumi Yamada"), "both are missing");
+    }
+
+    // Found but not announced: the room knows, nobody else does.
+    {
+        const seen = noteBodySeen(commitMurder(cf, { day: 3 }), ["Makoto Naegi"]);
+        const here = buildCasePrompt({ caseFile: seen, phase: "DAY", day: 4, speakerName: "Kyoko", roomId: "kitchen" });
+        assert(here.text.includes("[JUST FOUND]") && here.text.includes("Makoto Naegi has seen it") && !here.text.includes("SOMEONE IS MISSING") && !here.text.includes("Leon"), "the body room gets the found note");
+        const away = buildCasePrompt({ caseFile: seen, phase: "DAY", day: 4, speakerName: "Kyoko", roomId: "gym" });
+        assert(away.text.includes("SOMEONE IS MISSING") && !away.text.includes("JUST FOUND"), "elsewhere it's still a missing person");
+        assert(buildCasePrompt({ caseFile: seen, phase: "DAY", day: 4, speakerName: "Leon Kuwata", roomId: "gym" }).text.includes("you could use that"), "the killer knows who has seen it");
     }
 
     console.log("casePrompts tests passed");

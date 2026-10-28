@@ -3,7 +3,7 @@
 // own character gets their secret, and only while they're the one replying.
 // Most daily life replies get nothing at all.
 
-import { CASE_STATUS, accountTitle, buildMonokumaFileBullet, getSecondVictim, getTimeSlot, isGatheringNow, listWitnessTestimony, pickForeshadowingBeat, secretRolesOf } from "./caseFile.js";
+import { BODY_WITNESSES_NEEDED, CASE_STATUS, accountTitle, buildMonokumaFileBullet, getBodySeenBy, getCaseBody, getSecondVictim, isBodyAnnounced, isBodyFound, getTimeSlot, isGatheringNow, listWitnessTestimony, pickForeshadowingBeat, secretRolesOf } from "./caseFile.js";
 import { buildPartnerReactionNote } from "./examine.js";
 
 export const CASE_PROMPT_KEY = "dangan_case";
@@ -73,7 +73,7 @@ function killerCommitted(cf) {
     const helpers = cf.shape === "accomplice" && cf.accomplices.length ? ` ${cf.accomplices.join(" and ")} helped you.` : "";
     return `${secretHeader(cf.killer)}
 ${how}You, ${cf.killer}, killed ${cf.victim}.${also}${helpers} ${cf.method}${timeline}
-Weapon: ${cf.weapon}.${concealedNote(cf)}
+Weapon: ${cf.weapon}.${concealedNote(cf)}${isBodyFound(cf) && !cf.discovered ? killerFoundNote(cf, 0) : ""}
 ${PROTECT}`;
 }
 
@@ -122,6 +122,22 @@ You, ${name}, have secretly decided to kill ${second.name} during ${when(cf)}.
 ${KEEP_HIDDEN}`);
     }
     return notes;
+}
+
+// A body has been seen but not announced yet (three-witness rule). For
+// whoever is in that room.
+function justFoundNote(cf, index) {
+    const b = getCaseBody(cf, index);
+    const seen = getBodySeenBy(cf, index);
+    return `[JUST FOUND]
+${b.victim}'s body is here. ${b.body.state}
+It was just found${seen.length ? `; so far ${seen.join(", ")} ${seen.length === 1 ? "has" : "have"} seen it` : ""}. Monokuma hasn't announced it yet: the body discovery announcement only plays once ${BODY_WITNESSES_NEEDED} people besides the killer have seen a body. React to the shock; someone may run to get the others, or stay with the body.`;
+}
+
+// The killer learns the body was found and who has seen it.
+function killerFoundNote(cf, index) {
+    const seen = getBodySeenBy(cf, index);
+    return `\nThe body has been found. So far ${seen.join(", ") || "nobody"} ${seen.length === 1 ? "has" : "have"} seen it. The announcement plays once ${BODY_WITNESSES_NEEDED} people other than you have seen it; you could use that.`;
 }
 
 // Who has already told the player what they saw (never what the others know).
@@ -222,7 +238,8 @@ V3C| BODY_DISCOVERY`);
         const since = cf.committedAt ? `${timeWords(cf.committedAt.time)} of Day ${cf.committedAt.day}` : "a while";
         const second = getSecondVictim(cf);
         const missing = second ? `${cf.victim} or ${second.name}` : cf.victim;
-        parts.push(`[SOMEONE IS MISSING]\nNobody has seen ${missing} since ${since}. Nobody knows where they are.`);
+        if (isBodyFound(cf) && roomId && roomId === cf.body.roomId) parts.push(justFoundNote(cf, 0));
+        else parts.push(`[SOMEONE IS MISSING]\nNobody has seen ${missing} since ${since}. Nobody knows where they are.`);
         if (isKiller) parts.push(killerCommitted(cf));
         parts.push(...otherSecrets(cf, speakerName, true));
     } else if (cf.discovered && phase === "INVESTIGATION") {
@@ -230,6 +247,8 @@ V3C| BODY_DISCOVERY`);
             parts.push(`[JUST NOW]\nThe player has just walked in and found ${cf.victim}'s body here. Describe the scene and everyone's shock. ${cf.body.state}`);
         }
         parts.push(investigationFacts(cf, { roomId, truthBulletTitles, victimUltimate }));
+        const second = getSecondVictim(cf);
+        if (second && isBodyFound(cf, 1) && !isBodyAnnounced(cf, 1) && roomId && roomId === second.body.roomId) parts.push(justFoundNote(cf, 1));
         if (cf.pendingReaction && same(speakerName, cf.pendingReaction.speaker)) parts.push(buildPartnerReactionNote(cf.pendingReaction));
         if (!isKiller) {
             const note = witnessNote(cf, speakerName);

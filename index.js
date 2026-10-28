@@ -41,7 +41,7 @@ import { createPhaseHistory, derivePhase, getNextStepHint, getPhaseActions, getS
 import { notify } from "./core/ui/notify.js";
 import { SAVE_MODES, createSaveStore } from "./core/saves/saveStore.js";
 import { pinInScope } from "./map/mapStorage.js";
-import { CASE_STATUS, DEFAULT_MOTIVE_DEADLINE_DAYS, SHAPE_IDS, addEmergentClue, caseBlackened, editMotive, getCaseBody, getSecondVictim, pickCaseShape, beatWordOverlap, markWitnessTold, extractJsonObject, buildCaseGenerationPrompt, createBlankCaseFile, describeCaseFile, isGatheringNow, monokumaFileChanged, recordBeatAttempt, reviseMonokumaFile, validateCaseFile, buildMonokumaFileBullet, commitMurder, getMonokumaFileTitle, getMotiveAnnouncementText, getTimeSlot, isCaseOpen, isMurderSlotOver, markDiscovered, normalizeCaseFile, parseCaseFileResponse, removeEmergentClue, shouldAutoAnnounceMotive } from "./core/case/caseFile.js";
+import { CASE_STATUS, DEFAULT_MOTIVE_DEADLINE_DAYS, SHAPE_IDS, BODY_WITNESSES_NEEDED, addEmergentClue, buildBodyAnnouncementBullet, caseBlackened, countedWitnesses, countsAsWitness, editMotive, getBodySeenBy, getCaseBody, getSecondVictim, isBodyAnnounced, isBodyFound, noteBodySeen, pickCaseShape, beatWordOverlap, markWitnessTold, extractJsonObject, buildCaseGenerationPrompt, createBlankCaseFile, describeCaseFile, isGatheringNow, monokumaFileChanged, recordBeatAttempt, reviseMonokumaFile, validateCaseFile, buildMonokumaFileBullet, commitMurder, getMonokumaFileTitle, getMotiveAnnouncementText, getTimeSlot, isCaseOpen, isMurderSlotOver, markDiscovered, normalizeCaseFile, parseCaseFileResponse, removeEmergentClue, shouldAutoAnnounceMotive } from "./core/case/caseFile.js";
 import { CASE_PROMPT_KEY, buildCasePrompt } from "./core/case/casePrompts.js";
 import { openMonokumaFile } from "./truth/monokumaFile.js";
 import { openCaseFileEditor } from "./truth/caseFileEditor.js";
@@ -4819,7 +4819,13 @@ function getCurrentStatusLine() {
         phase: getCurrentPhase(),
         day: ensureTimeTrackerState().day,
         chapterLabel: getChapterLabel(),
-    });
+    }) + bodyFoundSuffix();
+}
+
+// Everyone with the player already knows a body was found.
+function bodyFoundSuffix() {
+    const caseFile = getCaseFile();
+    return caseFile?.status === CASE_STATUS.COMMITTED && caseFile.bodyFound && !caseFile.discovered ? " · BODY FOUND" : "";
 }
 
 // Reads the tracker without ensureTimeTrackerState(), which swaps in a new
@@ -5339,6 +5345,10 @@ async function discoverBodyIfWitnessed() {
     const caseFile = getCaseFile();
     if (!caseFile || caseFile.status !== CASE_STATUS.COMMITTED || caseFile.discovered) return;
     if (caseFile.murderStyle !== "public" && getCurrentLocationId() !== caseFile.body.roomId) return;
+    if (witnessRuleOn()) {
+        await bodySeen(0, namesInRoom(getCurrentLocationId()));
+        return;
+    }
     caseDiscoveryWalkIn = true;
     try { await runBodyDiscoverySequence(); } finally { caseDiscoveryWalkIn = false; }
 }
@@ -5367,11 +5377,118 @@ function maybeDiscoverBodyOnEntry(locationId) {
     if (!locationId || locationId !== caseFile.body.roomId) return;
     const phase = getCurrentPhase();
     if (phase !== "DAY" && phase !== "NIGHT") return;
+    if (witnessRuleOn()) {
+        void bodySeen(0, namesInRoom(locationId));
+        return;
+    }
     caseDiscoveryWalkIn = true;
     void runBodyDiscoverySequence().finally(() => { caseDiscoveryWalkIn = false; });
 }
 
+// ── The three-witness rule ──
+// The body discovery announcement plays once three people besides the
+// killer have seen a body (Settings → Gameplay). Until then the body is
+// "found" but the investigation hasn't started.
+function witnessRuleOn() {
+    return getMonopadSetting("bodyDiscoveryWitnesses") !== false;
+}
+
+// Who can see into `roomId` right now: the player when they're there, and
+// the classmates standing in it (never hosts).
+function namesInRoom(roomId) {
+    if (!roomId) return [];
+    const names = (overworldSceneController?.getCharactersInRoom?.(roomId) || []).map((c) => String(c?.name || "").trim());
+    if (getCurrentLocationId() === roomId) names.unshift(getCasePlayerName());
+    return names.filter((n) => n && !isHostCharacter(n));
+}
+
+let bodyAnnounceInFlight = false;
+
+// Body `index` (0, or 1 for a double's second) was seen by `names`. The first
+// sighting plays the static cut-in; the announcement waits for the rule.
+async function bodySeen(index, names, { cutIn = true } = {}) {
+    let caseFile = getCaseFile();
+    if (!caseFile || caseFile.status !== CASE_STATUS.COMMITTED || isBodyAnnounced(caseFile, index)) return;
+    if (index === 1 && (!getSecondVictim(caseFile) || !caseFile.discovered)) return;
+    const first = !isBodyFound(caseFile, index);
+    const before = getBodySeenBy(caseFile, index).length;
+    caseFile = noteBodySeen(caseFile, names.filter((n) => n && !isHostCharacter(n)), { index });
+    const seen = getBodySeenBy(caseFile, index);
+    if (!first && seen.length === before) return;
+    setCaseFile(caseFile);
+    caseDebug(first ? "BODY SEEN" : "WITNESS", `${getCaseBody(caseFile, index).victim}: seen by ${seen.join(", ")} (${countedWitnesses(caseFile, index).length}/${BODY_WITNESSES_NEEDED} count).`);
+    if (first) {
+        refreshPhaseHud();
+        if (cutIn) await monokumaAnnouncementController?.triggerAsync("BODY_DISCOVERY");
+    }
+    await maybeAnnounceBody(index);
+}
+
+// Plays the announcement for body `index` once enough people have seen it
+// (or right away with `force`), then records who had seen it as evidence.
+async function maybeAnnounceBody(index, { force = false } = {}) {
+    const caseFile = getCaseFile();
+    if (!caseFile || bodyAnnounceInFlight || isBodyAnnounced(caseFile, index)) return false;
+    if (!force && countedWitnesses(caseFile, index).length < BODY_WITNESSES_NEEDED) return false;
+    bodyAnnounceInFlight = true;
+    try {
+        const tracker = ensureTimeTrackerState();
+        const evidence = buildBodyAnnouncementBullet(caseFile, { index, day: tracker.day, time: tracker.phase === TIME_PHASE_NIGHT ? "night" : "day" });
+        const roomId = getCaseBody(caseFile, index).body.roomId;
+        if (index === 0) {
+            caseDiscoveryWalkIn = getCurrentLocationId() === roomId;
+            try { await runBodyDiscoverySequence({ skipCutIn: true }); } finally { caseDiscoveryWalkIn = false; }
+        } else {
+            await monokumaAnnouncementController?.triggerAsync("BDA");
+            const now = getCaseFile();
+            const found = normalizeCaseFile({ ...now, secondVictim: { ...now.secondVictim, discovered: true } });
+            setCaseFile(found);
+            void finishCaseDiscovery(found, { walkedIn: true, index: 1 });
+        }
+        if (isBodyAnnounced(getCaseFile(), index) && handleTruthBullet(evidence.title, evidence.description, { grantMonocoins: false, grantXp: false, animate: false })) {
+            pinBulletToRoom(getTruthBullets().find((tb) => tb.title === evidence.title), roomId);
+        }
+        caseDebug("ANNOUNCED", evidence.description);
+        refreshPhaseHud();
+        return true;
+    } finally {
+        bodyAnnounceInFlight = false;
+    }
+}
+
+// Classmates who come into a room with a found, unannounced body have seen
+// it (a shuffle, a call, someone following). `extra` are people known to be
+// with the player (the last reply's speaker).
+function noteBodyWitnesses(extra = []) {
+    if (!witnessRuleOn()) return;
+    const caseFile = getCaseFile();
+    if (!caseFile || caseFile.status !== CASE_STATUS.COMMITTED) return;
+    for (const index of [0, 1]) {
+        if (!isBodyFound(caseFile, index) || isBodyAnnounced(caseFile, index)) continue;
+        const roomId = getCaseBody(caseFile, index)?.body?.roomId;
+        const names = namesInRoom(roomId);
+        if (roomId && getCurrentLocationId() === roomId) names.push(...extra);
+        void bodySeen(index, names);
+    }
+}
+
 let caseDiscoveryWalkIn = false;
+
+// The roleplay found the body (V3C| BODY_DISCOVERY): everyone here and the
+// speaker have seen it. A public murder's gathering happens right then.
+async function onBodyDiscoveryMarker(speaker) {
+    let caseFile = getCaseFile();
+    if (caseFile?.status === CASE_STATUS.PLANNED) {
+        const tracker = ensureTimeTrackerState();
+        commitCaseMurder({ day: tracker.day, time: tracker.phase === TIME_PHASE_NIGHT ? "night" : "day" });
+        caseFile = getCaseFile();
+    }
+    const here = getCurrentLocationId();
+    const names = [...namesInRoom(here), speaker].filter(Boolean);
+    // Wherever the roleplay is, the player has seen it.
+    if (!names.length || !names.includes(getCasePlayerName())) names.unshift(getCasePlayerName());
+    await bodySeen(0, names);
+}
 
 // A double's second body turns up once the investigation of the first is
 // running, when the player walks into its room.
@@ -5380,7 +5497,8 @@ function maybeDiscoverSecondBody(locationId) {
     const second = getSecondVictim(caseFile);
     if (!second || second.discovered || !caseFile.discovered || caseFile.status !== CASE_STATUS.COMMITTED) return false;
     if (!locationId || locationId !== second.body.roomId) return false;
-    void discoverSecondBody();
+    if (witnessRuleOn()) void bodySeen(1, namesInRoom(locationId));
+    else void discoverSecondBody();
     return true;
 }
 
@@ -5960,6 +6078,12 @@ function syncCasePrompt() {
 // A reply went out with the case prompt: a beat it carried counts as used,
 // and the one-time discovery note is spent.
 function onCaseReplyRendered() {
+    // Whoever just spoke is with the player; in a room with a found body,
+    // they've seen it.
+    try {
+        const last = (window.SillyTavern?.getContext?.()?.chat || []).slice(-1)[0];
+        if (last && !last.is_user && !last.is_system && last.name) noteBodyWitnesses([last.name]);
+    } catch (e) { console.warn("[Dangan][Case] witness check failed:", e); }
     const sent = caseLastSent;
     caseLastSent = null;
     if (!sent) return;
@@ -6135,7 +6259,7 @@ function refreshPhaseHud() {
     if (corner && hud.parentElement !== corner) corner.appendChild(hud);
     hud.hidden = getMonopadSetting("phaseHudEnabled") === false;
     hud.querySelector(".dangan-phase-chip-label").textContent = hud.parentElement === corner
-        ? getStatusLine({ phase: getCurrentPhase(), day: ensureTimeTrackerState().day })
+        ? getStatusLine({ phase: getCurrentPhase(), day: ensureTimeTrackerState().day }) + bodyFoundSuffix()
         : getCurrentStatusLine();
     if (!hud.querySelector(".dangan-phase-menu").hidden) renderPhaseMenu();
     // The EXPRESSIONS tab hangs under this row.
@@ -9103,7 +9227,8 @@ for (const match of rawText.matchAll(regex)) {
             // The roleplay found this case's body: run the whole discovery
             // (cutscene, announcement, investigation, Monokuma File).
             if (marker.type === "BODY_DISCOVERY" && !investigationUnderway && isCaseBodyFindable()) {
-                void runBodyDiscoverySequence();
+                if (witnessRuleOn()) void onBodyDiscoveryMarker(isUserMessage ? "" : speakerName);
+                else void runBodyDiscoverySequence();
                 return;
             }
             monokumaAnnouncementController?.trigger(marker.type);
@@ -13309,6 +13434,7 @@ jQuery(async () => {
                         try { renderMinimap(); } catch (e) { console.warn("[Dangan][Overworld] minimap refresh failed:", e); }
                         try { dynamicSongsController?.scheduleEvaluate?.({ restorePhaseOnMiss: true }); } catch (e) { console.warn("[Dangan][DynamicSongs] evaluate failed:", e); }
                         try { syncRoomContextPrompt(); } catch (e) { console.warn("[Dangan][RoomContext] sync failed:", e); }
+                        try { noteBodyWitnesses(); } catch (e) { console.warn("[Dangan][Case] witness check failed:", e); }
                     },
                 });
                 window.dangan_overworld = overworldSceneController;
@@ -18111,7 +18237,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 
 // The body discovery vignette, the BDA, then the investigation. Used by
 // /bodydiscovery and by walking into the crime scene.
-async function runBodyDiscoverySequence({ bgName = '', cinematicName = '' } = {}) {
+async function runBodyDiscoverySequence({ bgName = '', cinematicName = '', skipCutIn = false } = {}) {
     // Look up named cinematic (if requested), or default to the first configured cinematic.
     // If bg= is explicitly provided without cinematic=, skip auto-selection so the bg switch runs.
     const allCinematics = getMonopadSetting('bdaCinematics') || [];
@@ -18128,9 +18254,14 @@ async function runBodyDiscoverySequence({ bgName = '', cinematicName = '' } = {}
 
     // 1. Static + vignette overlay (despair noise) — swap BG at peak while hidden
     //    If a named cinematic is given, pass it so the controller uses custom playback.
-    const overlayPromise = monokumaAnnouncementController?.triggerAsync('BODY_DISCOVERY', { cinematic });
-    if (!cinematic) setTimeout(switchBackground, 220);
-    await overlayPromise;
+    //    (The three-witness rule already played it when the body was first seen.)
+    if (!skipCutIn) {
+        const overlayPromise = monokumaAnnouncementController?.triggerAsync('BODY_DISCOVERY', { cinematic });
+        if (!cinematic) setTimeout(switchBackground, 220);
+        await overlayPromise;
+    } else {
+        switchBackground();
+    }
 
     // 2. Body Discovery Announcement (BDA)
     await monokumaAnnouncementController?.triggerAsync('BDA');
@@ -18241,6 +18372,31 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             case 'motive':
                 openMotiveEditorFromAnywhere();
                 return '';
+            case 'witnesses': {
+                if (!caseFile) {
+                    notify({ tone: 'warn', title: '/case witnesses', message: 'There is no case.' });
+                    return '';
+                }
+                if (String(rest[0] || '').toLowerCase() === 'add') {
+                    const name = rest.slice(1).join(' ').trim();
+                    const index = getSecondVictim(caseFile) && caseFile.discovered ? 1 : 0;
+                    if (!name || caseFile.status !== CASE_STATUS.COMMITTED || !isBodyFound(caseFile, index) || isBodyAnnounced(caseFile, index)) {
+                        notify({ tone: 'warn', title: '/case witnesses add', message: 'Give a name, after a body has been seen but before it is announced.' });
+                        return '';
+                    }
+                    await bodySeen(index, [name], { cutIn: false });
+                    return '';
+                }
+                const line = (index) => {
+                    const body = getCaseBody(caseFile, index);
+                    if (!body) return '';
+                    const seen = getBodySeenBy(caseFile, index).map((n) => (countsAsWitness(caseFile, n) ? n : `${n} (doesn't count)`));
+                    return `${body.victim}: ${isBodyAnnounced(caseFile, index) ? 'announced' : isBodyFound(caseFile, index) ? `found, ${countedWitnesses(caseFile, index).length}/${BODY_WITNESSES_NEEDED} witnesses` : 'not found'}\n  Seen by: ${seen.join(', ') || 'nobody yet'}`;
+                };
+                const text = `Three-witness rule: ${witnessRuleOn() ? 'on' : 'off'}\n${[line(0), getSecondVictim(caseFile) ? line(1) : ''].filter(Boolean).join('\n')}`;
+                await showCaseDebugText('BODY WITNESSES (SPOILERS)', text);
+                return text;
+            }
             case 'shape': {
                 const shape = String(rest[0] || '').toLowerCase();
                 if (!SHAPE_IDS.includes(shape)) {
@@ -18313,12 +18469,12 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
                 return '';
             }
             default:
-                notify({ tone: 'warn', title: '/case', message: 'Use status, prompt [name], lastraw, shape, motive, faces, cancel, commit, discover, file or clear.' });
+                notify({ tone: 'warn', title: '/case', message: 'Use status, prompt [name], lastraw, witnesses, shape, motive, faces, cancel, commit, discover, file or clear.' });
                 return '';
         }
     },
-    helpString: 'Debug tools for the hidden Case File (spoilers!). <code>/case status</code> shows the plan, <code>/case prompt [name]</code> shows what the AI would be told for the next reply (as that speaker), <code>/case lastraw</code> shows the last plan the AI sent back (for when a motive fails), <code>/case shape standard|wrong_victim|attacker_victim|double|suicide|accomplice|decoy</code> replans the case (before the murder) with that twist, <code>/case motive</code> edits the motive and its deadline without spoilers, <code>/case faces</code> gives everyone here a negative sprite like a motive does, <code>/case cancel</code> takes the motive back (before the murder), <code>/case commit</code> runs the murder now, <code>/case discover</code> finds the body now, <code>/case file timeOfDeath|cause|injuries &lt;text&gt;</code> updates the Monokuma File, <code>/case clear</code> drops the case.',
-    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'status | prompt [name] | lastraw | shape <shape> | motive | faces | cancel | commit | discover | file <field> <text> | clear', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
+    helpString: 'Debug tools for the hidden Case File (spoilers!). <code>/case status</code> shows the plan, <code>/case prompt [name]</code> shows what the AI would be told for the next reply (as that speaker), <code>/case lastraw</code> shows the last plan the AI sent back (for when a motive fails), <code>/case witnesses</code> lists who has seen each body (<code>/case witnesses add &lt;name&gt;</code> adds someone), <code>/case shape standard|wrong_victim|attacker_victim|double|suicide|accomplice|decoy</code> replans the case (before the murder) with that twist, <code>/case motive</code> edits the motive and its deadline without spoilers, <code>/case faces</code> gives everyone here a negative sprite like a motive does, <code>/case cancel</code> takes the motive back (before the murder), <code>/case commit</code> runs the murder now, <code>/case discover</code> finds the body now, <code>/case file timeOfDeath|cause|injuries &lt;text&gt;</code> updates the Monokuma File, <code>/case clear</code> drops the case.',
+    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'status | prompt [name] | lastraw | witnesses [add <name>] | shape <shape> | motive | faces | cancel | commit | discover | file <field> <text> | clear', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
