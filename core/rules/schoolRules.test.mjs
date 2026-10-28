@@ -1,4 +1,4 @@
-import { DEFAULT_SCHOOL_RULES, RULE_SEVERITY, addRule, buildRuleBreakNote, formatRulesList, ruleByNumber, setRuleSeverity, buildRulesPrompt, createDefaultRules, editRule, normalizeRules, parseRuleMarkers, removeRule, stripRuleMarkers } from "./schoolRules.js";
+import { DEFAULT_RULE_MARKER_TEMPLATE, DEFAULT_SCHOOL_RULES, RULE_SEVERITY, buildRuleCheckPrompt, mightBreakRule, parseRuleCheckAnswer, addRule, buildRuleBreakNote, formatRulesList, ruleByNumber, setRuleSeverity, buildRulesPrompt, createDefaultRules, editRule, normalizeRules, parseRuleMarkers, removeRule, stripRuleMarkers } from "./schoolRules.js";
 
 function assert(cond, msg) {
     if (!cond) throw new Error(msg);
@@ -19,7 +19,8 @@ function run() {
     assert(removeRule(added, "default-1")[0].id === "default-2", "remove a default");
 
     const prompt = buildRulesPrompt(added);
-    assert(prompt.includes("[SCHOOL REGULATIONS]") && prompt.includes("8. No running in the halls.") && prompt.includes("V3C| RULE_ADD"), "prompt");
+    assert(prompt.includes("[SCHOOL REGULATIONS]") && prompt.includes("8. No running in the halls.") && prompt.includes("RULE markers"), "prompt");
+    assert(DEFAULT_RULE_MARKER_TEMPLATE.includes("V3C| RULE_BREAK: Character Full Name | 5") && DEFAULT_RULE_MARKER_TEMPLATE.includes("V3C| RULE_ADD") && !DEFAULT_RULE_MARKER_TEMPLATE.includes("{{"), "the marker block");
     assert(buildRulesPrompt([]) === "", "no rules, no prompt");
     assert(buildRulesPrompt(createDefaultRules(), "Rules:").startsWith("Rules:\n1. "), "template without the placeholder");
 
@@ -47,6 +48,23 @@ function run() {
         const note = buildRuleBreakNote({ name: "Mondo", rule: ruleByNumber(rules, 5), outcome: "grave" });
         assert(note.startsWith("[PUNISHMENT]") && note.includes("Regulation 5") && note.includes("Mondo is dead"), "grave note");
         assert(buildRuleBreakNote({ name: "Me", outcome: "warning" }).startsWith("[FINAL WARNING]") && buildRuleBreakNote({ name: "X" }).includes("Regulation ?"), "warning and light notes");
+    }
+
+    // Catching violations the AI didn't mark.
+    {
+        const rules = createDefaultRules();
+        assert(mightBreakRule("Mondo punched Monokuma square in the face.", rules), "violence near Monokuma");
+        assert(mightBreakRule("She threw a chair. It flew across the room and smashed into the camera.", rules), "a camera");
+        assert(!mightBreakRule("Monokuma laughed and waved.", rules), "no violence");
+        assert(!mightBreakRule("He punched the wall in frustration.", rules), "violence, but not at Monokuma");
+        assert(!mightBreakRule("", rules), "empty");
+        const p = buildRuleCheckPrompt({ rules, reply: "Mondo punched Monokuma." });
+        assert(p.includes("5. Violence") && p.includes("Mondo punched Monokuma.") && !p.includes("{{"), "check prompt");
+        assert(parseRuleCheckAnswer("NONE") === null && parseRuleCheckAnswer("none.") === null && parseRuleCheckAnswer("") === null, "NONE");
+        const a = parseRuleCheckAnswer("<think>hmm</think>\nMondo Owada | 5");
+        assert(a?.name === "Mondo Owada" && a.ruleNumber === 5, "an answer");
+        assert(parseRuleCheckAnswer("V3C| RULE_BREAK: Mondo Owada | 5")?.ruleNumber === 5, "an answer written as a marker");
+        assert(parseRuleCheckAnswer("Mondo Owada") === null, "no number, no violation");
     }
 
     console.log("schoolRules tests passed");

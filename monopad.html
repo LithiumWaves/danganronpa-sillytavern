@@ -1473,9 +1473,17 @@
                     <div class="settings-item">
                         <div class="settings-text">
                             <span class="settings-label">Confirm grave punishments</span>
-                            <div class="settings-note">Some School Regulations are grave (mark them in RULES): breaking one is punished by death, like Mukuro in the first game, with a pink blood splash and the student marked dead. On: you're asked first, and saying no gives a final warning instead. You're never punished yourself, only warned.</div>
+                            <div class="settings-note">Some School Regulations are grave (mark them in RULES): breaking one is punished by death, like Mukuro in the first game, with a pink blood splash and the student marked dead. That includes you: then it's GAME OVER, where you can undo it or go on as someone else. On: you're asked first, and saying no gives a final warning instead.</div>
                         </div>
                         <button type="button" class="settings-toggle" data-setting="confirmGravePunishments"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Catch unmarked rule breaks</span>
+                            <div class="settings-note">The game only knows a School Regulation was broken when the AI marks it. When a reply looks like one (someone hitting Monokuma or a camera) but has no mark, one small hidden AI call checks it. You can also report one yourself with BROKEN… in Truth → RULES.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="catchUnmarkedRuleBreaks"></button>
                     </div>
 
                     <div class="settings-item">
@@ -1634,6 +1642,16 @@
                                 <textarea class="settings-prompt-textarea" data-setting="markerAnnouncementsPromptTemplate" data-template-key="markerAnnouncements" rows="6" spellcheck="false"></textarea>
                                 <div class="settings-prompt-actions">
                                     <button type="button" class="settings-small-button settings-prompt-reset" data-setting="markerAnnouncementsPromptTemplate" data-template-key="markerAnnouncements">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">RULE MARKERS (how the AI marks a regulation being added or broken; sent with the story markers in daily life and investigations, when Share school regulations is on)</div>
+                                <textarea class="settings-prompt-textarea" data-setting="markerRulesPromptTemplate" data-template-key="markerRules" rows="8" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="markerRulesPromptTemplate" data-template-key="markerRules">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">RULE CHECK (the hidden check for a violation the AI didn't mark; it must answer NONE or "Full Name | number"). Placeholders: <code>{{rules}}</code>, <code>{{reply}}</code></div>
+                                <textarea class="settings-prompt-textarea" data-setting="ruleBreakCheckPromptTemplate" data-template-key="ruleBreakCheck" rows="8" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="ruleBreakCheckPromptTemplate" data-template-key="ruleBreakCheck">RESET TO DEFAULT</button>
                                 </div>
                                 <div class="settings-prompt-help">RULE BROKEN (sent once after a light violation). Placeholders: <code>{{name}}</code>, <code>{{number}}</code>, <code>{{rule}}</code></div>
                                 <textarea class="settings-prompt-textarea" data-setting="ruleBreakLightPromptTemplate" data-template-key="ruleBreakLight" rows="4" spellcheck="false"></textarea>

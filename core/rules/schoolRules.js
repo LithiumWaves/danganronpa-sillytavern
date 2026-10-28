@@ -23,8 +23,67 @@ export const DEFAULT_SCHOOL_RULES = Object.freeze([
 export const DEFAULT_RULES_PROMPT_TEMPLATE = `[SCHOOL REGULATIONS]
 The school's rules. Characters know them and mostly follow them; Monokuma enforces them, and breaking one has consequences.
 {{rules}}
-When Monokuma adds a new regulation in the story, write it on its own line: V3C| RULE_ADD: The new rule (end it with | grave if he says breaking it is punished by death)
-When someone clearly breaks a regulation, write on its own line, with the regulation's number: V3C| RULE_BREAK: Character Full Name | 5`;
+Adding or breaking a regulation is marked with the RULE markers described with the story markers.`;
+
+// The marker instructions, sent with the other story markers (daily life and
+// investigations) so the AI writes them as reliably as the rest.
+export const DEFAULT_RULE_MARKER_TEMPLATE = `[RULE MARKERS]
+When anyone breaks a School Regulation, the player included, write this on its own line in the same reply it happens, with the regulation's number:
+V3C| RULE_BREAK: Character Full Name | 5
+- Attacking, hitting, kicking or throwing things at Monokuma, or damaging a surveillance camera, breaks the regulation about violence against him. Mark it even if Monokuma shrugs it off.
+- Mark every clear violation, once, in the reply it happens. Never mark rumors, plans or jokes.
+When Monokuma adds a new regulation in the story, write it on its own line (end it with | grave if he says breaking it is punished by death):
+V3C| RULE_ADD: The new rule`;
+
+// ── Catching violations the AI didn't mark ──
+const VIOLENCE_WORDS = /\b(hit|hits|hitting|punch\w*|kick\w*|slap\w*|attack\w*|smash\w*|stab\w*|threw|throw\w*|tackl\w*|shov\w*|strik\w*|struck|beat|beats|beating|beaten|destroy\w*|break|breaks|broke|broken|smack\w*|shoot\w*|shot|wrestl\w*|choke\w*|bash\w*|crush\w*)\b/i;
+const MONOKUMA_WORDS = /\b(monokuma|headmaster|camera|cameras|monitor|monitors)\b/i;
+const STOP = new Set("a an the and or but of to in on at for with from by is are was were be been it its this that as into about than then their they them his her he she you your our we not no so if when who what where which only other own may any all more".split(" "));
+
+function ruleWords(text) {
+    return [...new Set(String(text || "").toLowerCase().match(/[a-z']{5,}/g) || [])].filter((w) => !STOP.has(w));
+}
+
+// A cheap guess at whether a reply might hold a violation worth a hidden
+// check: violence near Monokuma or a camera (within ~120 characters), or
+// several words of a grave regulation.
+export function mightBreakRule(reply, rules) {
+    const text = String(reply || "");
+    if (!text.trim()) return false;
+    for (const m of text.matchAll(new RegExp(MONOKUMA_WORDS.source, "gi"))) {
+        const around = text.slice(Math.max(0, m.index - 120), m.index + 120);
+        if (VIOLENCE_WORDS.test(around)) return true;
+    }
+    const lower = text.toLowerCase();
+    return normalizeRules(rules).some((r) => r.severity === RULE_SEVERITY.GRAVE
+        && ruleWords(r.text).filter((w) => lower.includes(w)).length >= 3);
+}
+
+export const DEFAULT_RULE_CHECK_TEMPLATE = `A Danganronpa roleplay. The School Regulations:
+{{rules}}
+
+THE REPLY:
+{{reply}}
+
+Did anyone clearly break one of these regulations in this reply, as something that actually happens (not a threat, joke, plan or rumor)? Attacking or hitting Monokuma, or damaging a camera, counts as violence against him.
+Answer with exactly one line: NONE, or the person's full name and the regulation's number like this:
+Character Full Name | 5`;
+
+export function buildRuleCheckPrompt({ rules, reply = "", template = "" } = {}) {
+    return String(template || DEFAULT_RULE_CHECK_TEMPLATE)
+        .replace(/\{\{rules\}\}/g, formatRulesList(rules) || "(none)")
+        .replace(/\{\{reply\}\}/g, String(reply || "").slice(0, 4000));
+}
+
+// { name, ruleNumber } from the check's answer, or null for NONE.
+export function parseRuleCheckAnswer(raw) {
+    const line = String(raw || "")
+        .replace(/<(think|thinking|reasoning)>[\s\S]*?<\/\1>/gi, "")
+        .split(/\r?\n/).map((l) => l.trim()).find((l) => l && !/^```/.test(l)) || "";
+    if (!line || /^none\b/i.test(line)) return null;
+    const marker = parseRuleMarkers(`V3C| RULE_BREAK: ${line.replace(/^V3C\s*[|｜]\s*RULE_BREAK\s*:\s*/i, "")}`)[0];
+    return marker?.text && marker.ruleNumber ? { name: marker.text, ruleNumber: marker.ruleNumber } : null;
+}
 
 function makeId() {
     return `rule-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;

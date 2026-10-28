@@ -47,7 +47,8 @@ import { CASE_STATUS, DEFAULT_MOTIVE_DEADLINE_DAYS, SHAPE_IDS, BODY_WITNESSES_NE
 import { CASE_PROMPT_KEY, buildCasePrompt } from "./core/case/casePrompts.js";
 import { openMonokumaFile } from "./truth/monokumaFile.js";
 import { openCaseFileEditor } from "./truth/caseFileEditor.js";
-import { RULES_PROMPT_KEY, RULE_SOURCES, RULE_SEVERITY, addRule, buildRuleBreakNote, buildRulesPrompt, createDefaultRules, formatRulesList, normalizeRules, parseRuleMarkers, ruleByNumber } from "./core/rules/schoolRules.js";
+import { RULES_PROMPT_KEY, RULE_SOURCES, RULE_SEVERITY, addRule, buildRuleBreakNote, buildRuleCheckPrompt, buildRulesPrompt, createDefaultRules, formatRulesList, mightBreakRule, normalizeRules, parseRuleCheckAnswer, parseRuleMarkers, ruleByNumber } from "./core/rules/schoolRules.js";
+import { openGameOver, openSuccessorPicker } from "./vfx/gameOver.js";
 import { playBloodSplash } from "./vfx/bloodSplash.js";
 import { DEFAULT_FINAL_CHAPTER, buildKnownSecretsPrompt, buildMastermindNote, buildWorldTruthBlock, buildWorldTruthPrompt, chapterStartReveals, describeWorldTruth, findSecretAtSpot, isMastermind, normalizeWorldTruth, parseWorldTruthResponse, revealFinalSecrets, revealSecret } from "./core/world/worldTruth.js";
 import { openWorldTruthView } from "./truth/worldTruthEditor.js";
@@ -9409,6 +9410,7 @@ let markerPromptsNoticePending = false;
 function getMarkerTemplate(blockId) {
     const block = MARKER_BLOCKS[blockId];
     if (!block) return "";
+    if (blockId === "rules" && getMonopadSetting("shareSchoolRules") === false) return "";
     const edited = getMonopadSetting(block.settingKey);
     return typeof edited === "string" && edited.length ? edited : getDefaultPromptTemplate(block.templateKey);
 }
@@ -9491,6 +9493,9 @@ function openSchoolRulesFromMonopad() {
         setRules: setSchoolRules,
         getChapter: () => Number(getMonopadSetting("chapterIndex") ?? 0),
         confirm: (opts) => confirmOutsideMonopad({ cancelLabel: "CANCEL", ...opts }),
+        // BROKEN…: who can break a rule, and reporting it by hand.
+        getPeople: () => [getCasePlayerName(), ...listCaseCast().map((c) => c.name)].filter(Boolean),
+        reportBreak: (name, number) => onSchoolRuleBroken(name, number, { source: "manual" }),
     });
 }
 
@@ -9510,7 +9515,7 @@ function onSchoolRuleAdded(text, { severity = RULE_SEVERITY.LIGHT } = {}) {
 // player is never killed: a grave rule they break gets a final warning, as
 // does a grave punishment the confirm turns down.
 let ruleBreakInFlight = false;
-async function onSchoolRuleBroken(name, ruleNumber = 0) {
+async function onSchoolRuleBroken(name, ruleNumber = 0, { mesId = -1, source = "marker" } = {}) {
     if (ruleBreakInFlight) return "";
     ruleBreakInFlight = true;
     try {
@@ -9519,30 +9524,42 @@ async function onSchoolRuleBroken(name, ruleNumber = 0) {
         const char = findRosterCharacter(who);
         const isPlayer = normalizeName(who) === normalizeName(getCasePlayerName() || "");
         let outcome = "light";
+        // The player has no plot armor: a grave rule kills them too (then
+        // GAME OVER, with UNDO or CONTINUE as someone else).
+        const punishable = isPlayer ? !getPlayerDeath() : Boolean(char) && !char.dead && !isHostCharacter(who);
         if (rule?.severity === RULE_SEVERITY.GRAVE) {
-            if (isPlayer || !char || char.dead || isHostCharacter(who)) outcome = "warning";
+            if (!punishable) outcome = "warning";
             else if (getMonopadSetting("confirmGravePunishments") === false) outcome = "grave";
             else {
+                const victim = isPlayer ? (getCasePlayerName() || who) : char.name;
                 const ok = await confirmOutsideMonopad({
                     title: "A GRAVE VIOLATION",
-                    message: `${char.name} broke School Regulation ${rule.number}: "${rule.text}". Monokuma punishes this by death.\n\nCarry out the punishment? ${char.name} will be killed and marked dead. Otherwise Monokuma gives a final warning.`,
+                    message: isPlayer
+                        ? `You, ${victim}, broke School Regulation ${rule.number}: "${rule.text}". Monokuma punishes this by death.\n\nCarry out the punishment? This kills you: GAME OVER, then you can undo it or go on as someone else. Otherwise Monokuma gives a final warning.`
+                        : `${victim} broke School Regulation ${rule.number}: "${rule.text}". Monokuma punishes this by death.\n\nCarry out the punishment? ${victim} will be killed and marked dead. Otherwise Monokuma gives a final warning.`,
                     confirmLabel: "PUNISH",
                     cancelLabel: "FINAL WARNING",
                 });
                 outcome = ok ? "grave" : "warning";
             }
         }
-        const display = char?.name || who;
+        const display = isPlayer ? (getCasePlayerName() || who) : (char?.name || who);
+        const caught = source === "check" ? " (caught by the rule check)" : source === "manual" ? " (reported by you)" : "";
         if (outcome === "grave") {
             await playBloodSplash({ name: display, playSound: () => playSfx(sfx.trust_shatter || sfx.hit) });
-            char.dead = true;
-            char.missing = false;
-            saveCharacters();
-            try { await trialManager?.markCharacterExecuted?.(char.name); } catch { /* no trial roster */ }
+            if (isPlayer) {
+                const chat = window.SillyTavern?.getContext?.()?.chat || [];
+                setPlayerDeath({ name: display, mesId: Number.isInteger(mesId) ? mesId : -1, chatLength: chat.length, chapter: currentChapter(), pendingGameOver: true });
+            } else {
+                char.dead = true;
+                char.missing = false;
+                saveCharacters();
+                try { await trialManager?.markCharacterExecuted?.(char.name); } catch { /* no trial roster */ }
+            }
             try { overworldSceneController?.render?.(); } catch { /* no overworld */ }
-            notify({ tone: "error", title: "PUNISHED", message: `${display} broke regulation ${rule.number} and was punished by Monokuma.`, durationMs: 9000 });
+            notify({ tone: "error", title: "PUNISHED", message: `${display} broke regulation ${rule.number} and was punished by Monokuma${caught}.`, durationMs: 9000 });
         } else {
-            notify({ tone: "warn", title: outcome === "warning" ? "FINAL WARNING" : "SCHOOL REGULATION VIOLATION", message: `${display} broke ${rule ? `regulation ${rule.number}` : "a school regulation"}.`, durationMs: 8000 });
+            notify({ tone: "warn", title: outcome === "warning" ? "FINAL WARNING" : "SCHOOL REGULATION VIOLATION", message: `${display} broke ${rule ? `regulation ${rule.number}` : "a school regulation"}${caught}.`, durationMs: 8000 });
         }
         setRuleBreakNote({ name: display, rule, outcome });
         // Monokuma steps in, when he's a host card here.
@@ -9590,6 +9607,142 @@ function onRuleBreakReplyRendered() {
     if (!ruleBreakNoteSent || !extension_settings[extensionName]?.ruleBreakNote) return;
     ruleBreakNoteSent = false;
     setRuleBreakNote(null);
+    // The reply narrated the player's death: GAME OVER.
+    if (getPlayerDeath()?.pendingGameOver) setTimeout(() => { void showPlayerGameOver(); }, 600);
+}
+
+// ── The player's death ───────────────────────────────────────────────────────
+
+function getPlayerDeath() {
+    const d = extension_settings[extensionName]?.playerDeath;
+    return d && d.name ? d : null;
+}
+
+function setPlayerDeath(record) {
+    extension_settings[extensionName] ||= {};
+    extension_settings[extensionName].playerDeath = record || null;
+    saveSettingsDebounced();
+    try { socialPanelController?.renderSocialPanel?.(); } catch { /* not ready */ }
+}
+
+function isPlayerDead() {
+    const d = getPlayerDeath();
+    return Boolean(d) && normalizeName(d.name) === normalizeName(getCasePlayerName() || "");
+}
+
+let gameOverOpen = false;
+
+// GAME OVER: UNDO rewinds to before the violation; CONTINUE plays on as
+// another persona or a classmate.
+async function showPlayerGameOver() {
+    const death = getPlayerDeath();
+    if (!death || gameOverOpen) return;
+    gameOverOpen = true;
+    try {
+        setPlayerDeath({ ...death, pendingGameOver: false });
+        for (;;) {
+            const choice = await openGameOver({ name: death.name });
+            if (choice === "undo") {
+                if (await undoPlayerDeath(death)) return;
+                continue;
+            }
+            const next = await openSuccessorPicker({
+                personas: getTitleScreenPersonas().list.filter((p) => p.key !== user_avatar && normalizeName(p.name) !== normalizeName(death.name)),
+                classmates: listCaseCast().map((c) => ({ name: c.name, avatarUrl: classmateAvatarUrl(c.name) })),
+            });
+            if (!next) continue;
+            if (await continueAsSuccessor(next, death)) return;
+        }
+    } finally {
+        gameOverOpen = false;
+    }
+}
+
+function classmateAvatarUrl(name) {
+    const ctx = window.SillyTavern?.getContext?.();
+    const card = (ctx?.characters || []).find((c) => c?.name === name);
+    if (!card?.avatar) return "";
+    return ctx?.getThumbnailUrl ? ctx.getThumbnailUrl("avatar", card.avatar) : `/thumbnail?type=avatar&file=${encodeURIComponent(card.avatar)}`;
+}
+
+// Deletes the messages from the violation on, and the player lives again.
+async function undoPlayerDeath(death) {
+    const ctx = window.SillyTavern?.getContext?.();
+    const chat = ctx?.chat || [];
+    const from = Number.isInteger(death.mesId) && death.mesId >= 0 ? death.mesId : Math.min(chat.length, Number(death.chatLength) || chat.length);
+    const count = Math.max(0, chat.length - from);
+    const ok = await confirmOutsideMonopad({
+        title: "UNDO",
+        message: count
+            ? `Rewind to before the violation? The last ${count} message${count === 1 ? "" : "s"} (the violation and Monokuma's punishment) will be deleted, and ${death.name} lives.`
+            : `${death.name} lives again. (There are no messages to remove.)`,
+        confirmLabel: "REWIND",
+        cancelLabel: "BACK",
+    });
+    if (!ok) return false;
+    for (let i = 0; i < count && typeof ctx?.deleteLastMessage === "function"; i += 1) {
+        try { await ctx.deleteLastMessage(); } catch (e) { console.warn("[Dangan][GameOver] delete failed:", e); break; }
+    }
+    setPlayerDeath(null);
+    setRuleBreakNote(null);
+    notify({ title: "REWOUND", message: `${death.name} is alive. The story is back to before the violation.` });
+    return true;
+}
+
+// Plays on as someone else. A classmate becomes a persona made from their
+// card and stops being voiced by the AI.
+async function continueAsSuccessor(next, death) {
+    try {
+        if (next.type === "persona") {
+            await setTitleScreenPersona(next.key);
+        } else {
+            const ctx = window.SillyTavern?.getContext?.();
+            const card = (ctx?.characters || []).find((c) => c?.name === next.name);
+            let file = null;
+            if (card?.avatar) {
+                try {
+                    const resp = await fetch(`/characters/${encodeURIComponent(card.avatar)}`);
+                    if (resp.ok) file = new File([await resp.blob()], "avatar.png", { type: "image/png" });
+                } catch { /* default picture */ }
+            }
+            const description = [card?.description || card?.data?.description, card?.personality || card?.data?.personality].filter(Boolean).join("\n\n");
+            await createTitleScreenPersona({ name: next.name, description, file });
+            try { await executeSlashCommandsWithOptions(`/member-disable ${next.name}`, { handleParserErrors: true }); } catch { /* not a group */ }
+        }
+    } catch (err) {
+        notify({ tone: "error", title: "COULDN'T SWITCH", message: String(err?.message || err) });
+        return false;
+    }
+    extension_settings[extensionName].fallenPlayers = [...(extension_settings[extensionName].fallenPlayers || []), { name: death.name, chapter: death.chapter || currentChapter() }];
+    setPlayerDeath(null);
+    try { socialPanelController?.renderSocialPanel?.(); } catch { /* not ready */ }
+    try { overworldSceneController?.render?.(); } catch { /* not ready */ }
+    notify({ title: "THE STORY GOES ON", message: `You now play as ${getActivePersonaName()}. ${death.name} is gone.`, durationMs: 9000 });
+    return true;
+}
+
+// ── Catching violations the AI didn't mark ──
+// A finished reply that looks like it holds one (violence near Monokuma or
+// a camera) gets one small hidden check.
+const ruleChecksInFlight = new Set();
+async function checkReplyForRuleBreak(rawText, { signature, mesId }) {
+    if (getMonopadSetting("catchUnmarkedRuleBreaks") === false || getMonopadSetting("shareSchoolRules") === false) return;
+    const phase = getCurrentPhase();
+    if (phase === "TRIAL" || ruleChecksInFlight.has(signature) || hasProcessedPersistentMarker("ruleBreakChecks", signature)) return;
+    const rules = getSchoolRules();
+    if (!rules.length || !mightBreakRule(rawText, rules)) return;
+    ruleChecksInFlight.add(signature);
+    markProcessedPersistentMarker("ruleBreakChecks", signature);
+    try {
+        const raw = await generateIsolated(buildRuleCheckPrompt({ rules, reply: stripV3CMarkersFromText(rawText), template: getMonopadSetting("ruleBreakCheckPromptTemplate") || "" }), { raw: true, maxTokens: 300, reasoning: { effort: "low", exclude: true } });
+        const found = parseRuleCheckAnswer(raw);
+        console.log(`[Dangan][Rules] Rule check: ${found ? `${found.name} broke rule ${found.ruleNumber}` : "nothing"}.`);
+        if (found) await onSchoolRuleBroken(found.name, found.ruleNumber, { mesId, source: "check" });
+    } catch (err) {
+        console.warn("[Dangan][Rules] The rule check failed:", err);
+    } finally {
+        ruleChecksInFlight.delete(signature);
+    }
 }
 
 // ── Character routines ────────────────────────────────────────────────────────
@@ -10102,8 +10255,17 @@ for (const match of rawText.matchAll(regex)) {
                 processedRuleSignatures.add(signature);
                 markProcessedPersistentMarker("schoolRuleMarkers", persistentSignature);
                 if (marker.type === "ADD") onSchoolRuleAdded(marker.text, { severity: marker.severity });
-                else void onSchoolRuleBroken(marker.text, marker.ruleNumber);
+                else void onSchoolRuleBroken(marker.text, marker.ruleNumber, { mesId: Number(msgEl.getAttribute("mesid")) });
             });
+            // Only the newest reply, so old history is never checked.
+            const mesIdNum = Number(msgEl.getAttribute("mesid"));
+            const isNewest = mesIdNum === (window.SillyTavern?.getContext?.()?.chat?.length || 0) - 1;
+            if (isNewest && !parseRuleMarkers(rawText).some((m) => m.type === "BREAK")) {
+                void checkReplyForRuleBreak(rawText, {
+                    signature: buildGenericPersistentMarkerSignature(msgEl, "RULE_CHECK", 0, 0, rawText),
+                    mesId: Number(msgEl.getAttribute("mesid")),
+                });
+            }
 
             // ---- Group events ----
             parseEventMarkers(rawText).forEach((marker, idx) => {
@@ -14215,6 +14377,7 @@ jQuery(async () => {
             getMonopadSetting,
             onCharacterDead: (name) => trialManager?.markCharacterExecuted(name),
             onCharacterMastermind: (name) => onMastermindStamped(name),
+            isPlayerDead,
             pickImportedClassmates: () => openRosterSelectModal({
                 title: "Select Classmates",
                 confirmLabel: "Add to Class Roster",
@@ -19459,7 +19622,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
                 // /rules break <name> [n]: the last word is the rule's number when it's one.
                 const words = rest.slice();
                 const n = /^\d+$/.test(words[words.length - 1] || '') ? Number(words.pop()) : 0;
-                return await onSchoolRuleBroken(words.join(' ') || 'Someone', n);
+                return await onSchoolRuleBroken(words.join(' ') || 'Someone', n, { source: 'manual' });
             }
             case 'reset':
                 setSchoolRules(createDefaultRules());
@@ -19550,6 +19713,16 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     },
     helpString: 'Group events: <code>/events</code> lists them and what the AI is told here, <code>/events add Title | room | Day N day|night | Host [| invitees]</code> adds one, <code>/events propose</code> runs the morning call now, <code>/events gather [id]</code> gathers this slot\'s attendees again, <code>/events attend &lt;id&gt;</code> toggles going, <code>/events cancel &lt;id&gt;</code> calls one off, <code>/events open</code> opens the list, <code>/events clear</code> removes them all.',
     unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'list | add … | propose | gather [id] | attend <id> | cancel <id> | open | clear', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'gameover',
+    callback: async () => {
+        if (!getPlayerDeath()) setPlayerDeath({ name: getCasePlayerName() || getActivePersonaName(), mesId: -1, chatLength: (window.SillyTavern?.getContext?.()?.chat || []).length, chapter: currentChapter(), pendingGameOver: false });
+        await showPlayerGameOver();
+        return '';
+    },
+    helpString: 'Opens the GAME OVER screen for the player (marking them dead first if they aren\'t), as after a grave School Regulation\'s punishment: UNDO or CONTINUE as someone else.',
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({

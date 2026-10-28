@@ -33,6 +33,8 @@ const CSS = `
 #${ROOT_ID} .srv-tag { display: inline-block; margin-top: 4px; font-size: 0.68rem; letter-spacing: 0.1em; color: #ffd23f; }
 #${ROOT_ID} .srv-actions { display: flex; gap: 6px; }
 #${ROOT_ID} button.srv-grave { border-color: #ff1f8e; color: #fff; background: rgba(255, 31, 142, 0.35); }
+#${ROOT_ID} .srv-report { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; font-size: 0.75rem; color: #d9c4e6; }
+#${ROOT_ID} .srv-report select { background: rgba(0, 0, 0, 0.45); color: #fff; border: 1px solid rgba(255, 182, 222, 0.35); border-radius: 4px; font: inherit; font-size: 0.8rem; padding: 3px 6px; }
 #${ROOT_ID} .srv-empty { text-align: center; padding: 18px; color: #bfa9cc; }
 #${ROOT_ID} .srv-add { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 10px; }
 #${ROOT_ID} .srv-foot { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px; justify-content: flex-end; border-top: 1px solid rgba(255, 46, 196, 0.35); }
@@ -65,7 +67,8 @@ function ensureStyle() {
     document.head.appendChild(style);
 }
 
-// api: { getRules() → rules, setRules(rules), confirm({title, message, confirmLabel}) → Promise<bool>, getChapter() }
+// api: { getRules() → rules, setRules(rules), confirm({title, message, confirmLabel}) → Promise<bool>, getChapter(),
+//        getPeople() → [names] (the player first), reportBreak(name, number) → Promise }
 export function openSchoolRulesView(api) {
     ensureStyle();
     document.getElementById(ROOT_ID)?.remove();
@@ -77,7 +80,7 @@ export function openSchoolRulesView(api) {
     root.innerHTML = `<div class="srv-window">
         <div class="srv-head"><div class="srv-title">SCHOOL REGULATIONS</div><button type="button" class="srv-close">CLOSE</button></div>
         <div class="srv-body">
-            <p class="srv-note">The AI knows these rules: characters follow them and Monokuma enforces them. He can add new ones in the story, and breaking one brings him in. LIGHT rules get a scolding; GRAVE ones are punished by death (you're asked first, and you yourself only get a final warning).</p>
+            <p class="srv-note">The AI knows these rules: characters follow them and Monokuma enforces them. He can add new ones in the story, and breaking one brings him in. LIGHT rules get a scolding; GRAVE ones are punished by death, you included (you're asked first). If the story missed a violation, report it with BROKEN….</p>
             <ol class="srv-list"></ol>
             <div class="srv-add"><textarea class="srv-new" rows="1" placeholder="A new regulation…"></textarea><button type="button" class="srv-primary srv-add-btn">ADD</button></div>
         </div>
@@ -141,6 +144,41 @@ export function openSchoolRulesView(api) {
             sev.title = grave ? "Breaking it is punished by death. Click to make it light." : "Breaking it gets a scolding. Click to make it grave (punished by death).";
             sev.addEventListener("click", () => save(setRuleSeverity(api.getRules(), rule.id, grave ? RULE_SEVERITY.LIGHT : RULE_SEVERITY.GRAVE)));
             actions.appendChild(sev);
+            // BROKEN…: report a violation the AI didn't mark.
+            if (api.reportBreak) {
+                const broken = document.createElement("button");
+                broken.type = "button";
+                broken.textContent = "BROKEN…";
+                broken.title = "Someone broke this rule and the story didn't catch it: report it to Monokuma.";
+                broken.addEventListener("click", () => {
+                    cell.querySelector(".srv-report")?.remove();
+                    const row = document.createElement("div");
+                    row.className = "srv-report";
+                    const pick = document.createElement("select");
+                    for (const name of api.getPeople?.() || []) {
+                        const o = document.createElement("option");
+                        o.value = name;
+                        o.textContent = name;
+                        pick.appendChild(o);
+                    }
+                    const ok = document.createElement("button");
+                    ok.type = "button";
+                    ok.className = "srv-primary";
+                    ok.textContent = "REPORT";
+                    const cancel = document.createElement("button");
+                    cancel.type = "button";
+                    cancel.textContent = "CANCEL";
+                    cancel.addEventListener("click", () => row.remove());
+                    ok.addEventListener("click", async () => {
+                        if (!pick.value) return;
+                        close();
+                        await api.reportBreak(pick.value, i + 1);
+                    });
+                    row.append(document.createTextNode("Who broke it?"), pick, ok, cancel);
+                    cell.appendChild(row);
+                });
+                actions.appendChild(broken);
+            }
             const del = document.createElement("button");
             del.type = "button";
             del.className = "srv-danger";

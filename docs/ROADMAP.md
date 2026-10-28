@@ -28,6 +28,9 @@ survives a `/clear`.
 - **Grave rules:** a Mukuro-style execution in the roleplay: a pink blood splash, the
   character marked dead. `/punishmenttime` doesn't play.
 - Side modes (casino, Island Mode) are out of scope.
+- **No plot armor:** the player can be punished by death for a grave rule too (after the
+  confirm). Then GAME OVER: UNDO rewinds to before the violation, CONTINUE goes on as another
+  persona or a classmate. (This replaces Phase J's "the game never kills the player".)
 - Flashback Lights (Phase G) are optional: a setting, so the world's secrets can come only
   from exploration and Monokuma.
 
@@ -212,9 +215,16 @@ over the monitors, label "A NEW AREA IS OPEN"), and the hint in the Phase HUD me
 ## Phase J: Rules with real punishment — ✅ done
 Built as planned: `RULE_SEVERITY`, `setRuleSeverity`, `ruleByNumber`, `buildRuleBreakNote`
 (`core/rules/schoolRules.js`; old saves read `default-5` as grave), `vfx/bloodSplash.js`, and
-`onSchoolRuleBroken(name, ruleNumber)` in index.js. The one-time note is kept per save
-(`ruleBreakNote`) on its own prompt key and spent once a reply carrying it renders. A grave
-punishment turned down at the confirm becomes a final warning.
+`onSchoolRuleBroken(name, ruleNumber, { mesId, source })` in index.js. The one-time note is
+kept per save (`ruleBreakNote`) on its own prompt key and spent once a reply carrying it renders.
+A grave punishment turned down at the confirm becomes a final warning.
+Follow-up:
+- The marker instructions moved to a RULE MARKERS block with the story markers.
+- A hidden check (`mightBreakRule`, `buildRuleCheckPrompt`, `parseRuleCheckAnswer`) catches
+  unmarked violations in the newest reply.
+- RULES has BROKEN… to report one by hand.
+- The player can die: `playerDeath`, the GAME OVER screen with UNDO or CONTINUE
+  (`vfx/gameOver.js`), and `fallenPlayers`.
 - Rules get `severity: light | grave`:
   - a toggle in the RULES view (`truth/schoolRulesView.js`);
   - the defaults: violence against Monokuma or the cameras is grave;
@@ -227,8 +237,8 @@ punishment turned down at the confirm becomes a final warning.
   - then a full-screen pink blood splash (`vfx/bloodSplash.js`, CSS + sfx);
   - the character is marked dead (the Social DEAD stamp path);
   - Monokuma's next reply narrates it, Mukuro style.
-- **When the player breaks a grave rule:** a light punishment with a final warning. The
-  game never kills the player.
+- **When the player breaks a grave rule:** ~~a light punishment with a final warning~~.
+  Changed: the player has no plot armor (see the decisions above).
 - **Debug:** `/rules break <name> [n]`.
 
 ## Phase K: A scripted prologue

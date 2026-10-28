@@ -56,6 +56,7 @@ export function createSocialPanelController({
     getMonopadSetting,
     onCharacterDead = null,
     onCharacterMastermind = null,
+    isPlayerDead = null,
     pickImportedClassmates = null,
     addCharactersToRoster = null,
 }) {
@@ -343,8 +344,20 @@ export function createSocialPanelController({
         });
     }
 
+    // Punished by Monokuma: the game's own record of the player's death
+    // stamps them DEAD, and lifts the stamp when it's undone (a stamp set by
+    // hand stays).
+    let playerDeadByGame = false;
+    function syncPlayerDeath() {
+        const dead = Boolean(isPlayerDead?.());
+        if (dead) playerChar.dead = true;
+        else if (playerDeadByGame) playerChar.dead = false;
+        playerDeadByGame = dead;
+    }
+
     function openPlayerReport() {
         playerChar.name = getUserName?.() || "";
+        syncPlayerDeath();
         openCharacterReport(playerChar);
     }
 
@@ -426,6 +439,7 @@ export function createSocialPanelController({
         // ── Status groups ─────────────────────────────────────────────────────
         const userName = getUserName?.();
         if (userName) playerChar.name = userName;
+        syncPlayerDeath();
         let allChars = [
             ...(userName ? [playerChar] : []),
             ...characters.values(),

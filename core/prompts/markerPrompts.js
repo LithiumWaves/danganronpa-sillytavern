@@ -14,15 +14,16 @@ export const MARKER_BLOCKS = Object.freeze({
     investigation: { templateKey: "markerInvestigation", settingKey: "markerInvestigationPromptTemplate" },
     announcements: { templateKey: "markerAnnouncements", settingKey: "markerAnnouncementsPromptTemplate" },
     events: { templateKey: "markerEvents", settingKey: "markerEventsPromptTemplate" },
+    rules: { templateKey: "markerRules", settingKey: "markerRulesPromptTemplate" },
     // Not a marker block: sent on its own (core/prompts/trustLevelsPrompt.js),
     // listed here so it is edited and reset like the others.
     trustLevels: { templateKey: "markerTrustLevels", settingKey: "markerTrustLevelsPromptTemplate" },
 });
 
 const BLOCKS_BY_PHASE = {
-    DAY: ["social", "investigation", "announcements", "events"],
-    NIGHT: ["social", "investigation", "announcements", "events"],
-    INVESTIGATION: ["truth", "social"],
+    DAY: ["social", "investigation", "announcements", "events", "rules"],
+    NIGHT: ["social", "investigation", "announcements", "events", "rules"],
+    INVESTIGATION: ["truth", "social", "rules"],
     TRIAL: [],
 };
 

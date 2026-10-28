@@ -1,6 +1,6 @@
 import { DEFAULT_EXAMINE_NARRATION_TEMPLATE } from "./case/examine.js";
 import { DEFAULT_DAILY_NARRATION_TEMPLATE } from "./case/dailyExamine.js";
-import { DEFAULT_RULES_PROMPT_TEMPLATE, DEFAULT_RULE_BREAK_GRAVE_TEMPLATE, DEFAULT_RULE_BREAK_LIGHT_TEMPLATE, DEFAULT_RULE_BREAK_WARNING_TEMPLATE } from "./rules/schoolRules.js";
+import { DEFAULT_RULES_PROMPT_TEMPLATE, DEFAULT_RULE_CHECK_TEMPLATE, DEFAULT_RULE_MARKER_TEMPLATE, DEFAULT_RULE_BREAK_GRAVE_TEMPLATE, DEFAULT_RULE_BREAK_LIGHT_TEMPLATE, DEFAULT_RULE_BREAK_WARNING_TEMPLATE } from "./rules/schoolRules.js";
 import { DEFAULT_PENALTY_NOTE_TEMPLATE, DEFAULT_RELENT_NOTE_TEMPLATE } from "./case/casePrompts.js";
 import { DEFAULT_EVENT_MARKER_TEMPLATE, DEFAULT_EVENT_PROPOSAL_TEMPLATE } from "./events/groupEvents.js";
 import { DEFAULT_WORLD_TRUTH_TEMPLATE } from "./world/worldTruth.js";
@@ -269,6 +269,13 @@ export const defaultSettings = {
     showKeyEvidenceFound: false,
     // A grave regulation's punishment (death) asks first.
     confirmGravePunishments: true,
+    // A hidden check catches violations the AI didn't mark (only replies
+    // that look like one: violence near Monokuma or a camera).
+    catchUnmarkedRuleBreaks: true,
+    // The player was punished by death (game over pending or shown), and
+    // the players who fell before the current one.
+    playerDeath: null,
+    fallenPlayers: [],
     // A violation's one-time note still waiting for the next reply.
     ruleBreakNote: null,
     // The mysteries running through the whole game (core/world/worldTruth.js):
@@ -414,6 +421,10 @@ Don't use it at any other time.`,
     // The one-time note after someone breaks a regulation
     // (core/rules/schoolRules.js): light, grave (punished by death), and the
     // final warning (the player, or a punishment turned down).
+    // How the AI marks adding or breaking a regulation (sent with the story
+    // markers), and the hidden check for violations it didn't mark.
+    markerRules: DEFAULT_RULE_MARKER_TEMPLATE,
+    ruleBreakCheck: DEFAULT_RULE_CHECK_TEMPLATE,
     ruleBreakLight: DEFAULT_RULE_BREAK_LIGHT_TEMPLATE,
     ruleBreakGrave: DEFAULT_RULE_BREAK_GRAVE_TEMPLATE,
     ruleBreakWarning: DEFAULT_RULE_BREAK_WARNING_TEMPLATE,
