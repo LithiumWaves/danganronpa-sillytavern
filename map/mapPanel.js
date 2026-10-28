@@ -461,6 +461,18 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         return hub && hub.id !== pin.id ? hub : null;
     }
 
+    // Every chapter-gated floor in this save's scope, with its chapter.
+    function listFloorUnlocks() {
+        const out = [];
+        for (const [areaKey, area] of Object.entries(getAllAreas())) {
+            for (const f of area.floors || []) {
+                const unlockChapter = getFloorUnlockChapter(layoutStore(), areaKey, f.key);
+                if (unlockChapter > 0) out.push({ areaKey, floorKey: f.key, label: f.label || f.key, unlockChapter });
+            }
+        }
+        return out;
+    }
+
     function isAreaLocked(areaKey) {
         const area = getAllAreas()[areaKey];
         return !!area?.floors?.length && area.floors.every(f => isFloorLockedNow(areaKey, f.key));
@@ -2953,6 +2965,7 @@ export function createMapPanelController({ extensionFolderPath, getItemsPanelCon
         isPinLocked,
         isPinClosedNow,
         listNightClosedPins,
+        listFloorUnlocks,
         getFloorHubFor,
         isFloorLocked: isFloorLockedNow,
         applyNewGameMap,

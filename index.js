@@ -42,6 +42,7 @@ import { notify } from "./core/ui/notify.js";
 import { SAVE_MODES, createSaveStore } from "./core/saves/saveStore.js";
 import { pinInScope } from "./map/mapStorage.js";
 import { isClosedAtNight } from "./map/defaultPins.js";
+import { buildFloorOpenAnnouncement, describeExploreHint, floorsUnlockedBetween, markRoomVisited, normalizeFloorExplore, startExploring } from "./core/explore/floorExplore.js";
 import { CASE_STATUS, DEFAULT_MOTIVE_DEADLINE_DAYS, SHAPE_IDS, BODY_WITNESSES_NEEDED, addEmergentClue, buildBodyAnnouncementBullet, caseBlackened, countedWitnesses, countsAsWitness, editMotive, getBodySeenBy, getCaseBody, getSecondVictim, isBodyAnnounced, isBodyFound, noteBodySeen, pickCaseShape, beatWordOverlap, markWitnessTold, extractJsonObject, buildCaseGenerationPrompt, createBlankCaseFile, describeCaseFile, isGatheringNow, monokumaFileChanged, recordBeatAttempt, reviseMonokumaFile, validateCaseFile, buildMonokumaFileBullet, commitMurder, getMonokumaFileTitle, getMotiveAnnouncementText, getTimeSlot, isCaseOpen, isMurderSlotOver, markDiscovered, normalizeCaseFile, parseCaseFileResponse, removeEmergentClue, shouldAutoAnnounceMotive, avertCase, foilAttempt, getMotiveItem, MOTIVE_KIND_IDS, isCaseOver, isDeadlinePassed, pickMotiveKind, shouldFoil } from "./core/case/caseFile.js";
 import { CASE_PROMPT_KEY, buildCasePrompt } from "./core/case/casePrompts.js";
 import { openMonokumaFile } from "./truth/monokumaFile.js";
@@ -926,7 +927,8 @@ function setCurrentChapterIndex(idx) {
     let next = Number(idx);
     if (!Number.isFinite(next)) return false;
     next = next >= 10 ? 10 : Math.max(0, Math.min(9, Math.floor(next)));
-    const changed = next !== Number(getMonopadSetting('chapterIndex') ?? 0);
+    const prevChapter = Number(getMonopadSetting('chapterIndex') ?? 0);
+    const changed = next !== prevChapter;
     setMonopadSetting('chapterIndex', next);
     if (changed) onChapterChangedForCase(next);
     saveSettingsDebounced();
@@ -935,7 +937,42 @@ function setCurrentChapterIndex(idx) {
     refreshSettingsChapterSelect();
     if (document.getElementById('chapters-body')) renderChaptersPanel();
     refreshChapterLockedFloors();
+    if (changed && next > prevChapter) void openFloorsForChapter(prevChapter, next);
     return true;
+}
+
+// ── Exploring newly opened floors ────────────────────────────────────────────
+
+function getFloorExplore() {
+    return normalizeFloorExplore(extension_settings[extensionName]?.floorExplore);
+}
+
+function setFloorExplore(state) {
+    extension_settings[extensionName] ||= {};
+    extension_settings[extensionName].floorExplore = normalizeFloorExplore(state);
+    saveSettingsDebounced();
+    try { refreshPhaseHud(); } catch { /* not ready */ }
+}
+
+// A chapter change opened floors: Monokuma announces them over the monitors,
+// and each gets an EXPLORE checklist in the Phase HUD.
+async function openFloorsForChapter(from, to, { announce = true } = {}) {
+    const floors = floorsUnlockedBetween(mapPanelController?.listFloorUnlocks?.() || [], from, to);
+    if (!floors.length) return [];
+    const { state, added } = startExploring(getFloorExplore(), floors, mapPanelController?.getAllPins?.() || []);
+    setFloorExplore(state);
+    if (announce && added.length) {
+        await monokumaAnnouncementController?.triggerAsync("MOTIVE", { text: buildFloorOpenAnnouncement(added), label: "A NEW AREA IS OPEN" });
+    }
+    console.log(`[Dangan][Explore] Opened ${floors.map((f) => f.label).join(", ")} (chapter ${from} → ${to}).`);
+    return added;
+}
+
+function noteRoomExplored(locationId) {
+    const { state, changed, finished } = markRoomVisited(getFloorExplore(), locationId);
+    if (!changed) return;
+    setFloorExplore(state);
+    if (finished) notify({ title: "EXPLORED", message: `You've been everywhere on ${finished.label}.`, durationMs: 5000 });
 }
 
 // Chapter-gated map floors open (or close) with the chapter: redraw the map,
@@ -6669,7 +6706,10 @@ function renderPhaseMenu() {
         truthBulletCount: getTruthBullets().length,
         rosterCount: characters.size,
         motive: caseOpen && caseFile.status === CASE_STATUS.PLANNED ? caseFile.motive : null,
-    });
+    }) + (() => {
+        const explore = phase === "DAY" || phase === "NIGHT" ? describeExploreHint(getFloorExplore()) : "";
+        return explore ? ` ${explore}.` : "";
+    })();
 
     const last = phaseHistory.peek();
     const actions = getPhaseActions({ phase, timeTracker, canUndo: Boolean(last), undoLabel: last?.label, caseOpen, caseCancellable: caseFile?.status === CASE_STATUS.PLANNED });
@@ -19111,6 +19151,30 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'newfloors',
+    callback: async (_args, value) => {
+        const [sub = 'status', arg] = String(value || '').trim().split(/\s+/);
+        if (sub === 'open') {
+            const chapter = Number(arg ?? getMonopadSetting('chapterIndex') ?? 0);
+            const added = await openFloorsForChapter(chapter - 1, chapter);
+            if (!added.length) notify({ tone: 'warn', title: '/newfloors open', message: `No floor (with rooms) opens in chapter ${chapter}, or it's already being explored. Floors get their chapter in the map editor.` });
+            return added.map((f) => f.label).join(', ');
+        }
+        if (sub === 'clear') {
+            setFloorExplore(null);
+            return '';
+        }
+        const floors = getFloorExplore().floors;
+        const gated = mapPanelController?.listFloorUnlocks?.() || [];
+        const text = `Being explored:\n${floors.map((f) => `- ${f.label}: ${f.rooms.map((r) => `${r.visited ? '✓' : '·'} ${r.label}`).join(', ')}`).join('\n') || '- nothing'}\n\nChapter-gated floors:\n${gated.map((f) => `- ${f.label} (${f.areaKey}): chapter ${f.unlockChapter}`).join('\n') || '- none'}`;
+        await showCaseDebugText('NEW FLOORS', text);
+        return text;
+    },
+    helpString: 'Exploring newly opened floors: <code>/newfloors</code> lists the EXPLORE checklists and the chapter-gated floors, <code>/newfloors open [chapter]</code> opens that chapter\'s floors now (announcement and checklist), <code>/newfloors clear</code> drops the checklists.',
+    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'status | open [chapter] | clear', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'rooms',
     callback: async (_args, value) => {
         const sub = String(value || 'closed').trim().toLowerCase();
@@ -19407,6 +19471,7 @@ function setCurrentLocationId(locationId) {
     try { syncRoomContextPrompt(); } catch (e) { console.warn("[Dangan][RoomContext] location sync failed:", e); }
     if (prev !== root.map.currentLocationId) {
         maybeDiscoverBodyOnEntry(root.map.currentLocationId);
+        try { noteRoomExplored(root.map.currentLocationId); } catch (e) { console.warn("[Dangan][Explore] visit failed:", e); }
         examineController?.close?.();
         try { refreshPhaseHud(); } catch { /* ignore */ }
     }

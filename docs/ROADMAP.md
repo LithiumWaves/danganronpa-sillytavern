@@ -1,11 +1,25 @@
 # Roadmap: closing the gap with DR1, DR2 and V3
 
 ## Context
-The user approved a roadmap (A–L) to close the gap with DR1, DR2 and V3. A (case twists),
-B (the three-witness rule), C (daily examine), D (motive kinds and foiled murders), E (rooms closed at night) and
-F (group events) are built and pushed to `title-screen`.
-This file keeps the full detail of the rest, so it survives a `/clear`.
+The user approved a roadmap (A–L) to close the gap with DR1, DR2 and V3. The phases marked
+done below are built and pushed to `title-screen`, one commit per phase. This file keeps the full detail of each phase, so it
+survives a `/clear`.
 
+## Status
+| Phase | What | Status |
+|---|---|---|
+| A | Case twists | ✅ Done |
+| B | The three-witness rule | ✅ Done |
+| C | Examine during daily life | ✅ Done |
+| D | Motives as objects and conditions, foiled murders | ✅ Done |
+| E | Rooms that close at night | ✅ Done |
+| F | Group events in daily life | ✅ Done |
+| G | Mysteries through the whole game (Flashback Lights optional) | ⬜ To do |
+| H | Exploring a newly unlocked floor | ✅ Done |
+| I | Intermissions: Monokuma Theater, mastermind cutaways | ⬜ To do |
+| J | Rules with real punishment | ⬜ To do |
+| K | A scripted prologue | ⬜ To do |
+| L | Evidence readout | ⬜ To do |
 
 ### Decisions from the user
 - Planned murders can be foiled. If the deadline passes, the motive's penalty happens.
@@ -14,6 +28,8 @@ This file keeps the full detail of the rest, so it survives a `/clear`.
 - **Grave rules:** a Mukuro-style execution in the roleplay: a pink blood splash, the
   character marked dead. `/punishmenttime` doesn't play.
 - Side modes (casino, Island Mode) are out of scope.
+- Flashback Lights (Phase G) are optional: a setting, so the world's secrets can come only
+  from exploration and Monokuma.
 
 ### Standing rules
 - Nothing immersion-breaking goes into the chat.
@@ -38,7 +54,7 @@ This file keeps the full detail of the rest, so it survives a `/clear`.
 
 ---
 
-## Phase D: Motives as objects, conditions and foiled murders (#3) — built
+## Phase D: Motives as objects, conditions and foiled murders (#3) — ✅ done
 Built as planned, with these differences: the motive stays inside `caseFile.motive`; the
 player's motive item isn't stored in the inventory but shown in Key Items through
 `getExtraKeyItems` while the case is open; the planner's motive kind comes from
@@ -84,7 +100,7 @@ Settings > Gameplay > Motive kinds; `/case kind <kind>` replans with a new motiv
 
 **Debug:** `/case foil`, `/case deadline`.
 
-## Phase E: Rooms that close at night (#6) — built
+## Phase E: Rooms that close at night (#6) — ✅ done
 Built with these differences: the night lock is separate from `isPinLocked` (that stays the
 chapter lock, so the case planner still lists the rooms): `isPinClosedNow`,
 `listNightClosedPins`, `getFloorHubFor` on the map controller, and
@@ -105,7 +121,7 @@ overworld for Phase F.
 - The case planner gets "Rooms locked at night: …" for alibis. The rules prompt names them.
 - **Debug:** `/rooms closed`.
 
-## Phase F: Group events in daily life (#7) — built
+## Phase F: Group events in daily life (#7) — ✅ done
 Built with these differences: `core/events/groupEvents.js` holds the pure helpers
 (`parseEventMarkers`, `eventFromMarker`, `addGroupEvent`, `eventsForSlot`, `finishPastEvents`,
 `eventAttendees`, `buildEventTodayNote`, `describeEventsForCase`); the note goes out on its own
@@ -157,7 +173,11 @@ takes the event's room and slot. Extra debug: `/events propose|gather|attend|can
     chapter journal and plays the ending track.
 - **Debug:** `/world status`, `/world reveal [id]`, `/world draft`.
 
-## Phase H: Exploring a newly unlocked floor
+## Phase H: Exploring a newly unlocked floor — ✅ done
+Built as planned: `core/explore/floorExplore.js` (story key `floorExplore`), the map
+controller's `listFloorUnlocks`, `openFloorsForChapter` on a chapter increase (an announcement
+over the monitors, label "A NEW AREA IS OPEN"), and the hint in the Phase HUD menu. Debug:
+`/newfloors [open <chapter>|clear]`.
 - When a floor unlocks at a chapter change (`setCurrentChapterIndex`), Monokuma's
   announcement mentions it.
 - An EXPLORE checklist of its rooms shows in the Phase HUD hint until each room has been

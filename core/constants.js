@@ -270,6 +270,9 @@ export const defaultSettings = {
     dailyExamine: null,
     // Group events in daily life (core/events/groupEvents.js), per save.
     groupEvents: [],
+    // Rooms still to see on floors a chapter change opened
+    // (core/explore/floorExplore.js).
+    floorExplore: null,
     // A hidden call some mornings has a classmate propose an event: "off" or
     // "sometimes".
     classmatesPlanEvents: "off",
