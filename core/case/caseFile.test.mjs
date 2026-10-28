@@ -27,6 +27,13 @@ import {
     normalizeCaseFile,
     parseCaseFileResponse,
     shouldAutoAnnounceMotive,
+    CASE_SHAPES,
+    caseBlackened,
+    caseSecretHolders,
+    getMonokumaFileTitle,
+    getSecondVictim,
+    listWitnessTestimony,
+    pickCaseShape,
 } from "./caseFile.js";
 
 function assert(cond, msg) {
@@ -105,6 +112,62 @@ function run() {
         assert(file({ timeOfDeath: "around midnight" }).includes("is around midnight."), "hedged times keep their word");
         assert(file({ timeOfDeath: "Unknown", cause: "Unknown" }).includes("The time of death is unknown. The cause of death is unknown."), "unknown fields");
         assert(file({ cause: "CO poisoning" }).includes("is CO poisoning."), "acronyms kept");
+    }
+
+    // Case shapes.
+    {
+        const castPlus = [...cast, { name: "Mondo Owada" }, { name: "Peko Pekoyama" }];
+        const o = { ...opts, cast: castPlus };
+        const std = parseCaseFileResponse(JSON.stringify(plan()), o).caseFile;
+        assert(std.shape === "standard" && caseBlackened(std) === "Leon Kuwata" && !getSecondVictim(std), "old plans are standard");
+        assert(normalizeCaseFile({ killer: "A", victim: "B" }).shape === "standard", "missing shape → standard");
+
+        const shapePrompt = buildCaseGenerationPrompt({ cast, rooms, shape: "double" });
+        assert(shapePrompt.includes("CASE SHAPE: There are two bodies") && shapePrompt.includes('"secondVictim"'), "the planner is told the shape and its fields");
+        assert(buildCaseGenerationPrompt({ cast, rooms }).includes("CASE SHAPE: One student kills another.") && !buildCaseGenerationPrompt({ cast, rooms }).includes("secondVictim"), "standard by default");
+
+        const dbl = parseCaseFileResponse(JSON.stringify(plan({ secondVictim: { name: "Mondo", killer: "", body: { room: "Gym", state: "On the floor" }, monokumaFile: { timeOfDeath: "2 a.m.", cause: "a blow" } } })), { ...o, shape: "double" });
+        assert(dbl.caseFile.shape === "double" && getSecondVictim(dbl.caseFile).name === "Mondo Owada" && getSecondVictim(dbl.caseFile).killer === "Leon Kuwata" && getSecondVictim(dbl.caseFile).body.roomId === "hpa_gym", "a double plan");
+        assert(getMonokumaFileTitle(dbl.caseFile, 1) === "Monokuma File #1-2" && getMonokumaFileTitle(dbl.caseFile) === "Monokuma File #1", "two files");
+        const second = buildMonokumaFileBullet(dbl.caseFile, { index: 1 });
+        assert(second.title === "Monokuma File #1-2" && second.description.includes("The victim is Mondo Owada") && second.description.includes("Gym"), "the second file bullet");
+        assert(validateCaseFile(dbl.caseFile, { cast: castPlus, rooms, player: "Makoto Naegi" }) === "", "a valid double");
+        assert(validateCaseFile({ ...dbl.caseFile, secondVictim: { ...dbl.caseFile.secondVictim, body: { roomId: "moon" } } }, { cast: castPlus, rooms }).includes("second body"), "the second body needs a room");
+
+        const broken = parseCaseFileResponse(JSON.stringify(plan({ secondVictim: { name: "Nobody" } })), { ...o, shape: "double" });
+        assert(broken.caseFile.shape === "standard" && broken.warning.includes("dropped"), "a broken twist falls back to standard");
+
+        const sui = parseCaseFileResponse(JSON.stringify(plan({ killer: "whoever" })), { ...o, shape: "suicide" }).caseFile;
+        assert(sui.shape === "suicide" && sui.killer === "Sayaka Maizono" && caseBlackened(sui) === "Sayaka Maizono", "a suicide's killer is the victim");
+        assert(validateCaseFile(sui, { cast: castPlus, rooms }) === "", "a suicide validates");
+        assert(validateCaseFile({ ...std, killer: std.victim }, { cast: castPlus, rooms }).includes("Suicide"), "only a suicide may kill themselves");
+
+        const acc = parseCaseFileResponse(JSON.stringify(plan({ accomplices: ["Peko", "Leon", "Ghost"] })), { ...o, shape: "accomplice" }).caseFile;
+        assert(acc.shape === "accomplice" && acc.accomplices.join() === "Peko Pekoyama", "accomplices exclude the killer and strangers");
+        assert(validateCaseFile({ ...acc, accomplices: [] }, { cast: castPlus, rooms }).includes("accomplice"), "an accomplice is needed");
+
+        const wv = parseCaseFileResponse(JSON.stringify(plan({ intendedVictim: "Kyoko" })), { ...o, shape: "wrong_victim" }).caseFile;
+        assert(wv.intendedVictim === "Kyoko Kirigiri", "the intended victim");
+        const dec = parseCaseFileResponse(JSON.stringify(plan({ decoy: "Mondo" })), { ...o, shape: "decoy" }).caseFile;
+        assert(dec.decoy === "Mondo Owada", "the decoy");
+
+        const holders = (cf) => caseSecretHolders(cf).map((h) => `${h.name}:${h.role}`).join();
+        assert(holders(acc) === "Leon Kuwata:killer,Peko Pekoyama:accomplice", "accomplice holders");
+        assert(holders(dec) === "Leon Kuwata:killer,Mondo Owada:decoy" && holders(sui) === "Sayaka Maizono:suicide", "decoy and suicide holders");
+        const twoKillers = { ...dbl.caseFile, secondVictim: { ...dbl.caseFile.secondVictim, killer: "Kyoko Kirigiri" } };
+        assert(holders(twoKillers) === "Leon Kuwata:killer,Kyoko Kirigiri:second_killer", "a second killer");
+        const accWitness = normalizeCaseFile({ ...acc, witnesses: [{ name: "Peko Pekoyama", account: "Saw nothing" }, { name: "Kyoko Kirigiri", account: "Heard a thud" }] });
+        assert(listWitnessTestimony(accWitness).map((w) => w.name).join() === "Kyoko Kirigiri", "an accomplice is never a witness");
+        assert(describeCaseFile(acc).includes("Shape: Accomplice") && describeCaseFile(dbl.caseFile).includes("Second body: Mondo Owada"), "status shows the shape");
+
+        let n = 0;
+        const seq = (vals) => () => vals[n++ % vals.length];
+        assert(pickCaseShape({ twists: "off", rng: seq([0]) }) === "standard", "twists off");
+        n = 0;
+        assert(pickCaseShape({ twists: "often", rng: seq([0.1, 0]), lastShape: "wrong_victim" }) !== "wrong_victim", "never the same twist twice");
+        n = 0;
+        assert(pickCaseShape({ twists: "sometimes", rng: seq([0.9]) }) === "standard", "mostly standard");
+        assert(Object.keys(CASE_SHAPES).length === 7, "seven shapes");
     }
 
     assert(extractJsonObject("Sure!\n```json\n{\"a\":1}\n```")?.a === 1, "extracts fenced JSON");

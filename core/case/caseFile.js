@@ -25,6 +25,66 @@ const LIMITS = { clues: 8, foreshadowing: 4, witnesses: 6, timeline: 10, text: 6
 // The Monokuma File fields a killer's trick can hide.
 export const FILE_FIELDS = Object.freeze(["timeOfDeath", "cause", "injuries"]);
 
+// How a case is put together. Most are "standard"; the rest are the series'
+// twists. `line` is what the planner is told; `fields` the extra JSON it adds.
+export const CASE_SHAPES = Object.freeze({
+    standard: {
+        label: "Standard",
+        about: "One student kills another.",
+        line: "One student kills another.",
+        fields: "",
+    },
+    wrong_victim: {
+        label: "Wrong victim",
+        about: "The killer aims at someone else, but the plan goes wrong and the victim dies instead (Teruteru and the Imposter).",
+        line: "The killer aims at someone else (\"intendedVictim\"), but the plan goes wrong and \"victim\" dies instead, like Teruteru killing the Imposter instead of Nagito.",
+        fields: '"intendedVictim": "the student the killer meant to kill (not the victim)",',
+    },
+    attacker_victim: {
+        label: "The attacker dies",
+        about: "The victim attacked the killer first, meaning to kill them, and died in the struggle (Sayaka). The killer is still the blackened.",
+        line: "The \"victim\" planned to kill the \"killer\" and attacked first, but died in the struggle, like Sayaka in DR1 Chapter 1. The killer is still the blackened.",
+        fields: "",
+    },
+    double: {
+        label: "Two bodies",
+        about: "Two bodies, the second found during the investigation, each with its own Monokuma File (DR1 and DR2 Chapter 3). The trial is about the first victim.",
+        line: "There are two bodies, like DR1 Chapter 3 and DR2 Chapter 3. Give \"secondVictim\": its own killer (the same student or another), body room and Monokuma File. The second body is found during the investigation of the first. The Class Trial names the first victim's killer.",
+        fields: '"secondVictim": { "name": "student name", "killer": "student name", "body": { "room": "room id", "state": "the scene, 1-2 sentences" }, "monokumaFile": { "timeOfDeath": "", "cause": "", "injuries": "" } },',
+    },
+    suicide: {
+        label: "Suicide",
+        about: "The victim takes their own life or stages their own death (Sakura, Nagito). The vote's answer is the victim.",
+        line: "The \"victim\" takes their own life or stages their own death, like Sakura or Nagito; set \"killer\" to the victim's name. Others may still have touched the scene.",
+        fields: "",
+    },
+    accomplice: {
+        label: "Accomplice",
+        about: "Someone helps the killer, but only the killer is the blackened (Peko and Fuyuhiko).",
+        line: "Someone helps the killer (\"accomplices\"), like Peko and Fuyuhiko. Only the killer is the blackened.",
+        fields: '"accomplices": ["student names who help (not the killer or the victim)"],',
+    },
+    decoy: {
+        label: "Decoy",
+        about: "Someone tries to kill the victim and believes they did, but the real killer struck (a twist on Kaede).",
+        line: "Someone (\"decoy\") tries to kill the victim and believes they succeeded, but their attempt failed and the real killer struck, a twist on Kaede in V3 Chapter 1.",
+        fields: '"decoy": "the student who wrongly believes they did it (not the killer or the victim)",',
+    },
+});
+export const SHAPE_IDS = Object.freeze(Object.keys(CASE_SHAPES));
+
+// How often a plan is a twist, per the "Case twists" setting.
+const TWIST_CHANCE = { off: 0, sometimes: 0.25, often: 0.55 };
+
+// The shape of the next plan: standard most of the time, else a twist that
+// isn't the same as the last case's.
+export function pickCaseShape({ twists = "sometimes", lastShape = "", rng = Math.random } = {}) {
+    const chance = TWIST_CHANCE[twists] ?? TWIST_CHANCE.sometimes;
+    if (rng() >= chance) return "standard";
+    const options = SHAPE_IDS.filter((id) => id !== "standard" && id !== lastShape);
+    return options[Math.floor(rng() * options.length) % options.length] || "standard";
+}
+
 // Times a foreshadowing moment is offered without making it into a reply
 // before it's set aside.
 export const MAX_BEAT_ATTEMPTS = 3;
@@ -79,7 +139,9 @@ export function buildCaseGenerationPrompt({
     recentChat = "",
     routines = [],
     rules = "",
+    shape = "standard",
 } = {}) {
+    const caseShape = CASE_SHAPES[shape] || CASE_SHAPES.standard;
     const castLines = cast
         .map((c) => `- ${c.name}${c.ultimate ? ` (Ultimate ${c.ultimate})` : ""}`)
         .join("\n");
@@ -100,6 +162,8 @@ ${roomLines || "- (none)"}
 ${routines.length ? `WHERE PEOPLE USUALLY ARE (base alibis, witnesses and the timeline on these):\n${routines.join("\n")}\n\n` : ""}${rules ? `SCHOOL REGULATIONS (the plan may exploit them, never openly break one Monokuma would punish):\n${rules}\n\n` : ""}RECENT EVENTS:
 ${recentChat || "(nothing yet)"}
 
+CASE SHAPE: ${caseShape.line}
+
 Reply with one compact JSON object and nothing else: start your reply with { and end it with }. Keep every text short (under 30 words). The fields:
 {
   "motive": { "title": "short name of the motive", "description": "what Monokuma offers or threatens, 1-2 sentences", "announcement": "Monokuma announcing it, in his voice, 2-4 sentences" },
@@ -117,7 +181,7 @@ Reply with one compact JSON object and nothing else: start your reply with { and
   "monokumaFile": { "timeOfDeath": "what the file reports", "cause": "what the file reports", "injuries": "other wounds or details, or empty", "concealed": [{ "field": "timeOfDeath, cause or injuries", "truth": "the real fact the file can't state, and why" }] },
   "timeline": ["short events in order, from the killer's preparation to the body being left"],
   "foreshadowing": [{ "text": "a small, innocent-looking moment during the coming days that later turns out to matter", "characters": ["student names involved"] }],
-  "witnesses": [{ "name": "student name", "account": "what they saw or heard, and when" }]
+  ${caseShape.fields ? `${caseShape.fields}\n  ` : ""}"witnesses": [{ "name": "student name", "account": "what they saw or heard, and when" }]
 }
 
 Rules:
@@ -203,6 +267,7 @@ export function parseCaseFileResponse(raw, {
     chapterIndex = 0,
     deadlineDays = DEFAULT_MOTIVE_DEADLINE_DAYS,
     now = Date.now(),
+    shape: wantedShape = "",
 } = {}) {
     const parsed = typeof raw === "object" && raw !== null ? { value: raw } : parseLooseJson(raw);
     const data = parsed.value;
@@ -214,11 +279,13 @@ export function parseCaseFileResponse(raw, {
     }
 
     const castNames = cast.map((c) => c.name).filter((n) => n && nameKey(n) !== nameKey(player));
-    const killer = matchCastName(data.killer, castNames);
+    let shape = SHAPE_IDS.includes(wantedShape) ? wantedShape : SHAPE_IDS.includes(data.shape) ? data.shape : "standard";
     const victim = matchCastName(data.victim, castNames);
+    // A suicide's "killer" is the victim, whatever the model wrote.
+    const killer = shape === "suicide" ? victim : matchCastName(data.killer, castNames);
     if (!killer) return { error: `The killer "${text(data.killer, 60)}" isn't one of the students.` };
     if (!victim) return { error: `The victim "${text(data.victim, 60)}" isn't one of the students.` };
-    if (killer === victim) return { error: "The killer and the victim are the same student." };
+    if (killer === victim && shape !== "suicide") return { error: "The killer and the victim are the same student." };
 
     const motive = data.motive || {};
     if (!text(motive.title)) return { error: "The motive has no title." };
@@ -249,10 +316,22 @@ export function parseCaseFileResponse(raw, {
             reason: parsed.cutOff ? "cut-off" : "",
         };
     }
+    // A twist whose extra details are missing or wrong falls back to a
+    // standard case rather than losing the whole plan.
+    let extras = parseShapeExtras(shape, data, { castNames, rooms, killer, victim });
+    let warning = "";
+    if (extras.error) {
+        warning = `The "${shape}" twist was dropped: ${extras.error}`;
+        shape = "standard";
+        extras = {};
+    }
+
     const isPublic = data.murderStyle === "public";
     const gatheringRoom = isPublic ? (matchRoom(data.gathering?.room, rooms) || bodyRoom) : null;
 
     const caseFile = normalizeCaseFile({
+        ...extras,
+        shape,
         status: CASE_STATUS.PLANNED,
         createdAt: now,
         createdDay: day,
@@ -286,7 +365,49 @@ export function parseCaseFileResponse(raw, {
             .map((w) => ({ name: matchCastName(w?.name, castNames), account: w?.account }))
             .filter((w) => w.name && w.name !== victim),
     });
-    return { caseFile };
+    return warning ? { caseFile, warning } : { caseFile };
+}
+
+// The twist's own fields from the model's plan, checked against the cast and
+// map. Returns the fields, or { error }.
+function parseShapeExtras(shape, data, { castNames, rooms, killer, victim }) {
+    const other = (raw) => {
+        const name = matchCastName(raw, castNames);
+        return name && name !== killer && name !== victim ? name : "";
+    };
+    switch (shape) {
+        case "wrong_victim": {
+            const intendedVictim = other(data.intendedVictim);
+            return intendedVictim ? { intendedVictim } : { error: "no intended victim among the students." };
+        }
+        case "accomplice": {
+            const accomplices = [...new Set(list(data.accomplices).map(other).filter(Boolean))];
+            return accomplices.length ? { accomplices } : { error: "no accomplice among the students." };
+        }
+        case "decoy": {
+            const decoy = other(data.decoy);
+            return decoy ? { decoy } : { error: "no decoy among the students." };
+        }
+        case "double": {
+            const sv = data.secondVictim || {};
+            const name = other(sv.name);
+            const room = matchRoom(sv.body?.room, rooms);
+            const secondKiller = matchCastName(sv.killer, castNames) || killer;
+            if (!name) return { error: "no second victim among the students." };
+            if (!room) return { error: "the second body's room isn't on the map." };
+            if (nameKey(secondKiller) === nameKey(name)) return { error: "the second victim can't be their own killer." };
+            return {
+                secondVictim: {
+                    name,
+                    killer: secondKiller,
+                    body: { roomId: room.id, roomLabel: room.label, state: sv.body?.state },
+                    monokumaFile: sv.monokumaFile,
+                },
+            };
+        }
+        default:
+            return {};
+    }
 }
 
 // Cleans a stored or edited Case File so later code can trust its shape.
@@ -319,8 +440,15 @@ export function normalizeCaseFile(raw) {
             announcement: text(raw.motive?.announcement, 900),
             deadlineDay,
         },
+        shape: SHAPE_IDS.includes(raw.shape) ? raw.shape : "standard",
         killer: text(raw.killer, 80),
         victim: text(raw.victim, 80),
+        // The twist's own people (only for their shapes; kept otherwise so a
+        // shape change in the editor doesn't lose them).
+        intendedVictim: text(raw.intendedVictim, 80),
+        accomplices: [...new Set(list(raw.accomplices).map((n) => text(n, 80)).filter(Boolean))].slice(0, 3),
+        decoy: text(raw.decoy, 80),
+        secondVictim: normalizeSecondVictim(raw.secondVictim),
         motiveLink: text(raw.motiveLink),
         method: text(raw.method, 900),
         weapon: text(raw.weapon, 120),
@@ -340,15 +468,7 @@ export function normalizeCaseFile(raw) {
             roomLabel: text(raw.body?.roomLabel, 120) || firstClueRoom(raw).roomLabel,
             state: text(raw.body?.state),
         },
-        monokumaFile: {
-            timeOfDeath: text(raw.monokumaFile?.timeOfDeath, 120),
-            cause: text(raw.monokumaFile?.cause, 300),
-            injuries: text(raw.monokumaFile?.injuries, 300),
-            concealed: list(raw.monokumaFile?.concealed)
-                .map((c) => ({ field: FILE_FIELDS.includes(c?.field) ? c.field : "", truth: text(c?.truth, 300) }))
-                .filter((c) => c.field && c.truth),
-            revision: Math.max(1, Math.round(Number(raw.monokumaFile?.revision) || 1)),
-        },
+        monokumaFile: normalizeMonokumaFile(raw.monokumaFile),
         committedAt: raw.committedAt && Number(raw.committedAt.day)
             ? { day: Number(raw.committedAt.day), time: raw.committedAt.time === "day" ? "day" : "night" }
             : null,
@@ -411,6 +531,70 @@ export function normalizeCaseFile(raw) {
             roomId: text(c?.roomId, 120),
         })).filter((c) => c.title || c.text),
     };
+}
+
+function normalizeMonokumaFile(mf) {
+    return {
+        timeOfDeath: text(mf?.timeOfDeath, 120),
+        cause: text(mf?.cause, 300),
+        injuries: text(mf?.injuries, 300),
+        concealed: list(mf?.concealed)
+            .map((c) => ({ field: FILE_FIELDS.includes(c?.field) ? c.field : "", truth: text(c?.truth, 300) }))
+            .filter((c) => c.field && c.truth),
+        revision: Math.max(1, Math.round(Number(mf?.revision) || 1)),
+    };
+}
+
+// The second body of a "double" case.
+function normalizeSecondVictim(sv) {
+    const name = text(sv?.name, 80);
+    if (!name) return null;
+    return {
+        name,
+        killer: text(sv.killer, 80),
+        body: {
+            roomId: text(sv.body?.roomId, 120),
+            roomLabel: text(sv.body?.roomLabel, 120),
+            state: text(sv.body?.state),
+        },
+        monokumaFile: normalizeMonokumaFile(sv.monokumaFile),
+        discovered: Boolean(sv.discovered),
+    };
+}
+
+// Who the vote must name: the killer, or a suicide's victim.
+export function caseBlackened(caseFile) {
+    if (!caseFile) return "";
+    return caseFile.shape === "suicide" ? caseFile.victim : caseFile.killer;
+}
+
+// The second body, when this case has one.
+export function getSecondVictim(caseFile) {
+    return caseFile?.shape === "double" ? caseFile.secondVictim : null;
+}
+
+// Everyone who knows more than they should: [{ name, role }]. Roles: killer,
+// suicide, accomplice, decoy, attacker (a victim who meant to kill), and
+// second_killer. They never count as witnesses of their own crime.
+export function caseSecretHolders(caseFile) {
+    const cf = caseFile;
+    if (!cf) return [];
+    const out = [];
+    const add = (name, role) => {
+        if (name && !out.some((h) => nameKey(h.name) === nameKey(name) && h.role === role)) out.push({ name, role });
+    };
+    add(cf.killer, cf.shape === "suicide" ? "suicide" : "killer");
+    if (cf.shape === "accomplice") cf.accomplices.forEach((n) => add(n, "accomplice"));
+    if (cf.shape === "decoy") add(cf.decoy, "decoy");
+    if (cf.shape === "attacker_victim") add(cf.victim, "attacker");
+    const second = getSecondVictim(cf);
+    if (second?.killer && nameKey(second.killer) !== nameKey(cf.killer)) add(second.killer, "second_killer");
+    return out;
+}
+
+// The roles `name` holds in this case ([] for nobody special).
+export function secretRolesOf(caseFile, name) {
+    return caseSecretHolders(caseFile).filter((h) => nameKey(h.name) === nameKey(name)).map((h) => h.role);
 }
 
 function firstClueRoom(raw) {
@@ -514,8 +698,19 @@ export function markBeatUsed(caseFile, beatId, slot = "") {
     });
 }
 
-export function getMonokumaFileTitle(caseFile) {
-    return `Monokuma File #${Math.max(1, Number(caseFile?.chapterIndex) || 1)}`;
+// The second body's file is "#N-2".
+export function getMonokumaFileTitle(caseFile, index = 0) {
+    const base = `Monokuma File #${Math.max(1, Number(caseFile?.chapterIndex) || 1)}`;
+    return index === 1 ? `${base}-2` : base;
+}
+
+// The victim, body and file of body `index` (0, or 1 for a double's second).
+export function getCaseBody(caseFile, index = 0) {
+    if (index === 1) {
+        const sv = getSecondVictim(caseFile);
+        return sv ? { victim: sv.name, killer: sv.killer, body: sv.body, monokumaFile: sv.monokumaFile, discovered: sv.discovered } : null;
+    }
+    return caseFile ? { victim: caseFile.victim, killer: caseFile.killer, body: caseFile.body, monokumaFile: caseFile.monokumaFile, discovered: caseFile.discovered } : null;
 }
 
 // Ends text with exactly one full stop, unless it already ends a sentence.
@@ -545,16 +740,17 @@ function timeOfDeathSentence(value) {
 }
 
 // The autopsy as Truth Bullet text: only what Monokuma hands everyone.
-export function buildMonokumaFileBullet(caseFile, { victimUltimate = "" } = {}) {
-    const mf = caseFile.monokumaFile || {};
+export function buildMonokumaFileBullet(caseFile, { victimUltimate = "", index = 0 } = {}) {
+    const b = getCaseBody(caseFile, index) || getCaseBody(caseFile, 0);
+    const mf = b.monokumaFile || {};
     const lines = [
-        `The victim is ${caseFile.victim}${victimUltimate ? `, the Ultimate ${victimUltimate}` : ""}.`,
-        caseFile.body?.roomLabel ? `The body was found in the ${caseFile.body.roomLabel}.` : "",
+        `The victim is ${b.victim}${victimUltimate ? `, the Ultimate ${victimUltimate}` : ""}.`,
+        b.body?.roomLabel ? `The body was found in the ${b.body.roomLabel}.` : "",
         mf.timeOfDeath ? timeOfDeathSentence(mf.timeOfDeath) : "",
         mf.cause ? (isUnknown(mf.cause) ? "The cause of death is unknown." : sentence(`The cause of death is ${midSentence(mf.cause)}`)) : "",
         mf.injuries ? sentence(mf.injuries) : "",
     ].filter(Boolean);
-    return { title: getMonokumaFileTitle(caseFile), description: lines.join(" ") };
+    return { title: getMonokumaFileTitle(caseFile, index === 1 && getSecondVictim(caseFile) ? 1 : 0), description: lines.join(" ") };
 }
 
 // Records Truth Bullets found during the investigation that the plan didn't
@@ -584,7 +780,12 @@ export function describeCaseFile(caseFile) {
     const lines = [
         `CASE FILE (SPOILERS) — ${cf.status.toUpperCase()}${cf.verdict ? ` · vote ${cf.verdict}` : ""}`,
         `Motive: ${cf.motive.title} — ${cf.motive.description} (deadline: night of Day ${cf.motive.deadlineDay})`,
+        `Shape: ${CASE_SHAPES[cf.shape]?.label || cf.shape} · blackened (the vote's answer): ${caseBlackened(cf)}`,
         `Killer: ${cf.killer} · Victim: ${cf.victim}`,
+        ...(cf.shape === "wrong_victim" ? [`Meant to kill: ${cf.intendedVictim}`] : []),
+        ...(cf.shape === "accomplice" ? [`Accomplices: ${cf.accomplices.join(", ")}`] : []),
+        ...(cf.shape === "decoy" ? [`Decoy (believes they did it): ${cf.decoy}`] : []),
+        ...(getSecondVictim(cf) ? [`Second body: ${cf.secondVictim.name}, killed by ${cf.secondVictim.killer}, in ${cf.secondVictim.body.roomLabel || cf.secondVictim.body.roomId} · found: ${yes(cf.secondVictim.discovered)} · file: ${cf.secondVictim.monokumaFile.timeOfDeath || "?"} · ${cf.secondVictim.monokumaFile.cause || "?"}`] : []),
         `Murder: ${cf.murderStyle}, ${cf.murderTime} of Day ${cf.murderDay}${cf.committedAt ? ` · happened: ${cf.committedAt.time} of Day ${cf.committedAt.day}` : ""}`,
         ...(cf.gathering ? [`Gathering: ${cf.gathering.description} [${cf.gathering.roomLabel || cf.gathering.roomId}]`] : []),
         `Body: ${cf.body.roomLabel || "?"} (${cf.body.roomId || "?"}) · found: ${yes(cf.discovered)}${cf.pendingNote ? " · discovery note pending" : ""}`,
@@ -675,11 +876,23 @@ export function validateCaseFile(caseFile, { cast = [], rooms = [], player = "" 
     if (!cf.motive.title) return "The motive needs a title.";
     const castNames = cast.map((c) => c.name).filter((n) => n && nameKey(n) !== nameKey(player));
     const inCast = (n) => castNames.some((c) => nameKey(c) === nameKey(n));
-    if (!inCast(cf.killer)) return "Pick a killer from the living classmates.";
     if (!inCast(cf.victim)) return "Pick a victim from the living classmates.";
-    if (nameKey(cf.killer) === nameKey(cf.victim)) return "The killer and the victim can't be the same student.";
+    if (cf.shape !== "suicide") {
+        if (!inCast(cf.killer)) return "Pick a killer from the living classmates.";
+        if (nameKey(cf.killer) === nameKey(cf.victim)) return "The killer and the victim can't be the same student (use the Suicide shape for that).";
+    }
     const roomIds = new Set(rooms.map((r) => r.id));
     if (!roomIds.has(cf.body.roomId)) return "Pick the room the body is found in.";
+    const outsider = (n) => n && nameKey(n) !== nameKey(cf.killer) && nameKey(n) !== nameKey(cf.victim);
+    if (cf.shape === "wrong_victim" && !(inCast(cf.intendedVictim) && outsider(cf.intendedVictim))) return "Pick who the killer meant to kill (not the killer or the victim).";
+    if (cf.shape === "accomplice" && !(cf.accomplices.length && cf.accomplices.every((n) => inCast(n) && outsider(n)))) return "Pick at least one accomplice (not the killer or the victim).";
+    if (cf.shape === "decoy" && !(inCast(cf.decoy) && outsider(cf.decoy))) return "Pick the decoy (not the killer or the victim).";
+    if (cf.shape === "double") {
+        const sv = cf.secondVictim;
+        if (!sv || !inCast(sv.name) || !outsider(sv.name)) return "Pick a second victim (not the killer or the first victim).";
+        if (!inCast(sv.killer) || nameKey(sv.killer) === nameKey(sv.name)) return "Pick the second victim's killer.";
+        if (!roomIds.has(sv.body.roomId)) return "Pick the room the second body is found in.";
+    }
     if (cf.murderStyle === "public" && !roomIds.has(cf.gathering?.roomId)) return "Pick the gathering's room.";
     const badClue = cf.clues.find((c) => c.roomId && !roomIds.has(c.roomId));
     if (badClue) return `The clue "${badClue.text.slice(0, 40)}" is in a room that isn't on the map.`;
@@ -713,7 +926,8 @@ export function listWitnessTestimony(caseFile) {
     const byName = new Map();
     const key = (n) => String(n || "").trim().toLowerCase();
     const add = (name, text, told = false) => {
-        if (!name || !text || key(name) === key(caseFile.killer) || key(name) === key(caseFile.victim)) return;
+        if (!name || !text || key(name) === key(caseFile.victim) || key(name) === key(getSecondVictim(caseFile)?.name)) return;
+        if (secretRolesOf(caseFile, name).some((r) => r !== "attacker")) return;
         const entry = byName.get(key(name)) || { name, facts: [], told: false };
         if (!entry.facts.includes(text)) entry.facts.push(text);
         entry.told = entry.told || told;

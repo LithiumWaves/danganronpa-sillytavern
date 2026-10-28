@@ -32,14 +32,24 @@ function run() {
     assert(block.includes("Killer: Leon Kuwata") && block.includes("Kitchen knife") && block.includes("Borrows a knife → Waits"), "the truth");
     assert(block.includes("1:30 a.m.") && block.includes("A knife is missing (found)") && block.includes("Torn shirt button") && !block.includes("Torn shirt button (found)"), "concealed truths and evidence");
     assert(block.includes("Wet Floor") && block.includes("Kyoko Kirigiri (Heard a thud.)"), "found evidence and testimony");
-    assert(block.includes("Never the killer's name"), "hangman rule");
+    assert(block.includes("Never the blackened's"), "hangman rule");
     assert(buildTrialTruthBlock(found, { purpose: "questionTime" }).includes("distractors must be false"), "question time rule");
     assert(buildTrialTruthBlock(found, { purpose: "mindMine" }).includes("must be TRUE"), "mind mine rule");
 
-    assert(buildTrialTruthBlock(found, { purpose: "argumentArmament", opponent: "leon kuwata" }).includes("IS the killer"), "AA against the killer");
+    assert(buildTrialTruthBlock(found, { purpose: "argumentArmament", opponent: "leon kuwata" }).includes("IS the blackened"), "AA against the killer");
     assert(buildTrialTruthBlock(found, { purpose: "argumentArmament", opponent: "Kyoko Kirigiri" }).includes("is NOT the killer"), "AA against someone else");
 
     assert(getCaseBlackened(found) === "Leon Kuwata" && getCaseBlackened(planned) === "", "the vote's answer");
+
+    // Twists.
+    const suicide = { ...found, shape: "suicide", killer: "Sayaka Maizono" };
+    assert(getCaseBlackened(suicide) === "Sayaka Maizono" && buildTrialTruthBlock(suicide).includes("Case shape: Suicide"), "a suicide's blackened is the victim");
+    const decoy = { ...found, shape: "decoy", decoy: "Mondo Owada" };
+    assert(buildTrialTruthBlock(decoy, { purpose: "argumentArmament", opponent: "Mondo Owada" }).includes("believes they did it, but is NOT the blackened"), "AA against the decoy");
+    const helped = { ...found, shape: "accomplice", accomplices: ["Peko Pekoyama"] };
+    assert(buildTrialTruthBlock(helped, { purpose: "argumentArmament", opponent: "Peko Pekoyama" }).includes("helped, but is NOT the blackened") && buildTrialTruthBlock(helped).includes("Accomplices (not the blackened): Peko Pekoyama"), "AA against an accomplice");
+    const double = { ...found, shape: "double", secondVictim: { name: "Hifumi Yamada", killer: "Leon Kuwata", body: { roomLabel: "Art Room" }, monokumaFile: {} } };
+    assert(buildTrialTruthBlock(double).includes("Second victim: Hifumi Yamada"), "the second body");
 
     console.log("trialTruth tests passed");
 }

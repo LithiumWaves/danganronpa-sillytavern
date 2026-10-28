@@ -122,6 +122,29 @@ function run() {
     assert(aoiTold.clues.find((c) => c.witness === "Aoi Asahina").found, "a clue witness's clue is found when they tell it");
     assert(markWitnessTold(withWitnesses, "Random Bullet") === withWitnesses, "other bullets change nothing");
 
+    // Twists: every secret reaches its own holder only.
+    {
+        const day = { phase: "DAY", day: 2, presentNames: [] };
+        const as = (c, name) => buildCasePrompt({ caseFile: c, ...day, speakerName: name }).text;
+        const acc = normalizeCaseFile({ ...cf, shape: "accomplice", accomplices: ["Peko Pekoyama"] });
+        assert(as(acc, "Peko Pekoyama").includes("agreed to help Leon Kuwata") && as(acc, "Leon Kuwata").includes("Peko Pekoyama will secretly help you"), "accomplice notes");
+        assert(!as(acc, "Kyoko").includes("SECRET"), "bystanders get no secret");
+        const dec = normalizeCaseFile({ ...cf, shape: "decoy", decoy: "Mondo Owada" });
+        assert(as(dec, "Mondo Owada").includes("decided to kill Sayaka Maizono") && !as(dec, "Mondo Owada").includes("Leon"), "the decoy doesn't know the real killer");
+        const decDone = commitMurder(dec, { day: 3 });
+        assert(buildCasePrompt({ caseFile: decDone, phase: "DAY", day: 4, speakerName: "Mondo Owada" }).text.includes("believe you killed Sayaka"), "the decoy believes it after");
+        const wv = normalizeCaseFile({ ...cf, shape: "wrong_victim", intendedVictim: "Kyoko Kirigiri" });
+        assert(as(wv, "Leon Kuwata").includes("decided to kill Kyoko Kirigiri") && as(wv, "Leon Kuwata").includes("Sayaka Maizono will die instead"), "wrong victim killer note");
+        const att = normalizeCaseFile({ ...cf, shape: "attacker_victim" });
+        assert(as(att, "Sayaka Maizono").includes("decided to kill Leon Kuwata") && !as(att, "Leon Kuwata").includes("SECRET"), "the attacker plans; the killer doesn't yet");
+        assert(buildCasePrompt({ caseFile: commitMurder(att, { day: 3 }), phase: "DAY", day: 4, speakerName: "Leon Kuwata" }).text.includes("attacked you"), "the killer knows after");
+        const sui = normalizeCaseFile({ ...cf, shape: "suicide", killer: "Sayaka Maizono" });
+        assert(as(sui, "Sayaka Maizono").includes("end your own life") && !as(sui, "Sayaka Maizono").includes("decided to kill"), "suicide note");
+        const dbl = normalizeCaseFile({ ...cf, shape: "double", secondVictim: { name: "Hifumi Yamada", killer: "Kyoko Kirigiri", body: { roomId: "gym", roomLabel: "Gym" } } });
+        assert(as(dbl, "Kyoko Kirigiri").includes("decided to kill Hifumi Yamada"), "the second killer");
+        assert(buildCasePrompt({ caseFile: commitMurder(dbl, { day: 3 }), phase: "DAY", day: 4, speakerName: "Makoto" }).text.includes("Sayaka Maizono or Hifumi Yamada"), "both are missing");
+    }
+
     console.log("casePrompts tests passed");
 }
 

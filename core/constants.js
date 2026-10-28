@@ -249,6 +249,11 @@ export const defaultSettings = {
     caseFile: null,
     // Day N of a chapter Monokuma announces the motive on by himself; 0 is off.
     motiveAutoDay: 0,
+    // How often a murder plan is a twist (core/case/caseFile.js CASE_SHAPES):
+    // "off", "sometimes" or "often".
+    caseTwists: "sometimes",
+    // The last case's shape, so the same twist doesn't come twice in a row.
+    caseHistory: null,
     // The School Regulations (core/rules/schoolRules.js); null means the
     // defaults, which a save gets the first time they're read.
     schoolRules: null,

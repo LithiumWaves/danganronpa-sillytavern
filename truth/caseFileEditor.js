@@ -3,6 +3,7 @@
 // remembered per save. index.js supplies the data and does the saving.
 
 import { pushSkippable } from "../core/skip/skipRegistry.js";
+import { CASE_SHAPES } from "../core/case/caseFile.js";
 
 const STYLE_ID = "dangan-cfe-style";
 const ROOT_ID = "dangan-cfe";
@@ -47,7 +48,7 @@ const CSS = `
 #${ROOT_ID} legend { color: #ff2ec4; letter-spacing: 0.1em; font-size: 0.85rem; padding: 0 6px; }
 #${ROOT_ID} .cfe-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px 12px; }
 #${ROOT_ID} label { display: flex; flex-direction: column; gap: 3px; font-size: 0.75rem; letter-spacing: 0.06em; color: #d9c4e6; }
-#${ROOT_ID} label.cfe-wide { grid-column: 1 / -1; }
+#${ROOT_ID} .cfe-wide { grid-column: 1 / -1; }
 #${ROOT_ID} label.cfe-check { flex-direction: row; align-items: center; gap: 6px; }
 #${ROOT_ID} input, #${ROOT_ID} select, #${ROOT_ID} textarea {
     background: rgba(0, 0, 0, 0.45); color: #fff; border: 1px solid rgba(255, 182, 222, 0.35); border-radius: 4px;
@@ -63,7 +64,9 @@ const CSS = `
 #${ROOT_ID} .cfe-note { font-size: 0.8rem; color: #bfa9cc; margin: 0 0 8px; }
 #${ROOT_ID} .cfe-gate { text-align: center; padding: 32px 16px; }
 #${ROOT_ID} .cfe-gate p { max-width: 460px; margin: 0 auto 16px; line-height: 1.5; }
-#${ROOT_ID} .cfe-public-only[hidden] { display: none; }
+#${ROOT_ID} .cfe-public-only[hidden], #${ROOT_ID} [data-shapes][hidden], #${ROOT_ID} [data-hide-shapes][hidden] { display: none; }
+#${ROOT_ID} .cfe-chips { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+#${ROOT_ID} .cfe-blackened { font-size: 0.8rem; color: #ffd23f; letter-spacing: 0.06em; align-self: end; padding-bottom: 6px; }
 @media (max-width: 600px) {
     #${ROOT_ID} { padding: 0; }
     #${ROOT_ID} .cfe-window { max-height: 100vh; height: 100vh; border-radius: 0; }
@@ -242,8 +245,14 @@ export function openCaseFileEditor(api) {
         </div></fieldset>
 
         <fieldset><legend>THE MURDER</legend><div class="cfe-grid">
-            <label>Killer<select data-k="killer">${options(cast, cf.killer, { blank: "— pick —" })}</select></label>
+            <label class="cfe-wide">Case shape<select data-k="shape">${options(Object.entries(CASE_SHAPES).map(([value, sh]) => ({ value, label: sh.label })), cf.shape || "standard", { blank: null })}</select></label>
+            <p class="cfe-note cfe-wide cfe-shape-line" style="margin:0"></p>
+            <label data-hide-shapes="suicide">Killer<select data-k="killer">${options(cast, cf.killer, { blank: "— pick —" })}</select></label>
             <label>Victim<select data-k="victim">${options(cast, cf.victim, { blank: "— pick —" })}</select></label>
+            <div class="cfe-blackened"></div>
+            <label data-shapes="wrong_victim">Meant to kill<select data-k="intendedVictim">${options(cast, cf.intendedVictim || "", { blank: "— pick —" })}</select></label>
+            <label data-shapes="decoy">Decoy (believes they did it)<select data-k="decoy">${options(cast, cf.decoy || "", { blank: "— pick —" })}</select></label>
+            <div class="cfe-wide" data-shapes="accomplice"><label>Accomplices (not the blackened)</label><div class="cfe-chips">${cast.map((c) => `<label class="cfe-check"><input type="checkbox" data-accomplice value="${esc(c.value)}"${(cf.accomplices || []).includes(c.value) ? " checked" : ""}> ${esc(c.value)}</label>`).join("")}</div></div>
             <label>Day<input type="number" min="1" data-k="murderDay" value="${cf.murderDay}"></label>
             <label>Time<select data-k="murderTime">${options([{ value: "day", label: "Daytime" }, { value: "night", label: "Nighttime" }], cf.murderTime, { blank: null })}</select></label>
             <label>Style<select data-k="murderStyle">${options([{ value: "hidden", label: "Hidden (found later)" }, { value: "public", label: "Public (during a gathering)" }], cf.murderStyle, { blank: null })}</select></label>
@@ -266,6 +275,19 @@ export function openCaseFileEditor(api) {
         </div>
             <div data-list="concealed">${cf.monokumaFile.concealed.map(concealedRow).join("")}</div>
             <button type="button" data-add="concealed">+ HIDDEN TRUTH</button>
+        </fieldset>
+
+        <fieldset data-shapes="double"><legend>THE SECOND BODY</legend>
+            <p class="cfe-note">Found during the investigation of the first, with its own Monokuma File. The Class Trial is about the first victim.${cf.secondVictim?.discovered ? " Already found." : ""}</p>
+            <div class="cfe-grid">
+            <label>Second victim<select data-k="secondVictim.name">${options(cast, cf.secondVictim?.name || "", { blank: "— pick —" })}</select></label>
+            <label>Killed by<select data-k="secondVictim.killer">${options(cast, cf.secondVictim?.killer || "", { blank: "— pick —" })}</select></label>
+            <label>Body found in<select data-k="secondVictim.body.roomId">${options(rooms, cf.secondVictim?.body?.roomId || "", { blank: "— pick —" })}</select></label>
+            <label class="cfe-wide">The scene<textarea data-k="secondVictim.body.state" rows="2">${esc(cf.secondVictim?.body?.state)}</textarea></label>
+            <label>Time of death<input data-k="secondVictim.monokumaFile.timeOfDeath" value="${esc(cf.secondVictim?.monokumaFile?.timeOfDeath)}"></label>
+            <label>Cause of death<input data-k="secondVictim.monokumaFile.cause" value="${esc(cf.secondVictim?.monokumaFile?.cause)}"></label>
+            <label class="cfe-wide">Injuries and other details<input data-k="secondVictim.monokumaFile.injuries" value="${esc(cf.secondVictim?.monokumaFile?.injuries)}"></label>
+            </div>
         </fieldset>
 
         <fieldset><legend>CLUES (ANCHORS)</legend>
@@ -305,6 +327,20 @@ export function openCaseFileEditor(api) {
         const syncStyle = () => body.querySelectorAll(".cfe-public-only").forEach((el) => { el.hidden = styleSelect.value !== "public"; });
         styleSelect.addEventListener("change", syncStyle);
         syncStyle();
+        // Each twist shows only the fields it uses.
+        const shapeSelect = body.querySelector('[data-k="shape"]');
+        const killerSelect = body.querySelector('[data-k="killer"]');
+        const victimSelect = body.querySelector('[data-k="victim"]');
+        const syncShape = () => {
+            const shape = shapeSelect.value;
+            body.querySelectorAll("[data-shapes]").forEach((el) => { el.hidden = !el.dataset.shapes.split(" ").includes(shape); });
+            body.querySelectorAll("[data-hide-shapes]").forEach((el) => { el.hidden = el.dataset.hideShapes.split(" ").includes(shape); });
+            body.querySelector(".cfe-shape-line").textContent = CASE_SHAPES[shape]?.about || "";
+            const blackened = shape === "suicide" ? victimSelect.value : killerSelect.value;
+            body.querySelector(".cfe-blackened").textContent = blackened ? `THE VOTE'S ANSWER: ${blackened.toUpperCase()}` : "";
+        };
+        [shapeSelect, killerSelect, victimSelect].forEach((el) => el.addEventListener("change", syncShape));
+        syncShape();
 
         const errorEl = document.createElement("div");
         errorEl.className = "cfe-error";
@@ -377,6 +413,8 @@ export function openCaseFileEditor(api) {
             node[key] = value;
         });
         if (next.murderStyle !== "public") next.gathering = null;
+        if (next.shape === "suicide") next.killer = next.victim;
+        next.accomplices = [...body.querySelectorAll("[data-accomplice]:checked")].map((el) => el.value);
         const rows = (kind) => [...body.querySelectorAll(`[data-row="${kind}"]`)];
         const field = (row, f) => row.querySelector(`[data-f="${f}"]`);
         const foundIds = new Set(draft.clues.filter((c) => c.found).map((c) => c.id));

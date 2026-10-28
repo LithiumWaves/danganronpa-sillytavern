@@ -171,7 +171,10 @@ export function openMonokumaFile(data, { narrate = true, playSfx = null } = {}) 
     ensureStyle();
     document.getElementById(ROOT_ID)?.remove();
 
-    const number = String(Math.max(1, Number(data.number) || 1)).padStart(2, "0");
+    // A second body's file reads like "03-2".
+    const number = /^\d+-\d+$/.test(String(data.number ?? ""))
+        ? String(data.number).replace(/^(\d+)/, (n) => n.padStart(2, "0"))
+        : String(Math.max(1, Number(data.number) || 1)).padStart(2, "0");
     const victim = data.victim || {};
     const nameParts = String(victim.name || "???").split(/\s+/);
     const info = (victim.info || []).map(([label, value]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(value || "???")}</td></tr>`).join("");

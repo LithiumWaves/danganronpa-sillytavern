@@ -98,6 +98,16 @@ While examine mode is open, the room's buttons step aside and the right-hand col
 
 **Investigate With:** during an investigation the explore menu's **Tag Along** becomes **Investigate With**. When you examine something with a partner in the room, one of them reacts to it in the chat. Settings → Gameplay → **Investigation partners react** chooses when: when you find evidence (default), to anything you examine, or never. **Partner reactions show as** chooses how: a normal chat message (default), or **only in the VN box**, generated the same way (the partner's card and the chat) but shown like what you notice and never added to the chat.
 
+**Case twists:** not every case is "one killer, one victim". With Settings → Gameplay → **Case twists** (Never / Sometimes / Often; Sometimes by default), Monokuma's plan can be one of the series' twists, never the same twist twice in a row:
+- **Wrong victim:** the killer aims at someone else and the wrong person dies (Teruteru and the Imposter).
+- **The attacker dies:** the victim attacked first, meaning to kill, and died in the struggle (Sayaka).
+- **Two bodies:** a second body turns up during the investigation, with its own Monokuma File ("#N-2"). Walk into its room to find it. The trial is about the first victim.
+- **Suicide:** the victim takes their own life or stages it (Sakura, Nagito). The vote's right answer is the victim.
+- **Accomplice:** someone helps the killer, but only the killer is the blackened (Peko and Fuyuhiko).
+- **Decoy:** someone tries to kill the victim and believes they did, but the real killer struck (a twist on Kaede).
+
+Each person the twist involves gets their own private note (the accomplice, the decoy, the attacker, a second killer), and nobody else learns anything. The trial minigames and the vote follow the twist: Argument Armament against a decoy or an accomplice knows they aren't the blackened. The Case File editor has a **Case shape** select with the fields each twist uses, and shows the vote's answer. `/case shape double` (or any shape) replans the current case with that twist before the murder; `/case status` shows it.
+
 **Witnesses:** the plan has people who saw or heard something. During the investigation each one privately knows what they saw, and tells it when you ask them about it (or when it comes up naturally); the first time, it becomes a **"<Name>'s Account"** Truth Bullet. Nobody else knows what a witness hasn't said yet, and the killer never gets a witness note about themselves. `/case status` shows who has told.
 
 **The end of the investigation:** whenever you head into the Class Trial (Phase HUD, the Trial Grounds pin, the trial marker or `/startclasstrial`), Monokuma first announces that the investigation is over and everyone should gather at the red door, then the Trial Preparation music plays (if that playlist has tracks). It plays once per case. There's no requirement to have found everything first.

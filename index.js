@@ -41,7 +41,7 @@ import { createPhaseHistory, derivePhase, getNextStepHint, getPhaseActions, getS
 import { notify } from "./core/ui/notify.js";
 import { SAVE_MODES, createSaveStore } from "./core/saves/saveStore.js";
 import { pinInScope } from "./map/mapStorage.js";
-import { CASE_STATUS, DEFAULT_MOTIVE_DEADLINE_DAYS, addEmergentClue, editMotive, beatWordOverlap, markWitnessTold, extractJsonObject, buildCaseGenerationPrompt, createBlankCaseFile, describeCaseFile, isGatheringNow, monokumaFileChanged, recordBeatAttempt, reviseMonokumaFile, validateCaseFile, buildMonokumaFileBullet, commitMurder, getMonokumaFileTitle, getMotiveAnnouncementText, getTimeSlot, isCaseOpen, isMurderSlotOver, markDiscovered, normalizeCaseFile, parseCaseFileResponse, removeEmergentClue, shouldAutoAnnounceMotive } from "./core/case/caseFile.js";
+import { CASE_STATUS, DEFAULT_MOTIVE_DEADLINE_DAYS, SHAPE_IDS, addEmergentClue, caseBlackened, editMotive, getCaseBody, getSecondVictim, pickCaseShape, beatWordOverlap, markWitnessTold, extractJsonObject, buildCaseGenerationPrompt, createBlankCaseFile, describeCaseFile, isGatheringNow, monokumaFileChanged, recordBeatAttempt, reviseMonokumaFile, validateCaseFile, buildMonokumaFileBullet, commitMurder, getMonokumaFileTitle, getMotiveAnnouncementText, getTimeSlot, isCaseOpen, isMurderSlotOver, markDiscovered, normalizeCaseFile, parseCaseFileResponse, removeEmergentClue, shouldAutoAnnounceMotive } from "./core/case/caseFile.js";
 import { CASE_PROMPT_KEY, buildCasePrompt } from "./core/case/casePrompts.js";
 import { openMonokumaFile } from "./truth/monokumaFile.js";
 import { openCaseFileEditor } from "./truth/caseFileEditor.js";
@@ -4945,7 +4945,22 @@ function listCaseRooms() {
         .map((pin) => ({ id: pin.locationId, label: pin.label || pin.locationId }));
 }
 
-async function generateCaseFile({ deadlineDays }) {
+// The next plan's shape: a twist now and then (Settings → Gameplay → Case
+// twists), never the same twist twice in a row.
+function pickNextCaseShape() {
+    return pickCaseShape({
+        twists: getMonopadSetting("caseTwists") || "sometimes",
+        lastShape: extension_settings[extensionName]?.caseHistory?.lastShape || "",
+    });
+}
+
+function rememberCaseShape(shape) {
+    const root = extension_settings[extensionName] ||= {};
+    root.caseHistory = { ...(root.caseHistory || {}), lastShape: shape || "standard" };
+    saveSettingsDebounced();
+}
+
+async function generateCaseFile({ deadlineDays, shape = pickNextCaseShape() }) {
     const cast = listCaseCast();
     if (cast.length < 2) throw new Error("At least two living classmates are needed for a motive.");
     const rooms = listCaseRooms();
@@ -4964,8 +4979,9 @@ async function generateCaseFile({ deadlineDays }) {
         recentChat: buildRecentChatContextLines(20),
         routines: describeRoutinesForCase(cast),
         rules: formatRulesList(getSchoolRules()),
+        shape,
     });
-    const parseOpts = { cast, player, rooms, day, chapterIndex, deadlineDays };
+    const parseOpts = { cast, player, rooms, day, chapterIndex, deadlineDays, shape };
     const source = getConfiguredGenerationSource("generationProvider") || "main";
 
     let lastError = "";
@@ -4990,9 +5006,13 @@ async function generateCaseFile({ deadlineDays }) {
             lastCaseGeneration = { at: Date.now(), source, raw: "", error: `The AI call failed: ${err?.message || err}` };
             throw new Error(lastCaseGeneration.error);
         }
-        const { caseFile, error, reason } = parseCaseFileResponse(raw, parseOpts);
-        lastCaseGeneration = { at: Date.now(), source, raw, error: error || "", meta };
-        if (caseFile) return caseFile;
+        const { caseFile, error, reason, warning } = parseCaseFileResponse(raw, parseOpts);
+        lastCaseGeneration = { at: Date.now(), source, raw, error: error || "", meta, shape, warning: warning || "" };
+        if (caseFile) {
+            if (warning) caseDebug("TWIST DROPPED", warning);
+            rememberCaseShape(caseFile.shape);
+            return caseFile;
+        }
         lastError = error;
         lastReason = reason || "";
         const text = String(raw || "");
@@ -5236,26 +5256,41 @@ function findRosterCharacter(name) {
     return characters.get(normalizeName(name)) || null;
 }
 
+// Dropping a case whose bodies weren't found brings the "missing" back.
+function releaseMissingVictims(caseFile) {
+    if (caseFile?.status !== CASE_STATUS.COMMITTED) return;
+    const second = getSecondVictim(caseFile);
+    const names = [!caseFile.discovered && caseFile.victim, second && !second.discovered && second.name].filter(Boolean);
+    let changed = false;
+    for (const name of names) {
+        const victim = findRosterCharacter(name);
+        if (victim?.missing) { victim.missing = false; changed = true; }
+    }
+    if (changed) saveCharacters();
+}
+
 // What a phase change or an investigation start may change, so Undo can put
 // it back.
 function captureCaseUndo() {
     const raw = extension_settings[extensionName]?.caseFile;
     if (!raw) return null;
-    const victim = findRosterCharacter(raw.victim);
+    const victims = [raw.victim, raw.secondVictim?.name].map(findRosterCharacter).filter(Boolean)
+        .map((v) => ({ name: v.name, dead: Boolean(v.dead), missing: Boolean(v.missing) }));
     return {
         caseFile: JSON.parse(JSON.stringify(raw)),
-        victim: victim ? { name: victim.name, dead: Boolean(victim.dead), missing: Boolean(victim.missing) } : null,
+        victim: victims[0] || null,
+        victims,
     };
 }
 
 function restoreCaseUndo(extra) {
     const before = getCaseFile();
     setCaseFile(extra.caseFile);
-    if (extra.victim) {
-        const victim = findRosterCharacter(extra.victim.name);
+    for (const saved of extra.victims || (extra.victim ? [extra.victim] : [])) {
+        const victim = findRosterCharacter(saved.name);
         if (victim) {
-            victim.dead = extra.victim.dead;
-            victim.missing = extra.victim.missing;
+            victim.dead = saved.dead;
+            victim.missing = saved.missing;
             saveCharacters();
         }
     }
@@ -5264,6 +5299,10 @@ function restoreCaseUndo(extra) {
     if (before?.discovered && !after?.discovered) {
         const title = getMonokumaFileTitle(after);
         const bullet = getTruthBullets().find((tb) => tb.title === title);
+        if (bullet) removeTruthBulletById(bullet.id);
+    }
+    if (getSecondVictim(before)?.discovered && !getSecondVictim(after)?.discovered) {
+        const bullet = getTruthBullets().find((tb) => tb.title === getMonokumaFileTitle(after, 1));
         if (bullet) removeTruthBulletById(bullet.id);
     }
 }
@@ -5284,12 +5323,13 @@ function commitCaseMurder({ day, time }) {
     setCaseFile(commitMurder(caseFile, { day, time }));
     // Missing, like a student who doesn't show up to breakfast: out of the
     // overworld and muted, until the body is found.
-    const victim = findRosterCharacter(caseFile.victim);
-    if (victim) {
-        victim.missing = true;
-        saveCharacters();
+    const second = getSecondVictim(caseFile);
+    for (const name of [caseFile.victim, second?.name]) {
+        const victim = name && findRosterCharacter(name);
+        if (victim) victim.missing = true;
     }
-    caseDebug("MURDER", `${caseFile.victim} was killed during the ${time} of Day ${day}.`);
+    saveCharacters();
+    caseDebug("MURDER", `${caseFile.victim}${second ? ` and ${second.name}` : ""} died during the ${time} of Day ${day}.`);
     return true;
 }
 
@@ -5321,6 +5361,7 @@ function isCaseBodyFindable() {
 
 // Walking into the crime scene finds the body.
 function maybeDiscoverBodyOnEntry(locationId) {
+    if (maybeDiscoverSecondBody(locationId)) return;
     const caseFile = getCaseFile();
     if (!caseFile || caseFile.status !== CASE_STATUS.COMMITTED || caseFile.discovered) return;
     if (!locationId || locationId !== caseFile.body.roomId) return;
@@ -5331,6 +5372,35 @@ function maybeDiscoverBodyOnEntry(locationId) {
 }
 
 let caseDiscoveryWalkIn = false;
+
+// A double's second body turns up once the investigation of the first is
+// running, when the player walks into its room.
+function maybeDiscoverSecondBody(locationId) {
+    const caseFile = getCaseFile();
+    const second = getSecondVictim(caseFile);
+    if (!second || second.discovered || !caseFile.discovered || caseFile.status !== CASE_STATUS.COMMITTED) return false;
+    if (!locationId || locationId !== second.body.roomId) return false;
+    void discoverSecondBody();
+    return true;
+}
+
+let secondBodyInFlight = false;
+
+async function discoverSecondBody() {
+    if (secondBodyInFlight) return;
+    secondBodyInFlight = true;
+    try {
+        await monokumaAnnouncementController?.triggerAsync("BODY_DISCOVERY");
+        await monokumaAnnouncementController?.triggerAsync("BDA");
+        const caseFile = getCaseFile();
+        if (!getSecondVictim(caseFile) || caseFile.secondVictim.discovered) return;
+        const found = normalizeCaseFile({ ...caseFile, secondVictim: { ...caseFile.secondVictim, discovered: true } });
+        setCaseFile(found);
+        await finishCaseDiscovery(found, { walkedIn: true, index: 1 });
+    } finally {
+        secondBodyInFlight = false;
+    }
+}
 
 // Every investigation start (the marker, the Phase HUD, /bodydiscovery or
 // walking in) finds the body if the murder has happened.
@@ -5351,8 +5421,9 @@ function onCaseInvestigationStarted() {
 
 // Plans from before the Monokuma File had details get them filled in, under
 // the same rules: what a trick hides stays hidden.
-async function fillMissingMonokumaFile(caseFile) {
-    const mf = caseFile.monokumaFile;
+async function fillMissingMonokumaFile(caseFile, index = 0) {
+    const b = getCaseBody(caseFile, index);
+    const mf = b.monokumaFile;
     if (mf.timeOfDeath && mf.cause) return caseFile;
     let filled = {};
     try {
@@ -5360,45 +5431,46 @@ async function fillMissingMonokumaFile(caseFile) {
 { "timeOfDeath": "approximate time", "cause": "cause of death", "injuries": "other wounds or details, or empty", "concealed": [{ "field": "timeOfDeath, cause or injuries", "truth": "what the file can't state, and why" }] }
 Neutral facts only, nothing that points at the killer. If the killer's trick hides or fakes something, report only what can be established ("Unknown", a broad range, or what it appears to be) and put the truth in "concealed".
 
-VICTIM: ${caseFile.victim}
+VICTIM: ${b.victim}${index === 1 ? ` (killed by ${b.killer}; the second death of this case)` : ""}
 WHAT HAPPENED: ${caseFile.method} Weapon: ${caseFile.weapon}.
 TIMELINE: ${caseFile.timeline.join(" → ")}
 MURDER: during the ${caseFile.murderTime} of Day ${caseFile.murderDay}.
-BODY: ${caseFile.body.roomLabel}. ${caseFile.body.state}`, { maxTokens: 1500, reasoning: { effort: "low", exclude: true } });
+BODY: ${b.body.roomLabel}. ${b.body.state}`, { maxTokens: 1500, reasoning: { effort: "low", exclude: true } });
         filled = extractJsonObject(raw) || {};
     } catch (err) {
         console.warn("[Dangan][Case] Couldn't fill in the Monokuma File:", err);
     }
-    const next = normalizeCaseFile({
-        ...caseFile,
-        monokumaFile: {
-            ...mf,
-            timeOfDeath: mf.timeOfDeath || filled.timeOfDeath || "Unknown",
-            cause: mf.cause || filled.cause || "Unknown",
-            injuries: mf.injuries || filled.injuries || "",
-            concealed: mf.concealed.length ? mf.concealed : filled.concealed,
-        },
-    });
+    const file = {
+        ...mf,
+        timeOfDeath: mf.timeOfDeath || filled.timeOfDeath || "Unknown",
+        cause: mf.cause || filled.cause || "Unknown",
+        injuries: mf.injuries || filled.injuries || "",
+        concealed: mf.concealed.length ? mf.concealed : filled.concealed,
+    };
+    const next = normalizeCaseFile(index === 1
+        ? { ...caseFile, secondVictim: { ...caseFile.secondVictim, monokumaFile: file } }
+        : { ...caseFile, monokumaFile: file });
     setCaseFile(next);
-    caseDebug("FILE FILLED IN", `${next.monokumaFile.timeOfDeath} · ${next.monokumaFile.cause}`);
+    caseDebug("FILE FILLED IN", `${file.timeOfDeath} · ${file.cause}`);
     return next;
 }
 
-async function finishCaseDiscovery(caseFile, { walkedIn }) {
-    const victim = findRosterCharacter(caseFile.victim);
+async function finishCaseDiscovery(caseFile, { walkedIn, index = 0 }) {
+    const victim = findRosterCharacter(getCaseBody(caseFile, index).victim);
     if (victim) {
         victim.dead = true;
         victim.missing = false;
         saveCharacters();
     }
-    const found = await fillMissingMonokumaFile(caseFile);
+    const found = await fillMissingMonokumaFile(caseFile, index);
+    const body = getCaseBody(found, index);
 
-    const file = buildMonokumaFileBullet(found, { victimUltimate: victim?.ultimate || "" });
+    const file = buildMonokumaFileBullet(found, { victimUltimate: victim?.ultimate || "", index });
     // The file screen below stands in for the usual Truth Bullet pop-up.
     handleTruthBullet(file.title, file.description, { grantMonocoins: false, grantXp: false, animate: false });
-    pinBulletToRoom(getTruthBullets().find((tb) => tb.title === file.title), found.body.roomId);
-    caseDebug("BODY FOUND", `${found.victim} in the ${found.body.roomLabel || "?"}${walkedIn ? " (walked in)" : ""}. ${file.title} added.`);
-    await openMonokumaFileForCase(found);
+    pinBulletToRoom(getTruthBullets().find((tb) => tb.title === file.title), body.body.roomId);
+    caseDebug("BODY FOUND", `${body.victim} in the ${body.body.roomLabel || "?"}${walkedIn ? " (walked in)" : ""}. ${file.title} added.`);
+    await openMonokumaFileForCase(found, index);
 }
 
 // ── The Monokuma File screen ──────────────────────────────────────────────────
@@ -5420,15 +5492,16 @@ function getCurrentChatBackgroundUrl() {
     return m?.[1] || "";
 }
 
-async function buildMonokumaFileScreenData(caseFile) {
-    const victim = findRosterCharacter(caseFile.victim);
+async function buildMonokumaFileScreenData(caseFile, index = 0) {
+    const b = getCaseBody(caseFile, index) || getCaseBody(caseFile, 0);
+    const victim = findRosterCharacter(b.victim);
     const profile = victim?.social?.profile || {};
     const known = (v) => (v && String(v).toLowerCase() !== "unknown" ? String(v) : "");
     const ultimate = known(victim?.ultimate || profile.ultimate);
-    const mf = caseFile.monokumaFile || {};
-    const room = caseFile.body.roomLabel;
-    const pin = caseFile.body.roomId ? mapPanelController?.getPinByLocationId?.(caseFile.body.roomId) : null;
-    const portraitUrl = await getSpriteUrl(caseFile.victim, "neutral").catch(() => null);
+    const mf = b.monokumaFile || {};
+    const room = b.body.roomLabel;
+    const pin = b.body.roomId ? mapPanelController?.getPinByLocationId?.(b.body.roomId) : null;
+    const portraitUrl = await getSpriteUrl(b.victim, "neutral").catch(() => null);
     const situation = [
         room ? `The victim's body was discovered in the ${room}.` : "",
         mf.timeOfDeath ? `The time of death is approximately ${mf.timeOfDeath.replace(/\.$/, "")}.` : "",
@@ -5436,16 +5509,16 @@ async function buildMonokumaFileScreenData(caseFile) {
         mf.injuries || "",
     ].filter(Boolean);
     const lines = [
-        `The victim is ${caseFile.victim}${ultimate ? `, the **Ultimate ${ultimate}**...` : "."}`,
+        `The victim is ${b.victim}${ultimate ? `, the **Ultimate ${ultimate}**...` : "."}`,
         room ? `The body was found in the **${room}**.` : "",
         mf.timeOfDeath ? `The time of death is approximately ${mf.timeOfDeath.replace(/\.$/, "")}.` : "",
         mf.cause ? `The cause of death is ${mf.cause.replace(/\.$/, "")}.${mf.injuries ? ` ${mf.injuries}` : ""}` : "",
     ].filter(Boolean);
     return {
-        number: Math.max(1, caseFile.chapterIndex || 1),
+        number: index === 1 ? `${Math.max(1, caseFile.chapterIndex || 1)}-2` : Math.max(1, caseFile.chapterIndex || 1),
         revision: mf.revision || 1,
         victim: {
-            name: caseFile.victim,
+            name: b.victim,
             ultimate,
             portraitUrl: portraitUrl || "",
             bodyUrl: portraitUrl || "",
@@ -5462,17 +5535,17 @@ async function buildMonokumaFileScreenData(caseFile) {
     };
 }
 
-async function openMonokumaFileForCase(caseFile) {
+async function openMonokumaFileForCase(caseFile, index = 0) {
     let data;
     try {
-        data = await buildMonokumaFileScreenData(caseFile);
+        data = await buildMonokumaFileScreenData(caseFile, index);
     } catch (err) {
         console.warn("[Dangan][Case] Monokuma File screen data failed:", err);
         return;
     }
     const root = extension_settings[extensionName] ||= {};
     root.monokumaFiles ||= {};
-    root.monokumaFiles[getMonokumaFileTitle(caseFile)] = data;
+    root.monokumaFiles[getMonokumaFileTitle(caseFile, index)] = data;
     saveSettingsDebounced();
     // Let the investigation banner finish first.
     await new Promise((r) => setTimeout(r, 2600));
@@ -5755,6 +5828,9 @@ function withRoomLabels(caseFile) {
         body: { ...caseFile.body, roomLabel: label(caseFile.body?.roomId, caseFile.body?.roomLabel) },
         gathering: caseFile.gathering ? { ...caseFile.gathering, roomLabel: label(caseFile.gathering.roomId, caseFile.gathering.roomLabel) } : null,
         clues: (caseFile.clues || []).map((c) => ({ ...c, roomLabel: c.roomId ? label(c.roomId, c.roomLabel) : "" })),
+        secondVictim: caseFile.secondVictim?.name
+            ? { ...caseFile.secondVictim, body: { ...caseFile.secondVictim.body, roomLabel: label(caseFile.secondVictim.body?.roomId, caseFile.secondVictim.body?.roomLabel) } }
+            : null,
     };
 }
 
@@ -5783,9 +5859,9 @@ function openCaseFileEditorFromMonopad() {
             const current = getCaseFile();
             if (!current || current.status !== CASE_STATUS.PLANNED) return "Only a case that hasn't happened yet can be regenerated.";
             try {
-                const fresh = await generateCaseFile({ deadlineDays: Math.max(1, current.motive.deadlineDay - ensureTimeTrackerState().day + 1) });
+                const fresh = await generateCaseFile({ deadlineDays: Math.max(1, current.motive.deadlineDay - ensureTimeTrackerState().day + 1), shape: current.shape });
                 setCaseFile({ ...fresh, motive: current.motive, createdAt: current.createdAt, createdDay: current.createdDay });
-                caseDebug("REGENERATED", "A new plan replaced the old one.");
+                caseDebug("REGENERATED", `A new "${fresh.shape}" plan replaced the old one.`);
                 return "";
             } catch (err) {
                 return `Couldn't generate: ${err?.message || err}`;
@@ -5800,11 +5876,7 @@ function openCaseFileEditorFromMonopad() {
         editMotive: openMotiveEditorFromAnywhere,
         clear: async () => {
             const caseFile = getCaseFile();
-            const victim = caseFile ? findRosterCharacter(caseFile.victim) : null;
-            if (victim?.missing && caseFile?.status === CASE_STATUS.COMMITTED && !caseFile.discovered) {
-                victim.missing = false;
-                saveCharacters();
-            }
+            releaseMissingVictims(caseFile);
             setCaseFile(null);
         },
         commit: async () => {
@@ -5829,7 +5901,7 @@ async function openStoredMonokumaFile(title) {
 function recordEmergentClue(bullet) {
     const caseFile = getCaseFile();
     if (!caseFile?.discovered || caseFile.status === CASE_STATUS.CLOSED) return;
-    if (bullet.title === getMonokumaFileTitle(caseFile)) return;
+    if (bullet.title === getMonokumaFileTitle(caseFile) || bullet.title === getMonokumaFileTitle(caseFile, 1)) return;
     // A witness's "<Name>'s Account" puts their testimony on record.
     const told = markWitnessTold(caseFile, bullet.title);
     if (told !== caseFile) caseDebug("TESTIMONY", bullet.title);
@@ -6852,7 +6924,7 @@ function caseTruthFor(purpose, opts = {}) {
 function closeCaseAfterVote(guess) {
     const caseFile = getCaseFile();
     if (!caseFile || caseFile.status === CASE_STATUS.CLOSED) return;
-    const correct = normalizeName(String(guess || '')) === normalizeName(caseFile.killer);
+    const correct = normalizeName(String(guess || '')) === normalizeName(caseBlackened(caseFile));
     setCaseFile({ ...caseFile, status: CASE_STATUS.CLOSED, verdict: guess ? (correct ? 'correct' : 'wrong') : '' });
     caseDebug('VERDICT', `${guess || 'nobody'} — ${correct ? 'correct' : 'wrong'}. The case is closed.`);
 }
@@ -11300,6 +11372,12 @@ function applySettingsTabUI() {
     const partnerStyleSelect = document.getElementById("dangan_examine_partner_reaction_style");
     if (partnerStyleSelect) partnerStyleSelect.value = tab.examinePartnerReactionStyle === "aside" ? "aside" : "message";
 
+    const twistsSelect = document.getElementById("dangan_case_twists");
+    if (twistsSelect) {
+        const raw = String(tab.caseTwists || "sometimes");
+        twistsSelect.value = ["off", "sometimes", "often"].includes(raw) ? raw : "sometimes";
+    }
+
     const partnerSelect = document.getElementById("dangan_examine_partner_reactions");
     if (partnerSelect) {
         const raw = String(tab.examinePartnerReactions || "clues");
@@ -14173,6 +14251,11 @@ $(".monopad-icon").on("mouseenter", function () {
 
         $("#dangan_examine_partner_reaction_style").on("change", function () {
             setMonopadSetting("examinePartnerReactionStyle", this.value === "aside" ? "aside" : "message");
+        });
+
+        $("#dangan_case_twists").on("change", function () {
+            const next = String(this.value || "sometimes");
+            setMonopadSetting("caseTwists", ["off", "sometimes", "often"].includes(next) ? next : "sometimes");
         });
 
         $("#dangan_examine_partner_reactions").on("change", function () {
@@ -18158,6 +18241,27 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             case 'motive':
                 openMotiveEditorFromAnywhere();
                 return '';
+            case 'shape': {
+                const shape = String(rest[0] || '').toLowerCase();
+                if (!SHAPE_IDS.includes(shape)) {
+                    notify({ tone: 'warn', title: '/case shape', message: `Use one of: ${SHAPE_IDS.join(', ')}.` });
+                    return '';
+                }
+                if (!caseFile || caseFile.status !== CASE_STATUS.PLANNED) {
+                    notify({ tone: 'warn', title: '/case shape', message: 'Only a planned case (before the murder) can be regenerated. Announce a motive first.' });
+                    return '';
+                }
+                notify({ title: 'REPLANNING', message: `Planning a "${shape}" case for the same motive…`, durationMs: 4000 });
+                try {
+                    const fresh = await generateCaseFile({ deadlineDays: Math.max(1, caseFile.motive.deadlineDay - ensureTimeTrackerState().day + 1), shape });
+                    setCaseFile({ ...fresh, motive: caseFile.motive, createdAt: caseFile.createdAt, createdDay: caseFile.createdDay });
+                    const got = getCaseFile().shape;
+                    notify({ title: 'CASE REPLANNED', message: got === shape ? `The case is now "${shape}". /case status shows it (spoilers).` : `The AI's "${shape}" plan didn't hold up, so it's "${got}". Try again.` });
+                } catch (err) {
+                    notify({ tone: 'error', title: '/case shape', message: String(err?.message || err) });
+                }
+                return '';
+            }
             case 'faces': {
                 const { people, shown } = await showMotiveDespair();
                 return `${shown}/${people.length}`;
@@ -18183,7 +18287,7 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             case 'lastraw': {
                 const g = lastCaseGeneration;
                 const text = g
-                    ? `Last plan from the AI (source: ${g.source}${g.meta ? `, model ${g.meta.model}, finish reason ${g.meta.finishReason || '?'}, tokens ${JSON.stringify(g.meta.usage || {})}` : ''}, ${new Date(g.at).toLocaleTimeString()}, ${g.raw.length} characters)\nResult: ${g.error || 'accepted'}\n\n${g.raw || '(empty reply)'}`
+                    ? `Last plan from the AI (source: ${g.source}${g.meta ? `, model ${g.meta.model}, finish reason ${g.meta.finishReason || '?'}, tokens ${JSON.stringify(g.meta.usage || {})}` : ''}, ${new Date(g.at).toLocaleTimeString()}, ${g.raw.length} characters)\nShape asked for: ${g.shape || 'standard'}${g.warning ? ` (${g.warning})` : ''}\nResult: ${g.error || 'accepted'}\n\n${g.raw || '(empty reply)'}`
                     : 'No plan has been generated since the page loaded.';
                 await showCaseDebugText('LAST PLAN FROM THE AI', text);
                 return '';
@@ -18203,22 +18307,18 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
                 return '';
             }
             case 'clear': {
-                const victim = caseFile ? findRosterCharacter(caseFile.victim) : null;
-                if (victim?.missing && caseFile?.status === CASE_STATUS.COMMITTED && !caseFile.discovered) {
-                    victim.missing = false;
-                    saveCharacters();
-                }
+                releaseMissingVictims(caseFile);
                 setCaseFile(null);
                 notify({ title: 'CASE CLEARED', message: 'The Case File is gone.' });
                 return '';
             }
             default:
-                notify({ tone: 'warn', title: '/case', message: 'Use status, prompt [name], lastraw, motive, faces, cancel, commit, discover, file or clear.' });
+                notify({ tone: 'warn', title: '/case', message: 'Use status, prompt [name], lastraw, shape, motive, faces, cancel, commit, discover, file or clear.' });
                 return '';
         }
     },
-    helpString: 'Debug tools for the hidden Case File (spoilers!). <code>/case status</code> shows the plan, <code>/case prompt [name]</code> shows what the AI would be told for the next reply (as that speaker), <code>/case lastraw</code> shows the last plan the AI sent back (for when a motive fails), <code>/case motive</code> edits the motive and its deadline without spoilers, <code>/case faces</code> gives everyone here a negative sprite like a motive does, <code>/case cancel</code> takes the motive back (before the murder), <code>/case commit</code> runs the murder now, <code>/case discover</code> finds the body now, <code>/case file timeOfDeath|cause|injuries &lt;text&gt;</code> updates the Monokuma File, <code>/case clear</code> drops the case.',
-    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'status | prompt [name] | lastraw | motive | faces | cancel | commit | discover | file <field> <text> | clear', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
+    helpString: 'Debug tools for the hidden Case File (spoilers!). <code>/case status</code> shows the plan, <code>/case prompt [name]</code> shows what the AI would be told for the next reply (as that speaker), <code>/case lastraw</code> shows the last plan the AI sent back (for when a motive fails), <code>/case shape standard|wrong_victim|attacker_victim|double|suicide|accomplice|decoy</code> replans the case (before the murder) with that twist, <code>/case motive</code> edits the motive and its deadline without spoilers, <code>/case faces</code> gives everyone here a negative sprite like a motive does, <code>/case cancel</code> takes the motive back (before the murder), <code>/case commit</code> runs the murder now, <code>/case discover</code> finds the body now, <code>/case file timeOfDeath|cause|injuries &lt;text&gt;</code> updates the Monokuma File, <code>/case clear</code> drops the case.',
+    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'status | prompt [name] | lastraw | shape <shape> | motive | faces | cancel | commit | discover | file <field> <text> | clear', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({

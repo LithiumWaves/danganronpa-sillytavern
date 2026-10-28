@@ -22,6 +22,7 @@ export const STORY_KEYS = Object.freeze([
     "timeTracker",
     "investigationUnderway",
     "caseFile",
+    "caseHistory",
     "monokumaFiles",
     "caseFileRevealed",
     "motiveSchedule",

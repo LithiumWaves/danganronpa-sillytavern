@@ -3,7 +3,7 @@
 // own character gets their secret, and only while they're the one replying.
 // Most daily life replies get nothing at all.
 
-import { CASE_STATUS, accountTitle, buildMonokumaFileBullet, getTimeSlot, isGatheringNow, listWitnessTestimony, pickForeshadowingBeat } from "./caseFile.js";
+import { CASE_STATUS, accountTitle, buildMonokumaFileBullet, getSecondVictim, getTimeSlot, isGatheringNow, listWitnessTestimony, pickForeshadowingBeat, secretRolesOf } from "./caseFile.js";
 import { buildPartnerReactionNote } from "./examine.js";
 
 export const CASE_PROMPT_KEY = "dangan_case";
@@ -32,20 +32,96 @@ function gatheringWords(cf) {
         : "";
 }
 
+const KEEP_HIDDEN = "Never reveal this, never hint at it out loud, and don't act on it in this reply. Keep acting like yourself, but small cracks can show: distraction, nerves, odd questions.";
+const PROTECT = "Protect yourself. Lie if you must, but keep your story consistent, and never confess unless you are cornered at the Class Trial.";
+
+function secretHeader(name) {
+    return `[SECRET FOR ${String(name).toUpperCase()} ONLY]`;
+}
+
+function when(cf) {
+    return `${timeWords(cf.murderTime)} of Day ${cf.murderDay}`;
+}
+
+// What the killer knows before the murder. A wrong-victim killer aims at
+// someone else; an attacked killer plans nothing (the victim attacks them).
 function killerPlanned(cf) {
-    return `[SECRET FOR ${cf.killer.toUpperCase()} ONLY]
-You, ${cf.killer}, have secretly decided to kill ${cf.victim} during ${timeWords(cf.murderTime)} of Day ${cf.murderDay}.${gatheringWords(cf)}
-Why: ${cf.motiveLink}
-Your plan: ${cf.method}
-Never reveal this, never hint at it out loud, and don't act on it in this reply. Keep acting like yourself, but small cracks can show: distraction, nerves, odd questions.`;
+    if (cf.shape === "attacker_victim") return "";
+    const second = getSecondVictim(cf);
+    const target = cf.shape === "wrong_victim" ? cf.intendedVictim : cf.victim;
+    const lines = [
+        secretHeader(cf.killer),
+        `You, ${cf.killer}, have secretly decided to kill ${target} during ${when(cf)}.${gatheringWords(cf)}`,
+        `Why: ${cf.motiveLink}`,
+        `Your plan: ${cf.method}`,
+    ];
+    if (cf.shape === "wrong_victim") lines.push(`Unknown to you, it will go wrong and ${cf.victim} will die instead. Act only on what you know now.`);
+    if (cf.shape === "accomplice" && cf.accomplices.length) lines.push(`${cf.accomplices.join(" and ")} will secretly help you.`);
+    if (second && same(second.killer, cf.killer)) lines.push(`You will also kill ${second.name}.`);
+    lines.push(KEEP_HIDDEN);
+    return lines.join("\n");
 }
 
 function killerCommitted(cf) {
     const timeline = cf.timeline.length ? `\nWhat happened: ${cf.timeline.join(" → ")}` : "";
-    return `[SECRET FOR ${cf.killer.toUpperCase()} ONLY]
-You, ${cf.killer}, killed ${cf.victim}. ${cf.method}${timeline}
+    const second = getSecondVictim(cf);
+    const how = {
+        wrong_victim: `You meant to kill ${cf.intendedVictim}, but it went wrong and ${cf.victim} died instead. `,
+        attacker_victim: `${cf.victim} attacked you, meaning to kill you, and died in the struggle. You covered it up. `,
+    }[cf.shape] || "";
+    const also = second && same(second.killer, cf.killer) ? ` You also killed ${second.name}.` : "";
+    const helpers = cf.shape === "accomplice" && cf.accomplices.length ? ` ${cf.accomplices.join(" and ")} helped you.` : "";
+    return `${secretHeader(cf.killer)}
+${how}You, ${cf.killer}, killed ${cf.victim}.${also}${helpers} ${cf.method}${timeline}
 Weapon: ${cf.weapon}.${concealedNote(cf)}
-Protect yourself. Lie if you must, but keep your story consistent, and never confess unless you are cornered at the Class Trial.`;
+${PROTECT}`;
+}
+
+// The secrets of everyone else the twist involves, for `name` only.
+function otherSecrets(cf, name, committed) {
+    const roles = secretRolesOf(cf, name);
+    const notes = [];
+    if (roles.includes("suicide") && !committed) {
+        notes.push(`${secretHeader(name)}
+You, ${name}, have secretly decided to end your own life during ${when(cf)}, and to make it look like something else.${gatheringWords(cf)}
+Why: ${cf.motiveLink}
+Your plan: ${cf.method}
+${KEEP_HIDDEN}`);
+    }
+    if (roles.includes("attacker") && !committed) {
+        notes.push(`${secretHeader(name)}
+You, ${name}, have secretly decided to kill ${cf.killer} during ${when(cf)}, to escape.
+Why: ${cf.motiveLink}
+${KEEP_HIDDEN}`);
+    }
+    if (roles.includes("accomplice")) {
+        notes.push(committed
+            ? `${secretHeader(name)}
+You, ${name}, helped ${cf.killer} kill ${cf.victim}. ${cf.method}
+Only ${cf.killer} is the blackened; you are not. Protect ${cf.killer} and yourself, and never confess unless you are cornered at the Class Trial.`
+            : `${secretHeader(name)}
+You, ${name}, have secretly agreed to help ${cf.killer} kill ${cf.victim} during ${when(cf)}.
+Their plan: ${cf.method}
+Only ${cf.killer} will be the blackened. ${KEEP_HIDDEN}`);
+    }
+    if (roles.includes("decoy")) {
+        notes.push(committed
+            ? `${secretHeader(name)}
+You, ${name}, believe you killed ${cf.victim}: you tried, and you think it worked. You're terrified of being found out. Act on that belief, and never confess unless you are cornered at the Class Trial.`
+            : `${secretHeader(name)}
+You, ${name}, have secretly decided to kill ${cf.victim} during ${when(cf)}. The motive has gotten to you.
+${KEEP_HIDDEN}`);
+    }
+    if (roles.includes("second_killer")) {
+        const second = getSecondVictim(cf);
+        notes.push(committed
+            ? `${secretHeader(name)}
+You, ${name}, killed ${second.name}. ${PROTECT}`
+            : `${secretHeader(name)}
+You, ${name}, have secretly decided to kill ${second.name} during ${when(cf)}.
+${KEEP_HIDDEN}`);
+    }
+    return notes;
 }
 
 // Who has already told the player what they saw (never what the others know).
@@ -69,7 +145,7 @@ function investigationFacts(cf, { roomId, truthBulletTitles, victimUltimate }) {
     const here = cf.clues.filter((c) => c.roomId && c.roomId === roomId).map((c) => `- ${c.text}`);
     const found = truthBulletTitles.length ? truthBulletTitles.join("; ") : "nothing yet";
     return `[THE CASE]
-An investigation into ${cf.victim}'s murder is underway.
+An investigation into ${getSecondVictim(cf)?.discovered ? `the deaths of ${cf.victim} and ${getSecondVictim(cf).name}` : `${cf.victim}'s death`} is underway.
 ${file.title}: ${file.description}
 Crime scene: ${cf.body.roomLabel || "unknown"}. ${cf.body.state}
 ${here.length ? `Evidence that can be found in this room if someone looks:\n${here.join("\n")}` : "No key evidence was planned for this room, though smaller details can still turn up."}
@@ -112,7 +188,8 @@ export function buildCasePrompt({
 
     const parts = [];
     let beatId = "";
-    const isKiller = same(speakerName, cf.killer);
+    // A suicide's victim gets their own note, not the killer's.
+    const isKiller = same(speakerName, cf.killer) && cf.shape !== "suicide";
     const dailyLife = phase === "DAY" || phase === "NIGHT";
 
     const time = phase === "NIGHT" ? "night" : "day";
@@ -129,6 +206,7 @@ ${cf.gathering.description}. Play this gathering out with everyone here. At a fi
 Never show or hint at who did it; in the confusion, nobody sees. When ${cf.victim} is found dead, write this on its own line:
 V3C| BODY_DISCOVERY`);
         if (isKiller) parts.push(killerPlanned(cf));
+        parts.push(...otherSecrets(cf, speakerName, false));
     } else if (cf.status === CASE_STATUS.PLANNED && dailyLife) {
         const beat = pickForeshadowingBeat(cf, {
             slot: getTimeSlot(day, time),
@@ -139,10 +217,14 @@ V3C| BODY_DISCOVERY`);
             parts.push(`[A SMALL MOMENT]\nIf it fits the scene, work this in naturally and briefly, without drawing attention to it: ${beat.text}`);
         }
         if (isKiller) parts.push(killerPlanned(cf));
+        parts.push(...otherSecrets(cf, speakerName, false));
     } else if (cf.status === CASE_STATUS.COMMITTED && !cf.discovered && dailyLife) {
-        const when = cf.committedAt ? `${timeWords(cf.committedAt.time)} of Day ${cf.committedAt.day}` : "a while";
-        parts.push(`[SOMEONE IS MISSING]\nNobody has seen ${cf.victim} since ${when}. Nobody knows where they are.`);
+        const since = cf.committedAt ? `${timeWords(cf.committedAt.time)} of Day ${cf.committedAt.day}` : "a while";
+        const second = getSecondVictim(cf);
+        const missing = second ? `${cf.victim} or ${second.name}` : cf.victim;
+        parts.push(`[SOMEONE IS MISSING]\nNobody has seen ${missing} since ${since}. Nobody knows where they are.`);
         if (isKiller) parts.push(killerCommitted(cf));
+        parts.push(...otherSecrets(cf, speakerName, true));
     } else if (cf.discovered && phase === "INVESTIGATION") {
         if (cf.pendingNote === "discovered") {
             parts.push(`[JUST NOW]\nThe player has just walked in and found ${cf.victim}'s body here. Describe the scene and everyone's shock. ${cf.body.state}`);
@@ -154,8 +236,11 @@ V3C| BODY_DISCOVERY`);
             if (note) parts.push(note);
         }
         if (isKiller) parts.push(killerCommitted(cf));
+        parts.push(...otherSecrets(cf, speakerName, true));
     }
 
     if (!parts.length) return none;
-    return { text: [HEADER, ...parts].join("\n\n"), beatId, killerNote: isKiller && parts.some((p) => p.startsWith("[SECRET")), motive, reaction: parts.some((p) => p.startsWith("[INVESTIGATING TOGETHER]")) };
+    const filled = parts.filter(Boolean);
+    if (!filled.length) return none;
+    return { text: [HEADER, ...filled].join("\n\n"), beatId, killerNote: filled.some((p) => p.startsWith("[SECRET")), motive, reaction: filled.some((p) => p.startsWith("[INVESTIGATING TOGETHER]")) };
 }
