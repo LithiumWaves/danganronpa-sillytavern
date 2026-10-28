@@ -926,7 +926,8 @@ body.dangan-theme-investigation #dangan_monopad_button {
     background: rgba(255, 46, 196, 0.18);
 }
 
-.truth-rules-btn {
+.truth-rules-btn,
+.truth-world-btn {
     margin-right: 6px;
 }
 

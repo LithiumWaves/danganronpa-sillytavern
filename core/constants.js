@@ -3,6 +3,7 @@ import { DEFAULT_DAILY_NARRATION_TEMPLATE } from "./case/dailyExamine.js";
 import { DEFAULT_RULES_PROMPT_TEMPLATE, DEFAULT_RULE_BREAK_GRAVE_TEMPLATE, DEFAULT_RULE_BREAK_LIGHT_TEMPLATE, DEFAULT_RULE_BREAK_WARNING_TEMPLATE } from "./rules/schoolRules.js";
 import { DEFAULT_PENALTY_NOTE_TEMPLATE, DEFAULT_RELENT_NOTE_TEMPLATE } from "./case/casePrompts.js";
 import { DEFAULT_EVENT_MARKER_TEMPLATE, DEFAULT_EVENT_PROPOSAL_TEMPLATE } from "./events/groupEvents.js";
+import { DEFAULT_WORLD_TRUTH_TEMPLATE } from "./world/worldTruth.js";
 export const extensionName = "danganronpa-extension";
 
 function normalizeWebExtensionPath(pathname = "") {
@@ -270,6 +271,17 @@ export const defaultSettings = {
     confirmGravePunishments: true,
     // A violation's one-time note still waiting for the next reply.
     ruleBreakNote: null,
+    // The mysteries running through the whole game (core/world/worldTruth.js):
+    // the mastermind and the secrets of the world, per save, and whether the
+    // player chose to see them.
+    worldMysteries: true,
+    worldTruth: null,
+    worldTruthRevealed: false,
+    // Flashback Lights hand out lost memories at a chapter's start; off, those
+    // secrets are found by exploring instead.
+    flashbackLights: true,
+    // The chapter the final trial can start from.
+    finalChapter: 6,
     // Examine mode in daily life too (flavour, Monocoins, hidden Monokumas).
     dailyExamineEnabled: true,
     // This chapter's daily examine spots, coins and hidden Monokumas
@@ -413,6 +425,9 @@ Don't use it at any other time.`,
     // that sometimes has one propose an event (core/events/groupEvents.js).
     markerEvents: DEFAULT_EVENT_MARKER_TEMPLATE,
     eventProposal: DEFAULT_EVENT_PROPOSAL_TEMPLATE,
+    // The hidden call that writes the truth of the world
+    // (core/world/worldTruth.js); the JSON format is added if it's left out.
+    worldTruthDraft: DEFAULT_WORLD_TRUTH_TEMPLATE,
     markerAnnouncements: `[ANNOUNCEMENT MARKERS]
 When Monokuma makes an announcement in the story, add the matching marker on its own line:
 V3C| DAY_ANNOUN for the morning announcement

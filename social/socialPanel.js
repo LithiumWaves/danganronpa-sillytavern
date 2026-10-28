@@ -55,6 +55,7 @@ export function createSocialPanelController({
     getPromeSpritePack,
     getMonopadSetting,
     onCharacterDead = null,
+    onCharacterMastermind = null,
     pickImportedClassmates = null,
     addCharactersToRoster = null,
 }) {
@@ -146,6 +147,7 @@ export function createSocialPanelController({
             if (!char.isPlayer) saveCharacters();
             applyStampState(char.dead, char.missing, char.mastermind);
             renderNoCharacterOverlay();
+            if (char.mastermind && !char.isPlayer) onCharacterMastermind?.(char.name);
         });
 
         // Load neutral sprite

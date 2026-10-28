@@ -27,6 +27,8 @@ export const STORY_KEYS = Object.freeze([
     "groupEvents",
     "floorExplore",
     "ruleBreakNote",
+    "worldTruth",
+    "worldTruthRevealed",
     "monokumaFiles",
     "caseFileRevealed",
     "motiveSchedule",

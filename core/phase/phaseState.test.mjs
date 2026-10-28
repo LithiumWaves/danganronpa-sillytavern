@@ -27,6 +27,8 @@ function run() {
     assert(dayActions.find((a) => a.id === "pass-time").disabled, "pass time disabled once used");
     assert(ids(dayActions).includes("start-investigation"), "investigation can be started by hand");
     assert(ids(dayActions).includes("plan-event") && !ids(inv).includes("plan-event"), "events are planned in daily life");
+    assert(!ids(dayActions).includes("flashback") && ids(getPhaseActions({ phase: PHASES.DAY, timeTracker: day, flashbackHeld: true })).includes("flashback"), "a held Flashback Light can be used");
+    assert(getPhaseActions({ phase: PHASES.NIGHT, timeTracker: night, finalTrialReady: true }).find((a) => a.id === "final-trial")?.confirm, "the final trial asks first");
 
     const nightActions = getPhaseActions({ phase: PHASES.NIGHT, timeTracker: night, canUndo: true, undoLabel: "Pass time" });
     assert(ids(nightActions).includes("sleep"), "sleep at night");

@@ -49,6 +49,9 @@ import { openMonokumaFile } from "./truth/monokumaFile.js";
 import { openCaseFileEditor } from "./truth/caseFileEditor.js";
 import { RULES_PROMPT_KEY, RULE_SOURCES, RULE_SEVERITY, addRule, buildRuleBreakNote, buildRulesPrompt, createDefaultRules, formatRulesList, normalizeRules, parseRuleMarkers, ruleByNumber } from "./core/rules/schoolRules.js";
 import { playBloodSplash } from "./vfx/bloodSplash.js";
+import { DEFAULT_FINAL_CHAPTER, buildKnownSecretsPrompt, buildMastermindNote, buildWorldTruthBlock, buildWorldTruthPrompt, chapterStartReveals, describeWorldTruth, findSecretAtSpot, isMastermind, normalizeWorldTruth, parseWorldTruthResponse, revealFinalSecrets, revealSecret } from "./core/world/worldTruth.js";
+import { openWorldTruthView } from "./truth/worldTruthEditor.js";
+import { buildEndingJournalText, openEndingChoice, playFlashbackFlash } from "./trial/finalTrial.js";
 import { openSchoolRulesView } from "./truth/schoolRulesView.js";
 import { openMotiveEditor } from "./truth/motiveEditor.js";
 import { buildRoutineSuggestionPrompt, describeRoutines, mergeSuggestedRoutines, normalizeRoutines, parseRoutineSuggestion } from "./overworld/routines.js";
@@ -938,7 +941,10 @@ function setCurrentChapterIndex(idx) {
     refreshSettingsChapterSelect();
     if (document.getElementById('chapters-body')) renderChaptersPanel();
     refreshChapterLockedFloors();
-    if (changed && next > prevChapter) void openFloorsForChapter(prevChapter, next);
+    if (changed && next > prevChapter) void (async () => {
+        await openFloorsForChapter(prevChapter, next);
+        await onChapterStartForWorld(next);
+    })();
     return true;
 }
 
@@ -967,6 +973,250 @@ async function openFloorsForChapter(from, to, { announce = true } = {}) {
     }
     console.log(`[Dangan][Explore] Opened ${floors.map((f) => f.label).join(", ")} (chapter ${from} → ${to}).`);
     return added;
+}
+
+// ── The truth of the world ───────────────────────────────────────────────────
+// The mysteries running through the whole game (core/world/worldTruth.js).
+
+function getWorldTruth() {
+    return normalizeWorldTruth(extension_settings[extensionName]?.worldTruth);
+}
+
+function setWorldTruth(wt) {
+    extension_settings[extensionName] ||= {};
+    extension_settings[extensionName].worldTruth = normalizeWorldTruth(wt);
+    saveSettingsDebounced();
+    try { refreshPhaseHud(); } catch { /* not ready */ }
+    try { itemsPanelController?.renderSkillsItemsPanel?.(); } catch { /* not ready */ }
+}
+
+function worldMysteriesOn() {
+    return getMonopadSetting("worldMysteries") !== false;
+}
+
+function flashbackLightsOn() {
+    return getMonopadSetting("flashbackLights") !== false;
+}
+
+function currentChapter() {
+    return Number(getMonopadSetting("chapterIndex") ?? 0);
+}
+
+// Every room on this save's map, locked floors too, with the chapter its
+// floor opens in.
+function listWorldRooms() {
+    const scope = extension_settings[extensionName]?.map?.scope;
+    const unlocks = new Map((mapPanelController?.listFloorUnlocks?.() || []).map((f) => [`${f.areaKey}/${f.floorKey}`, f.unlockChapter]));
+    const seen = new Set();
+    return (mapPanelController?.getAllPins?.() || [])
+        .filter((pin) => pin?.type === "room" && pin.locationId && !pin.hidden && !pin._generated && pinInScope(pin, scope))
+        .filter((pin) => !seen.has(pin.locationId) && seen.add(pin.locationId))
+        .map((pin) => ({ id: pin.locationId, label: pin.label || pin.locationId, unlockChapter: unlocks.get(`${pin.areaKey}/${pin.floorKey}`) || 0 }));
+}
+
+// The text of the lorebooks in use, for drafting.
+async function collectLorebookText(maxChars = 4000) {
+    const names = Array.isArray(worldInfoApi.selected_world_info) ? [...worldInfoApi.selected_world_info] : [];
+    const chatLore = window.SillyTavern?.getContext?.()?.chatMetadata?.world_info;
+    if (chatLore && !names.includes(chatLore)) names.push(chatLore);
+    const parts = [];
+    for (const name of names) {
+        try {
+            const data = await worldInfoApi.loadWorldInfo?.(name);
+            for (const entry of Object.values(data?.entries || {})) {
+                if (entry?.disable) continue;
+                const line = [entry.comment, entry.content].filter(Boolean).join(": ").replace(/\s+/g, " ").trim();
+                if (line) parts.push(line);
+            }
+        } catch (e) {
+            console.warn(`[Dangan][World] couldn't read the lorebook ${name}:`, e);
+        }
+    }
+    return parts.join("\n").slice(0, maxChars);
+}
+
+let worldDraftInFlight = false;
+
+// One hidden call writes the truth of the world. Returns "" or an error.
+async function draftWorldTruth({ quiet = false } = {}) {
+    if (worldDraftInFlight) return "Already drafting.";
+    const cast = listCaseCast();
+    if (cast.length < 2) return "At least two living classmates are needed.";
+    const rooms = listWorldRooms();
+    const finalChapter = Number(getMonopadSetting("finalChapter")) || DEFAULT_FINAL_CHAPTER;
+    worldDraftInFlight = true;
+    try {
+        const prompt = buildWorldTruthPrompt({
+            cast,
+            player: getCasePlayerName(),
+            rooms,
+            lorebook: await collectLorebookText(),
+            finalChapter,
+            template: getMonopadSetting("worldTruthDraftPromptTemplate") || "",
+        });
+        let lastError = "";
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+            const retry = lastError ? `\n\nYour last answer was rejected: ${lastError} Answer again with only the corrected JSON object.` : "";
+            const raw = await generateIsolated(`${prompt}${retry}`, { allowDialogue: true, maxTokens: 4000, reasoning: { effort: "low", exclude: true } });
+            const { worldTruth, error } = parseWorldTruthResponse(raw, { cast, player: getCasePlayerName(), rooms, finalChapter });
+            if (worldTruth) {
+                extension_settings[extensionName].worldTruthRevealed = false;
+                setWorldTruth(worldTruth);
+                if (!quiet) notify({ title: "THE TRUTH OF THE WORLD", message: `Written: ${worldTruth.secrets.length} secrets to uncover over ${finalChapter} chapters. It stays hidden.` });
+                console.log("[Dangan][World] Drafted the truth of the world.");
+                return "";
+            }
+            lastError = error;
+            console.warn(`[Dangan][World] Draft rejected (attempt ${attempt + 1}): ${error}`);
+        }
+        return lastError || "The truth couldn't be drafted.";
+    } catch (err) {
+        return `The AI call failed: ${err?.message || err}`;
+    } finally {
+        worldDraftInFlight = false;
+    }
+}
+
+// A secret comes out: everyone knows it from now on.
+function learnSecret(secret, { how = "" } = {}) {
+    const wt = getWorldTruth();
+    if (!wt || !secret) return;
+    setWorldTruth(revealSecret(wt, secret.id, { chapter: currentChapter() }));
+    notify({ title: "A SECRET OF THE WORLD", message: `${secret.title}${how ? ` (${how})` : ""}. Truth → WORLD keeps what's been uncovered.`, actionLabel: "VIEW", onAction: openWorldTruthFromMonopad, durationMs: 9000 });
+}
+
+// A chapter starts: Monokuma lets a secret slip, and a Flashback Light may
+// be waiting (Settings → Gameplay → Flashback Lights).
+async function onChapterStartForWorld(chapter) {
+    const wt = getWorldTruth();
+    if (!wt || !worldMysteriesOn()) return;
+    const { monokuma, flashback } = chapterStartReveals(wt, { chapter, flashbackLights: flashbackLightsOn() });
+    if (flashback) {
+        setWorldTruth({ ...wt, flashbackPending: flashback.id });
+        notify({ title: "FLASHBACK LIGHT", message: "Monokuma left a Flashback Light for you. It's in your Key Items.", actionLabel: "USE", onAction: () => { void useFlashbackLight(); }, durationMs: 12000 });
+    }
+    if (monokuma) {
+        await monokumaAnnouncementController?.triggerAsync("MOTIVE", { text: `Puhuhu... Want to hear a little secret? ${monokuma.text}`, label: "MONOKUMA'S LITTLE SECRET" });
+        learnSecret(monokuma, { how: "Monokuma" });
+    }
+}
+
+// The white flash, and the memory it brings back.
+async function useFlashbackLight() {
+    const wt = getWorldTruth();
+    const secret = wt?.secrets.find((s) => s.id === wt.flashbackPending);
+    if (!secret) {
+        notify({ tone: "warn", title: "NO FLASHBACK LIGHT", message: "You don't have a Flashback Light." });
+        return false;
+    }
+    await playFlashbackFlash();
+    const player = getActivePersonaName() || getCasePlayerName();
+    const text = `A blinding light... and memories come flooding back. ${secret.text}`;
+    const shown = vnModeController?.showAside?.({ name: getCharacterDisplayName?.(player) || player || "", text });
+    if (shown) await shown;
+    learnSecret(secret, { how: "Flashback Light" });
+    return true;
+}
+
+// Examining a spot in daily life may turn up a secret file.
+async function maybeFindSecretFile(roomId, spotLabel) {
+    const wt = getWorldTruth();
+    if (!wt || !worldMysteriesOn() || !roomId) return false;
+    const spots = (getDailyExamine().rooms[roomId]?.spots || []).map((sp) => sp.label);
+    const { worldTruth, secret } = findSecretAtSpot(wt, { roomId, spotLabel, spots, chapter: currentChapter(), flashbackLights: flashbackLightsOn() });
+    if (worldTruth !== wt) setWorldTruth(worldTruth);
+    if (!secret) return false;
+    const text = `Tucked away here is a file marked "TOP SECRET": ${secret.title}. ${secret.text}`;
+    const shown = vnModeController?.showAside?.({ name: "", text });
+    if (shown) await shown;
+    learnSecret(secret, { how: "a secret file" });
+    return true;
+}
+
+// With daily examine off, a secret file is found just by walking in.
+function maybeFindSecretOnEntry(roomId) {
+    if (getMonopadSetting("dailyExamineEnabled") === false && getCurrentPhase() !== "TRIAL") void maybeFindSecretFile(roomId, "");
+}
+
+// The mastermind stamped in Social: the right person, in the final chapter,
+// brings the final truth out.
+function onMastermindStamped(name) {
+    const wt = getWorldTruth();
+    if (!wt || !isMastermind(wt, name) || !isFinalChapterReached(wt)) return;
+    const before = wt.secrets.filter((s) => s.source === "final" && !s.revealed).length;
+    if (!before) return;
+    setWorldTruth(revealFinalSecrets(wt, { chapter: currentChapter() }));
+    notify({ title: "THE TRUTH", message: `${name}… The final truth of this killing game is out. Truth → WORLD has it.`, actionLabel: "VIEW", onAction: openWorldTruthFromMonopad, durationMs: 12000 });
+}
+
+function isFinalChapterReached(wt = getWorldTruth()) {
+    return Boolean(wt) && currentChapter() >= wt.finalChapter;
+}
+
+function isFinalTrialActive() {
+    return getWorldTruth()?.finalTrial === "active";
+}
+
+// START FINAL TRIAL: no victim; the trial is about the truth.
+async function startFinalTrial() {
+    const wt = getWorldTruth();
+    if (!wt) return false;
+    setWorldTruth({ ...wt, finalTrial: "active" });
+    trialManager?.setTrialContext?.("The truth behind the killing game", "Expose the mastermind behind it all", []);
+    const started = await triggerTrialStartFromMapPin();
+    if (started === false) setWorldTruth({ ...getWorldTruth(), finalTrial: "" });
+    return started;
+}
+
+// After the final vote: the truth comes out, then HOPE or DESPAIR, kept in
+// the chapter journal, with the matching music.
+async function finishFinalTrial(guess) {
+    const wt = getWorldTruth();
+    if (!wt) return;
+    const correct = isMastermind(wt, guess);
+    setWorldTruth({ ...revealFinalSecrets(wt, { chapter: currentChapter() }), finalTrial: "done", verdict: correct ? "correct" : "wrong" });
+    const ending = await openEndingChoice({ mastermind: wt.mastermind, correct });
+    setWorldTruth({ ...getWorldTruth(), ending });
+    const idx = currentChapter();
+    const before = String(getChapterJournalData(idx).notes || "").trim();
+    saveChapterJournalData(idx, { notes: `${before ? `${before}\n\n` : ""}${buildEndingJournalText({ ending, mastermind: wt.mastermind, correct, goal: wt.goal })}` });
+    const tracks = ending === "hope" ? "happyTracks" : "sadTracks";
+    if ((getMonopadSetting(tracks) || []).length) playTrackFromSetting(tracks);
+    notify({ title: ending === "hope" ? "HOPE" : "DESPAIR", message: "The ending is written in the chapter journal.", durationMs: 9000 });
+}
+
+// What everyone has uncovered, and the mastermind's own note, for each reply.
+const WORLD_PROMPT_KEY = "dangan_world";
+function syncWorldPrompt() {
+    const setPrompt = window.SillyTavern?.getContext?.()?.setExtensionPrompt || window.setExtensionPrompt;
+    if (typeof setPrompt !== "function") return;
+    const wt = getWorldTruth();
+    const text = wt && worldMysteriesOn() && getCurrentPhase() !== "TRIAL"
+        ? [buildKnownSecretsPrompt(wt), buildMastermindNote(wt, getCaseSpeakerName())].filter(Boolean).join("\n\n")
+        : "";
+    setPrompt(WORLD_PROMPT_KEY, text, 0, 0, false, "system");
+}
+
+function openWorldTruthFromMonopad() {
+    const root = () => (extension_settings[extensionName] ||= {});
+    openWorldTruthView({
+        getWorldTruth,
+        isRevealed: () => Boolean(root().worldTruthRevealed),
+        setRevealed: (on) => { root().worldTruthRevealed = Boolean(on); saveSettingsDebounced(); },
+        getCast: () => [...characters.values()].filter((c) => c?.name && !c.isPlayer && !isHostCharacter(c.name)).map((c) => ({ name: c.name })),
+        getRooms: listWorldRooms,
+        confirm: (opts) => confirmOutsideMonopad({ cancelLabel: "CANCEL", ...opts }),
+        save: async (draft) => {
+            const next = normalizeWorldTruth(draft);
+            if (!next.mastermind) return "Pick the mastermind.";
+            if (!next.secrets.length) return "Add at least one secret.";
+            setWorldTruth(next);
+            return "";
+        },
+        draft: () => draftWorldTruth(),
+        clear: async () => setWorldTruth(null),
+        useFlashback: useFlashbackLight,
+    });
 }
 
 function noteRoomExplored(locationId) {
@@ -5397,10 +5647,13 @@ async function deliverMotiveItem(caseFile) {
 
 // The player's motive item, for Key Items, while the case is open.
 function getMotiveKeyItems() {
+    const out = [];
     const caseFile = getCaseFile();
-    if (!isCaseOpen(caseFile)) return [];
-    const item = getMotiveItem(caseFile, getCasePlayerName());
-    return item ? [{ id: "motive_item", name: item.title, description: item.contents }] : [];
+    const item = isCaseOpen(caseFile) ? getMotiveItem(caseFile, getCasePlayerName()) : null;
+    if (item) out.push({ id: "motive_item", name: item.title, description: item.contents });
+    // A Flashback Light waiting to be used (Phase HUD → USE FLASHBACK LIGHT).
+    if (getWorldTruth()?.flashbackPending) out.push({ id: "flashback_light", name: "Flashback Light", description: "A strange device from Monokuma. Its flash brings back lost memories. Use it from the phase readout's menu, or Truth → WORLD." });
+    return out;
 }
 
 // The motive, without spoilers: its title, what it offers and the deadline.
@@ -6188,6 +6441,7 @@ async function examineLookDaily(look, claim = {}) {
         || (examineController?.isOpen?.() ? examineController.showNarration({ name, text: narration }) : null);
     if (shown) await shown;
     else notify({ title: name || "EXAMINE", message: narration, durationMs: 10000 });
+    try { await maybeFindSecretFile(roomId, look.label); } catch (e) { console.warn("[Dangan][World] secret file check failed:", e); }
 }
 
 // Where the player dragged each spot, per room and spot name. Rooms are
@@ -6547,6 +6801,7 @@ function syncCasePrompt() {
     if (typeof setPrompt !== "function") return;
     const result = buildCurrentCasePrompt();
     setPrompt(CASE_PROMPT_KEY, result.text, 0, 0, false, "system");
+    try { syncWorldPrompt(); } catch (e) { console.warn("[Dangan][World] prompt sync failed:", e); }
     caseLastSent = result.text ? { ...result, slot: getTimeSlot(ensureTimeTrackerState().day, ensureTimeTrackerState().phase) } : null;
     if (result.text.includes("[THE GATHERING]")) caseDebug("GATHERING", "The public murder's scene note was sent.");
     if (result.beatId) caseDebug("BEAT SENT", getCaseFile()?.foreshadowing.find((b) => b.id === result.beatId)?.text || result.beatId);
@@ -6653,6 +6908,12 @@ async function runPhaseAction(action) {
         case "plan-event":
             await planGroupEventFromPlayer();
             break;
+        case "flashback":
+            await useFlashbackLight();
+            break;
+        case "final-trial":
+            await startFinalTrial();
+            break;
         case "undo":
             undoLastPhaseChange();
             break;
@@ -6720,7 +6981,17 @@ function renderPhaseMenu() {
     })();
 
     const last = phaseHistory.peek();
-    const actions = getPhaseActions({ phase, timeTracker, canUndo: Boolean(last), undoLabel: last?.label, caseOpen, caseCancellable: caseFile?.status === CASE_STATUS.PLANNED });
+    const world = getWorldTruth();
+    const actions = getPhaseActions({
+        phase,
+        timeTracker,
+        canUndo: Boolean(last),
+        undoLabel: last?.label,
+        caseOpen,
+        caseCancellable: caseFile?.status === CASE_STATUS.PLANNED,
+        flashbackHeld: Boolean(world?.flashbackPending),
+        finalTrialReady: Boolean(world) && worldMysteriesOn() && world.finalTrial !== "done" && isFinalChapterReached(world) && !caseOpen,
+    });
     const list = hud.querySelector(".dangan-phase-actions");
     list.replaceChildren(...actions.map((action) => {
         const btn = document.createElement("button");
@@ -7527,6 +7798,11 @@ const investigationStartController = {
 // unless the player turned it off.
 function caseTruthFor(purpose, opts = {}) {
     if (getMonopadSetting('trialUseCaseTruth') === false) return '';
+    // The final trial is about the truth of the world, not a murder.
+    if (isFinalTrialActive()) {
+        const world = buildWorldTruthBlock(getWorldTruth());
+        return world ? `\n\n${world}` : '';
+    }
     const block = buildTrialTruthBlock(getCaseFile(), { purpose, ...opts });
     return block ? `\n\n${block}` : '';
 }
@@ -7697,6 +7973,8 @@ async function leaveClassTrial({ confirm = true } = {}) {
         });
         if (!accepted) return false;
     }
+    // A final trial left before its vote can be started again.
+    if (isFinalTrialActive()) setWorldTruth({ ...getWorldTruth(), finalTrial: "" });
     const session = getTrialSession();
     // /endtrial while a trial is suspended ends that one, wherever it is.
     if (session?.suspended) {
@@ -12094,6 +12372,8 @@ function applySettingsTabUI() {
     }
     const motiveKindsSelect = document.getElementById("dangan_motive_kinds");
     if (motiveKindsSelect) motiveKindsSelect.value = tab.motiveKinds === "announcement" ? "announcement" : "mixed";
+    const finalChapterSelect = document.getElementById("dangan_final_chapter");
+    if (finalChapterSelect) finalChapterSelect.value = String(Math.max(3, Math.min(9, Number(tab.finalChapter) || 6)));
     const planEventsSelect = document.getElementById("dangan_classmates_plan_events");
     if (planEventsSelect) planEventsSelect.value = tab.classmatesPlanEvents === "sometimes" ? "sometimes" : "off";
 
@@ -13934,6 +14214,7 @@ jQuery(async () => {
             },
             getMonopadSetting,
             onCharacterDead: (name) => trialManager?.markCharacterExecuted(name),
+            onCharacterMastermind: (name) => onMastermindStamped(name),
             pickImportedClassmates: () => openRosterSelectModal({
                 title: "Select Classmates",
                 confirmLabel: "Add to Class Roster",
@@ -14987,6 +15268,14 @@ $(".monopad-icon").on("mouseenter", function () {
             setMonopadSetting("motiveKinds", this.value === "announcement" ? "announcement" : "mixed");
         });
 
+        $("#dangan_final_chapter").on("change", function () {
+            const n = Math.max(3, Math.min(9, Number(this.value) || 6));
+            setMonopadSetting("finalChapter", n);
+            // The truth already written moves its final chapter too.
+            const wt = getWorldTruth();
+            if (wt) setWorldTruth({ ...wt, finalChapter: n });
+        });
+
         $("#dangan_classmates_plan_events").on("change", function () {
             setMonopadSetting("classmatesPlanEvents", this.value === "sometimes" ? "sometimes" : "off");
         });
@@ -15488,7 +15777,12 @@ debugSTGlobals();
         playSfx(sfx.click);
         openEventsFromMonopad();
     });
-    $(document).off("click.caseFileEditor").on("click.caseFileEditor", ".truth-case-file-btn:not(.truth-rules-btn)", (e) => {
+    $(document).off("click.worldTruth").on("click.worldTruth", ".truth-world-btn", (e) => {
+        e.stopPropagation();
+        playSfx(sfx.click);
+        openWorldTruthFromMonopad();
+    });
+    $(document).off("click.caseFileEditor").on("click.caseFileEditor", ".truth-case-file-btn:not(.truth-rules-btn):not(.truth-world-btn)", (e) => {
         e.stopPropagation();
         playSfx(sfx.click);
         openCaseFileEditorFromMonopad();
@@ -15897,7 +16191,10 @@ QUOTE: <climactic accusation>`;
             onStartVotingTime: async () => {
                 const topSuspect = trialManager?.getTrialContext?.()?.suspects?.[0]?.name ?? '';
                 // With a case, the real killer is the right answer; otherwise ask.
-                const caseKiller = getMonopadSetting('trialUseCaseTruth') === false ? '' : getCaseBlackened(getCaseFile());
+                const finalTrial = isFinalTrialActive();
+                const caseKiller = getMonopadSetting('trialUseCaseTruth') === false ? ''
+                    : finalTrial ? getWorldTruth()?.mastermind || ''
+                    : getCaseBlackened(getCaseFile());
                 const correctBlackened = caseKiller || await promptForBlackened(topSuspect);
                 const result = await votingScreenController?.run() ?? {};
                 if (result.error) {
@@ -15918,7 +16215,8 @@ QUOTE: <climactic accusation>`;
                 }
 
                 await voteResultsController?.run({ guess, result: correctBlackened });
-                if (caseKiller) closeCaseAfterVote(guess);
+                if (finalTrial) await finishFinalTrial(guess);
+                else if (caseKiller) closeCaseAfterVote(guess);
                 trialManager?.resumeAfterActivity?.();
             },
             onStartQuestionTime: async () => {
@@ -17688,6 +17986,12 @@ async function finishTitleScreenNewGame({ fresh, mode, groupName, groupMembers, 
     saveStore.touchActive();
     refreshSavesPanel();
     onboardingState?.markWelcomeSeen?.();
+    // The truth of the world is written quietly in the background.
+    if (worldMysteriesOn()) {
+        setTimeout(() => {
+            void draftWorldTruth({ quiet: true }).then((err) => { if (err) console.warn("[Dangan][World] New Game draft:", err); });
+        }, 2000);
+    }
     return {
         afterClose: mode === "single" ? null : () => openMonopadTab("map"),
     };
@@ -19249,6 +19553,63 @@ SlashCommandParser.addCommandObject(SlashCommand.fromProps({
 }));
 
 SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: 'world',
+    callback: async (_args, value) => {
+        const [sub = 'status', ...rest] = String(value || '').trim().split(/\s+/).filter(Boolean);
+        const wt = getWorldTruth();
+        switch (sub.toLowerCase()) {
+            case 'status': {
+                const text = describeWorldTruth(wt);
+                await showCaseDebugText('THE TRUTH OF THE WORLD (SPOILERS)', text);
+                return text;
+            }
+            case 'draft': {
+                notify({ title: 'THE TRUTH OF THE WORLD', message: 'Drafting it (one hidden AI call)…', durationMs: 4000 });
+                const error = await draftWorldTruth();
+                if (error) notify({ tone: 'error', title: '/world draft', message: error });
+                return error ? '' : 'drafted';
+            }
+            case 'reveal': {
+                if (!wt) { notify({ tone: 'warn', title: '/world reveal', message: 'No truth yet. Try /world draft.' }); return ''; }
+                const secret = rest[0] ? wt.secrets.find((s) => s.id === rest[0]) : wt.secrets.find((s) => !s.revealed);
+                if (!secret) { notify({ tone: 'warn', title: '/world reveal', message: 'No such secret (or all are out). /world status lists the ids.' }); return ''; }
+                learnSecret(secret, { how: 'debug' });
+                return secret.id;
+            }
+            case 'chapter': {
+                await onChapterStartForWorld(Number(rest[0] ?? currentChapter()));
+                return '';
+            }
+            case 'flashback': {
+                if (wt && !wt.flashbackPending) {
+                    const next = wt.secrets.find((s) => !s.revealed && s.source === 'flashback') || wt.secrets.find((s) => !s.revealed && s.source !== 'final');
+                    if (next) setWorldTruth({ ...wt, flashbackPending: next.id });
+                }
+                await useFlashbackLight();
+                return '';
+            }
+            case 'final': {
+                if (!wt) { notify({ tone: 'warn', title: '/world final', message: 'No truth yet. Try /world draft.' }); return ''; }
+                await startFinalTrial();
+                return '';
+            }
+            case 'ending': {
+                await finishFinalTrial(rest.join(' ') || wt?.mastermind || '');
+                return '';
+            }
+            case 'clear':
+                setWorldTruth(null);
+                return '';
+            default:
+                notify({ tone: 'warn', title: '/world', message: 'Use status, draft, reveal [id], chapter [n], flashback, final, ending [name] or clear.' });
+                return '';
+        }
+    },
+    helpString: 'The truth of the world (spoilers!): <code>/world status</code> shows it, <code>/world draft</code> writes it (one hidden AI call), <code>/world reveal [id]</code> uncovers a secret (the next hidden one without an id), <code>/world chapter [n]</code> runs a chapter start (Monokuma\'s slip, a Flashback Light), <code>/world flashback</code> uses a Flashback Light (handing one out if needed), <code>/world final</code> starts the final trial, <code>/world ending [name]</code> runs the end of the final trial as if that name was voted, <code>/world clear</code> drops it.',
+    unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'status | draft | reveal [id] | chapter [n] | flashback | final | ending [name] | clear', typeList: [ARGUMENT_TYPE.STRING], isRequired: false })],
+}));
+
+SlashCommandParser.addCommandObject(SlashCommand.fromProps({
     name: 'newfloors',
     callback: async (_args, value) => {
         const [sub = 'status', arg] = String(value || '').trim().split(/\s+/);
@@ -19570,6 +19931,7 @@ function setCurrentLocationId(locationId) {
     if (prev !== root.map.currentLocationId) {
         maybeDiscoverBodyOnEntry(root.map.currentLocationId);
         try { noteRoomExplored(root.map.currentLocationId); } catch (e) { console.warn("[Dangan][Explore] visit failed:", e); }
+        try { maybeFindSecretOnEntry(root.map.currentLocationId); } catch (e) { console.warn("[Dangan][World] entry check failed:", e); }
         examineController?.close?.();
         try { refreshPhaseHud(); } catch { /* ignore */ }
     }

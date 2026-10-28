@@ -72,7 +72,7 @@
             <div class="monopad-panel-content" data-panel="truth">
                 <div class="truth-container">
                     <div class="truth-list">
-                        <div class="truth-list-header"><img src="scripts/extensions/third-party/danganronpa-extension/assets/icons/bullets.svg" alt="" class="truth-header-icon">TRUTH BULLETS<button type="button" class="truth-case-file-btn" title="The hidden truth of this chapter's case (spoilers)">CASE FILE</button><button type="button" class="truth-case-file-btn truth-rules-btn" title="The School Regulations">RULES</button></div>
+                        <div class="truth-list-header"><img src="scripts/extensions/third-party/danganronpa-extension/assets/icons/bullets.svg" alt="" class="truth-header-icon">TRUTH BULLETS<button type="button" class="truth-case-file-btn" title="The hidden truth of this chapter's case (spoilers)">CASE FILE</button><button type="button" class="truth-case-file-btn truth-rules-btn" title="The School Regulations">RULES</button><button type="button" class="truth-case-file-btn truth-world-btn" title="The secrets of the world uncovered so far">WORLD</button></div>
                         <div class="truth-sort-bar">
                             <button class="truth-sort-btn active" data-sort="latest" data-other="oldest" data-label-a="SORT: LATEST" data-label-b="SORT: OLDEST">SORT: LATEST</button>
                             <button class="truth-sort-btn" data-sort="az" data-other="za" data-label-a="SORT: A–Z" data-label-b="SORT: Z–A">SORT: A–Z</button>
@@ -1480,6 +1480,38 @@
 
                     <div class="settings-item">
                         <div class="settings-text">
+                            <span class="settings-label">Mysteries of the world</span>
+                            <div class="settings-note">A NEW GAME quietly writes the truth behind the killing game: a mastermind among your classmates and secrets that come out chapter by chapter (secret files to find by examining rooms, things Monokuma lets slip). What's uncovered is in Truth → WORLD, and the whole truth is behind a spoiler gate there. From the final chapter, START FINAL TRIAL names the mastermind and ends with HOPE or DESPAIR.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="worldMysteries"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Flashback Lights</span>
+                            <div class="settings-note">At some chapters' start Monokuma leaves a Flashback Light: use it from the phase readout's menu for a white flash and a memory that comes back. Off: those secrets are hidden in rooms to find by exploring instead.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="flashbackLights"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <label class="settings-label" for="dangan_final_chapter">Final chapter</label>
+                            <div class="settings-note">The chapter the final trial can start from (and that the truth of the world is spread over when it's written). The epilogue always can.</div>
+                        </div>
+                        <select id="dangan_final_chapter" class="settings-select">
+                            <option value="3">Chapter 3</option>
+                            <option value="4">Chapter 4</option>
+                            <option value="5">Chapter 5</option>
+                            <option value="6">Chapter 6</option>
+                            <option value="7">Chapter 7</option>
+                            <option value="8">Chapter 8</option>
+                            <option value="9">Chapter 9</option>
+                        </select>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
                             <label class="settings-label" for="dangan_examine_partner_reactions">Investigation partners react</label>
                             <div class="settings-note">When you examine something with classmates you're investigating with ("Investigate With" in the explore menu), one of them reacts in the chat.</div>
                         </div>
@@ -1617,6 +1649,11 @@
                                 <textarea class="settings-prompt-textarea" data-setting="ruleBreakWarningPromptTemplate" data-template-key="ruleBreakWarning" rows="4" spellcheck="false"></textarea>
                                 <div class="settings-prompt-actions">
                                     <button type="button" class="settings-small-button settings-prompt-reset" data-setting="ruleBreakWarningPromptTemplate" data-template-key="ruleBreakWarning">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">THE TRUTH OF THE WORLD (the hidden call that writes the mastermind and the secrets). Placeholders: <code>{{chapters}}</code>, <code>{{player}}</code>, <code>{{cast}}</code>, <code>{{rooms}}</code>, <code>{{lorebook}}</code>, <code>{{format}}</code> (the JSON it must answer with; added at the end if you leave it out)</div>
+                                <textarea class="settings-prompt-textarea" data-setting="worldTruthDraftPromptTemplate" data-template-key="worldTruthDraft" rows="10" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="worldTruthDraftPromptTemplate" data-template-key="worldTruthDraft">RESET TO DEFAULT</button>
                                 </div>
                                 <div class="settings-prompt-help">GROUP EVENTS (how classmates propose a get-together in a reply; sent during daily life)</div>
                                 <textarea class="settings-prompt-textarea" data-setting="markerEventsPromptTemplate" data-template-key="markerEvents" rows="6" spellcheck="false"></textarea>

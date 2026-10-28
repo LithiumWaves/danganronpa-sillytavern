@@ -37,7 +37,7 @@ export function getStatusLine({ phase, day = 1, chapterLabel = "" } = {}) {
 
 // Actions the player can take from the current phase. Each one names the
 // confirmation to show, so the HUD and the Monopad header behave the same.
-export function getPhaseActions({ phase, timeTracker, canUndo = false, undoLabel = "", caseOpen = false, caseCancellable = false } = {}) {
+export function getPhaseActions({ phase, timeTracker, canUndo = false, undoLabel = "", caseOpen = false, caseCancellable = false, flashbackHeld = false, finalTrialReady = false } = {}) {
     const actions = [];
 
     if (phase === PHASES.INVESTIGATION) {
@@ -109,6 +109,19 @@ export function getPhaseActions({ phase, timeTracker, canUndo = false, undoLabel
 
     if (phase === PHASES.DAY || phase === PHASES.NIGHT) {
         actions.push({ id: "plan-event", label: "PLAN EVENT" });
+        if (flashbackHeld) actions.push({ id: "flashback", label: "USE FLASHBACK LIGHT" });
+        // The mysteries' end: the final trial names the mastermind.
+        if (finalTrialReady) {
+            actions.push({
+                id: "final-trial",
+                label: "START FINAL TRIAL",
+                confirm: {
+                    title: "THE FINAL TRIAL",
+                    message: "Gather everyone for the final trial? There's no victim this time: the trial is about the truth of this killing game, and the vote names the mastermind.",
+                    confirmLabel: "BEGIN",
+                },
+            });
+        }
         actions.push({
             id: "start-investigation",
             label: "START INVESTIGATION",

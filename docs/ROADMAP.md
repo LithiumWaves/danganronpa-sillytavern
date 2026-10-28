@@ -14,7 +14,7 @@ survives a `/clear`.
 | D | Motives as objects and conditions, foiled murders | ✅ Done |
 | E | Rooms that close at night | ✅ Done |
 | F | Group events in daily life | ✅ Done |
-| G | Mysteries through the whole game (Flashback Lights optional) | ⬜ To do |
+| G | Mysteries through the whole game (Flashback Lights optional) | ✅ Done |
 | H | Exploring a newly unlocked floor | ✅ Done |
 | I | Intermissions: Monokuma Theater, mastermind cutaways | ⬜ To do |
 | J | Rules with real punishment | ✅ Done |
@@ -146,7 +146,24 @@ takes the event's room and slot. Extra debug: `/events propose|gather|attend|can
   be one of them.
 - **Debug:** `/events`, `/events add …`.
 
-## Phase G: Mysteries that run through the whole game (#4)
+## Phase G: Mysteries that run through the whole game (#4) — ✅ done
+Built with these differences:
+- Flashback Lights are a setting (**Flashback Lights**, on by default). Off, flashback secrets
+  are hidden in rooms and found by exploring (`revealWay`).
+- Until Phase I's intermissions exist, Monokuma's secrets come out at a chapter's start, over
+  the monitors (`onChapterStartForWorld`, run after the new-floor announcement).
+- One WORLD button in the Truth tab holds both the spoiler-free list and the gated editor
+  (`truth/worldTruthEditor.js`), so there's no separate `secretsView.js`.
+- A secret file's spot in its room is picked the first time the room is examined in its
+  chapter (`findSecretAtSpot`); with daily examine off, walking in finds it.
+- The MARK AS MASTERMIND stamp only reveals the final truth once the final chapter has come.
+- The final trial: `startFinalTrial` sets `worldTruth.finalTrial = "active"`, `caseTruthFor`
+  sends `buildWorldTruthBlock`, the vote's answer is the mastermind, and `finishFinalTrial`
+  reveals the final secrets, opens the HOPE / DESPAIR screen (`trial/finalTrial.js`), writes the
+  ending into the chapter journal and plays Happy or Sad tracks. Leaving the trial before the
+  vote resets it.
+- Extra debug: `/world chapter [n]`, `/world flashback`, `/world final`, `/world ending [name]`,
+  `/world clear`.
 - New story key: `worldTruth: { mastermind, goal, outsideWorld, secrets: [{ id, title,
   text, chapter, source: monokuma|exploration|flashback|final, revealed }] }`.
 - Drafted by one hidden call (the cast, the lorebook, the map) at New Game or on demand.
