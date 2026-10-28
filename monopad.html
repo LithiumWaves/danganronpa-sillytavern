@@ -32,7 +32,7 @@
                 <div class="monopad-time-actions">
                     <button id="monopad-pass-time" class="monopad-time-button" type="button" title="Pass time to nighttime">PASS TIME</button>
                     <button id="monopad-sleep" class="monopad-time-button" type="button" title="Sleep until morning">SLEEP</button>
-                    <button id="monopad-investigation-underway" class="monopad-time-button monopad-investigation-underway-btn" type="button" disabled hidden>INVESTIGATION UNDERWAY</button>
+                    <button id="monopad-investigation-underway" class="monopad-time-button monopad-investigation-underway-btn" type="button" title="Stop investigating and go back to daily life" hidden>END INVESTIGATION</button>
                 </div>
             </div>
 
@@ -72,7 +72,7 @@
             <div class="monopad-panel-content" data-panel="truth">
                 <div class="truth-container">
                     <div class="truth-list">
-                        <div class="truth-list-header"><img src="scripts/extensions/third-party/danganronpa-extension/assets/icons/bullets.svg" alt="" class="truth-header-icon">TRUTH BULLETS</div>
+                        <div class="truth-list-header"><img src="scripts/extensions/third-party/danganronpa-extension/assets/icons/bullets.svg" alt="" class="truth-header-icon">TRUTH BULLETS<button type="button" class="truth-case-file-btn" title="The hidden truth of this chapter's case (spoilers)">CASE FILE</button><button type="button" class="truth-case-file-btn truth-rules-btn" title="The School Regulations">RULES</button><button type="button" class="truth-case-file-btn truth-world-btn" title="The secrets of the world uncovered so far">WORLD</button></div>
                         <div class="truth-sort-bar">
                             <button class="truth-sort-btn active" data-sort="latest" data-other="oldest" data-label-a="SORT: LATEST" data-label-b="SORT: OLDEST">SORT: LATEST</button>
                             <button class="truth-sort-btn" data-sort="az" data-other="za" data-label-a="SORT: A–Z" data-label-b="SORT: Z–A">SORT: A–Z</button>
@@ -110,6 +110,13 @@
                         <div class="map-control-group">
                             <div class="map-control-label">SUB-AREA</div>
                             <div class="map-floor-list"></div>
+                        </div>
+
+                        <div class="map-control-group">
+                            <div class="map-control-label">CHARACTERS</div>
+                            <div class="map-presence-tool-row">
+                                <button class="map-floor-button map-reshuffle-characters" type="button" title="Move everyone to new rooms without passing time">RESHUFFLE CHARACTERS</button>
+                            </div>
                         </div>
 
                         <div class="map-control-group map-location-pins-tools">
@@ -248,7 +255,7 @@
                 <div class="social-container">
 
                     <div class="social-list">
-                        <div class="social-list-header">CLASS ROSTER</div>
+                        <div class="social-list-header">CLASS ROSTER<button type="button" class="social-routines-btn" title="Where each classmate usually spends their time">ROUTINES</button><button type="button" class="social-events-btn" title="Get-togethers planned in daily life">EVENTS</button></div>
                         <div class="social-list-items">
                             <div class="social-empty">NO STUDENTS FOUND</div>
                         </div>
@@ -284,7 +291,13 @@
                                         <div class="trust-segment"></div><div class="trust-segment"></div>
                                         <div class="trust-segment"></div><div class="trust-segment"></div>
                                     </div>
-                                    <div class="trust-value">1 / 10</div>
+                                    <div class="trust-value-row">
+                                        <div class="trust-value">1 / 10</div>
+                                        <div class="trust-adjust">
+                                            <button id="report-trust-down" class="trust-adjust-btn" type="button" title="Lower trust one rank. No ceremony or rewards; for fixing mistakes." aria-label="Lower trust one rank">−</button>
+                                            <button id="report-trust-up" class="trust-adjust-btn" type="button" title="Raise trust one rank. No ceremony or rewards; for fixing mistakes." aria-label="Raise trust one rank">+</button>
+                                        </div>
+                                    </div>
                                 </div>
 
                                 <div class="stats-edit-bar">
@@ -368,95 +381,118 @@
                     <img class="settings-header-crest" src="scripts/extensions/third-party/danganronpa-extension/assets/images/ui/hopes-peak-crest.png" alt="Hope's Peak Academy">
                     <img class="settings-header-cog" src="scripts/extensions/third-party/danganronpa-extension/assets/icons/cog.svg" alt="Settings">
                 </div>
-                <div>
-                    <div class="settings-header">SYSTEM SETTINGS</div>
-                    <div class="settings-subheader">MONOPAD CONTROL SURFACE</div>
-                </div>
+                <div class="settings-header">SETTINGS</div>
             </div>
             <div class="settings-header-actions">
                 <button id="dangan_debug_breach_trigger" class="settings-breach-button" type="button" aria-label="Future Foundation uplink" title="Future Foundation uplink">
                     <img src="scripts/extensions/third-party/danganronpa-extension/assets/images/ui/future_foundation.png" alt="Future Foundation" />
                 </button>
                 <button id="dangan_monokuma_lesson_button" class="settings-help-button" type="button" title="Start Mr. Monokuma's Lesson" aria-label="Start Mr. Monokuma's Lesson">?</button>
-                <button id="dangan_debug_breach_trigger" class="settings-breach-button" type="button" aria-label="Future Foundation uplink" title="Future Foundation uplink">
-                    <img src="scripts/extensions/third-party/danganronpa-extension/assets/images/ui/future_foundation.png" alt="Future Foundation" />
-                </button>
-                <div class="settings-status">SYNC: ONLINE</div>
             </div>
         </div>
 
+        <div class="settings-subtabs" role="tablist" aria-label="Settings sections">
+            <button type="button" class="settings-subtab active" role="tab" data-settings-tab="audio">AUDIO</button>
+            <button type="button" class="settings-subtab" role="tab" data-settings-tab="display">DISPLAY</button>
+            <button type="button" class="settings-subtab" role="tab" data-settings-tab="customize">CUSTOMIZE</button>
+            <button type="button" class="settings-subtab" role="tab" data-settings-tab="gameplay">GAMEPLAY</button>
+            <button type="button" class="settings-subtab" role="tab" data-settings-tab="fx">TOOLS</button>
+            <button type="button" class="settings-subtab" role="tab" data-settings-tab="saves">SAVES</button>
+            <button type="button" class="settings-subtab" role="tab" data-settings-tab="ai">AI</button>
+            <button type="button" class="settings-subtab" role="tab" data-settings-tab="trials">TRIALS</button>
+        </div>
         <div class="settings-grid">
 
             <!-- AUDIO -->
-            <section class="settings-section">
-                <div class="settings-section-title">AUDIO</div>
+            <section data-settings-tab="audio" class="settings-section is-active-tab">
+                <div class="settings-group">
+                    <div class="settings-group-title">Volume</div>
+                    <div class="settings-item settings-item-slider">
+                        <div class="settings-text">
+                            <span class="settings-label">Monopad sounds</span>
+                        </div>
+                        <div class="settings-slider-wrap">
+                            <input type="range" id="dangan_sounds_slider" min="0" max="100" value="50" aria-label="Monopad sounds">
+                            <span id="dangan_sounds_value">50%</span>
+                        </div>
+                    </div>
 
-                <div class="settings-item settings-item-slider">
-                    <span class="settings-label">MONOPAD SOUNDS</span>
-                    <div class="settings-slider-wrap">
-                        <input type="range" id="dangan_sounds_slider" min="0" max="100" value="50">
-                        <span id="dangan_sounds_value">50%</span>
+                    <div class="settings-item settings-item-slider">
+                        <div class="settings-text">
+                            <span class="settings-label">Announcements</span>
+                        </div>
+                        <div class="settings-slider-wrap">
+                            <input type="range" id="dangan_announcement_slider" min="0" max="100" value="65" aria-label="Announcements">
+                            <span id="dangan_announcement_value">65%</span>
+                        </div>
+                    </div>
+
+                    <div class="settings-item settings-item-slider">
+                        <div class="settings-text">
+                            <span class="settings-label">MonoMono BGM</span>
+                        </div>
+                        <div class="settings-slider-wrap">
+                            <input type="range" id="dangan_monomono_slider" min="0" max="100" value="40" aria-label="MonoMono BGM">
+                            <span id="dangan_monomono_value">40%</span>
+                        </div>
                     </div>
                 </div>
+                <div class="settings-group">
+                    <div class="settings-group-title">Sounds</div>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Monopad jingle</span>
+                            <div class="settings-note">Plays when the Monopad opens.</div>
+                        </div>
+                        <button type="button" class="settings-toggle on" data-setting="monopadJingleEnabled"></button>
+                    </div>
 
-                <div class="settings-item">
-                    <span class="settings-label">MONOPAD JINGLE</span>
-                    <button class="settings-toggle on" data-setting="monopadJingleEnabled"></button>
-                </div>
-
-                <div class="settings-item settings-item-slider">
-                    <span class="settings-label">ANNOUNCEMENT SOUNDS</span>
-                    <div class="settings-slider-wrap">
-                        <input type="range" id="dangan_announcement_slider" min="0" max="100" value="65">
-                        <span id="dangan_announcement_value">65%</span>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Announcement voice</span>
+                        </div>
+                        <div class="settings-lang-toggle" role="group" aria-label="Announcement voice">
+                            <button class="settings-lang-btn" data-lang="EN" type="button">EN</button>
+                            <button class="settings-lang-btn active" data-lang="JP" type="button">JP</button>
+                        </div>
                     </div>
                 </div>
+                <div class="settings-group">
+                    <div class="settings-group-title">Music</div>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Music outside character chats</span>
+                            <div class="settings-note">Keep BGM playing in the assistant chat.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="bgmOutsideChats"></button>
+                    </div>
 
-                <div class="settings-item">
-                    <span class="settings-label">ANNOUNCEMENT VOICE LANGUAGE</span>
-                    <div class="settings-lang-toggle">
-                        <button class="settings-lang-btn" data-lang="EN" type="button">EN</button>
-                        <button class="settings-lang-btn active" data-lang="JP" type="button">JP</button>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Dynamic songs</span>
+                            <div class="settings-note">Pick mood music from the sprites on screen.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="dynamicSongsEnabled"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Mood scan toast</span>
+                            <div class="settings-note">After SCAN, show the sprite vote and the track that started.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="moodScanToastEnabled"></button>
                     </div>
                 </div>
-
-                <div class="settings-item">
-                    <span class="settings-label">TRUST CEREMONIES</span>
-                    <button class="settings-toggle on" data-setting="trustCeremonies"></button>
-                </div>
-
-                <div class="settings-item">
-                    <span class="settings-label">TRUTH BULLETS</span>
-                    <button class="settings-toggle on" data-setting="truthBulletAnimations"></button>
-                </div>
-
-                <div class="settings-item settings-item-slider">
-                    <span class="settings-label">MONOMONO BGM</span>
-                    <div class="settings-slider-wrap">
-                        <input type="range" id="dangan_monomono_slider" min="0" max="100" value="40">
-                        <span id="dangan_monomono_value">40%</span>
-                    </div>
-                </div>
-
-                <div class="settings-item">
-                    <span class="settings-label">PLAY BGM IN ASSISTANT CHAT</span>
-                    <button class="settings-toggle" data-setting="bgmOutsideChats"></button>
-                </div>
-
-                <div class="settings-item">
-                    <span class="settings-label">DYNAMIC SONGS</span>
-                    <button class="settings-toggle" data-setting="dynamicSongsEnabled"></button>
-                </div>
-
-                <div class="settings-item settings-item-stack">
-                    <span class="settings-label">MOOD SCAN TOAST</span>
-                    <button class="settings-toggle" data-setting="moodScanToastEnabled"></button>
-                    <div class="settings-note">After SCAN, show sprite vote counts and the track that started playing.</div>
-                </div>
-
-                <div class="settings-item settings-item-stack">
-                    <span class="settings-label">BGM TRACKS</span>
-                    <div class="settings-note">Select tracks that play after each phase starts. Multiple selections pick randomly. No selections plays no audio. MOODS lists are used only when Dynamic Songs is on, and only during daytime / nighttime / investigation. Sprite majority maps to: Happy (joy, excitement), Sad (sadness, grief), Dramatic (realization, surprise), Tense (fear, nervousness), Angry (anger, disgust), Romantic (love, embarrassment). Neutral and unknown sprites are ignored. The media player's list button browses assigned songs by mood or phase. SCAN on the player re-reads current sprites and forces a mood track change.</div>
+                <div class="settings-group">
+                    <div class="settings-group-title">BGM tracks</div>
+                    <div class="settings-item settings-item-tracks">
+                        <div class="settings-text">
+                            <div class="settings-note">Pick songs for each phase and scene. With several picked, one plays at random; with none, it stays quiet.</div>
+                        </div>
+                        <details class="settings-more">
+                            <summary>How mood music works</summary>
+                            <div class="settings-more-body">MOODS lists are used only when Dynamic Songs is on, during daytime, nighttime and investigations. The sprites on screen vote for a mood: Happy (joy, excitement), Sad (sadness, grief), Dramatic (realization, surprise), Tense (fear, nervousness), Angry (anger, disgust), Romantic (love, embarrassment). Neutral sprites don't vote. SCAN on the music player re-reads the sprites and changes the track; its list button browses songs by mood or phase.</div>
+                        </details>
                     <div class="bgm-tracks-tabs">
                         <button class="bgm-tracks-tab active" data-tab="phases">PHASES</button>
                         <button class="bgm-tracks-tab" data-tab="moods">MOODS</button>
@@ -471,6 +507,7 @@
                             <button class="bgm-tracks-subtab active" data-subtab="daytime">DAYTIME</button>
                             <button class="bgm-tracks-subtab" data-subtab="nighttime">NIGHTTIME</button>
                             <button class="bgm-tracks-subtab" data-subtab="investigation">INVESTIGATION</button>
+                            <button class="bgm-tracks-subtab" data-subtab="title">TITLE</button>
                         </div>
                         <div class="bgm-tracks-subpanel active" data-subtab="daytime">
                             <div class="investigation-tracks-wrap">
@@ -492,6 +529,14 @@
                             <div class="investigation-tracks-wrap">
                                 <div id="investigation-tracks-list" class="investigation-tracks-list"></div>
                                 <div id="investigation-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bgm-tracks-subpanel" data-subtab="title">
+                            <div class="investigation-tracks-wrap">
+                                <div id="title-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="title-selected-list" class="investigation-selected-list">
                                     <div class="investigation-selected-empty">NONE SELECTED</div>
                                 </div>
                             </div>
@@ -562,12 +607,30 @@
                     <div class="bgm-tracks-panel" data-tab="locations">
                         <div class="bgm-tracks-subtabs">
                             <button class="bgm-tracks-subtab active" data-subtab="shop">SHOP</button>
+                            <button class="bgm-tracks-subtab" data-subtab="monokuma">MONOKUMA</button>
+                            <button class="bgm-tracks-subtab" data-subtab="monokubs">MONOKUBS</button>
                             <button class="bgm-tracks-subtab" data-subtab="trial-preparation">TRIAL PREPARATION</button>
                         </div>
                         <div class="bgm-tracks-subpanel active" data-subtab="shop">
                             <div class="investigation-tracks-wrap">
                                 <div id="shop-tracks-list" class="investigation-tracks-list"></div>
                                 <div id="shop-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bgm-tracks-subpanel" data-subtab="monokuma">
+                            <div class="investigation-tracks-wrap">
+                                <div id="monokuma-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="monokuma-selected-list" class="investigation-selected-list">
+                                    <div class="investigation-selected-empty">NONE SELECTED</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bgm-tracks-subpanel" data-subtab="monokubs">
+                            <div class="investigation-tracks-wrap">
+                                <div id="monokubs-tracks-list" class="investigation-tracks-list"></div>
+                                <div id="monokubs-selected-list" class="investigation-selected-list">
                                     <div class="investigation-selected-empty">NONE SELECTED</div>
                                 </div>
                             </div>
@@ -719,102 +782,372 @@
                             </div>
                         </div>
                     </div>
+                    </div>
                 </div>
             </section>
 
             <!-- DISPLAY -->
-            <section class="settings-section">
-                <div class="settings-section-title">DISPLAY</div>
+            <section data-settings-tab="display" class="settings-section">
+                <div class="settings-group">
+                    <div class="settings-group-title">Screen</div>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">CRT effects</span>
+                        </div>
+                        <button type="button" class="settings-toggle on" data-setting="crtEffects"></button>
+                    </div>
 
-                <div class="settings-item">
-                    <span class="settings-label">CRT EFFECTS</span>
-                    <button class="settings-toggle on" data-setting="crtEffects"></button>
-                </div>
-
-                <div class="settings-item settings-item-slider">
-                    <span class="settings-label">CRT INTENSITY</span>
-                    <div class="settings-slider-wrap">
-                        <input type="range" id="dangan_crt_slider" min="0" max="100" value="35">
-                        <span id="dangan_crt_value">35%</span>
+                    <div class="settings-item settings-item-slider">
+                        <div class="settings-text">
+                            <span class="settings-label">CRT intensity</span>
+                        </div>
+                        <div class="settings-slider-wrap">
+                            <input type="range" id="dangan_crt_slider" min="0" max="100" value="35" aria-label="CRT intensity">
+                            <span id="dangan_crt_value">35%</span>
+                        </div>
                     </div>
                 </div>
-
-                <div class="settings-item">
-                    <span class="settings-label">BOOT ANIMATIONS</span>
-                    <button class="settings-toggle on" data-setting="bootAnimations"></button>
-                </div>
-
-
-                <div class="settings-item">
-                    <span class="settings-label">VISUAL NOVEL MODE</span>
-                    <button class="settings-toggle" data-setting="vnModeEnabled"></button>
-                </div>
-
-                <div class="settings-item">
-                    <span class="settings-label">HALF-SPRITE MODE</span>
-                    <button class="settings-toggle" data-setting="halfspriteMode"></button>
-                </div>
-
-                <div class="settings-item">
-                    <span class="settings-label">DAILY / DEADLY LIFE DYNAMIC THEMES</span>
-                    <button class="settings-toggle on" data-setting="dynamicThemes"></button>
-                </div>
-
-                <div class="settings-item">
-                    <span class="settings-label">HIDE TRUTH BULLET IMAGES</span>
-                    <button class="settings-toggle" data-setting="hideTruthBulletImages"></button>
-                </div>
-
-                <div class="settings-item">
-                    <span class="settings-label">HIDE GIFT IMAGES</span>
-                    <button class="settings-toggle" data-setting="hideGiftImages"></button>
-                </div>
-
-                <div class="settings-item">
-                    <span class="settings-label">MINIGAME TUTORIAL PROMPTS</span>
-                    <button class="settings-toggle on" data-setting="minigameTutorialsEnabled"></button>
-                </div>
-
-                <div class="settings-item">
-                    <span class="settings-label">FEATURE COACHES</span>
-                    <button class="settings-toggle on" data-setting="featureCoachesEnabled"></button>
-                </div>
-
-                <div class="settings-item settings-item-stack">
-                    <label class="settings-label" for="dangan_card_hygiene_default">CARD GREETINGS &amp; SCENARIO</label>
-                    <select id="dangan_card_hygiene_default" class="settings-select">
-                        <option value="ask">ASK ON NEW CHATS</option>
-                        <option value="keep">ALWAYS KEEP</option>
-                        <option value="clean">ALWAYS CLEAN</option>
-                    </select>
-                    <div class="settings-note">Greetings and scenario text on character cards get pulled into new chats. Ask, keep them, or strip them from this chat only (cards are not edited).</div>
-                </div>
-
-                <div class="settings-item settings-item-stack">
-                    <span class="settings-label">RESET LESSON HINTS</span>
-                    <button type="button" class="settings-small-button" id="dangan_reset_lesson_hints">RESET</button>
-                    <div class="settings-note">Clears tab coaches and the first-boot play-mode overlay so they can appear again.</div>
-                </div>
-
-                <div class="settings-item settings-item-stack settings-announ-row">
-                    <span class="settings-label">CLASS TRIAL PODIUM</span>
-                    <div class="settings-lang-toggle">
-                        <button class="settings-lang-btn active" id="dangan-lectern-btn-default" data-lectern-value="default" type="button">DEFAULT</button>
-                        <button class="settings-lang-btn" id="dangan-lectern-btn-custom" data-lectern-value="custom" type="button">CUSTOM</button>
+                <div class="settings-group">
+                    <div class="settings-group-title">Animations</div>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Monopad boot animation</span>
+                            <div class="settings-note">Play the boot-up and shut-down when the Monopad opens and closes.</div>
+                        </div>
+                        <button type="button" class="settings-toggle on" data-setting="bootAnimations"></button>
                     </div>
-                    <div class="settings-announ-custom-row is-hidden" id="dangan-lectern-custom-row">
-                        <button type="button" class="settings-small-button" id="dangan-lectern-pick">CHOOSE IMAGE</button>
-                        <input type="file" accept="image/*" id="dangan-lectern-file" style="display:none" />
-                        <span class="settings-note" id="dangan-lectern-file-name">No file chosen</span>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Trust ceremonies</span>
+                            <div class="settings-note">Play the animation when someone's trust changes.</div>
+                        </div>
+                        <button type="button" class="settings-toggle on" data-setting="trustCeremonies"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Truth Bullet animations</span>
+                            <div class="settings-note">Play the animation when you get a Truth Bullet.</div>
+                        </div>
+                        <button type="button" class="settings-toggle on" data-setting="truthBulletAnimations"></button>
                     </div>
                 </div>
+                <div class="settings-group">
+                    <div class="settings-group-title">Title screen</div>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Show on load</span>
+                            <div class="settings-note"><code>/title</code> opens it any time. Its music is under Audio → BGM tracks → Title.</div>
+                        </div>
+                        <button type="button" class="settings-toggle on" data-setting="titleScreenEnabled"></button>
+                    </div>
 
-                <div class="settings-item">
-                    <span class="settings-label">HIDE HOPE'S PEAK BRANDING</span>
-                    <button class="settings-toggle" data-setting="hideHopesPeakBranding"></button>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Setup reminder</span>
+                            <div class="settings-note">SETUP glows while something the game needs isn't set up.</div>
+                        </div>
+                        <button type="button" class="settings-toggle on" data-setting="setupPulseEnabled"></button>
+                    </div>
                 </div>
+                <div class="settings-group">
+                    <div class="settings-group-title">Exploring</div>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Phase HUD</span>
+                            <div class="settings-note">Day and phase under the level bar. Click it for what to do next.</div>
+                        </div>
+                        <button type="button" class="settings-toggle on" data-setting="phaseHudEnabled"></button>
+                    </div>
 
-                <!-- Announcement customisation — only visible when Hide Hope's Peak Branding is ON -->
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Hide the text box</span>
+                            <div class="settings-note">Comes back when you open a conversation.</div>
+                        </div>
+                        <button type="button" class="settings-toggle on" data-setting="exploreHideComposer"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Exploration menu</span>
+                            <div class="settings-note">Gather the exploring buttons into one MENU button.</div>
+                        </div>
+                        <button type="button" class="settings-toggle on" data-setting="exploreActionMenu"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Move from the minimap</span>
+                            <div class="settings-note">Click a glowing room on the minimap instead of the MOVE TO list.</div>
+                        </div>
+                        <button type="button" class="settings-toggle on" data-setting="moveToOnMinimap"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Auto-hide SillyTavern's bar</span>
+                            <div class="settings-note">Point at its edge (or use its keybind) to bring it back.</div>
+                        </div>
+                        <button type="button" class="settings-toggle on" data-setting="autoHideStTopBar"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">SillyTavern's bar style</span>
+                            <div class="settings-note">CAPSULE: a rounded capsule of icons that slides in from its edge.</div>
+                        </div>
+                        <div class="settings-lang-toggle" role="group" aria-label="SillyTavern's bar style">
+                            <button class="settings-lang-btn" data-choice-setting="stTopBarStyle" data-choice-value="sg" type="button">CAPSULE</button>
+                            <button class="settings-lang-btn" data-choice-setting="stTopBarStyle" data-choice-value="classic" type="button">CLASSIC</button>
+                        </div>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">SillyTavern's bar position</span>
+                            <div class="settings-note">For the capsule: along the top, or down the left edge.</div>
+                        </div>
+                        <div class="settings-lang-toggle" role="group" aria-label="SillyTavern's bar position">
+                            <button class="settings-lang-btn" data-choice-setting="stTopBarPosition" data-choice-value="top" type="button">TOP</button>
+                            <button class="settings-lang-btn" data-choice-setting="stTopBarPosition" data-choice-value="left" type="button">LEFT</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <div class="settings-group-title">Images</div>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Hide Truth Bullet images</span>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="hideTruthBulletImages"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Hide gift images</span>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="hideGiftImages"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Talent images in Character Analysis</span>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="talentImagesForAnalysis"></button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- CUSTOMIZE -->
+            <section data-settings-tab="customize" class="settings-section">
+                <div class="settings-group">
+                    <div class="settings-group-title">Text box</div>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Visual novel mode</span>
+                            <div class="settings-note">Show replies line by line in a text box over the scene.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="vnModeEnabled"></button>
+                    </div>
+
+                    <div class="settings-item settings-item-stack">
+                        <span class="settings-label">Text box style</span>
+                        <div class="settings-note">The game styles change colour at night and during investigations.</div>
+                        <div class="settings-vn-skins" id="dangan_vn_skin_picker" role="radiogroup" aria-label="Text box style"></div>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Your sprite in conversations</span>
+                            <div class="settings-note">A window on the right shows your character, with the expression of your last message. Uses Prome's user sprite.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="playerInsetEnabled"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Expression picker</span>
+                            <div class="settings-note">An EXPRESSIONS tab on the right edge while exploring, in conversations and in Class Trials: pick any sprite for anyone on screen, you included. It shows in the room and in the conversation alike until their next line or until everyone moves. Just for fun.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="expressionPickerEnabled"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Automatic expressions</span>
+                            <div class="settings-note">Sprites change with what each character says. Off: everyone keeps their face until you pick another in the expression picker.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="autoExpressionsEnabled"></button>
+                    </div>
+
+                    <div class="settings-item settings-item-slider">
+                        <div class="settings-text">
+                            <span class="settings-label">Typing speed</span>
+                            <div class="settings-note">How fast lines type out in the box.</div>
+                        </div>
+                        <div class="settings-slider-wrap">
+                            <input type="range" id="dangan_vn_speed_slider" min="25" max="300" step="25" value="100" aria-label="Typing speed">
+                            <span id="dangan_vn_speed_value">100%</span>
+                        </div>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Half-sprite mode</span>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="halfspriteMode"></button>
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <div class="settings-group-title">Phase banners</div>
+                    <div class="settings-item settings-item-stack">
+                        <details class="settings-more settings-fold">
+                            <summary>Phase banner style</summary>
+                            <div class="settings-note">The Investigation, Free Time and Nighttime banners. Pick a game's, or let them match the text box.</div>
+                            <div class="settings-vn-skins settings-banner-styles" id="dangan_banner_style_picker" role="radiogroup" aria-label="Phase banner style"></div>
+                        </details>
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <div class="settings-group-title">Trust ceremony</div>
+                    <div class="settings-item settings-item-stack">
+                        <details class="settings-more settings-fold">
+                            <summary>Trust ceremony style</summary>
+                            <div class="settings-note">The animation when someone's trust changes. Turn it off under Display.</div>
+                            <div class="settings-vn-skins settings-trust-styles" id="dangan_trust_style_picker" role="radiogroup" aria-label="Trust ceremony style"></div>
+                        </details>
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <div class="settings-group-title">Themes</div>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Daily / Deadly Life themes</span>
+                            <div class="settings-note">Recolor the chat for daytime, nighttime and investigations.</div>
+                        </div>
+                        <button type="button" class="settings-toggle on" data-setting="dynamicThemes"></button>
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <div class="settings-group-title">HUD colors</div>
+                    <div class="settings-note dangan-hud-color-intro">PHASE follows day, night and investigation. TEXT BOX matches the text box style (Classic keeps the phase colors). CUSTOM lets you pick.</div>
+                    <div class="settings-item settings-announ-row dangan-hud-color-row">
+                        <div class="settings-text">
+                            <span class="settings-label">Song display</span>
+                            <div class="settings-note">The music player in the top-left corner.</div>
+                        </div>
+                        <div class="settings-lang-toggle" role="group" aria-label="Song display color">
+                            <button class="settings-lang-btn active" data-hud-color-target="song" data-hud-color-mode="phase" type="button">PHASE</button>
+                            <button class="settings-lang-btn" data-hud-color-target="song" data-hud-color-mode="textbox" type="button">TEXT BOX</button>
+                            <button class="settings-lang-btn" data-hud-color-target="song" data-hud-color-mode="custom" type="button">CUSTOM</button>
+                        </div>
+                        <input type="color" class="dangan-hud-color-input" data-hud-color-target="song" value="#f59a1b" aria-label="Song display color" hidden />
+                    </div>
+
+                    <div class="settings-item settings-announ-row dangan-hud-color-row">
+                        <div class="settings-text">
+                            <span class="settings-label">Chapter display</span>
+                            <div class="settings-note">The chapter, level bar and current room in the top-right corner.</div>
+                        </div>
+                        <div class="settings-lang-toggle" role="group" aria-label="Chapter display color">
+                            <button class="settings-lang-btn active" data-hud-color-target="chapter" data-hud-color-mode="phase" type="button">PHASE</button>
+                            <button class="settings-lang-btn" data-hud-color-target="chapter" data-hud-color-mode="textbox" type="button">TEXT BOX</button>
+                            <button class="settings-lang-btn" data-hud-color-target="chapter" data-hud-color-mode="custom" type="button">CUSTOM</button>
+                        </div>
+                        <input type="color" class="dangan-hud-color-input" data-hud-color-target="chapter" value="#f59a1b" aria-label="Chapter display color" hidden />
+                    </div>
+
+                    <div class="settings-item settings-announ-row dangan-hud-color-row">
+                        <div class="settings-text">
+                            <span class="settings-label">Map display</span>
+                            <div class="settings-note">The minimap and the MOVE TO panel.</div>
+                        </div>
+                        <div class="settings-lang-toggle" role="group" aria-label="Map display color">
+                            <button class="settings-lang-btn active" data-hud-color-target="map" data-hud-color-mode="phase" type="button">PHASE</button>
+                            <button class="settings-lang-btn" data-hud-color-target="map" data-hud-color-mode="textbox" type="button">TEXT BOX</button>
+                            <button class="settings-lang-btn" data-hud-color-target="map" data-hud-color-mode="custom" type="button">CUSTOM</button>
+                        </div>
+                        <input type="color" class="dangan-hud-color-input" data-hud-color-target="map" value="#f59a1b" aria-label="Map display color" hidden />
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <div class="settings-group-title">Branding</div>
+                    <div class="settings-item settings-announ-row">
+                        <div class="settings-text">
+                            <span class="settings-label">Class Trial podium</span>
+                        </div>
+                        <div class="settings-lang-toggle" role="group" aria-label="Class Trial podium">
+                            <button class="settings-lang-btn active" id="dangan-lectern-btn-default" data-lectern-value="default" type="button">DEFAULT</button>
+                            <button class="settings-lang-btn" id="dangan-lectern-btn-custom" data-lectern-value="custom" type="button">CUSTOM</button>
+                        </div>
+                        <div class="settings-announ-custom-row is-hidden" id="dangan-lectern-custom-row">
+                            <button type="button" class="settings-small-button" id="dangan-lectern-pick">CHOOSE IMAGE</button>
+                            <input type="file" accept="image/*" id="dangan-lectern-file" style="display:none" />
+                            <span class="settings-note" id="dangan-lectern-file-name">No file chosen</span>
+                        </div>
+                    </div>
+
+                    <div class="settings-item settings-item-stack settings-announ-row">
+                        <span class="settings-label">HOST / MASCOT CARDS</span>
+                        <div class="settings-note">Hosts like Monokuma, Monomi or the Monokubs never wander the rooms. Call one in or make them speak and they pop up from the bottom with the MONOKUMA playlist. Set a ticked host to RISE &amp; SHINE and they come in after the Monokubs' "Rise and Shine, Ursine!" splash instead, with the MONOKUBS playlist. Kept per save.</div>
+                        <div class="settings-lang-toggle">
+                            <button class="settings-lang-btn active" data-host-mode="auto" type="button">AUTO (MONOKUMA)</button>
+                            <button class="settings-lang-btn" data-host-mode="custom" type="button">CHOOSE</button>
+                        </div>
+                        <div class="settings-announ-custom-row is-hidden" id="dangan-host-custom-row">
+                            <input type="search" class="settings-select dangan-host-search" id="dangan-host-search" placeholder="Search cards…" autocomplete="off" />
+                            <div class="dangan-host-pick-list" id="dangan-host-list"></div>
+                            <div class="settings-note" id="dangan-host-status"></div>
+                        </div>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Host entrance sound</span>
+                            <div class="settings-note">The "bwomp" when a host is called in.</div>
+                        </div>
+                        <button type="button" class="settings-toggle on" data-setting="hostEntranceSfx"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Host entrance bounce</span>
+                            <div class="settings-note">A called-in host lands with a little squash and bounce, like Monokuma in V3.</div>
+                        </div>
+                        <button type="button" class="settings-toggle on" data-setting="hostEntranceBounce"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <label class="settings-label" for="dangan-host-splash-text">Rise &amp; Shine text</label>
+                        <input id="dangan-host-splash-text" class="settings-input" type="text" maxlength="60" placeholder="Rise and Shine, Ursine—!" autocomplete="off" />
+                    </div>
+
+                    <div class="settings-item settings-item-stack settings-announ-row">
+                        <span class="settings-label">Rise &amp; Shine voice</span>
+                        <div class="settings-note">What the hosts shout as the splash appears, over its jingle. Use your own sound or mute it.</div>
+                        <div class="settings-lang-toggle" role="group" aria-label="Rise &amp; Shine voice">
+                            <button class="settings-lang-btn active" data-splash-voice="default" type="button">DEFAULT</button>
+                            <button class="settings-lang-btn" data-splash-voice="custom" type="button">CUSTOM</button>
+                            <button class="settings-lang-btn" data-splash-voice="mute" type="button">MUTE</button>
+                        </div>
+                        <div class="settings-announ-custom-row is-hidden" id="dangan-splash-voice-row">
+                            <button type="button" class="settings-small-button" id="dangan-splash-voice-pick">CHOOSE FILE</button>
+                            <input type="file" accept="audio/*" id="dangan-splash-voice-file" style="display:none" />
+                            <span class="settings-note" id="dangan-splash-voice-name">No file chosen</span>
+                        </div>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Hide Hope's Peak branding</span>
+                            <div class="settings-note">Lets you pick your own Game Master, voting wheel and announcements.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="hideHopesPeakBranding"></button>
+                    </div>
+
+                    <!-- Announcement customisation — only visible when Hide Hope's Peak Branding is ON -->
                 <div id="dangan-branding-extras" style="display:none">
 
                     <div class="settings-item settings-item-stack settings-announ-row">
@@ -990,371 +1323,795 @@
                     </div><!-- end bgm-tracks-panel -->
 
                 </div><!-- end dangan-branding-extras -->
-
-                <div class="settings-item">
-                    <span class="settings-label">USE TALENT IMAGES FOR CHARACTER ANALYSIS PAGE</span>
-                    <button class="settings-toggle" data-setting="talentImagesForAnalysis"></button>
+            </div><!-- end Branding group -->
+                <div class="settings-group">
+                    <div class="settings-group-title">Keybinds</div>
+                    <div class="settings-note dangan-keybind-intro">Click a binding, then press a key or right / middle click. Esc cancels, Backspace clears. Keybinds don't fire while you type.</div>
+                    <div id="dangan_keybind_list"></div>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Back to the defaults</span>
+                        </div>
+                        <button type="button" class="settings-small-button" id="dangan_keybind_reset">RESET KEYBINDS</button>
+                    </div>
                 </div>
-
             </section>
 
             <!-- GAMEPLAY -->
-            <section class="settings-section">
-                <div class="settings-section-title">GAMEPLAY</div>
+            <section data-settings-tab="gameplay" class="settings-section">
+                <div class="settings-group">
+                    <div class="settings-group-title">Game</div>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Return to title</span>
+                            <div class="settings-note">Close the Monopad to continue another chat or start a new game.</div>
+                        </div>
+                        <button type="button" class="settings-small-button" id="dangan_return_to_title">GO</button>
+                    </div>
 
-                <div class="settings-item">
-                    <span class="settings-label">SPRITE CLICK GIFTS</span>
-                    <button class="settings-toggle" data-setting="spriteClickGiftsEnabled"></button>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Setup checklist</span>
+                            <div class="settings-note">Check cards, sprites, lorebook, music and more, with a fix for each.</div>
+                        </div>
+                        <button type="button" class="settings-small-button" id="dangan_open_setup_checklist">OPEN</button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <label class="settings-label" for="dangan_reward_difficulty">Reward difficulty</label>
+                            <div id="dangan_reward_difficulty_note" class="settings-note">Controls Monocoin/XP gains and tutorial payout.</div>
+                        </div>
+                        <select id="dangan_reward_difficulty" class="settings-select">
+                            <option value="easy">Easy</option>
+                            <option value="normal">Normal</option>
+                            <option value="hard">Hard</option>
+                        </select>
+                    </div>
                 </div>
+                <div class="settings-group">
+                    <div class="settings-group-title">Chat</div>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Single-chat overworld</span>
+                            <div class="settings-note">Explore without leaving your group chat: people in the room are unmuted, everyone else is muted. Install the Presence extension so absent characters also forget those lines.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="singleChatOverworldEnabled"></button>
+                    </div>
 
-                <div class="settings-item settings-item-stack">
-                    <span class="settings-label">SINGLE-CHAT OVERWORLD</span>
-                    <button class="settings-toggle" data-setting="singleChatOverworldEnabled"></button>
-                    <div class="settings-note">Stay in your group chat while exploring. Whoever is in the room is unmuted; everyone else is muted (same as the group speech-bubble icons). Install the Presence extension so absentees also forget those lines. Call Student brings people to the room.</div>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Sprite click gifts</span>
+                            <div class="settings-note">Click a character's sprite while exploring to give them a gift.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="spriteClickGiftsEnabled"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <label class="settings-label" for="dangan_card_hygiene_default">Card greetings &amp; scenario</label>
+                            <div class="settings-note">Cards' greetings and scenarios get pulled into new chats. Keep them, or strip them from that chat only (cards aren't edited).</div>
+                        </div>
+                        <select id="dangan_card_hygiene_default" class="settings-select">
+                            <option value="ask">Ask each time</option>
+                            <option value="keep">Always keep</option>
+                            <option value="clean">Always strip</option>
+                        </select>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <label class="settings-label" for="dangan_motive_auto_day">Monokuma's motive</label>
+                            <div class="settings-note">When Monokuma hands out a motive by himself, counting from the day a chapter starts. A motive secretly sets up the chapter's murder. You can always start one from the phase readout.</div>
+                        </div>
+                        <select id="dangan_motive_auto_day" class="settings-select">
+                            <option value="0">Only when I start it</option>
+                            <option value="2">Day 2 of a chapter</option>
+                            <option value="3">Day 3 of a chapter</option>
+                            <option value="4">Day 4 of a chapter</option>
+                        </select>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <label class="settings-label" for="dangan_case_twists">Case twists</label>
+                            <div class="settings-note">How often Monokuma's murder plan isn't a plain "one killer, one victim": the wrong victim, an attacker who dies, two bodies, a suicide, an accomplice, or someone who only thinks they did it. Never the same twist twice in a row.</div>
+                        </div>
+                        <select id="dangan_case_twists" class="settings-select">
+                            <option value="off">Never</option>
+                            <option value="sometimes">Sometimes</option>
+                            <option value="often">Often</option>
+                        </select>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <label class="settings-label" for="dangan_motive_kinds">Motive kinds</label>
+                            <div class="settings-note">Mixed: besides announcements, Monokuma sometimes hands everyone a personal item with hidden contents (DVDs, secrets, motive videos; yours goes in Key Items), or afflicts a few students with a condition until the case closes. Every motive has a penalty if nobody kills by the deadline, and a murder can be foiled by staying with the killer or the victim.</div>
+                        </div>
+                        <select id="dangan_motive_kinds" class="settings-select">
+                            <option value="announcement">Announcements only</option>
+                            <option value="mixed">Mixed</option>
+                        </select>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <label class="settings-label" for="dangan_classmates_plan_events">Classmates plan events</label>
+                            <div class="settings-note">Some mornings, a classmate proposes a get-together (a party, a study session, a séance) through one hidden AI call. Classmates can always propose one in the roleplay, and you can plan one with PLAN EVENT. When its time comes, everyone invited gathers in its room.</div>
+                        </div>
+                        <select id="dangan_classmates_plan_events" class="settings-select">
+                            <option value="off">Off</option>
+                            <option value="sometimes">Sometimes</option>
+                        </select>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Examine during daily life</span>
+                            <div class="settings-note">The overworld's EXAMINE works outside investigations too: look around any room for what you notice, Monocoins tucked into a few spots, and one hidden Monokuma per floor. Fresh each chapter. Never evidence.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="dailyExamineEnabled"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Body discovery needs 3 witnesses</span>
+                            <div class="settings-note">Like the games: the body discovery announcement (and the investigation) only starts once three people besides the killer have seen the body. Walking in alone plays the shock; bring others or wait for them. Who saw it, in order, becomes evidence. Off: the announcement plays as soon as you find it.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="bodyDiscoveryWitnesses"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Show key evidence found</span>
+                            <div class="settings-note">During an investigation the phase readout shows "EVIDENCE 2/6": how many of the clues Monokuma's plan hid have turned up (by examining, or a witness telling you). Evidence that turns up in the roleplay on its own isn't counted. A small hint at how much is left.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="showKeyEvidenceFound"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Confirm grave punishments</span>
+                            <div class="settings-note">Some School Regulations are grave (mark them in RULES): breaking one is punished by death, like Mukuro in the first game, with a pink blood splash and the student marked dead. That includes you: then it's GAME OVER, where you can undo it or go on as someone else. On: you're asked first, and saying no gives a final warning instead.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="confirmGravePunishments"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Catch unmarked rule breaks</span>
+                            <div class="settings-note">The game only knows a School Regulation was broken when the AI marks it. When a reply looks like one (someone hitting Monokuma or a camera) but has no mark, one small hidden AI call checks it. You can also report one yourself with BROKEN… in Truth → RULES.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="catchUnmarkedRuleBreaks"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Mysteries of the world</span>
+                            <div class="settings-note">A NEW GAME quietly writes the truth behind the killing game: a mastermind among your classmates and secrets that come out chapter by chapter (secret files to find by examining rooms, things Monokuma lets slip). What's uncovered is in Truth → WORLD, and the whole truth is behind a spoiler gate there. From the final chapter, START FINAL TRIAL names the mastermind and ends with HOPE or DESPAIR.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="worldMysteries"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Flashback Lights</span>
+                            <div class="settings-note">At some chapters' start Monokuma leaves a Flashback Light: use it from the phase readout's menu for a white flash and a memory that comes back. Off: those secrets are hidden in rooms to find by exploring instead.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="flashbackLights"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <label class="settings-label" for="dangan_final_chapter">Final chapter</label>
+                            <div class="settings-note">The chapter the final trial can start from (and that the truth of the world is spread over when it's written). The epilogue always can.</div>
+                        </div>
+                        <select id="dangan_final_chapter" class="settings-select">
+                            <option value="3">Chapter 3</option>
+                            <option value="4">Chapter 4</option>
+                            <option value="5">Chapter 5</option>
+                            <option value="6">Chapter 6</option>
+                            <option value="7">Chapter 7</option>
+                            <option value="8">Chapter 8</option>
+                            <option value="9">Chapter 9</option>
+                        </select>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <label class="settings-label" for="dangan_examine_partner_reactions">Investigation partners react</label>
+                            <div class="settings-note">When you examine something with classmates you're investigating with ("Investigate With" in the explore menu), one of them reacts in the chat.</div>
+                        </div>
+                        <select id="dangan_examine_partner_reactions" class="settings-select">
+                            <option value="clues">When you find evidence</option>
+                            <option value="always">To anything you examine</option>
+                            <option value="off">Never</option>
+                        </select>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <label class="settings-label" for="dangan_examine_partner_reaction_style">Partner reactions show as</label>
+                            <div class="settings-note">A normal chat message, or a line shown only in the VN box (like what you notice when examining), generated the same way but never added to the chat.</div>
+                        </div>
+                        <select id="dangan_examine_partner_reaction_style" class="settings-select">
+                            <option value="message">A chat message</option>
+                            <option value="aside">Only in the VN box</option>
+                        </select>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Trial minigames use the case</span>
+                            <div class="settings-note">Hangman's Gambit, Question Time, Question Truth, Mind Mine and Argument Armament are built from what really happened, and the vote's right answer is the real killer. Debates (Non-Stop, Mass Panic, Scrum, Rebuttal) never are, so you can still steer them wrong.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="trialUseCaseTruth"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Case debug toasts</span>
+                            <div class="settings-note">Spoilers! Show a small toast each time the hidden case does something: a foreshadowing moment sent or used, the killer's private note, the murder, the body being found. <code>/case status</code> and <code>/case prompt</code> show more.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="caseDebugToasts"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Room context</span>
+                            <div class="settings-note">Tell the AI the current room and who's in it. Off during Class Trials.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="roomContextPromptEnabled"></button>
+                        <details class="settings-prompt-editor">
+                            <summary class="settings-prompt-summary">EDIT ROOM CONTEXT PROMPT</summary>
+                            <div class="settings-prompt-body">
+                                <div class="settings-prompt-help">Placeholders: <code>{{room}}</code>, <code>{{characters}}</code></div>
+                                <textarea id="dangan_room_context_prompt_template" class="settings-prompt-textarea" data-setting="roomContextPromptTemplate" data-template-key="roomContext" rows="4" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="roomContextPromptTemplate" data-template-key="roomContext">RESET TO DEFAULT</button>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">AI instructions</span>
+                            <div class="settings-note">Teach the AI the hidden markers for Truth Bullets, trust, investigations and announcements. With this on, remove the marker prompts from your preset. Off during Class Trials.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="markerPromptsEnabled"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Share trust levels</span>
+                            <div class="settings-note">With AI instructions on, also tell the AI how much each character in the chat trusts or distrusts you, so they act like it. Hosts like Monokuma are never included.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="markerTrustLevelsEnabled"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Share school regulations</span>
+                            <div class="settings-note">Tell the AI the School Regulations (Truth → RULES) so characters follow them and Monokuma enforces them. He can add new rules in the story, and breaking one brings him in. Off during Class Trials.</div>
+                        </div>
+                        <button type="button" class="settings-toggle" data-setting="shareSchoolRules"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <details class="settings-prompt-editor">
+                            <summary class="settings-prompt-summary">EDIT AI INSTRUCTIONS</summary>
+                            <div class="settings-prompt-body">
+                                <div class="settings-prompt-help">TRUTH BULLETS (sent during investigations)</div>
+                                <textarea class="settings-prompt-textarea" data-setting="markerTruthPromptTemplate" data-template-key="markerTruth" rows="6" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="markerTruthPromptTemplate" data-template-key="markerTruth">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">TRUST (sent outside Class Trials)</div>
+                                <textarea class="settings-prompt-textarea" data-setting="markerSocialPromptTemplate" data-template-key="markerSocial" rows="6" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="markerSocialPromptTemplate" data-template-key="markerSocial">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">TRUST LEVELS (how each character here feels about you; sent outside Class Trials, never for hosts)</div>
+                                <textarea class="settings-prompt-textarea" data-setting="markerTrustLevelsPromptTemplate" data-template-key="markerTrustLevels" rows="4" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="markerTrustLevelsPromptTemplate" data-template-key="markerTrustLevels">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">SCHOOL REGULATIONS (sent outside Class Trials with Share school regulations on). <code>{{rules}}</code> is the numbered list</div>
+                                <textarea class="settings-prompt-textarea" data-setting="schoolRulesPromptTemplate" data-template-key="schoolRules" rows="6" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="schoolRulesPromptTemplate" data-template-key="schoolRules">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">INVESTIGATION START (sent during daily life)</div>
+                                <textarea class="settings-prompt-textarea" data-setting="markerInvestigationPromptTemplate" data-template-key="markerInvestigation" rows="6" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="markerInvestigationPromptTemplate" data-template-key="markerInvestigation">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">EXAMINE (what you notice when examining something during an investigation; never posted to the chat). Placeholders: <code>{{player}}</code>, <code>{{thing}}</code>, <code>{{room}}</code>, <code>{{present}}</code>, <code>{{caseFacts}}</code>, <code>{{recentChat}}</code>, <code>{{owner}}</code> (whose dorm room it is, from their card; added at the end if you leave it out), <code>{{findings}}</code> (whether it's evidence; added at the end if you leave it out)</div>
+                                <textarea class="settings-prompt-textarea" data-setting="examineNarrationPromptTemplate" data-template-key="examineNarration" rows="8" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="examineNarrationPromptTemplate" data-template-key="examineNarration">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">EXAMINE IN DAILY LIFE (what you notice outside investigations; never posted to the chat, never evidence). Placeholders: <code>{{player}}</code>, <code>{{thing}}</code>, <code>{{room}}</code>, <code>{{present}}</code>, <code>{{recentChat}}</code>, <code>{{owner}}</code>, <code>{{found}}</code> (Monocoins or a hidden Monokuma found there; the last two are added at the end if you leave them out)</div>
+                                <textarea class="settings-prompt-textarea" data-setting="examineDailyNarrationPromptTemplate" data-template-key="examineDailyNarration" rows="8" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="examineDailyNarrationPromptTemplate" data-template-key="examineDailyNarration">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">ANNOUNCEMENTS (sent during daily life)</div>
+                                <textarea class="settings-prompt-textarea" data-setting="markerAnnouncementsPromptTemplate" data-template-key="markerAnnouncements" rows="6" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="markerAnnouncementsPromptTemplate" data-template-key="markerAnnouncements">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">RULE MARKERS (how the AI marks a regulation being added or broken; sent with the story markers in daily life and investigations, when Share school regulations is on)</div>
+                                <textarea class="settings-prompt-textarea" data-setting="markerRulesPromptTemplate" data-template-key="markerRules" rows="8" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="markerRulesPromptTemplate" data-template-key="markerRules">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">RULE CHECK (the hidden check for a violation the AI didn't mark; it must answer NONE or "Full Name | number"). Placeholders: <code>{{rules}}</code>, <code>{{reply}}</code></div>
+                                <textarea class="settings-prompt-textarea" data-setting="ruleBreakCheckPromptTemplate" data-template-key="ruleBreakCheck" rows="8" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="ruleBreakCheckPromptTemplate" data-template-key="ruleBreakCheck">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">RULE BROKEN (sent once after a light violation). Placeholders: <code>{{name}}</code>, <code>{{number}}</code>, <code>{{rule}}</code></div>
+                                <textarea class="settings-prompt-textarea" data-setting="ruleBreakLightPromptTemplate" data-template-key="ruleBreakLight" rows="4" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="ruleBreakLightPromptTemplate" data-template-key="ruleBreakLight">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">PUNISHMENT (sent once after a grave violation is punished by death). Placeholders: <code>{{name}}</code>, <code>{{number}}</code>, <code>{{rule}}</code></div>
+                                <textarea class="settings-prompt-textarea" data-setting="ruleBreakGravePromptTemplate" data-template-key="ruleBreakGrave" rows="4" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="ruleBreakGravePromptTemplate" data-template-key="ruleBreakGrave">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">FINAL WARNING (sent once when the player breaks a grave rule, or a punishment is turned down). Placeholders: <code>{{name}}</code>, <code>{{number}}</code>, <code>{{rule}}</code></div>
+                                <textarea class="settings-prompt-textarea" data-setting="ruleBreakWarningPromptTemplate" data-template-key="ruleBreakWarning" rows="4" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="ruleBreakWarningPromptTemplate" data-template-key="ruleBreakWarning">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">THE TRUTH OF THE WORLD (the hidden call that writes the mastermind and the secrets). Placeholders: <code>{{chapters}}</code>, <code>{{player}}</code>, <code>{{cast}}</code>, <code>{{rooms}}</code>, <code>{{lorebook}}</code>, <code>{{format}}</code> (the JSON it must answer with; added at the end if you leave it out)</div>
+                                <textarea class="settings-prompt-textarea" data-setting="worldTruthDraftPromptTemplate" data-template-key="worldTruthDraft" rows="10" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="worldTruthDraftPromptTemplate" data-template-key="worldTruthDraft">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">GROUP EVENTS (how classmates propose a get-together in a reply; sent during daily life)</div>
+                                <textarea class="settings-prompt-textarea" data-setting="markerEventsPromptTemplate" data-template-key="markerEvents" rows="6" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="markerEventsPromptTemplate" data-template-key="markerEvents">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">CLASSMATES PLAN EVENTS (the hidden morning call; it must answer with a V3C| EVENT line or NONE). Placeholders: <code>{{day}}</code>, <code>{{cast}}</code>, <code>{{rooms}}</code>, <code>{{recentChat}}</code></div>
+                                <textarea class="settings-prompt-textarea" data-setting="eventProposalPromptTemplate" data-template-key="eventProposal" rows="10" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="eventProposalPromptTemplate" data-template-key="eventProposal">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">MONOKUMA'S PENALTY (sent once when a motive's deadline passes with no murder). Placeholders: <code>{{title}}</code> (the motive), <code>{{penalty}}</code></div>
+                                <textarea class="settings-prompt-textarea" data-setting="motivePenaltyPromptTemplate" data-template-key="motivePenalty" rows="4" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="motivePenaltyPromptTemplate" data-template-key="motivePenalty">RESET TO DEFAULT</button>
+                                </div>
+                                <div class="settings-prompt-help">MONOKUMA RELENTS (sent once when you have him call off a time limit). Placeholders: <code>{{title}}</code></div>
+                                <textarea class="settings-prompt-textarea" data-setting="motiveRelentPromptTemplate" data-template-key="motiveRelent" rows="3" spellcheck="false"></textarea>
+                                <div class="settings-prompt-actions">
+                                    <button type="button" class="settings-small-button settings-prompt-reset" data-setting="motiveRelentPromptTemplate" data-template-key="motiveRelent">RESET TO DEFAULT</button>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
                 </div>
+                <div class="settings-group">
+                    <div class="settings-group-title">Help &amp; hints</div>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Minigame tutorials</span>
+                            <div class="settings-note">Offer a tutorial before a minigame starts.</div>
+                        </div>
+                        <button type="button" class="settings-toggle on" data-setting="minigameTutorialsEnabled"></button>
+                    </div>
 
-                <div class="settings-item settings-item-stack">
-                    <span class="settings-label">ROOM CONTEXT PROMPT</span>
-                    <button class="settings-toggle" data-setting="roomContextPromptEnabled"></button>
-                    <div class="settings-note">When on, chat completions receive the current room and who is standing there. Off during class trials. Placeholders: <code>{{room}}</code>, <code>{{characters}}</code>.</div>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Lesson hints</span>
+                            <div class="settings-note">Short tips the first time you open a tab.</div>
+                        </div>
+                        <button type="button" class="settings-toggle on" data-setting="featureCoachesEnabled"></button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Reset lesson hints</span>
+                            <div class="settings-note">Show the tab tips and the first-boot overlay again.</div>
+                        </div>
+                        <button type="button" class="settings-small-button" id="dangan_reset_lesson_hints">RESET</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TOOLS -->
+            <section data-settings-tab="fx" class="settings-section">
+                <div class="settings-group">
+                    <div class="settings-group-title">Characters</div>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Expression effects</span>
+                            <div class="settings-note">Visuals and sounds tied to each character's expressions. Pick the character in the window.</div>
+                        </div>
+                        <button type="button" class="settings-small-button" id="dangan_configure_vfx">CONFIGURE</button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Emotion fonts</span>
+                            <div class="settings-note">Per-emotion fonts for Class Trial statements.</div>
+                        </div>
+                        <button type="button" class="settings-small-button" id="dangan_configure_emotion_fonts">CONFIGURE</button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Emotion sprites</span>
+                            <div class="settings-note">View and upload expression sprites. ＋ adds another image for an emotion (<code>joy-1</code>); name one <code>pool-love</code> to lock that outfit to a location.</div>
+                        </div>
+                        <button type="button" class="settings-small-button" id="dangan_configure_sprites">MANAGE</button>
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <div class="settings-group-title">Generators</div>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Mugshots</span>
+                            <div class="settings-note">Build trial-card mugshots from each character's neutral sprite. Existing ones are kept unless you choose to overwrite them.</div>
+                        </div>
+                        <button type="button" class="settings-small-button" id="dangan_generate_mugshots">GENERATE</button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Death portraits</span>
+                            <div class="settings-note">Build framed death portraits from each character's neutral sprite. Existing ones are kept unless you choose to overwrite them.</div>
+                        </div>
+                        <button type="button" class="settings-small-button" id="dangan_generate_death_portraits">GENERATE</button>
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <div class="settings-group-title">Cinematics</div>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Body discoveries</span>
+                            <div class="settings-note">Named cinematics for <code>/body-discovered name=…</code>: backgrounds, camera pins, shake and static.</div>
+                        </div>
+                        <button type="button" class="settings-small-button" id="dangan_configure_deaths">CONFIGURE</button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Executions</span>
+                            <div class="settings-note">Cinematics for <code>/execute name=…</code>, from an MP4 or your own images and audio. Marks the character dead.</div>
+                        </div>
+                        <button type="button" class="settings-small-button" id="dangan_configure_executions">CONFIGURE</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SAVES -->
+            <section data-settings-tab="saves" class="settings-section">
+                <div class="settings-group">
+                    <div class="settings-group-title">Save files</div>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <div class="settings-note">Each save keeps its own classmates, trust, Truth Bullets, chapter, day, Monocoins, items and level. One Main Chat saves load when you open their chat. Settings and music are shared.</div>
+                        </div>
+                        <div id="dangan_saves_list" class="dangan-saves-list"></div>
+                        <div class="settings-ai-actions">
+                            <button id="dangan_save_new" class="settings-small-button" type="button">NEW EMPTY SAVE</button>
+                            <button id="dangan_save_import" class="settings-small-button" type="button">IMPORT FILE</button>
+                            <input id="dangan_save_import_file" type="file" accept=".json,application/json" hidden />
+                            <span id="dangan_saves_status" class="settings-note"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <div class="settings-group-title">Reset this save</div>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Level &amp; skill points</span>
+                            <div class="settings-note">Back to LV 1, 0 XP and 10 skill points.</div>
+                            <span id="dangan_reset_progression_status" class="settings-note settings-status-note"></span>
+                        </div>
+                        <button id="dangan_reset_progression" class="settings-small-button" type="button">RESET</button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Owned skills</span>
+                            <div class="settings-note">Un-own and un-equip every skill so they must be bought again.</div>
+                            <span id="dangan_reset_skill_ownership_status" class="settings-note settings-status-note"></span>
+                        </div>
+                        <button id="dangan_reset_skill_ownership" class="settings-small-button" type="button">RESET</button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Day counter</span>
+                            <div class="settings-note">Back to Day 1, daytime.</div>
+                            <span id="dangan_reset_day_counter_status" class="settings-note settings-status-note"></span>
+                        </div>
+                        <button id="dangan_reset_day_counter" class="settings-small-button" type="button">RESET</button>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Chapter</span>
+                            <div class="settings-note">Move back to an earlier chapter. Journal notes and summaries are kept; later tabs hide until you advance again.</div>
+                            <span id="dangan_reset_chapter_status" class="settings-note settings-status-note"></span>
+                        </div>
+                        <div class="settings-ai-actions">
+                            <select id="dangan_chapter_select" class="settings-select" aria-label="Chapter"></select>
+                            <button id="dangan_set_chapter" class="settings-small-button" type="button">SET</button>
+                            <button id="dangan_reset_chapter" class="settings-small-button" type="button">PROLOGUE</button>
+                        </div>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Introductions</span>
+                            <div class="settings-note">Show everyone as ??? until you <code>/introduce</code> them again.</div>
+                            <span id="dangan_reset_introductions_status" class="settings-note settings-status-note"></span>
+                        </div>
+                        <button id="dangan_reset_introductions" class="settings-small-button" type="button">RESET</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- AI GENERATION -->
+            <section data-settings-tab="ai" class="settings-section settings-section-ai">
+                <div class="settings-group">
+                    <div class="settings-group-title">Connection</div>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <label class="settings-label" for="dangan_generation_provider">Generation source</label>
+                            <div class="settings-note">Where minigame lines and summaries are generated.</div>
+                        </div>
+                        <select id="dangan_generation_provider" class="settings-select">
+                            <option value="main">Main API</option>
+                            <option value="openrouter">OpenRouter (direct)</option>
+                            <option value="profile">Connection profile</option>
+                        </select>
+                        <select id="dangan_generation_profile" class="settings-select settings-profile-only is-hidden" aria-label="Connection profile"></select>
+                    </div>
+
+                    <div class="settings-item settings-openrouter-only" id="dangan_openrouter_model_wrap">
+                        <label class="settings-label" for="dangan_openrouter_model">OpenRouter model</label>
+                        <input
+                            id="dangan_openrouter_model"
+                            class="settings-input"
+                            type="text"
+                            placeholder="google/gemini-2.5-flash"
+                            autocomplete="off"
+                        />
+                    </div>
+
+                    <div class="settings-item settings-openrouter-only" id="dangan_openrouter_key_wrap">
+                        <label class="settings-label" for="dangan_openrouter_key">OpenRouter API key</label>
+                        <input
+                            id="dangan_openrouter_key"
+                            class="settings-input"
+                            type="password"
+                            placeholder="sk-or-v1-..."
+                            autocomplete="off"
+                        />
+                        <label class="settings-checkbox-row" for="dangan_openrouter_remember_key">
+                            <input id="dangan_openrouter_remember_key" type="checkbox" />
+                            <span>Remember the key on this device (less secure)</span>
+                        </label>
+                        <div class="settings-ai-actions">
+                            <button id="dangan_openrouter_key_clear" class="settings-small-button" type="button">CLEAR KEY</button>
+                            <button id="dangan_openrouter_test_connection" class="settings-small-button" type="button">TEST CONNECTION</button>
+                            <span id="dangan_openrouter_key_status" class="settings-note"></span>
+                        </div>
+                        <div id="dangan_openrouter_connection_status" class="settings-note"></div>
+                        <div class="settings-note">Otherwise the key is kept only until you reload.</div>
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <div class="settings-group-title">Class Trial memory</div>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <span class="settings-label">Trial context</span>
+                            <div class="settings-note">Wipe this chat's debate history, topic, goal and suspects. A trial in progress keeps running.</div>
+                            <span id="dangan_clear_trial_context_status" class="settings-note settings-status-note"></span>
+                        </div>
+                        <button id="dangan_clear_trial_context" class="settings-small-button" type="button">CLEAR</button>
+                    </div>
+                </div>
+            </section>
+
+            <section data-settings-tab="trials" class="settings-section settings-section-trials">
+                <div class="settings-group">
+                    <div class="settings-group-title">Who writes the lines</div>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <label class="settings-label" for="dangan_white_noise_line_source">White Noise</label>
+                        </div>
+                        <select id="dangan_white_noise_line_source" class="settings-select">
+                            <option value="default">Prewritten lines</option>
+                        <option value="main">Main API</option>
+                        <option value="openrouter">Secondary API (OpenRouter)</option>
+                        <option value="profile">Connection profile</option>
+                        </select>
+                        <select id="dangan_white_noise_profile" class="settings-select settings-profile-only is-hidden" aria-label="White noise connection profile"></select>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <label class="settings-label" for="dangan_nsd_line_source">Non-Stop Debates</label>
+                        </div>
+                        <select id="dangan_nsd_line_source" class="settings-select">
+                            <option value="main">Main API</option>
+                        <option value="openrouter">Secondary API (OpenRouter)</option>
+                        <option value="profile">Connection profile</option>
+                        </select>
+                        <select id="dangan_nsd_profile" class="settings-select settings-profile-only is-hidden" aria-label="Non-stop debate connection profile"></select>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <label class="settings-label" for="dangan_mpd_line_source">Mass Panic Debates</label>
+                        </div>
+                        <select id="dangan_mpd_line_source" class="settings-select">
+                            <option value="main">Main API</option>
+                        <option value="openrouter">Secondary API (OpenRouter)</option>
+                        <option value="profile">Connection profile</option>
+                        </select>
+                        <select id="dangan_mpd_profile" class="settings-select settings-profile-only is-hidden" aria-label="Mass panic debate connection profile"></select>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <label class="settings-label" for="dangan_hangman_line_source">Hangman's Gambit</label>
+                        </div>
+                        <select id="dangan_hangman_line_source" class="settings-select">
+                            <option value="main">Main API</option>
+                        <option value="openrouter">Secondary API (OpenRouter)</option>
+                        <option value="profile">Connection profile</option>
+                        </select>
+                        <select id="dangan_hangman_profile" class="settings-select settings-profile-only is-hidden" aria-label="Hangman's gambit connection profile"></select>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <label class="settings-label" for="dangan_qtime_line_source">Question Time</label>
+                        </div>
+                        <select id="dangan_qtime_line_source" class="settings-select">
+                            <option value="main">Main API</option>
+                        <option value="openrouter">Secondary API (OpenRouter)</option>
+                        <option value="profile">Connection profile</option>
+                        </select>
+                        <select id="dangan_qtime_profile" class="settings-select settings-profile-only is-hidden" aria-label="Question time connection profile"></select>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <label class="settings-label" for="dangan_qtruth_line_source">Question Truth</label>
+                        </div>
+                        <select id="dangan_qtruth_line_source" class="settings-select">
+                            <option value="main">Main API</option>
+                        <option value="openrouter">Secondary API (OpenRouter)</option>
+                        <option value="profile">Connection profile</option>
+                        </select>
+                        <select id="dangan_qtruth_profile" class="settings-select settings-profile-only is-hidden" aria-label="Question truth connection profile"></select>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <label class="settings-label" for="dangan_argumentarmament_line_source">Argument Armament</label>
+                        </div>
+                        <select id="dangan_argumentarmament_line_source" class="settings-select">
+                            <option value="main">Main API</option>
+                        <option value="openrouter">Secondary API (OpenRouter)</option>
+                        <option value="profile">Connection profile</option>
+                        </select>
+                        <select id="dangan_argumentarmament_profile" class="settings-select settings-profile-only is-hidden" aria-label="Argument armament connection profile"></select>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <label class="settings-label" for="dangan_scrum_line_source">Scrum Debates</label>
+                        </div>
+                        <select id="dangan_scrum_line_source" class="settings-select">
+                            <option value="main">Main API</option>
+                        <option value="openrouter">Secondary API (OpenRouter)</option>
+                        <option value="profile">Connection profile</option>
+                        </select>
+                        <select id="dangan_scrum_profile" class="settings-select settings-profile-only is-hidden" aria-label="Scrum debate connection profile"></select>
+                    </div>
+
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <label class="settings-label" for="dangan_mindmine_line_source">Mind Mine</label>
+                        </div>
+                        <select id="dangan_mindmine_line_source" class="settings-select">
+                            <option value="main">Main API</option>
+                        <option value="openrouter">Secondary API (OpenRouter)</option>
+                        <option value="profile">Connection profile</option>
+                        </select>
+                        <select id="dangan_mindmine_profile" class="settings-select settings-profile-only is-hidden" aria-label="Mind mine connection profile"></select>
+                    </div>
+
+                    <div class="settings-group-footnote">Secondary API uses the OpenRouter model and key from the AI tab.</div>
+                </div>
+                <div class="settings-group">
+                    <div class="settings-group-title">Minigame context</div>
+                    <div class="settings-item settings-item-checks">
+                        <div class="settings-text">
+                            <div class="settings-note">What Question Time, Question Truth and Hangman's Gambit can read. Debate history comes from Non-Stop and Mass Panic Debates.</div>
+                        </div>
+                        <div class="settings-check-grid">
+                            <span class="settings-check-head"></span><span class="settings-check-head">Recent chat</span><span class="settings-check-head">Debate history</span>
+                            <span class="settings-check-name">Question Time</span>
+                            <label class="settings-checkbox-row" for="dangan_qtime_use_recent_context">
+                                <input id="dangan_qtime_use_recent_context" type="checkbox" />
+                                <span>Recent chat</span>
+                            </label>
+                            <label class="settings-checkbox-row" for="dangan_qtime_use_debate_history">
+                                <input id="dangan_qtime_use_debate_history" type="checkbox" />
+                                <span>Debate history</span>
+                            </label>
+                            <span class="settings-check-name">Question Truth</span>
+                            <label class="settings-checkbox-row" for="dangan_qtruth_use_recent_context">
+                                <input id="dangan_qtruth_use_recent_context" type="checkbox" />
+                                <span>Recent chat</span>
+                            </label>
+                            <label class="settings-checkbox-row" for="dangan_qtruth_use_debate_history">
+                                <input id="dangan_qtruth_use_debate_history" type="checkbox" />
+                                <span>Debate history</span>
+                            </label>
+                            <span class="settings-check-name">Hangman's Gambit</span>
+                            <label class="settings-checkbox-row" for="dangan_hangman_use_recent_context">
+                                <input id="dangan_hangman_use_recent_context" type="checkbox" />
+                                <span>Recent chat</span>
+                            </label>
+                            <label class="settings-checkbox-row" for="dangan_hangman_use_debate_history">
+                                <input id="dangan_hangman_use_debate_history" type="checkbox" />
+                                <span>Debate history</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <div class="settings-group-title">Prompts</div>
+
                     <details class="settings-prompt-editor">
-                        <summary class="settings-prompt-summary">EDIT ROOM CONTEXT PROMPT</summary>
+                        <summary class="settings-prompt-summary">EDIT WHITE NOISE PROMPT</summary>
                         <div class="settings-prompt-body">
-                            <div class="settings-prompt-help">Placeholders: <code>{{room}}</code>, <code>{{characters}}</code></div>
-                            <textarea id="dangan_room_context_prompt_template" class="settings-prompt-textarea" data-setting="roomContextPromptTemplate" data-template-key="roomContext" rows="4" spellcheck="false"></textarea>
+                            <div class="settings-prompt-help">Placeholders: <code>{{statement}}</code>, <code>{{nameList}}</code></div>
+                            <textarea id="dangan_white_noise_prompt_template" class="settings-prompt-textarea" data-setting="whiteNoisePromptTemplate" data-template-key="whiteNoise" rows="11" spellcheck="false"></textarea>
                             <div class="settings-prompt-actions">
-                                <button type="button" class="settings-small-button settings-prompt-reset" data-setting="roomContextPromptTemplate" data-template-key="roomContext">RESET TO DEFAULT</button>
+                                <button type="button" class="settings-small-button settings-prompt-reset" data-setting="whiteNoisePromptTemplate" data-template-key="whiteNoise">RESET TO DEFAULT</button>
+                            </div>
+                        </div>
+                    </details>
+
+                    <details class="settings-prompt-editor">
+                        <summary class="settings-prompt-summary">EDIT NON-STOP DEBATE PROMPT</summary>
+                        <div class="settings-prompt-body">
+                            <div class="settings-prompt-help">Placeholders: <code>{{speakerName}}</code>, <code>{{debateMarker}}</code>, <code>{{sourceText}}</code>, <code>{{debateSoFarText}}</code>, <code>{{contextLines}}</code>, <code>{{sectionNumber}}</code>, <code>{{sectionsCount}}</code></div>
+                            <textarea id="dangan_nsd_prompt_template" class="settings-prompt-textarea" data-setting="nsdPromptTemplate" data-template-key="nsd" rows="18" spellcheck="false"></textarea>
+                            <div class="settings-prompt-actions">
+                                <button type="button" class="settings-small-button settings-prompt-reset" data-setting="nsdPromptTemplate" data-template-key="nsd">RESET TO DEFAULT</button>
+                            </div>
+                        </div>
+                    </details>
+
+                    <details class="settings-prompt-editor">
+                        <summary class="settings-prompt-summary">EDIT MASS PANIC DEBATE PROMPT</summary>
+                        <div class="settings-prompt-body">
+                            <div class="settings-prompt-help">Placeholders: <code>{{scenarioNumber}}</code>, <code>{{scenarioCount}}</code>, <code>{{speakerList}}</code>, <code>{{weakColumnNumber}}</code>, <code>{{debateSoFarText}}</code>, <code>{{contextLines}}</code></div>
+                            <textarea id="dangan_mpd_prompt_template" class="settings-prompt-textarea" data-setting="mpdPromptTemplate" data-template-key="mpd" rows="17" spellcheck="false"></textarea>
+                            <div class="settings-prompt-actions">
+                                <button type="button" class="settings-small-button settings-prompt-reset" data-setting="mpdPromptTemplate" data-template-key="mpd">RESET TO DEFAULT</button>
                             </div>
                         </div>
                     </details>
                 </div>
-            </section>
-
-            <!-- FX -->
-            <section class="settings-section">
-                <div class="settings-section-title">FX</div>
-
-                <div class="settings-item settings-item-stack">
-                    <span class="settings-label">EXPRESSION VFX / SFX</span>
-                    <div class="settings-ai-actions">
-                        <button id="dangan_configure_vfx" class="settings-small-button" type="button">CONFIGURE EXPRESSIONS</button>
-                    </div>
-                    <div class="settings-note">Visual and audio effects on character expressions. Character-specific. Requires you to be on a specific character chat to configure.</div>
-                </div>
-
-                <div class="settings-item settings-item-stack">
-                    <span class="settings-label">EMOTION FONTS</span>
-                    <div class="settings-ai-actions">
-                        <button id="dangan_configure_emotion_fonts" class="settings-small-button" type="button">CONFIGURE EMOTION FONTS</button>
-                    </div>
-                    <div class="settings-note">Per-emotion font override used by class trial statements. Default falls back to the standard statement font.</div>
-                </div>
-
-                <div class="settings-item settings-item-stack">
-                    <span class="settings-label">EMOTION SPRITES</span>
-                    <div class="settings-ai-actions">
-                        <button id="dangan_configure_sprites" class="settings-small-button" type="button">MANAGE SPRITES</button>
-                    </div>
-                    <div class="settings-note">View and upload a character's expression sprites. Empty slots upload as <code>&lt;emotion&gt;.ext</code>; ＋ adds another image for that emotion (vanilla-style <code>joy-1</code>). Sprites already imported in SillyTavern's manager sync here. Rename an extra to <code>pool-love</code> for location-based outfit locking.</div>
-                </div>
-
-                <div class="settings-item settings-item-stack">
-                    <span class="settings-label">MUGSHOT GENERATOR</span>
-                    <div class="settings-ai-actions">
-                        <button id="dangan_generate_mugshots" class="settings-small-button" type="button">GENERATE MUGSHOTS</button>
-                    </div>
-                    <div class="settings-note">Build each character's trial-card <code>mugshot.png</code> from their <code>neutral</code> sprite using the template. Preview and pick scope (current chat / list / all) before saving; existing mugshots are kept unless you tick them to overwrite.</div>
-                </div>
-
-                <div class="settings-item settings-item-stack">
-                    <span class="settings-label">DEATH PORTRAIT GENERATOR</span>
-                    <div class="settings-ai-actions">
-                        <button id="dangan_generate_death_portraits" class="settings-small-button" type="button">GENERATE DEATH PORTRAITS</button>
-                    </div>
-                    <div class="settings-note">Build each character's framed <code>death-portrait.png</code> from their <code>neutral</code> sprite — the portrait sits in the stand frame with the pink X over it. Preview and pick scope (current chat / list / all) before saving; existing portraits are kept unless you tick them to overwrite.</div>
-                </div>
-
-
-                <div class="settings-item settings-item-stack">
-                    <span class="settings-label">BODY DISCOVERY CINEMATICS</span>
-                    <div class="settings-ai-actions">
-                        <button id="dangan_configure_deaths" class="settings-small-button" type="button">CONFIGURE DEATHS</button>
-                    </div>
-                    <div class="settings-note">Create named cinematics for <code>/body-discovered name=&lt;name&gt;</code>. Set background segments, camera pins, shake and static effects.</div>
-                </div>
-
-                <div class="settings-item settings-item-stack">
-                    <span class="settings-label">EXECUTION CINEMATICS</span>
-                    <div class="settings-ai-actions">
-                        <button id="dangan_configure_executions" class="settings-small-button" type="button">CONFIGURE EXECUTIONS</button>
-                    </div>
-                    <div class="settings-note">Create execution cinematics for <code>/execute name=&lt;name&gt;</code>. Upload an MP4 or build a cinematic with custom images and audio. Marks the character dead on completion.</div>
-                </div>
-            </section>
-
-            <!-- PROGRESSION -->
-            <section class="settings-section">
-                <div class="settings-section-title">PROGRESSION</div>
-
-                <div class="settings-item settings-item-stack">
-                    <span class="settings-label">LEVEL DATA</span>
-                    <div class="settings-ai-actions">
-                        <button id="dangan_reset_progression" class="settings-small-button" type="button">RESET LEVEL + SKILL POINTS</button>
-                        <span id="dangan_reset_progression_status" class="settings-note"></span>
-                    </div>
-                    <div class="settings-note">Resets to LV 1, 0 XP, and 10 Skill Points.</div>
-                </div>
-                <div class="settings-item settings-item-stack">
-                    <span class="settings-label">SKILL OWNERSHIP</span>
-                    <div class="settings-ai-actions">
-                        <button id="dangan_reset_skill_ownership" class="settings-small-button" type="button">RESET SKILL OWNERSHIP</button>
-                        <span id="dangan_reset_skill_ownership_status" class="settings-note"></span>
-                    </div>
-                    <div class="settings-note">Un-owns every skill (and un-equips them) so they must be re-bought. Skill points and skill definitions are kept.</div>
-                </div>
-                <div class="settings-item settings-item-stack">
-                    <span class="settings-label">TIME DATA</span>
-                    <div class="settings-ai-actions">
-                        <button id="dangan_reset_day_counter" class="settings-small-button" type="button">RESET DAY COUNTER</button>
-                        <span id="dangan_reset_day_counter_status" class="settings-note"></span>
-                    </div>
-                    <div class="settings-note">Resets time tracker to DAY 1 / DAYTIME.</div>
-                </div>
-                <div class="settings-item settings-item-stack">
-                    <span class="settings-label">CHAPTER DATA</span>
-                    <div class="settings-ai-actions">
-                        <select id="dangan_chapter_select" class="settings-select"></select>
-                        <button id="dangan_set_chapter" class="settings-small-button" type="button">SET AS CURRENT</button>
-                        <button id="dangan_reset_chapter" class="settings-small-button" type="button">RESET TO PROLOGUE</button>
-                        <span id="dangan_reset_chapter_status" class="settings-note"></span>
-                    </div>
-                    <div class="settings-note">Move the chapter indicator back to a past chapter or the Prologue. Journal notes and FETCH summaries are kept; later tabs hide until you advance again.</div>
-                </div>
-                <div class="settings-item settings-item-stack">
-                    <span class="settings-label">CHARACTER INTRODUCTIONS</span>
-                    <div class="settings-ai-actions">
-                        <button id="dangan_reset_introductions" class="settings-small-button" type="button">RESET INTRODUCTION STATUSES</button>
-                        <span id="dangan_reset_introductions_status" class="settings-note"></span>
-                    </div>
-                    <div class="settings-note">Masks every character as ??? again until you re-run /introduce on them.</div>
-                </div>
-                <div class="settings-item settings-item-stack">
-                    <label class="settings-label" for="dangan_reward_difficulty">REWARD DIFFICULTY</label>
-                    <select id="dangan_reward_difficulty" class="settings-select">
-                        <option value="easy">EASY</option>
-                        <option value="normal">NORMAL</option>
-                        <option value="hard">HARD</option>
-                    </select>
-                    <div id="dangan_reward_difficulty_note" class="settings-note">Controls Monocoin/XP gains and tutorial payout.</div>
-                </div>
-
-            </section>
-
-            <!-- AI GENERATION -->
-            <section class="settings-section settings-section-ai">
-                <div class="settings-section-title">AI GENERATION</div>
-
-                <div class="settings-item settings-item-stack">
-                    <label class="settings-label" for="dangan_generation_provider">GENERATION SOURCE</label>
-                    <select id="dangan_generation_provider" class="settings-select">
-                        <option value="main">MAIN API CONNECTION</option>
-                        <option value="openrouter">OPENROUTER (DIRECT)</option>
-                        <option value="profile">CONNECTION PROFILE</option>
-                    </select>
-                    <select id="dangan_generation_profile" class="settings-select settings-profile-only is-hidden" aria-label="Connection profile"></select>
-                </div>
-
-                <div class="settings-item settings-item-stack settings-openrouter-only" id="dangan_openrouter_model_wrap">
-                    <label class="settings-label" for="dangan_openrouter_model">OPENROUTER MODEL</label>
-                    <input
-                        id="dangan_openrouter_model"
-                        class="settings-input"
-                        type="text"
-                        placeholder="google/gemini-2.5-flash"
-                        autocomplete="off"
-                    />
-                </div>
-
-                <div class="settings-item settings-item-stack settings-openrouter-only" id="dangan_openrouter_key_wrap">
-                    <label class="settings-label" for="dangan_openrouter_key">OPENROUTER API KEY</label>
-                    <input
-                        id="dangan_openrouter_key"
-                        class="settings-input"
-                        type="password"
-                        placeholder="sk-or-v1-..."
-                        autocomplete="off"
-                    />
-                    <label class="settings-checkbox-row" for="dangan_openrouter_remember_key">
-                        <input id="dangan_openrouter_remember_key" type="checkbox" />
-                        <span>REMEMBER KEY ON THIS DEVICE (LESS SECURE)</span>
-                    </label>
-                    <div class="settings-ai-actions">
-                        <button id="dangan_openrouter_key_clear" class="settings-small-button" type="button">CLEAR KEY</button>
-                        <button id="dangan_openrouter_test_connection" class="settings-small-button" type="button">TEST CONNECTION</button>
-                        <span id="dangan_openrouter_key_status" class="settings-note"></span>
-                    </div>
-                    <div id="dangan_openrouter_connection_status" class="settings-note"></div>
-                    <div class="settings-note">By default, the key is kept in memory for this session only.</div>
-                </div>
-
-                <div class="settings-item settings-item-stack">
-                    <span class="settings-label">CLASS TRIAL CONTEXT</span>
-                    <div class="settings-ai-actions">
-                        <button id="dangan_clear_trial_context" class="settings-small-button" type="button">CLEAR CONTEXT</button>
-                        <span id="dangan_clear_trial_context_status" class="settings-note"></span>
-                    </div>
-                    <div class="settings-note">Clears this chat's trial debate history, topic, goal, and suspects so the AI starts from a clean slate. An in-progress trial keeps running.</div>
-                </div>
-            </section>
-
-            <section class="settings-section settings-section-trials">
-                <div class="settings-section-title">CLASS TRIALS</div>
-
-                <div class="settings-item settings-item-stack">
-                    <label class="settings-label" for="dangan_white_noise_line_source">WHITE NOISE LINES</label>
-                    <select id="dangan_white_noise_line_source" class="settings-select">
-                        <option value="default">DEFAULT (PREWRITTEN)</option>
-                        <option value="main">MAIN API GENERATION</option>
-                        <option value="openrouter">SECONDARY API (OPENROUTER)</option>
-                        <option value="profile">CONNECTION PROFILE</option>
-                    </select>
-                    <select id="dangan_white_noise_profile" class="settings-select settings-profile-only is-hidden" aria-label="White noise connection profile"></select>
-                </div>
-                <div class="settings-item settings-item-stack">
-                    <label class="settings-label" for="dangan_nsd_line_source">NON-STOP DEBATE LINES</label>
-                    <select id="dangan_nsd_line_source" class="settings-select">
-                        <option value="main">MAIN API GENERATION</option>
-                        <option value="openrouter">SECONDARY API (OPENROUTER)</option>
-                        <option value="profile">CONNECTION PROFILE</option>
-                    </select>
-                    <select id="dangan_nsd_profile" class="settings-select settings-profile-only is-hidden" aria-label="Non-stop debate connection profile"></select>
-                </div>
-                <div class="settings-item settings-item-stack">
-                    <label class="settings-label" for="dangan_mpd_line_source">MASS PANIC DEBATE LINES</label>
-                    <select id="dangan_mpd_line_source" class="settings-select">
-                        <option value="main">MAIN API GENERATION</option>
-                        <option value="openrouter">SECONDARY API (OPENROUTER)</option>
-                        <option value="profile">CONNECTION PROFILE</option>
-                    </select>
-                    <select id="dangan_mpd_profile" class="settings-select settings-profile-only is-hidden" aria-label="Mass panic debate connection profile"></select>
-                </div>
-                <div class="settings-item settings-item-stack">
-                    <label class="settings-label" for="dangan_hangman_line_source">HANGMAN'S GAMBIT GENERATION</label>
-                    <select id="dangan_hangman_line_source" class="settings-select">
-                        <option value="main">MAIN API GENERATION</option>
-                        <option value="openrouter">SECONDARY API (OPENROUTER)</option>
-                        <option value="profile">CONNECTION PROFILE</option>
-                    </select>
-                    <select id="dangan_hangman_profile" class="settings-select settings-profile-only is-hidden" aria-label="Hangman's gambit connection profile"></select>
-                </div>
-                <div class="settings-item settings-item-stack">
-                    <label class="settings-label" for="dangan_qtime_line_source">QUESTION TIME GENERATION</label>
-                    <select id="dangan_qtime_line_source" class="settings-select">
-                        <option value="main">MAIN API GENERATION</option>
-                        <option value="openrouter">SECONDARY API (OPENROUTER)</option>
-                        <option value="profile">CONNECTION PROFILE</option>
-                    </select>
-                    <select id="dangan_qtime_profile" class="settings-select settings-profile-only is-hidden" aria-label="Question time connection profile"></select>
-                </div>
-                <div class="settings-item settings-item-stack">
-                    <label class="settings-label" for="dangan_qtruth_line_source">QUESTION TRUTH GENERATION</label>
-                    <select id="dangan_qtruth_line_source" class="settings-select">
-                        <option value="main">MAIN API GENERATION</option>
-                        <option value="openrouter">SECONDARY API (OPENROUTER)</option>
-                        <option value="profile">CONNECTION PROFILE</option>
-                    </select>
-                    <select id="dangan_qtruth_profile" class="settings-select settings-profile-only is-hidden" aria-label="Question truth connection profile"></select>
-                </div>
-                <div class="settings-item settings-item-stack">
-                    <label class="settings-label" for="dangan_argumentarmament_line_source">ARGUMENT ARMAMENT GENERATION</label>
-                    <select id="dangan_argumentarmament_line_source" class="settings-select">
-                        <option value="main">MAIN API GENERATION</option>
-                        <option value="openrouter">SECONDARY API (OPENROUTER)</option>
-                        <option value="profile">CONNECTION PROFILE</option>
-                    </select>
-                    <select id="dangan_argumentarmament_profile" class="settings-select settings-profile-only is-hidden" aria-label="Argument armament connection profile"></select>
-                </div>
-                <div class="settings-item settings-item-stack">
-                    <label class="settings-label" for="dangan_scrum_line_source">SCRUM DEBATE GENERATION</label>
-                    <select id="dangan_scrum_line_source" class="settings-select">
-                        <option value="main">MAIN API GENERATION</option>
-                        <option value="openrouter">SECONDARY API (OPENROUTER)</option>
-                        <option value="profile">CONNECTION PROFILE</option>
-                    </select>
-                    <select id="dangan_scrum_profile" class="settings-select settings-profile-only is-hidden" aria-label="Scrum debate connection profile"></select>
-                </div>
-                <div class="settings-item settings-item-stack">
-                    <label class="settings-label" for="dangan_mindmine_line_source">MIND MINE GENERATION</label>
-                    <select id="dangan_mindmine_line_source" class="settings-select">
-                        <option value="main">MAIN API GENERATION</option>
-                        <option value="openrouter">SECONDARY API (OPENROUTER)</option>
-                        <option value="profile">CONNECTION PROFILE</option>
-                    </select>
-                    <select id="dangan_mindmine_profile" class="settings-select settings-profile-only is-hidden" aria-label="Mind mine connection profile"></select>
-                </div>
-                <div class="settings-note">Secondary API uses the OpenRouter model and key configured in AI Generation.</div>
-
-                <div class="settings-item settings-item-stack">
-                    <span class="settings-label">MINIGAME GENERATION CONTEXT</span>
-                    <label class="settings-checkbox-row" for="dangan_qtime_use_recent_context">
-                        <input id="dangan_qtime_use_recent_context" type="checkbox" />
-                        <span>QUESTION TIME: INCLUDE RECENT CHAT</span>
-                    </label>
-                    <label class="settings-checkbox-row" for="dangan_qtime_use_debate_history">
-                        <input id="dangan_qtime_use_debate_history" type="checkbox" />
-                        <span>QUESTION TIME: INCLUDE DEBATE HISTORY</span>
-                    </label>
-                    <label class="settings-checkbox-row" for="dangan_qtruth_use_recent_context">
-                        <input id="dangan_qtruth_use_recent_context" type="checkbox" />
-                        <span>QUESTION TRUTH: INCLUDE RECENT CHAT</span>
-                    </label>
-                    <label class="settings-checkbox-row" for="dangan_qtruth_use_debate_history">
-                        <input id="dangan_qtruth_use_debate_history" type="checkbox" />
-                        <span>QUESTION TRUTH: INCLUDE DEBATE HISTORY</span>
-                    </label>
-                    <label class="settings-checkbox-row" for="dangan_hangman_use_recent_context">
-                        <input id="dangan_hangman_use_recent_context" type="checkbox" />
-                        <span>HANGMAN'S GAMBIT: INCLUDE RECENT CHAT</span>
-                    </label>
-                    <label class="settings-checkbox-row" for="dangan_hangman_use_debate_history">
-                        <input id="dangan_hangman_use_debate_history" type="checkbox" />
-                        <span>HANGMAN'S GAMBIT: INCLUDE DEBATE HISTORY</span>
-                    </label>
-                    <div class="settings-note">Debate history is captured from Non-stop / Mass Panic debates. Recent chat is the latest messages in this chat.</div>
-                </div>
-
-                <details class="settings-prompt-editor">
-                    <summary class="settings-prompt-summary">EDIT WHITE NOISE PROMPT</summary>
-                    <div class="settings-prompt-body">
-                        <div class="settings-prompt-help">Placeholders: <code>{{statement}}</code>, <code>{{nameList}}</code></div>
-                        <textarea id="dangan_white_noise_prompt_template" class="settings-prompt-textarea" data-setting="whiteNoisePromptTemplate" data-template-key="whiteNoise" rows="11" spellcheck="false"></textarea>
-                        <div class="settings-prompt-actions">
-                            <button type="button" class="settings-small-button settings-prompt-reset" data-setting="whiteNoisePromptTemplate" data-template-key="whiteNoise">RESET TO DEFAULT</button>
-                        </div>
-                    </div>
-                </details>
-
-                <details class="settings-prompt-editor">
-                    <summary class="settings-prompt-summary">EDIT NON-STOP DEBATE PROMPT</summary>
-                    <div class="settings-prompt-body">
-                        <div class="settings-prompt-help">Placeholders: <code>{{speakerName}}</code>, <code>{{debateMarker}}</code>, <code>{{sourceText}}</code>, <code>{{debateSoFarText}}</code>, <code>{{contextLines}}</code>, <code>{{sectionNumber}}</code>, <code>{{sectionsCount}}</code></div>
-                        <textarea id="dangan_nsd_prompt_template" class="settings-prompt-textarea" data-setting="nsdPromptTemplate" data-template-key="nsd" rows="18" spellcheck="false"></textarea>
-                        <div class="settings-prompt-actions">
-                            <button type="button" class="settings-small-button settings-prompt-reset" data-setting="nsdPromptTemplate" data-template-key="nsd">RESET TO DEFAULT</button>
-                        </div>
-                    </div>
-                </details>
-
-                <details class="settings-prompt-editor">
-                    <summary class="settings-prompt-summary">EDIT MASS PANIC DEBATE PROMPT</summary>
-                    <div class="settings-prompt-body">
-                        <div class="settings-prompt-help">Placeholders: <code>{{scenarioNumber}}</code>, <code>{{scenarioCount}}</code>, <code>{{speakerList}}</code>, <code>{{weakColumnNumber}}</code>, <code>{{debateSoFarText}}</code>, <code>{{contextLines}}</code></div>
-                        <textarea id="dangan_mpd_prompt_template" class="settings-prompt-textarea" data-setting="mpdPromptTemplate" data-template-key="mpd" rows="17" spellcheck="false"></textarea>
-                        <div class="settings-prompt-actions">
-                            <button type="button" class="settings-small-button settings-prompt-reset" data-setting="mpdPromptTemplate" data-template-key="mpd">RESET TO DEFAULT</button>
-                        </div>
-                    </div>
-                </details>
             </section>
 
         </div>
@@ -1430,7 +2187,9 @@
                 <div class="monopad-vfx-header">
                     <div>
                         <div class="monopad-vfx-title" id="monopad-vfx-title">EXPRESSION VFX</div>
-                        <div class="monopad-vfx-subtitle" id="monopad-vfx-char-name">FOR "—"</div>
+                        <label class="monopad-vfx-subtitle monopad-vfx-char-pick">FOR
+                            <select id="monopad-vfx-char-select" aria-label="Character to configure"></select>
+                        </label>
                     </div>
                     <div class="monopad-vfx-header-controls">
                         <div class="monopad-vfx-master-row">
@@ -1650,6 +2409,10 @@
     alt="Monokuma"
 >
 
+<audio id="host_sfx_bwomp" preload="auto">
+    <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/monokuma/bwomp.mp3" type="audio/mpeg">
+</audio>
+
 <audio id="sfx_monokuma_sad" preload="auto">
     <source src="scripts/extensions/third-party/danganronpa-extension/assets/sfx/monokuma/sfx_monokuma_sad.mp3" type="audio/mpeg">
 </audio>
@@ -1738,22 +2501,35 @@
     </div>
 </div>
 
-<div id="trust-rankup-overlay">
-    <div class="trust-rankup-core">
-        <div class="trust-pie-stage">
-            <div class="trust-pie-halo" aria-hidden="true"></div>
-            <div class="trust-pie-ring" aria-hidden="true"></div>
-            <svg id="trust-decagram" viewBox="0 0 200 200"></svg>
-            <div class="trust-rank-hub">
-                <div class="trust-rank-value" id="trust-rank-value"></div>
-                <div class="trust-rank-caption" id="trust-rank-caption"></div>
-            </div>
-        </div>
-        <div class="trust-copy">
-            <div class="trust-banner" id="trust-rankup-banner"></div>
-            <div class="trust-char-name" id="trust-rankup-name"></div>
+<!-- Trust ceremony (trust/trustAnimations.js, styles/systems/trust/ceremony.css
+     and ceremony-dr.css, picked in Settings → Customize):
+     slanted slabs, the character's sprite cut-in, hand-cut lettering and a
+     rank card with the ten-shard meter. -->
+<div id="trust-rankup-overlay" aria-hidden="true">
+    <div class="tr-speedlines" aria-hidden="true"></div>
+    <div class="tr-burst" aria-hidden="true"></div>
+    <div class="tr-slab tr-slab-a" aria-hidden="true"><div class="tr-halftone"></div></div>
+    <div class="tr-slab tr-slab-b" aria-hidden="true"><div class="tr-halftone"></div></div>
+    <div class="tr-cutin" aria-hidden="true">
+        <div class="tr-cutin-frame">
+            <img class="tr-cutin-img" alt="" draggable="false">
+            <div class="tr-cutin-fallback"></div>
         </div>
     </div>
+    <div class="tr-title" role="status" aria-live="polite"></div>
+    <div class="tr-card">
+        <div class="tr-card-face">
+            <svg id="trust-decagram" viewBox="0 0 200 200"></svg>
+            <div class="tr-rank">
+                <div class="tr-rank-caption"></div>
+                <div class="tr-rank-value"></div>
+            </div>
+        </div>
+        <div class="tr-card-name"></div>
+    </div>
+    <div class="tr-pieces" aria-hidden="true"></div>
+    <div class="tr-flash" aria-hidden="true"></div>
+    <div class="tr-hint">CLICK TO CONTINUE</div>
 </div>
 
 <div id="monokuma-lesson-overlay" aria-hidden="true">

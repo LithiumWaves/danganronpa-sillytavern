@@ -1,3 +1,5 @@
+import { runSkippableSequence } from "../core/skip/skipRegistry.js";
+
 const ROSTER_ID       = 'dangan-chapter-end-roster';
 const ROSTER_STYLE_ID = 'dangan-chapter-end-roster-style';
 
@@ -287,58 +289,63 @@ export function createChapterEndRosterController({
 
         document.body.appendChild(overlay);
 
-        // Fade out BGM and fade in overlay simultaneously
-        await Promise.all([
-            fadeOutAndPauseBgm?.(700) ?? Promise.resolve(),
-            (async () => {
-                await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-                overlay.style.opacity = '1';
-                await new Promise(r => setTimeout(r, 900));
-            })(),
-        ]);
+        // Escape reveals the rest at once and goes straight to the fade-out.
+        await runSkippableSequence(async (token) => {
+            // Fade out BGM and fade in overlay simultaneously
+            await Promise.all([
+                fadeOutAndPauseBgm?.(700) ?? Promise.resolve(),
+                (async () => {
+                    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+                    overlay.style.opacity = '1';
+                    await token.delay(900);
+                })(),
+            ]);
 
-        // Play Trial End BGM
-        const trialEndPath = findBgmTrackByName?.('Trial End');
-        if (trialEndPath && playBgmPath) playBgmPath(trialEndPath);
+            // Play Trial End BGM
+            const trialEndPath = findBgmTrackByName?.('Trial End');
+            if (trialEndPath && playBgmPath) playBgmPath(trialEndPath);
 
-        // Brief pause before death reveals
-        await new Promise(r => setTimeout(r, 1800));
+            // Brief pause before death reveals
+            await token.delay(1800);
 
-        // Reveal dead characters one at a time, each with sound and a count decrement
-        let currentCount = chars.length;
-        const deadSlots = [...rosterEl.querySelectorAll('.cer-slot[data-is-dead="1"]:not([data-is-missing="1"])')];
+            // Reveal dead characters one at a time, each with sound and a count decrement
+            let currentCount = chars.length;
+            const deadSlots = [...rosterEl.querySelectorAll('.cer-slot[data-is-dead="1"]:not([data-is-missing="1"])')];
 
-        for (const slot of deadSlots) {
-            const sfx = new Audio(`${extensionFolderPath}/assets/sfx/ui/dead-indicator-noise.wav`);
-            sfx.volume = Number(getMonopadVolume()) / 100;
-            sfx.play().catch(() => {});
+            for (const slot of deadSlots) {
+                if (!token.skipped) {
+                    const sfx = new Audio(`${extensionFolderPath}/assets/sfx/ui/dead-indicator-noise.wav`);
+                    sfx.volume = Number(getMonopadVolume()) / 100;
+                    sfx.play().catch(() => {});
+                }
 
-            const pinkImg = slot.querySelector('.cer-sprite-pink');
-            if (pinkImg) pinkImg.style.opacity = '1';
+                const pinkImg = slot.querySelector('.cer-sprite-pink');
+                if (pinkImg) pinkImg.style.opacity = '1';
 
-            currentCount -= 1;
-            countEl.textContent = String(currentCount);
+                currentCount -= 1;
+                countEl.textContent = String(currentCount);
 
-            await new Promise(r => setTimeout(r, 1100));
-        }
+                await token.delay(1100);
+            }
 
-        // Fade in the chapter transition banner after all death reveals
-        const banner = overlay.querySelector('#cer-chapter-banner');
-        if (banner) {
-            await new Promise(r => setTimeout(r, 300));
-            banner.style.opacity = '1';
-            await new Promise(r => setTimeout(r, 900));
-        } else {
-            await new Promise(r => setTimeout(r, 600));
-        }
+            // Fade in the chapter transition banner after all death reveals
+            const banner = overlay.querySelector('#cer-chapter-banner');
+            if (banner) {
+                await token.delay(300);
+                banner.style.opacity = '1';
+                await token.delay(900);
+            } else {
+                await token.delay(600);
+            }
 
-        await new Promise(resolve => {
             overlay.style.cursor = 'pointer';
-            const autoTimer = setTimeout(resolve, 20000);
-            overlay.addEventListener('click', () => {
-                clearTimeout(autoTimer);
-                resolve();
-            }, { once: true });
+            await token.race(new Promise(resolve => {
+                const autoTimer = setTimeout(resolve, 20000);
+                overlay.addEventListener('click', () => {
+                    clearTimeout(autoTimer);
+                    resolve();
+                }, { once: true });
+            }));
         });
 
         overlay.style.transition = 'opacity 0.6s ease';

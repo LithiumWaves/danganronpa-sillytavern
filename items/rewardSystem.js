@@ -308,6 +308,60 @@ export function createRewardSystem({ extensionName, extensionFolderPath, extensi
     }
 
 
+    // XP earned since level 1, so awards can be measured and taken back
+    // across level boundaries.
+    function getTotalXp() {
+        const { progression } = ensureProgressionState();
+        let total = progression.xp;
+        for (let level = 1; level < progression.level; level += 1) total += getXpRequiredForLevel(level);
+        return total;
+    }
+
+    function getRewardTotals() {
+        const ext = ensureExtensionState();
+        return {
+            monocoins: Number(ext.inventory.monocoins || 0),
+            trustFragments: Number(ext.inventory.trustFragments || 0),
+            totalXp: getTotalXp(),
+        };
+    }
+
+    // Takes back XP, dropping levels (and the skill points they gave) if needed.
+    function revokeXp(amount = 0, reason = "") {
+        const penalty = Math.max(0, Number(amount || 0));
+        if (!penalty) return;
+
+        const { ext, progression } = ensureProgressionState();
+        const previousLevel = progression.level;
+        let remaining = Math.max(0, getTotalXp() - penalty);
+        let level = 1;
+        while (level < LEVEL_CAP && remaining >= getXpRequiredForLevel(level)) {
+            remaining -= getXpRequiredForLevel(level);
+            level += 1;
+        }
+        progression.level = level;
+        progression.xp = level >= LEVEL_CAP ? 0 : remaining;
+        const lostLevels = previousLevel - level;
+        if (lostLevels > 0) {
+            ext.inventory.skillPoints = Math.max(0, Number(ext.inventory.skillPoints || 0) - lostLevels * SKILL_POINTS_PER_LEVEL);
+        }
+
+        saveSettingsDebounced();
+        renderProgressionUi();
+        getItemsPanelController()?.renderSkillsItemsPanel();
+        if (reason) console.log(`[${extensionName}] Revoked ${penalty} XP (${reason}).`);
+    }
+
+    function revokeTrustFragments(amount = 0, reason = "") {
+        const penalty = Math.max(0, Number(amount || 0));
+        if (!penalty) return;
+        const ext = ensureExtensionState();
+        ext.inventory.trustFragments = Math.max(0, Number(ext.inventory.trustFragments || 0) - penalty);
+        saveSettingsDebounced();
+        getItemsPanelController()?.renderSkillsItemsPanel();
+        if (reason) console.log(`[${extensionName}] Revoked ${penalty} Trust Fragments (${reason}).`);
+    }
+
     function resetProgression({ clearEquippedSkills = true } = {}) {
         const { ext, progression } = ensureProgressionState();
 
@@ -351,6 +405,9 @@ export function createRewardSystem({ extensionName, extensionFolderPath, extensi
         deductMonocoins,
         awardTrustFragments,
         awardXp,
+        getRewardTotals,
+        revokeXp,
+        revokeTrustFragments,
         increaseTrustWithRewards,
         renderProgressionUi,
         resetProgression,

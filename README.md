@@ -15,6 +15,10 @@ Adds a menu based on the Monopad from **Danganronpa V3** with progression, trust
 Alternatively, install directly from SillyTavern by accessing the extensions tab and pasting the main link.
 3. In chat, click the Monopad crest button to open the UI.
 
+**Recommended way to play: One Main Chat.** Pick NEW GAME on the title screen and keep the selected **One Main Chat** style: one group chat holds the whole story, and exploring the overworld stays inside it (Single-Chat Overworld). Install the [Presence](https://github.com/leandrojofre/SillyTavern-Presence) extension so characters who aren't in the room don't remember what was said there. Several Chats is still available if you prefer separate chats.
+
+Install the [Prome VN](https://github.com/Bronya-Rand/Prome-VN-Extension) extension too and pick your sprite folder as its **User Sprite**: your own character's sprites in Class Trials, minigames, conversations (Settings → Customize → Your sprite in conversations) and the Sprite Manager all come from it. The title screen's SETUP checklist can install both.
+
 ## Requirements:
 - The Lorebook: You can select one of the supplied Lorebooks in `/sample-lorebooks`, or create your own.
 - Character Cards: You can import one (Or multiple) characters from `/sample-character-cards`, or create your own.
@@ -22,12 +26,148 @@ Alternatively, install directly from SillyTavern by accessing the extensions tab
 ## What the Extension Includes:
 
 ### Monopad Tabs
-- **Truth (🧠):** Stores discovered Truth Bullets, supports detail view, archival and removal.
-- **Map (🌐):** Shows the current Map & Floor, supports custom maps, pin locations, and evidence placement.
+- **Truth (🧠):** Stores discovered Truth Bullets, supports detail view, editing the title and description, archival and removal. Archived and deleted bullets stay that way; the message that found them won't add them again.
+- **Map (🌐):** Shows the current Map & Floor, supports custom maps, pin locations, and evidence placement. Evidence and body pins belong to the current save; rooms, custom areas and floors are shared by every save and stored with your SillyTavern settings, so they follow you to other browsers. Which areas a save uses is picked in NEW GAME and kept with the save. Lock a floor (or island, or any floor of a custom area) until a chapter with the pencil button → **OPENS IN**: like the original games, it opens when the story reaches that chapter. Until then nobody spawns there and Move To won't lead there; the floor button shows a 🔒. **RESHUFFLE CHARACTERS** moves everyone to new rooms (the same shuffle Pass Time and Sleep do) without changing the time. On Hope's Peak's Inn Floor 1, the dorm rooms are entered only from the **Dorm Corridor** pin, never straight from the main door. A pin of your own with the id `dorm_corridor`, or any pin named like a corridor or hallway on that floor, takes its place. If the floor has no corridor, the built-in one comes back, even if you deleted it.
 - **Gifts & Skills (🎁):** Shows the Inventory, item browsing, gifting flow, and skill shop display.
-- **Social (👥):** Shows the Roster, trust/distrust progress, and generated profile notes.
+- **Social (👥):** Shows the Roster, trust/distrust progress, and generated profile notes. The − and + buttons next to the trust value correct it one rank at a time, without a ceremony or rewards.
 - **Chapters (📖):** Shows a log of your chats in an easy-to-read, easy-to-revisit format to help you build narratives.
 - **Settings (⚙️):** Shows Audio/display toggles, progression reset, expression configurer, CG creators, generation provider selection, and Mr. Monokuma's Lesson (replayable).
+
+### Title Screen
+SillyTavern opens on a Trigger Happy Havoc-style title screen. Press any key or click to start, then pick from the menu (arrow keys, Enter, Escape/BACK all work):
+- **NEW GAME:** a guided setup. If you have progress it first asks whether to start a **NEW SAVE** (your current save is kept and can be loaded again) or **KEEP CURRENT SAVE**. Then:
+  1. Choose a play style: **One Main Chat** (recommended, and selected by default) or **Several Chats**.
+  2. One Main Chat only: name the story chat and pick its members. The group chat is created for you and Single-Chat Overworld is turned on.
+  3. Class roster: tick your classmates, set each one's Ultimate, and choose your persona.
+  4. Choose the map: **Hope's Peak Academy** (recommended, built in with every room placed), **Jabberwock Island**, or **Upload Your Own**. For your own map, name it and upload one picture per floor, then click on each picture to place its rooms, name them, and pick the room you start in. The save only uses the map you chose: other areas are hidden and characters only spawn in its rooms. **SHOW ALL MAPS** in the Monopad MAP tab brings the other areas back for that save.
+  5. Review and **BEGIN**.
+
+  Every step has a **WHAT DOES THIS MEAN?** panel that explains it in more detail.
+- **Music:** a few seconds after you leave the title screen, the current phase's music (Daytime, Nighttime or Investigation) starts by itself, unless something is already playing.
+- **CONTINUE:** the **SAVES** tab lists your saves with their chapter, day, Truth Bullets and classmates. Picking a One Main Chat save opens its story chat; picking a Several Chats save opens the Monopad map. **ALL CHATS** lists every chat, newest first, with avatars, a last-message preview, message count and time. Search by name or message, or filter by one-on-one / group.
+- **OPTIONS:** the main audio, display and gameplay settings in the title screen's own style. Changes save immediately; **ALL SETTINGS (MONOPAD)** opens the full list.
+- **SETUP:** a checklist of what the game needs from SillyTavern: character cards, sprites, a lorebook with Ultimates, the Presence extension (One Main Chat), music, room backgrounds, AI instructions, a persona and a save. Each row says what's missing and has a button that opens the place to fix it. A badge on SETUP counts anything the game can't run without. Also in Monopad Settings → Gameplay.
+  - Music, room backgrounds and lorebooks are set up without leaving the title screen:
+    - **MUSIC** picks the tracks for each playlist (phases, moods, locations, trial), with a preview button.
+    - **ROOM BACKGROUNDS** gives each room on your save's map a SillyTavern background, shown when you walk in.
+    - **LOREBOOKS** is a World Info editor: create, import, rename, delete and turn books on, and add, copy, delete or edit entries (title, keywords, optional filter, content, enabled, always on, position, depth, order and trigger chance).
+
+Assign music under BGM Tracks → Phases → Title. Turn the screen off with the **Title Screen** setting, reopen it with `/title`, or use **Return to Title** in Monopad Settings → Gameplay.
+
+### Save Files
+Each save keeps its own story: classmates and trust, Truth Bullets, chapter, day and phase, Monocoins, items, skills and level, introductions, journal and trial state. Settings, music, cinematics and custom item definitions are shared by every save.
+- **One Main Chat** saves belong to their story chat (and any Class Trial chats started from it). Opening that chat loads the save by itself.
+- **Several Chats** saves are named slots. Chats that don't belong to a save keep whichever save is loaded.
+- Manage saves in Monopad Settings → **SAVES**: load, rename, copy, delete, export to a file and import from one. Loading a save switches Single-Chat Overworld to match its play style.
+- Updating from an older version wraps your existing progress into a save called **Imported Save**, so nothing is lost.
+
+### Phase HUD
+A small readout under the chapter title and level bar at the top right shows where the story is, for example `DAY 4 · INVESTIGATION`. Click it to see what usually comes next and the actions for the current phase:
+- **End Investigation:** go back to daily life without starting a trial. Your Truth Bullets are kept.
+- **Start Class Trial**, **Pass Time**, **Sleep** and **Start Investigation**, each with a confirmation.
+- **Monokuma's Motive:** Monokuma announces a motive (daily life only, one per chapter). See **Motives and the Case File** below.
+- **Edit Motive:** change the motive's name, what Monokuma offers and its deadline without seeing anything about the planned murder (no spoiler gate). Moving the deadline moves the hidden murder with it. Available until the murder happens; also from the Case File's spoiler screen (**EDIT MOTIVE (NO SPOILERS)**) and `/case motive`.
+- **Cancel Motive:** Monokuma takes the motive back and the planned murder is cancelled. Available until the murder happens; `/case cancel` does the same.
+- **Undo:** reverses the last phase change, whether you made it or the story did.
+
+When the story starts an investigation on its own, a toast offers **UNDO** for a few seconds. Turn the readout off under Settings → Display → **Phase HUD**.
+
+### Escape
+- **Cutscenes:** Escape ends the one playing now: Monokuma announcements, body discoveries, phase banners, character introductions, the chapter-end roster, vote results, execution cinematics, trust ceremonies, Truth Bullet pop-ups and interjections. Whatever they change still happens (the investigation still starts, the chapter still advances). Queued ones play next.
+- **Minigames:** Escape asks to leave. Leaving puts back everything the game changed: Monocoins, Trust Fragments, XP, and the trial phase and debate history. In Non-Stop Debate, Mass Panic Debate and Scrum Debate, holding Escape still fast-forwards; a quick tap asks to leave.
+
+### Motives and the Case File
+Like in the games, a chapter's murder starts with Monokuma's motive. Start one from the Phase HUD, or have Monokuma announce it by himself on a set day of each chapter (Settings → Gameplay → **Monokuma's motive**; off by default, never in the Prologue).
+
+When the motive drops, one hidden generation call plans the chapter's murder: the killer, the victim, how and when it happens (by the night of the motive's deadline), and the clues it leaves behind. This is the **Case File**. It's kept with the save and never shown, so the mystery stays a mystery. The cast only learns about the motive itself. If Monokuma is here (called into your room, or the character of a one-on-one chat), he announces it himself in his own reply. Otherwise he announces it over the monitors, like the morning and night announcements, and the next reply reacts to it. Nothing else is posted to the chat: until the murder, the AI is reminded of the motive and its deadline in a short hidden note. The plan's characters and rooms come from your living classmates and the open rooms on this save's map.
+
+The Phase HUD shows the motive and its deadline until the case is over. After the announcement the music switches to a **Tense** or **Dramatic** track (whichever playlist has tracks; otherwise the phase music comes back). **UNDO** on the motive's toast, or **Cancel Motive** in the Phase HUD any time before the murder, throws the plan away (and removes Monokuma's announcement while it's still the last message). Moving on to the next chapter closes the case.
+
+**How the case plays out:**
+- **Before the murder**, the plan has a few small foreshadowing moments. When the characters a moment involves are in the scene, the AI is asked to slip it in, at most one per daytime or nighttime. The killer's own character is told their secret only while they are the one replying; nobody else's prompt ever names the killer.
+- **The murder** happens during the daytime or the night of the planned day: when you Pass Time out of a daytime murder, or Sleep through a nighttime one. A murder whose time you've already passed happens at the next Pass Time or Sleep, so it can't be skipped. The victim goes missing: out of the overworld and muted, like a student who doesn't show up to breakfast. **Undo** in the Phase HUD takes the murder back with the time change.
+- **The body is found** when you walk into the crime scene (the body discovery cutscene and the announcement play, then the investigation starts), or earlier if the roleplay finds it (the investigation-start marker, /bodydiscovery or the Phase HUD).
+- **The Monokuma File** opens right away, Killing Harmony-style: a Victim page and a Situation page, read out line by line (click, Enter or Space to go on; Escape to close). It's added to your Truth Bullets, and **OPEN FILE** on that bullet shows it again.
+- **During the investigation**, the AI knows what can be found in the room you're in, what the Monokuma File says and which Truth Bullets you already have. It can invent more evidence as long as it fits the case; new Truth Bullets found that way are kept with the case, so the rest of the story stays consistent with them.
+
+**Examine mode:** during an investigation, the **EXAMINE** button in the overworld's right-hand column (under MENU), or `/examine`, lets you look around the room like in Killing Harmony. There are no markers: a yellow crosshair roams the room, turns into a diamond with a magnifying glass over something you can examine, and its name shows in the yellow bar at the bottom. Click to examine it. While it's being looked at the bar reads "Examining…"; then what you notice is shown as your inner monologue in the VN box, which appears for it even while exploring (or in a text box of its own when the VN box is off). **Nothing is posted to the chat.** Evidence you find becomes a Truth Bullet: the evidence the case hid in a spot, and anything else clearly important (the murder weapon, the body, a wound, blood, something out of place). Some spots hide the case's evidence, the rest are ordinary. The prompt for what you notice can be edited under Settings → Gameplay → **EDIT AI INSTRUCTIONS** → EXAMINE.
+
+**Examine during daily life:** EXAMINE also works outside investigations (Settings → Gameplay → **Examine during daily life**, on by default). It uses the same cursor and VN box, but what you notice is just flavour, never evidence. One or two spots in each room hide **Monocoins** (V3), found once. Each floor has one **hidden Monokuma** (DR2): finding one gives a few coins, and finding every one this chapter gives a bonus. The spots, coins and Monokumas are fresh each chapter; making a room's spots again keeps only the coins nobody took. The prompt can be edited under **EDIT AI INSTRUCTIONS** → EXAMINE IN DAILY LIFE. `/examine coins` lists where this chapter's coins and hidden Monokumas are (spoilers).
+
+**Dorm rooms:** examining a classmate's room (or yours) uses their character card (or your persona), so the spots and what you notice fit them: a baseball star's room has a bat and a guitar case, the victim's room says it's theirs. Spots are made once per room per case; **REGENERATE** (below) makes them again.
+
+While examine mode is open, the room's buttons step aside and the right-hand column shows **EXAMINING** (click to stop), **LOOK AT…** (type anything to examine, in the yellow bar; `/examine the window latch` does the same) and **ARRANGE** (the AI can't see the room's picture, so this shows where the spots are and lets you drag them onto the right objects; remembered for the room) and **REGENERATE** (makes this room's spots again, looking at other things; evidence you've found stays found, and if the AI doesn't answer the old spots stay; `/examine regenerate` does the same, and `/examine reset` just forgets them until next time). Right-click or Escape stops, or ends a line you're reading.
+
+**Investigate With:** during an investigation the explore menu's **Tag Along** becomes **Investigate With**. When you examine something with a partner in the room, one of them reacts to it in the chat. Settings → Gameplay → **Investigation partners react** chooses when: when you find evidence (default), to anything you examine, or never. **Partner reactions show as** chooses how: a normal chat message (default), or **only in the VN box**, generated the same way (the partner's card and the chat) but shown like what you notice and never added to the chat.
+
+**Case twists:** not every case is "one killer, one victim". With Settings → Gameplay → **Case twists** (Never / Sometimes / Often; Sometimes by default), Monokuma's plan can be one of the series' twists, never the same twist twice in a row:
+- **Wrong victim:** the killer aims at someone else and the wrong person dies (Teruteru and the Imposter).
+- **The attacker dies:** the victim attacked first, meaning to kill, and died in the struggle (Sayaka).
+- **Two bodies:** a second body turns up during the investigation, with its own Monokuma File ("#N-2"). Walk into its room to find it. The trial is about the first victim.
+- **Suicide:** the victim takes their own life or stages it (Sakura, Nagito). The vote's right answer is the victim.
+- **Accomplice:** someone helps the killer, but only the killer is the blackened (Peko and Fuyuhiko).
+- **Decoy:** someone tries to kill the victim and believes they did, but the real killer struck (a twist on Kaede).
+
+Each person the twist involves gets their own private note (the accomplice, the decoy, the attacker, a second killer), and nobody else learns anything. The trial minigames and the vote follow the twist: Argument Armament against a decoy or an accomplice knows they aren't the blackened. The Case File editor has a **Case shape** select with the fields each twist uses, and shows the vote's answer. `/case shape double` (or any shape) replans the current case with that twist before the murder; `/case status` shows it.
+
+**Motive kinds and foiled murders:** with Settings → Gameplay → **Motive kinds** on **Mixed** (the default), a motive isn't always an announcement. It can be **personal items**: everyone, you included, gets their own item with hidden contents (DR1's DVDs, V3's motive videos). Yours arrives as a package and goes in **Key Items** with what it shows, and each classmate only knows what's in their own. One item may turn out to be evidence and becomes a Truth Bullet once the body is found. Or it can be a **condition** that afflicts a few students (like Despair Disease) until the case closes. Every motive also has a **penalty** for when nobody kills by the deadline.
+A planned murder can be **foiled**: if the killer or the victim is following you, or in the room with you, when its time comes, the attempt fails and moves to the next day or night before the deadline, and the killer knows it failed. If the deadline passes with no murder, Monokuma announces his penalty over the monitors, everyone reacts once, and the case is over (**averted**), so a new motive can come. A V3-style **time limit** ("everyone dies if nobody kills") asks you first: play it out in the roleplay, or have Monokuma relent with a new motive. Nobody is ever marked dead by it. EDIT MOTIVE edits the kind, the penalty, the time limit and your own item without spoilers; the Case File editor has everyone's items and who is afflicted. The penalty and relent notes are under **EDIT AI INSTRUCTIONS**. `/case foil` foils the murder now, `/case deadline` lets the deadline pass now, and `/case kind object|condition|announcement` replans with a new motive of that kind.
+
+**The three-witness rule:** like the games, the body discovery announcement only plays once three people besides the killer (and any accomplice) have seen the body. Walking in alone plays the static shock and the phase readout shows **BODY FOUND**, but there's no announcement and no investigation yet. Classmates who are in the room, who come in (a shuffle, Call Student, someone tagging along) or who speak while you're there count as having seen it. When the third person sees it, the announcement plays and the investigation starts, and a **"Body Discovery Announcement"** Truth Bullet records who had seen the body, in order, including the killer. The killer is told who has seen it, so they can use the rule. A two-body case counts each body separately. Turn it off with Settings → Gameplay → **Body discovery needs 3 witnesses**. `/case witnesses` lists who has seen each body; `/case witnesses add <name>` adds someone.
+
+**Witnesses:** the plan has people who saw or heard something. During the investigation each one privately knows what they saw, and tells it when you ask them about it (or when it comes up naturally); the first time, it becomes a **"<Name>'s Account"** Truth Bullet. Nobody else knows what a witness hasn't said yet, and the killer never gets a witness note about themselves. `/case status` shows who has told.
+
+**The end of the investigation:** whenever you head into the Class Trial (Phase HUD, the Trial Grounds pin, the trial marker or `/startclasstrial`), Monokuma first announces that the investigation is over and everyone should gather at the red door, then the Trial Preparation music plays (if that playlist has tracks). It plays once per case. There's no requirement to have found everything first.
+
+**The Class Trial:** the minigames that have a right answer are built from what really happened: **Hangman's Gambit** (the answer is a key word of the truth, never the killer's name), **Question Time** (the correct answer is true, the others false), **Question Truth** (prefers the bullets that matter), **Mind Mine** (true statements leading toward the truth) and **Argument Armament** (against the real killer, their excuses are lies and the final argument exposes what they did). The **vote**'s right answer is the real killer, so it no longer asks you who it is; after the vote the case is closed and remembers whether you got it right. **Non-Stop Debate, Mass Panic Debate, Scrum Debate and Rebuttal Showdown are left alone on purpose**, so a debate can still go the wrong way. Turn it all off with Settings → Gameplay → **Trial minigames use the case**.
+
+**Evidence readout:** Settings → Gameplay → **Show key evidence found** (off by default) adds "EVIDENCE x/y" to the phase readout during an investigation: how many of the clues the case's plan hid have been found, by examining or a witness telling you. Evidence that turns up in the roleplay on its own isn't counted.
+
+**Evidence on the map:** during an investigation every new Truth Bullet is pinned on the map next to the room you found it in, and the Monokuma File next to the crime scene. Deleting the bullet or swiping its message away removes the pin.
+
+**Complicated cases:**
+- **Public murders.** Some plans have the victim die during a gathering with others present (a séance, a party, a blackout), where nobody sees who did it. A foreshadowing moment sets the gathering up. On the murder day, while you're at the gathering with the victim, the AI is asked to play the gathering out and the death during it, and the body is found right there. If the murder's time passes without it, it still happens, and the body is found at once since everyone was there.
+- **What the Monokuma File can't say.** A killer's trick can hide or fake the time of death, the cause or the injuries. The file then reports only what Monokuma can establish ("Unknown", a broad range, or what it appears to be). Only the killer's character is told the truth behind it.
+- **File updates.** Changing the Monokuma File after it's been handed out (in the Case File editor, or with `/case file`) makes it a new revision: the Truth Bullet and the file screen follow, the screen says UPDATED, and a toast tells you.
+- **Foreshadowing that didn't land.** After a reply that was asked to include a foreshadowing moment, a tiny hidden check asks whether it actually did. If not, the moment is offered again (up to 3 times) before it's set aside.
+- **Murder in the room you're in.** If the murder happens in the room you're standing in, the body is found right away.
+- **Older plans.** A case planned before the Monokuma File had details gets them filled in when the body is found.
+
+**The Case File editor (spoilers):** **CASE FILE** at the top of the Truth tab. It asks before showing anything, and remembers your answer per save (**HIDE AGAIN** puts the gate back). Every part of the case can be edited: the motive, the killer and victim, when and how (hidden or public, with the gathering), the method and timeline, the body's room and scene, the Monokuma File and what it hides, the clues, the foreshadowing, the witnesses and the evidence found during the investigation. Changes apply from the next reply. **REGENERATE** has Monokuma plan the murder again while keeping the motive (before the murder only). **WRITE BY HAND** starts from a blank case, and offers to announce its motive when you save. **CLEAR** throws the case away, and **COMMIT MURDER** / **FIND BODY** move it along for testing.
+
+**Faces:** when a motive is delivered (by Monokuma in person or over the monitors), everyone in the room with you switches to a negative sprite (fear, nervousness, sadness, disgust, anger…, or custom names like `scared`, `shocked`, `sad`), picked from the sprites they have. It lasts until their next line, like a pick from the expression picker. `/case faces` does it on demand to check it.
+
+**Checking it works (spoilers):** `/case status` shows the whole plan, `/case lastraw` shows exactly what the AI sent back for the last plan (handy if a motive fails), `/case prompt` shows what the AI would be told for the next reply (`/case prompt Leon Kuwata` shows it as that character), `/case commit` runs the murder now, `/case discover` finds the body now, `/case file timeOfDeath Unknown` (or `cause`, `injuries`) updates the Monokuma File, and `/case clear` drops the case. Settings → Gameplay → **Case debug toasts** shows a toast each time the case does something.
+
+The generation uses the AI Generation source in Settings, like the trial minigames. It doesn't stop SillyTavern's prompt inspector or your API logs from showing the plan, so don't look there if you want to be surprised.
+
+### School Regulations
+**Truth → RULES** (next to CASE FILE) opens the School Regulations, starting with rules close to Hope's Peak's (no leaving the school, nighttime is 10 p.m. to 7 a.m., sleep only in your own room, no violence against Monokuma or the cameras, the blackened graduates unless found out). Add, edit, delete or reset them; they're kept per save. With Settings → Gameplay → **Share school regulations** on, the AI is told them outside Class Trials, so characters follow them and Monokuma enforces them. When Monokuma adds a rule in the story (`V3C| RULE_ADD: <rule>`) it joins the list, marked as his, with a **NEW SCHOOL REGULATION** toast; when someone breaks one (`V3C| RULE_BREAK: <name>`) a **SCHOOL REGULATION VIOLATION** toast shows and Monokuma is brought in if he's a host card. These markers only apply once the reply is finished; swiping the reply away doesn't take an added rule back (delete it from the list). New motive plans see the rules too. Edit the prompt under **EDIT AI INSTRUCTIONS** → SCHOOL REGULATIONS (`{{rules}}` is the numbered list).
+
+**Light and grave rules:** each regulation in RULES is **LIGHT** or **GRAVE** (click to switch). Violence against Monokuma or the cameras is grave by default; rules Monokuma adds are light unless he says breaking them means death (`V3C| RULE_ADD: <rule> | grave`). Breaking a light rule brings Monokuma in to scold and threaten, with a one-time note for the next reply. Breaking a grave one is punished like Mukuro in the first game: with Settings → Gameplay → **Confirm grave punishments** on (the default) you're asked first, then a full-screen pink blood splash plays, the student is marked dead, and the next reply narrates it. Saying no gives a final warning instead. **Nobody has plot armor, you included:** if you break a grave rule and the punishment goes ahead, the splash plays, Monokuma's next reply narrates your death, and a **GAME OVER** screen follows. **UNDO** deletes the messages from the violation on and you live. **CONTINUE** goes on as someone else: another of your personas, or a living classmate, who becomes your persona (made from their card) and stops being voiced by the AI. The four notes (RULE MARKERS, RULE BROKEN, PUNISHMENT, FINAL WARNING) are under **EDIT AI INSTRUCTIONS**.
+
+**Why a violation can go unnoticed:** the game only knows a rule was broken when the AI writes a hidden `V3C| RULE_BREAK: Name | number` line. The RULE MARKERS instructions go out with the other story markers. With Settings → Gameplay → **Catch unmarked rule breaks** on (the default), a reply that looks like one (someone hitting Monokuma or a camera) but has no marker gets one small hidden check, and the toast says "(caught by the rule check)". You can always report one yourself: **BROKEN…** next to a rule in Truth → RULES picks who broke it. `/rules break <name> 5` plays a violation of rule 5, and `/gameover` opens the GAME OVER screen.
+
+**Checking it works:** `/rules prompt` shows exactly what the AI is told, `/rules add <text>` and `/rules break <name>` play the markers' effects, `/rules reset` restores the defaults, and `/rules` opens the list.
+
+### Character Routines
+**Social → ROUTINES** (in the CLASS ROSTER header) sets where each living classmate usually is during the **daytime** and at **night**: add rooms with **+ room**, remove them with ×, or **CLEAR** a row. **SUGGEST FROM CARDS** asks the AI once (hidden) to fill everyone who has no routine yet from their cards and Ultimates; routines you set by hand are never overwritten. When time passes (Pass Time, Go to Sleep, Reshuffle), each classmate with a routine for that time of day turns up in one of their rooms most of the time (about 70%); otherwise, or when their rooms aren't on the current floor, the random shuffle stands. People tagging along stay with you, and dorm rooms never take visitors. A new motive's murder plan builds its alibis, witnesses and timeline on the routines.
+
+**Mysteries of the world:** besides each chapter's murder, there's a truth behind the whole killing game. With Settings → Gameplay → **Mysteries of the world** on (the default), a NEW GAME quietly writes it with one hidden AI call (from the cast, the map and your lorebook): a **mastermind** among your classmates, their goal, what happened outside, and secrets that come out chapter by chapter:
+- **Secret files** are hidden in rooms. Examine the room in daily life once their chapter comes (with daily examine off, walking in finds them). A chapter's file is often on a floor that just opened.
+- **Flashback Lights** (Settings → Gameplay → **Flashback Lights**, optional): at a chapter's start Monokuma leaves one in your Key Items. **USE FLASHBACK LIGHT** in the phase readout's menu plays a white flash and a memory that comes back. Turned off, those secrets are hidden in rooms instead.
+- **Monokuma** lets a secret slip over the monitors when a chapter starts.
+- **The final truth** comes out at the final trial.
+
+Truth → **WORLD** lists what's been uncovered, without spoilers; everyone knows it, and the AI is told (`[WHAT EVERYONE NOW KNOWS]`). The whole truth is behind a spoiler gate there, editable like the Case File, with **DRAFT WITH AI**. The mastermind's character gets a subtle private note. Stamping the right person **MARK AS MASTERMIND** in Social once the final chapter has come brings the final truth out. From the **Final chapter** (Settings → Gameplay, chapter 6 by default) or the epilogue, **START FINAL TRIAL** in the phase readout's menu runs a Class Trial with no victim: its minigames follow the truth of the world and the vote names the mastermind. It ends with a **HOPE / DESPAIR** choice, written into the chapter journal, with Happy or Sad music. The drafting prompt is under **EDIT AI INSTRUCTIONS**. `/world status` shows it all (spoilers), `/world draft` writes it, `/world reveal [id]`, `/world chapter [n]`, `/world flashback`, `/world final`.
+
+**New floors:** when a chapter change opens a floor (floors get their chapter in the map editor), Monokuma announces it over the monitors, and the Phase HUD menu's hint shows an **EXPLORE** checklist of its rooms, "EXPLORE 2F (1/5): Library, Pool, …", until you've walked into each one. It's only a guide: nothing waits on it. `/newfloors` lists the checklists and the chapter-gated floors; `/newfloors open 2` opens chapter 2's floors now.
+
+**Rooms closed at night:** some rooms lock at night, like the dining hall in the games. Hope's Peak's **Cafeteria** and **Kitchen** do by default; tick or untick **Closed at night** in any pin's editor (dorm rooms too). At night they stay in Move To and on the minimap, greyed out and marked "Closed at night", and nobody is shuffled or routed into them. If you're still inside at the night announcement, Monokuma shoos you (and whoever's following you) out to the floor's hub, shown in the VN box. The murder planner is told which rooms are locked at night for its alibis, and the School Regulations prompt names them. `/rooms closed` lists them and whether they're closed right now.
+
+**Group events:** get-togethers in daily life. A classmate can propose one in the roleplay (the AI writes a hidden `V3C| EVENT` line once others agree), you can plan one with **PLAN EVENT** in the Phase HUD menu, and with Settings → Gameplay → **Classmates plan events** on **Sometimes**, a hidden call some mornings has a classmate propose one. **Social → EVENTS** (next to ROUTINES) lists what's coming up, with **ATTEND** and **CANCEL**. When an event's time comes, everyone invited (or everyone) gathers in its room; if you're attending, a toast offers **GO**. Replies there are told the event is happening, and everyone knows what's planned. A room closed at night can't hold a night event. The murder planner sees upcoming events, so a public murder's gathering can be one of them (its room and time are then the event's). Both prompts are under **EDIT AI INSTRUCTIONS**. `/events` lists them, `/events add Title | room | Day 3 night | Host` adds one, `/events propose` runs the morning call now.
+
+**Checking it works:** `/routines status` lists everyone's routine rooms, the time of day the shuffle uses and which rooms it can use right now.
 
 ### Character Introductions
 Character Introductions takes a character's `neutral` sprite and renders them on an animated background, grabbing their `name` and `ultimate` values. Commenced through the `/introduce` command.
@@ -65,15 +205,25 @@ Supplied in this extension are a wide array of minigames, including:
 - OpenRouter key is session-only by default unless “Remember key” is enabled.
 
 ## V3C trigger format (chat parsing)
-The extension scans assistant messages for these patterns:
+The extension scans assistant messages for these patterns.
+
+**You don't have to teach the AI these yourself.** With **AI INSTRUCTIONS** on (Settings → Gameplay), the extension adds the rules to the prompt itself and sends only the ones that fit the current phase: evidence markers during investigations, trust markers outside Class Trials, and the investigation-start and announcement markers during daily life. With **Share trust levels** on, it also tells the AI how much each character in the chat trusts or distrusts you (hosts like Monokuma are never included). Edit each block from the same setting. It's on for new players. If you're updating and already pasted the rules from `v3c-marker-prompts/prompts.txt` into your preset, a toast offers to turn it on; remove the pasted rules when you do. The extension warns you if both are active.
 
 - `V3C| TB: <title> || <description>`
 - `V3C| SOCIAL: <name>`
 - `V3C| SOCIAL_UP: <name>`
 - `V3C| SOCIAL_DOWN: <name>`
-- `V3C| INVESTIGATION_START` (plays Investigation Start banner/sfx and attempts to enable the `Investigation Time` toggle in your current preset)
-- `V3C| TRIAL_START` (opens a confirmation prompt to begin Class Trial phase flow)
+- `V3C| SOCIAL_DROP: <name> | <2-5>` (loses that many ranks at once; can run past Trust 1 into distrust)
+- `V3C| SOCIAL_BREAK: <name> | <1-10>` (trust shatters straight into that level of distrust; someone already in distrust sinks that much further)
+- `V3C| INVESTIGATION_START` (plays the Investigation Start banner/sfx and shows a toast with UNDO; with AI INSTRUCTIONS off, it also tries to enable an `Investigation Time` toggle in your current preset)
+- `V3C| TRIAL_START` (opens the Class Trial menu, which asks before the trial begins)
 - `V3C| BODY_DISCOVERY` (plays a separate static/shake body discovery cutscene using `assets/sfx/etc/despairnoise.mp3`)
+- `V3C| DAY_ANNOUN`, `V3C| NIGHT_ANNOUN`, `V3C| BDA` (play Monokuma's daytime, nighttime or body discovery announcement; they don't change the day or phase)
+- `V3C| RULE_ADD: <rule>` (Monokuma adds a School Regulation)
+- `V3C| RULE_BREAK: <name> | <rule number>` (someone broke a School Regulation; Monokuma is brought in, and a grave rule is punished by death)
+
+### Swipes, deletes and edits
+What a message did is remembered per save: Truth Bullets, trust changes, gift reactions, the Monocoins, Trust Fragments and XP that came with them, and an investigation it started. Swiping that message away, deleting it, or editing its markers out takes all of that back, and a toast lists what was undone. Swiping back to it applies it again. Edits that keep the markers change nothing. If the message held a gift reaction, the gift goes back to waiting and the next reply reacts to it instead.
 
 ### Examples
 ```text
@@ -81,6 +231,8 @@ V3C| TB: Bloody Handprint || Found on the west hall window.
 V3C| SOCIAL: Kyoko Kirigiri
 V3C| SOCIAL_UP: Aoi Asahina
 V3C| SOCIAL_DOWN: Byakuya Togami
+V3C| SOCIAL_DROP: Toko Fukawa | 3
+V3C| SOCIAL_BREAK: Leon Kuwata | 4
 V3C| INVESTIGATION_START
 V3C| TRIAL_START
 V3C| BODY_DISCOVERY
@@ -88,7 +240,7 @@ V3C| BODY_DISCOVERY
 
 ## Typical usage flow
 1. Roleplay/investigate in chat.
-2. Emit V3C lines from your prompt template/character logic.
+2. Let the extension give the AI the V3C rules (AI INSTRUCTIONS), or put them in your own prompt template.
 3. Open Monopad to review Truth Bullets and Social updates.
 4. Spend rewards in Gifts & Skills and use gifts in conversations.
 5. Partake in Class Trials and advance the story
@@ -109,7 +261,7 @@ V3C| BODY_DISCOVERY
 | **Play BGM in Assistant Chat** | Toggle | Off | Keeps phase BGM playing outside of group chats |
 | **Dynamic Songs** | Toggle | Off | When on, the extension majority-votes the latest sprite of every living character in the current scene (group-chat portraits, or overworld room if portraits are not up) and plays a matching mood track. Only replaces daytime / nighttime / investigation BGM — shop, map-pin BGM, class trials, and minigames are left alone. Neutral and unknown sprites are ignored. Ties keep the current mood if it is still tied for first, otherwise fall back to phase BGM. The media player list button opens assigned songs filtered by mood or phase. SCAN on the player re-reads current sprites and forces a mood change. |
 | **Mood Scan Toast** | Toggle | Off | After SCAN, shows a themed HUD toast with sprite vote counts and the track that started playing. |
-| **BGM Tracks** | File multi-select | — | Assign audio files to each game phase or mood. Available phases: Shop, Daytime, Nighttime, Investigation, Trial General, Trial Preparation, Non-Stop Debates, Mass Panic Debates, Scrum Debates, Hangman's Gambit, Rebuttal Showdown, Interjection, Suspect Choice, AA Phase 1/2/3. Moods (used by Dynamic Songs): Happy (joy, excitement), Sad (sadness, grief), Dramatic (realization, surprise), Tense (fear, nervousness), Angry (anger, disgust), Romantic (love, embarrassment). A track can belong to both a phase list and a mood list. |
+| **BGM Tracks** | File multi-select | — | Assign audio files to each game phase or mood. Available phases: Title, Shop, Daytime, Nighttime, Investigation, Trial General, Trial Preparation, Non-Stop Debates, Mass Panic Debates, Scrum Debates, Hangman's Gambit, Rebuttal Showdown, Interjection, Suspect Choice, AA Phase 1/2/3. Moods (used by Dynamic Songs): Happy (joy, excitement), Sad (sadness, grief), Dramatic (realization, surprise), Tense (fear, nervousness), Angry (anger, disgust), Romantic (love, embarrassment). A track can belong to both a phase list and a mood list. |
 ---
 
 ### Display
@@ -118,12 +270,23 @@ V3C| BODY_DISCOVERY
 | **CRT Effects** | Toggle | On | Applies a CRT scanline filter over the Monopad UI |
 | **CRT Intensity** | Slider (0–100) | 35 | Controls the strength of the CRT scanline filter |
 | **Boot Animations** | Toggle | On | Shows the startup animation sequence when SillyTavern loads |
-| **Visual Novel Mode** | Toggle | Off | Enables VN-style character sprite and text presentation in chat |
-| **Daily / Deadly Life Dynamic Themes** | Toggle | On | Automatically switches the UI theme based on daytime, nighttime, or investigation state |
+| **Title Screen** | Toggle | On | Shows the title screen when SillyTavern loads. `/title` opens it any time |
+| **Setup Reminder** | Toggle | On | The title screen's SETUP glows while something the game needs isn't set up (sprites, Ultimates and room backgrounds don't count), and NEW GAME / CONTINUE suggest checking it first |
+| **Return to Title** | Button | — | Closes the Monopad and opens the title screen |
 | **Hide Truth Bullet Images** | Toggle | Off | Hides thumbnail images on Truth Bullet entries in the Monopad |
 | **Hide Gift Images** | Toggle | Off | Hides thumbnail images on gift and inventory entries |
+---
+
+### Customize
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| **Visual Novel Mode** | Toggle | Off | Enables VN-style character sprite and text presentation in chat |
+| **Text Box Style** | Picture picker | Classic | How the VN text box looks: Classic (the original box), Trigger Happy Havoc, Goodbye Despair or Killing Harmony. The game styles change colour at night and during investigations. Also picked during NEW GAME |
+| **Daily / Deadly Life Dynamic Themes** | Toggle | On | Automatically switches the UI theme based on daytime, nighttime, or investigation state |
 | **Class Trial Podium** | DEFAULT / CUSTOM | Default | Use the built-in lectern sprite or upload a custom replacement image |
 | **Hide Hope's Peak Branding** | Toggle | Off | Unlocks Announcement Customization — replace default announcement images, voice lines, and text for Daytime, Nighttime, and Body Discovery announcements |
+| **SillyTavern's bar style / position** | CAPSULE / CLASSIC, TOP / LEFT | Capsule, Top | Restyles SillyTavern's top bar as a rounded capsule of grey outlined icons, along the top or down the left edge. With auto-hide on it slides in when you point at its edge |
+| **Keybinds** | Key or mouse button | See below | Rebind or clear (Backspace) each action. Keybinds never fire while you type. Defaults: right click shows SillyTavern's bar, M the Monopad, L the transcript, E the expression picker, H hides the interface |
 ---
 
 ### Gameplay
@@ -131,6 +294,7 @@ V3C| BODY_DISCOVERY
 |---|---|---|---|
 | **Sprite Click Gifts** | Toggle | Off | Overworld sprite clicks open a gift picker for that character instead of starting a 1-on-1 or cluster chat. The gift waits until that character next speaks in your main chat. Talk to the Room / Grab Group Members still open chats when Single-Chat Overworld is off. |
 | **Single-Chat Overworld** | Toggle | Off | Explore the overworld without leaving your open group chat. Sprites cover the chat UI; the VN talk box and send box stay usable. Who is standing in the current room is unmuted (present) via SillyTavern group mute; everyone else is muted so they will not hear or auto-reply. Requires the [Presence](https://github.com/leandrojofre/SillyTavern-Presence) extension for per-character memory. View conversation and the minimap only show who is in the current room. Explore brings the overlay back. Call Student warps selected students into the room. Sprite clicks do not open new chats (Sprite Click Gifts still queues a gift). Class trials are unchanged. |
+| **Share school regulations** | Toggle | On | Tell the AI the School Regulations (Truth → RULES) outside Class Trials, with the RULE_ADD and RULE_BREAK markers. Edit the prompt under EDIT AI INSTRUCTIONS → SCHOOL REGULATIONS. |
 | **Room Context Prompt** | Toggle + editor | Off | When on, chat completions receive a short system prompt with the current room (`{{room}}`) and living occupants (`{{characters}}`, or `none`). Cleared during class trials and when no location is set. Edit or reset the template from the same row. |
 ---
 
@@ -183,6 +347,9 @@ Plays the execution cinematic for the named character, then marks them as dead i
 | `name` | **Yes** | — | Character name — must match both a configured execution cinematic and a registered character |
 ---
 
+#### `/title`
+Opens the title screen, even when the **Title Screen** setting is off.
+
 #### `/introduce`
 Shows a 4-second character introduction screen for the current SillyTavern speaker.
 
@@ -202,6 +369,12 @@ Triggers the nighttime announcement, shows a Night Time Start banner, and switch
 
 #### `/gotosleep`
 Advances to the next day, plays the daytime announcement, shows a Free Time Start banner, and switches to the Day theme.
+
+#### `/endinvestigation`
+Ends the current investigation and returns to daytime or nighttime. Truth Bullets are kept, and the `Investigation Time` preset toggle is switched back off.
+
+#### `/undophase`
+Undoes the last phase change: an investigation starting or ending, passing time, or sleeping.
 
 #### `/endtrial`
 Immediately ends the current Class Trial and clears all persistent trial states.
@@ -331,7 +504,7 @@ Displays the Truth Bullet list and asks the player to select the correct one for
 ## Q&A
 - **Q: How do gifts work?**
   
-  **A: First and foremost, gifts are obtained through a gacha minigame on the MonoMono Machine, accessible through the map tab. To use them, access your inventory, select the gift and press use. The next character who sends a message in chat will receive and judge it, granting you either a rank up or down or simply staying neutral. If Sprite Click Gifts is on in Settings, clicking an overworld sprite queues a gift for that specific character instead of opening a new chat — they react the next time they speak in your main group chat. Talk to the Room and Grab Group Members still open chats when Single-Chat Overworld is off.**
+  **A: First and foremost, gifts are obtained through a gacha minigame on the MonoMono Machine, accessible through the map tab. To use them, access your inventory, select the gift and press use. The next character who replies after you use it will receive and judge it (older messages in the chat don't count), granting you either a rank up or down or simply staying neutral. If Sprite Click Gifts is on in Settings, clicking an overworld sprite queues a gift for that specific character instead of opening a new chat — they react the next time they speak in your main group chat. Talk to the Room and Grab Group Members still open chats when Single-Chat Overworld is off.**
 
 ---
 
@@ -343,7 +516,7 @@ Displays the Truth Bullet list and asks the player to select the correct one for
 
 - **Q: There's something you didn't explain here. I'm confused. What do I do?**
   
-  **A: On first load, a play-mode overlay explains several chats vs one main chat. Leave Don't show again on and press CONTINUE to hide it for later sessions; Reset Lesson Hints in Settings brings it back. The question mark in the top right of Settings starts Mr. Monokuma's Lesson, which walks you through the Monopad. After that, he explains each tab and minigame the first time you use it.**
+  **A: On first load, a play-mode overlay explains several chats vs one main chat. Leave Don't show again on and press CONTINUE to hide it for later sessions; Reset Lesson Hints in Settings brings it back. The question mark in the top right of Settings starts Mr. Monokuma's Lesson, which walks you through the Monopad. After that, he explains each tab and minigame the first time you use it. Each minigame's explanation opens with a short looping clip of it being played, then walks through every control.**
 
 ---
 

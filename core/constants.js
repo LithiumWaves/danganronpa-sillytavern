@@ -1,3 +1,9 @@
+import { DEFAULT_EXAMINE_NARRATION_TEMPLATE } from "./case/examine.js";
+import { DEFAULT_DAILY_NARRATION_TEMPLATE } from "./case/dailyExamine.js";
+import { DEFAULT_RULES_PROMPT_TEMPLATE, DEFAULT_RULE_CHECK_TEMPLATE, DEFAULT_RULE_MARKER_TEMPLATE, DEFAULT_RULE_BREAK_GRAVE_TEMPLATE, DEFAULT_RULE_BREAK_LIGHT_TEMPLATE, DEFAULT_RULE_BREAK_WARNING_TEMPLATE } from "./rules/schoolRules.js";
+import { DEFAULT_PENALTY_NOTE_TEMPLATE, DEFAULT_RELENT_NOTE_TEMPLATE } from "./case/casePrompts.js";
+import { DEFAULT_EVENT_MARKER_TEMPLATE, DEFAULT_EVENT_PROPOSAL_TEMPLATE } from "./events/groupEvents.js";
+import { DEFAULT_WORLD_TRUTH_TEMPLATE } from "./world/worldTruth.js";
 export const extensionName = "danganronpa-extension";
 
 function normalizeWebExtensionPath(pathname = "") {
@@ -60,10 +66,31 @@ export const defaultSettings = {
     announcementVolume: 65,
     monokumaLanguage: "JP",
     trustCeremonies: true,
+    // Trust ceremony look: "danganronpa" or "persona".
+    trustCeremonyStyle: "danganronpa",
     truthBulletAnimations: true,
     monomonoBgmVolume: 40,
     mapPresencePinsEnabled: true,
     vnModeEnabled: false,
+    // VN text box look: "current", or a recreation of one game's box.
+    vnSkin: "current",
+    // Investigation / Free Time / Nighttime banner look: "match" follows the
+    // text box, or one of the vnSkin values.
+    phaseBannerStyle: "match",
+    // AI instructions also tell the AI each present character's trust level.
+    markerTrustLevelsEnabled: true,
+    // VN typewriter speed in percent (25–300); 100 is the original speed.
+    vnTypingSpeed: 100,
+    // Show the player's Prome user sprite in a window during conversations.
+    playerInsetEnabled: false,
+    // The EXPRESSIONS tab on the right edge (conversations and trials).
+    expressionPickerEnabled: true,
+    // Characters' sprites change with what they say. Off: only by hand.
+    autoExpressionsEnabled: true,
+    // Your sprite window tucked away behind its stripes.
+    playerInsetCollapsed: false,
+    // SillyTavern streaming checkboxes VN mode switched off, to switch back on.
+    vnPausedStStreaming: [],
     // Half-Sprite Mode global adjustments (apply to every character): a size
     // multiplier on the cropped sprite and a vertical pixel offset.
     halfspriteScale: 1,
@@ -80,10 +107,39 @@ export const defaultSettings = {
     // negative = lowered. Applied to #dangan-group-chat-stage via --dgn-podium-offset-y.
     trialPodiumOffsetY: 0,
     bootAnimations: true,
+    settingsSubtab: "audio",
+    titleScreenEnabled: true,
+    setupPulseEnabled: true,
+    returningNoticeDismissed: false,
+    phaseHudEnabled: true,
+    exploreHideComposer: true,
+    exploreActionMenu: true,
+    moveToOnMinimap: true,
+    autoHideStTopBar: true,
+    // SillyTavern's bar: "sg" (the capsule) or "classic".
+    stTopBarStyle: "sg",
+    // Where the capsule sits: "top" or "left".
+    stTopBarPosition: "top",
+    // Keybinds by action (core/input/keybinds.js); missing ones use defaults.
+    keybinds: {},
     dynamicThemes: true,
     hideTruthBulletImages: false,
     hideGiftImages: false,
     spriteClickGiftsEnabled: false,
+    hostEntranceSfx: true,
+    hostEntranceBounce: true,
+    // Catchphrase on the Rise & Shine entrance (host/hostSplash.js).
+    hostSplashText: "Rise and Shine, Ursine—!",
+    // What the hosts shout as the splash appears: "default", "custom" (the
+    // file in hostSplashVoiceData, a data URL) or "mute".
+    hostSplashVoiceMode: "default",
+    hostSplashVoiceData: "",
+    hudColorSongMode: "phase",
+    hudColorChapterMode: "phase",
+    hudColorMapMode: "phase",
+    hudColorSong: "#f59a1b",
+    hudColorChapter: "#f59a1b",
+    hudColorMap: "#f59a1b",
     singleChatOverworldEnabled: false,
     singleChatGroupId: "",
     roomContextPromptEnabled: false,
@@ -130,6 +186,14 @@ export const defaultSettings = {
     hangmansGambitUseRecentContext: false,
     hangmansGambitUseDebateHistory: false,
     shopTracks: [],
+    monokumaTracks: [],
+    // Played over the Rise & Shine entrance (the Monokubs' splash).
+    monokubsTracks: [],
+    // Host / mascot cards for this save (empty = Auto: the card named Monokuma).
+    hostCards: [],
+    // Hosts in this save that enter with the Rise & Shine splash instead of popping up.
+    hostSplashCards: [],
+    titleTracks: [],
     daytimeTracks: [],
     nighttimeTracks: [],
     investigationTracks: [],
@@ -184,6 +248,80 @@ export const defaultSettings = {
     // Whether Investigation Mode is currently active — persisted so it survives
     // page refreshes (cleared when time advances to the next phase/day).
     investigationUnderway: false,
+    // The hidden plan for this chapter's murder (core/case/caseFile.js), made
+    // when Monokuma announces a motive. Never shown unless the player asks.
+    caseFile: null,
+    // Day N of a chapter Monokuma announces the motive on by himself; 0 is off.
+    motiveAutoDay: 0,
+    // How often a murder plan is a twist (core/case/caseFile.js CASE_SHAPES):
+    // "off", "sometimes" or "often".
+    caseTwists: "sometimes",
+    // What kind of motives Monokuma hands out: "announcement" only, or
+    // "mixed" (announcements, personal items and conditions).
+    motiveKinds: "mixed",
+    // The last case's shape, so the same twist doesn't come twice in a row.
+    caseHistory: null,
+    // The body discovery announcement waits until three people besides the
+    // killer have seen the body, as in the games.
+    bodyDiscoveryWitnesses: true,
+    // During an investigation the phase readout shows how many of the case's
+    // planned clues were found ("EVIDENCE 2/6").
+    showKeyEvidenceFound: false,
+    // A grave regulation's punishment (death) asks first.
+    confirmGravePunishments: true,
+    // A hidden check catches violations the AI didn't mark (only replies
+    // that look like one: violence near Monokuma or a camera).
+    catchUnmarkedRuleBreaks: true,
+    // The player was punished by death (game over pending or shown), and
+    // the players who fell before the current one.
+    playerDeath: null,
+    fallenPlayers: [],
+    // A violation's one-time note still waiting for the next reply.
+    ruleBreakNote: null,
+    // The mysteries running through the whole game (core/world/worldTruth.js):
+    // the mastermind and the secrets of the world, per save, and whether the
+    // player chose to see them.
+    worldMysteries: true,
+    worldTruth: null,
+    worldTruthRevealed: false,
+    // Flashback Lights hand out lost memories at a chapter's start; off, those
+    // secrets are found by exploring instead.
+    flashbackLights: true,
+    // The chapter the final trial can start from.
+    finalChapter: 6,
+    // Examine mode in daily life too (flavour, Monocoins, hidden Monokumas).
+    dailyExamineEnabled: true,
+    // This chapter's daily examine spots, coins and hidden Monokumas
+    // (core/case/dailyExamine.js).
+    dailyExamine: null,
+    // Group events in daily life (core/events/groupEvents.js), per save.
+    groupEvents: [],
+    // Rooms still to see on floors a chapter change opened
+    // (core/explore/floorExplore.js).
+    floorExplore: null,
+    // A hidden call some mornings has a classmate propose an event: "off" or
+    // "sometimes".
+    classmatesPlanEvents: "off",
+    // The School Regulations (core/rules/schoolRules.js); null means the
+    // defaults, which a save gets the first time they're read.
+    schoolRules: null,
+    // Tell the AI the School Regulations (outside Class Trials).
+    shareSchoolRules: true,
+    // Where each character usually is (overworld/routines.js):
+    // { [name]: { day: [roomId], night: [roomId] } }.
+    characterRoutines: {},
+    // Toasts for each Case File event (beats, the killer's note, the murder,
+    // the body being found), for checking the case plays out.
+    caseDebugToasts: false,
+    // Trial minigames with a right answer (not the debates) and the vote use
+    // the hidden Case File.
+    trialUseCaseTruth: true,
+    // When an investigation partner reacts to what you examine: "clues",
+    // "always" or "off".
+    examinePartnerReactions: "clues",
+    // How a partner's reaction shows: "message" (a chat message) or "aside"
+    // (only in the VN box, never added to the chat).
+    examinePartnerReactionStyle: "message",
 };
 
 export const DEFAULT_TRIAL_PROMPT_TEMPLATES = {
@@ -249,6 +387,63 @@ RECENT CHAT CONTEXT:
 export const DEFAULT_GAMEPLAY_PROMPT_TEMPLATES = {
     roomContext: `Location: {{room}}
 Present: {{characters}}`,
+    markerTruth: `[EVIDENCE MARKERS]
+An investigation is underway. When a concrete, verifiable discovery is made, record it as a Truth Bullet on its own line:
+V3C| TB: Short Title || One-sentence description
+- Only record facts that are new and could matter at the Class Trial.
+- Keep titles short, neutral and factual.
+- If nothing new is found, write no marker.`,
+    markerSocial: `[TRUST MARKERS]
+When the player's interaction with a character meaningfully deepens trust, understanding or connection, add this on its own line at the very end of the reply:
+V3C| SOCIAL: Character Full Name
+When it seriously damages trust (betrayal, hostility, real harm; not playful teasing), add this instead:
+V3C| SOCIAL_DOWN: Character Full Name
+If something drastic badly damages trust (a serious betrayal or cruelty), use this instead, with how many ranks they lose (2 to 5):
+V3C| SOCIAL_DROP: Character Full Name | 3
+If it destroys their trust in the player outright, turning it into distrust, use this instead, with how deep their distrust now runs (1 to 10):
+V3C| SOCIAL_BREAK: Character Full Name | 4
+- Use the character's full name as it's displayed.
+- At most one trust marker per character per reply. Use them sparingly; not every friendly moment counts, and SOCIAL_DROP and SOCIAL_BREAK are rare: most bad moments are a plain SOCIAL_DOWN.`,
+    markerTrustLevels: `[TRUST LEVELS]
+How each character here currently feels about the player. Let it color how they act toward them; never mention ranks or numbers.
+{{trust_levels}}`,
+    markerInvestigation: `[INVESTIGATION MARKER]
+If a body is discovered and the story moves into the investigation, put this on its own line at the start of that reply:
+V3C| INVESTIGATION_START
+Don't use it at any other time.`,
+    // What the player notices when examining something (core/case/examine.js
+    // fills the placeholders; {{findings}} says whether there's evidence).
+    examineNarration: DEFAULT_EXAMINE_NARRATION_TEMPLATE,
+    // What the player notices when examining something in daily life.
+    examineDailyNarration: DEFAULT_DAILY_NARRATION_TEMPLATE,
+    // The School Regulations ({{rules}} is the numbered list).
+    schoolRules: DEFAULT_RULES_PROMPT_TEMPLATE,
+    // The one-time note after someone breaks a regulation
+    // (core/rules/schoolRules.js): light, grave (punished by death), and the
+    // final warning (the player, or a punishment turned down).
+    // How the AI marks adding or breaking a regulation (sent with the story
+    // markers), and the hidden check for violations it didn't mark.
+    markerRules: DEFAULT_RULE_MARKER_TEMPLATE,
+    ruleBreakCheck: DEFAULT_RULE_CHECK_TEMPLATE,
+    ruleBreakLight: DEFAULT_RULE_BREAK_LIGHT_TEMPLATE,
+    ruleBreakGrave: DEFAULT_RULE_BREAK_GRAVE_TEMPLATE,
+    ruleBreakWarning: DEFAULT_RULE_BREAK_WARNING_TEMPLATE,
+    // What everyone is told once when a motive's deadline passes with no
+    // murder (core/case/casePrompts.js): the penalty, or Monokuma relenting.
+    motivePenalty: DEFAULT_PENALTY_NOTE_TEMPLATE,
+    motiveRelent: DEFAULT_RELENT_NOTE_TEMPLATE,
+    // How classmates propose a group event in a reply, and the morning call
+    // that sometimes has one propose an event (core/events/groupEvents.js).
+    markerEvents: DEFAULT_EVENT_MARKER_TEMPLATE,
+    eventProposal: DEFAULT_EVENT_PROPOSAL_TEMPLATE,
+    // The hidden call that writes the truth of the world
+    // (core/world/worldTruth.js); the JSON format is added if it's left out.
+    worldTruthDraft: DEFAULT_WORLD_TRUTH_TEMPLATE,
+    markerAnnouncements: `[ANNOUNCEMENT MARKERS]
+When Monokuma makes an announcement in the story, add the matching marker on its own line:
+V3C| DAY_ANNOUN for the morning announcement
+V3C| NIGHT_ANNOUN for the nighttime announcement
+V3C| BDA for a body discovery announcement`,
 };
 
 export function getDefaultPromptTemplate(templateKey) {
@@ -340,6 +535,19 @@ export const XP_REWARDS = {
 export const SOCIAL_REGEX = /V3C\|\s*SOCIAL:\s*([^\n\r]+)/g;
 export const SOCIAL_UP_REGEX = /V3C\|\s*SOCIAL_UP:\s*([^\n\r]+)/g;
 export const SOCIAL_DOWN_REGEX = /V3C\|\s*SOCIAL_DOWN:\s*([^\n\r]+)/g;
+// Several ranks at once: "V3C| SOCIAL_DROP: Name | 3" (2–5 ranks).
+export const SOCIAL_DROP_REGEX = /V3C\|\s*SOCIAL_DROP:\s*([^\n\r]+)/g;
+// Trust shattered into Distrust N: "V3C| SOCIAL_BREAK: Name | 4" (1–10).
+export const SOCIAL_BREAK_REGEX = /V3C\|\s*SOCIAL_BREAK:\s*([^\n\r]+)/g;
+
+// "Name | 3" (or "Name, 3" / "Name 3") → { name, amount }; amount is null
+// when the marker gives no number.
+export function parseSocialMarkerTarget(text) {
+    const raw = String(text || "").trim();
+    const m = raw.match(/^(.*?)(?:\s*[|｜,:]\s*|\s+)(\d{1,2})\s*[|｜]?\s*$/);
+    const name = (m ? m[1] : raw).replace(/[|｜,:\s]+$/, "").trim();
+    return { name, amount: m ? Number(m[2]) : null };
+}
 export const INVESTIGATION_START_REGEX = /V3C\s*[|｜]\s*INVESTIGATION(?:\s*[_\-]?\s*)START\b/gi;
 export const TRIAL_START_REGEX = /V3C\s*[|｜]\s*TRIAL(?:\s*[_\-]?\s*)START\b/gi;
 export const TRIAL_CONTEXT_REGEX = /V3C\|\s*TRIAL_CONTEXT:\s*([^|\n\r]+?)(?:\|\|\s*([^|\n\r]+?))?(?:\|\|\s*([^\n\r]+))?$/gm;

@@ -1,4 +1,5 @@
 import { promptMinigameTutorial } from "../core/onboarding/minigameGuides.js";
+import { beginMinigame } from "../core/skip/skipRegistry.js";
 
 const SD_ID    = "dangan-sd-overlay";
 const SD_STYLE = "dangan-sd-style";
@@ -1662,6 +1663,7 @@ export function createScrumDebateController({
             function teardown(result) {
                 if (resolved) return;
                 resolved = true;
+                endSession();
                 if (frameId)    cancelAnimationFrame(frameId);
                 if (tugFrameId) cancelAnimationFrame(tugFrameId);
                 if (spinRafId)  { cancelAnimationFrame(spinRafId); spinRafId = null; }
@@ -2276,6 +2278,9 @@ export function createScrumDebateController({
 
             document.addEventListener("keydown", onKeydown);
             document.addEventListener("keyup",   onKeyup);
+            // A tap of Escape backs out (teardown with no result: no win, and
+            // index.js restores Monocoins); holding it still fast-forwards.
+            const endSession = beginMinigame({ abort: () => teardown(null), holdEscape: true, label: "Scrum Debate" });
 
             // ── Cylinder spin loop (NSD-style: continuous + lerped jump on cycle) ──
             const SPIN_SPEED_DPF = 20 / 60;  // degrees per frame at 60fps

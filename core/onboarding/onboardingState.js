@@ -43,6 +43,15 @@ export function createOnboardingState({ getMonopadSetting, setMonopadSetting }) 
         setMonopadSetting("minigameTutorialsEnabled", false);
     }
 
+    // Brings back every tutorial: lesson hints, the welcome greeting and the
+    // minigame tutorial prompts.
+    function resetAllTutorials() {
+        setCoachesSeen({});
+        clearWelcomeSeen();
+        setMonopadSetting("featureCoachesEnabled", true);
+        setMonopadSetting("minigameTutorialsEnabled", true);
+    }
+
     function isCoachSeen(id) {
         if (!id) return true;
         return !!getCoachesSeen()[id];
@@ -82,6 +91,7 @@ export function createOnboardingState({ getMonopadSetting, setMonopadSetting }) 
         markCoachSeen,
         markCoachesSeen,
         resetCoaches,
+        resetAllTutorials,
         getCoachesSeen,
     };
 }

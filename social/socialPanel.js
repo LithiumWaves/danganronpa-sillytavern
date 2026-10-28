@@ -1,3 +1,5 @@
+import { clampTrust, nextTrustDown, nextTrustUp } from "../trust/trustState.js";
+
 function parseReportHeightCm(raw) {
     if (!raw) return null;
     const s = String(raw).trim();
@@ -53,12 +55,15 @@ export function createSocialPanelController({
     getPromeSpritePack,
     getMonopadSetting,
     onCharacterDead = null,
+    onCharacterMastermind = null,
+    isPlayerDead = null,
     pickImportedClassmates = null,
     addCharactersToRoster = null,
 }) {
     let statusFilters = new Set(); // empty = show all statuses
     let overlaysHidden = false;
     let sortOrder = "asc"; // "asc" = A→Z, "desc" = Z→A
+    const notesInFlight = new Map(); // character id → its profile analysis
 
     const playerChar = {
         id: "player",
@@ -143,6 +148,7 @@ export function createSocialPanelController({
             if (!char.isPlayer) saveCharacters();
             applyStampState(char.dead, char.missing, char.mastermind);
             renderNoCharacterOverlay();
+            if (char.mastermind && !char.isPlayer) onCharacterMastermind?.(char.name);
         });
 
         // Load neutral sprite
@@ -219,6 +225,20 @@ export function createSocialPanelController({
 
         $report.find(".trust-value").text(`${trust} / 10`);
 
+        // Manual correction for when the story got trust wrong: one rank at a
+        // time, with no ceremony or rewards.
+        const adjustTrust = (step) => {
+            const previous = char.trustLevel ?? 1;
+            const next = clampTrust(step > 0 ? nextTrustUp(previous) : nextTrustDown(previous));
+            if (next === previous) return;
+            char.trustLevel = next;
+            saveCharacters();
+            openCharacterReport(char);
+            renderSocialPanel();
+        };
+        $report.find("#report-trust-up").off("click.adjust").on("click.adjust", () => adjustTrust(1)).prop("disabled", trust >= 10);
+        $report.find("#report-trust-down").off("click.adjust").on("click.adjust", () => adjustTrust(-1)).prop("disabled", trust <= -10);
+
         $report.find(".notes-content").text("ANALYZING...");
 
         // ── Edit stats ────────────────────────────────────────────────────────
@@ -281,34 +301,63 @@ export function createSocialPanelController({
         // ── End edit stats ────────────────────────────────────────────────────
 
         const openedId = char.id;
+        const showProfile = (profile) => {
+            STAT_FIELDS.forEach(({ id, key }) => $report.find(`#${id}`).text(profile?.[key] || "—"));
+        };
+        // Their saved profile (or blanks) while the analysis runs, not the
+        // last student's.
+        showProfile(char.social?.profile);
 
-        generateCharacterNotes(char).then(() => {
+        // One analysis per student at a time; reopening the report waits on it.
+        let pending = notesInFlight.get(openedId);
+        if (!pending) {
+            pending = Promise.resolve()
+                .then(() => generateCharacterNotes(char))
+                .finally(() => notesInFlight.delete(openedId));
+            notesInFlight.set(openedId, pending);
+        }
+
+        pending.then(() => {
             if (getActiveSocialCharacterId() !== openedId) return;
 
             const profile = char.social?.profile;
 
             if (!profile) {
                 console.warn("[Dangan][Social] Profile missing after generation");
-                $report.find(".notes-content").text("ANALYSIS FAILED");
+                $report.find(".notes-content").text("ANALYSIS FAILED. Click their name to try again.");
                 return;
             }
 
-            $report.find("#stat-height").text(profile.height || "—");
-            $report.find("#stat-measurements").text(profile.measurements || "—");
-            $report.find("#stat-personality").text(profile.personality || "—");
-            $report.find("#stat-likes").text(profile.likes || "—");
-            $report.find("#stat-dislikes").text(profile.dislikes || "—");
-
+            showProfile(profile);
             $report.find(".notes-content").text("ANALYSIS COMPLETE");
 
             // Refine sprite height now that the profile (its stated height) exists.
             const cm = getReportCharacterHeightCm(char.name, profile.height);
             if (cm) applyReportSpriteHeight(cm, $report.find("#report-sprite-img"));
+        }, (err) => {
+            console.error("[Dangan][Social] Generation failed:", err);
+            if (getActiveSocialCharacterId() !== openedId) return;
+            const reason = String(err?.message || err || "").trim();
+            $report.find(".notes-content").text(
+                `ANALYSIS FAILED${reason ? ` (${reason})` : ""}. Click their name to try again.`
+            );
         });
+    }
+
+    // Punished by Monokuma: the game's own record of the player's death
+    // stamps them DEAD, and lifts the stamp when it's undone (a stamp set by
+    // hand stays).
+    let playerDeadByGame = false;
+    function syncPlayerDeath() {
+        const dead = Boolean(isPlayerDead?.());
+        if (dead) playerChar.dead = true;
+        else if (playerDeadByGame) playerChar.dead = false;
+        playerDeadByGame = dead;
     }
 
     function openPlayerReport() {
         playerChar.name = getUserName?.() || "";
+        syncPlayerDeath();
         openCharacterReport(playerChar);
     }
 
@@ -390,6 +439,7 @@ export function createSocialPanelController({
         // ── Status groups ─────────────────────────────────────────────────────
         const userName = getUserName?.();
         if (userName) playerChar.name = userName;
+        syncPlayerDeath();
         let allChars = [
             ...(userName ? [playerChar] : []),
             ...characters.values(),

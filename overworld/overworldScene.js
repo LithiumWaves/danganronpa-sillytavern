@@ -1,5 +1,7 @@
 import { LOCATION_PINPOINTS } from "../map/locationPresence.js";
 import { normalizeName } from "../social/characterUtils.js";
+import { clearPickedSprite, getPickedSprite } from "../core/ui/pickedSprites.js";
+import { applyRoutines } from "./routines.js";
 import {
     computeRoomDisabledMembers,
     disabledMembersEqual,
@@ -89,6 +91,11 @@ function partitionIntoSpawnGroups(keys) {
     return groups;
 }
 
+// Hosts (Monokuma…) without a height on their card stand mascot-sized, and
+// start off to the right instead of centre stage.
+const HOST_FALLBACK_HEIGHT_CM = 90;
+const HOST_DEFAULT_X = 0.84;
+
 export function createOverworldSceneController({
     extension_settings,
     extensionName,
@@ -122,6 +129,17 @@ export function createOverworldSceneController({
     editGroup, // optional — (groupId, update, silent) persist group mute/presence
     isTrialActive, // optional — () => boolean
     onPresenceSynced, // optional — () => void; rebuild GCP after room mute changes
+    isActionMenuEnabled, // optional — () => boolean; Single-Chat explore uses one MENU button
+    getHostMenuActions, // optional — () => { id, label, active?, onSelect }[] appended to the MENU list
+    isHostCharacter, // optional — (name) => boolean; hosts (Monokuma…) never wander the rooms
+    listHosts, // optional — () => { name, onStage }[]; hosts the Call modal can bring in
+    onHostCalled, // optional — (name) => void; a host was called in
+    getOnStageHosts, // optional — () => { name, expression }[]; called-in hosts, who stand in the player's room
+    getHostEntranceElapsed, // optional — (name) => ms into this host's slide-up, or null
+    isInvestigating, // optional — () => true during an investigation ("Tag Along" reads "Investigate With")
+    getExamineAction, // optional — () => { label, onSelect } while the room can be examined, else null
+    getRoutines, // optional — () => { [name]: { day: [roomId], night: [roomId] } }; weights the shuffle
+    getTimeOfDay, // optional — () => "day" | "night"
 }) {
     function playOwSfx(key) {
         if (!playSfx) return;
@@ -136,6 +154,9 @@ export function createOverworldSceneController({
     let conversationViewOpen = false;
     let lastPresenceChatKey = "";
     let presenceTimer = null;
+    // While a Class Trial is held in the main chat, presence follows the trial
+    // roster instead of the player's room. Set through setTrialPresence().
+    let trialPresenceNames = null;
     let presenceWarned = false;
     const PRESENCE_DEBOUNCE_MS = 250;
 
@@ -728,7 +749,10 @@ export function createOverworldSceneController({
             const memberKeys = [...groupEl.querySelectorAll(".dangan-ow-sprite")]
                 .map(el => el.dataset.key).filter(Boolean);
             for (const key of memberKeys) {
-                const entry = state.characters[key];
+                const isHostSprite = !!groupEl.querySelector(`.dangan-ow-sprite[data-key="${CSS.escape(key)}"][data-host]`);
+                const entry = isHostSprite
+                    ? (state.hostPlacements[key] ??= {})
+                    : state.characters[key];
                 if (!entry) continue;
                 if (isFinite(customX)) entry.customX = customX;
                 if (isFinite(offsetVh)) entry.verticalOffsetVh = offsetVh;
@@ -752,6 +776,8 @@ export function createOverworldSceneController({
         document.body.classList.remove("dangan-ow-edit-mode");
         updateEditButtonLabel();
         commitEditPositionsToState();
+        // The MENU layout swaps the Save button back for MENU.
+        if (isActionMenuEnabled?.()) scheduleRender();
     }
 
     function toggleEditMode() {
@@ -762,9 +788,9 @@ export function createOverworldSceneController({
     function buildEditPositionsBtn(solo = false) {
         const btn = document.createElement("button");
         btn.type = "button";
-        // `solo` adds a modifier class that promotes the button to the
-        // Talk-to-Room slot (top:186px) when it's the only button on screen —
-        // otherwise it'd sit at top:266px with empty space above it.
+        // `solo` adds a modifier class that promotes the button to the first
+        // right-column slot (top:240px) when it's the only button on screen —
+        // otherwise it'd sit at top:280px with empty space above it.
         btn.className = "dangan-ow-room-btn dangan-ow-edit-btn"
             + (solo ? " dangan-ow-edit-btn-solo" : "");
         const label = document.createElement("span");
@@ -793,7 +819,7 @@ export function createOverworldSceneController({
         if (ROOM_ID_PREFIXES_TO_REJECT.some(p => locationId.startsWith(p))) return false;
         const mp = getMapPanelController?.();
         const pin = mp?.getPinByLocationId?.(locationId);
-        if (pin) return SPAWNABLE_PIN_TYPES.has(pin.type);
+        if (pin) return SPAWNABLE_PIN_TYPES.has(pin.type) && !mp?.isPinLocked?.(pin);
         return Object.prototype.hasOwnProperty.call(LOCATION_PINPOINTS, locationId);
     }
 
@@ -822,7 +848,12 @@ export function createOverworldSceneController({
     function listSpawnableRoomIds() {
         const mp = getMapPanelController?.();
         const pins = mp?.getAllPins?.() || [];
-        let filtered = pins.filter(p => SPAWNABLE_PIN_TYPES.has(p.type) && !p.hidden);
+        // Dorm rooms are private: nobody gets shuffled into someone's bedroom.
+        const roomPins = pins.filter(p => SPAWNABLE_PIN_TYPES.has(p.type) && !p.hidden && !p._generated);
+        // Floors locked until a later chapter never take characters, nor do
+        // rooms closed at night while it's night.
+        let filtered = roomPins.filter(p => !mp?.isPinLocked?.(p) && !mp?.isPinClosedNow?.(p));
+        if (roomPins.length > 0 && filtered.length === 0) return [];
 
         if (filtered.length > 0) {
             const af = getPlayerAreaFloor();
@@ -852,7 +883,88 @@ export function createOverworldSceneController({
         const ow = root.overworld ??= { version: STATE_VERSION, characters: {} };
         if (!ow.characters || typeof ow.characters !== "object") ow.characters = {};
         if (!ow.flatRooms || typeof ow.flatRooms !== "object") ow.flatRooms = {};
+        // Where each host (Monokuma…) stands when called in, set via Edit
+        // Character Positions. Hosts aren't roster characters, so they live
+        // apart from `characters` and survive room reshuffles.
+        if (!ow.hostPlacements || typeof ow.hostPlacements !== "object") ow.hostPlacements = {};
+        // Students tagging along with the player (normalized keys): they move
+        // into every room the player enters.
+        if (!Array.isArray(ow.followers)) ow.followers = [];
         return ow;
+    }
+
+    // Followers still on the roster (not dead, missing or removed).
+    // During an investigation the people tagging along are your partners.
+    function tagAlongWord() {
+        return isInvestigating?.() ? "Investigate With" : "Tag Along";
+    }
+
+    function getFollowerKeys() {
+        const active = new Set(getActiveRosterKeys());
+        return getState().followers.filter((k) => active.has(k));
+    }
+
+    function isFollowing(key) {
+        return getFollowerKeys().includes(key);
+    }
+
+    function setFollowers(keys) {
+        const state = getState();
+        state.followers = [...new Set(keys)];
+        // Bring them over if they aren't with the player yet.
+        moveFollowersTo(getCurrentLocationId());
+        saveState();
+        scheduleRender();
+        notifySceneChanged();
+        schedulePresenceSync();
+    }
+
+    // Moves the followers into `locationId` as one group standing together.
+    // Returns true when anyone moved.
+    function moveFollowersTo(locationId) {
+        if (!isRoomLocationId(locationId)) return false;
+        const state = getState();
+        const keys = getFollowerKeys().filter((k) => state.characters[k]?.locationId !== locationId);
+        if (!keys.length) return false;
+        const gid = keys.length > 1 ? makeGroupId() : null;
+        const offsetVh = randomVerticalOffsetVh();
+        for (const key of keys) {
+            const entry = state.characters[key] ??= { locationId: null, groupId: null };
+            entry.locationId = locationId;
+            entry.groupId = gid;
+            entry.verticalOffsetVh = offsetVh;
+            entry.customX = null;
+            entry.customScale = null;
+            delete entry.depthScale;
+        }
+        return true;
+    }
+
+    // Moves the named characters into `locationId` as one group (a group
+    // event, a room closing at night). Returns the names that moved.
+    function moveCharactersTo(names, locationId) {
+        if (!isRoomLocationId(locationId)) return [];
+        const state = getState();
+        const active = new Set(getActiveRosterKeys());
+        const keys = [...new Set((names || []).map((n) => normalizeName(n || "")))]
+            .filter((k) => k && active.has(k) && state.characters[k]?.locationId !== locationId);
+        if (!keys.length) return [];
+        const gid = keys.length > 1 ? makeGroupId() : null;
+        const offsetVh = randomVerticalOffsetVh();
+        for (const key of keys) {
+            const entry = state.characters[key] ??= { locationId: null, groupId: null };
+            entry.locationId = locationId;
+            entry.groupId = gid;
+            entry.verticalOffsetVh = offsetVh;
+            entry.customX = null;
+            entry.customScale = null;
+            delete entry.depthScale;
+        }
+        saveState();
+        scheduleRender();
+        notifySceneChanged();
+        schedulePresenceSync();
+        return keys.map((k) => characters.get(k)?.name || k);
     }
 
     function isRoomFlat(locationId) {
@@ -901,12 +1013,42 @@ export function createOverworldSceneController({
             if (!char || !char.name) continue;
             if (char.dead || char.missing) continue;
             if (playerKey && key === playerKey) continue;
+            // Hosts run the game rather than play it: they only show up when called.
+            if (isHostCharacter?.(char.name)) continue;
             // Defensive belt-and-braces: drop ST system / narrator chars even
             // if they slipped past the load-time filter (older persisted
             // rosters could have them stored).
             const lc = String(char.name).toLowerCase();
             if (lc.includes("sillytavern") || lc.includes("system") || lc === "assistant" || lc.includes("narrator") || lc.includes("prome user sprite")) continue;
             out.push(key);
+        }
+        return out;
+    }
+
+    // Called-in hosts stand in the player's room until dismissed. They aren't
+    // roster characters, so their entries are made fresh and never saved.
+    function getHostsHere() {
+        const out = [];
+        const placements = getState().hostPlacements;
+        for (const h of getOnStageHosts?.() || []) {
+            const name = String(h?.name || "").trim();
+            if (!name) continue;
+            const key = normalizeName(name);
+            const rosterChar = characters.get(key);
+            const placed = placements[key] || {};
+            out.push({
+                key,
+                char: rosterChar?.name ? rosterChar : { name },
+                entry: {
+                    expression: h.expression || "neutral",
+                    groupId: null,
+                    // Off to the side rather than centre stage until moved.
+                    customX: typeof placed.customX === "number" ? placed.customX : HOST_DEFAULT_X,
+                    customScale: typeof placed.customScale === "number" ? placed.customScale : null,
+                    verticalOffsetVh: typeof placed.verticalOffsetVh === "number" ? placed.verticalOffsetVh : undefined,
+                },
+                isHost: true,
+            });
         }
         return out;
     }
@@ -1036,6 +1178,23 @@ export function createOverworldSceneController({
             newRoomByKey.set(key, room);
         });
 
+        // Characters with routines mostly turn up where they usually are.
+        let placed = newRoomByKey;
+        try {
+            placed = applyRoutines(newRoomByKey, {
+                routines: getRoutines?.(),
+                time: getTimeOfDay?.() || "day",
+                spawnableRooms: rooms,
+                followers: getFollowerKeys(),
+            });
+        } catch (e) { console.warn("[Dangan][Overworld] routines failed:", e); }
+        placed.forEach((room, key) => newRoomByKey.set(key, room));
+
+        // Students tagging along stay with the player.
+        if (isRoomLocationId(playerRoom)) {
+            for (const key of getFollowerKeys()) newRoomByKey.set(key, playerRoom);
+        }
+
         for (const key of keys) {
             const entry = state.characters[key] ??= { locationId: null, groupId: null };
             entry.locationId = newRoomByKey.get(key);
@@ -1048,6 +1207,7 @@ export function createOverworldSceneController({
             // Cycle the expression so a fresh shuffle visibly changes poses
             // alongside locations. Render() will pick a new one lazily.
             delete entry.expression;
+            clearPickedSprite(getRosterCharByKey(key)?.name || key);
         }
         // Partition each occupied room into spawn-groups.
         const byRoom = new Map();
@@ -1080,6 +1240,8 @@ export function createOverworldSceneController({
     // mute (not location) decides who hears the next line.
     function notifyPlayerMovedTo(newLocationId) {
         if (!isRoomLocationId(newLocationId)) return;
+        // Students tagging along come too, whatever the chat.
+        if (moveFollowersTo(newLocationId)) { saveState(); notifySceneChanged(); }
         if (isSingleChatGroupContext()) {
             schedulePresenceSync();
             return;
@@ -1169,6 +1331,15 @@ export function createOverworldSceneController({
         body.classList.toggle("dangan-ow-chat-exit-active", mode === "chat-exit");
         body.classList.toggle("dangan-ow-inchat-explore", inchatExplore);
         body.classList.toggle("dangan-ow-single-chat", singleChatHud);
+        // Reading the conversation: nobody walks off (index.js blocks moves).
+        body.classList.toggle("dangan-ow-conversation-view", singleChatHud && conversationViewOpen);
+        if (mode !== "scene") closeActionMenu();
+        // With the text box hidden while exploring, a focused textarea could
+        // still send on Enter — drop focus so nothing can be typed.
+        if (mode === "scene" && !body.classList.contains("dangan-legacy-explore-composer")) {
+            const ta = document.getElementById("send_textarea");
+            if (ta && document.activeElement === ta) ta.blur();
+        }
     }
 
     function removeRoot() {
@@ -1258,6 +1429,7 @@ export function createOverworldSceneController({
             if (!char?.name) continue;
             charsHere.push({ key, char, entry });
         }
+        charsHere.push(...getHostsHere());
 
         debug(`room=${playerRoom} rosterTotal=${getActiveRosterKeys().length} inRoom=${charsHere.length}`);
         // NOTE: don't bail when charsHere is empty — Call-to-the-Room is still
@@ -1317,7 +1489,8 @@ export function createOverworldSceneController({
                         expressionDirty = true;
                     }
                 }
-                const url = await getSpriteUrl(m.char.name, expression || "neutral").catch(() => null);
+                const url = getPickedSprite(m.char.name)?.path
+                    || await getSpriteUrl(m.char.name, expression || "neutral").catch(() => null);
                 return url ? { ...m, spriteUrl: url, expression: expression || "neutral" } : null;
             }));
             return { gid, members: sprites.filter(Boolean) };
@@ -1380,7 +1553,8 @@ export function createOverworldSceneController({
             }
             const customScaleMul = savedCustomScale != null ? savedCustomScale : 1;
             for (const m of group.members) {
-                const heightCm = getCharacterHeightCm(m.char.name);
+                const heightCm = getCharacterHeightCm(m.char.name)
+                    ?? (m.isHost ? HOST_FALLBACK_HEIGHT_CM : null);
                 // Exaggerate the spread: raw (cm/170) only swings ~0.76-1.17
                 // across a typical cast (a ~130cm character up to a ~198cm one),
                 // which reads as nearly flat. Multiply the deviation from the
@@ -1395,8 +1569,21 @@ export function createOverworldSceneController({
 
                 const spriteEl = document.createElement("div");
                 spriteEl.className = "dangan-ow-sprite";
+                if (m.isHost) spriteEl.dataset.host = "1";
+                const hostEntrance = m.isHost ? getHostEntranceElapsed?.(m.char.name) : null;
+                if (hostEntrance != null) {
+                    spriteEl.classList.add("is-host-entering");
+                    spriteEl.style.setProperty("--host-enter-elapsed", String(hostEntrance));
+                }
                 spriteEl.dataset.name = m.char.name;
                 spriteEl.dataset.key = m.key;
+                if (!m.isHost && isFollowing(m.key)) {
+                    spriteEl.classList.add("is-following");
+                    const badge = document.createElement("div");
+                    badge.className = "dangan-ow-follow-badge";
+                    badge.textContent = "WITH YOU";
+                    spriteEl.appendChild(badge);
+                }
                 spriteEl.dataset.heightScale = String(heightScale);
                 spriteEl.style.setProperty("--ow-scale", String(finalScale));
                 // Encode quotes so the URL is safe inside a CSS `url("…")` token.
@@ -1473,15 +1660,24 @@ export function createOverworldSceneController({
         //     total >= 1 → RIGHT Edit-Positions
         //   Default (multi-chat):
         //     total >= 2 → LEFT Talk-to-Room (186) + Grab-Group (226)
-        //     total >= 1 → RIGHT Edit-Positions (226)
-        //     always    → RIGHT Call-to-Room (186)
+        //     total >= 1 → RIGHT Edit-Positions (280)
+        //     always    → RIGHT Call-to-Room (240)
         // Call always renders so the player can summon characters into an
         // empty room. Edit only when there's at least one sprite to reposition.
         const total = renderable.reduce((a, g) => a + g.members.length, 0);
         if (isSingleChatGroupContext()) {
             root.appendChild(buildViewConversationBtn());
-            root.appendChild(buildCallToRoomBtn());
-            if (total >= 1) root.appendChild(buildEditPositionsBtn());
+            if (isActionMenuEnabled?.()) {
+                // Edit mode needs its Save button on screen; otherwise every
+                // right-column action lives behind the one MENU button.
+                if (editMode) root.appendChild(buildEditPositionsBtn(true));
+                else root.appendChild(buildActionMenuBtn(total));
+            } else {
+                root.appendChild(buildCallToRoomBtn());
+                if (total >= 1 || getFollowerKeys().length) root.appendChild(buildTagAlongBtn());
+                if (total >= 1) root.appendChild(buildEditPositionsBtn());
+            }
+            if (!editMode) appendExamineBtn(root);
         } else {
             if (total >= 2) {
                 const btn = document.createElement("button");
@@ -1497,12 +1693,19 @@ export function createOverworldSceneController({
                 });
                 root.appendChild(btn);
 
-                root.appendChild(buildGrabGroupMembersBtn());
+                if (!isActionMenuEnabled?.()) root.appendChild(buildGrabGroupMembersBtn());
             }
-            root.appendChild(buildCallToRoomBtn());
-            if (total >= 1) {
-                root.appendChild(buildEditPositionsBtn());
+            if (isActionMenuEnabled?.()) {
+                if (editMode) root.appendChild(buildEditPositionsBtn(true));
+                else root.appendChild(buildActionMenuBtn(total));
+            } else {
+                root.appendChild(buildCallToRoomBtn());
+                if (total >= 1 || getFollowerKeys().length) root.appendChild(buildTagAlongBtn());
+                if (total >= 1) {
+                    root.appendChild(buildEditPositionsBtn());
+                }
             }
+            if (!editMode) appendExamineBtn(root);
         }
 
         const liveRoot = getDomRoot();
@@ -1604,6 +1807,134 @@ export function createOverworldSceneController({
             openConversationView();
         });
         return btn;
+    }
+
+    // ── Exploration MENU (overworld scene) ───────────────────────────────────
+    // One right-column button that opens a V3-style list of the room actions.
+    // The list is appended to <body> so it survives the overworld re-render,
+    // which replaces #dangan-overworld wholesale.
+    const ACTION_MENU_ID = "dangan-ow-action-menu";
+    let actionMenuOutsideHandler = null;
+    let actionMenuKeyHandler = null;
+
+    function closeActionMenu() {
+        const menu = document.getElementById(ACTION_MENU_ID);
+        if (!menu) return;
+        menu.remove();
+        document.body.classList.remove("dangan-ow-action-menu-open");
+        if (actionMenuOutsideHandler) document.removeEventListener("pointerdown", actionMenuOutsideHandler, true);
+        if (actionMenuKeyHandler) document.removeEventListener("keydown", actionMenuKeyHandler, true);
+        actionMenuOutsideHandler = null;
+        actionMenuKeyHandler = null;
+    }
+
+    function getActionMenuItems(total) {
+        const singleChat = isSingleChatGroupContext();
+        const items = [
+            { id: "call", label: singleChat ? "Call Student" : "Call to Your Location", onSelect: () => showCallToRoomModal() },
+        ];
+        if (!singleChat && total >= 2) {
+            items.push({ id: "grab", label: "Grab Group Members", onSelect: () => showGrabGroupModal() });
+        }
+        const following = getFollowerKeys().length;
+        if (total >= 1 || following) {
+            items.push({
+                id: "tag-along",
+                label: following ? `${tagAlongWord()} (${following})` : tagAlongWord(),
+                active: following > 0,
+                onSelect: () => showTagAlongModal(),
+            });
+        }
+        if (total >= 1) {
+            items.push({ id: "edit", label: "Edit Character Positions", onSelect: () => { enterEditMode(); scheduleRender(); } });
+        }
+        let hostItems = [];
+        try { hostItems = getHostMenuActions?.() || []; } catch (err) {
+            console.warn("[Dangan][Overworld] Menu actions failed:", err);
+        }
+        return items.concat(hostItems);
+    }
+
+    function openActionMenu(total) {
+        closeActionMenu();
+        const menu = document.createElement("div");
+        menu.id = ACTION_MENU_ID;
+        menu.setAttribute("role", "menu");
+        getActionMenuItems(total).forEach((item, i) => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "dangan-ow-action-item" + (item.active ? " is-active" : "");
+            btn.setAttribute("role", "menuitem");
+            btn.style.setProperty("--i", String(i));
+            const label = document.createElement("span");
+            label.className = "dangan-ow-action-item-label";
+            label.textContent = item.label;
+            btn.appendChild(label);
+            btn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                playOwSfx("click");
+                closeActionMenu();
+                try { item.onSelect?.(); } catch (err) {
+                    console.warn(`[Dangan][Overworld] Menu action "${item.id}" failed:`, err);
+                }
+            });
+            menu.appendChild(btn);
+        });
+        document.body.appendChild(menu);
+        document.body.classList.add("dangan-ow-action-menu-open");
+
+        actionMenuOutsideHandler = (e) => {
+            if (menu.contains(e.target) || e.target.closest?.(".dangan-ow-menu-btn")) return;
+            closeActionMenu();
+        };
+        actionMenuKeyHandler = (e) => {
+            if (e.key !== "Escape") return;
+            e.stopPropagation();
+            closeActionMenu();
+        };
+        document.addEventListener("pointerdown", actionMenuOutsideHandler, true);
+        document.addEventListener("keydown", actionMenuKeyHandler, true);
+        menu.querySelector("button")?.focus({ preventScroll: true });
+    }
+
+    function buildActionMenuBtn(total) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "dangan-ow-room-btn dangan-ow-call-btn dangan-ow-menu-btn";
+        btn.setAttribute("aria-haspopup", "menu");
+        const label = document.createElement("span");
+        label.className = "dangan-ow-room-btn-label";
+        label.textContent = "Menu";
+        btn.appendChild(label);
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            playOwSfx("click");
+            if (document.getElementById(ACTION_MENU_ID)) closeActionMenu();
+            else openActionMenu(total);
+        });
+        return btn;
+    }
+
+    // EXAMINE: right column, under MENU (or under the last button without it),
+    // only while the room can be examined during an investigation.
+    function appendExamineBtn(root) {
+        let action = null;
+        try { action = getExamineAction?.(); } catch { action = null; }
+        if (!action) return;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "dangan-ow-room-btn dangan-ow-call-btn dangan-ow-examine-btn";
+        const label = document.createElement("span");
+        label.className = "dangan-ow-room-btn-label";
+        label.textContent = action.label || "Examine";
+        btn.appendChild(label);
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            playOwSfx("click");
+            closeActionMenu();
+            action.onSelect?.();
+        });
+        root.appendChild(btn);
     }
 
     function buildExploreBtn() {
@@ -1754,6 +2085,141 @@ export function createOverworldSceneController({
         return out;
     }
 
+    function buildTagAlongBtn() {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "dangan-ow-room-btn dangan-ow-tag-btn";
+        const label = document.createElement("span");
+        label.className = "dangan-ow-room-btn-label";
+        const following = getFollowerKeys().length;
+        label.textContent = following ? `${tagAlongWord()} (${following})` : tagAlongWord();
+        btn.appendChild(label);
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            playOwSfx("click");
+            showTagAlongModal();
+        });
+        return btn;
+    }
+
+    // Pick students in this room to follow the player from room to room.
+    // Ticked students tag along; unticking lets them stay where they are.
+    function showTagAlongModal() {
+        if (document.getElementById("dangan-tag-modal")) return;
+
+        const state = getState();
+        const playerRoom = getCurrentLocationId();
+        const followers = getFollowerKeys();
+        const keys = getActiveRosterKeys().filter((k) =>
+            followers.includes(k) || (isRoomLocationId(playerRoom) && state.characters[k]?.locationId === playerRoom));
+        const nameOf = (key) => {
+            const name = getRosterCharByKey(key)?.name || key;
+            return (typeof getCharacterDisplayName === "function" ? getCharacterDisplayName(name) : name) || name;
+        };
+
+        const modal = document.createElement("div");
+        modal.id = "dangan-tag-modal";
+        modal.className = "dangan-grab-modal";
+        modal.setAttribute("role", "dialog");
+        modal.setAttribute("aria-modal", "true");
+
+        const backdrop = document.createElement("div");
+        backdrop.className = "dangan-grab-backdrop";
+        modal.appendChild(backdrop);
+
+        const card = document.createElement("div");
+        card.className = "dangan-grab-card";
+        card.setAttribute("role", "document");
+
+        const header = document.createElement("div");
+        header.className = "dangan-grab-header";
+        const title = document.createElement("span");
+        title.textContent = tagAlongWord();
+        const closeBtn = document.createElement("button");
+        closeBtn.type = "button";
+        closeBtn.className = "dangan-grab-close";
+        closeBtn.setAttribute("aria-label", "Close");
+        closeBtn.textContent = "✕";
+        header.appendChild(title);
+        header.appendChild(closeBtn);
+        card.appendChild(header);
+
+        const body = document.createElement("div");
+        body.className = "dangan-grab-body";
+        const note = document.createElement("div");
+        note.className = "dangan-grab-empty dangan-tag-note";
+        note.textContent = keys.length
+            ? "Ticked students follow you into every room you go to."
+            : "Nobody is in this room.";
+        body.appendChild(note);
+        if (keys.length) {
+            const list = document.createElement("ul");
+            list.className = "dangan-grab-list";
+            for (const key of keys) {
+                const li = document.createElement("li");
+                const lbl = document.createElement("label");
+                const cb = document.createElement("input");
+                cb.type = "checkbox";
+                cb.dataset.key = key;
+                cb.checked = followers.includes(key);
+                const span = document.createElement("span");
+                span.textContent = nameOf(key);
+                lbl.appendChild(cb);
+                lbl.appendChild(span);
+                li.appendChild(lbl);
+                list.appendChild(li);
+            }
+            body.appendChild(list);
+        }
+        card.appendChild(body);
+
+        const footer = document.createElement("div");
+        footer.className = "dangan-grab-footer";
+        const cancelBtn = document.createElement("button");
+        cancelBtn.type = "button";
+        cancelBtn.className = "dangan-grab-cancel";
+        cancelBtn.textContent = "Cancel";
+        const confirmBtn = document.createElement("button");
+        confirmBtn.type = "button";
+        confirmBtn.className = "dangan-grab-confirm";
+        footer.appendChild(cancelBtn);
+        footer.appendChild(confirmBtn);
+        card.appendChild(footer);
+        modal.appendChild(card);
+
+        const checkboxes = () => [...modal.querySelectorAll('input[type="checkbox"]')];
+        const refreshConfirm = () => {
+            const n = checkboxes().filter((cb) => cb.checked).length;
+            confirmBtn.textContent = n ? tagAlongWord() : (followers.length ? "Go Alone" : tagAlongWord());
+            confirmBtn.disabled = !n && !followers.length;
+        };
+        for (const cb of checkboxes()) cb.addEventListener("change", refreshConfirm);
+        refreshConfirm();
+
+        const close = () => {
+            modal.remove();
+            document.removeEventListener("keydown", onKeydown);
+        };
+        const onKeydown = (e) => { if (e.key === "Escape") close(); };
+
+        closeBtn.addEventListener("click", close);
+        cancelBtn.addEventListener("click", close);
+        backdrop.addEventListener("click", close);
+        document.addEventListener("keydown", onKeydown);
+
+        confirmBtn.addEventListener("click", () => {
+            const picked = checkboxes().filter((cb) => cb.checked).map((cb) => cb.dataset.key);
+            close();
+            setFollowers(picked);
+            const names = picked.map(nameOf);
+            if (!names.length) showOwToast("YOU'RE ON YOUR OWN NOW.");
+            else if (names.length === 1) showOwToast(`${names[0].toUpperCase()} IS TAGGING ALONG.`);
+            else showOwToast(`${names.length} STUDENTS ARE TAGGING ALONG.`);
+        });
+
+        document.body.appendChild(modal);
+    }
+
     function showGrabGroupModal() {
         if (document.getElementById("dangan-grab-modal")) return;
 
@@ -1872,6 +2338,11 @@ export function createOverworldSceneController({
         if (document.getElementById("dangan-gift-pick-modal")) return;
         const characterName = member?.char?.name;
         if (!characterName) return;
+        // Hosts (Monokuma and co.) don't take gifts.
+        if (isHostCharacter?.(characterName)) {
+            showOwToast(`${String(getCharacterDisplayName?.(characterName) || characterName).toUpperCase()} WON'T TAKE GIFTS.`);
+            return;
+        }
 
         const displayName = (typeof getCharacterDisplayName === "function"
             ? getCharacterDisplayName(characterName)
@@ -2030,9 +2501,14 @@ export function createOverworldSceneController({
         const allCandidates = singleChat
             ? getCharactersOutsidePlayerRoom()
             : (isRoomLocationId(getCurrentLocationId()) ? getCharactersInPlayerArea() : []);
-        const inArea = singleChat
-            ? allCandidates
-            : allCandidates.filter(c => !c.isInPlayerRoom);
+        // Hosts (Monokuma…) aren't in any room, so they can always be called in.
+        const hostCandidates = (listHosts?.() || [])
+            .filter(h => h?.name && !h.onStage)
+            .map(h => ({ name: h.name, roomLabel: "HOST", isInPlayerRoom: false, isHost: true }));
+        const inArea = [
+            ...(singleChat ? allCandidates : allCandidates.filter(c => !c.isInPlayerRoom)),
+            ...hostCandidates,
+        ];
         const rosterTotal = getActiveRosterKeys().length;
         const preCheck = new Set(getCurrentChatMemberNames());
 
@@ -2139,6 +2615,9 @@ export function createOverworldSceneController({
             const names = checkboxes().filter(cb => cb.checked).map(cb => cb.dataset.name);
             if (names.length < 1) return;
             close();
+            for (const name of names) {
+                if (isHostCharacter?.(name)) onHostCalled?.(name);
+            }
             warpNamesToPlayerRoom(names);
             if (singleChat) {
                 scheduleRender();
@@ -2425,7 +2904,25 @@ export function createOverworldSceneController({
                 expression: entry.expression || null,
             });
         }
+        if (locationId === getCurrentLocationId()) {
+            for (const h of getHostsHere()) {
+                out.push({ name: h.char.name, groupId: null, expression: h.entry.expression, isHost: true });
+            }
+        }
         return out;
+    }
+
+    // Dismissed hosts sink back down before they leave the room.
+    function playHostExit(names) {
+        const keys = new Set((names || []).map((n) => normalizeName(n)));
+        const sprites = [...(getDomRoot()?.querySelectorAll(".dangan-ow-sprite") || [])]
+            .filter((el) => keys.has(normalizeName(el.dataset.name || "")));
+        if (!sprites.length) return Promise.resolve();
+        for (const el of sprites) {
+            el.classList.remove("is-host-entering");
+            el.classList.add("is-host-leaving");
+        }
+        return new Promise((r) => setTimeout(r, 380));
     }
 
     // Cross-room roster within the player's CURRENT area + sub-area. Powers the
@@ -2555,13 +3052,13 @@ export function createOverworldSceneController({
     }
 
     async function syncRoomPresence() {
-        if (!isSingleChatOverworldEnabled?.()) return;
-        if (isTrialUiActive()) return;
-        if (typeof editGroup !== "function") return;
+        if (!isSingleChatOverworldEnabled?.()) return false;
+        if (!trialPresenceNames && isTrialUiActive()) return false;
+        if (typeof editGroup !== "function") return false;
         const ctx = window.SillyTavern?.getContext?.();
-        if (!ctx?.groupId) return;
+        if (!ctx?.groupId) return false;
         const group = findLiveGroup(ctx);
-        if (!group || !Array.isArray(group.members)) return;
+        if (!group || !Array.isArray(group.members)) return false;
 
         if (!presenceWarned) {
             presenceWarned = true;
@@ -2573,9 +3070,9 @@ export function createOverworldSceneController({
         }
 
         const playerRoom = getCurrentLocationId();
-        const inRoomNames = isRoomLocationId(playerRoom)
-            ? getCharactersInRoom(playerRoom).map((c) => c.name)
-            : [];
+        const inRoomNames = trialPresenceNames
+            ? [...trialPresenceNames]
+            : (isRoomLocationId(playerRoom) ? getCharactersInRoom(playerRoom).map((c) => c.name) : []);
         const allChars = Array.isArray(ctx.characters) ? ctx.characters
             : (Array.isArray(window.characters) ? window.characters : []);
         const charByAvatar = indexCharsByAvatar(allChars);
@@ -2601,7 +3098,7 @@ export function createOverworldSceneController({
         if (muteSame && hideMutedAlready) {
             syncGroupMemberDisabledDom(nextDisabled, allChars);
             await emitGroupUpdated();
-            return;
+            return true;
         }
 
         const prevDisabled = [...currentDisabled];
@@ -2615,10 +3112,27 @@ export function createOverworldSceneController({
             try { onPresenceSynced?.(); } catch (err) {
                 console.warn("[Dangan][Overworld] onPresenceSynced failed:", err);
             }
+            return true;
         } catch (err) {
             group.disabled_members = prevDisabled;
             group.hideMutedSprites = prevHide;
             console.warn("[Dangan][Overworld] editGroup failed while syncing room presence:", err);
+            return false;
+        }
+    }
+
+    // Unmute only `names` (dead ones stay muted) for a Class Trial held in the
+    // main chat; null hands presence back to the player's room. Applies right
+    // away, so a queued room sync can't overwrite it.
+    async function setTrialPresence(names) {
+        clearTimeout(presenceTimer);
+        presenceTimer = null;
+        trialPresenceNames = Array.isArray(names) ? names.filter(Boolean) : null;
+        try {
+            return await syncRoomPresence();
+        } catch (err) {
+            console.warn("[Dangan][Overworld] trial presence sync failed:", err);
+            return false;
         }
     }
 
@@ -2635,18 +3149,33 @@ export function createOverworldSceneController({
         removeRoot();
     }
 
+    // The expression picker put a sprite on someone (core/ui/pickedSprites.js
+    // holds the sprite itself): carry its expression into their chat.
+    function setPickedExpression(name, expression) {
+        const entry = getState().characters[normalizeName(name || "")];
+        if (!entry || !expression || entry.expression === expression) return;
+        entry.expression = expression;
+        saveState();
+    }
+
     return {
         render: scheduleRender,
+        setPickedExpression,
         randomizeLocations,
         notifyPlayerMovedTo,
         ensureCharacterLocations,
         getCharactersInRoom,
+        moveCharactersTo,
+        // Names of the classmates tagging along (your investigation partners).
+        getFollowerNames: () => getFollowerKeys().map((k) => characters.get(k)?.name).filter(Boolean),
+        playHostExit,
         isRoomFlat,
         setRoomFlat,
         toggleCurrentRoomFlat,
         destroy,
         onSingleChatOverworldChanged,
         schedulePresenceSync,
+        setTrialPresence,
         // Diagnostic — call from DevTools to see why nothing is on screen.
         _diagnose() {
             const mp = getMapPanelController?.();

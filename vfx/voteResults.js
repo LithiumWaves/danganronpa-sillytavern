@@ -1,3 +1,5 @@
+import { pushSkippable } from "../core/skip/skipRegistry.js";
+
 const OVERLAY_ID = "dangan-vote-results-overlay";
 const STYLE_ID   = "dangan-vote-results-style";
 const NS         = "http://www.w3.org/2000/svg";
@@ -431,24 +433,42 @@ export function createVoteResultsController({ getCharacters, getSpriteUrl, getUs
 
         await new Promise(resolve => {
             let step = 0;
+            let timer = null;
+            let spinning = true;
+            // Play intro, then start spinning after 2.5s
+            const introAudio = new Audio(`${extensionFolderPath}/assets/monokuma/vote-intro.wav`);
+            // Escape stops the spin on the result (a second Escape dismisses it).
+            const releaseSpinSkip = pushSkippable({
+                kind: "sequence",
+                skip: () => {
+                    if (!spinning) return;
+                    spinning = false;
+                    releaseSpinSkip();
+                    clearTimeout(timer);
+                    try { introAudio.pause(); } catch (_) {}
+                    setLit(guessIdx);
+                    showResult(guessIdx, allChars, imageUrls, resultEl, failed, resolve);
+                },
+            });
             function tick() {
+                if (!spinning) return;
                 step++;
                 setLit(step % n);
                 // Play tick sound on each highlight
                 const tickAudio = new Audio(tickSrc);
                 tickAudio.play().catch(() => {});
                 if (step < totalSteps) {
-                    setTimeout(tick, stepDelay(step));
+                    timer = setTimeout(tick, stepDelay(step));
                 } else {
+                    spinning = false;
+                    releaseSpinSkip();
                     setLit(guessIdx);
-                    setTimeout(() => showResult(guessIdx, allChars, imageUrls, resultEl, failed, resolve), 500);
+                    timer = setTimeout(() => showResult(guessIdx, allChars, imageUrls, resultEl, failed, resolve), 500);
                 }
             }
-            // Play intro, then start spinning after 2.5s
-            const introAudio = new Audio(`${extensionFolderPath}/assets/monokuma/vote-intro.wav`);
             introAudio.loop = false;
             introAudio.play().catch(e => console.warn("[VoteResults] intro play failed:", e));
-            setTimeout(tick, 2500);
+            timer = setTimeout(tick, 2500);
         });
     }
 
@@ -499,7 +519,13 @@ export function createVoteResultsController({ getCharacters, getSpriteUrl, getUs
             if (failed) showFailX(overlay);
         }));
 
+        let dismissed = false;
+        const releaseResultSkip = pushSkippable({ kind: "sequence", skip: () => dismiss() });
+
         function dismiss() {
+            if (dismissed) return;
+            dismissed = true;
+            releaseResultSkip();
             clearTimeout(coinTimeout);
             coinStopRef.stop = true;
             resultAudio?.pause();

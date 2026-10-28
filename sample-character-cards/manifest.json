@@ -1,0 +1,135 @@
+{
+  "sets": [
+    {
+      "id": "dr1",
+      "label": "Trigger Happy Havoc",
+      "files": [
+        "danganronpa-cards/Danganronpa/Alter Ego.json",
+        "danganronpa-cards/Danganronpa/Aoi Asahina.json",
+        "danganronpa-cards/Danganronpa/Byakuya Togami.json",
+        "danganronpa-cards/Danganronpa/Celestia Ludenberg.json",
+        "danganronpa-cards/Danganronpa/Chihiro Fujisaki.json",
+        "danganronpa-cards/Danganronpa/Hifumi Yamada.json",
+        "danganronpa-cards/Danganronpa/Junko Enoshima.json",
+        "danganronpa-cards/Danganronpa/Kiyotaka Ishimaru.json",
+        "danganronpa-cards/Danganronpa/Kyoko Kirigiri.json",
+        "danganronpa-cards/Danganronpa/Leon Kuwata.json",
+        "danganronpa-cards/Danganronpa/Makoto Naegi.json",
+        "danganronpa-cards/Danganronpa/Mondo Owada.json",
+        "danganronpa-cards/Danganronpa/Monokuma.json",
+        "danganronpa-cards/Danganronpa/Mukuro Ikusaba.json",
+        "danganronpa-cards/Danganronpa/Sakura Ogami.json",
+        "danganronpa-cards/Danganronpa/Sayaka Maizono.json",
+        "danganronpa-cards/Danganronpa/Toko Fukawa.json",
+        "danganronpa-cards/Danganronpa/Yasuhiro Hagakure.json"
+      ]
+    },
+    {
+      "id": "dr2",
+      "label": "Goodbye Despair",
+      "files": [
+        "danganronpa-cards/Danganronpa 2 - Goodbye Despair/Akane Owari.json",
+        "danganronpa-cards/Danganronpa 2 - Goodbye Despair/Chiaki Nanami.json",
+        "danganronpa-cards/Danganronpa 2 - Goodbye Despair/Fuyuhiko Kuzuryu.json",
+        "danganronpa-cards/Danganronpa 2 - Goodbye Despair/Gundham Tanaka.json",
+        "danganronpa-cards/Danganronpa 2 - Goodbye Despair/Hajime Hinata.json",
+        "danganronpa-cards/Danganronpa 2 - Goodbye Despair/Hiyoko Saionji.json",
+        "danganronpa-cards/Danganronpa 2 - Goodbye Despair/Ibuki Mioda.json",
+        "danganronpa-cards/Danganronpa 2 - Goodbye Despair/Kazuichi Souda.json",
+        "danganronpa-cards/Danganronpa 2 - Goodbye Despair/Mahiru Koizumi.json",
+        "danganronpa-cards/Danganronpa 2 - Goodbye Despair/Mikan Tsumiki.json",
+        "danganronpa-cards/Danganronpa 2 - Goodbye Despair/Monomi.json",
+        "danganronpa-cards/Danganronpa 2 - Goodbye Despair/Nagito Komaeda.json",
+        "danganronpa-cards/Danganronpa 2 - Goodbye Despair/Nekomaru Nidai.json",
+        "danganronpa-cards/Danganronpa 2 - Goodbye Despair/Peko Pekoyama.json",
+        "danganronpa-cards/Danganronpa 2 - Goodbye Despair/Sonia Nevermind.json",
+        "danganronpa-cards/Danganronpa 2 - Goodbye Despair/Teruteru Hanamura.json",
+        "danganronpa-cards/Danganronpa 2 - Goodbye Despair/Ultimate Imposter.json"
+      ]
+    },
+    {
+      "id": "v3",
+      "label": "Killing Harmony",
+      "files": [
+        "danganronpa-cards/Danganronpa V3/Angie Yonaga.json",
+        "danganronpa-cards/Danganronpa V3/Gonta Gokuhara.json",
+        "danganronpa-cards/Danganronpa V3/Himiko Yumeno.json",
+        "danganronpa-cards/Danganronpa V3/K1-B0.json",
+        "danganronpa-cards/Danganronpa V3/Kaede Akamatsu.json",
+        "danganronpa-cards/Danganronpa V3/Kaito Momota.json",
+        "danganronpa-cards/Danganronpa V3/Kirumi Tojo.json",
+        "danganronpa-cards/Danganronpa V3/Kokichi Ouma.json",
+        "danganronpa-cards/Danganronpa V3/Korekiyo Shinguji.json",
+        "danganronpa-cards/Danganronpa V3/Maki Harukawa.json",
+        "danganronpa-cards/Danganronpa V3/Miu Iruma.json",
+        "danganronpa-cards/Danganronpa V3/Monodam.json",
+        "danganronpa-cards/Danganronpa V3/Monokid.json",
+        "danganronpa-cards/Danganronpa V3/Monokuma.json",
+        "danganronpa-cards/Danganronpa V3/Monophanie.json",
+        "danganronpa-cards/Danganronpa V3/Monosuke.json",
+        "danganronpa-cards/Danganronpa V3/Monotaro.json",
+        "danganronpa-cards/Danganronpa V3/Rantaro Amami.json",
+        "danganronpa-cards/Danganronpa V3/Ryoma Hoshi.json",
+        "danganronpa-cards/Danganronpa V3/Shuichi Saihara.json",
+        "danganronpa-cards/Danganronpa V3/Tenko Chabashira.json",
+        "danganronpa-cards/Danganronpa V3/Tsumugi Shirogane.json"
+      ]
+    },
+    {
+      "id": "dr3",
+      "label": "Danganronpa 3",
+      "files": [
+        "danganronpa-cards/Danganronpa 3/Chisa Yukizome.json",
+        "danganronpa-cards/Danganronpa 3/Daisaku Bandai.json",
+        "danganronpa-cards/Danganronpa 3/Great Gozu.json",
+        "danganronpa-cards/Danganronpa 3/Juzo Sakakura.json",
+        "danganronpa-cards/Danganronpa 3/Kazuo Tengan.json",
+        "danganronpa-cards/Danganronpa 3/Koichi Kizakura.json",
+        "danganronpa-cards/Danganronpa 3/Kyosuke Munakata.json",
+        "danganronpa-cards/Danganronpa 3/Miaya Gekkogahara.json",
+        "danganronpa-cards/Danganronpa 3/Ruruka Ando.json",
+        "danganronpa-cards/Danganronpa 3/Ryota Mitarai.json",
+        "danganronpa-cards/Danganronpa 3/Seiko Kimura.json",
+        "danganronpa-cards/Danganronpa 3/Sonosuke Izayoi.json"
+      ]
+    },
+    {
+      "id": "udg",
+      "label": "Ultra Despair Girls",
+      "files": [
+        "danganronpa-cards/Danganronpa Ultra Despair Girls/Haiji Towa.json",
+        "danganronpa-cards/Danganronpa Ultra Despair Girls/Jataro Kemuri.json",
+        "danganronpa-cards/Danganronpa Ultra Despair Girls/Komaru Naegi.json",
+        "danganronpa-cards/Danganronpa Ultra Despair Girls/Kotoko Utsugi.json",
+        "danganronpa-cards/Danganronpa Ultra Despair Girls/Kurokuma.json",
+        "danganronpa-cards/Danganronpa Ultra Despair Girls/Masaru Daimon.json",
+        "danganronpa-cards/Danganronpa Ultra Despair Girls/Monaca Towa.json",
+        "danganronpa-cards/Danganronpa Ultra Despair Girls/Monomi.json",
+        "danganronpa-cards/Danganronpa Ultra Despair Girls/Nagisa Shingetsu.json",
+        "danganronpa-cards/Danganronpa Ultra Despair Girls/Shirokuma.json",
+        "danganronpa-cards/Danganronpa Ultra Despair Girls/Toko Fukawa.json"
+      ]
+    },
+    {
+      "id": "hundred",
+      "label": "The Hundred Line",
+      "files": [
+        "hundred-line-cards/Darumi Amemiya.json",
+        "hundred-line-cards/Eito Aotsuki.json",
+        "hundred-line-cards/Gaku Maruko.json",
+        "hundred-line-cards/Hiruko Shizuhara.json",
+        "hundred-line-cards/Ima Tsukumo.json",
+        "hundred-line-cards/Kako Tsukumo.json",
+        "hundred-line-cards/Kurara Oosuzuki.json",
+        "hundred-line-cards/Kyoshika Magadori.json",
+        "hundred-line-cards/Moko Mojiro.json",
+        "hundred-line-cards/Nozomi Kirifuji.json",
+        "hundred-line-cards/Shouma Ginzaki.json",
+        "hundred-line-cards/Takemaru Yakushiji.json",
+        "hundred-line-cards/Takumi Sumino.json",
+        "hundred-line-cards/Tsubasa Kawana.json",
+        "hundred-line-cards/Yugamu Omokage.json"
+      ]
+    }
+  ]
+}

@@ -11,7 +11,7 @@ import {
 
 // Emotion Sprite Manager
 // ----------------------
-// A modal (opened from Settings → FX → "EMOTION SPRITES") that lets the user
+// A modal (opened from Settings → Tools → "Emotion sprites") that lets the user
 // view and manage a character's expression sprites. For every managed emotion
 // the user sees the current sprite (or an empty upload slot) and can:
 //   • click an empty slot to upload that emotion's sprite — saved verbatim as
@@ -106,7 +106,7 @@ function getActiveCharacterName() {
 
 // ── Sprite API ────────────────────────────────────────────────────────────────
 
-async function fetchSprites(folder) {
+export async function fetchSprites(folder) {
     if (!folder) return [];
     try {
         const resp = await fetch(`/api/sprites/get?name=${encodeURIComponent(folder)}`);
@@ -119,7 +119,7 @@ async function fetchSprites(folder) {
     }
 }
 
-async function uploadSprite(folder, emotion, spriteName, file) {
+export async function uploadSprite(folder, emotion, spriteName, file) {
     const fd = new FormData();
     fd.append("name", folder);          // character sprite folder
     fd.append("label", emotion);        // expression label (kept for ST metadata)
@@ -139,7 +139,7 @@ async function uploadSprite(folder, emotion, spriteName, file) {
     }
 }
 
-async function deleteSprite(folder, emotion, spriteName) {
+export async function deleteSprite(folder, emotion, spriteName) {
     try {
         const resp = await fetch("/api/sprites/delete", {
             method: "POST",
