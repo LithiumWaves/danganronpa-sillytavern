@@ -102,7 +102,7 @@ import { createAudioVisualizerController } from "./audio/audioVisualizer.js";
 import { createDynamicSongsController, formatMoodScanToast } from "./audio/dynamicSongs.js";
 import { buildAssignedTrackCatalog, openSongPicker } from "./audio/songPicker.js";
 import { createOverworldSceneController } from "./overworld/overworldScene.js";
-import { showCgByBgName, showCgPicker } from "./overworld/cgViewer.js";
+import { pickCg, showCgByBgName, showCgFromCssUrl, showCgPicker } from "./overworld/cgViewer.js";
 import { buildRoomContextPrompt, resolveRoomLabel, ROOM_CONTEXT_PROMPT_KEY } from "./overworld/roomContextPrompt.js";
 import { isPresenceExtensionPresent } from "./overworld/roomPresence.js";
 import { PRESENCE_URL, PROME_URL, countSetupProblems, countSetupReminders, evaluateSetup } from "./core/setup/setupChecks.js";
@@ -9546,7 +9546,11 @@ async function onSchoolRuleBroken(name, ruleNumber = 0, { mesId = -1, source = "
         const display = isPlayer ? (getCasePlayerName() || who) : (char?.name || who);
         const caught = source === "check" ? " (caught by the rule check)" : source === "manual" ? " (reported by you)" : "";
         if (outcome === "grave") {
-            await playBloodSplash({ name: display, playSound: () => playSfx(sfx.trust_shatter || sfx.hit) });
+            // Mukuro-style: it ends on white, where a CG can be brought up.
+            await playBloodSplash({
+                playSound: () => playSfx(sfx.trust_shatter || sfx.hit),
+                offerCg: { pick: () => pickCg({ title: "SHOW A CG" }), show: (item) => showCgFromCssUrl(item.cssUrl) },
+            });
             if (isPlayer) {
                 const chat = window.SillyTavern?.getContext?.()?.chat || [];
                 setPlayerDeath({ name: display, mesId: Number.isInteger(mesId) ? mesId : -1, chatLength: chat.length, chapter: currentChapter(), pendingGameOver: true });
@@ -9641,7 +9645,7 @@ async function showPlayerGameOver() {
     try {
         setPlayerDeath({ ...death, pendingGameOver: false });
         for (;;) {
-            const choice = await openGameOver({ name: death.name });
+            const choice = await openGameOver({ playSound: () => playSfx(new Audio(`${extensionFolderPath}/assets/sfx/etc/game-over.mp3`)) });
             if (choice === "undo") {
                 if (await undoPlayerDeath(death)) return;
                 continue;

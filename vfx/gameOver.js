@@ -1,44 +1,57 @@
 // GAME OVER, when the player is punished by death (a grave School
-// Regulation). UNDO rewinds to before the violation; CONTINUE goes on as
-// someone else: another persona, or a classmate from the roster.
+// Regulation), as DR1's dot-matrix GAME OVER: black, red dotted rules and
+// bars, red lettering and a white-dot Monokuma, glitching. The frames are
+// sampled from the game (vfx/gameOverFrames.js) and redrawn dot by dot.
+// UNDO rewinds to before the violation; CONTINUE goes on as someone else:
+// another persona, or a classmate from the roster.
+
+import { GAME_OVER_FRAMES } from "./gameOverFrames.js";
 
 const STYLE_ID = "dangan-gameover-style";
 const ROOT_ID = "dangan-gameover";
 const PICK_ID = "dangan-gameover-pick";
 
+// Where the dot grid sits in the 16:9 picture, as sampled (1280×720).
+const GRID = { x0: 7.83 / 1280, y0: 4.5 / 720, pitch: 1 / 120, dot: 0.5 };
+const RED = "#d81d1e";
+
 const CSS = `
 #${ROOT_ID}, #${PICK_ID} {
-    position: fixed; inset: 0; z-index: 100062; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 22px; padding: 16px; box-sizing: border-box;
-    background: radial-gradient(ellipse at 50% 45%, rgba(70, 0, 30, 0.95), rgba(0, 0, 0, 0.99));
-    color: #fff; font-family: inherit; animation: dgo-in 0.8s ease;
+    position: fixed; inset: 0; z-index: 100062; background: #000; color: ${RED};
+    font: 700 15px "Orbitron", "Rajdhani", monospace; letter-spacing: 0.3em;
 }
-#${ROOT_ID} .dgo-title {
-    font-size: clamp(2.4rem, 11vw, 6rem); font-weight: 900; letter-spacing: 0.18em; color: #ff1f8e;
-    text-shadow: 0 0 18px rgba(255, 31, 142, 0.7), 0 6px 0 #4a0020; animation: dgo-shake 0.5s ease 0.2s;
+#${ROOT_ID} canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#${ROOT_ID} .dgo-choice {
+    position: absolute; bottom: max(3vh, 14px); padding: 10px 22px; opacity: 0; pointer-events: none;
+    background: rgba(0, 0, 0, 0.82); color: ${RED}; border: 3px dotted ${RED};
+    font: inherit; letter-spacing: 0.3em; cursor: pointer; transition: opacity 0.4s ease;
 }
-#${ROOT_ID} .dgo-sub { letter-spacing: 0.2em; text-align: center; font-size: clamp(0.9rem, 3vw, 1.2rem); }
-#${ROOT_ID} .dgo-note { max-width: 560px; text-align: center; color: #d9c4e6; line-height: 1.5; font-size: 0.9rem; }
-#${ROOT_ID} .dgo-choices, #${PICK_ID} .dgo-foot { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; }
-#${ROOT_ID} button, #${PICK_ID} button {
-    font: inherit; letter-spacing: 0.2em; cursor: pointer; border-radius: 6px; padding: 12px 26px; font-size: 1rem;
-    background: transparent; color: #fff; border: 2px solid rgba(255, 182, 222, 0.7);
+#${ROOT_ID}.is-ready .dgo-choice { opacity: 1; pointer-events: auto; }
+#${ROOT_ID} .dgo-undo { left: max(3vw, 14px); }
+#${ROOT_ID} .dgo-continue { right: max(3vw, 14px); }
+#${ROOT_ID} .dgo-choice:hover, #${ROOT_ID} .dgo-choice:focus-visible { background: ${RED}; color: #000; outline: none; }
+#${PICK_ID} { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 16px; box-sizing: border-box; }
+#${PICK_ID} .dgo-pick-frame {
+    width: min(760px, 100%); max-height: calc(100vh - 32px); overflow: auto; padding: 22px; box-sizing: border-box;
+    border: 3px dotted ${RED}; display: flex; flex-direction: column; gap: 14px;
 }
-#${ROOT_ID} button:hover, #${PICK_ID} button:hover { background: rgba(255, 31, 142, 0.25); }
-#${ROOT_ID} button.dgo-primary, #${PICK_ID} button.dgo-primary { border-color: #ff1f8e; background: rgba(255, 31, 142, 0.35); }
-#${PICK_ID} .dgo-pick-title { font-size: 1.3rem; letter-spacing: 0.2em; color: #ff1f8e; }
-#${PICK_ID} .dgo-pick-note { color: #d9c4e6; font-size: 0.85rem; text-align: center; max-width: 560px; }
-#${PICK_ID} .dgo-section { width: min(760px, 100%); font-size: 0.72rem; letter-spacing: 0.14em; color: #ffd23f; }
-#${PICK_ID} .dgo-grid { width: min(760px, 100%); display: flex; flex-wrap: wrap; gap: 10px; max-height: 30vh; overflow: auto; }
-#${PICK_ID} .dgo-card {
-    display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; font-size: 0.85rem; letter-spacing: 0.04em;
-    border: 1px solid rgba(255, 182, 222, 0.45); border-radius: 999px;
+#${PICK_ID} .dgo-pick-title { font-size: clamp(16px, 3vw, 22px); text-align: center; }
+#${PICK_ID} .dgo-pick-note { color: #8a6a6a; font: 500 14px "Rajdhani", sans-serif; letter-spacing: 0.04em; text-align: center; }
+#${PICK_ID} .dgo-section { font-size: 11px; color: #761413; border-bottom: 2px dotted #761413; padding-bottom: 4px; }
+#${PICK_ID} .dgo-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+#${PICK_ID} button {
+    background: #000; color: ${RED}; border: 2px dotted ${RED}; font: 700 13px "Orbitron", monospace;
+    letter-spacing: 0.2em; padding: 8px 16px; cursor: pointer;
 }
-#${PICK_ID} .dgo-card img { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; }
-#${PICK_ID} .dgo-card.is-on { border-color: #ff1f8e; background: rgba(255, 31, 142, 0.3); }
-#${PICK_ID} .dgo-empty { color: #bfa9cc; font-size: 0.85rem; }
-@keyframes dgo-in { from { opacity: 0; } to { opacity: 1; } }
-@keyframes dgo-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } }
+#${PICK_ID} button:hover, #${PICK_ID} button:focus-visible { background: ${RED}; color: #000; outline: none; }
+#${PICK_ID} .dgo-card { display: flex; align-items: center; gap: 8px; padding: 5px 12px 5px 5px; font: 600 14px "Rajdhani", sans-serif; letter-spacing: 0.06em; }
+#${PICK_ID} .dgo-card img { width: 32px; height: 32px; object-fit: cover; filter: grayscale(1) contrast(1.3); }
+#${PICK_ID} .dgo-card.is-on { background: ${RED}; color: #000; border-style: solid; }
+#${PICK_ID} .dgo-card.is-on img { filter: none; }
+#${PICK_ID} .dgo-empty { color: #8a6a6a; font: 500 14px "Rajdhani", sans-serif; letter-spacing: 0.04em; }
+#${PICK_ID} .dgo-foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+#${PICK_ID} button:disabled { opacity: 0.35; cursor: not-allowed; }
+#${PICK_ID} button:disabled:hover { background: #000; color: ${RED}; }
 `;
 
 function ensureStyle() {
@@ -53,8 +66,72 @@ function esc(value) {
     return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-// { name } → Promise<"undo" | "continue">
-export function openGameOver({ name = "" } = {}) {
+// ── Frames ──────────────────────────────────────────────────────────────────
+
+// The packed frames (4 cells a byte, 2 bits each) as one Uint8Array of cell
+// values per frame.
+export function unpackFrames(bytes, { cols, rows, count }) {
+    const cells = cols * rows;
+    const perFrame = Math.ceil(cells / 4);
+    const frames = [];
+    for (let f = 0; f < count; f += 1) {
+        const out = new Uint8Array(cells);
+        const base = f * perFrame;
+        for (let i = 0; i < cells; i += 1) out[i] = (bytes[base + (i >> 2)] >> ((i & 3) * 2)) & 3;
+        frames.push(out);
+    }
+    return frames;
+}
+
+async function inflateBase64(b64) {
+    const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const stream = new Blob([bin]).stream().pipeThrough(new DecompressionStream("deflate"));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+let framesPromise = null;
+export function loadGameOverFrames() {
+    framesPromise ||= inflateBase64(GAME_OVER_FRAMES.data).then((bytes) => unpackFrames(bytes, GAME_OVER_FRAMES));
+    return framesPromise;
+}
+
+// Which frame of the clip is showing `ms` after it starts: the clip once,
+// then its glitching part over and over.
+export function frameAt(ms, { fps, sequence, loopFrom }) {
+    const n = Math.floor((Math.max(0, ms) / 1000) * fps);
+    if (n < sequence.length) return sequence[n];
+    const loop = sequence.length - loopFrom;
+    return sequence[loopFrom + ((n - sequence.length) % loop)];
+}
+
+// The 16:9 picture, letterboxed in the viewport.
+export function pictureRect(width, height) {
+    const w = Math.min(width, (height * 16) / 9);
+    const h = (w * 9) / 16;
+    return { x: (width - w) / 2, y: (height - h) / 2, w, h };
+}
+
+function drawFrame(ctx, cells, rect, { cols, rows, colors }) {
+    const pitch = rect.w * GRID.pitch;
+    const size = Math.max(1, pitch * GRID.dot);
+    const x0 = rect.x + rect.w * GRID.x0 - size / 2;
+    const y0 = rect.y + rect.h * GRID.y0 - size / 2;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    for (const level of [1, 2, 3]) {
+        ctx.fillStyle = colors[level];
+        ctx.beginPath();
+        for (let r = 0; r < rows; r += 1) {
+            for (let c = 0; c < cols; c += 1) {
+                if (cells[r * cols + c] === level) ctx.rect(Math.round(x0 + c * pitch), Math.round(y0 + r * pitch), size, size);
+            }
+        }
+        ctx.fill();
+    }
+}
+
+// { playSound } → Promise<"undo" | "continue">
+export function openGameOver({ playSound = null } = {}) {
     ensureStyle();
     document.getElementById(ROOT_ID)?.remove();
     return new Promise((resolve) => {
@@ -62,18 +139,65 @@ export function openGameOver({ name = "" } = {}) {
         root.id = ROOT_ID;
         root.setAttribute("role", "dialog");
         root.setAttribute("aria-label", "Game over");
-        root.innerHTML = `
-            <div class="dgo-title">GAME OVER</div>
-            <div class="dgo-sub">${esc(String(name || "You").toUpperCase())} HAS BEEN PUNISHED</div>
-            <div class="dgo-note">UNDO rewinds the story to before the violation. CONTINUE goes on without you: play on as another persona, or as one of your classmates.</div>
-            <div class="dgo-choices"><button type="button" class="dgo-undo">UNDO</button><button type="button" class="dgo-primary dgo-continue">CONTINUE</button></div>`;
+        root.innerHTML = `<canvas></canvas>
+            <button type="button" class="dgo-choice dgo-undo">UNDO</button>
+            <button type="button" class="dgo-choice dgo-continue">CONTINUE</button>`;
         document.body.appendChild(root);
+        const canvas = root.querySelector("canvas");
+        const ctx = canvas.getContext("2d");
+        const still = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+        let frames = null;
+        let shown = -1;
+        let raf = 0;
+        let start = 0;
+        let done = false;
+
+        const size = () => {
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = Math.round(root.clientWidth * dpr);
+            canvas.height = Math.round(root.clientHeight * dpr);
+            shown = -1;
+        };
+        const tick = (now) => {
+            if (done) return;
+            if (!start) start = now;
+            const ms = now - start;
+            const index = still ? GAME_OVER_FRAMES.sequence[GAME_OVER_FRAMES.sequence.length - 1] : frameAt(ms, GAME_OVER_FRAMES);
+            if (frames && index !== shown) {
+                shown = index;
+                drawFrame(ctx, frames[index], pictureRect(canvas.width, canvas.height), GAME_OVER_FRAMES);
+            }
+            // The choices come once the clip has played through once.
+            if (!root.classList.contains("is-ready") && (still || ms >= (GAME_OVER_FRAMES.sequence.length / GAME_OVER_FRAMES.fps) * 1000)) {
+                root.classList.add("is-ready");
+                root.querySelector(".dgo-continue").focus({ preventScroll: true });
+            }
+            raf = requestAnimationFrame(tick);
+        };
+        const onResize = () => size();
+        window.addEventListener("resize", onResize);
+        size();
+
         const pick = (choice) => {
+            if (done) return;
+            done = true;
+            cancelAnimationFrame(raf);
+            window.removeEventListener("resize", onResize);
             root.remove();
             resolve(choice);
         };
         root.querySelector(".dgo-undo").addEventListener("click", () => pick("undo"));
         root.querySelector(".dgo-continue").addEventListener("click", () => pick("continue"));
+
+        loadGameOverFrames().then((f) => {
+            frames = f;
+            try { playSound?.(); } catch { /* no sound */ }
+            raf = requestAnimationFrame(tick);
+        }).catch((err) => {
+            // No DecompressionStream: the choices still work on black.
+            console.warn("[Dangan][GameOver] frames failed:", err);
+            root.classList.add("is-ready");
+        });
     });
 }
 
@@ -89,14 +213,15 @@ export function openSuccessorPicker({ personas = [], classmates = [] } = {}) {
         root.setAttribute("role", "dialog");
         root.setAttribute("aria-label", "Who do you play as now?");
         const card = (kind, id, label, avatarUrl) => `<button type="button" class="dgo-card" data-kind="${kind}" data-id="${esc(id)}">${avatarUrl ? `<img src="${esc(avatarUrl)}" alt="" loading="lazy">` : ""}<span>${esc(label)}</span></button>`;
-        root.innerHTML = `
+        root.innerHTML = `<div class="dgo-pick-frame">
             <div class="dgo-pick-title">WHO DO YOU PLAY AS NOW?</div>
             <div class="dgo-pick-note">A classmate becomes your persona, made from their card, and the AI stops speaking for them.</div>
             <div class="dgo-section">YOUR CLASSMATES</div>
             <div class="dgo-grid">${classmates.map((c) => card("classmate", c.name, c.name, c.avatarUrl)).join("") || `<div class="dgo-empty">Nobody is left.</div>`}</div>
             <div class="dgo-section">YOUR PERSONAS</div>
             <div class="dgo-grid">${personas.map((p) => card("persona", p.key, p.name, p.avatarUrl)).join("") || `<div class="dgo-empty">No other personas.</div>`}</div>
-            <div class="dgo-foot"><button type="button" class="dgo-back">BACK</button><button type="button" class="dgo-primary dgo-go" disabled>PLAY AS THEM</button></div>`;
+            <div class="dgo-foot"><button type="button" class="dgo-back">BACK</button><button type="button" class="dgo-go" disabled>PLAY AS THEM</button></div>
+        </div>`;
         document.body.appendChild(root);
         let chosen = null;
         const go = root.querySelector(".dgo-go");
