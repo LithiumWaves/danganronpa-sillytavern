@@ -316,6 +316,16 @@ export function createTrialManager(deps) {
         return silencedSeats.has(normalizeSeatName(String(name || '')));
     }
 
+    // Hosts (Monokuma, Monomi, the Monokubs…) run the trial rather than take
+    // part in it. Since hosts joined the story chat as muted members, they'd
+    // otherwise be seated like classmates (muted + dead sprite = "silenced
+    // seat"; called in = unmuted). Monokuma keeps his own solo staging; every
+    // other host is simply left out of seats and speakers.
+    function isNonPlayer(name) {
+        if (isMonokuma(name)) return true;
+        try { return !!isHostCharacter?.(name); } catch { return false; }
+    }
+
     function isMonokuma(name) {
         const key = normalizeSeatName(name);
         if (key === 'monokuma') return true;
@@ -566,7 +576,6 @@ export function createTrialManager(deps) {
         } else if (isDebate && !wasDebate) {
             setupNSDListeners();
             preloadRefuteAssets({ counterImgUrl: getAssetUrl('counter.png') });
-            getPlayerRefuteSpriteUrl().then(url => url && preloadRefuteAssets({ playerSpriteUrl: url })).catch(() => {});
             const historyBefore = debateHistoryBeforeDebate ?? [...persistentDebateHistory];
             const stateBefore = oldState;
             endDebateSession = beginMinigame({
@@ -1552,7 +1561,7 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
         let editSelectedIdx = -1;   // first-click anchor for swap
 
         function gatherCurrentNames() {
-            const names = gcpSlots.map(s => s.name).filter(n => n && !isMonokuma(n));
+            const names = gcpSlots.map(s => s.name).filter(n => n && !isNonPlayer(n));
             const playerName = getPlayerName?.();
             if (playerName && !names.some(n => normalizeSeatName(n) === normalizeSeatName(playerName))) {
                 names.push(playerName);
@@ -2353,7 +2362,7 @@ ${historyText}
             let displayPlan = (gcpSlots.length
                 ? gcpSlots.map(s => s.name)
                 : (plan ? [...plan] : []))
-                .filter(n => !isMonokuma(n));
+                .filter(n => !isNonPlayer(n));
             const playerName = getPlayerName();
             if (playerName && !displayPlan.some(n => normalizeSeatName(n) === normalizeSeatName(playerName))) {
                 displayPlan.push(playerName);
@@ -2377,7 +2386,7 @@ ${historyText}
         if (isGroupChat()) {
             async function buildFreshPlan() {
                 silencedSeats.clear();
-                const allMembers = getChatCardMembers().map(m => m.name).filter(Boolean);
+                const allMembers = getChatCardMembers().map(m => m.name).filter(Boolean).filter(n => !isNonPlayer(n));
                 const seated = [];
                 for (const name of allMembers) {
                     if (isCharacterMuted(name)) {
@@ -2855,7 +2864,7 @@ ${historyText}
 
         await promptMinigameTutorial("nonStopDebate");
 
-        const speakers = getChatCardMembers().map(s => s.name).filter(Boolean).filter(n => !isCharacterDead(n) && !isCharacterMissing(n) && !isSilenced(n) && !isMonokuma(n));
+        const speakers = getChatCardMembers().map(s => s.name).filter(Boolean).filter(n => !isCharacterDead(n) && !isCharacterMissing(n) && !isSilenced(n) && !isNonPlayer(n));
         const speakerPool = speakers.length ? speakers : ['???'];
 
         debateHistoryBeforeDebate = [...persistentDebateHistory];
@@ -2864,7 +2873,7 @@ ${historyText}
         currentDebateSections = Math.min(24, Math.max(1, list.length));
         preparedDebateSections = list.slice(0, currentDebateSections).map(({ text, speaker, whiteNoise }) => {
             // If an explicit speaker is dead or is Monokuma, pick a living one instead
-            const speakerName = (speaker && !isCharacterDead(speaker) && !isCharacterMissing(speaker) && !isMonokuma(speaker))
+            const speakerName = (speaker && !isCharacterDead(speaker) && !isCharacterMissing(speaker) && !isNonPlayer(speaker))
                 ? speaker
                 : speakerPool[Math.floor(Math.random() * speakerPool.length)];
             const isAgree  = /\(\([^)]+\)\)/.test(text);
@@ -3749,6 +3758,7 @@ ${historyText}
         const members = source
             .filter(Boolean)
             .filter(n => !rosterKeys.size || rosterKeys.has(normalizeLooseName(n)))
+            .filter(n => !isNonPlayer(n))
             .filter(n => !isCharacterMuted(n) || isCharacterDead(n));
         const playerName = getPlayerName();
         if (playerName && !members.some(n => normalizeLooseName(n) === normalizeLooseName(playerName))) {
@@ -3800,16 +3810,16 @@ ${historyText}
         if (!debateSeatingPlan?.length && isGroupChat()) {
             const isMpd = currentState === TrialPhases.MASS_PANIC_DEBATE;
             const groupMembers = getChatCardMembers().map(m => m.name).filter(Boolean)
-                .filter(n => (!isCharacterMuted(n) || isCharacterDead(n)) && !isMonokuma(n));
+                .filter(n => (!isCharacterMuted(n) || isCharacterDead(n)) && !isNonPlayer(n));
             let speakerNames;
             if (groupMembers.length) {
                 speakerNames = groupMembers;
             } else if (isMpd) {
                 speakerNames = [...new Set(
                     (mpdScenarios || []).flatMap(s => (s.texts || []).map(t => t.speaker)).filter(Boolean)
-                )].filter(n => !isMonokuma(n));
+                )].filter(n => !isNonPlayer(n));
             } else {
-                speakerNames = (preparedDebateSections || []).map(s => s.speakerName).filter(Boolean).filter(n => !isMonokuma(n));
+                speakerNames = (preparedDebateSections || []).map(s => s.speakerName).filter(Boolean).filter(n => !isNonPlayer(n));
             }
             const playerName = getPlayerName();
             if (playerName) speakerNames.push(playerName);
@@ -5951,20 +5961,10 @@ ${historyText}
         });
     }
 
-    async function getPlayerRefuteSpriteUrl() {
-        const pack = getPromeInfo()?.spritePack;
-        if (!pack || typeof getSpriteUrl !== 'function') return null;
-        for (const emo of ['interjection', 'anger', 'neutral']) {
-            const url = await getSpriteUrl(pack, emo).catch(() => null);
-            if (url) return url;
-        }
-        return null;
-    }
-
     async function playCounterRefute(wp, statement, x, y) {
         refuteFreeze = true;
         try {
-            const playerSpriteUrl = await getPlayerRefuteSpriteUrl();
+            // No player portrait on the Counter band for now (counter.png alone).
             await playRefuteSequence({
                 weakPointEl: wp,
                 statementEl: statement,
@@ -5972,7 +5972,6 @@ ${historyText}
                 impactX: x,
                 impactY: y,
                 counterImgUrl: getAssetUrl('counter.png'),
-                playerSpriteUrl,
                 isMpd: currentState === TrialPhases.MASS_PANIC_DEBATE,
                 playSfx: (key) => playSfx?.(key),
                 playVoice: () => playSfx?.(getSfx?.().vic_Monok_01_022 || 'vic_Monok_01_022'),
@@ -6647,6 +6646,7 @@ JUDGMENT RULES:
             const finalSpeakers = pool
                 .filter(s => !isGroupMemberMuted(s.name))
                 .filter(s => !isCharacterDead(s.name))
+                .filter(s => !isNonPlayer(s.name))
                 .sort((a, b) => b.weight - a.weight);
             
             console.log(`[Dangan][Trial] Final speaker pool:`, finalSpeakers.map(s => s.name));
@@ -8248,7 +8248,7 @@ JUDGMENT RULES:
 
                 // Trials stage Monokuma on his own overlay; elsewhere he
                 // stands with everyone else.
-                gcpSlots = resolved.filter(r => r && !(trialActive && isMonokuma(r.name))).map(({ name, url, isDead, isMissing }, i) =>
+                gcpSlots = resolved.filter(r => r && !(trialActive && isNonPlayer(r.name))).map(({ name, url, isDead, isMissing }, i) =>
                     gcpMakeSlot(name, url, isDead, i, isMissing));
 
                 // Mark the player's slot (Prome VN Extension) so it uses the Prome sprite.
@@ -8642,7 +8642,7 @@ JUDGMENT RULES:
         isTrialActive:     () => !!trialActive,
         isGcpStageActive:  () => !!(gcpStage && gcpSlots.length),
         getGcpLivingSlots: () => gcpSlots
-            .filter(s => s?.name && !s.isDead && !s.isMissing && !isMonokuma(s.name))
+            .filter(s => s?.name && !s.isDead && !s.isMissing && !isNonPlayer(s.name))
             .map(s => ({ name: s.name, img: s.img, isDead: !!s.isDead, isMissing: !!s.isMissing })),
         // Re-runs the flat (non-trial) GCP layout so the dynamic CSS var
         // --gcp-half-slot-height gets recomputed. Used when the user toggles
