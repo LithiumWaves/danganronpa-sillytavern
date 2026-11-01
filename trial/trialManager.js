@@ -4,6 +4,8 @@ import { DEFAULT_TRIAL_PROMPT_TEMPLATES } from "../core/constants.js";
 import { attachCursorSway } from "../vfx/cursorSway.js";
 import { promptMinigameTutorial } from "../core/onboarding/minigameGuides.js";
 import { beginMinigame } from "../core/skip/skipRegistry.js";
+import { layoutStatement, renderStatementHtml } from "../vfx/nsdStatementLayout.js";
+import { playRefuteSequence, preloadRefuteAssets } from "../vfx/nsdRefute.js";
 
 export const TrialPhases = {
     IDLE: 'idle',
@@ -126,6 +128,10 @@ export function createTrialManager(deps) {
     let trialContext = { topic: '', goal: '', suspects: [] };
     // suspects: [{ name: string, chance: number }]  (chance is 0–100)
     let speedModifier = 1.0;
+    // True while the refute sequence plays: statements, white noise, the
+    // camera drift and the debate timer all hold still (V3's hit-stop).
+    let refuteFreeze = false;
+    function debateDelta(dt) { return refuteFreeze ? 0 : dt * speedModifier; }
     let revolverAngle  = 0;
     let revolverTarget = 0;
     let revolverSpinRaf = null;
@@ -151,7 +157,11 @@ export function createTrialManager(deps) {
         debateTimerDurationMs = resolveSkillParam(timerKey, base);
     }
 
+    let lastTimerNow = 0;
     function updateDebateTimer(nowMs) {
+        // While frozen, push the start forward so no time is lost.
+        if (refuteFreeze && lastTimerNow) debateTimerStartTs += Math.max(0, nowMs - lastTimerNow);
+        lastTimerNow = nowMs;
         const remaining = Math.max(0, debateTimerDurationMs - (nowMs - debateTimerStartTs));
         const el = document.getElementById('dangan-nsd-timer');
         if (el) {
@@ -549,11 +559,14 @@ export function createTrialManager(deps) {
         document.body.classList.toggle('dangan-nsd-running', isNsd);
         if (wasDebate && !isDebate) {
             cleanupNSDListeners();
+            resetChunkCamera();
             endDebateSession?.();
             endDebateSession = null;
             debateHistoryBeforeDebate = null;
         } else if (isDebate && !wasDebate) {
             setupNSDListeners();
+            preloadRefuteAssets({ counterImgUrl: getAssetUrl('counter.png') });
+            getPlayerRefuteSpriteUrl().then(url => url && preloadRefuteAssets({ playerSpriteUrl: url })).catch(() => {});
             const historyBefore = debateHistoryBeforeDebate ?? [...persistentDebateHistory];
             const stateBefore = oldState;
             endDebateSession = beginMinigame({
@@ -4356,6 +4369,19 @@ ${historyText}
             if (debateOverlay) debateOverlay.appendChild(introEl);
             else document.body.appendChild(introEl);
 
+            // V3-style fan-out: the evidence tags spring out of the cylinder one
+            // after another. Uses `transform` so it composes with the items'
+            // `translate` offsets.
+            if (!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) {
+                introEl.querySelectorAll('.dangan-bullet-intro-item').forEach((item, i) => {
+                    item.animate([
+                        { transform: 'translateX(-240px) rotate(-28deg) scale(0.4)', opacity: 0 },
+                        { transform: 'translateX(14px) rotate(2deg) scale(1.04)', opacity: 1, offset: 0.7 },
+                        { transform: 'none', opacity: 1 },
+                    ], { duration: 380, delay: 120 + i * 55, easing: 'cubic-bezier(.2,.9,.3,1)', fill: 'backwards' });
+                });
+            }
+
             // Prevent clicks on the intro from firing truth bullets on the overlay behind it
             introEl.addEventListener('click', e => e.stopPropagation());
 
@@ -4686,7 +4712,7 @@ ${historyText}
                 }
 
                 const dt    = Math.min(now - lastNow, 100);
-                const delta = dt * speedModifier;
+                const delta = debateDelta(dt);
                 lastNow  = now;
                 elapsed += delta;
 
@@ -5014,6 +5040,7 @@ ${historyText}
             startSpeakerShiftParade(prevSpeaker, speakerName, emotion);
         }
 
+        startChunkCamera();
         showStatementChunk({
             text: part.text,
             isWeakPoint: Boolean(part.isWeakPoint),
@@ -5173,43 +5200,22 @@ ${historyText}
         clearAllWhiteNoise();
 
         const el = document.createElement('div');
-        el.className = 'dangan-floating-statement dangan-statement-single';
+        el.className = 'dangan-floating-statement dangan-statement-single nsd-v3';
         const w = window.innerWidth || 1200;
         el.style.width = `${Math.min(Math.round(w * 0.82), 980)}px`;
         if (speakerName) el.dataset.speakerName = String(speakerName);
         const emoFont = getEmotionFont?.(emotion, speakerName);
         if (emoFont) el.style.fontFamily = emoFont;
         const rawText = stripSurroundingQuotes(String(text || ''));
-        const hasAgreeText = /\(\([^)]+\)\)/.test(rawText);
-        const cleanedText = rawText.replace(/\[\[|\]\]/g, '').replace(/\(\(|\)\)/g, '');
-
-        if (isWeakPoint || hasAgreeText) {
-            // Walk the raw text, escape each plain segment once, wrap weak spans once.
-            // Never call escapeHtml twice on the same content (avoids &amp;amp; etc.).
-            let html = '';
-            let lastIndex = 0;
-            // Mutual exclusivity: if agree marker present, strip any weak point brackets first
-            let renderText = rawText;
-            if (hasAgreeText && /\[\[[^\]]+\]\]/.test(renderText)) {
-                renderText = renderText.replace(/\[\[\s*([^\]]+?)\s*\]\]/g, '$1');
-            }
-            const tokenRegex = /\[\[\s*([^\]]+?)\s*\]\]|\(\(\s*([^)]+?)\s*\)\)/gi;
-            let match;
-            while ((match = tokenRegex.exec(renderText)) !== null) {
-                html += escapeHtml(renderText.slice(lastIndex, match.index));
-                if (match[1] !== undefined) {
-                    html += `<span class="dangan-weak-point">${escapeHtml(match[1].trim())}</span>`;
-                } else {
-                    html += `<span class="dangan-agree-text">${escapeHtml(match[2].trim())}</span>`;
-                }
-                lastIndex = match.index + match[0].length;
-            }
-            html += escapeHtml(renderText.slice(lastIndex));
-            el.innerHTML = html;
-        } else {
-            el.textContent = cleanedText;
-        }
+        // V3 layout: mixed word sizes, stacked/tilted/vertical lines. Weak
+        // brackets only count when this part is the weak point (a column picked
+        // at random has no markup — the whole statement is the target then).
+        const layoutSource = isWeakPoint ? rawText : rawText.replace(/\[\[|\]\]/g, '');
+        const stmtLayout = layoutStatement(layoutSource);
+        el.innerHTML = renderStatementHtml(stmtLayout, escapeHtml);
+        el.dataset.layout = stmtLayout.layout;
         debateOverlay.appendChild(el);
+        fitStatementToScreen(el);
 
         if (isWeakPoint) {
             const wp = el.querySelector('.dangan-weak-point');
@@ -5262,7 +5268,10 @@ ${historyText}
             ? WN_PATTERNS[Math.floor(Math.random() * WN_PATTERNS.length)]
             : null;
 
-        const motionMode = Math.random() < 0.18 ? 'pov' : 'drift';
+        // drift: slides sideways; pov: quick push toward camera; swoop: flies in
+        // from behind the camera in 3D, settles, then flies past at the end.
+        const motionRoll = Math.random();
+        const motionMode = motionRoll < 0.12 ? 'pov' : motionRoll < 0.52 ? 'swoop' : 'drift';
         const dir = Math.random() < 0.5 ? -1 : 1;
         const driftX = dir * Math.round(w * 0.11);
         // Suppress rotation for structured patterns so WN placement reads clearly
@@ -5271,9 +5280,10 @@ ${historyText}
         const endX = startX + driftX;
         const endY = startY + (motionMode === 'drift' ? Math.round(Math.random() * 16 - 8) : Math.round(Math.random() * 10 - 5));
 
-        const duration = motionMode === 'drift'
-            ? (6600 + Math.floor(Math.random() * 1500))
-            : (1800 + Math.floor(Math.random() * 450));
+        const duration = motionMode === 'pov'
+            ? (1800 + Math.floor(Math.random() * 450))
+            : (6600 + Math.floor(Math.random() * 1500));
+        const swoopTilt = (Math.random() * 2 - 1) * 22; // rotateY on entry
         let rafId = 0;
         let cancelled = false;
         let lastNow = performance.now();
@@ -5304,7 +5314,7 @@ ${historyText}
 
                 // Variable time step based on speedModifier (capped to prevent tab-switch jumps)
                 const dt = Math.min(now - lastNow, 100);
-                const delta = dt * speedModifier;
+                const delta = debateDelta(dt);
                 lastNow = now;
                 elapsed += delta;
 
@@ -5325,10 +5335,27 @@ ${historyText}
                 if (p < 0.12) opacity = p / 0.12;
                 else if (p > 0.86) opacity = Math.max(0, (1 - p) / 0.14);
 
+                let depth = '';
+                if (motionMode === 'swoop') {
+                    // 0–18%: in from z=700 (huge, blurred); 88–100%: out past the camera.
+                    let z = 0, ry = 0, blur = 0;
+                    if (p < 0.18) {
+                        const q = 1 - Math.pow(1 - p / 0.18, 3);
+                        z = 700 * (1 - q); ry = swoopTilt * (1 - q); blur = 6 * (1 - q);
+                        opacity = Math.min(1, p / 0.06);
+                    } else if (p > 0.88) {
+                        const q = Math.pow((p - 0.88) / 0.12, 2);
+                        z = 520 * q; ry = -swoopTilt * 0.6 * q; blur = 5 * q;
+                        opacity = Math.max(0, 1 - q);
+                    }
+                    depth = ` perspective(900px) translateZ(${z.toFixed(1)}px) rotateY(${ry.toFixed(2)}deg)`;
+                    el.style.filter = blur > 0.05 ? `blur(${blur.toFixed(2)}px)` : '';
+                }
+
                 el.style.opacity = String(opacity);
                 const shake = isScreaming ? (Math.sin(now / 28) * 2.2) : 0;
                 const shakeY = isScreaming ? (Math.cos(now / 24) * 1.6) : 0;
-                el.style.transform = `translate(${x + shake}px, ${y + shakeY}px) translate(-50%, -50%) rotate(${rot}deg) scale(${scale})`;
+                el.style.transform = `translate(${x + shake}px, ${y + shakeY}px) translate(-50%, -50%)${depth} rotate(${rot}deg) scale(${scale})`;
 
                 if (p >= 1) {
                     el.remove();
@@ -5355,6 +5382,77 @@ ${historyText}
 
             rafId = requestAnimationFrame(frame);
         });
+    }
+
+    // ── Per-line camera drift ────────────────────────────────────────────────
+    // V3 slowly pans/zooms on the speaker for every line. Uses the individual
+    // `scale` / `translate` / `rotate` properties so it composes with the
+    // speaker-change cam shots (which animate `transform`).
+    const CHUNK_CAM_PRESETS = [
+        { s: 1.06, x: 0,   y: 0,  r: 0 },     // push in
+        { s: 1.04, x: -28, y: 0,  r: 0 },     // pan left
+        { s: 1.04, x: 28,  y: 0,  r: 0 },     // pan right
+        { s: 1.08, x: 0,   y: 10, r: -1.6 },  // dutch tilt
+        { s: 1.08, x: 0,   y: 10, r: 1.6 },
+        { s: 1.0,  x: 0,   y: 0,  r: 0 },     // pull back
+    ];
+    const chunkCam = { s: 1, x: 0, y: 0, r: 0, raf: 0, lastPreset: -1 };
+
+    function applyChunkCamera(stage) {
+        stage.style.scale = chunkCam.s.toFixed(4);
+        stage.style.translate = `${chunkCam.x.toFixed(2)}px ${chunkCam.y.toFixed(2)}px`;
+        stage.style.rotate = `${chunkCam.r.toFixed(3)}deg`;
+    }
+
+    function resetChunkCamera() {
+        if (chunkCam.raf) cancelAnimationFrame(chunkCam.raf);
+        chunkCam.raf = 0;
+        Object.assign(chunkCam, { s: 1, x: 0, y: 0, r: 0 });
+        const stage = debateOverlay?.querySelector('.dangan-trial-portrait-stage');
+        if (stage) { stage.style.scale = ''; stage.style.translate = ''; stage.style.rotate = ''; }
+    }
+
+    function startChunkCamera() {
+        const stage = debateOverlay?.querySelector('.dangan-trial-portrait-stage');
+        if (!stage) return;
+        if (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) return;
+        let idx;
+        do { idx = Math.floor(Math.random() * CHUNK_CAM_PRESETS.length); } while (idx === chunkCam.lastPreset);
+        chunkCam.lastPreset = idx;
+        const target = CHUNK_CAM_PRESETS[idx];
+        const from = { s: chunkCam.s, x: chunkCam.x, y: chunkCam.y, r: chunkCam.r };
+        const DURATION = 6500;
+        let elapsed = 0;
+        let last = performance.now();
+        if (chunkCam.raf) cancelAnimationFrame(chunkCam.raf);
+        const tick = (now) => {
+            if (currentState !== TrialPhases.NON_STOP_DEBATE) { resetChunkCamera(); return; }
+            elapsed += debateDelta(Math.min(now - last, 100));
+            last = now;
+            const p = Math.min(1, elapsed / DURATION);
+            const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+            chunkCam.s = from.s + (target.s - from.s) * e;
+            chunkCam.x = from.x + (target.x - from.x) * e;
+            chunkCam.y = from.y + (target.y - from.y) * e;
+            chunkCam.r = from.r + (target.r - from.r) * e;
+            applyChunkCamera(stage);
+            chunkCam.raf = p < 1 ? requestAnimationFrame(tick) : 0;
+        };
+        chunkCam.raf = requestAnimationFrame(tick);
+    }
+
+    // Shrinks a laid-out statement so its longest line (or, for vertical
+    // layouts, its height once rotated) stays on screen. Weak spans can't
+    // wrap, so long ones need this.
+    function fitStatementToScreen(el) {
+        const inner = el.querySelector('.nsd-stmt-inner');
+        if (!inner) return;
+        const vertical = el.dataset.layout === 'vertical';
+        const extent = inner.offsetWidth;
+        const room = vertical ? window.innerHeight * 0.78 : Math.min(el.offsetWidth, window.innerWidth * 0.92);
+        if (!extent || extent <= room) return;
+        const base = parseFloat(getComputedStyle(el).fontSize) || 46;
+        el.style.fontSize = `${Math.max(18, Math.floor(base * room / extent))}px`;
     }
 
     function isAllCapsLine(text) {
@@ -5519,7 +5617,7 @@ ${historyText}
                 wnAnimPool.splice(i, 1); continue;
             }
             const dt = Math.min(now - it.lastNow, 100);
-            it.elapsed += dt * speedModifier;
+            it.elapsed += debateDelta(dt);
             it.lastNow = now;
             const p   = Math.min(1, it.elapsed / it.duration);
             const x   = it.startX + it.driftX * p;
@@ -5821,10 +5919,13 @@ ${historyText}
         const targetY = rect.top + rect.height / 2;
         
         playSfx?.(getSfx?.().hit || 'hit');
-        
-        // 2. Burst effect on the statement chunk
+
         const parentStatement = wp.closest('.dangan-floating-statement');
-        if (parentStatement) {
+        const bannerType = (isPerjury || currentBullet?.isLie) ? 'perjury' : 'counter';
+
+        // 2. Counter hits get the V3 refute sequence (it shatters the statement
+        //    itself); perjury/lie hits keep the old burst + banner.
+        if (bannerType !== 'counter' && parentStatement) {
             createBurstEffect(targetX, targetY);
             parentStatement.style.transition = 'all 0.2s ease-out';
             parentStatement.style.transform += ' scale(1.4)';
@@ -5839,12 +5940,50 @@ ${historyText}
         const xpAmount = xpRewards?.[xpKey] ?? (isMpd ? 18 : 15);
         awardXp?.(xpAmount, isMpd ? 'mass panic debate completed' : 'non-stop debate completed');
 
-        // 4. Show COUNTER, PERJURY, or LIE banner
-        const bannerType = (isPerjury || currentBullet?.isLie) ? 'perjury' : 'counter';
-        showTrialBanner(bannerType).then(() => {
+        // 4. Show the refute sequence, or the PERJURY / LIE banner
+        const refutedText = wp.textContent;
+        const played = bannerType === 'counter'
+            ? playCounterRefute(wp, parentStatement, targetX, targetY)
+            : showTrialBanner(bannerType);
+        played.then(() => {
             setState(TrialPhases.TRUTH_BULLET_EXPLANATION);
-            showExplanationUI(currentBullet, wp.textContent);
+            showExplanationUI(currentBullet, refutedText);
         });
+    }
+
+    async function getPlayerRefuteSpriteUrl() {
+        const pack = getPromeInfo()?.spritePack;
+        if (!pack || typeof getSpriteUrl !== 'function') return null;
+        for (const emo of ['interjection', 'anger', 'neutral']) {
+            const url = await getSpriteUrl(pack, emo).catch(() => null);
+            if (url) return url;
+        }
+        return null;
+    }
+
+    async function playCounterRefute(wp, statement, x, y) {
+        refuteFreeze = true;
+        try {
+            const playerSpriteUrl = await getPlayerRefuteSpriteUrl();
+            await playRefuteSequence({
+                weakPointEl: wp,
+                statementEl: statement,
+                sceneEl: debateOverlay,
+                impactX: x,
+                impactY: y,
+                counterImgUrl: getAssetUrl('counter.png'),
+                playerSpriteUrl,
+                isMpd: currentState === TrialPhases.MASS_PANIC_DEBATE,
+                playSfx: (key) => playSfx?.(key),
+                playVoice: () => playSfx?.(getSfx?.().vic_Monok_01_022 || 'vic_Monok_01_022'),
+            });
+        } catch (err) {
+            console.warn('[Dangan][Trial] refute sequence failed, falling back to banner:', err);
+            await showTrialBanner('counter').catch(() => {});
+        } finally {
+            refuteFreeze = false;
+            statement?.remove();
+        }
     }
 
     function resolveAgreeTextAtClick(cx, cy) {
