@@ -9693,22 +9693,20 @@ async function undoPlayerDeath(death) {
     return true;
 }
 
-// Plays on as someone else. A classmate becomes your persona (one of that
-// name if you have it, else one made from their card), leaves the class
-// roster, and is removed from the group chat or only muted (next.kick).
+// Plays on as someone else: the persona you picked (or a new one made from
+// the classmate's card). A classmate whose place you take leaves the class
+// roster and is removed from the group chat or only muted (next.kick).
 // Their messages stay either way.
 async function continueAsSuccessor(next, death) {
     try {
-        if (next.type === "persona") {
-            await setTitleScreenPersona(next.key);
-        } else {
-            const existing = getTitleScreenPersonas().list.find((p) => normalizeName(p.name) === normalizeName(next.name));
-            if (existing) await setTitleScreenPersona(existing.key);
-            else await createPersonaFromCard(next.name);
-            const command = next.kick === false ? "member-disable" : "member-remove";
-            try { await executeSlashCommandsWithOptions(`/${command} ${next.name}`, { handleParserErrors: true }); } catch { /* not a group */ }
+        if (next.persona) await setTitleScreenPersona(next.persona);
+        else if (next.classmate) await createPersonaFromCard(next.classmate);
+        else return false;
+        if (next.classmate) {
+            const command = next.kick ? "member-remove" : "member-disable";
+            try { await executeSlashCommandsWithOptions(`/${command} ${next.classmate}`, { handleParserErrors: true }); } catch { /* not a group */ }
             // Off the roster: they're the player now, not a classmate.
-            if (characters.delete(normalizeName(next.name))) saveCharacters();
+            if (characters.delete(normalizeName(next.classmate))) saveCharacters();
         }
     } catch (err) {
         notify({ tone: "error", title: "COULDN'T SWITCH", message: String(err?.message || err) });
@@ -9719,7 +9717,7 @@ async function continueAsSuccessor(next, death) {
     try { socialPanelController?.renderSocialPanel?.(); } catch { /* not ready */ }
     try { overworldSceneController?.render?.(); } catch { /* not ready */ }
     try { renderMinimap(); } catch { /* not ready */ }
-    const left = next.type === "classmate" ? (next.kick === false ? ` ${next.name} is muted in the group chat.` : ` ${next.name} left the group chat.`) : "";
+    const left = next.classmate ? (next.kick ? ` ${next.classmate} left the group chat.` : ` ${next.classmate} is muted in the group chat.`) : "";
     notify({ title: "THE STORY GOES ON", message: `You now play as ${getActivePersonaName()}. ${death.name} is gone.${left}`, durationMs: 9000 });
     return true;
 }

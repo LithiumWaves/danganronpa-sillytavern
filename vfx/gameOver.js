@@ -43,7 +43,7 @@ const CSS = `
 #${CONFIRM_ID} button { background: #000; color: ${RED}; border: 3px dotted ${RED}; font: inherit; letter-spacing: 0.3em; padding: 10px 22px; cursor: pointer; }
 #${CONFIRM_ID} button:hover, #${CONFIRM_ID} button:focus-visible { background: ${RED}; color: #000; outline: none; }
 #${PICK_ID} .dgo-switch { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-#${PICK_ID} .dgo-switch[hidden] { display: none; }
+#${PICK_ID} .dgo-switch[hidden], #${PICK_ID} .dgo-card[hidden] { display: none; }
 #${PICK_ID} .dgo-switch-label { font-size: 11px; color: #761413; margin-right: 6px; }
 #${PICK_ID} .dgo-switch button.is-on { background: ${RED}; color: #000; border-style: solid; }
 #${PICK_ID} { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 16px; box-sizing: border-box; }
@@ -264,9 +264,11 @@ export function openGameOverConfirm({ title = "UNDO?", message = "", confirmLabe
 }
 
 // Who to play as next. personas: [{ key, name, avatarUrl }], classmates:
-// [{ name, avatarUrl }]. Resolves { type: "persona", key } |
-// { type: "classmate", name, kick } | null (back). For a classmate, kick
-// says whether they leave the group chat (true) or are only muted.
+// [{ name, avatarUrl }]. You pick the persona you play as yourself; taking
+// a classmate's place is optional and separate (that classmate leaves the
+// class, and is removed from the group chat or only muted). Resolves
+// { persona: key | null, classmate: name | null, kick } or null (back);
+// persona null means a new persona made from the classmate's card.
 export function openSuccessorPicker({ personas = [], classmates = [] } = {}) {
     ensureStyle();
     document.getElementById(PICK_ID)?.remove();
@@ -278,35 +280,53 @@ export function openSuccessorPicker({ personas = [], classmates = [] } = {}) {
         const card = (kind, id, label, avatarUrl) => `<button type="button" class="dgo-card" data-kind="${kind}" data-id="${esc(id)}">${avatarUrl ? `<img src="${esc(avatarUrl)}" alt="" loading="lazy">` : ""}<span>${esc(label)}</span></button>`;
         root.innerHTML = `<div class="dgo-pick-frame">
             <div class="dgo-pick-title">WHO DO YOU PLAY AS NOW?</div>
-            <div class="dgo-pick-note">A classmate becomes your persona and leaves the class. The AI stops speaking for them; their messages stay.</div>
-            <div class="dgo-section">YOUR CLASSMATES</div>
-            <div class="dgo-grid">${classmates.map((c) => card("classmate", c.name, c.name, c.avatarUrl)).join("") || `<div class="dgo-empty">Nobody is left.</div>`}</div>
-            <div class="dgo-section">YOUR PERSONAS</div>
-            <div class="dgo-grid">${personas.map((p) => card("persona", p.key, p.name, p.avatarUrl)).join("") || `<div class="dgo-empty">No other personas.</div>`}</div>
+            <div class="dgo-pick-note">Pick the persona you play as. You can also take a classmate's place: they leave the class and the AI stops speaking for them. Their messages stay.</div>
+            <div class="dgo-section">TAKE A CLASSMATE'S PLACE (OPTIONAL)</div>
+            <div class="dgo-grid dgo-classmates">${classmates.map((c) => card("classmate", c.name, c.name, c.avatarUrl)).join("") || `<div class="dgo-empty">Nobody is left.</div>`}</div>
             <div class="dgo-switch" hidden><span class="dgo-switch-label">IN THE GROUP CHAT:</span><button type="button" class="is-on" data-kick="1">REMOVE THEM</button><button type="button" data-kick="0">JUST MUTE THEM</button></div>
-            <div class="dgo-foot"><button type="button" class="dgo-back">BACK</button><button type="button" class="dgo-go" disabled>PLAY AS THEM</button></div>
+            <div class="dgo-section">PLAY AS</div>
+            <div class="dgo-grid dgo-personas">${personas.map((p) => card("persona", p.key, p.name, p.avatarUrl)).join("")}<button type="button" class="dgo-card dgo-from-card" data-kind="fromcard" hidden><span></span></button>${personas.length ? "" : `<div class="dgo-empty dgo-no-personas">No other personas. Take a classmate's place to make one from their card.</div>`}</div>
+            <div class="dgo-foot"><button type="button" class="dgo-back">BACK</button><button type="button" class="dgo-go" disabled>PLAY</button></div>
         </div>`;
         document.body.appendChild(root);
-        let chosen = null;
+        let classmate = null;
+        let persona; // a persona key, null for "new from the card", undefined for none yet
         let kick = true;
         const go = root.querySelector(".dgo-go");
         const kickSwitch = root.querySelector(".dgo-switch");
+        const fromCard = root.querySelector(".dgo-from-card");
+        const sync = () => {
+            root.querySelectorAll('.dgo-card[data-kind="classmate"]').forEach((b) => b.classList.toggle("is-on", b.dataset.id === classmate));
+            kickSwitch.hidden = !classmate;
+            fromCard.hidden = !classmate;
+            fromCard.querySelector("span").textContent = classmate ? `+ NEW PERSONA FROM ${classmate.toUpperCase()}'S CARD` : "";
+            if (!classmate && persona === null) persona = undefined;
+            root.querySelectorAll('.dgo-card[data-kind="persona"]').forEach((b) => b.classList.toggle("is-on", b.dataset.id === persona));
+            fromCard.classList.toggle("is-on", persona === null);
+            go.disabled = persona === undefined;
+        };
         kickSwitch.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
             kick = b.dataset.kick === "1";
             kickSwitch.querySelectorAll("button").forEach((x) => x.classList.toggle("is-on", x === b));
-            if (chosen?.type === "classmate") chosen.kick = kick;
         }));
-        root.querySelectorAll(".dgo-card").forEach((btn) => btn.addEventListener("click", () => {
-            root.querySelectorAll(".dgo-card").forEach((b) => b.classList.toggle("is-on", b === btn));
-            chosen = btn.dataset.kind === "persona" ? { type: "persona", key: btn.dataset.id } : { type: "classmate", name: btn.dataset.id, kick };
-            kickSwitch.hidden = chosen.type !== "classmate";
-            go.disabled = false;
+        root.querySelectorAll('.dgo-card[data-kind="classmate"]').forEach((btn) => btn.addEventListener("click", () => {
+            classmate = classmate === btn.dataset.id ? null : btn.dataset.id;
+            sync();
         }));
+        root.querySelectorAll('.dgo-card[data-kind="persona"]').forEach((btn) => btn.addEventListener("click", () => {
+            persona = btn.dataset.id;
+            sync();
+        }));
+        fromCard.addEventListener("click", () => {
+            persona = null;
+            sync();
+        });
         const done = (value) => {
             root.remove();
             resolve(value);
         };
         root.querySelector(".dgo-back").addEventListener("click", () => done(null));
-        go.addEventListener("click", () => done(chosen));
+        go.addEventListener("click", () => done({ persona, classmate, kick: classmate ? kick : false }));
+        sync();
     });
 }
