@@ -1,4 +1,5 @@
 import { promptMinigameTutorial } from "../core/onboarding/minigameGuides.js";
+import { beginMinigame } from "../core/skip/skipRegistry.js";
 
 const QT_ID    = "dangan-qt-overlay";
 const QT_STYLE = "dangan-qt-style";
@@ -541,6 +542,7 @@ export function createQuestionTimeController({ extensionFolderPath = '', awardMo
                 if (remaining <= 0) {
                     if (!resolved) {
                         resolved = true;
+                        endSession();
                         document.removeEventListener("keydown", onKey);
                         dismiss();
                         triggerIncorrectEffects();
@@ -590,6 +592,7 @@ export function createQuestionTimeController({ extensionFolderPath = '', awardMo
                 if (optEl?.classList.contains("qt-wrong")) return;
                 if (idx === correct) {
                     resolved = true;
+                    endSession();
                     cancelAnimationFrame(rafId);
                     document.removeEventListener("keydown", onKey);
                     dismiss();
@@ -601,6 +604,7 @@ export function createQuestionTimeController({ extensionFolderPath = '', awardMo
                     updateHealthDisplay();
                     if (health <= 0) {
                         resolved = true;
+                        endSession();
                         cancelAnimationFrame(rafId);
                         document.removeEventListener("keydown", onKey);
                         dismiss();
@@ -649,6 +653,19 @@ export function createQuestionTimeController({ extensionFolderPath = '', awardMo
 
             const hoverSfx = `${extensionFolderPath}/assets/sfx/ui/sfx_hover.mp3`;
             const clickSfx = `${extensionFolderPath}/assets/sfx/ui/sfx_click.mp3`;
+
+            // Escape backs out: no answer counts and nothing is awarded.
+            function abortGame() {
+                if (resolved) return;
+                resolved = true;
+                endSession();
+                cancelAnimationFrame(rafId);
+                document.removeEventListener("keydown", onKey);
+                dismiss();
+                destroy();
+                resolve(null);
+            }
+            const endSession = beginMinigame({ abort: abortGame, label: "Question Time" });
 
             setFocus(0);
             document.addEventListener("keydown", onKey);

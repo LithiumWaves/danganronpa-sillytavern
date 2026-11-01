@@ -1,3 +1,5 @@
+import { runSkippableSequence } from "../core/skip/skipRegistry.js";
+
 const INTRO_ID       = 'dangan-intro-overlay';
 const INTRO_STYLE_ID = 'dangan-intro-style';
 const BAND_ANGLE     = -18; // degrees — must match rotation in CSS
@@ -389,7 +391,11 @@ export function createIntroduceCharacterController({ extensionFolderPath = '' } 
         const introAudio = new Audio(`${extensionFolderPath}/assets/sfx/ui/introduction.wav`);
         introAudio.play().catch(() => {});
 
-        await new Promise(r => setTimeout(r, 4000));
+        // Escape cuts the hold short and goes straight to the fade.
+        await runSkippableSequence(async (token) => {
+            token.onSkip(() => { try { introAudio.pause(); } catch (_) {} });
+            await token.delay(4000);
+        });
 
         overlay.style.transition = 'opacity 0.5s ease';
         overlay.style.opacity    = '0';

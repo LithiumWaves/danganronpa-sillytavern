@@ -906,6 +906,66 @@ body.dangan-nsd-lie-armed .dangan-tb-bar-bg {
     cursor: none;
 }
 
+/* ── V3 statement layout (vfx/nsdStatementLayout.js) ─────────────────────
+   Mixed word sizes, stacked / tilted / vertical lines, white fill with a
+   hard navy outline instead of the old white glow.                        */
+.dangan-statement-single.nsd-v3 {
+    font-size: 46px;
+    filter: none;
+    text-shadow:
+        2px 0 0 #0b1238, -2px 0 0 #0b1238, 0 2px 0 #0b1238, 0 -2px 0 #0b1238,
+        2px 2px 0 #0b1238, -2px 2px 0 #0b1238, 2px -2px 0 #0b1238, -2px -2px 0 #0b1238,
+        0 6px 14px rgba(0, 0, 30, 0.55);
+}
+
+.nsd-v3 .nsd-stmt-inner {
+    display: inline-block;
+    transform-origin: center center;
+}
+
+.nsd-v3 .nsd-line {
+    display: block;
+    white-space: nowrap;
+    line-height: 0.98;
+}
+
+.nsd-v3 .nsd-w {
+    display: inline-block;
+    vertical-align: baseline;
+}
+
+.nsd-v3 .nsd-w-t0 { font-size: 0.62em; }
+.nsd-v3 .nsd-w-t1 { font-size: 1em; }
+.nsd-v3 .nsd-w-t2 { font-size: 1.55em; letter-spacing: -0.01em; }
+
+/* Gradient-clipped spans can't take an outline text-shadow (it would paint
+   over the gradient), so they get drop-shadow filters instead. */
+.nsd-v3 .dangan-weak-point {
+    text-shadow: none;
+    filter: drop-shadow(0 0 1.5px #3a1500) drop-shadow(0 0 10px rgba(255, 150, 5, 0.75));
+    animation: nsdWeakPulse 1.1s ease-in-out infinite alternate;
+}
+
+.nsd-v3 .dangan-agree-text {
+    text-shadow: none;
+    filter: drop-shadow(0 0 1.5px #002a3a) drop-shadow(0 0 10px rgba(5, 213, 255, 0.7));
+}
+
+@keyframes nsdWeakPulse {
+    from { filter: drop-shadow(0 0 1.5px #3a1500) drop-shadow(0 0 6px rgba(255, 150, 5, 0.55)); }
+    to   { filter: drop-shadow(0 0 1.5px #3a1500) drop-shadow(0 0 16px rgba(255, 170, 20, 0.95)); }
+}
+
+/* Refute cut-in speedlines (vfx/nsdRefute.js) */
+@keyframes nsdrSpeed {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-260px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .nsd-v3 .dangan-weak-point { animation: none; }
+}
+
 .dangan-trial-overlay.explanation {
     background: rgba(0, 0, 0, 0.7);
     display: flex;

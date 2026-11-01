@@ -368,3 +368,105 @@
 }
 
 
+
+/* Editing a Truth Bullet */
+.truth-edit-button,
+.truth-edit-save,
+.truth-edit-cancel {
+    background: transparent;
+    border: 1px solid rgba(255, 210, 60, 0.6);
+    color: #ffd43c;
+    font-family: inherit;
+    font-size: 0.85rem;
+    letter-spacing: 0.08em;
+    padding: 6px 16px;
+    cursor: pointer;
+}
+
+.truth-edit-cancel {
+    border-color: rgba(255, 255, 255, 0.35);
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.truth-edit-button:hover,
+.truth-edit-save:hover,
+.truth-edit-cancel:hover {
+    background: rgba(255, 210, 60, 0.12);
+}
+
+.truth-edit-title,
+.truth-edit-description {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 10px;
+    padding: 6px 8px;
+    border: 1px solid rgba(255, 210, 60, 0.45);
+    background: rgba(0, 0, 0, 0.45);
+    color: #fff;
+    font-family: inherit;
+    letter-spacing: 0.03em;
+}
+
+.truth-edit-title {
+    font-size: 16px;
+}
+
+.truth-edit-description {
+    font-size: 13px;
+    line-height: 1.5;
+    resize: vertical;
+}
+
+.truth-edit-error {
+    min-height: 1em;
+    margin-bottom: 8px;
+    font-size: 12px;
+    color: #ff6a6a;
+}
+
+.truth-edit-button {
+    margin-top: 10px;
+}
+
+/* Every action under a Truth Bullet shares one look; only the color differs. */
+.truth-active-actions > button,
+.truth-archived-actions > button {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+    background: transparent;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: normal;
+    letter-spacing: 0.08em;
+    line-height: normal;
+    padding: 6px 10px;
+    border-radius: 0;
+    box-shadow: none;
+    text-shadow: none;
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.truth-active-actions > button:focus,
+.truth-archived-actions > button:focus {
+    outline: none;
+}
+
+/* The Monokuma File screen. */
+.truth-open-file-button {
+    border: 1px solid rgba(255, 46, 196, 0.6);
+    color: #ff7ad9;
+}
+
+.truth-open-file-button:hover {
+    color: #ffffff;
+    background-color: rgba(255, 46, 196, 0.15);
+    border-color: #ff2ec4;
+}
+
+.truth-open-file-button:active {
+    background-color: rgba(255, 46, 196, 0.25);
+}

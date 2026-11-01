@@ -910,6 +910,50 @@ body.dangan-theme-investigation #dangan_monopad_button {
     border-bottom: 1px solid rgba(255, 255, 255, 0.15);
 }
 
+.truth-case-file-btn {
+    float: right;
+    background: transparent;
+    color: #ff7ad9;
+    border: 1px solid rgba(255, 46, 196, 0.55);
+    font: inherit;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    padding: 2px 8px;
+    cursor: pointer;
+}
+
+.truth-case-file-btn:hover {
+    background: rgba(255, 46, 196, 0.18);
+}
+
+.truth-rules-btn,
+.truth-world-btn {
+    margin-right: 6px;
+}
+
+.social-routines-btn,
+.social-events-btn {
+    float: right;
+    background: transparent;
+    color: #ff7ad9;
+    border: 1px solid rgba(255, 46, 196, 0.55);
+    font: inherit;
+    font-weight: normal;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    padding: 2px 8px;
+    cursor: pointer;
+}
+
+.social-routines-btn:hover,
+.social-events-btn:hover {
+    background: rgba(255, 46, 196, 0.18);
+}
+
+.social-events-btn {
+    margin-right: 6px;
+}
+
 .truth-list-items {
     flex: 1;
     padding: 8px;
@@ -1904,6 +1948,16 @@ body.dangan-theme-night         #dangan-minimap .dangan-minimap-square { border-
     box-shadow: 0 0 10px rgba(255, 100, 200, 0.55);
 }
 .dangan-moveto-btn:active { transform: translateY(1px); }
+/* A room closed at night: shown, but not enterable. */
+.dangan-moveto-btn.dangan-moveto-closed,
+.dangan-moveto-btn.dangan-moveto-closed:hover {
+    cursor: not-allowed;
+    opacity: 0.5;
+    background: rgba(20, 8, 30, 0.65);
+    border-color: rgba(255, 100, 200, 0.25);
+    box-shadow: none;
+}
+.dangan-minimap-pin.dangan-minimap-pin-closed { opacity: 0.45; filter: grayscale(0.7); }
 .dangan-moveto-kind-area    { border-left: 3px solid #b4ff7a; }
 .dangan-moveto-kind-subarea { border-left: 3px solid #ffd66a; }
 .dangan-moveto-kind-pin     { border-left: 3px solid rgba(255, 140, 216, 0.85); }
@@ -2572,6 +2626,41 @@ select.map-pin-edit-input {
     opacity: 0.8;
 }
 
+.trust-value-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.trust-adjust {
+    display: flex;
+    gap: 4px;
+}
+
+.trust-adjust-btn {
+    width: 24px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.85);
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.trust-adjust-btn:hover:not(:disabled) {
+    border-color: #ff4bd8;
+    background: rgba(255, 75, 216, 0.15);
+}
+
+.trust-adjust-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
 /* =========================
    DISTRUST BAR STYLING
    ========================= */
@@ -2843,6 +2932,24 @@ select.map-pin-edit-input {
     cursor: pointer;
     letter-spacing: 1px;
     transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+#trust-debug-controls .trust-debug-amount-row {
+    display: flex;
+    gap: 4px;
+}
+
+#trust-debug-controls #trust-debug-amount {
+    width: 46px;
+    background: #111;
+    color: #fff;
+    border: 1px solid #444;
+    padding: 4px 6px;
+    font-size: 12px;
+}
+
+#trust-debug-controls .trust-debug-amount-row button {
+    flex: 1;
 }
 
 #trust-debug-controls button:hover {
@@ -5966,6 +6073,20 @@ body.dangan-hide-hopes-peak-branding .monopad-welcome-cylinder {
     color: rgba(255, 100, 100, 0.8);
 }
 
+.map-create-area-hint {
+    font-size: 10px;
+    color: rgba(170, 210, 255, 0.5);
+}
+
+select.map-create-area-input option {
+    background: #0e2850;
+}
+
+.map-floor-button.locked {
+    opacity: 0.55;
+    border-style: dashed;
+}
+
 .map-create-area-optional {
     color: rgba(170, 210, 255, 0.45);
     font-size: 9px;
@@ -8554,6 +8675,19 @@ body.dangan-trial-vn-chat-hidden #chat {
     opacity: 1;
 }
 
+/* A selected room pin opens its editor on the next click. */
+.map-custom-pin-tooltip-hint {
+    display: none;
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    opacity: 0.7;
+}
+
+.map-custom-pin.highlighted .map-custom-pin-tooltip-hint {
+    display: block;
+}
+
 .map-custom-pin.highlighted {
     filter: brightness(1.15);
 }
@@ -9684,7 +9818,8 @@ body.dangan-trial-vn-chat-hidden #chat {
     letter-spacing: 0.06em;
 }
 
-.dangan-vn-manage-chat-files {
+.dangan-vn-manage-chat-files,
+.dangan-vn-extra-actions {
     padding: 0 9px;
     font-family: "Orbitron", "Rajdhani", monospace;
     letter-spacing: 0.06em;
@@ -9817,123 +9952,6 @@ body.dangan-trial-vn-chat-hidden #chat {
 .dangan-vn-action-btn:hover {
     color: #ffffff;
     background: rgba(138, 197, 255, 0.12);
-}
-
-.dangan-vn-transcript {
-    position: fixed;
-    inset: 40px min(24px, 2vw) calc(var(--dangan-vn-bottom-offset) + 24px) min(24px, 2vw);
-    z-index: 2147483645;
-    display: none;
-    flex-direction: column;
-    border: 1px solid rgba(173, 205, 255, 0.45);
-    border-radius: 12px;
-    background: linear-gradient(180deg, rgba(8, 12, 20, 0.98), rgba(6, 9, 14, 0.98));
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.48);
-    overflow: hidden;
-    pointer-events: auto;
-}
-
-#dangan-vn-overlay.transcript-open .dangan-vn-transcript {
-    display: flex;
-}
-
-.dangan-vn-transcript-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 10px 12px;
-    border-bottom: 1px solid rgba(166, 201, 248, 0.3);
-    background: linear-gradient(90deg, rgba(39, 47, 67, 0.95), rgba(62, 80, 116, 0.9));
-}
-
-.dangan-vn-transcript-title {
-    font-family: 'Noto Sans JP', sans-serif;
-    font-size: 12px;
-    letter-spacing: 0.01em;
-    color: #f5f8ff;
-    text-transform: uppercase;
-}
-
-.dangan-vn-transcript-close {
-    width: 24px;
-    height: 24px;
-    border-radius: 6px;
-    border: 1px solid rgba(173, 205, 255, 0.45);
-    background: rgba(19, 26, 41, 0.9);
-    color: #f3f8ff;
-    cursor: pointer;
-}
-
-.dangan-vn-transcript-close:hover,
-.dangan-vn-transcript-close:focus-visible {
-    background: rgba(45, 63, 95, 0.95);
-    outline: none;
-}
-
-.dangan-vn-transcript-body {
-    flex: 1;
-    overflow: auto;
-    padding: 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.dangan-vn-transcript-entry {
-    border: 1px solid rgba(150, 189, 243, 0.28);
-    border-radius: 10px;
-    background: rgba(14, 21, 34, 0.92);
-    padding: 8px 10px;
-}
-
-.dangan-vn-transcript-speaker {
-    font-family: 'Noto Sans JP', sans-serif;
-    font-size: 10px;
-    letter-spacing: 0.01em;
-    text-transform: uppercase;
-    color: #b9d8ff;
-    margin-bottom: 5px;
-}
-
-.dangan-vn-transcript-message {
-    font-family: 'Noto Sans JP', sans-serif;
-    font-size: 14px;
-    line-height: 1.35;
-    letter-spacing: 0.01em;
-    font-weight: 700;
-    color: var(--SmartThemeBodyColor, #f4f8ff);
-}
-
-/* Mirror SillyTavern's .mes_text colour rules so formatted chat text renders
-   correctly inside the transcript (which lives outside #chat). */
-.dangan-vn-transcript-message em,
-.dangan-vn-transcript-message i {
-    color: var(--SmartThemeEmColor);
-}
-
-.dangan-vn-transcript-message q {
-    color: var(--SmartThemeQuoteColor);
-}
-
-.dangan-vn-transcript-message u {
-    color: var(--SmartThemeUnderlineColor);
-}
-
-/* Preserve explicit font[color] overrides in nested formatted elements */
-.dangan-vn-transcript-message font[color] em,
-.dangan-vn-transcript-message font[color] i,
-.dangan-vn-transcript-message font[color] u,
-.dangan-vn-transcript-message font[color] q,
-.dangan-vn-transcript-message q i,
-.dangan-vn-transcript-message q em {
-    color: inherit;
-}
-
-.dangan-vn-transcript-empty {
-    color: rgba(189, 217, 255, 0.85);
-    font-size: 13px;
-    letter-spacing: 0.06em;
 }
 
 .dangan-vn-compose-docked {
@@ -10256,7 +10274,8 @@ body.dangan-trial-vn-chat-hidden #chat {
     display: none !important;
 }
 
-.dangan-vn-nav-button:disabled {
+.dangan-vn-nav-button:disabled,
+.dangan-vn-extra-actions:disabled {
     opacity: 0.45;
     cursor: not-allowed;
 }
@@ -10306,9 +10325,6 @@ body.dangan-vn-compose-docked-active .autoComplete-detailsWrap {
         font-size: 10px;
     }
 
-    .dangan-vn-transcript {
-        inset: max(10px, env(safe-area-inset-top)) 8px calc(var(--dangan-vn-bottom-offset) + 10px + env(safe-area-inset-bottom)) 8px;
-    }
 
 
     .dangan-vn-footer {
@@ -10380,7 +10396,7 @@ body.dangan-vn-compose-docked-active .autoComplete-detailsWrap {
 
     .dangan-vn-frame {
         width: calc(100vw - 10px);
-        margin: 0 5px calc(6px + env(safe-area-inset-bottom));
+        margin: 0 5px calc(var(--dangan-vn-bottom-offset) + 4px + env(safe-area-inset-bottom));
         min-height: 150px;
         border-radius: 10px 10px 0 0;
         padding: 10px 10px 8px;
@@ -10403,6 +10419,125 @@ body.dangan-vn-compose-docked-active .autoComplete-detailsWrap {
         padding-top: 6px;
         font-size: 9px;
         letter-spacing: 0.08em;
+    }
+}
+
+/* Phones: the top controls join the flow above the nameplate instead of
+   floating over it, the nav becomes a tidy grid of finger-sized buttons, and
+   the keyboard/mouse hint goes (it doesn't apply to touch). */
+@media (max-width: 700px) {
+    .dangan-vn-frame {
+        max-height: calc(100dvh - var(--dangan-vn-bottom-offset) - 56px);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+
+    .dangan-vn-controls {
+        position: static;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 4px;
+        margin: 0 0 6px;
+    }
+
+    .dangan-vn-control {
+        flex: 0 0 auto;
+        height: 30px;
+        min-width: 30px;
+        padding: 0 6px;
+        font-size: 9px;
+        letter-spacing: 0.04em;
+    }
+
+    .dangan-vn-header {
+        margin-bottom: 6px;
+    }
+
+    .dangan-vn-footer {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+            "progress"
+            "nav";
+        gap: 8px;
+        margin-top: 8px;
+        padding-top: 8px;
+    }
+
+    .dangan-vn-input {
+        display: none;
+    }
+
+    .dangan-vn-nav {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+        width: 100%;
+        overflow: visible;
+        padding: 0;
+    }
+
+    .dangan-vn-nav-button,
+    .dangan-vn-latest,
+    .dangan-vn-regenerate,
+    .dangan-vn-swipe-left,
+    .dangan-vn-swipe-right {
+        min-width: 0;
+        width: 100%;
+        height: 36px;
+        padding: 0 4px;
+        font-size: 11px;
+        white-space: nowrap;
+    }
+
+    /* The minimap and MOVE TO panel shrink and sit above the box and typing
+       bar instead of underneath them. */
+    body.dangan-vn-compose-docked-active #dangan-minimap {
+        right: 30px;
+        bottom: calc(var(--dangan-vn-stack-height, 300px) + 30px);
+        transform: scale(0.45);
+        transform-origin: bottom right;
+    }
+
+    body.dangan-vn-compose-docked-active #dangan-moveto-panel {
+        top: auto;
+        bottom: calc(var(--dangan-vn-stack-height, 300px) + 6px);
+        left: -64px;
+        transform: scale(0.5);
+        transform-origin: bottom left;
+    }
+}
+
+/* Phones on their side: there's no room above the box for the minimap or the
+   MOVE TO panel, so they step aside until VN mode is closed. */
+@media (max-height: 500px) {
+    body.dangan-vn-compose-docked-active #dangan-minimap,
+    body.dangan-vn-compose-docked-active #dangan-moveto-panel {
+        display: none;
+    }
+
+    .dangan-vn-input {
+        display: none;
+    }
+
+    .dangan-vn-footer {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+            "progress"
+            "nav";
+    }
+}
+
+/* Touch screens can't hover, so SillyTavern's top bar stays put there
+   instead of auto-hiding. */
+@media (hover: none) {
+    body.dangan-stbar-autohide:not(.dangan-trial-active) #top-bar,
+    body.dangan-stbar-autohide:not(.dangan-trial-active) #top-settings-holder {
+        transform: none !important;
+    }
+
+    body.dangan-stbar-autohide #dangan-stbar-hotzone {
+        display: none !important;
     }
 }
 

@@ -1,4 +1,5 @@
 import { promptMinigameTutorial } from "../core/onboarding/minigameGuides.js";
+import { beginMinigame, pushSkippable, runSkippableSequence } from "../core/skip/skipRegistry.js";
 
 const RS_ID = "dangan-rs-overlay";
 const RS_STYLE = "dangan-rs-style";
@@ -1708,6 +1709,7 @@ export function createRebuttalShowdownController({
         let playerBetweenMessage = "";
         let resolved = false;
         let finalOutcome = false;
+        let endSession = null;
         const edgePadding = 18;
         let struggle = 0.35;
         let controlFreedom = 0.2;
@@ -2575,10 +2577,14 @@ export function createRebuttalShowdownController({
             rafId = requestAnimationFrame(gameLoop);
         }
 
+        // win: true / false, or "abort" when Escape backs out (no reward,
+        // no penalty, no result screen; run() resolves null).
         async function finish(win) {
             if (resolved) return;
             resolved = true;
-            finalOutcome = Boolean(win);
+            endSession?.();
+            const aborted = win === "abort";
+            finalOutcome = aborted ? null : Boolean(win);
             running = false;
             if (rafId) cancelAnimationFrame(rafId);
             if (rsCylRaf) { cancelAnimationFrame(rsCylRaf); rsCylRaf = null; }
@@ -2591,7 +2597,11 @@ export function createRebuttalShowdownController({
             window.removeEventListener("keydown", onKeyDown);
             window.removeEventListener("keyup", onKeyUp);
             window.removeEventListener("resize", onResize);
-            if (win) {
+            if (aborted) {
+                overlay.classList.remove("rs-on");
+                await delay(260);
+                destroy();
+            } else if (win) {
                 awardMonocoins?.(8, "rebuttal showdown clear");
                 overlay.classList.remove("rs-on");
                 await delay(260);
@@ -2770,10 +2780,6 @@ export function createRebuttalShowdownController({
                 event.preventDefault();
                 cycleBlade(-1);
                 return;
-            }
-            if (event.key === "Escape") {
-                event.preventDefault();
-                finish(false);
             }
         }
 
@@ -3123,6 +3129,7 @@ export function createRebuttalShowdownController({
         timerLastWall = performance.now();
         updateTimerDisplay(timeRemaining);
         updateSectionDots(0, phaseOneLines.length);
+        endSession = beginMinigame({ abort: () => finish("abort"), label: "Rebuttal Showdown" });
         rafId = requestAnimationFrame(gameLoop);
 
         return new Promise(resolve => {
@@ -3286,13 +3293,21 @@ export function createInterjectionCinematicRunner({ extensionFolderPath = '', ge
             wrap.setAttribute('data-frozen', '1');
             wrap.style.pointerEvents = 'auto';
             wrap.style.cursor        = 'pointer';
+            // Escape dismisses it too.
+            const releaseSkip = pushSkippable({ kind: "sequence", skip: () => wrap.remove() });
+            const observer = new MutationObserver(() => {
+                if (wrap.isConnected) return;
+                observer.disconnect();
+                releaseSkip();
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
             wrap.addEventListener('click', () => wrap.remove(), { once: true });
             console.log('[Dangan][Interjection] Frozen for debugging — click anywhere on the overlay to dismiss.');
             return; // skip hold + fade-out + remove
         }
 
-        // Phase 2: brief hold
-        await new Promise(res => setTimeout(res, HOLD_MS));
+        // Phase 2: brief hold (Escape skips it)
+        await runSkippableSequence((token) => token.delay(HOLD_MS));
 
         // Phase 3: fade out
         await new Promise(res => {

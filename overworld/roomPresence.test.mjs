@@ -120,6 +120,25 @@ function run() {
     assert(!byStem.includes("Kyoko Kirigiri.png"), "avatar filename unmutes even when the ST card name is missing");
     assert(byStem.includes("makoto.png"), "unrelated missing-name member stays muted");
 
+    // A Class Trial in the main chat passes its roster in place of the room.
+    const trialChars = indexCharsByAvatar([
+        { name: "Kyoko Kirigiri (DR1)", avatar: "kyoko.png" },
+        { name: "Makoto Naegi", avatar: "makoto.png" },
+        { name: "Sayaka Maizono", avatar: "sayaka.png" },
+        { name: "Narrator", avatar: "narrator.png" },
+    ]);
+    const trialMutes = computeRoomDisabledMembers({
+        memberAvatars: ["kyoko.png", "makoto.png", "sayaka.png", "narrator.png"],
+        currentDisabled: ["kyoko.png", "narrator.png"],
+        charByAvatar: trialChars,
+        inRoomNameKeys: ["Kyoko Kirigiri", "Sayaka Maizono"],
+        rosterByKey: { "sayaka maizono": { name: "Sayaka Maizono", dead: true } },
+    });
+    assert(!trialMutes.includes("kyoko.png"), "a participant with a longer card name is unmuted");
+    assert(trialMutes.includes("makoto.png"), "a non-participant is muted");
+    assert(trialMutes.includes("sayaka.png"), "a dead participant stays muted");
+    assert(trialMutes.includes("narrator.png"), "the narrator keeps its mute state");
+
     console.log("roomPresence tests passed");
 }
 

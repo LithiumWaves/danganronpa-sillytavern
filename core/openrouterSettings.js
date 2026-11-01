@@ -128,7 +128,10 @@ export function createOpenRouterSettingsManager({ extensionName, extension_setti
         return getMonopadSetting("generationProvider") === "openrouter";
     }
 
-    async function generateWithOpenRouter(prompt, { maxTokens = 300, temperature = 0.25, topP = 0.9, stop = ["USER:", "ASSISTANT:", "###"] } = {}) {
+    // `reasoning` is passed to OpenRouter as is (e.g. { effort: "low" }) for
+    // thinking models, whose reasoning counts against max_tokens. `onMeta`
+    // receives the finish reason and token usage.
+    async function generateWithOpenRouter(prompt, { maxTokens = 300, temperature = 0.25, topP = 0.9, stop = ["USER:", "ASSISTANT:", "###"], reasoning = null, onMeta = null } = {}) {
         const apiKey = getOpenRouterApiKey();
         if (!apiKey) {
             throw new Error("OpenRouter is selected but no API key is configured in Monopad settings.");
@@ -150,7 +153,8 @@ export function createOpenRouterSettingsManager({ extensionName, extension_setti
                 max_tokens: maxTokens,
                 temperature,
                 top_p: topP,
-                stop
+                stop,
+                ...(reasoning ? { reasoning } : {}),
             })
         });
 
@@ -160,6 +164,11 @@ export function createOpenRouterSettingsManager({ extensionName, extension_setti
         }
 
         const data = await response.json();
+        onMeta?.({
+            model,
+            finishReason: data?.choices?.[0]?.finish_reason || data?.choices?.[0]?.native_finish_reason || "",
+            usage: data?.usage || null,
+        });
         return String(data?.choices?.[0]?.message?.content || "").trim();
     }
 

@@ -1,248 +1,462 @@
-/* Trust / distrust ranking ceremony — cinematic HUD overlay */
+/* Trust ceremonies (trust/trustAnimations.js), Persona-style in the game's
+   colors: black, white and one accent — pink for trust, blood red for
+   distrust, gold for MAX — with "down" pulling the accent toward grey.
+   Two slanted slabs slash across, the character's sprite cuts in from the
+   left, hand-cut lettering pops in and a slanted rank card holds the
+   ten-shard meter and the rank. Flat shapes, hard shadows, quick moves. */
 
 #trust-rankup-overlay {
+    --tr-accent: #ff2e7e;
+    --tr-ink: #0b0b0d;
+    --tr-paper: #ffffff;
     position: fixed;
     inset: 0;
     z-index: 2147483600;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
-    padding:
-        max(16px, env(safe-area-inset-top, 0px))
-        16px
-        max(16px, env(safe-area-inset-bottom, 0px));
-    background:
-        radial-gradient(ellipse at 50% 42%, rgba(28, 78, 128, 0.34) 0%, transparent 46%),
-        radial-gradient(ellipse at 50% 100%, rgba(0, 0, 0, 0.55) 0%, transparent 55%),
-        rgba(3, 8, 16, 0.9);
-    opacity: 0;
+    overflow: hidden;
     pointer-events: none;
-    transition: opacity 280ms ease, background 420ms ease;
+    opacity: 0;
+    visibility: hidden;
+    background: rgba(0, 0, 0, 0.55);
+    font-family: "Barlow Condensed", "Rajdhani", sans-serif;
+    transition: opacity 180ms ease, visibility 0s linear 360ms, background 200ms ease;
 }
 
 #trust-rankup-overlay.show {
-    opacity: 1 !important;
-    pointer-events: auto;
-    cursor: pointer;
-}
-
-#trust-rankup-overlay.distrust {
-    background:
-        radial-gradient(ellipse at 50% 42%, rgba(140, 10, 18, 0.46) 0%, transparent 48%),
-        radial-gradient(ellipse at 50% 100%, rgba(0, 0, 0, 0.6) 0%, transparent 55%),
-        rgba(12, 1, 3, 0.92);
-}
-
-#trust-rankup-overlay.max,
-#trust-rankup-overlay.social-surge:not(.distrust) {
-    background:
-        radial-gradient(ellipse at 50% 42%, rgba(255, 196, 64, 0.3) 0%, transparent 50%),
-        radial-gradient(ellipse at 50% 100%, rgba(0, 0, 0, 0.55) 0%, transparent 55%),
-        rgba(10, 7, 2, 0.92);
-}
-
-.trust-rankup-core {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 22px;
-    text-align: center;
-    max-width: min(460px, 96vw);
-    margin: 0 auto;
-    transform: translateY(12px) scale(0.94);
-    opacity: 0.35;
-    filter: brightness(0.72);
-    transition:
-        transform 420ms cubic-bezier(0.2, 0.9, 0.2, 1),
-        opacity 360ms ease,
-        filter 360ms ease;
-}
-
-#trust-rankup-overlay.show .trust-rankup-core {
-    transform: none;
     opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: opacity 120ms ease, visibility 0s, background 200ms ease;
+}
+
+#trust-rankup-overlay.distrust { --tr-accent: #e01b24; background: rgba(20, 0, 0, 0.62); }
+#trust-rankup-overlay.max { --tr-accent: #ffc21a; }
+#trust-rankup-overlay.down { --tr-accent: color-mix(in srgb, #ff2e7e 45%, #7a7a80); }
+#trust-rankup-overlay.down.distrust { --tr-accent: color-mix(in srgb, #e01b24 70%, #4a4a50); }
+#trust-rankup-overlay.dismissable { cursor: pointer; }
+
+/* Speed lines streaking behind everything. */
+#trust-rankup-overlay .tr-speedlines {
+    position: absolute;
+    inset: -20% -40%;
+    background: repeating-linear-gradient(100deg,
+        transparent 0 46px,
+        rgba(255, 255, 255, 0.07) 46px 48px,
+        transparent 48px 90px,
+        color-mix(in srgb, var(--tr-accent) 22%, transparent) 90px 93px);
+    opacity: 0;
+    transition: opacity 200ms ease;
+}
+
+#trust-rankup-overlay.show .tr-speedlines {
+    opacity: 1;
+    animation: tr-speed 420ms linear infinite;
+}
+
+@keyframes tr-speed {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-186px); }
+}
+
+/* The two slabs: a black one from the left, an accent one from the right. */
+#trust-rankup-overlay .tr-slab {
+    position: absolute;
+    left: -15%;
+    width: 130%;
+    transform-origin: center;
+    transition: transform 260ms cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+
+#trust-rankup-overlay .tr-slab-a {
+    top: 10vh;
+    height: 34vh;
+    background: var(--tr-ink);
+    border-bottom: 8px solid var(--tr-accent);
+    box-shadow: 0 10px 0 rgba(0, 0, 0, 0.35);
+    transform: rotate(-7deg) translateX(-110%);
+}
+
+#trust-rankup-overlay .tr-slab-b {
+    top: 58vh;
+    height: 24vh;
+    background: var(--tr-accent);
+    border-top: 6px solid var(--tr-paper);
+    transform: rotate(-7deg) translateX(110%);
+    transition-delay: 60ms;
+}
+
+#trust-rankup-overlay.show .tr-slab-a,
+#trust-rankup-overlay.show .tr-slab-b {
+    transform: rotate(-7deg) translateX(0);
+}
+
+#trust-rankup-overlay .tr-halftone {
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle, rgba(255, 255, 255, 0.16) 1.6px, transparent 2.2px);
+    background-size: 9px 9px;
+    -webkit-mask-image: linear-gradient(90deg, transparent 35%, #000 85%);
+    mask-image: linear-gradient(90deg, transparent 35%, #000 85%);
+}
+
+#trust-rankup-overlay .tr-slab-b .tr-halftone {
+    background-image: radial-gradient(circle, rgba(0, 0, 0, 0.28) 1.8px, transparent 2.4px);
+    -webkit-mask-image: linear-gradient(90deg, #000 10%, transparent 60%);
+    mask-image: linear-gradient(90deg, #000 10%, transparent 60%);
+}
+
+#trust-rankup-overlay.jolt .tr-slab {
+    animation: tr-jolt 170ms ease-out;
+}
+
+@keyframes tr-jolt {
+    0%   { translate: 0 0; }
+    30%  { translate: -10px 6px; }
+    60%  { translate: 6px -4px; }
+    100% { translate: 0 0; }
+}
+
+/* MAX: sharp rays turning behind the card. */
+#trust-rankup-overlay .tr-burst {
+    position: absolute;
+    right: calc(8vw - 22vmin + min(150px, 13vw));
+    top: calc(36vh - 30vmin + min(170px, 15vw));
+    width: 60vmin;
+    height: 60vmin;
+    border-radius: 50%;
+    background: repeating-conic-gradient(var(--tr-accent) 0 7deg, transparent 7deg 20deg);
+    -webkit-mask-image: radial-gradient(circle, #000 30%, transparent 70%);
+    mask-image: radial-gradient(circle, #000 30%, transparent 70%);
+    opacity: 0;
+    transform: scale(0.4);
+    transition: opacity 300ms ease, transform 500ms cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+
+#trust-rankup-overlay.max.show .tr-burst {
+    opacity: 0.85;
+    transform: scale(1);
+    animation: tr-spin 9s linear infinite;
+}
+
+@keyframes tr-spin {
+    to { rotate: 360deg; }
+}
+
+/* The sprite cut-in: a skewed white frame with a hard accent shadow. */
+#trust-rankup-overlay .tr-cutin {
+    position: absolute;
+    left: 5vw;
+    top: 9vh;
+    width: min(34vw, 380px);
+    height: 66vh;
+    transform: skewX(-9deg) translateX(-160%);
+    transition: transform 300ms cubic-bezier(0.2, 0.9, 0.2, 1) 90ms;
+}
+
+#trust-rankup-overlay.show .tr-cutin {
+    transform: skewX(-9deg) translateX(0);
+}
+
+#trust-rankup-overlay .tr-cutin-frame {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    border: 6px solid var(--tr-paper);
+    background:
+        repeating-linear-gradient(135deg, rgba(0, 0, 0, 0.14) 0 10px, transparent 10px 20px),
+        var(--tr-accent);
+    box-shadow: 16px 16px 0 var(--tr-ink), 16px 16px 0 6px var(--tr-paper);
+}
+
+#trust-rankup-overlay .tr-cutin-img {
+    position: absolute;
+    left: 50%;
+    top: 3%;
+    width: 150%;
+    max-width: none;
+    transform: translateX(-50%) skewX(9deg);
+    filter: drop-shadow(8px 0 0 rgba(0, 0, 0, 0.35));
+    opacity: 0;
+}
+
+#trust-rankup-overlay .tr-cutin-frame.has-img .tr-cutin-img {
+    opacity: 1;
+}
+
+#trust-rankup-overlay .tr-cutin-fallback {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    color: var(--tr-paper);
+    font: 800 clamp(26px, 4vw, 48px)/1 "Barlow Condensed", sans-serif;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    text-align: center;
+    transform: skewX(9deg) rotate(-8deg);
+    text-shadow: 4px 4px 0 var(--tr-ink);
+}
+
+#trust-rankup-overlay .tr-cutin-frame.has-img .tr-cutin-fallback {
+    display: none;
+}
+
+#trust-rankup-overlay.down .tr-cutin-img,
+#trust-rankup-overlay.is-shatter:not(.flip-palette) .tr-cutin-img {
+    filter: grayscale(0.35) drop-shadow(8px 0 0 rgba(0, 0, 0, 0.35));
+}
+
+/* Hand-cut lettering. */
+#trust-rankup-overlay .tr-title {
+    position: absolute;
+    left: 40vw;
+    right: 26vw;
+    top: 14vh;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.1em 0.45em;
+    font-size: clamp(28px, 4.8vw, 72px);
+    line-height: 1;
+    transform: rotate(-7deg);
+}
+
+#trust-rankup-overlay.down .tr-title {
+    transform: rotate(-3deg) translateY(10px);
+}
+
+#trust-rankup-overlay .tr-word {
+    display: inline-flex;
+    gap: 0.04em;
+}
+
+#trust-rankup-overlay .tr-letter {
+    display: inline-block;
+    min-width: 0.5em;
+    padding: 0.06em 0.12em;
+    font-size: calc(1em * var(--size, 1));
+    font-weight: 800;
+    text-align: center;
+    text-transform: uppercase;
+    transform: rotate(var(--tilt, 0deg));
+    box-shadow: 0.07em 0.07em 0 var(--tr-ink);
+    animation: tr-letter-in 260ms cubic-bezier(0.2, 1.4, 0.4, 1) var(--delay, 0ms) both;
+}
+
+#trust-rankup-overlay .tr-letter.f1 { font-family: "Quickend", "Barlow Condensed", sans-serif; font-weight: 400; }
+#trust-rankup-overlay .tr-letter.f2 { font-family: "Barlow Condensed", sans-serif; }
+#trust-rankup-overlay .tr-letter.f3 { font-family: "M PLUS Rounded 1c", sans-serif; font-size: calc(0.86em * var(--size, 1)); }
+
+#trust-rankup-overlay .tr-letter.fill-w { background: var(--tr-paper); color: var(--tr-ink); }
+#trust-rankup-overlay .tr-letter.fill-k { background: var(--tr-ink); color: var(--tr-paper); box-shadow: 0.07em 0.07em 0 var(--tr-accent); }
+#trust-rankup-overlay .tr-letter.fill-a { background: var(--tr-accent); color: var(--tr-paper); }
+#trust-rankup-overlay.max .tr-letter.fill-a { color: var(--tr-ink); }
+
+@keyframes tr-letter-in {
+    0%   { opacity: 0; transform: rotate(calc(var(--tilt, 0deg) - 40deg)) scale(0.2); }
+    100% { opacity: 1; transform: rotate(var(--tilt, 0deg)) scale(1); }
+}
+
+/* The rank card: black, white-edged, a hard accent shadow, slanted. */
+#trust-rankup-overlay .tr-card {
+    position: absolute;
+    right: 8vw;
+    top: 30vh;
+    width: min(300px, 22vw);
+    transform: rotate(-6deg) translateY(140%);
+    transition: transform 320ms cubic-bezier(0.2, 1.1, 0.3, 1) 160ms;
+    perspective: 900px;
+}
+
+#trust-rankup-overlay.show .tr-card {
+    transform: rotate(-6deg) translateY(0);
+}
+
+#trust-rankup-overlay .tr-card.sag {
+    transform: rotate(3deg) translateY(16px);
+    transition-delay: 0ms;
+}
+
+#trust-rankup-overlay .tr-card.broken .tr-card-face,
+#trust-rankup-overlay .tr-card.broken .tr-card-name {
+    visibility: hidden;
+}
+
+#trust-rankup-overlay .tr-card.slam {
+    animation: tr-slam 340ms cubic-bezier(0.3, 1.5, 0.5, 1);
+}
+
+@keyframes tr-slam {
+    0%   { transform: rotate(-16deg) scale(1.7); opacity: 0; }
+    100% { transform: rotate(-6deg) scale(1); opacity: 1; }
+}
+
+#trust-rankup-overlay .tr-card-face {
+    position: relative;
+    aspect-ratio: 1 / 1.08;
+    padding: 10%;
+    background:
+        radial-gradient(circle, rgba(255, 255, 255, 0.06) 1.4px, transparent 2px) 0 0 / 8px 8px,
+        var(--tr-ink);
+    border: 6px solid var(--tr-paper);
+    box-shadow: 14px 14px 0 var(--tr-accent);
+    transform-style: preserve-3d;
+}
+
+#trust-rankup-overlay .tr-card.flip .tr-card-face {
+    animation: tr-flip 300ms ease-in-out;
+}
+
+@keyframes tr-flip {
+    0%   { transform: rotateY(0); }
+    50%  { transform: rotateY(90deg); }
+    100% { transform: rotateY(0); }
+}
+
+#trust-rankup-overlay #trust-decagram {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+}
+
+/* Flat shards in the accent; MAX's gold keeps its own fill. */
+#trust-rankup-overlay .decagram-shard.is-filled:not(.is-gold) {
+    fill: var(--tr-accent);
+    stroke: var(--tr-paper);
+    stroke-width: 1.4;
     filter: none;
 }
 
-.trust-pie-stage {
-    position: relative;
-    width: min(300px, 72vw);
-    height: min(300px, 72vw);
-    overflow: visible;
+/* The center disc: ink, ringed in the accent (MAX keeps its gold). */
+#trust-rankup-overlay #trust-decagram:not([data-gold="true"]) .trust-hub-disc {
+    fill: var(--tr-ink);
+    stroke: var(--tr-accent);
+    stroke-width: 3;
 }
 
-.trust-pie-halo {
+#trust-rankup-overlay .decagram-shard:not(.is-filled) {
+    fill: rgba(255, 255, 255, 0.06);
+    stroke: rgba(255, 255, 255, 0.35);
+}
+
+/* The rank: a slanted black-on-white tag in the card's corner. */
+#trust-rankup-overlay .tr-rank {
     position: absolute;
-    inset: -20%;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(120, 200, 255, 0.3) 0%, transparent 62%);
-    filter: blur(10px);
-    pointer-events: none;
-    z-index: 0;
+    right: -26px;
+    bottom: -22px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    transform: rotate(-4deg);
 }
 
-#trust-rankup-overlay.distrust .trust-pie-halo {
-    background: radial-gradient(circle, rgba(255, 48, 48, 0.36) 0%, transparent 62%);
+#trust-rankup-overlay .tr-rank-caption {
+    padding: 2px 10px;
+    background: var(--tr-ink);
+    color: var(--tr-paper);
+    font: 800 14px/1.2 "Barlow Condensed", sans-serif;
+    letter-spacing: 0.18em;
 }
 
-#trust-rankup-overlay.max .trust-pie-halo,
-#trust-rankup-overlay.social-surge:not(.distrust) .trust-pie-halo {
-    background: radial-gradient(circle, rgba(255, 210, 80, 0.42) 0%, transparent 64%);
+#trust-rankup-overlay .tr-rank-value {
+    min-width: 1.3em;
+    padding: 0 0.12em;
+    background: var(--tr-paper);
+    color: var(--tr-ink);
+    font: 400 clamp(54px, 7vw, 92px)/0.95 "Quickend", "Barlow Condensed", sans-serif;
+    text-align: center;
+    box-shadow: 8px 8px 0 var(--tr-accent);
 }
 
-.trust-pie-ring {
-    position: absolute;
-    inset: -7px;
-    border-radius: 50%;
-    border: 1px solid rgba(166, 237, 255, 0.2);
-    box-shadow:
-        0 0 22px rgba(80, 180, 255, 0.12) inset,
-        0 0 28px rgba(80, 180, 255, 0.08);
-    pointer-events: none;
-    z-index: 1;
+#trust-rankup-overlay .tr-card-name {
+    margin: 26px 0 0 -18px;
+    display: inline-block;
+    max-width: 120%;
+    padding: 4px 16px;
+    background: var(--tr-paper);
+    color: var(--tr-ink);
+    font: 800 clamp(16px, 1.8vw, 24px)/1.1 "Barlow Condensed", sans-serif;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transform: skewX(-12deg);
+    box-shadow: 6px 6px 0 var(--tr-ink);
 }
 
-#trust-rankup-overlay.distrust .trust-pie-ring {
-    border-color: rgba(255, 110, 110, 0.28);
-    box-shadow:
-        0 0 22px rgba(255, 50, 50, 0.14) inset,
-        0 0 28px rgba(255, 40, 40, 0.1);
-}
-
-#trust-rankup-overlay.max .trust-pie-ring,
-#trust-rankup-overlay.social-surge:not(.distrust) .trust-pie-ring {
-    border-color: rgba(255, 214, 96, 0.38);
-    box-shadow:
-        0 0 24px rgba(255, 196, 64, 0.18) inset,
-        0 0 32px rgba(255, 180, 40, 0.14);
-}
-
-#trust-decagram {
-    position: relative;
-    z-index: 2;
-    width: 100%;
-    height: 100%;
-    overflow: visible;
-    filter: drop-shadow(0 10px 28px rgba(0, 0, 0, 0.48));
-    transform-origin: 50% 50%;
-}
-
-.trust-rank-hub {
+/* Glass pieces (shatter) and gold flakes (MAX). */
+#trust-rankup-overlay .tr-pieces {
     position: absolute;
     inset: 0;
-    z-index: 3;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
     pointer-events: none;
-    gap: 2px;
 }
 
-.trust-rank-value {
-    font-family: "Orbitron", sans-serif;
-    font-size: clamp(28px, 8vw, 42px);
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    line-height: 1;
-    color: #eaf9ff;
-    text-shadow: 0 0 18px rgba(120, 210, 255, 0.55);
+#trust-rankup-overlay .tr-piece {
+    position: fixed;
+    clip-path: var(--clip);
+    background: linear-gradient(135deg, var(--tr-paper) 0 35%, var(--tr-accent) 35% 75%, var(--tr-ink) 75%);
+    animation: tr-piece-fly 760ms cubic-bezier(0.15, 0.7, 0.3, 1) both;
 }
 
-#trust-rankup-overlay.distrust .trust-rank-value {
-    color: #ffd6d6;
-    text-shadow: 0 0 18px rgba(255, 70, 70, 0.55);
+#trust-rankup-overlay .tr-piece.gold {
+    background: linear-gradient(135deg, #fff6c8 0 30%, #ffc21a 30% 70%, #9a6a08 70%);
+    animation-duration: 1400ms;
 }
 
-#trust-rankup-overlay.max .trust-rank-value,
-#trust-rankup-overlay.social-surge:not(.distrust) .trust-rank-value {
-    color: #fff3c4;
-    text-shadow: 0 0 20px rgba(255, 210, 80, 0.7);
+@keyframes tr-piece-fly {
+    0%   { transform: translate(0, 0) rotate(0); opacity: 1; }
+    80%  { opacity: 1; }
+    100% { transform: translate(var(--dx), var(--dy)) rotate(var(--rot)); opacity: 0; }
 }
 
-.trust-rank-value.tick {
-    animation: trustRankTick 0.42s cubic-bezier(0.2, 0.9, 0.2, 1);
-}
-
-.trust-rank-caption {
-    font-family: "Orbitron", sans-serif;
-    font-size: 9px;
-    letter-spacing: 0.24em;
-    text-transform: uppercase;
-    color: rgba(186, 230, 255, 0.72);
-}
-
-#trust-rankup-overlay.distrust .trust-rank-caption {
-    color: rgba(255, 176, 176, 0.78);
-}
-
-#trust-rankup-overlay.max .trust-rank-caption,
-#trust-rankup-overlay.social-surge:not(.distrust) .trust-rank-caption {
-    color: rgba(255, 228, 160, 0.82);
-}
-
-.trust-copy {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    min-height: 3.4em;
-}
-
-.trust-banner {
-    margin: 0;
-    font-family: "Orbitron", "Impact", sans-serif;
-    font-size: clamp(16px, 3.4vw, 26px);
-    font-weight: 600;
-    letter-spacing: 0.16em;
-    line-height: 1.2;
-    text-transform: uppercase;
-    color: #eaf9ff;
-    text-shadow: 0 0 16px rgba(120, 210, 255, 0.45);
+/* The white freeze-frame flash. */
+#trust-rankup-overlay .tr-flash {
+    position: absolute;
+    inset: 0;
+    background: #fff;
     opacity: 0;
-    transform: translateY(12px);
-    transition: opacity 320ms ease, transform 320ms cubic-bezier(0.2, 0.9, 0.2, 1);
+    transition: opacity 240ms ease;
+    pointer-events: none;
 }
 
-.trust-banner.show {
-    opacity: 1;
-    transform: translateY(0);
+#trust-rankup-overlay.flash .tr-flash {
+    opacity: 0.92;
+    transition: none;
 }
 
-#trust-rankup-overlay.distrust .trust-banner {
-    color: #ff6b6b;
-    text-shadow:
-        0 0 10px rgba(255, 40, 40, 0.7),
-        0 0 22px rgba(150, 0, 0, 0.4);
+#trust-rankup-overlay.flip-palette .tr-slab,
+#trust-rankup-overlay.flip-palette .tr-cutin-frame,
+#trust-rankup-overlay.flip-palette .tr-card-face {
+    transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 260ms ease;
 }
 
-#trust-rankup-overlay.max .trust-banner,
-#trust-rankup-overlay.social-surge:not(.distrust) .trust-banner {
-    color: #ffe38a;
-    text-shadow: 0 0 18px rgba(255, 210, 80, 0.75);
-}
-
-.trust-char-name {
-    font-family: "Rajdhani", sans-serif;
-    font-size: 15px;
-    font-weight: 500;
+#trust-rankup-overlay .tr-hint {
+    position: absolute;
+    left: 50%;
+    bottom: 3vh;
+    transform: translateX(-50%) skewX(-12deg);
+    padding: 3px 14px;
+    background: var(--tr-ink);
+    color: var(--tr-paper);
+    font: 800 12px/1.3 "Barlow Condensed", sans-serif;
     letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: rgba(220, 240, 255, 0.72);
     opacity: 0;
-    transform: translateY(8px);
-    transition: opacity 320ms 60ms ease, transform 320ms 60ms cubic-bezier(0.2, 0.9, 0.2, 1);
+    transition: opacity 200ms ease;
 }
 
-.trust-char-name.show {
-    opacity: 1;
-    transform: translateY(0);
+#trust-rankup-overlay.dismissable .tr-hint {
+    opacity: 0.85;
 }
 
-#trust-rankup-overlay.distrust .trust-char-name {
-    color: rgba(255, 196, 196, 0.72);
-}
+/* Leaving: everything slides back out the way it came. */
+#trust-rankup-overlay.leaving .tr-slab-a { transform: rotate(-7deg) translateX(110%); transition-duration: 220ms; }
+#trust-rankup-overlay.leaving .tr-slab-b { transform: rotate(-7deg) translateX(-110%); transition-duration: 220ms; }
+#trust-rankup-overlay.leaving .tr-cutin { transform: skewX(-9deg) translateX(-160%); transition-delay: 0ms; }
+#trust-rankup-overlay.leaving .tr-card { transform: rotate(-6deg) translateY(140%); transition-delay: 0ms; }
+
+/* ── The ten-shard meter's own moves (also used by the Social tab) ────── */
 
 .decagram-shard {
     transform-box: fill-box;
@@ -250,7 +464,7 @@
 }
 
 .social-shard-add {
-    animation: socialShardAdd 0.56s cubic-bezier(0.2, 0.92, 0.2, 1);
+    animation: socialShardAdd 0.5s cubic-bezier(0.2, 0.92, 0.2, 1);
 }
 
 .social-shard-remove {
@@ -258,153 +472,70 @@
 }
 
 .trust-shard-crack {
-    animation: trustShardCrack 0.38s ease-in-out;
+    animation: trustShardCrack 0.36s ease-in-out;
 }
 
 .trust-shatter {
     animation: shard-shatter 0.42s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
 }
 
-#trust-decagram.purify-pulse {
-    animation: distrustPurifyPulse 0.9s ease-in-out;
-}
-
-#trust-decagram.spin-up {
-    animation: spinFast 0.6s linear forwards;
-}
-
 @keyframes socialShardAdd {
-    0% {
-        transform: scale(0.42);
-        filter: brightness(1.7) drop-shadow(0 0 14px rgba(140, 210, 255, 0.85));
-    }
-    62% {
-        transform: scale(1.1);
-        filter: brightness(1.25) drop-shadow(0 0 10px rgba(140, 210, 255, 0.45));
-    }
-    100% {
-        transform: scale(1);
-        filter: brightness(1);
-    }
+    0%   { transform: scale(0.4); filter: brightness(2.2); }
+    60%  { transform: scale(1.14); filter: brightness(1.4); }
+    100% { transform: scale(1); filter: brightness(1); }
 }
 
 @keyframes socialShardRemove {
-    0% {
-        transform: scale(1);
-        filter: brightness(1.3);
-        opacity: 1;
-    }
-    100% {
-        transform: scale(0.48) rotate(-12deg);
-        filter: brightness(0.8);
-        opacity: 0.08;
-    }
+    0%   { transform: scale(1); opacity: 1; }
+    100% { transform: scale(0.48) rotate(-12deg); opacity: 0.08; }
 }
 
 @keyframes trustShardCrack {
-    0%,
-    100% {
-        transform: translate(0, 0) scale(1);
-        filter: brightness(1);
-    }
-    16% {
-        transform: translate(1.6px, -1.2px) scale(1.03);
-        filter: brightness(1.85) saturate(1.35);
-    }
-    34% {
-        transform: translate(-2.2px, 1.1px) scale(0.97);
-        filter: brightness(0.72);
-    }
-    52% {
-        transform: translate(1.2px, 2px) scale(1.05);
-        filter: brightness(1.55);
-    }
-    72% {
-        transform: translate(-1px, -0.8px) scale(1.01);
-        filter: brightness(1.15);
-    }
+    0%, 100% { transform: translate(0, 0) scale(1); filter: brightness(1); }
+    20% { transform: translate(2px, -1.5px) scale(1.04); filter: brightness(2); }
+    45% { transform: translate(-2.5px, 1.2px) scale(0.96); filter: brightness(0.7); }
+    70% { transform: translate(1.2px, 1.8px) scale(1.03); filter: brightness(1.4); }
 }
 
 @keyframes shard-shatter {
-    0% {
-        transform: translate(0, 0) rotate(0deg) scale(1);
-        opacity: 1;
-    }
-    100% {
-        transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(0.55);
-        opacity: 0;
-    }
+    0%   { transform: translate(0, 0) rotate(0deg) scale(1); opacity: 1; }
+    100% { transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(0.55); opacity: 0; }
 }
 
-@keyframes distrustPurifyPulse {
-    0% {
-        transform: scale(1);
-        filter: brightness(1) hue-rotate(0deg);
-    }
-    45% {
-        transform: scale(1.07);
-        filter: brightness(1.45) hue-rotate(160deg);
-    }
-    100% {
-        transform: scale(1);
-        filter: brightness(1) hue-rotate(0deg);
-    }
-}
-
-@keyframes spinFast {
-    to {
-        transform: rotate(720deg);
-    }
-}
-
-@keyframes trustRankTick {
-    0% {
-        transform: scale(0.72);
-        opacity: 0.4;
-        filter: brightness(1.8);
-    }
-    58% {
-        transform: scale(1.12);
-        opacity: 1;
-        filter: brightness(1.2);
-    }
-    100% {
-        transform: scale(1);
-        filter: brightness(1);
-    }
-}
+/* ── Phones: cut-in and card side by side at the top, lettering below ── */
 
 @media (max-width: 700px) {
-    #trust-rankup-overlay {
-        padding:
-            max(10px, calc(env(safe-area-inset-top, 0px) + 8px))
-            10px
-            max(10px, calc(env(safe-area-inset-bottom, 0px) + 8px));
+    #trust-rankup-overlay .tr-slab-a { top: 6vh; height: 30vh; }
+    #trust-rankup-overlay .tr-slab-b { top: 62vh; height: 20vh; }
+
+    #trust-rankup-overlay .tr-cutin {
+        left: 6vw;
+        top: 8vh;
+        width: 40vw;
+        height: 40vh;
     }
 
-    .trust-rankup-core {
-        max-width: 94vw;
-        gap: 16px;
+    #trust-rankup-overlay .tr-card {
+        right: 6vw;
+        top: 13vh;
+        width: 34vw;
     }
 
-    .trust-pie-stage {
-        width: min(220px, 70vw);
-        height: min(220px, 70vw);
+    #trust-rankup-overlay .tr-rank { right: -12px; bottom: -16px; }
+    #trust-rankup-overlay .tr-rank-value { font-size: 46px; }
+    #trust-rankup-overlay .tr-card-name { margin-top: 22px; font-size: 14px; }
+
+    #trust-rankup-overlay .tr-title {
+        left: 5vw;
+        right: 5vw;
+        top: 58vh;
+        font-size: clamp(26px, 9vw, 44px);
     }
 
-    .trust-banner {
-        font-size: 15px;
-        letter-spacing: 0.12em;
-        line-height: 1.25;
-        word-break: break-word;
-    }
-
-    .trust-char-name {
-        font-size: 13px;
-        letter-spacing: 0.14em;
-    }
-
-    .trust-rank-value {
-        font-size: clamp(24px, 9vw, 34px);
+    #trust-rankup-overlay .tr-burst {
+        right: -10vw;
+        top: 2vh;
+        width: 70vw;
+        height: 70vw;
     }
 }

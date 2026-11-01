@@ -1,4 +1,5 @@
 import { promptMinigameTutorial } from "../core/onboarding/minigameGuides.js";
+import { beginMinigame } from "../core/skip/skipRegistry.js";
 
 const QTT_ID    = "dangan-qtt-overlay";
 const QTT_STYLE = "dangan-qtt-style";
@@ -812,6 +813,7 @@ export function createQuestionTruthController({ extensionFolderPath = '', getTru
                 const isCorrect = bullet.title.trim().toLowerCase() === answerNorm;
                 if (isCorrect) {
                     resolved = true;
+                    endSession();
                     if (rafId) cancelAnimationFrame(rafId);
                     if (spinRafId) cancelAnimationFrame(spinRafId);
                     document.removeEventListener("keydown", onKey);
@@ -824,6 +826,7 @@ export function createQuestionTruthController({ extensionFolderPath = '', getTru
                     updateHealthDisplay();
                     if (health <= 0) {
                         resolved = true;
+                        endSession();
                         if (rafId) cancelAnimationFrame(rafId);
                         if (spinRafId) cancelAnimationFrame(spinRafId);
                         document.removeEventListener("keydown", onKey);
@@ -852,6 +855,7 @@ export function createQuestionTruthController({ extensionFolderPath = '', getTru
             // Capture-phase listener with stopImmediatePropagation so it runs
             // before any other handler can react.
             function onArrowSuppress(e) {
+                if (document.getElementById("dangan-leave-confirm")) return;
                 if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
                     e.preventDefault();
                     e.stopPropagation();
@@ -882,6 +886,7 @@ export function createQuestionTruthController({ extensionFolderPath = '', getTru
                     if (remaining <= 0) {
                         if (!resolved) {
                             resolved = true;
+                            endSession();
                             if (spinRafId) cancelAnimationFrame(spinRafId);
                             document.removeEventListener("keydown", onKey);
                             window.removeEventListener("keydown", onArrowSuppress, { capture: true });
@@ -895,6 +900,21 @@ export function createQuestionTruthController({ extensionFolderPath = '', getTru
                 }
                 rafId = requestAnimationFrame(tick);
             }
+
+            // Escape backs out: no answer counts and nothing is awarded.
+            function abortGame() {
+                if (resolved) return;
+                resolved = true;
+                endSession();
+                if (rafId) cancelAnimationFrame(rafId);
+                if (spinRafId) cancelAnimationFrame(spinRafId);
+                document.removeEventListener("keydown", onKey);
+                window.removeEventListener("keydown", onArrowSuppress, { capture: true });
+                dismiss();
+                destroy();
+                resolve(null);
+            }
+            const endSession = beginMinigame({ abort: abortGame, label: "Question Truth" });
 
             setFocus(0);
             document.addEventListener("keydown", onKey);

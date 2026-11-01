@@ -1,0 +1,168 @@
+// Setup checklist. index.js gathers plain facts about the install (cards,
+// sprites, lorebook, extensions, music, room backgrounds, AI instructions,
+// persona, save) and
+// evaluateSetup turns them into rows for the title screen's SETUP panel.
+//
+// Status: "ok" — ready; "warn" — works, but something is missing or degraded;
+// "missing" — a requirement the game can't run without; "skip" — doesn't
+// apply to the current play style.
+
+export const SETUP_STATUS = Object.freeze({ OK: "ok", WARN: "warn", MISSING: "missing", SKIP: "skip" });
+
+export const PRESENCE_URL = "https://github.com/leandrojofre/SillyTavern-Presence";
+export const PROME_URL = "https://github.com/Bronya-Rand/Prome-VN-Extension";
+
+function plural(n, one, many = `${one}s`) {
+    return `${n} ${n === 1 ? one : many}`;
+}
+
+function listNames(names, max = 4) {
+    const shown = names.slice(0, max).join(", ");
+    return names.length > max ? `${shown} and ${names.length - max} more` : shown;
+}
+
+export function evaluateSetup(facts = {}) {
+    const rows = [];
+    const { OK, WARN, MISSING, SKIP } = SETUP_STATUS;
+
+    const cards = Number(facts.cards || 0);
+    rows.push({
+        id: "cards",
+        label: "Character cards",
+        status: cards > 0 ? OK : MISSING,
+        detail: cards > 0
+            ? `${plural(cards, "card")} imported.`
+            : "No character cards yet. IMPORT CARDS brings in the sample cards or your own.",
+        fix: "characters",
+        fixLabel: "IMPORT CARDS",
+    });
+
+    const withSprites = facts.sprites?.with || [];
+    const withoutSprites = facts.sprites?.without || [];
+    const spriteTotal = withSprites.length + withoutSprites.length;
+    rows.push({
+        id: "sprites",
+        label: "Sprites",
+        status: spriteTotal === 0 ? SKIP
+            : withoutSprites.length === 0 ? OK
+            : withSprites.length === 0 ? MISSING
+            : WARN,
+        detail: spriteTotal === 0 ? "Import character cards first."
+            : withoutSprites.length === 0 ? `Everyone checked has sprites (${spriteTotal}).`
+            : `No sprites for ${listNames(withoutSprites)}.`,
+        fix: "sprites",
+        fixLabel: "UPLOAD SPRITES",
+    });
+
+    const ultimatesKnown = Number(facts.ultimates?.known || 0);
+    const ultimatesTotal = Number(facts.ultimates?.total || 0);
+    rows.push({
+        id: "lorebook",
+        label: "Lorebook (Ultimates)",
+        status: ultimatesTotal === 0 ? SKIP : ultimatesKnown === ultimatesTotal ? OK : WARN,
+        detail: ultimatesTotal === 0 ? "Pick your classmates first."
+            : ultimatesKnown === ultimatesTotal ? `Every classmate has an Ultimate (${ultimatesTotal}).`
+            : `${ultimatesKnown} of ${ultimatesTotal} classmates have an Ultimate. Attach a lorebook that lists them (see /sample-lorebooks), or set them in the Social tab.`,
+        fix: "worldInfo",
+        fixLabel: "EDIT LOREBOOKS",
+    });
+
+    rows.push({
+        id: "presence",
+        label: "Presence extension",
+        status: !facts.singleChat ? SKIP : facts.presence ? OK : WARN,
+        detail: !facts.singleChat ? "Only needed for One Main Chat."
+            : facts.presence ? "Installed. Characters outside the room forget what they didn't hear."
+            : `Not found. Without it, muted characters still read the whole chat. Install it from ${PRESENCE_URL}.`,
+        fix: "extensions",
+        fixLabel: "INSTALL IT",
+    });
+
+    // Prome's "user sprite" folder is where the extension reads your own
+    // character's sprites from (Class Trials, minigames, your sprite in
+    // conversations, the Sprite Manager).
+    const prome = facts.prome || {};
+    rows.push({
+        id: "prome",
+        label: "Prome extension",
+        status: prome.installed && prome.userSprite ? OK : WARN,
+        detail: prome.installed && prome.userSprite ? `Installed. Your sprites come from "${prome.userSprite}".`
+            : prome.installed ? "Installed, but no user sprite is picked. Turn on User Sprite in Prome's settings and pick your sprite folder."
+            : `Not found. Your character has no sprite in Class Trials, minigames and conversations without it. Install it from ${PROME_URL}.`,
+        fix: prome.installed ? null : "prome",
+        fixLabel: "INSTALL IT",
+    });
+
+    const bgmFiles = Number(facts.bgm?.files || 0);
+    const emptyLists = facts.bgm?.emptyLists || [];
+    rows.push({
+        id: "bgm",
+        label: "Music",
+        status: bgmFiles === 0 || emptyLists.length ? WARN : OK,
+        detail: bgmFiles === 0 ? "No BGM files found. Put audio files in SillyTavern's data/default-user/assets/bgm folder."
+            : emptyLists.length ? `No tracks picked for ${listNames(emptyLists)}.`
+            : "Tracks picked for every phase.",
+        fix: "bgm",
+        fixLabel: "PICK MUSIC",
+    });
+
+    const roomTotal = Number(facts.rooms?.total || 0);
+    const roomsWithBg = Number(facts.rooms?.withBg || 0);
+    rows.push({
+        id: "backgrounds",
+        label: "Room backgrounds",
+        status: roomTotal === 0 ? SKIP : roomsWithBg === roomTotal ? OK : WARN,
+        detail: roomTotal === 0 ? "Start a NEW GAME to get a map with rooms."
+            : roomsWithBg === roomTotal ? `Every room has a background (${roomTotal}).`
+            : `${roomsWithBg} of ${roomTotal} rooms have a background. Rooms without one keep the current chat background.`,
+        fix: "backgrounds",
+        fixLabel: "SET BACKGROUNDS",
+    });
+
+    rows.push({
+        id: "ai",
+        label: "AI instructions",
+        status: facts.markerPrompts || facts.presetHasMarkers ? OK : WARN,
+        detail: facts.markerPrompts ? "The extension tells the AI how to write Truth Bullets, trust and announcements."
+            : facts.presetHasMarkers ? "Your preset has the V3C marker rules."
+            : "The AI isn't told how to write Truth Bullets, trust or announcements. TURN ON fixes it.",
+        fix: "aiInstructions",
+        fixLabel: "TURN ON",
+    });
+
+    rows.push({
+        id: "persona",
+        label: "Persona",
+        status: facts.persona ? OK : WARN,
+        detail: facts.persona ? `Playing as ${facts.persona}.` : "No persona picked. Your character will be called \"User\".",
+        fix: "persona",
+        fixLabel: "PICK PERSONA",
+    });
+
+    const save = facts.save || {};
+    rows.push({
+        id: "save",
+        label: "Save",
+        status: !save.exists ? MISSING : save.mode === "single" && !save.groupOk ? WARN : OK,
+        detail: !save.exists ? "No save yet. Start a NEW GAME."
+            : save.mode === "single" && !save.groupOk ? `"${save.name}" is One Main Chat, but its story chat is gone. Load another save or start a NEW GAME.`
+            : `"${save.name}", ${save.mode === "single" ? "One Main Chat" : "Several Chats"}.`,
+        fix: save.exists ? "saves" : "newGame",
+        fixLabel: save.exists ? "LOAD A SAVE" : "NEW GAME",
+    });
+
+    return rows;
+}
+
+export function countSetupProblems(rows) {
+    return (Array.isArray(rows) ? rows : []).filter((r) => r.status === SETUP_STATUS.MISSING).length;
+}
+
+// Rows that make the title screen's SETUP item glow. Sprites, Ultimates and
+// room backgrounds fill in as you play, and the save row is fixed by NEW GAME itself.
+const REMINDER_EXEMPT = new Set(["sprites", "lorebook", "backgrounds", "save"]);
+
+export function countSetupReminders(rows) {
+    return (Array.isArray(rows) ? rows : []).filter((r) =>
+        !REMINDER_EXEMPT.has(r.id) && (r.status === SETUP_STATUS.MISSING || r.status === SETUP_STATUS.WARN)).length;
+}

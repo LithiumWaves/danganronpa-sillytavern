@@ -1,3 +1,6 @@
+import { pushSkippable } from "../core/skip/skipRegistry.js";
+import { uploadDataUrlImage, uploadImagesIn } from "../core/media/uploadImage.js";
+
 // truth/truthBullets.js
 let extension_settings;
 let saveSettingsDebounced;
@@ -245,12 +248,41 @@ function loadTruthBullets() {
    TRUTH BULLET FUNCTIONS
    ========================= */
 
-function addTruthBullet(title, description = "", { grantMonocoins = true, grantXp = true, image } = {}) {
+// Titles and descriptions come from the AI's output, so escape them.
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+// Titles the player deleted for good. Their markers in old messages don't
+// bring them back; adding one by hand (`manual`) does.
+function getDismissedTitles() {
+    const root = deps.extension_settings[deps.extensionName];
+    if (!Array.isArray(root.dismissedTruthBullets)) root.dismissedTruthBullets = [];
+    return root.dismissedTruthBullets;
+}
+
+// A bullet answers to its title and to any title it was renamed from.
+function isKnownTitle(title) {
+    const matches = (tb) => tb.title === title || (tb.aliases || []).includes(title);
+    return truthBullets.some(matches) || archivedTruthBullets.some(matches);
+}
+
+function addTruthBullet(title, description = "", { grantMonocoins = true, grantXp = true, image, manual = false, animate = true } = {}) {
     if (!title) return false;
-    if (truthBullets.some(tb => tb.title === title)) return false;
+    if (isKnownTitle(title)) return false;
+    const dismissed = getDismissedTitles();
+    if (dismissed.includes(title)) {
+        if (!manual) return false;
+        dismissed.splice(dismissed.indexOf(title), 1);
+    }
 
     const bullet = {
-        id: `tb_${Date.now()}`,
+        id: `tb_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         title,
         locationId: toLocationId(title),
         description,
@@ -260,7 +292,7 @@ function addTruthBullet(title, description = "", { grantMonocoins = true, grantX
 
     truthBullets.push(bullet);
     renderTruthBullets();
-    queueTruthBulletAnimation(title);
+    if (animate) queueTruthBulletAnimation(title);
     saveTruthBullets();
 
     const truthReward = Number(monocoinRewards?.truthBullet ?? DEFAULT_MONOCOIN_REWARD.truthBullet);
@@ -288,7 +320,7 @@ function insertTruthBulletUI(bullet) {
     const $item = $(`
         <div class="truth-item" data-id="${bullet.id}">
             <img src="scripts/extensions/third-party/danganronpa-extension/assets/icons/artillery-shell.svg" alt="" class="truth-bullet-icon">
-            ${bullet.title.toUpperCase()}
+            ${escapeHtml(bullet.title.toUpperCase())}
         </div>
     `);
 
@@ -321,7 +353,7 @@ function insertArchivedTruthBulletUI(bullet) {
     const $item = $(`
         <div class="truth-archived-item" data-id="${bullet.id}">
             <img src="scripts/extensions/third-party/danganronpa-extension/assets/icons/artillery-shell.svg" alt="" class="truth-bullet-icon truth-bullet-icon--archived">
-            ${bullet.title.toUpperCase()}
+            ${escapeHtml(bullet.title.toUpperCase())}
         </div>
     `);
 
@@ -345,22 +377,29 @@ function showTruthBulletDetails(bullet, isArchived) {
         : hasPin
             ? `<button class="truth-show-on-map-button">SHOW ON MAP</button>`
             : `<button class="truth-place-on-map-button">PLACE ON MAP</button>`;
+    const fileBtn = deps.hasMonokumaFile?.(bullet.title)
+        ? `<button class="truth-open-file-button">OPEN FILE</button>`
+        : "";
     const actionButton = isArchived
         ? `<div class="truth-archived-actions">
+               ${fileBtn}
                <button class="truth-reload-button">RELOAD TRUTH BULLET</button>
+               <button class="truth-edit-button">EDIT</button>
                <button class="truth-remove-button truth-delete-button">DELETE TRUTH BULLET</button>
                ${mapBtn}
            </div>`
         : `<div class="truth-active-actions">
+               ${fileBtn}
                <button class="truth-remove-button">ARCHIVE TRUTH BULLET</button>
+               <button class="truth-edit-button">EDIT</button>
                ${mapBtn}
            </div>`;
 
     $details.html(`
         <div class="truth-detail-main">
-            <div class="truth-title">${bullet.title}</div>
+            <div class="truth-title">${escapeHtml(bullet.title)}</div>
             <div class="truth-description">
-                ${bullet.description || "No further details recorded."}
+                ${escapeHtml(bullet.description || "No further details recorded.")}
             </div>
             <div class="truth-meta">
                 OBTAINED: ${bullet.timestamp}
@@ -371,7 +410,7 @@ function showTruthBulletDetails(bullet, isArchived) {
             <div style="width:100%;background:radial-gradient(ellipse at 50% 60%,rgba(36,10,46,0.97),rgba(8,3,14,1));border:1px solid rgba(200,80,220,0.38);box-shadow:inset 0 0 60px rgba(0,0,0,0.55),0 0 12px rgba(180,60,200,0.12);padding:16px;box-sizing:border-box;position:relative;">
                 <div style="position:absolute;top:6px;left:6px;width:14px;height:14px;border-top:1px solid rgba(220,100,255,0.55);border-left:1px solid rgba(220,100,255,0.55);"></div>
                 <div style="position:absolute;bottom:6px;right:6px;width:14px;height:14px;border-bottom:1px solid rgba(220,100,255,0.55);border-right:1px solid rgba(220,100,255,0.55);"></div>
-                ${bullet.image ? `<img src="${bullet.image}" alt="" style="max-width:95%;height:auto;object-fit:contain;display:block;margin:16px auto;">` : ""}
+                ${bullet.image ? `<img src="${escapeHtml(bullet.image)}" alt="" style="max-width:95%;height:auto;object-fit:contain;display:block;margin:16px auto;">` : ""}
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:12px;">
                 ${!isArchived ? `<label class="truth-image-upload-label" style="background:transparent;border:1px solid rgba(255,210,60,0.6);color:#ffd43c;font-family:inherit;font-size:0.85rem;letter-spacing:0.08em;padding:6px 16px;cursor:pointer;transition:color 0.15s,border-color 0.15s,background 0.15s;">
@@ -382,6 +421,10 @@ function showTruthBulletDetails(bullet, isArchived) {
             </div>
         </div>
     `);
+
+    $details.find(".truth-open-file-button").on("click", () => {
+        deps.openMonokumaFile?.(bullet.title);
+    });
 
     if (isArchived) {
         $details.find(".truth-reload-button").on("click", () => {
@@ -400,8 +443,11 @@ function showTruthBulletDetails(bullet, isArchived) {
             const file = this.files?.[0];
             if (!file) return;
             const reader = new FileReader();
-            reader.onload = e => {
-                bullet.image = e.target.result;
+            reader.onload = async e => {
+                const dataUrl = e.target.result;
+                // Stored as a file in SillyTavern; the data URL is kept only
+                // if the upload fails.
+                bullet.image = (await uploadDataUrlImage(dataUrl, { prefix: "truth" })) || dataUrl;
                 saveTruthBullets();
                 showTruthBulletDetails(bullet, false);
             };
@@ -415,6 +461,10 @@ function showTruthBulletDetails(bullet, isArchived) {
         });
     }
 
+    $details.find(".truth-edit-button").on("click", () => {
+        startTruthBulletEdit(bullet, isArchived);
+    });
+
     $details.find(".truth-show-on-map-button").on("mouseenter", () => {
         playSfx(sfx.hover);
     }).on("click", () => {
@@ -425,6 +475,52 @@ function showTruthBulletDetails(bullet, isArchived) {
     $details.find(".truth-place-on-map-button").on("click", () => {
         deps.placeOnMap?.(bullet.title, bullet.locationId);
     });
+}
+
+// Inline editing of a bullet's title and description, for when the AI got it
+// wrong. A renamed bullet keeps its old title as an alias, so the message that
+// found it doesn't add it again.
+function startTruthBulletEdit(bullet, isArchived) {
+    const $main = $(".truth-details .truth-detail-main");
+    if (!$main.length) return;
+    $main.html(`
+        <input type="text" class="truth-edit-title" maxlength="120" aria-label="Truth Bullet title">
+        <textarea class="truth-edit-description" rows="5" aria-label="Truth Bullet description"></textarea>
+        <div class="truth-edit-error" role="alert"></div>
+        <div class="truth-active-actions">
+            <button class="truth-edit-save">SAVE</button>
+            <button class="truth-edit-cancel">CANCEL</button>
+        </div>
+    `);
+    const $title = $main.find(".truth-edit-title").val(bullet.title);
+    const $desc = $main.find(".truth-edit-description").val(bullet.description || "");
+    $title.trigger("focus");
+
+    $main.find(".truth-edit-cancel").on("click", () => showTruthBulletDetails(bullet, isArchived));
+    $main.find(".truth-edit-save").on("click", () => {
+        const title = String($title.val() || "").trim();
+        const description = String($desc.val() || "").trim();
+        const $error = $main.find(".truth-edit-error");
+        if (!title) {
+            $error.text("Give it a title.");
+            return;
+        }
+        if (title !== bullet.title && isKnownTitle(title)) {
+            $error.text("Another Truth Bullet already has that title.");
+            return;
+        }
+        processedTruthSignatures.delete(`${bullet.title}||${bullet.description || ""}`);
+        if (title !== bullet.title) {
+            bullet.aliases = [...new Set([...(bullet.aliases || []), bullet.title])];
+            bullet.title = title;
+        }
+        bullet.description = description;
+        processedTruthSignatures.add(`${bullet.title}||${bullet.description}`);
+        saveTruthBullets();
+        renderTruthBullets();
+        showTruthBulletDetails(bullet, isArchived);
+    });
+    $main.on("keydown", (event) => event.stopPropagation());
 }
 
 function showArchiveConfirm(id) {
@@ -526,6 +622,11 @@ function permanentlyDeleteArchivedBullet(id) {
     if (index === -1) return;
 
     const [bullet] = archivedTruthBullets.splice(index, 1);
+    const dismissed = getDismissedTitles();
+    for (const title of [bullet.title, ...(bullet.aliases || [])]) {
+        if (!dismissed.includes(title)) dismissed.push(title);
+    }
+    if (dismissed.length > 500) dismissed.splice(0, dismissed.length - 500);
     saveTruthBullets();
     deps.removePin?.(bullet.locationId);
 
@@ -592,11 +693,19 @@ function runTruthBulletQueue() {
 
     playTruthBulletSfx();
 
-    setTimeout(() => {
+    // Escape hides this one now; the next queued bullet still plays.
+    let finished = false;
+    const finish = () => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        releaseSkip();
         $overlay.removeClass("show");
         truthBulletAnimating = false;
         runTruthBulletQueue(); // 🔁 play next bullet
-    }, 1800); // MUST match CSS
+    };
+    const releaseSkip = pushSkippable({ kind: "sequence", skip: finish });
+    const timer = setTimeout(finish, 1800); // MUST match CSS
 }
 
 function playTruthBulletSfx() {
@@ -634,6 +743,64 @@ export function clearAllTruthBullets() {
     processedTruthSignatures.clear();
     saveTruthBullets();
     renderTruthBullets();
+}
+
+// Removes a bullet from either list, e.g. when the message that found it was
+// swiped away. Returns the removed bullet, or null.
+export function removeTruthBulletById(id) {
+    for (const list of [truthBullets, archivedTruthBullets]) {
+        const index = list.findIndex(tb => tb.id === id);
+        if (index === -1) continue;
+        const [bullet] = list.splice(index, 1);
+        processedTruthSignatures.delete(`${bullet.title}||${bullet.description || ""}`);
+        saveTruthBullets();
+        deps.removePin?.(bullet.locationId);
+        $(".truth-details").removeAttr("style").empty();
+        renderTruthBullets();
+        return bullet;
+    }
+    return null;
+}
+
+// Rewrites a bullet's description in place, e.g. when the Monokuma File is
+// updated. Returns whether a bullet with that title was found.
+export function updateTruthBulletDescription(title, description) {
+    const bullet = [...truthBullets, ...archivedTruthBullets].find((tb) => tb.title === title);
+    if (!bullet) return false;
+    processedTruthSignatures.delete(`${bullet.title}||${bullet.description || ""}`);
+    bullet.description = description;
+    saveTruthBullets();
+    $(".truth-details").removeAttr("style").empty();
+    renderTruthBullets();
+    return true;
+}
+
+// Re-reads the lists from settings after a different save was loaded.
+export function reloadTruthBullets() {
+    truthBullets.length = 0;
+    archivedTruthBullets.length = 0;
+    processedTruthSignatures.clear();
+    loadTruthBullets();
+    renderTruthBullets();
+    migrateTruthBulletImages();
+}
+
+// Older saves kept pictures as base64 in the settings. Upload them as files
+// once; anything that fails to upload stays as it was.
+let imageMigration = null;
+export function migrateTruthBulletImages() {
+    imageMigration = (imageMigration || Promise.resolve()).then(async () => {
+        const replaced = await uploadImagesIn([...truthBullets, ...archivedTruthBullets], { prefix: "truth" });
+        if (replaced) {
+            saveTruthBullets();
+            renderTruthBullets();
+        }
+        return replaced;
+    }).catch((e) => {
+        console.warn("[Dangan][Truth] image migration failed:", e);
+        return 0;
+    });
+    return imageMigration;
 }
 
 export function setNextTruthBulletSfxVariant(variant = "") {

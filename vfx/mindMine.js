@@ -15,6 +15,7 @@
 
 import { attachCursorSway } from "./cursorSway.js";
 import { promptMinigameTutorial } from "../core/onboarding/minigameGuides.js";
+import { beginMinigame } from "../core/skip/skipRegistry.js";
 
 export function createMindMineController({
     extensionFolderPath = '',
@@ -439,6 +440,7 @@ export function createMindMineController({
     function endGame(win) {
         if (!isRunning) return;
         isRunning = false;
+        endSession?.();
         cancelAnimationFrame(timerInterval);
         timerInterval = null;
         if (!win) playTimeUpDamage();
@@ -459,6 +461,15 @@ export function createMindMineController({
         document.body.classList.add('mm-shaking');
         setTimeout(() => flashEl.remove(), 220);
         setTimeout(() => document.body.classList.remove('mm-shaking'), 360);
+    }
+
+    // Escape backs out before a sentence is collected: no win, no time-up.
+    let endSession = null;
+    function abortGame() {
+        if (!isRunning) return;
+        isRunning = false;
+        endSession?.();
+        cleanup();
     }
 
     function cleanup() {
@@ -994,6 +1005,7 @@ body.mm-shaking { animation: mmScreenShake 80ms steps(2, end) infinite; }
         renderGrid();
         checkSentences(); // reveal any bands that happened to start empty
         isRunning = true;
+        endSession = beginMinigame({ abort: abortGame, label: "Mind Mine" });
         // Paint the starting time immediately so the timer is visible while
         // the intro SFX plays — the countdown itself starts only after.
         updateTimerEl();

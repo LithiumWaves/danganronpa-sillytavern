@@ -1,3 +1,5 @@
+import { beginMinigame } from "../core/skip/skipRegistry.js";
+
 const CHOOSE_ID       = 'dangan-choose-overlay';
 const CHOOSE_STYLE_ID = 'dangan-choose-style';
 const HOLDON_STYLE_ID = 'dangan-holdon-style';
@@ -510,6 +512,8 @@ export function createChooseCharacterController({
         return new Promise(resolve => {
             function onKey(e) {
                 if (resolved) return;
+                // The Escape "leave?" dialog takes the keys while it's open.
+                if (document.getElementById('dangan-leave-confirm')) return;
                 if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Enter') {
                     e.preventDefault();
                     e.stopPropagation();
@@ -519,6 +523,7 @@ export function createChooseCharacterController({
                 else if (e.key === 'ArrowRight') { navigate(1); }
                 else if (e.key === 'Enter') {
                     resolved = true;
+                    endSession();
                     const chosen = slots[currentIdx]?.name ?? null;
                     new Audio(`${base}/assets/sfx/minigames/final-shot.wav`).play().catch(() => {});
                     cleanup();
@@ -536,6 +541,17 @@ export function createChooseCharacterController({
                 overlay.style.opacity    = '0';
                 setTimeout(() => overlay.remove(), 320);
             }
+
+            // Escape backs out without choosing (no hold-on cinematic).
+            const endSession = beginMinigame({
+                abort: () => {
+                    if (resolved) return;
+                    resolved = true;
+                    cleanup();
+                    resolve(null);
+                },
+                label: "Choosing Time",
+            });
 
             window.addEventListener('keydown', onKey, { capture: true });
         });

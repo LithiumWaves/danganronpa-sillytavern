@@ -562,6 +562,18 @@ body.dangan-trial-active .dgn-controls-footer .dgn-controls-footer-btn:active {
     background: rgba(var(--dgn-neon-rgb), 0.28) !important;
 }
 
+/* Suspend / Leave sit side by side under the footer button. */
+body.dangan-trial-active .dgn-controls-footer .dgn-controls-exit {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+body.dangan-trial-active .dgn-controls-footer .dgn-controls-exit .dgn-controls-footer-btn {
+    flex: 1 1 0;
+    width: auto;
+}
+
 /* Hide legacy group labels inside neon panel */
 body.dangan-trial-active #dangan-trial-pre-debate-notif .dangan-trial-group-label {
     display: none;

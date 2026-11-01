@@ -1,3 +1,5 @@
+import { findBackgroundElement } from "../core/media/findBackground.js";
+
 // Standalone CG viewer for the Overworld.
 // ----------------------------------------
 // Mirrors the Class Trial "Show CG" control (see showCgPicker / showCgOverlay in
@@ -126,15 +128,35 @@ function resolveBgItem(el) {
     return { label, thumb, cssUrl, bgfile };
 }
 
-// Load a background into CG Mode by (partial, case-insensitive) bgfile name —
+// Load a background into CG Mode by (loose, case-insensitive) bgfile name —
 // mirrors how /bodydiscovery's bg= switch matches a .bg_example. Returns true
 // if a matching background was found and shown. Used by the Body Discovery flow
 // to reveal the crime-scene BG as a CG.
+// Shows a CG from a picker item's CSS url("…").
+export function showCgFromCssUrl(cssUrl) {
+    if (!cssUrl) return false;
+    showCgOverlay(cssUrl);
+    return true;
+}
+
+// The picker as a promise: the chosen background item, or null when it's
+// closed without a pick (or there are no backgrounds).
+export function pickCg({ title = "CHOOSE CG" } = {}) {
+    return new Promise((resolve) => {
+        let picked = false;
+        showCgPicker({ title, onPick: (item) => { picked = true; resolve(item); } });
+        if (!document.getElementById(PICKER_ID)) { resolve(null); return; }
+        const watch = new MutationObserver(() => {
+            if (document.getElementById(PICKER_ID)) return;
+            watch.disconnect();
+            if (!picked) resolve(null);
+        });
+        watch.observe(document.body, { childList: true });
+    });
+}
+
 export function showCgByBgName(bgName) {
-    const lower = String(bgName || "").trim().toLowerCase();
-    if (!lower) return false;
-    const el = Array.from(document.querySelectorAll(".bg_example"))
-        .find(e => (e.getAttribute("bgfile") || "").toLowerCase().includes(lower));
+    const el = findBackgroundElement(bgName);
     if (!el) return false;
     const { cssUrl } = resolveBgItem(el);
     if (!cssUrl) return false;

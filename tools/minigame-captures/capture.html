@@ -1,0 +1,184 @@
+<!doctype html>
+<!--
+  Minigame capture harness. Not loaded by the extension.
+  Runs one minigame with sample data so tools/minigame-captures/capture.mjs can
+  record it for the tutorial clips. Open as capture.html?game=<id>.
+  Must be served with the extension at scripts/extensions/third-party/danganronpa-extension
+  (capture.mjs sets that up).
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<title>Minigame capture</title>
+<link rel="stylesheet" href="scripts/extensions/third-party/danganronpa-extension/style.css">
+<style>
+    html, body { margin: 0; height: 100%; background: #07070c; overflow: hidden; }
+    body { font-family: "Rajdhani", sans-serif; }
+    #capture-bg { position: fixed; inset: 0; background: center / cover no-repeat; }
+</style>
+</head>
+<body>
+<div id="capture-bg"></div>
+<script type="module">
+const EXT = "scripts/extensions/third-party/danganronpa-extension";
+const params = new URLSearchParams(location.search);
+const game = params.get("game");
+
+const { configureMinigameGuides } = await import(`./${EXT}/core/onboarding/minigameGuides.js`);
+configureMinigameGuides({ isTutorialPromptEnabled: () => false });
+
+const CAST = ["Kaede", "Shuichi", "Kokichi", "Kirumi", "Kaito", "Maki", "Rantaro", "Tsumugi", "Himiko", "Gonta", "Miu", "Korekiyo"];
+const chibi = (name) => `${EXT}/assets/images/title/chibisprites/${name.toLowerCase()}.png`;
+const getSpriteUrl = async (name) => chibi(String(name).split(/\s+/)[0]);
+const noop = () => {};
+const common = {
+    extensionFolderPath: EXT,
+    awardMonocoins: noop,
+    deductMonocoins: noop,
+    restoreTheme: noop,
+    getPlayerSpriteUrl: async () => null,
+};
+const truthBullets = [
+    { id: "tb1", title: "Monokuma File #1", description: "The victim died between 10 PM and midnight from a blow to the head." },
+    { id: "tb2", title: "Shot Put Ball", description: "A heavy shot put ball found in the library, smeared with blood." },
+    { id: "tb3", title: "Hidden Room Door", description: "A bookshelf in the library hides a door to a secret room." },
+    { id: "tb4", title: "Camera Photos", description: "Pictures taken by the motion-sensor camera during the trap." },
+    { id: "tb5", title: "Broken Window", description: "The library window was broken from the outside." },
+];
+
+const games = {
+    async hangmansGambit() {
+        const { createHangmansGambitController } = await import(`./${EXT}/vfx/hangmansGambit.js`);
+        const c = createHangmansGambitController({ ...common, pauseDynamicAudio: noop, resumeDynamicAudio: noop, playBgm: noop });
+        // A short answer so the clip can show a whole solve.
+        return c.run({ question: "What was the murder weapon?", answer: "AXE", time: 240, health: 7, difficulty: 3 });
+    },
+    async argumentArmament() {
+        const { createArgumentArmamentController } = await import(`./${EXT}/vfx/argumentArmament.js`);
+        const c = createArgumentArmamentController(common);
+        // No sprite: the minigame falls back to its own tester art.
+        return c.run({
+            dialogs: ["You're lying!", "No no no!!", "I'm telling you...", "Why would I kill Rantaro?!", "No!", "That's not true!", "Stop it!", "You can't prove that!"],
+            FinalSolution: "The piano", FinalSolutionQuote: "Then what was it?!",
+        });
+    },
+    async questionTime() {
+        const { createQuestionTimeController } = await import(`./${EXT}/vfx/questionTime.js`);
+        const c = createQuestionTimeController(common);
+        return c.run({ title: "Where was the murder weapon found?", time: 30, answers: ["The library", "The dining hall", "The gym", "The courtyard"], correct: 1 });
+    },
+    async questionTruth() {
+        const { createQuestionTruthController } = await import(`./${EXT}/vfx/questionTruth.js`);
+        const c = createQuestionTruthController({ ...common, getTruthBullets: () => truthBullets });
+        return c.run({ question: "What was used to kill the victim?", answer: "Shot Put Ball", time: 60, playerHp: 5 });
+    },
+    async mindMine() {
+        const { createMindMineController } = await import(`./${EXT}/vfx/mindMine.js`);
+        const c = createMindMineController({ ...common, pauseCurrentBgm: noop, resumeCurrentBgm: noop, playBgm: noop });
+        return c.run({ sentences: ["The killer used the hidden door", "The window was a decoy", "The camera saw everything"], timeLimit: 120, penaltyMs: 10000 });
+    },
+    async scrumDebate() {
+        const { createScrumDebateController } = await import(`./${EXT}/vfx/scrumDebate.js`);
+        // Bullets that answer SCRUM_DEBATE_DEFAULT_SCENARIO's rounds.
+        const scrumBullets = [
+            { id: "s1", title: "Kitchen Equipment", description: "A set of knives from the kitchen, one missing." },
+            { id: "s2", title: "Gaps in Floorboard", description: "Wide gaps between the floorboards under the table." },
+            { id: "s3", title: "Fire Door", description: "The fire door was shut, cutting off the hallway." },
+            ...truthBullets.slice(0, 2),
+        ];
+        const c = createScrumDebateController({
+            ...common,
+            getTruthBullets: () => scrumBullets,
+            pauseCurrentBgm: noop, resumeCurrentBgm: noop, getScrumTracks: () => [], playBgm: noop,
+            getFinalPushTrack: () => null, onWin: noop, getSpriteUrl, isCharacterDead: () => false,
+            getPlayerName: () => "Shuichi", getCharacterHeightCm: () => 165, getCustomGameMasterName: () => "Monokuma",
+        });
+        return c.run({ timerMs: 180000, playerHp: 3 });
+    },
+    async rebuttalShowdown() {
+        const { createRebuttalShowdownController } = await import(`./${EXT}/vfx/rebuttalShowdown.js`);
+        const c = createRebuttalShowdownController({
+            ...common,
+            // No portraits: the pixel chibis are too small to scale up nicely.
+            getTruthBullets: () => truthBullets, getRebuttalTracks: () => [], getSpriteUrl: async () => null,
+            getUserAvatarUrl: () => null, getPromeSpritePack: () => null,
+            getCharacterHeightCm: () => 165, onWin: noop,
+        });
+        return c.run();
+    },
+    async voting() {
+        const { createVotingScreenController } = await import(`./${EXT}/vfx/votingScreen.js`);
+        const c = createVotingScreenController({
+            extensionFolderPath: EXT,
+            getCharacters: () => CAST.map((name) => ({ name, dead: name === "Rantaro", missing: false })),
+            getSpriteUrl,
+            getUserAvatarUrl: () => chibi("shuichi"),
+            getPlayerName: () => "Shuichi",
+            generateVotes: async () => ({ Kokichi: 9, Kaito: 1 }),
+        });
+        return c.run();
+    },
+    async nonStopDebate() {
+        const tm = await trialManager();
+        return tm.debugStartNonStopDebateWithLines([
+            { text: "[[The security footage clearly shows the door was locked all night.]]", speaker: "Kaito", whiteNoise: ["That can't be right!", "No way...", "I don't believe it"] },
+            { text: "There's no way anyone could have entered the room without a key!", speaker: "Kokichi" },
+            { text: "I was with someone the entire time — I have a perfect alibi!", speaker: "Kirumi" },
+            { text: "I saw someone near the [[storage room]] just before the body was found.", speaker: "Maki" },
+        ]);
+    },
+    async massPanicDebate() {
+        const { MPD_TEST_SCENARIOS } = await import(`./${EXT}/vfx/massPanicDebate.js`);
+        const tm = await trialManager();
+        return tm.startMassPanicDebate(MPD_TEST_SCENARIOS.slice(0, 3));
+    },
+};
+
+// Non-Stop and Mass Panic Debates live in the trial manager. Its many hooks
+// into the rest of the extension become no-ops here.
+async function trialManager() {
+    const { createTrialManager } = await import(`./${EXT}/trial/trialManager.js`);
+    const characters = new Map(CAST.map((name) => [name.toLowerCase(), { name, dead: false, missing: false }]));
+    const given = {
+        extensionName: "danganronpa-extension",
+        extensionSettings: { "danganronpa-extension": {} },
+        extensionFolderPath: EXT,
+        characters,
+        getTruthBullets: () => truthBullets,
+        getSpriteUrl: async () => null,
+        getSfx: () => ({}),
+        xpRewards: {},
+        resolveSkillParam: (_key, base) => base,
+        rollBiasedEmotion: (emotion) => emotion,
+        getCustomGameMasterName: () => "Monokuma",
+        getCharacterDisplayName: (name) => name,
+        getLecternUrl: () => "",
+        resolveHeightCm: () => 165,
+        getTrialPodiumOffset: () => 0,
+        getEquippedSkillsSnapshot: () => [],
+        getOverworldRoomOccupants: () => [],
+        getEmotionFont: () => null,
+        getCharacterSourceText: () => "",
+    };
+    window.SillyTavern = { getContext: () => ({ groups: [], characters: CAST.map((name) => ({ name, avatar: `${name}.png` })), chat: [], groupId: null }) };
+    const deps = new Proxy(given, { get: (t, k) => (k in t ? t[k] : () => undefined) });
+    const tm = createTrialManager(deps);
+    // The manager restores saved trial state 500 ms after creation; starting a
+    // debate before that would be undone by it.
+    await new Promise((r) => setTimeout(r, 800));
+    return tm;
+}
+
+window.__captureReady = false;
+window.__captureError = null;
+try {
+    if (!games[game]) throw new Error(`unknown game ${game}`);
+    const run = games[game]();
+    window.__captureReady = true;
+    run?.catch?.((e) => { window.__captureError = String(e?.stack || e); });
+} catch (e) {
+    window.__captureError = String(e?.stack || e);
+}
+</script>
+</body>
+</html>

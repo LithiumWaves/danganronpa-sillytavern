@@ -1,0 +1,635 @@
+/* =========================
+   Sheets: the windows that open over the game (Case File, RULES, WORLD,
+   EDIT MOTIVE, Events, PLAN EVENT, Routines), in the title screen's look:
+   a dark panel with a pink edge and cut corners, a pink header bar, slanted
+   buttons, Bruno Ace / Rajdhani / Orbitron, and slow diagonal stripes.
+   Each window's own <style> keeps only its layout.
+   ========================= */
+
+.dgn-sheet {
+    --dgn-pink: #f0479a;
+    --dgn-pink-hot: #ff7fbe;
+    --dgn-pink-soft: rgba(240, 71, 154, 0.35);
+    --dgn-ink: #0a0610;
+    --dgn-gold: #ffd23f;
+    --dgn-red: #ff4d5e;
+    --dgn-green: #5fe3a1;
+    --dgn-text: #f4eef8;
+    --dgn-muted: rgba(244, 238, 248, 0.62);
+    --dgn-line: rgba(255, 255, 255, 0.12);
+
+    position: fixed;
+    inset: 0;
+    z-index: 100040;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    box-sizing: border-box;
+    overflow: hidden;
+    background: radial-gradient(ellipse at 30% 20%, rgba(70, 14, 52, 0.55), transparent 60%),
+        rgba(6, 3, 10, 0.86);
+    color: var(--dgn-text);
+    font: 500 15px/1.45 "Rajdhani", "Orbitron", sans-serif;
+    animation: dgn-sheet-fade 0.25s ease both;
+}
+
+.dgn-sheet *,
+.dgn-sheet *::before,
+.dgn-sheet *::after {
+    box-sizing: border-box;
+}
+
+.dgn-sheet-stripes {
+    position: absolute;
+    inset: -50%;
+    pointer-events: none;
+    background: repeating-linear-gradient(-60deg, rgba(255, 255, 255, 0.035) 0 18px, transparent 18px 46px);
+    animation: dgn-sheet-stripes 22s linear infinite;
+}
+
+/* ── The window ────────────────────────────────────────────────────────── */
+
+.dgn-sheet-window {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: min(980px, 100%);
+    max-height: calc(100vh - 36px);
+    background: linear-gradient(160deg, rgba(22, 12, 30, 0.97), rgba(8, 5, 12, 0.97));
+    border: 1px solid var(--dgn-line);
+    border-left: 4px solid var(--dgn-pink);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(240, 71, 154, 0.15);
+    clip-path: polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% 100%, 22px 100%, 0 calc(100% - 22px));
+    animation: dgn-sheet-in 0.38s cubic-bezier(0.16, 0.84, 0.26, 1) both;
+}
+
+.dgn-sheet-window.is-narrow { width: min(600px, 100%); }
+.dgn-sheet-window.is-medium { width: min(760px, 100%); }
+
+.dgn-sheet-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 18px 12px 16px;
+    background: linear-gradient(90deg, var(--dgn-pink), var(--dgn-pink-hot) 65%, rgba(255, 127, 190, 0.15));
+    color: #fff;
+}
+
+.dgn-sheet-title {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    font: 400 clamp(15px, 2vw, 21px) "Bruno Ace", "Orbitron", sans-serif;
+    letter-spacing: 0.14em;
+    text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dgn-sheet-tag {
+    flex: none;
+    max-width: 45%;
+    padding: 4px 14px;
+    background: var(--dgn-ink);
+    color: var(--dgn-gold);
+    font: 600 12px "Rajdhani", sans-serif;
+    letter-spacing: 0.16em;
+    clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dgn-sheet-tag:empty { display: none; }
+.dgn-sheet-tag.is-planned { color: var(--dgn-gold); }
+.dgn-sheet-tag.is-found { color: var(--dgn-pink-hot); }
+.dgn-sheet-tag.is-closed { color: var(--dgn-green); }
+.dgn-sheet-tag.is-averted { color: #9fd0ff; }
+
+.dgn-sheet .dgn-sheet-close {
+    flex: none;
+    border: 0;
+    padding: 6px 16px;
+    background: var(--dgn-ink);
+    color: #fff;
+    font: 600 13px "Rajdhani", sans-serif;
+    letter-spacing: 0.18em;
+    clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+}
+
+.dgn-sheet .dgn-sheet-close:hover,
+.dgn-sheet .dgn-sheet-close:focus-visible {
+    background: #fff;
+    color: var(--dgn-ink);
+    outline: none;
+}
+
+/* A thin bar under the header: how far along something is. */
+.dgn-sheet-progress {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.dgn-sheet-progress > span {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, var(--dgn-pink), var(--dgn-gold));
+    box-shadow: 0 0 10px var(--dgn-pink-soft);
+    transition: width 0.4s ease;
+}
+
+.dgn-sheet-body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    scrollbar-color: var(--dgn-pink) transparent;
+    scrollbar-width: thin;
+}
+
+.dgn-sheet-foot {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 12px 20px 14px;
+    border-top: 1px solid var(--dgn-pink-soft);
+    background: rgba(0, 0, 0, 0.25);
+}
+
+.dgn-sheet-foot:empty { display: none; }
+
+.dgn-sheet .dgn-error,
+.dgn-sheet [class$="-error"] {
+    flex: 1 1 100%;
+    color: var(--dgn-red);
+    font-size: 14px;
+    letter-spacing: 0.04em;
+    text-align: right;
+}
+
+.dgn-sheet .dgn-error:empty,
+.dgn-sheet [class$="-error"]:empty { display: none; }
+
+/* ── Buttons ───────────────────────────────────────────────────────────── */
+/* Every button is the title screen's slanted button. A class ending in
+   "-primary" or "-danger" (cfe-primary, srv-danger…) picks the variant. */
+
+.dgn-sheet button {
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 0;
+    padding: 8px 20px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+    font: 600 13px "Rajdhani", sans-serif;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    cursor: pointer;
+    clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.dgn-sheet button:hover,
+.dgn-sheet button:focus-visible {
+    background: #fff;
+    color: var(--dgn-ink);
+    outline: none;
+}
+
+.dgn-sheet button.is-primary,
+.dgn-sheet button[class*="-primary"] {
+    background: var(--dgn-pink);
+    border-color: var(--dgn-pink);
+    color: #fff;
+}
+
+.dgn-sheet button.is-primary:hover,
+.dgn-sheet button[class*="-primary"]:hover {
+    background: #fff;
+    border-color: #fff;
+    color: var(--dgn-ink);
+}
+
+.dgn-sheet button.is-danger,
+.dgn-sheet button[class*="-danger"] {
+    border-color: rgba(255, 77, 94, 0.75);
+    color: #ff9aa4;
+    background: rgba(255, 77, 94, 0.08);
+}
+
+.dgn-sheet button.is-danger:hover,
+.dgn-sheet button[class*="-danger"]:hover {
+    background: var(--dgn-red);
+    border-color: var(--dgn-red);
+    color: #fff;
+}
+
+.dgn-sheet button.is-small {
+    padding: 4px 12px;
+    font-size: 11px;
+}
+
+.dgn-sheet button[class*="-debug"] {
+    border-style: dashed;
+    border-color: rgba(255, 210, 63, 0.6);
+    color: var(--dgn-gold);
+}
+
+.dgn-sheet button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.dgn-sheet button:disabled:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+}
+
+/* Two or three choices side by side (KIND, LIGHT / GRAVE). */
+.dgn-switch {
+    display: inline-flex;
+    gap: 3px;
+}
+
+.dgn-sheet .dgn-switch button {
+    padding: 5px 12px;
+    font-size: 12px;
+    background: rgba(255, 255, 255, 0.07);
+    border-color: transparent;
+    color: rgba(255, 255, 255, 0.65);
+}
+
+.dgn-sheet .dgn-switch button.is-on {
+    background: var(--dgn-pink);
+    color: #fff;
+}
+
+.dgn-sheet .dgn-switch button.is-on.is-grave {
+    background: linear-gradient(90deg, #b3003f, var(--dgn-pink));
+}
+
+/* ── Forms ─────────────────────────────────────────────────────────────── */
+
+.dgn-sheet label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font: 500 11px "Orbitron", "Rajdhani", sans-serif;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--dgn-muted);
+}
+
+.dgn-sheet input:not([type="checkbox"]):not([type="radio"]),
+.dgn-sheet select,
+.dgn-sheet textarea {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 0;
+    padding: 8px 11px;
+    background: rgba(0, 0, 0, 0.45);
+    color: #fff;
+    font: 500 15px/1.4 "Rajdhani", sans-serif;
+    letter-spacing: 0.02em;
+    text-transform: none;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dgn-sheet textarea {
+    resize: vertical;
+    min-height: 3.2em;
+}
+
+.dgn-sheet input:not([type="checkbox"]):focus,
+.dgn-sheet select:focus,
+.dgn-sheet textarea:focus {
+    border-color: var(--dgn-pink);
+    box-shadow: 0 0 0 1px var(--dgn-pink), 0 0 14px rgba(240, 71, 154, 0.25);
+}
+
+.dgn-sheet select option {
+    background: #160c1e;
+    color: #fff;
+}
+
+.dgn-sheet input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    background: rgba(0, 0, 0, 0.4);
+    transform: skewX(-10deg);
+    cursor: pointer;
+    display: inline-grid;
+    place-content: center;
+}
+
+.dgn-sheet input[type="checkbox"]:checked {
+    background: var(--dgn-pink);
+    border-color: var(--dgn-pink);
+}
+
+.dgn-sheet input[type="checkbox"]:checked::after {
+    content: "";
+    width: 8px;
+    height: 4px;
+    border-left: 2px solid #fff;
+    border-bottom: 2px solid #fff;
+    transform: rotate(-45deg) translate(1px, -1px);
+}
+
+/* A field whose control isn't a single input (tabs, chips): a label look
+   without a <label>, so clicking the caption doesn't press a button. */
+.dgn-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.dgn-label {
+    font: 500 11px "Orbitron", "Rajdhani", sans-serif;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--dgn-muted);
+}
+
+/* A checkbox with its text on one line. */
+.dgn-sheet label.dgn-check,
+.dgn-sheet label[class$="-check"] {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    font: 500 14px "Rajdhani", sans-serif;
+    letter-spacing: 0.04em;
+    text-transform: none;
+    color: var(--dgn-text);
+    cursor: pointer;
+}
+
+/* ── Sections: numbered, like the New Game steps ───────────────────────── */
+
+.dgn-sheet fieldset {
+    position: relative;
+    margin: 0;
+    padding: 30px 0 4px;
+    border: 0;
+    border-top: 1px solid var(--dgn-line);
+}
+
+.dgn-sheet fieldset > legend {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0;
+    transform: translateY(-50%);
+    background: transparent;
+    font: 600 12px "Orbitron", "Rajdhani", sans-serif;
+    letter-spacing: 0.18em;
+    color: #fff;
+}
+
+.dgn-sheet fieldset > legend::before {
+    content: attr(data-n);
+    display: inline-grid;
+    place-items: center;
+    min-width: 26px;
+    height: 22px;
+    padding: 0 5px;
+    background: var(--dgn-pink);
+    font: 600 12px "Rajdhani", sans-serif;
+    letter-spacing: 0.06em;
+    clip-path: polygon(5px 0, 100% 0, calc(100% - 5px) 100%, 0 100%);
+}
+
+.dgn-sheet fieldset > legend:not([data-n])::before { display: none; }
+
+.dgn-sheet fieldset > legend::after {
+    content: "";
+    display: block;
+    width: 22px;
+    height: 2px;
+    background: var(--dgn-pink-soft);
+}
+
+/* ── Small pieces ──────────────────────────────────────────────────────── */
+
+.dgn-note {
+    margin: 0;
+    padding: 9px 12px;
+    border-left: 2px solid var(--dgn-pink-soft);
+    background: rgba(255, 255, 255, 0.035);
+    color: var(--dgn-muted);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.dgn-empty {
+    padding: 22px 16px;
+    text-align: center;
+    color: var(--dgn-muted);
+    letter-spacing: 0.1em;
+    font-size: 13px;
+    text-transform: uppercase;
+    background: repeating-linear-gradient(-60deg, rgba(255, 255, 255, 0.025) 0 10px, transparent 10px 22px);
+    border: 1px dashed rgba(255, 255, 255, 0.14);
+}
+
+/* A list row: a card with a pink edge that lights up. */
+.dgn-row {
+    position: relative;
+    padding: 10px 12px 10px 14px;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.02));
+    border-left: 3px solid rgba(240, 71, 154, 0.45);
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.dgn-row:hover,
+.dgn-row:focus-within {
+    border-left-color: var(--dgn-pink);
+    background: linear-gradient(90deg, rgba(240, 71, 154, 0.1), rgba(255, 255, 255, 0.02));
+}
+
+.dgn-row.is-dim { opacity: 0.55; }
+
+/* A big slanted numeral (rule numbers). */
+.dgn-num {
+    font: 400 26px/1 "Bruno Ace", "Orbitron", sans-serif;
+    color: var(--dgn-pink);
+    transform: skewX(-12deg);
+    text-shadow: 0 0 12px rgba(240, 71, 154, 0.4);
+    text-align: right;
+}
+
+/* An ink chip: sources, chapters, "you're going". */
+.dgn-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 10px;
+    background: var(--dgn-ink);
+    color: var(--dgn-gold);
+    font: 600 11px "Rajdhani", sans-serif;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    clip-path: polygon(5px 0, 100% 0, calc(100% - 5px) 100%, 0 100%);
+}
+
+.dgn-chip.is-pink { background: var(--dgn-pink); color: #fff; }
+.dgn-chip.is-green { color: var(--dgn-green); }
+.dgn-chip.is-muted { color: var(--dgn-muted); }
+
+/* Pill checkboxes (invitees, accomplices, the afflicted). */
+.dgn-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.dgn-sheet .dgn-pills label {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px 4px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.04);
+    font: 500 14px "Rajdhani", sans-serif;
+    letter-spacing: 0.03em;
+    text-transform: none;
+    color: var(--dgn-text);
+    cursor: pointer;
+    clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
+}
+
+.dgn-sheet .dgn-pills label:has(input:checked) {
+    border-color: var(--dgn-pink);
+    background: rgba(240, 71, 154, 0.22);
+}
+
+/* A rubber stamp: TOP SECRET, UNCOVERED, GRAVE, DONE. */
+.dgn-stamp {
+    display: inline-block;
+    padding: 4px 12px;
+    border: 3px double currentColor;
+    color: var(--dgn-red);
+    font: 400 15px "Bruno Ace", "Orbitron", sans-serif;
+    letter-spacing: 0.18em;
+    transform: rotate(-8deg);
+    opacity: 0.85;
+    mix-blend-mode: screen;
+    pointer-events: none;
+    user-select: none;
+}
+
+.dgn-stamp.is-pink { color: var(--dgn-pink-hot); }
+.dgn-stamp.is-green { color: var(--dgn-green); }
+.dgn-stamp.is-small { font-size: 10px; padding: 2px 7px; border-width: 2px; }
+
+/* ── The spoiler gate: a closed dossier ────────────────────────────────── */
+
+.dgn-dossier {
+    position: relative;
+    align-self: center;
+    width: min(520px, 100%);
+    margin: 8px auto;
+    padding: 30px 28px 24px;
+    background:
+        repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 26px),
+        linear-gradient(160deg, #2a1a33, #160c1d);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-top: 6px solid var(--dgn-pink);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5), inset 0 0 40px rgba(0, 0, 0, 0.4);
+    clip-path: polygon(0 0, calc(100% - 26px) 0, 100% 26px, 100% 100%, 0 100%);
+    text-align: center;
+}
+
+.dgn-dossier::before {
+    content: "";
+    position: absolute;
+    top: -6px;
+    left: 24px;
+    width: 120px;
+    height: 18px;
+    background: var(--dgn-pink);
+    clip-path: polygon(0 0, 100% 0, calc(100% - 12px) 100%, 12px 100%);
+}
+
+.dgn-dossier-label {
+    font: 600 11px "Orbitron", sans-serif;
+    letter-spacing: 0.3em;
+    color: var(--dgn-muted);
+}
+
+.dgn-dossier-title {
+    margin: 6px 0 18px;
+    font: 400 clamp(22px, 4vw, 32px) "Bruno Ace", "Orbitron", sans-serif;
+    letter-spacing: 0.12em;
+    color: #fff;
+}
+
+.dgn-dossier .dgn-stamp {
+    margin: -6px 0 18px;
+    font-size: clamp(16px, 3vw, 22px);
+    transform: rotate(-6deg);
+}
+
+.dgn-dossier p {
+    margin: 0 auto 12px;
+    max-width: 420px;
+    color: var(--dgn-muted);
+    font-size: 15px;
+    line-height: 1.55;
+}
+
+.dgn-dossier p strong { color: #fff; }
+
+/* ── Motion and small screens ──────────────────────────────────────────── */
+
+@keyframes dgn-sheet-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes dgn-sheet-in {
+    from { opacity: 0; transform: translateY(14px) scale(0.985); }
+    to { opacity: 1; transform: none; }
+}
+@keyframes dgn-sheet-stripes {
+    from { transform: translate3d(0, 0, 0); }
+    to { transform: translate3d(-184px, 0, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dgn-sheet, .dgn-sheet-window, .dgn-sheet-stripes { animation: none; }
+}
+
+@media (max-width: 700px) {
+    .dgn-sheet { padding: 0; }
+    .dgn-sheet-window,
+    .dgn-sheet-window.is-narrow,
+    .dgn-sheet-window.is-medium {
+        width: 100%;
+        height: 100vh;
+        max-height: 100vh;
+        clip-path: none;
+        border-left-width: 3px;
+    }
+    .dgn-sheet-head { flex-wrap: wrap; padding: 10px 12px; gap: 6px 8px; }
+    /* The title and CLOSE take the first line; the tag goes under them. */
+    .dgn-sheet-title { flex: 1 1 calc(100% - 110px); font-size: 15px; letter-spacing: 0.1em; }
+    .dgn-sheet-tag { order: 3; max-width: 100%; }
+    .dgn-sheet-body { padding: 14px 12px; }
+    .dgn-sheet-foot { padding: 10px 12px; justify-content: stretch; }
+    .dgn-sheet-foot button { flex: 1 1 auto; }
+}

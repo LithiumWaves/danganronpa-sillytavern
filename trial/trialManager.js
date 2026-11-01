@@ -3,6 +3,9 @@
 import { DEFAULT_TRIAL_PROMPT_TEMPLATES } from "../core/constants.js";
 import { attachCursorSway } from "../vfx/cursorSway.js";
 import { promptMinigameTutorial } from "../core/onboarding/minigameGuides.js";
+import { beginMinigame } from "../core/skip/skipRegistry.js";
+import { layoutStatement, renderStatementHtml } from "../vfx/nsdStatementLayout.js";
+import { playRefuteSequence, preloadRefuteAssets } from "../vfx/nsdRefute.js";
 
 export const TrialPhases = {
     IDLE: 'idle',
@@ -66,6 +69,14 @@ export function createTrialManager(deps) {
         deductMonocoins,
         showMinigameLoadingState,
         getOverworldRoomOccupants,
+        getHostEntranceElapsed, // optional — (name) => ms into a called-in host's slide-up, or null
+        isHostCharacter, // optional — (name) => boolean; hosts with no height stand mascot-sized
+        getTrialRoster, // optional — () => string[]; participants picked for the current trial
+        onSuspendRequest, // optional — trial panel "Suspend Trial" button
+        onLeaveRequest, // optional — trial panel "Leave Trial" button
+        getPickedSprite, // optional — (name) => { path } picked in the expression picker, or null
+        applyPickedSprite, // optional — (img, path) => void; shows a picked sprite (half-sprite aware)
+        onPortraitsBuilt, // optional — () => void; the portrait stage finished filling its slots
     } = deps;
 
     function getAssetUrl(name) {
@@ -73,23 +84,6 @@ export function createTrialManager(deps) {
         return `${base}/assets/classtrial/${name}`;
     }
 
-    // #region debug-point E:overlay-report
-    function reportFullscreenOverlayDebug(hypothesisId, location, msg, data = {}) {
-        fetch("http://127.0.0.1:7777/event", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                sessionId: "fullscreen-overlays-broken",
-                runId: "pre-fix",
-                hypothesisId,
-                location,
-                msg: `[DEBUG] ${msg}`,
-                data,
-                ts: Date.now(),
-            }),
-        }).catch(() => {});
-    }
-    // #endregion
 
     let currentState = TrialPhases.IDLE;
     let trialActive  = false;  // true only while a trial is in progress; false after /end-trial
@@ -126,9 +120,18 @@ export function createTrialManager(deps) {
     let lastHitWeakPoint = null;
     let rebuttalPromptActive = false;
     let persistentDebateHistory = [];
+    // Escape backs out of a Non-Stop / Mass Panic Debate. The debate history
+    // and phase from before it started are put back (index.js restores
+    // Monocoins); holding Escape still fast-forwards.
+    let debateHistoryBeforeDebate = null;
+    let endDebateSession = null;
     let trialContext = { topic: '', goal: '', suspects: [] };
     // suspects: [{ name: string, chance: number }]  (chance is 0–100)
     let speedModifier = 1.0;
+    // True while the refute sequence plays: statements, white noise, the
+    // camera drift and the debate timer all hold still (V3's hit-stop).
+    let refuteFreeze = false;
+    function debateDelta(dt) { return refuteFreeze ? 0 : dt * speedModifier; }
     let revolverAngle  = 0;
     let revolverTarget = 0;
     let revolverSpinRaf = null;
@@ -154,7 +157,11 @@ export function createTrialManager(deps) {
         debateTimerDurationMs = resolveSkillParam(timerKey, base);
     }
 
+    let lastTimerNow = 0;
     function updateDebateTimer(nowMs) {
+        // While frozen, push the start forward so no time is lost.
+        if (refuteFreeze && lastTimerNow) debateTimerStartTs += Math.max(0, nowMs - lastTimerNow);
+        lastTimerNow = nowMs;
         const remaining = Math.max(0, debateTimerDurationMs - (nowMs - debateTimerStartTs));
         const el = document.getElementById('dangan-nsd-timer');
         if (el) {
@@ -307,6 +314,16 @@ export function createTrialManager(deps) {
 
     function isSilenced(name) {
         return silencedSeats.has(normalizeSeatName(String(name || '')));
+    }
+
+    // Hosts (Monokuma, Monomi, the Monokubs…) run the trial rather than take
+    // part in it. Since hosts joined the story chat as muted members, they'd
+    // otherwise be seated like classmates (muted + dead sprite = "silenced
+    // seat"; called in = unmuted). Monokuma keeps his own solo staging; every
+    // other host is simply left out of seats and speakers.
+    function isNonPlayer(name) {
+        if (isMonokuma(name)) return true;
+        try { return !!isHostCharacter?.(name); } catch { return false; }
     }
 
     function isMonokuma(name) {
@@ -552,8 +569,24 @@ export function createTrialManager(deps) {
         document.body.classList.toggle('dangan-nsd-running', isNsd);
         if (wasDebate && !isDebate) {
             cleanupNSDListeners();
+            resetChunkCamera();
+            endDebateSession?.();
+            endDebateSession = null;
+            debateHistoryBeforeDebate = null;
         } else if (isDebate && !wasDebate) {
             setupNSDListeners();
+            preloadRefuteAssets({ counterImgUrl: getAssetUrl('counter.png') });
+            const historyBefore = debateHistoryBeforeDebate ?? [...persistentDebateHistory];
+            const stateBefore = oldState;
+            endDebateSession = beginMinigame({
+                holdEscape: true,
+                isActive: () => !document.getElementById('dangan-nsd-pre-intro'),
+                label: newState === TrialPhases.MASS_PANIC_DEBATE ? "Mass Panic Debate" : "Non-Stop Debate",
+                abort: () => {
+                    persistentDebateHistory = historyBefore;
+                    setState(stateBefore === TrialPhases.IDLE ? TrialPhases.IDLE : TrialPhases.PRE_DEBATE);
+                },
+            });
         }
 
         // Hide GCP only during actual debate overlays (NSD/MPD); keep visible during
@@ -1528,7 +1561,7 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
         let editSelectedIdx = -1;   // first-click anchor for swap
 
         function gatherCurrentNames() {
-            const names = gcpSlots.map(s => s.name).filter(n => n && !isMonokuma(n));
+            const names = gcpSlots.map(s => s.name).filter(n => n && !isNonPlayer(n));
             const playerName = getPlayerName?.();
             if (playerName && !names.some(n => normalizeSeatName(n) === normalizeSeatName(playerName))) {
                 names.push(playerName);
@@ -1742,7 +1775,9 @@ OUTPUT: The door was secretly unlocked from the inside.`.trim();
             heading: 'Class Trial',
             items: [
                 { cmd: '/startclasstrial', desc: 'Begin a Class Trial in the current group chat. Converts the chat into a Class Trial chat.' },
-                { cmd: '/endtrial', desc: 'Immediately ends the current Class Trial and clears all persistent trial state.' },
+                { cmd: '/endtrial', desc: 'Immediately ends the current Class Trial, clears all persistent trial state, and returns to the chat the trial was started from.' },
+                { cmd: '/suspendtrial', desc: 'Steps out of the current Class Trial without clearing its progress.' },
+                { cmd: '/resumetrial', desc: 'Resumes a suspended Class Trial in the phase it was left in.' },
                 { cmd: '/setclasstrialgoal', desc: 'Sets the overall objective text shown in the Trial Context panel.', opts: ['(unnamed, required) — The goal text, e.g. /setclasstrialgoal Who killed the victim?'] },
                 { cmd: '/givetruthbullet', desc: 'Manually adds a Truth Bullet to the Monopad. Add an image via the Truth Bullet Monopad tab afterwards.', opts: ['name (required) — Truth Bullet title; quote if it contains spaces', '(unnamed, required) — The Truth Bullet description'] },
                 { cmd: '/suspectchoosing', desc: 'Opens the character selection screen to single out a suspect. Arrow keys to navigate, Enter to confirm.' },
@@ -2276,6 +2311,10 @@ ${historyText}
                         </div>
                         <div class="dgn-controls-footer">
                             <button id="dangan-load-truth-bullets-btn" class="dangan-trial-start-btn dgn-controls-footer-btn" style="display:none" type="button" aria-label="Load Truth Bullets">Load Truth Bullets</button>
+                            <div class="dgn-controls-exit">
+                                <button id="dangan-suspend-trial-btn" class="dgn-controls-footer-btn" type="button" title="Step out of the trial. Resume it later from Begin Class Trial.">Suspend Trial</button>
+                                <button id="dangan-leave-trial-btn" class="dgn-controls-footer-btn" type="button" title="End the trial and clear its progress.">Leave Trial</button>
+                            </div>
                         </div>
                     </div>
                     ${isGroupChat() ? `
@@ -2323,7 +2362,7 @@ ${historyText}
             let displayPlan = (gcpSlots.length
                 ? gcpSlots.map(s => s.name)
                 : (plan ? [...plan] : []))
-                .filter(n => !isMonokuma(n));
+                .filter(n => !isNonPlayer(n));
             const playerName = getPlayerName();
             if (playerName && !displayPlan.some(n => normalizeSeatName(n) === normalizeSeatName(playerName))) {
                 displayPlan.push(playerName);
@@ -2347,7 +2386,7 @@ ${historyText}
         if (isGroupChat()) {
             async function buildFreshPlan() {
                 silencedSeats.clear();
-                const allMembers = getChatCardMembers().map(m => m.name).filter(Boolean);
+                const allMembers = getChatCardMembers().map(m => m.name).filter(Boolean).filter(n => !isNonPlayer(n));
                 const seated = [];
                 for (const name of allMembers) {
                     if (isCharacterMuted(name)) {
@@ -2413,16 +2452,17 @@ ${historyText}
         notification.querySelector('#dangan-load-truth-bullets-btn').onclick = () => {
             showTruthBulletLoadoutModal();
         };
+        notification.querySelector('#dangan-suspend-trial-btn').onclick = () => {
+            void onSuspendRequest?.();
+        };
+        notification.querySelector('#dangan-leave-trial-btn').onclick = () => {
+            void onLeaveRequest?.();
+        };
         notification.querySelector('#dangan-start-mpdebate-btn').onclick = () => {
             notification.remove();
             void startMassPanicDebateGenerated();
         };
         notification.querySelector('#dangan-start-hangman-btn').onclick = () => {
-            // #region debug-point E:hangman-button
-            reportFullscreenOverlayDebug("E", "trialManager.js:#dangan-start-hangman-btn", "Clicked Hangman's Gambit trial-panel button", {
-                hasCallback: typeof onStartHangmansGambit === "function",
-            });
-            // #endregion
             notification.remove();
             onStartHangmansGambit?.();
         };
@@ -2456,20 +2496,10 @@ ${historyText}
             onStartPunishmentTime?.({ characterName: speakerName });
         };
         notification.querySelector('#dangan-start-qtime-btn').onclick = () => {
-            // #region debug-point E:qtime-button
-            reportFullscreenOverlayDebug("E", "trialManager.js:#dangan-start-qtime-btn", "Clicked Question Time trial-panel button", {
-                hasCallback: typeof onStartQuestionTime === "function",
-            });
-            // #endregion
             notification.remove();
             onStartQuestionTime?.();
         };
         notification.querySelector('#dangan-start-qtruth-btn').onclick = () => {
-            // #region debug-point E:qtruth-button
-            reportFullscreenOverlayDebug("E", "trialManager.js:#dangan-start-qtruth-btn", "Clicked Question Truth trial-panel button", {
-                hasCallback: typeof onStartQuestionTruth === "function",
-            });
-            // #endregion
             notification.remove();
             onStartQuestionTruth?.();
         };
@@ -2834,15 +2864,16 @@ ${historyText}
 
         await promptMinigameTutorial("nonStopDebate");
 
-        const speakers = getChatCardMembers().map(s => s.name).filter(Boolean).filter(n => !isCharacterDead(n) && !isCharacterMissing(n) && !isSilenced(n) && !isMonokuma(n));
+        const speakers = getChatCardMembers().map(s => s.name).filter(Boolean).filter(n => !isCharacterDead(n) && !isCharacterMissing(n) && !isSilenced(n) && !isNonPlayer(n));
         const speakerPool = speakers.length ? speakers : ['???'];
 
+        debateHistoryBeforeDebate = [...persistentDebateHistory];
         persistentDebateHistory = [];
         debateSeatingPlan = null;
         currentDebateSections = Math.min(24, Math.max(1, list.length));
         preparedDebateSections = list.slice(0, currentDebateSections).map(({ text, speaker, whiteNoise }) => {
             // If an explicit speaker is dead or is Monokuma, pick a living one instead
-            const speakerName = (speaker && !isCharacterDead(speaker) && !isCharacterMissing(speaker) && !isMonokuma(speaker))
+            const speakerName = (speaker && !isCharacterDead(speaker) && !isCharacterMissing(speaker) && !isNonPlayer(speaker))
                 ? speaker
                 : speakerPool[Math.floor(Math.random() * speakerPool.length)];
             const isAgree  = /\(\([^)]+\)\)/.test(text);
@@ -3070,7 +3101,9 @@ ${historyText}
     }
 
     function portraitSlotHeightPx(name) {
-        const cm = getCharacterHeightCm(name);
+        // Outside trials a host with no height on their card is mascot-sized.
+        const cm = getCharacterHeightCm(name)
+            || (!trialActive && isHostCharacter?.(name) ? 90 : null);
         if (!cm) return BASE_PORTRAIT_PX;
         const scale = Math.min(1.45, Math.max(0.55, cm / AVG_HEIGHT_CM));
         return Math.round(BASE_PORTRAIT_PX * scale);
@@ -3718,8 +3751,14 @@ ${historyText}
         // object isn't readable yet.
         const full = getFullGroupMemberNames().filter(n => n && !isAssistantLikeName(n));
         const source = full.length ? full : getChatCardMembers().map(m => m.name);
+        // A trial held in the main chat shares the group with everyone, so seat
+        // only the chosen participants.
+        const roster = trialActive ? (getTrialRoster?.() || []) : [];
+        const rosterKeys = new Set(roster.map(n => normalizeLooseName(n)));
         const members = source
             .filter(Boolean)
+            .filter(n => !rosterKeys.size || rosterKeys.has(normalizeLooseName(n)))
+            .filter(n => !isNonPlayer(n))
             .filter(n => !isCharacterMuted(n) || isCharacterDead(n));
         const playerName = getPlayerName();
         if (playerName && !members.some(n => normalizeLooseName(n) === normalizeLooseName(playerName))) {
@@ -3771,16 +3810,16 @@ ${historyText}
         if (!debateSeatingPlan?.length && isGroupChat()) {
             const isMpd = currentState === TrialPhases.MASS_PANIC_DEBATE;
             const groupMembers = getChatCardMembers().map(m => m.name).filter(Boolean)
-                .filter(n => (!isCharacterMuted(n) || isCharacterDead(n)) && !isMonokuma(n));
+                .filter(n => (!isCharacterMuted(n) || isCharacterDead(n)) && !isNonPlayer(n));
             let speakerNames;
             if (groupMembers.length) {
                 speakerNames = groupMembers;
             } else if (isMpd) {
                 speakerNames = [...new Set(
                     (mpdScenarios || []).flatMap(s => (s.texts || []).map(t => t.speaker)).filter(Boolean)
-                )].filter(n => !isMonokuma(n));
+                )].filter(n => !isNonPlayer(n));
             } else {
-                speakerNames = (preparedDebateSections || []).map(s => s.speakerName).filter(Boolean).filter(n => !isMonokuma(n));
+                speakerNames = (preparedDebateSections || []).map(s => s.speakerName).filter(Boolean).filter(n => !isNonPlayer(n));
             }
             const playerName = getPlayerName();
             if (playerName) speakerNames.push(playerName);
@@ -4340,6 +4379,19 @@ ${historyText}
             if (debateOverlay) debateOverlay.appendChild(introEl);
             else document.body.appendChild(introEl);
 
+            // V3-style fan-out: the evidence tags spring out of the cylinder one
+            // after another. Uses `transform` so it composes with the items'
+            // `translate` offsets.
+            if (!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) {
+                introEl.querySelectorAll('.dangan-bullet-intro-item').forEach((item, i) => {
+                    item.animate([
+                        { transform: 'translateX(-240px) rotate(-28deg) scale(0.4)', opacity: 0 },
+                        { transform: 'translateX(14px) rotate(2deg) scale(1.04)', opacity: 1, offset: 0.7 },
+                        { transform: 'none', opacity: 1 },
+                    ], { duration: 380, delay: 120 + i * 55, easing: 'cubic-bezier(.2,.9,.3,1)', fill: 'backwards' });
+                });
+            }
+
             // Prevent clicks on the intro from firing truth bullets on the overlay behind it
             introEl.addEventListener('click', e => e.stopPropagation());
 
@@ -4670,7 +4722,7 @@ ${historyText}
                 }
 
                 const dt    = Math.min(now - lastNow, 100);
-                const delta = dt * speedModifier;
+                const delta = debateDelta(dt);
                 lastNow  = now;
                 elapsed += delta;
 
@@ -4998,6 +5050,7 @@ ${historyText}
             startSpeakerShiftParade(prevSpeaker, speakerName, emotion);
         }
 
+        startChunkCamera();
         showStatementChunk({
             text: part.text,
             isWeakPoint: Boolean(part.isWeakPoint),
@@ -5157,43 +5210,22 @@ ${historyText}
         clearAllWhiteNoise();
 
         const el = document.createElement('div');
-        el.className = 'dangan-floating-statement dangan-statement-single';
+        el.className = 'dangan-floating-statement dangan-statement-single nsd-v3';
         const w = window.innerWidth || 1200;
         el.style.width = `${Math.min(Math.round(w * 0.82), 980)}px`;
         if (speakerName) el.dataset.speakerName = String(speakerName);
         const emoFont = getEmotionFont?.(emotion, speakerName);
         if (emoFont) el.style.fontFamily = emoFont;
         const rawText = stripSurroundingQuotes(String(text || ''));
-        const hasAgreeText = /\(\([^)]+\)\)/.test(rawText);
-        const cleanedText = rawText.replace(/\[\[|\]\]/g, '').replace(/\(\(|\)\)/g, '');
-
-        if (isWeakPoint || hasAgreeText) {
-            // Walk the raw text, escape each plain segment once, wrap weak spans once.
-            // Never call escapeHtml twice on the same content (avoids &amp;amp; etc.).
-            let html = '';
-            let lastIndex = 0;
-            // Mutual exclusivity: if agree marker present, strip any weak point brackets first
-            let renderText = rawText;
-            if (hasAgreeText && /\[\[[^\]]+\]\]/.test(renderText)) {
-                renderText = renderText.replace(/\[\[\s*([^\]]+?)\s*\]\]/g, '$1');
-            }
-            const tokenRegex = /\[\[\s*([^\]]+?)\s*\]\]|\(\(\s*([^)]+?)\s*\)\)/gi;
-            let match;
-            while ((match = tokenRegex.exec(renderText)) !== null) {
-                html += escapeHtml(renderText.slice(lastIndex, match.index));
-                if (match[1] !== undefined) {
-                    html += `<span class="dangan-weak-point">${escapeHtml(match[1].trim())}</span>`;
-                } else {
-                    html += `<span class="dangan-agree-text">${escapeHtml(match[2].trim())}</span>`;
-                }
-                lastIndex = match.index + match[0].length;
-            }
-            html += escapeHtml(renderText.slice(lastIndex));
-            el.innerHTML = html;
-        } else {
-            el.textContent = cleanedText;
-        }
+        // V3 layout: mixed word sizes, stacked/tilted/vertical lines. Weak
+        // brackets only count when this part is the weak point (a column picked
+        // at random has no markup — the whole statement is the target then).
+        const layoutSource = isWeakPoint ? rawText : rawText.replace(/\[\[|\]\]/g, '');
+        const stmtLayout = layoutStatement(layoutSource);
+        el.innerHTML = renderStatementHtml(stmtLayout, escapeHtml);
+        el.dataset.layout = stmtLayout.layout;
         debateOverlay.appendChild(el);
+        fitStatementToScreen(el);
 
         if (isWeakPoint) {
             const wp = el.querySelector('.dangan-weak-point');
@@ -5246,7 +5278,10 @@ ${historyText}
             ? WN_PATTERNS[Math.floor(Math.random() * WN_PATTERNS.length)]
             : null;
 
-        const motionMode = Math.random() < 0.18 ? 'pov' : 'drift';
+        // drift: slides sideways; pov: quick push toward camera; swoop: flies in
+        // from behind the camera in 3D, settles, then flies past at the end.
+        const motionRoll = Math.random();
+        const motionMode = motionRoll < 0.12 ? 'pov' : motionRoll < 0.52 ? 'swoop' : 'drift';
         const dir = Math.random() < 0.5 ? -1 : 1;
         const driftX = dir * Math.round(w * 0.11);
         // Suppress rotation for structured patterns so WN placement reads clearly
@@ -5255,9 +5290,10 @@ ${historyText}
         const endX = startX + driftX;
         const endY = startY + (motionMode === 'drift' ? Math.round(Math.random() * 16 - 8) : Math.round(Math.random() * 10 - 5));
 
-        const duration = motionMode === 'drift'
-            ? (6600 + Math.floor(Math.random() * 1500))
-            : (1800 + Math.floor(Math.random() * 450));
+        const duration = motionMode === 'pov'
+            ? (1800 + Math.floor(Math.random() * 450))
+            : (6600 + Math.floor(Math.random() * 1500));
+        const swoopTilt = (Math.random() * 2 - 1) * 22; // rotateY on entry
         let rafId = 0;
         let cancelled = false;
         let lastNow = performance.now();
@@ -5288,7 +5324,7 @@ ${historyText}
 
                 // Variable time step based on speedModifier (capped to prevent tab-switch jumps)
                 const dt = Math.min(now - lastNow, 100);
-                const delta = dt * speedModifier;
+                const delta = debateDelta(dt);
                 lastNow = now;
                 elapsed += delta;
 
@@ -5309,10 +5345,27 @@ ${historyText}
                 if (p < 0.12) opacity = p / 0.12;
                 else if (p > 0.86) opacity = Math.max(0, (1 - p) / 0.14);
 
+                let depth = '';
+                if (motionMode === 'swoop') {
+                    // 0–18%: in from z=700 (huge, blurred); 88–100%: out past the camera.
+                    let z = 0, ry = 0, blur = 0;
+                    if (p < 0.18) {
+                        const q = 1 - Math.pow(1 - p / 0.18, 3);
+                        z = 700 * (1 - q); ry = swoopTilt * (1 - q); blur = 6 * (1 - q);
+                        opacity = Math.min(1, p / 0.06);
+                    } else if (p > 0.88) {
+                        const q = Math.pow((p - 0.88) / 0.12, 2);
+                        z = 520 * q; ry = -swoopTilt * 0.6 * q; blur = 5 * q;
+                        opacity = Math.max(0, 1 - q);
+                    }
+                    depth = ` perspective(900px) translateZ(${z.toFixed(1)}px) rotateY(${ry.toFixed(2)}deg)`;
+                    el.style.filter = blur > 0.05 ? `blur(${blur.toFixed(2)}px)` : '';
+                }
+
                 el.style.opacity = String(opacity);
                 const shake = isScreaming ? (Math.sin(now / 28) * 2.2) : 0;
                 const shakeY = isScreaming ? (Math.cos(now / 24) * 1.6) : 0;
-                el.style.transform = `translate(${x + shake}px, ${y + shakeY}px) translate(-50%, -50%) rotate(${rot}deg) scale(${scale})`;
+                el.style.transform = `translate(${x + shake}px, ${y + shakeY}px) translate(-50%, -50%)${depth} rotate(${rot}deg) scale(${scale})`;
 
                 if (p >= 1) {
                     el.remove();
@@ -5339,6 +5392,77 @@ ${historyText}
 
             rafId = requestAnimationFrame(frame);
         });
+    }
+
+    // ── Per-line camera drift ────────────────────────────────────────────────
+    // V3 slowly pans/zooms on the speaker for every line. Uses the individual
+    // `scale` / `translate` / `rotate` properties so it composes with the
+    // speaker-change cam shots (which animate `transform`).
+    const CHUNK_CAM_PRESETS = [
+        { s: 1.06, x: 0,   y: 0,  r: 0 },     // push in
+        { s: 1.04, x: -28, y: 0,  r: 0 },     // pan left
+        { s: 1.04, x: 28,  y: 0,  r: 0 },     // pan right
+        { s: 1.08, x: 0,   y: 10, r: -1.6 },  // dutch tilt
+        { s: 1.08, x: 0,   y: 10, r: 1.6 },
+        { s: 1.0,  x: 0,   y: 0,  r: 0 },     // pull back
+    ];
+    const chunkCam = { s: 1, x: 0, y: 0, r: 0, raf: 0, lastPreset: -1 };
+
+    function applyChunkCamera(stage) {
+        stage.style.scale = chunkCam.s.toFixed(4);
+        stage.style.translate = `${chunkCam.x.toFixed(2)}px ${chunkCam.y.toFixed(2)}px`;
+        stage.style.rotate = `${chunkCam.r.toFixed(3)}deg`;
+    }
+
+    function resetChunkCamera() {
+        if (chunkCam.raf) cancelAnimationFrame(chunkCam.raf);
+        chunkCam.raf = 0;
+        Object.assign(chunkCam, { s: 1, x: 0, y: 0, r: 0 });
+        const stage = debateOverlay?.querySelector('.dangan-trial-portrait-stage');
+        if (stage) { stage.style.scale = ''; stage.style.translate = ''; stage.style.rotate = ''; }
+    }
+
+    function startChunkCamera() {
+        const stage = debateOverlay?.querySelector('.dangan-trial-portrait-stage');
+        if (!stage) return;
+        if (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) return;
+        let idx;
+        do { idx = Math.floor(Math.random() * CHUNK_CAM_PRESETS.length); } while (idx === chunkCam.lastPreset);
+        chunkCam.lastPreset = idx;
+        const target = CHUNK_CAM_PRESETS[idx];
+        const from = { s: chunkCam.s, x: chunkCam.x, y: chunkCam.y, r: chunkCam.r };
+        const DURATION = 6500;
+        let elapsed = 0;
+        let last = performance.now();
+        if (chunkCam.raf) cancelAnimationFrame(chunkCam.raf);
+        const tick = (now) => {
+            if (currentState !== TrialPhases.NON_STOP_DEBATE) { resetChunkCamera(); return; }
+            elapsed += debateDelta(Math.min(now - last, 100));
+            last = now;
+            const p = Math.min(1, elapsed / DURATION);
+            const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+            chunkCam.s = from.s + (target.s - from.s) * e;
+            chunkCam.x = from.x + (target.x - from.x) * e;
+            chunkCam.y = from.y + (target.y - from.y) * e;
+            chunkCam.r = from.r + (target.r - from.r) * e;
+            applyChunkCamera(stage);
+            chunkCam.raf = p < 1 ? requestAnimationFrame(tick) : 0;
+        };
+        chunkCam.raf = requestAnimationFrame(tick);
+    }
+
+    // Shrinks a laid-out statement so its longest line (or, for vertical
+    // layouts, its height once rotated) stays on screen. Weak spans can't
+    // wrap, so long ones need this.
+    function fitStatementToScreen(el) {
+        const inner = el.querySelector('.nsd-stmt-inner');
+        if (!inner) return;
+        const vertical = el.dataset.layout === 'vertical';
+        const extent = inner.offsetWidth;
+        const room = vertical ? window.innerHeight * 0.78 : Math.min(el.offsetWidth, window.innerWidth * 0.92);
+        if (!extent || extent <= room) return;
+        const base = parseFloat(getComputedStyle(el).fontSize) || 46;
+        el.style.fontSize = `${Math.max(18, Math.floor(base * room / extent))}px`;
     }
 
     function isAllCapsLine(text) {
@@ -5503,7 +5627,7 @@ ${historyText}
                 wnAnimPool.splice(i, 1); continue;
             }
             const dt = Math.min(now - it.lastNow, 100);
-            it.elapsed += dt * speedModifier;
+            it.elapsed += debateDelta(dt);
             it.lastNow = now;
             const p   = Math.min(1, it.elapsed / it.duration);
             const x   = it.startX + it.driftX * p;
@@ -5805,10 +5929,13 @@ ${historyText}
         const targetY = rect.top + rect.height / 2;
         
         playSfx?.(getSfx?.().hit || 'hit');
-        
-        // 2. Burst effect on the statement chunk
+
         const parentStatement = wp.closest('.dangan-floating-statement');
-        if (parentStatement) {
+        const bannerType = (isPerjury || currentBullet?.isLie) ? 'perjury' : 'counter';
+
+        // 2. Counter hits get the V3 refute sequence (it shatters the statement
+        //    itself); perjury/lie hits keep the old burst + banner.
+        if (bannerType !== 'counter' && parentStatement) {
             createBurstEffect(targetX, targetY);
             parentStatement.style.transition = 'all 0.2s ease-out';
             parentStatement.style.transform += ' scale(1.4)';
@@ -5823,12 +5950,39 @@ ${historyText}
         const xpAmount = xpRewards?.[xpKey] ?? (isMpd ? 18 : 15);
         awardXp?.(xpAmount, isMpd ? 'mass panic debate completed' : 'non-stop debate completed');
 
-        // 4. Show COUNTER, PERJURY, or LIE banner
-        const bannerType = (isPerjury || currentBullet?.isLie) ? 'perjury' : 'counter';
-        showTrialBanner(bannerType).then(() => {
+        // 4. Show the refute sequence, or the PERJURY / LIE banner
+        const refutedText = wp.textContent;
+        const played = bannerType === 'counter'
+            ? playCounterRefute(wp, parentStatement, targetX, targetY)
+            : showTrialBanner(bannerType);
+        played.then(() => {
             setState(TrialPhases.TRUTH_BULLET_EXPLANATION);
-            showExplanationUI(currentBullet, wp.textContent);
+            showExplanationUI(currentBullet, refutedText);
         });
+    }
+
+    async function playCounterRefute(wp, statement, x, y) {
+        refuteFreeze = true;
+        try {
+            // No player portrait on the Counter band for now (counter.png alone).
+            await playRefuteSequence({
+                weakPointEl: wp,
+                statementEl: statement,
+                sceneEl: debateOverlay,
+                impactX: x,
+                impactY: y,
+                counterImgUrl: getAssetUrl('counter.png'),
+                isMpd: currentState === TrialPhases.MASS_PANIC_DEBATE,
+                playSfx: (key) => playSfx?.(key),
+                playVoice: () => playSfx?.(getSfx?.().vic_Monok_01_022 || 'vic_Monok_01_022'),
+            });
+        } catch (err) {
+            console.warn('[Dangan][Trial] refute sequence failed, falling back to banner:', err);
+            await showTrialBanner('counter').catch(() => {});
+        } finally {
+            refuteFreeze = false;
+            statement?.remove();
+        }
     }
 
     function resolveAgreeTextAtClick(cx, cy) {
@@ -6492,6 +6646,7 @@ JUDGMENT RULES:
             const finalSpeakers = pool
                 .filter(s => !isGroupMemberMuted(s.name))
                 .filter(s => !isCharacterDead(s.name))
+                .filter(s => !isNonPlayer(s.name))
                 .sort((a, b) => b.weight - a.weight);
             
             console.log(`[Dangan][Trial] Final speaker pool:`, finalSpeakers.map(s => s.name));
@@ -7376,9 +7531,62 @@ JUDGMENT RULES:
                 extensionSettings[extensionName].trials[key].persistentDebateHistory = [];
                 extensionSettings[extensionName].trials[key].trialTopic = '';
                 extensionSettings[extensionName].trials[key].trialGoal  = '';
+                delete extensionSettings[extensionName].trials[key].suspended;
                 saveSettingsDebounced();
             }
         }
+    }
+
+    // Step out of the trial but keep its saved phase, history and context so
+    // resumeTrial() can pick it back up. setState() is bypassed on purpose: it
+    // would persist IDLE over the saved phase.
+    function suspendTrial() {
+        if (!trialActive) return false;
+        const key = getTrialPersistenceKey();
+        const trials = (extensionSettings[extensionName].trials ??= {});
+        const entry = (trials[key] ??= {});
+        if (!entry.currentTrialState || entry.currentTrialState === TrialPhases.IDLE) {
+            entry.currentTrialState = currentState === TrialPhases.IDLE ? TrialPhases.PRE_DEBATE : currentState;
+        }
+        entry.suspended = true;
+        entry.persistentDebateHistory = persistentDebateHistory;
+        entry.trialTopic = trialContext.topic;
+        entry.trialGoal  = trialContext.goal;
+        saveSettingsDebounced?.();
+        console.log(`[Dangan][Trial] Suspending trial for ${key} at ${entry.currentTrialState}.`);
+
+        trialActive = false;
+        debateSeatingPlan = null;
+        unmountTrialAesthetic();
+        destroyGroupChatPortraits();
+        document.getElementById('dangan-trial-pre-debate-notif')?.remove();
+        document.getElementById('dangan-trial-context-panel')?.remove();
+        // Saved above; a new trial started over this one must not inherit it.
+        persistentDebateHistory = [];
+        trialContext = { topic: '', goal: '', suspects: [] };
+        currentState = TrialPhases.IDLE;
+        try { onTrialStateChange?.(TrialPhases.IDLE, entry.currentTrialState); } catch {}
+        syncUI();
+        syncPrompt();
+        initGroupChatPortraits();
+        return true;
+    }
+
+    function resumeTrial() {
+        const entry = extensionSettings[extensionName]?.trials?.[getTrialPersistenceKey()];
+        if (!entry?.suspended) return false;
+        delete entry.suspended;
+        saveSettingsDebounced?.();
+        try { destroyGroupChatPortraits(); } catch {}
+        initFromPersistentState();
+        if (!trialActive) return false;
+        setTimeout(() => {
+            if (!trialActive || !isGroupChat()) return;
+            debateSeatingPlan = null;
+            try { destroyGroupChatPortraits(); } catch {}
+            initGroupChatPortraits();
+        }, 500);
+        return true;
     }
 
     function initFromPersistentState() {
@@ -7394,6 +7602,12 @@ JUDGMENT RULES:
         currentState = TrialPhases.IDLE;
         persistentDebateHistory = [];
         trialContext = { topic: '', goal: '', suspects: [] };
+
+        // A suspended trial stays on disk until it is resumed.
+        if (saved?.suspended) {
+            syncUI();
+            return;
+        }
 
         if (Array.isArray(savedHistory)) {
             persistentDebateHistory = savedHistory;
@@ -7919,6 +8133,12 @@ JUDGMENT RULES:
         el.style.cssText = `width:${sw}px;height:${portraitSlotHeightPx(name)}px;`;
         if (isDead) el.classList.add('gcp-dead');
         if (isMissing) el.classList.add('gcp-missing');
+        // A called-in host (Monokuma…) rises from the bottom as they arrive.
+        const hostEntrance = !trialActive ? getHostEntranceElapsed?.(name) : null;
+        if (hostEntrance != null) {
+            el.classList.add('gcp-host-enter');
+            el.style.setProperty('--host-enter-elapsed', String(hostEntrance));
+        }
         if (trialActive && isGroupChat() && needsGymnasticsHorse(name)) {
             el.classList.add('has-horse');
             const horse = document.createElement('img');
@@ -8026,7 +8246,9 @@ JUDGMENT RULES:
                 // If destroyed by a concurrent call while we were awaiting sprites, abort.
                 if (gcpStage !== stageRef) return;
 
-                gcpSlots = resolved.filter(r => r && !isMonokuma(r.name)).map(({ name, url, isDead, isMissing }, i) =>
+                // Trials stage Monokuma on his own overlay; elsewhere he
+                // stands with everyone else.
+                gcpSlots = resolved.filter(r => r && !(trialActive && isNonPlayer(r.name))).map(({ name, url, isDead, isMissing }, i) =>
                     gcpMakeSlot(name, url, isDead, i, isMissing));
 
                 // Mark the player's slot (Prome VN Extension) so it uses the Prome sprite.
@@ -8073,6 +8295,18 @@ JUDGMENT RULES:
                     const url = await getSpriteUrl(slot.name, emotion).catch(() => null);
                     if (url && gcpStage === stageRef) slot.img.src = url;
                 }));
+
+                // Outside trials, a sprite picked in the expression picker
+                // (on the overworld or here) wins until their next line.
+                if (!trialActive && typeof getPickedSprite === 'function') {
+                    for (const slot of gcpSlots) {
+                        if (slot.isDead || slot.isPlayer || slot.isMissing || !slot.img) continue;
+                        const picked = getPickedSprite(slot.name)?.path;
+                        if (!picked) continue;
+                        if (typeof applyPickedSprite === 'function') applyPickedSprite(slot.img, picked);
+                        else slot.img.src = picked;
+                    }
+                }
 
                 // Snap to last speaker without animation. If the last message was the
                 // human player's, target the isPlayer slot directly — its name in
@@ -8158,6 +8392,7 @@ JUDGMENT RULES:
         }
         // Notify Trial Controls seating list to re-render with the freshly built gcpSlots
         notifyGcpSeatingListRenderers();
+        try { onPortraitsBuilt?.(); } catch (err) { console.warn('[Dangan][GCP] onPortraitsBuilt failed:', err); }
     }
 
     function updateGroupChatSpeaker(speakerName) {
@@ -8165,8 +8400,8 @@ JUDGMENT RULES:
         // Keep the CG label in sync with whichever message is highlighted.
         if (cgNameTextEl) cgNameTextEl.textContent = currentSpeaker || '';
 
-        // ── Monokuma: always handled via overlay, never via carousel ──────────
-        if (isMonokuma(speakerName)) {
+        // ── Monokuma: in trials, handled via overlay, never via carousel ──────
+        if (trialActive && isMonokuma(speakerName)) {
             const monoEmo = characterEmotions.get(speakerName) || characterEmotions.get('Monokuma') || 'neutral';
             showMonokumaOverlay(monoEmo);
             // Kick off GCP init in the background so the carousel is ready when
@@ -8301,6 +8536,19 @@ JUDGMENT RULES:
         document.body.classList.remove('dangan-gcp-active', 'dangan-gcp-visible');
     }
 
+    // Dismissed hosts sink back down before the stage is rebuilt without them.
+    function playHostExit(names) {
+        if (trialActive || !gcpSlots.length) return Promise.resolve();
+        const keys = new Set((names || []).map(n => normalizeSeatName(n)));
+        const slots = gcpSlots.filter(s => keys.has(normalizeSeatName(s.name)));
+        if (!slots.length) return Promise.resolve();
+        for (const s of slots) {
+            s.el.classList.remove('gcp-host-enter');
+            s.el.classList.add('gcp-host-leave');
+        }
+        return new Promise(r => setTimeout(r, 380));
+    }
+
     function refreshGroupChatPortraits() {
         if (trialActive) return Promise.resolve();
         const savedFloat = gcpCurrentFloat;
@@ -8332,6 +8580,8 @@ JUDGMENT RULES:
         stop: () => {
             endTrial();
         },
+        suspendTrial,
+        resumeTrial,
         onChatChanged: () => {
             // Remove the existing panel so it can rebuild with fresh members/context
             document.getElementById('dangan-trial-pre-debate-notif')?.remove();
@@ -8363,6 +8613,7 @@ JUDGMENT RULES:
         endTrial,
         initGroupChatPortraits,
         refreshGroupChatPortraits,
+        playHostExit,
         updateGroupChatSpeaker,
         setGroupChatPortraitsVisible,
         destroyGroupChatPortraits,
@@ -8383,10 +8634,15 @@ JUDGMENT RULES:
         getGcpSpeakerImg:  () => gcpSlots[Math.round(gcpCurrentFloat)]?.img  ?? null,
         getGcpSpeakerName: () => gcpSlots[Math.round(gcpCurrentFloat)]?.name ?? null,
         getGcpPlayerImg:   () => gcpSlots.find(s => s.isPlayer)?.img ?? null,
+        // Everyone standing on the stage (dead and missing aside), for the
+        // expression picker.
+        getGcpSlotsForPicker: () => gcpSlots
+            .filter(s => s?.name && s.img && !s.isDead && !s.isMissing)
+            .map(s => ({ name: s.name, img: s.img, isPlayer: !!s.isPlayer })),
         isTrialActive:     () => !!trialActive,
         isGcpStageActive:  () => !!(gcpStage && gcpSlots.length),
         getGcpLivingSlots: () => gcpSlots
-            .filter(s => s?.name && !s.isDead && !s.isMissing && !isMonokuma(s.name))
+            .filter(s => s?.name && !s.isDead && !s.isMissing && !isNonPlayer(s.name))
             .map(s => ({ name: s.name, img: s.img, isDead: !!s.isDead, isMissing: !!s.isMissing })),
         // Re-runs the flat (non-trial) GCP layout so the dynamic CSS var
         // --gcp-half-slot-height gets recomputed. Used when the user toggles
@@ -8408,7 +8664,7 @@ JUDGMENT RULES:
                     const srcFolderRaw  = decodeURIComponent(parts[parts.length - 2]).toLowerCase();
                     // Monokuma is handled via overlay; route his expression to the overlay img
                     // so it updates there instead of falling through to a carousel slot.
-                    if (srcFolderRaw === 'monokuma') {
+                    if (trialActive && srcFolderRaw === 'monokuma') {
                         return document.getElementById('dangan-monokuma-overlay')?.querySelector('img') ?? null;
                     }
                     // Normalize hyphens/underscores to spaces so "alex-rivera" matches slot name "alex rivera"

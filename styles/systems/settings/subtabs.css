@@ -1,0 +1,78 @@
+/* =========================
+   Settings sub-tabs
+   One section of Monopad Settings at a time.
+   ========================= */
+
+.settings-subtabs {
+    display: flex;
+    gap: 6px;
+    padding: 12px 14px 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+}
+
+.settings-subtabs::-webkit-scrollbar {
+    display: none;
+}
+
+.settings-subtab {
+    flex: 1 0 auto;
+    min-height: 34px;
+    padding: 7px 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    color: rgba(255, 255, 255, 0.55);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+
+.settings-subtab:hover,
+.settings-subtab:focus-visible {
+    background: rgba(126, 173, 255, 0.08);
+    color: rgba(255, 255, 255, 0.85);
+    outline: none;
+}
+
+.settings-subtab.active {
+    background: linear-gradient(90deg, rgba(43, 136, 255, 0.3), rgba(70, 214, 255, 0.22));
+    border-color: rgba(120, 220, 255, 0.55);
+    color: #fff;
+}
+
+.settings-grid {
+    grid-template-columns: 1fr;
+}
+
+.settings-grid > .settings-section[data-settings-tab]:not(.is-active-tab) {
+    display: none;
+}
+
+/* Sections used to share a two-column grid and scrolled internally; shown
+   alone, they take the page's own scroll. */
+.settings-section-ai,
+.settings-section-trials {
+    max-height: none;
+    overflow-y: visible;
+}
+
+@media (max-width: 520px) {
+    .settings-subtabs {
+        padding: 10px 10px 0;
+    }
+
+    .settings-subtab {
+        padding: 7px 12px;
+        font-size: 11px;
+    }
+
+    .settings-section-ai {
+        max-height: none;
+    }
+}

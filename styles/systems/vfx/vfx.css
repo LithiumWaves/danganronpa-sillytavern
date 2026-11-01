@@ -64,6 +64,30 @@
     text-transform: uppercase;
 }
 
+/* Which character's effects are being set. */
+.monopad-vfx-char-pick {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#monopad-vfx-char-select {
+    max-width: 240px;
+    padding: 2px 6px;
+    border: 1px solid rgba(117, 241, 255, 0.35);
+    border-radius: 3px;
+    background: rgba(5, 14, 25, 0.9);
+    color: #cfe6ff;
+    font-family: "Rajdhani", monospace;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    text-transform: none;
+}
+
+#monopad-vfx-char-select:focus-visible {
+    outline: 1px solid #7ab8ff;
+}
+
 .monopad-vfx-header-controls {
     display: flex;
     align-items: center;

@@ -8,6 +8,9 @@
  */
 
 import { promptMinigameTutorial } from "../core/onboarding/minigameGuides.js";
+import { beginMinigame } from "../core/skip/skipRegistry.js";
+
+const VOTE_ABORTED = Symbol("vote aborted");
 
 const VT_ID    = 'vt-overlay';
 const VT_STYLE = 'vt-style';
@@ -503,7 +506,16 @@ export function createVotingScreenController({
         document.head.appendChild(styleEl);
 
         // ── Phase 1: player selects ────────────────────────────────────────────
-        const playerVote = await runSelectionPhase(chars);
+        // Escape backs out before a vote is cast; the trial resumes as if
+        // voting never started.
+        let abortSelection = null;
+        const endSession = beginMinigame({ abort: () => abortSelection?.(), label: "the vote" });
+        const playerVote = await runSelectionPhase(chars, (fn) => { abortSelection = fn; });
+        endSession();
+        if (playerVote === VOTE_ABORTED) {
+            destroy();
+            return { guess: null, votes: {}, error: true, aborted: true };
+        }
 
         // ── Loading screen while NPC votes come in ─────────────────────────────
         let loadingEl = null;
@@ -580,7 +592,7 @@ export function createVotingScreenController({
 
     // ── Selection phase ──────────────────────────────────────────────────────────
 
-    function runSelectionPhase(chars) {
+    function runSelectionPhase(chars, onAbortReady) {
         return new Promise(resolve => {
             const living  = chars.filter(c => !c.dead && !c.missing);
             let selected  = living[0]?.name ?? null;
@@ -719,6 +731,7 @@ export function createVotingScreenController({
                 overlay.style.opacity    = '0';
                 setTimeout(() => { overlay.remove(); resolve(choice); }, 260);
             }
+            onAbortReady?.(() => settle(VOTE_ABORTED));
 
             function timerTick(ts) {
                 if (settled) return;

@@ -1,4 +1,5 @@
 import { promptMinigameTutorial, destroyMinigameGuideUi } from "../core/onboarding/minigameGuides.js";
+import { beginMinigame } from "../core/skip/skipRegistry.js";
 
 const AA_ID    = "dangan-aa-overlay";
 const AA_STYLE = "dangan-aa-style";
@@ -1778,9 +1779,35 @@ export function createArgumentArmamentController({
             }
 
             // ── End game ─────────────────────────────────────────
+            // Stops everything the fight has running (timers, music, dialogs).
+            function stopFight() {
+                ac.abort();
+                clearTimeout(spawnTimer);
+                clearInterval(reloadTimer);
+                clearTimeout(finalCountdownTimer);
+                finalCountdownTimer = null;
+                stopHeartbeat();
+                stopTimerAnimation();
+                stopGlobalTimer();
+                clearAllDialogs();
+                if (bgmAudio) { try { bgmAudio.pause(); bgmAudio.src = ''; } catch(_) {} bgmAudio = null; }
+            }
+
+            // Escape backs out: no BREAK, no reward or penalty.
+            function abortGame() {
+                if (isResolved) return;
+                isResolved = true;
+                endSession();
+                stopFight();
+                restoreTheme?.();
+                destroy();
+                resolve(null);
+            }
+
             function endGame(won) {
                 if (isResolved) return;
                 isResolved = true;
+                endSession();
                 ac.abort();
                 clearTimeout(spawnTimer);
                 clearInterval(reloadTimer);
@@ -1839,6 +1866,7 @@ export function createArgumentArmamentController({
             // ── Keyboard controls ─────────────────────────────────
             const ac = new AbortController();
             const { signal } = ac;
+            const endSession = beginMinigame({ abort: abortGame, label: "Argument Armament" });
 
             document.addEventListener('keydown', (e) => {
                 if (isResolved || tutorialActive) return;
