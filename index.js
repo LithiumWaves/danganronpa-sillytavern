@@ -48,7 +48,7 @@ import { CASE_PROMPT_KEY, buildCasePrompt } from "./core/case/casePrompts.js";
 import { openMonokumaFile } from "./truth/monokumaFile.js";
 import { openCaseFileEditor } from "./truth/caseFileEditor.js";
 import { RULES_PROMPT_KEY, RULE_SOURCES, RULE_SEVERITY, addRule, buildRuleBreakNote, buildRuleCheckPrompt, buildRulesPrompt, createDefaultRules, formatRulesList, mightBreakRule, normalizeRules, parseRuleCheckAnswer, parseRuleMarkers, ruleByNumber } from "./core/rules/schoolRules.js";
-import { openGameOver, openSuccessorPicker } from "./vfx/gameOver.js";
+import { openGameOver, openGameOverConfirm, openSuccessorPicker } from "./vfx/gameOver.js";
 import { playBloodSplash } from "./vfx/bloodSplash.js";
 import { DEFAULT_FINAL_CHAPTER, buildKnownSecretsPrompt, buildMastermindNote, buildWorldTruthBlock, buildWorldTruthPrompt, chapterStartReveals, describeWorldTruth, findSecretAtSpot, isMastermind, normalizeWorldTruth, parseWorldTruthResponse, revealFinalSecrets, revealSecret } from "./core/world/worldTruth.js";
 import { openWorldTruthView } from "./truth/worldTruthEditor.js";
@@ -9644,19 +9644,19 @@ async function showPlayerGameOver() {
     gameOverOpen = true;
     try {
         setPlayerDeath({ ...death, pendingGameOver: false });
-        for (;;) {
-            const choice = await openGameOver({ playSound: () => playSfx(new Audio(`${extensionFolderPath}/assets/sfx/etc/game-over.mp3`)) });
-            if (choice === "undo") {
-                if (await undoPlayerDeath(death)) return;
-                continue;
-            }
-            const next = await openSuccessorPicker({
-                personas: getTitleScreenPersonas().list.filter((p) => p.key !== user_avatar && normalizeName(p.name) !== normalizeName(death.name)),
-                classmates: listCaseCast().map((c) => ({ name: c.name, avatarUrl: classmateAvatarUrl(c.name) })),
-            });
-            if (!next) continue;
-            if (await continueAsSuccessor(next, death)) return;
-        }
+        // The screen stays up, still glitching, under the UNDO prompt and the
+        // picker; backing out of either returns to it.
+        await openGameOver({
+            playSound: () => playSfx(new Audio(`${extensionFolderPath}/assets/sfx/etc/game-over.mp3`)),
+            onUndo: () => undoPlayerDeath(death),
+            onContinue: async () => {
+                const next = await openSuccessorPicker({
+                    personas: getTitleScreenPersonas().list.filter((p) => p.key !== user_avatar && normalizeName(p.name) !== normalizeName(death.name)),
+                    classmates: listCaseCast().map((c) => ({ name: c.name, avatarUrl: classmateAvatarUrl(c.name) })),
+                });
+                return Boolean(next) && continueAsSuccessor(next, death);
+            },
+        });
     } finally {
         gameOverOpen = false;
     }
@@ -9675,13 +9675,13 @@ async function undoPlayerDeath(death) {
     const chat = ctx?.chat || [];
     const from = Number.isInteger(death.mesId) && death.mesId >= 0 ? death.mesId : Math.min(chat.length, Number(death.chatLength) || chat.length);
     const count = Math.max(0, chat.length - from);
-    const ok = await confirmOutsideMonopad({
-        title: "UNDO",
+    const ok = await openGameOverConfirm({
+        title: "UNDO?",
         message: count
-            ? `Rewind to before the violation? The last ${count} message${count === 1 ? "" : "s"} (the violation and Monokuma's punishment) will be deleted, and ${death.name} lives.`
-            : `${death.name} lives again. (There are no messages to remove.)`,
-        confirmLabel: "REWIND",
-        cancelLabel: "BACK",
+            ? `Rewind to before the violation? The last ${count} message${count === 1 ? " is" : "s are"} deleted and ${death.name} lives.`
+            : `${death.name} lives again. There are no messages to delete.`,
+        confirmLabel: "UNDO",
+        cancelLabel: "CANCEL",
     });
     if (!ok) return false;
     for (let i = 0; i < count && typeof ctx?.deleteLastMessage === "function"; i += 1) {
@@ -9693,25 +9693,22 @@ async function undoPlayerDeath(death) {
     return true;
 }
 
-// Plays on as someone else. A classmate becomes a persona made from their
-// card and stops being voiced by the AI.
+// Plays on as someone else. A classmate becomes your persona (one of that
+// name if you have it, else one made from their card), leaves the class
+// roster, and is removed from the group chat or only muted (next.kick).
+// Their messages stay either way.
 async function continueAsSuccessor(next, death) {
     try {
         if (next.type === "persona") {
             await setTitleScreenPersona(next.key);
         } else {
-            const ctx = window.SillyTavern?.getContext?.();
-            const card = (ctx?.characters || []).find((c) => c?.name === next.name);
-            let file = null;
-            if (card?.avatar) {
-                try {
-                    const resp = await fetch(`/characters/${encodeURIComponent(card.avatar)}`);
-                    if (resp.ok) file = new File([await resp.blob()], "avatar.png", { type: "image/png" });
-                } catch { /* default picture */ }
-            }
-            const description = [card?.description || card?.data?.description, card?.personality || card?.data?.personality].filter(Boolean).join("\n\n");
-            await createTitleScreenPersona({ name: next.name, description, file });
-            try { await executeSlashCommandsWithOptions(`/member-disable ${next.name}`, { handleParserErrors: true }); } catch { /* not a group */ }
+            const existing = getTitleScreenPersonas().list.find((p) => normalizeName(p.name) === normalizeName(next.name));
+            if (existing) await setTitleScreenPersona(existing.key);
+            else await createPersonaFromCard(next.name);
+            const command = next.kick === false ? "member-disable" : "member-remove";
+            try { await executeSlashCommandsWithOptions(`/${command} ${next.name}`, { handleParserErrors: true }); } catch { /* not a group */ }
+            // Off the roster: they're the player now, not a classmate.
+            if (characters.delete(normalizeName(next.name))) saveCharacters();
         }
     } catch (err) {
         notify({ tone: "error", title: "COULDN'T SWITCH", message: String(err?.message || err) });
@@ -9721,8 +9718,26 @@ async function continueAsSuccessor(next, death) {
     setPlayerDeath(null);
     try { socialPanelController?.renderSocialPanel?.(); } catch { /* not ready */ }
     try { overworldSceneController?.render?.(); } catch { /* not ready */ }
-    notify({ title: "THE STORY GOES ON", message: `You now play as ${getActivePersonaName()}. ${death.name} is gone.`, durationMs: 9000 });
+    try { renderMinimap(); } catch { /* not ready */ }
+    const left = next.type === "classmate" ? (next.kick === false ? ` ${next.name} is muted in the group chat.` : ` ${next.name} left the group chat.`) : "";
+    notify({ title: "THE STORY GOES ON", message: `You now play as ${getActivePersonaName()}. ${death.name} is gone.${left}`, durationMs: 9000 });
     return true;
+}
+
+// A persona made from a character card: its name, description and
+// personality, and its avatar as the picture.
+async function createPersonaFromCard(name) {
+    const ctx = window.SillyTavern?.getContext?.();
+    const card = (ctx?.characters || []).find((c) => c?.name === name);
+    let file = null;
+    if (card?.avatar) {
+        try {
+            const resp = await fetch(`/characters/${encodeURIComponent(card.avatar)}`);
+            if (resp.ok) file = new File([await resp.blob()], "avatar.png", { type: "image/png" });
+        } catch { /* default picture */ }
+    }
+    const description = [card?.description || card?.data?.description, card?.personality || card?.data?.personality].filter(Boolean).join("\n\n");
+    return createTitleScreenPersona({ name, description, file });
 }
 
 // ── Catching violations the AI didn't mark ──
@@ -18086,13 +18101,17 @@ function applyTitleScreenRoster(roster, { pruneOthers }) {
     try { socialPanelController?.renderSocialPanel?.(); } catch (_) {}
 }
 
-async function createStoryGroupChat(name, memberNames) {
+// The hosts join too, muted until they're called in (the host stage and
+// presence sync unmute them while they're on stage). Hosts don't count
+// toward the two members a story chat needs.
+async function createStoryGroupChat(name, memberNames, { hosts = [] } = {}) {
     const ctx = window.SillyTavern?.getContext?.();
     const stChars = Array.isArray(ctx?.characters) ? ctx.characters : [];
-    const members = memberNames
-        .map((n) => stChars.find((c) => c?.name === n)?.avatar)
-        .filter(Boolean);
+    const avatarOf = (n) => stChars.find((c) => c?.name === n)?.avatar;
+    const members = memberNames.map(avatarOf).filter(Boolean);
     if (members.length < 2) throw new Error("the story chat needs at least two characters");
+    const hostAvatars = [...new Set(hosts.map(avatarOf).filter(Boolean))];
+    for (const avatar of hostAvatars) if (!members.includes(avatar)) members.push(avatar);
     const chatId = ctx?.humanizedDateTime?.() || String(Date.now());
     const response = await fetch("/api/groups/create", {
         method: "POST",
@@ -18105,7 +18124,7 @@ async function createStoryGroupChat(name, memberNames) {
             hideMutedSprites: true,
             activation_strategy: 0,
             generation_mode: 0,
-            disabled_members: [],
+            disabled_members: hostAvatars,
             fav: false,
             chat_id: chatId,
             chats: [chatId],
@@ -18120,7 +18139,7 @@ async function createStoryGroupChat(name, memberNames) {
     return data.id;
 }
 
-async function finishTitleScreenNewGame({ fresh, mode, groupName, groupMembers, roster, hosts, persona, map, vnSkin, vnMode }) {
+async function finishTitleScreenNewGame({ fresh, mode, groupName, groupMembers, roster, hosts, hostMembers = [], persona, map, vnSkin, vnMode }) {
     const saveMode = mode === "single" ? SAVE_MODES.SINGLE : SAVE_MODES.MULTI;
     // The first NEW GAME on an install makes the first save.
     if (fresh || !saveStore.getActive()) {
@@ -18142,7 +18161,7 @@ async function finishTitleScreenNewGame({ fresh, mode, groupName, groupMembers, 
         console.warn("[Dangan][Title] persona switch failed:", e);
     }
     if (mode === "single") {
-        const groupId = await createStoryGroupChat(groupName, groupMembers);
+        const groupId = await createStoryGroupChat(groupName, groupMembers, { hosts: hostMembers });
         setMonopadSetting("singleChatGroupId", groupId);
         bindGroupToActiveSave(groupId);
         setTitleToggleSetting("singleChatOverworldEnabled", true);

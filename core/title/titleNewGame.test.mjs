@@ -64,10 +64,13 @@ function run() {
     });
     assert(hosted.hosts.join() === "Monomi", "picked hosts are carried");
     assert(hosted.roster.map((r) => r.name).join() === "A,Monokuma", "hosts are kept off the class roster");
+    assert(hosted.hostMembers.join() === "Monomi", "picked hosts join the story chat");
+    assert(single.hostMembers.join() === "Monokuma", "Auto's host joins the story chat");
     const auto = buildFinishPayload({
         fresh: false, mode: "multi", groupMembers: new Set(), roster: new Map([["A", ""], ["monokuma", ""]]), persona: "",
     });
     assert(auto.roster.map((r) => r.name).join() === "A", "Auto keeps Monokuma off the class roster");
+    assert(auto.hostMembers.length === 0, "no story chat, no host members");
 
     console.log("titleNewGame tests passed");
 }

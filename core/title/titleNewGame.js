@@ -143,6 +143,9 @@ export function buildFinishPayload(state) {
             .map(([name, ultimate]) => ({ name, ultimate: String(ultimate || "").trim() })),
         // Empty means Auto (the card named Monokuma).
         hosts,
+        // The hosts join the story chat (muted until called in), but never
+        // the class roster. Names without a card are skipped when it's made.
+        hostMembers: state.mode === "single" ? hostNames : [],
         persona: state.persona || "",
         vnSkin: normalizeVnSkin(state.vnSkin),
         vnMode: state.vnMode !== false,
@@ -496,7 +499,7 @@ export function mountNewGamePanel(container, api) {
                     ${personaName ? `<dt>YOU</dt><dd>${escapeHtml(personaName)}</dd>` : ""}
                     <dt>MAP</dt><dd>${mapText}</dd>
                     <dt>TEXT BOX</dt><dd>${escapeHtml(VN_SKIN_CHOICES.find((c) => c.value === payload.vnSkin)?.label || "")}${payload.vnMode ? "" : " <small>(Visual Novel mode off)</small>"}</dd>
-                    <dt>HOSTS</dt><dd>${payload.hosts.length ? payload.hosts.map(escapeHtml).join(", ") : `Auto <small>(${escapeHtml(hostNames()[0] || "no card named Monokuma")})</small>`}</dd>
+                    <dt>HOSTS</dt><dd>${payload.hosts.length ? payload.hosts.map(escapeHtml).join(", ") : `Auto <small>(${escapeHtml(hostNames()[0] || "no card named Monokuma")})</small>`}${state.mode === "single" ? " <small>(in the story chat, muted until called in)</small>" : ""}</dd>
                     <dt>CLASS (${payload.roster.length})</dt>
                     <dd><ul class="dgn-title-summary-roster">${payload.roster.map((r) => `<li><strong>${escapeHtml(r.name)}</strong><span>${escapeHtml(r.ultimate ? `Ultimate ${r.ultimate}` : "Ultimate ???")}</span></li>`).join("")}</ul></dd>
                     ${removed.length ? `<dt>LEAVING</dt><dd>${removed.map(escapeHtml).join(", ")} <small>(removed from the roster)</small></dd>` : ""}

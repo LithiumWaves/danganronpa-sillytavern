@@ -10,13 +10,14 @@ import { GAME_OVER_FRAMES } from "./gameOverFrames.js";
 const STYLE_ID = "dangan-gameover-style";
 const ROOT_ID = "dangan-gameover";
 const PICK_ID = "dangan-gameover-pick";
+const CONFIRM_ID = "dangan-gameover-confirm";
 
 // Where the dot grid sits in the 16:9 picture, as sampled (1280×720).
 const GRID = { x0: 7.83 / 1280, y0: 4.5 / 720, pitch: 1 / 120, dot: 0.5 };
 const RED = "#d81d1e";
 
 const CSS = `
-#${ROOT_ID}, #${PICK_ID} {
+#${ROOT_ID}, #${PICK_ID}, #${CONFIRM_ID} {
     position: fixed; inset: 0; z-index: 100062; background: #000; color: ${RED};
     font: 700 15px "Orbitron", "Rajdhani", monospace; letter-spacing: 0.3em;
 }
@@ -30,6 +31,21 @@ const CSS = `
 #${ROOT_ID} .dgo-undo { left: max(3vw, 14px); }
 #${ROOT_ID} .dgo-continue { right: max(3vw, 14px); }
 #${ROOT_ID} .dgo-choice:hover, #${ROOT_ID} .dgo-choice:focus-visible { background: ${RED}; color: #000; outline: none; }
+#${PICK_ID} { z-index: 100063; }
+#${CONFIRM_ID} { z-index: 100064; background: rgba(0, 0, 0, 0.78); display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; }
+#${CONFIRM_ID} .dgo-confirm-box {
+    width: min(560px, 100%); padding: 26px 24px 22px; box-sizing: border-box; background: #000;
+    border: 3px dotted ${RED}; display: flex; flex-direction: column; gap: 18px; text-align: center;
+}
+#${CONFIRM_ID} .dgo-confirm-title { font-size: clamp(18px, 3vw, 24px); }
+#${CONFIRM_ID} .dgo-confirm-text { color: #c9a3a3; font: 500 16px/1.5 "Rajdhani", sans-serif; letter-spacing: 0.04em; }
+#${CONFIRM_ID} .dgo-confirm-actions { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; }
+#${CONFIRM_ID} button { background: #000; color: ${RED}; border: 3px dotted ${RED}; font: inherit; letter-spacing: 0.3em; padding: 10px 22px; cursor: pointer; }
+#${CONFIRM_ID} button:hover, #${CONFIRM_ID} button:focus-visible { background: ${RED}; color: #000; outline: none; }
+#${PICK_ID} .dgo-switch { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+#${PICK_ID} .dgo-switch[hidden] { display: none; }
+#${PICK_ID} .dgo-switch-label { font-size: 11px; color: #761413; margin-right: 6px; }
+#${PICK_ID} .dgo-switch button.is-on { background: ${RED}; color: #000; border-style: solid; }
 #${PICK_ID} { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 16px; box-sizing: border-box; }
 #${PICK_ID} .dgo-pick-frame {
     width: min(760px, 100%); max-height: calc(100vh - 32px); overflow: auto; padding: 22px; box-sizing: border-box;
@@ -130,8 +146,10 @@ function drawFrame(ctx, cells, rect, { cols, rows, colors }) {
     }
 }
 
-// { playSound } → Promise<"undo" | "continue">
-export function openGameOver({ playSound = null } = {}) {
+// { playSound, onUndo, onContinue } → Promise<"undo" | "continue">. The
+// screen stays up (still glitching) while onUndo / onContinue run; it closes
+// when one resolves true, and stays for another try when it resolves false.
+export function openGameOver({ playSound = null, onUndo = null, onContinue = null } = {}) {
     ensureStyle();
     document.getElementById(ROOT_ID)?.remove();
     return new Promise((resolve) => {
@@ -186,8 +204,19 @@ export function openGameOver({ playSound = null } = {}) {
             root.remove();
             resolve(choice);
         };
-        root.querySelector(".dgo-undo").addEventListener("click", () => pick("undo"));
-        root.querySelector(".dgo-continue").addEventListener("click", () => pick("continue"));
+        let asking = false;
+        const choose = async (choice, handler) => {
+            if (done || asking) return;
+            if (!handler) { pick(choice); return; }
+            asking = true;
+            try {
+                if (await handler()) pick(choice);
+            } finally {
+                asking = false;
+            }
+        };
+        root.querySelector(".dgo-undo").addEventListener("click", () => choose("undo", onUndo));
+        root.querySelector(".dgo-continue").addEventListener("click", () => choose("continue", onContinue));
 
         loadGameOverFrames().then((f) => {
             frames = f;
@@ -201,9 +230,43 @@ export function openGameOver({ playSound = null } = {}) {
     });
 }
 
+// A yes / no question in the GAME OVER look, over the screen. Esc or a
+// click outside says no; Enter says yes.
+export function openGameOverConfirm({ title = "UNDO?", message = "", confirmLabel = "UNDO", cancelLabel = "CANCEL" } = {}) {
+    ensureStyle();
+    document.getElementById(CONFIRM_ID)?.remove();
+    return new Promise((resolve) => {
+        const root = document.createElement("div");
+        root.id = CONFIRM_ID;
+        root.setAttribute("role", "alertdialog");
+        root.setAttribute("aria-label", title);
+        root.innerHTML = `<div class="dgo-confirm-box">
+            <div class="dgo-confirm-title">${esc(title)}</div>
+            <div class="dgo-confirm-text">${esc(message)}</div>
+            <div class="dgo-confirm-actions"><button type="button" class="dgo-no">${esc(cancelLabel)}</button><button type="button" class="dgo-yes">${esc(confirmLabel)}</button></div>
+        </div>`;
+        document.body.appendChild(root);
+        const done = (answer) => {
+            document.removeEventListener("keydown", onKey, true);
+            root.remove();
+            resolve(answer);
+        };
+        const onKey = (e) => {
+            if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done(false); }
+            else if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); done(true); }
+        };
+        document.addEventListener("keydown", onKey, true);
+        root.querySelector(".dgo-yes").addEventListener("click", () => done(true));
+        root.querySelector(".dgo-no").addEventListener("click", () => done(false));
+        root.addEventListener("click", (e) => { if (e.target === root) done(false); });
+        root.querySelector(".dgo-yes").focus({ preventScroll: true });
+    });
+}
+
 // Who to play as next. personas: [{ key, name, avatarUrl }], classmates:
 // [{ name, avatarUrl }]. Resolves { type: "persona", key } |
-// { type: "classmate", name } | null (back).
+// { type: "classmate", name, kick } | null (back). For a classmate, kick
+// says whether they leave the group chat (true) or are only muted.
 export function openSuccessorPicker({ personas = [], classmates = [] } = {}) {
     ensureStyle();
     document.getElementById(PICK_ID)?.remove();
@@ -215,19 +278,28 @@ export function openSuccessorPicker({ personas = [], classmates = [] } = {}) {
         const card = (kind, id, label, avatarUrl) => `<button type="button" class="dgo-card" data-kind="${kind}" data-id="${esc(id)}">${avatarUrl ? `<img src="${esc(avatarUrl)}" alt="" loading="lazy">` : ""}<span>${esc(label)}</span></button>`;
         root.innerHTML = `<div class="dgo-pick-frame">
             <div class="dgo-pick-title">WHO DO YOU PLAY AS NOW?</div>
-            <div class="dgo-pick-note">A classmate becomes your persona, made from their card, and the AI stops speaking for them.</div>
+            <div class="dgo-pick-note">A classmate becomes your persona and leaves the class. The AI stops speaking for them; their messages stay.</div>
             <div class="dgo-section">YOUR CLASSMATES</div>
             <div class="dgo-grid">${classmates.map((c) => card("classmate", c.name, c.name, c.avatarUrl)).join("") || `<div class="dgo-empty">Nobody is left.</div>`}</div>
             <div class="dgo-section">YOUR PERSONAS</div>
             <div class="dgo-grid">${personas.map((p) => card("persona", p.key, p.name, p.avatarUrl)).join("") || `<div class="dgo-empty">No other personas.</div>`}</div>
+            <div class="dgo-switch" hidden><span class="dgo-switch-label">IN THE GROUP CHAT:</span><button type="button" class="is-on" data-kick="1">REMOVE THEM</button><button type="button" data-kick="0">JUST MUTE THEM</button></div>
             <div class="dgo-foot"><button type="button" class="dgo-back">BACK</button><button type="button" class="dgo-go" disabled>PLAY AS THEM</button></div>
         </div>`;
         document.body.appendChild(root);
         let chosen = null;
+        let kick = true;
         const go = root.querySelector(".dgo-go");
+        const kickSwitch = root.querySelector(".dgo-switch");
+        kickSwitch.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+            kick = b.dataset.kick === "1";
+            kickSwitch.querySelectorAll("button").forEach((x) => x.classList.toggle("is-on", x === b));
+            if (chosen?.type === "classmate") chosen.kick = kick;
+        }));
         root.querySelectorAll(".dgo-card").forEach((btn) => btn.addEventListener("click", () => {
             root.querySelectorAll(".dgo-card").forEach((b) => b.classList.toggle("is-on", b === btn));
-            chosen = btn.dataset.kind === "persona" ? { type: "persona", key: btn.dataset.id } : { type: "classmate", name: btn.dataset.id };
+            chosen = btn.dataset.kind === "persona" ? { type: "persona", key: btn.dataset.id } : { type: "classmate", name: btn.dataset.id, kick };
+            kickSwitch.hidden = chosen.type !== "classmate";
             go.disabled = false;
         }));
         const done = (value) => {
